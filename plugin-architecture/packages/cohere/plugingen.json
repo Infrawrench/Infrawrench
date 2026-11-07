@@ -1,0 +1,38 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/cohere-ai/cohere-developer-experience/main/cohere-openapi.yaml",
+  "paths": {
+    "/v1/check-api-key": ["post"],
+    "/v1/models": ["get"],
+    "/v1/datasets": ["get"],
+    "/v1/datasets/usage": ["get"],
+    "/v1/datasets/{id}": ["delete"],
+    "/v1/finetuning/finetuned-models": ["get"],
+    "/v1/finetuning/finetuned-models/{id}": ["delete"],
+    "/v1/finetuning/finetuned-models/{finetuned_model_id}/events": ["get"],
+    "/v1/finetuning/finetuned-models/{finetuned_model_id}/training-step-metrics": ["get"],
+    "/v1/embed-jobs": ["get", "post"],
+    "/v1/embed-jobs/{id}": ["get"],
+    "/v1/embed-jobs/{id}/cancel": ["post"],
+    "/v2/batches": ["get", "post"],
+    "/v2/batches/{id}:cancel": ["post"],
+    "/v2/audio/transcriptions": ["post"]
+  },
+  "patches": [
+    {
+      "pointer": "/components/schemas/CreateEmbedJobRequest/properties/input_type",
+      "value": { "type": "string" },
+      "why": "The plugin passes this form field through as typed, so the server's own validation answers a bad value."
+    },
+    {
+      "pointer": "/components/schemas/CreateEmbedJobRequest/properties/embedding_types/items",
+      "value": { "type": "string" },
+      "why": "The plugin passes this form field through as typed, so the server's own validation answers a bad value."
+    },
+    {
+      "pointer": "/components/schemas/CreateEmbedJobRequest/properties/truncate",
+      "value": { "type": "string" },
+      "why": "The plugin passes this form field through as typed, so the server's own validation answers a bad value."
+    }
+  ]
+}

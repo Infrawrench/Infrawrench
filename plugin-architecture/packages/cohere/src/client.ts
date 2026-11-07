@@ -21,27 +21,25 @@ import {
   externalIdOf,
   formatBytes,
   buildMultipartBody,
+  pathEncode,
+  type ApiBody,
+  type ApiResponse,
   type MultipartPart,
 } from "@infrawrench/plugin-base";
-import type {
-  CheckApiKeyResponse,
-  CohereBatch,
-  CohereDataset,
-  CohereEmbedJob,
-  CohereFinetunedModel,
-  CohereModel,
-  DatasetUsageResponse,
-  ListBatchesResponse,
-  ListDatasetsResponse,
-  ListEmbedJobsResponse,
-  ListEventsResponse,
-  ListFinetunedModelsResponse,
-  ListModelsResponse,
-  ListTrainingStepMetricsResponse,
-  TranscriptionResponse,
-} from "./api-types.js";
-
-const BASE_URL = "https://api.cohere.com";
+import {
+  BASE_URL,
+  cohereHeaders,
+  createCohereApi,
+  type CheckApiKeyOperation,
+  type CohereApi,
+  type CohereBatch,
+  type CohereDataset,
+  type CohereEmbedJob,
+  type CohereFinetunedModel,
+  type CohereModel,
+  type CreateEmbedJobOperation,
+  type TranscriptionOperation,
+} from "./api.js";
 
 /**
  * Cohere's general transcription model, used when the live model list has no
@@ -174,29 +172,14 @@ const RECORDING_DISABLED_REASON =
 export class CohereClient implements PluginClient {
   private readonly apiKey: string;
   private readonly services: HostServices | undefined;
+  private readonly api: CohereApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Cohere plugin: missing apiKey credential");
     this.apiKey = apiKey;
     this.services = services;
-  }
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Cohere",
-      url: `${BASE_URL}${path}`,
-      errorPath: path,
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        Accept: "application/json",
-        // Declared on every endpoint in Cohere's spec as "the name of the
-        // project that is making the request". Their own SDKs set it.
-        "X-Client-Name": "infrawrench",
-      },
-      ...(options ? { init: options } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
-    });
+    this.api = createCohereApi(apiKey, services?.http);
   }
 
   // ---------------------------------------------------------------------------
@@ -211,8 +194,8 @@ export class CohereClient implements PluginClient {
    * (Cohere files it under "Deprecated" in their API index, but with no
    * announced shutdown date and no replacement.)
    */
-  async checkApiKey(): Promise<CheckApiKeyResponse> {
-    return this.fetch<CheckApiKeyResponse>("/v1/check-api-key", { method: "POST" });
+  async checkApiKey(): Promise<ApiResponse<CheckApiKeyOperation>> {
+    return this.api.post("/v1/check-api-key");
   }
 
   async validateCredentials(): Promise<void> {
@@ -306,18 +289,22 @@ export class CohereClient implements PluginClient {
    *
    * Deprecated models stay in the response; callers building pickers must
    * filter on `is_deprecated` themselves.
+   *
+   * This and the other lists here stay loops rather than `getAll`, which reads a
+   * list that is not an array as empty. Here that fails the call, and the host
+   * prunes what a sync stops seeing. `String` because a token is not validated.
    */
   private async fetchModels(): Promise<CohereModel[]> {
     const models: CohereModel[] = [];
     let pageToken: string | undefined;
     // Bounded so a pathological cursor cannot spin forever.
     for (let page = 0; page < 20; page += 1) {
-      const params = new URLSearchParams({ page_size: "1000" });
-      if (pageToken) params.set("page_token", pageToken);
-      const data = await this.fetch<ListModelsResponse>(`/v1/models?${params.toString()}`);
+      const data = await this.api.get("/v1/models", {
+        query: { page_size: 1000, ...(pageToken !== undefined ? { page_token: pageToken } : {}) },
+      });
       models.push(...(data.models ?? []));
       if (!data.next_page_token) break;
-      pageToken = data.next_page_token;
+      pageToken = String(data.next_page_token);
     }
     return models;
   }
@@ -367,8 +354,7 @@ export class CohereClient implements PluginClient {
     const datasets: CohereDataset[] = [];
     const limit = 100;
     for (let offset = 0; offset < 2000; offset += limit) {
-      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-      const data = await this.fetch<ListDatasetsResponse>(`/v1/datasets?${params.toString()}`);
+      const data = await this.api.get("/v1/datasets", { query: { limit, offset } });
       const page = data.datasets ?? [];
       datasets.push(...page);
       if (page.length < limit) break;
@@ -383,7 +369,7 @@ export class CohereClient implements PluginClient {
    * against a 10 GB organization cap. It is not token usage and not spend.
    */
   private async fetchDatasetUsage(): Promise<number | null> {
-    const data = await this.fetch<DatasetUsageResponse>("/v1/datasets/usage");
+    const data = await this.api.get("/v1/datasets/usage");
     return typeof data.organization_usage === "number" ? data.organization_usage : null;
   }
 
@@ -443,14 +429,12 @@ export class CohereClient implements PluginClient {
     const models: CohereFinetunedModel[] = [];
     let pageToken: string | undefined;
     for (let page = 0; page < 20; page += 1) {
-      const params = new URLSearchParams({ page_size: "100" });
-      if (pageToken) params.set("page_token", pageToken);
-      const data = await this.fetch<ListFinetunedModelsResponse>(
-        `/v1/finetuning/finetuned-models?${params.toString()}`,
-      );
+      const data = await this.api.get("/v1/finetuning/finetuned-models", {
+        query: { page_size: 100, ...(pageToken !== undefined ? { page_token: pageToken } : {}) },
+      });
       models.push(...(data.finetuned_models ?? []));
       if (!data.next_page_token) break;
-      pageToken = data.next_page_token;
+      pageToken = String(data.next_page_token);
     }
     return models;
   }
@@ -460,9 +444,9 @@ export class CohereClient implements PluginClient {
     id: string,
   ): Promise<Array<{ status: string; userId: string; createdAt: string }>> {
     if (!id) return [];
-    const data = await this.fetch<ListEventsResponse>(
-      `/v1/finetuning/finetuned-models/${encodeURIComponent(id)}/events?page_size=50`,
-    );
+    const data = await this.api.get(`/v1/finetuning/finetuned-models/${pathEncode(id)}/events`, {
+      query: { page_size: 50 },
+    });
     return (data.events ?? []).map((e) => ({
       status: e.status ?? "",
       // Cohere documents an empty user_id as "initiated by the system".
@@ -481,8 +465,9 @@ export class CohereClient implements PluginClient {
     id: string,
   ): Promise<Array<{ step: number; createdAt: string; metrics: Record<string, number> }>> {
     if (!id) return [];
-    const data = await this.fetch<ListTrainingStepMetricsResponse>(
-      `/v1/finetuning/finetuned-models/${encodeURIComponent(id)}/training-step-metrics?page_size=100`,
+    const data = await this.api.get(
+      `/v1/finetuning/finetuned-models/${pathEncode(id)}/training-step-metrics`,
+      { query: { page_size: 100 } },
     );
     return (data.step_metrics ?? []).map((m) => ({
       step: m.step_number ?? 0,
@@ -541,7 +526,7 @@ export class CohereClient implements PluginClient {
    * pagination to drive, and the response is the full list.
    */
   private async fetchEmbedJobs(): Promise<CohereEmbedJob[]> {
-    const data = await this.fetch<ListEmbedJobsResponse>("/v1/embed-jobs");
+    const data = await this.api.get("/v1/embed-jobs");
     return data.embed_jobs ?? [];
   }
 
@@ -551,7 +536,11 @@ export class CohereClient implements PluginClient {
     return jobs.filter((j) => Boolean(j.job_id)).map((j) => this.mapEmbedJob(accountId, j, now));
   }
 
-  private mapEmbedJob(accountId: string, job: CohereEmbedJob, now: string): ResourceInstance {
+  private mapEmbedJob(
+    accountId: string,
+    job: Partial<CohereEmbedJob>,
+    now: string,
+  ): ResourceInstance {
     const id = job.job_id ?? "";
     return {
       id: `${accountId}:embed-job:${id}`,
@@ -586,12 +575,12 @@ export class CohereClient implements PluginClient {
     const batches: CohereBatch[] = [];
     let pageToken: string | undefined;
     for (let page = 0; page < 20; page += 1) {
-      const params = new URLSearchParams({ page_size: "1000" });
-      if (pageToken) params.set("page_token", pageToken);
-      const data = await this.fetch<ListBatchesResponse>(`/v2/batches?${params.toString()}`);
+      const data = await this.api.get("/v2/batches", {
+        query: { page_size: 1000, ...(pageToken !== undefined ? { page_token: pageToken } : {}) },
+      });
       batches.push(...(data.batches ?? []));
       if (!data.next_page_token) break;
-      pageToken = data.next_page_token;
+      pageToken = String(data.next_page_token);
     }
     return batches;
   }
@@ -695,8 +684,8 @@ export class CohereClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "batch") {
         const [models, datasets] = await Promise.all([
-          this.safely(() => this.fetchModels(), [] as CohereModel[]),
-          this.safely(() => this.fetchDatasets(), [] as CohereDataset[]),
+          this.safely<CohereModel[]>(() => this.fetchModels(), []),
+          this.safely<CohereDataset[]>(() => this.fetchDatasets(), []),
         ]);
         return {
           fields: [
@@ -722,8 +711,8 @@ export class CohereClient implements PluginClient {
 
       if (typeId === "embed-job") {
         const [models, datasets] = await Promise.all([
-          this.safely(() => this.fetchModels(), [] as CohereModel[]),
-          this.safely(() => this.fetchDatasets(), [] as CohereDataset[]),
+          this.safely<CohereModel[]>(() => this.fetchModels(), []),
+          this.safely<CohereDataset[]>(() => this.fetchDatasets(), []),
         ]);
         return {
           fields: [
@@ -800,9 +789,8 @@ export class CohereClient implements PluginClient {
         if (!name || !inputDatasetId || !model) {
           throw new Error("Cohere plugin: a batch needs a name, an input dataset and a model");
         }
-        const created = await this.fetch<{ batch?: CohereBatch }>("/v2/batches", {
-          method: "POST",
-          body: JSON.stringify({ name, input_dataset_id: inputDatasetId, model }),
+        const created = await this.api.post("/v2/batches", {
+          body: { name, input_dataset_id: inputDatasetId, model },
         });
         if (!created.batch?.id)
           throw new Error("Cohere plugin: POST /v2/batches returned no batch");
@@ -816,24 +804,24 @@ export class CohereClient implements PluginClient {
         if (!datasetId || !model) {
           throw new Error("Cohere plugin: an embed job needs an input dataset and a model");
         }
-        const body: Record<string, unknown> = {
+        const name = fields["name"]?.trim();
+        const embeddingType = fields["embeddingType"];
+        const truncate = fields["truncate"];
+        const body: ApiBody<CreateEmbedJobOperation> = {
           model,
           dataset_id: datasetId,
           input_type: inputType,
+          ...(name ? { name } : {}),
+          ...(embeddingType ? { embedding_types: [embeddingType] } : {}),
+          ...(truncate ? { truncate } : {}),
         };
-        if (fields["name"]?.trim()) body["name"] = fields["name"].trim();
-        if (fields["embeddingType"]) body["embedding_types"] = [fields["embeddingType"]];
-        if (fields["truncate"]) body["truncate"] = fields["truncate"];
 
-        const created = await this.fetch<{ job_id?: string }>("/v1/embed-jobs", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+        const created = await this.api.post("/v1/embed-jobs", { body });
         const jobId = created.job_id;
         if (!jobId) throw new Error("Cohere plugin: POST /v1/embed-jobs returned no job_id");
-        const job = await this.safely(
-          () => this.fetch<CohereEmbedJob>(`/v1/embed-jobs/${encodeURIComponent(jobId)}`),
-          { job_id: jobId, name: String(body["name"] ?? ""), model, input_dataset_id: datasetId },
+        const job = await this.safely<Partial<CohereEmbedJob>>(
+          () => this.api.get(`/v1/embed-jobs/${pathEncode(jobId)}`),
+          { job_id: jobId, name: name || "", model, input_dataset_id: datasetId },
         );
         return this.mapEmbedJob(accountId, { ...job, job_id: job.job_id ?? jobId }, now);
       }
@@ -859,13 +847,11 @@ export class CohereClient implements PluginClient {
     return attempt(async () => {
       const externalId = externalIdOf(resourceId);
       if (typeId === "dataset") {
-        await this.fetch(`/v1/datasets/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+        await this.api.delete(`/v1/datasets/${pathEncode(externalId)}`);
         return;
       }
       if (typeId === "finetuned-model") {
-        await this.fetch(`/v1/finetuning/finetuned-models/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
+        await this.api.delete(`/v1/finetuning/finetuned-models/${pathEncode(externalId)}`);
         return;
       }
       throw new Error(`Cohere plugin: cannot delete type "${typeId}"`);
@@ -889,16 +875,12 @@ export class CohereClient implements PluginClient {
       const externalId = externalIdOf(resourceId);
 
       if (typeId === "embed-job" && actionId === "cancel") {
-        await this.fetch(`/v1/embed-jobs/${encodeURIComponent(externalId)}/cancel`, {
-          method: "POST",
-        });
+        await this.api.post(`/v1/embed-jobs/${pathEncode(externalId)}/cancel`);
         return;
       }
 
       if (typeId === "batch" && actionId === "cancel") {
-        await this.fetch(`/v2/batches/${encodeURIComponent(externalId)}:cancel`, {
-          method: "POST",
-        });
+        await this.api.post(`/v2/batches/${pathEncode(externalId)}:cancel`);
         return;
       }
 
@@ -1627,12 +1609,15 @@ export class CohereClient implements PluginClient {
    *
    * Multipart, so the body is hand-encoded rather than passed as a `FormData`
    * (which the host HTTP bridge would stringify into "[object FormData]").
-   * The response is JSON, so it still goes through `jsonRestFetch` and keeps
-   * bastion egress routing and the custom CA.
+   * The typed client cannot write a multipart body, so this one call stays on
+   * `jsonRestFetch`, which keeps bastion egress routing, and only its answer
+   * comes from the document.
    *
    * Form fields are exactly `file`, `model` and `language` (all three
    * required), plus an optional `temperature`. There is no `response_format`
    * and no `prompt`.
+   *
+   * The documented response body is exactly `{ text }`, with `text` required.
    */
   transcribeAudio(
     _typeId: string,
@@ -1676,13 +1661,21 @@ export class CohereClient implements PluginClient {
       ];
 
       const { contentType, body } = buildMultipartBody(parts);
-      const response = await this.fetch<TranscriptionResponse>("/v2/audio/transcriptions", {
-        method: "POST",
-        headers: { "Content-Type": contentType },
-        // An `ArrayBuffer`-backed byte array: global `fetch` takes it as a
-        // BufferSource, and the host HTTP bridge passes `Uint8Array` straight
-        // through.
-        body,
+      const path = "/v2/audio/transcriptions";
+      const response = await jsonRestFetch<ApiResponse<TranscriptionOperation>>({
+        vendor: "Cohere",
+        url: `${BASE_URL}${path}`,
+        errorPath: path,
+        headers: cohereHeaders(this.apiKey),
+        init: {
+          method: "POST",
+          headers: { "Content-Type": contentType },
+          // An `ArrayBuffer`-backed byte array: global `fetch` takes it as a
+          // BufferSource, and the host HTTP bridge passes `Uint8Array` straight
+          // through.
+          body,
+        },
+        ...(this.services?.http ? { http: this.services.http } : {}),
       });
 
       return {
@@ -1748,7 +1741,10 @@ function defaultTranscribeOption(): SpeechPanelOption {
 }
 
 /** Stash extra API data on a resource for the synchronous `renderDetail`. */
-function withStash(resource: ResourceInstance, extra: Record<string, unknown>): ResourceInstance {
+function withStash(
+  resource: ResourceInstance,
+  extra: Record<string, object | number | null>,
+): ResourceInstance {
   const stash: Record<string, string> = {};
   for (const [key, value] of Object.entries(extra)) stash[key] = JSON.stringify(value);
   return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...stash } };
