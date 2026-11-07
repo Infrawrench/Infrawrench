@@ -1,0 +1,160 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/cloudinary/api-schemas/main/api/schema.yml",
+  "pathPrefix": "/v1_1/{cloud_name}",
+  "patches": [
+    {
+      "pointer": "/paths/~1config",
+      "value": {
+        "get": {
+          "operationId": "getConfig",
+          "parameters": [{ "name": "settings", "in": "query", "schema": { "type": "boolean" } }],
+          "responses": {
+            "200": {
+              "description": "The product environment's configuration.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "cloud_name": { "type": "string" },
+                      "created_at": { "type": "string" },
+                      "settings": {
+                        "type": "object",
+                        "properties": { "folder_mode": { "type": "string" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document lacks GET /config, which the Admin API reference documents at https://cloudinary.com/documentation/admin_api#config."
+    },
+    {
+      "pointer": "/paths/~1folders~1{folder}/put/parameters",
+      "value": [
+        { "name": "to_folder", "in": "query", "required": true, "schema": { "type": "string" } }
+      ],
+      "why": "The document only has to_folder in a JSON body, while the Admin API reference's curl sample sends ?to_folder=, which is what the plugin sends."
+    },
+    {
+      "pointer": "/paths/~1folders~1{folder}/put/requestBody/required",
+      "value": false,
+      "why": "Goes with the query parameter above: the plugin sends this PUT with no body."
+    },
+    {
+      "pointer": "/paths/~1upload_mappings/get/responses/200/content/application~1json/schema",
+      "value": { "$ref": "#/components/schemas/upload_mapping_list_response" },
+      "why": "The document answers either a list or, given ?folder=, one mapping. The plugin never passes folder here, so it only ever lists."
+    },
+    {
+      "pointer": "/components/schemas/info/required",
+      "value": ["public_id", "asset_id", "resource_type"],
+      "why": "The document marks nothing required on an asset. These identify it, and the plugin builds its resource ids from them."
+    },
+    {
+      "pointer": "/components/schemas/info/properties/access_mode",
+      "value": { "type": "string" },
+      "why": "The document allows access_mode in the fields parameter of a list and leaves it off the asset itself."
+    },
+    {
+      "pointer": "/components/schemas/transformation_summary/required",
+      "value": ["name"],
+      "why": "The document marks nothing required on a listed transformation. The name is what identifies it."
+    },
+    {
+      "pointer": "/components/schemas/trigger_info/required",
+      "value": ["id", "uri", "uri_type"],
+      "why": "The document leaves out id, which is what the plugin updates and deletes a trigger by."
+    },
+    {
+      "pointer": "/components/schemas/trigger_info/properties/additive",
+      "value": { "type": "boolean" },
+      "why": "In the Admin API reference's trigger parameters (https://cloudinary.com/documentation/admin_api#triggers) and missing here."
+    },
+    {
+      "pointer": "/components/schemas/trigger_info/properties/auth_scheme",
+      "value": { "type": "string" },
+      "why": "In the Admin API reference's trigger responses and missing here."
+    },
+    {
+      "pointer": "/components/schemas/trigger_info/properties/filter",
+      "value": { "type": "object", "additionalProperties": true },
+      "why": "In the Admin API reference's trigger parameters and missing here. A JSONLogic expression."
+    },
+    {
+      "pointer": "/components/schemas/trigger_info/properties/payload_template",
+      "value": {
+        "oneOf": [{ "type": "object", "additionalProperties": true }, { "type": "string" }]
+      },
+      "why": "In the Admin API reference's trigger parameters and missing here. An object, or a string holding one."
+    },
+    {
+      "pointer": "/components/schemas/create_trigger_request/properties",
+      "value": {
+        "uri": { "type": "string" },
+        "event_type": { "type": "string" },
+        "additive": { "type": "boolean" },
+        "auth_scheme": { "type": "string" },
+        "filter": { "type": "object", "additionalProperties": true },
+        "payload_template": { "type": "object", "additionalProperties": true }
+      },
+      "why": "The document stops at uri and event_type, where the Admin API reference has these four optional parameters too. event_type is a string because the document's enum lacks events the reference lists, and the form's value goes through as chosen."
+    },
+    {
+      "pointer": "/components/schemas/update_trigger_request/properties",
+      "value": {
+        "new_uri": { "type": "string" },
+        "additive": { "type": "boolean" },
+        "auth_scheme": { "type": "string" },
+        "filter": { "type": "object", "additionalProperties": true },
+        "payload_template": { "type": "object", "additionalProperties": true }
+      },
+      "why": "The document stops at new_uri, where the Admin API reference has these four optional parameters too."
+    },
+    {
+      "pointer": "/components/schemas/update_trigger_request/required",
+      "value": [],
+      "why": "The Admin API reference lists new_uri as optional, and the plugin leaves it out when only another field changes."
+    },
+    {
+      "pointer": "/components/schemas/usage_response/properties/credits",
+      "value": {
+        "type": "object",
+        "properties": {
+          "usage": { "type": "number" },
+          "limit": { "type": "number" },
+          "used_percent": { "type": "number" }
+        }
+      },
+      "why": "The Admin API reference says GET /usage reports credits, and the document omits them."
+    },
+    {
+      "pointer": "/components/schemas/usage_response/properties/transformations/properties/limit",
+      "value": { "type": "number" },
+      "why": "Legacy plans have a transformation allowance rather than credits, and the document only gives this one a usage."
+    }
+  ],
+  "paths": {
+    "/config": ["get"],
+    "/folders": ["get"],
+    "/folders/{folder}": ["get", "post", "put", "delete"],
+    "/resources/image": ["get"],
+    "/resources/raw": ["get"],
+    "/resources/video": ["get"],
+    "/resources/{asset_id}": ["get", "put"],
+    "/resources/{resource_type}/{type}": ["delete"],
+    "/transformations": ["get"],
+    "/transformations/{transformation}": ["post", "put", "delete"],
+    "/triggers": ["get", "post"],
+    "/triggers/{id}": ["put", "delete"],
+    "/upload_mappings": ["get", "post", "put", "delete"],
+    "/upload_presets": ["get", "post"],
+    "/upload_presets/{name}": ["put", "delete"],
+    "/usage": ["get"],
+    "/video/analytics/views": ["get"]
+  }
+}
