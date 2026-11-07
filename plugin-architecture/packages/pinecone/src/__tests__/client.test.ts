@@ -449,6 +449,77 @@ describe("create and edit", () => {
   });
 });
 
+describe("a name that could not be looked up", () => {
+  const scheduleId = `${ACCOUNT}:backup-schedule:s1`;
+  const schedule = {
+    schedule_id: "s1",
+    index_id: "i1",
+    name: "nightly",
+    frequency: "daily",
+    enabled: true,
+    created_at: "2026-01-01T00:00:00Z",
+    next_scheduled_run: null,
+    project_id: "p",
+    retention_expire_after_days: 7,
+    schedule_type: "time-based",
+  };
+  const broken = respond(500, { status: 500, error: { code: "INTERNAL", message: "no" } });
+
+  it("finds a schedule's index by its schedules", async () => {
+    const { http, c } = client();
+    http.route("GET", "api.pinecone.io/backup-schedules/s1", schedule);
+    http.route("GET", "api.pinecone.io/indexes", { indexes: [serverless] });
+    http.route("GET", "api.pinecone.io/indexes/products/backup-schedules", { data: [schedule] });
+    const found = await c.getResource("backup-schedule", scheduleId, ACCOUNT);
+    expect(found.fields["indexName"]).toBe("products");
+  });
+
+  it("fails a schedule edit's read-back rather than blank the stored index name", async () => {
+    for (const failing of [
+      "api.pinecone.io/indexes",
+      "api.pinecone.io/indexes/products/backup-schedules",
+    ]) {
+      const { http, c } = client();
+      http.route("PATCH", "api.pinecone.io/backup-schedules/s1", schedule);
+      http.route("GET", "api.pinecone.io/backup-schedules/s1", schedule);
+      http.route("GET", "api.pinecone.io/indexes", { indexes: [serverless] });
+      http.route("GET", "api.pinecone.io/indexes/products/backup-schedules", { data: [schedule] });
+      http.route("GET", failing, broken);
+      await expect(
+        c.updateResource("backup-schedule", scheduleId, ACCOUNT, { frequency: "weekly" }),
+      ).rejects.toThrow("500");
+    }
+  });
+
+  it("skips an index whose schedules are refused, as the list does", async () => {
+    const { http, c } = client();
+    http.route("GET", "api.pinecone.io/backup-schedules/s1", schedule);
+    http.route("GET", "api.pinecone.io/indexes", {
+      indexes: [{ ...serverless, name: "first" }, serverless],
+    });
+    http.route(
+      "GET",
+      "api.pinecone.io/indexes/first/backup-schedules",
+      respond(403, { status: 403, error: { code: "FORBIDDEN", message: "no" } }),
+    );
+    http.route("GET", "api.pinecone.io/indexes/products/backup-schedules", { data: [schedule] });
+    const found = await c.getResource("backup-schedule", scheduleId, ACCOUNT);
+    expect(found.fields["indexName"]).toBe("products");
+  });
+
+  it("fails an API key edit's read-back rather than blank the stored project name", async () => {
+    const { http, c } = client({ clientId: "cid", clientSecret: "s" });
+    const key = { id: "k1", name: "ci", project_id: "p1", roles: ["ProjectEditor"] };
+    http.route("POST", "login.pinecone.io/oauth/token", { access_token: "t", expires_in: 1800 });
+    http.route("PATCH", "api.pinecone.io/admin/api-keys/k1", key);
+    http.route("GET", "api.pinecone.io/admin/api-keys/k1", key);
+    http.route("GET", "api.pinecone.io/admin/projects", broken);
+    await expect(
+      c.updateResource("api-key", `${ACCOUNT}:api-key:k1`, ACCOUNT, { name: "renamed" }),
+    ).rejects.toThrow("500");
+  });
+});
+
 describe("mappers", () => {
   it("summarises 2026-07 schemas", () => {
     expect(indexShape(serverless.schema?.fields).kind).toBe("dense");

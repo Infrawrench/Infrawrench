@@ -360,7 +360,7 @@ export class PineconeClient implements PluginClient {
         case "backup-schedule": {
           const [s, indexes] = await Promise.all([
             this.api.control.get(`/backup-schedules/${enc(id)}`),
-            this.indexes().catch((): PcIndex[] => []),
+            this.indexes(),
           ]);
           const indexName = await this.indexNameForId(s.index_id ?? "", indexes);
           return mapBackupSchedule(s, indexName, accountId);
@@ -373,8 +373,7 @@ export class PineconeClient implements PluginClient {
           return mapProject(await this.api.admin.get(`/admin/projects/${enc(id)}`), accountId);
         case "api-key": {
           const key = await this.api.admin.get(`/admin/api-keys/${enc(id)}`);
-          const projects = await this.projects().catch((): PcProject[] => []);
-          const project = projects.find((p) => p.id === key.project_id);
+          const project = (await this.projects()).find((p) => p.id === key.project_id);
           return mapApiKey(key, project?.name ?? "", accountId);
         }
         case "service-account":
@@ -391,13 +390,17 @@ export class PineconeClient implements PluginClient {
   /**
    * Backup schedules report the index's id, not its name. The index list
    * carries no id either, so match by describing the schedules of each
-   * index until one of them owns the schedule.
+   * index until one of them owns the schedule. An edit stores what this finds, so a read
+   * that failed has to throw rather than come back as no name.
    */
   private async indexNameForId(indexId: string, indexes: PcIndex[]): Promise<string> {
     if (!indexId) return "";
     for (const i of indexes) {
       if (i.deployment?.deployment_type === "pod") continue;
-      const schedules = await this.listSchedules(i.name).catch(() => []);
+      const schedules = await this.listSchedules(i.name).catch((e): PcBackupSchedule[] => {
+        if (isStatus(e, 400, 403, 404)) return [];
+        throw e;
+      });
       if (schedules.some((s) => s.index_id === indexId)) return i.name;
     }
     return "";
