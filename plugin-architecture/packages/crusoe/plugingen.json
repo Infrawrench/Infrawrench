@@ -1,0 +1,217 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.crusoecloud.com/v1/openapi.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1projects~1{project_id}~1storage~1disks/get/parameters/5",
+      "value": {
+        "name": "next_token",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "The document lists no paging parameters here, but the plugin sends next_token back on any list that answers with next_page_token."
+    },
+    {
+      "pointer": "/paths/~1projects~1{project_id}~1storage~1snapshots/get/parameters/1",
+      "value": {
+        "name": "next_token",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "The document lists no paging parameters here, but the plugin sends next_token back on any list that answers with next_page_token."
+    },
+    {
+      "pointer": "/paths/~1projects~1{project_id}~1networking~1vpc-networks/get/parameters/1",
+      "value": {
+        "name": "next_token",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "The document lists no paging parameters here, but the plugin sends next_token back on any list that answers with next_page_token."
+    },
+    {
+      "pointer": "/paths/~1projects~1{project_id}~1networking~1vpc-subnets/get/parameters/1",
+      "value": {
+        "name": "next_token",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "The document lists no paging parameters here, but the plugin sends next_token back on any list that answers with next_page_token."
+    },
+    {
+      "pointer": "/paths/~1projects~1{project_id}~1networking~1vpc-firewall-rules/get/parameters/1",
+      "value": {
+        "name": "next_token",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "The document lists no paging parameters here, but the plugin sends next_token back on any list that answers with next_page_token."
+    },
+    {
+      "pointer": "/paths/~1projects~1{project_id}~1kubernetes~1nodepools/get/parameters/3",
+      "value": {
+        "name": "next_token",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "The document lists no paging parameters here, but the plugin sends next_token back on any list that answers with next_page_token."
+    },
+    {
+      "pointer": "/paths/~1projects~1{project_id}~1networking~1load-balancers/get/parameters/4",
+      "value": {
+        "name": "next_token",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "The document lists no paging parameters here, but the plugin sends next_token back on any list that answers with next_page_token."
+    },
+    {
+      "pointer": "/components/schemas/Operation/properties/result",
+      "value": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "Left untyped. It is the affected object on success and an error with a message on failure, and the plugin reads those two fields."
+    },
+    {
+      "pointer": "/components/schemas/ObservabilityMetrics/properties/data",
+      "value": {
+        "type": "object",
+        "properties": {
+          "resultType": {
+            "type": "string"
+          },
+          "result": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "metric": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "values": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Left untyped. It is a Prometheus range result: each value is a [timestamp, text] pair, which OpenAPI 3.0 can only write as an array of either."
+    },
+    {
+      "pointer": "/components/schemas/ReservationSpecification/properties/selection_strategy",
+      "value": {
+        "type": "string"
+      },
+      "why": "The create form's value goes through as typed, and Crusoe's own validation is the better message."
+    },
+    {
+      "pointer": "/components/schemas/VPCFirewallRulesPostRequestV1/properties/direction",
+      "value": {
+        "type": "string"
+      },
+      "why": "The create form's value goes through as typed, and Crusoe's own validation is the better message."
+    },
+    {
+      "pointer": "/components/schemas/VPCFirewallRulesPostRequestV1/properties/action",
+      "value": {
+        "type": "string"
+      },
+      "why": "The create form's value goes through as typed, and Crusoe's own validation is the better message."
+    },
+    {
+      "pointer": "/components/schemas/DisksPostRequestV1/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The create form's value goes through as typed, and Crusoe's own validation is the better message."
+    }
+  ],
+  "paths": {
+    "/locations": ["get"],
+    "/compute/images": ["get"],
+    "/users/ssh-keys": ["get", "post", "delete"],
+    "/organizations/entities": ["get"],
+    "/organizations/projects": ["get", "post", "put"],
+    "/organizations/projects/{project_id}": ["delete"],
+    "/organizations/{organization_id}/reservations": ["get"],
+    "/organizations/{organization_id}/quotas": ["get"],
+    "/organizations/{organization_id}/billing/costs": ["get"],
+    "/organizations/{organization_id}/billing/credit-balance": ["get"],
+    "/organizations/{organization_id}/billing/export-productline": ["get"],
+    "/projects/{project_id}/compute/vms/types": ["get"],
+    "/projects/{project_id}/compute/vms/instances/{vm_id}/attach-disks": ["post"],
+    "/projects/{project_id}/compute/vms/instances/{vm_id}/detach-disks": ["post"],
+    "/projects/{project_id}/kubernetes/versions": ["get"],
+    "/projects/{project_id}/kubernetes/clusters/{cluster_id}/get-credentials": ["post"],
+    "/projects/{project_id}/metrics/timeseries/api/v1/query-range": ["get"],
+    "/projects/{project_id}/compute/vms/instances": ["get", "post"],
+    "/projects/{project_id}/compute/vms/instances/{vm_id}": ["patch", "delete"],
+    "/projects/{project_id}/compute/vms/instances/operations/{operation_id}": ["get"],
+    "/projects/{project_id}/storage/disks": ["get", "post"],
+    "/projects/{project_id}/storage/disks/{disk_id}": ["patch", "delete"],
+    "/projects/{project_id}/storage/disks/operations/{operation_id}": ["get"],
+    "/projects/{project_id}/storage/snapshots": ["get", "post"],
+    "/projects/{project_id}/storage/snapshots/{snapshot_id}": ["delete"],
+    "/projects/{project_id}/storage/snapshots/operations/{operation_id}": ["get"],
+    "/projects/{project_id}/networking/vpc-networks": ["get", "post"],
+    "/projects/{project_id}/networking/vpc-networks/{vpc_network_id}": ["patch", "delete"],
+    "/projects/{project_id}/networking/vpc-networks/operations/{operation_id}": ["get"],
+    "/projects/{project_id}/networking/vpc-subnets": ["get", "post"],
+    "/projects/{project_id}/networking/vpc-subnets/{vpc_subnet_id}": ["patch", "delete"],
+    "/projects/{project_id}/networking/vpc-subnets/operations/{operation_id}": ["get"],
+    "/projects/{project_id}/networking/vpc-firewall-rules": ["get", "post"],
+    "/projects/{project_id}/networking/vpc-firewall-rules/{vpc_firewall_rule_id}": [
+      "patch",
+      "delete"
+    ],
+    "/projects/{project_id}/networking/vpc-firewall-rules/operations/{operation_id}": ["get"],
+    "/projects/{project_id}/kubernetes/clusters": ["get", "post"],
+    "/projects/{project_id}/kubernetes/clusters/{cluster_id}": ["delete"],
+    "/projects/{project_id}/kubernetes/clusters/operations/{operation_id}": ["get"],
+    "/projects/{project_id}/kubernetes/nodepools": ["get", "post"],
+    "/projects/{project_id}/kubernetes/nodepools/{node_pool_id}": ["patch", "delete"],
+    "/projects/{project_id}/kubernetes/nodepools/operations/{operation_id}": ["get"],
+    "/projects/{project_id}/networking/load-balancers": ["get"],
+    "/projects/{project_id}/networking/load-balancers/{load_balancer_id}": ["delete"],
+    "/projects/{project_id}/networking/load-balancers/operations/{operation_id}": ["get"]
+  }
+}

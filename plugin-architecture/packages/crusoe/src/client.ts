@@ -21,7 +21,9 @@ import {
   QuotaAccessError,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
-import { CrusoeApi, isStatus } from "./api.js";
+import type { ApiBody } from "@infrawrench/plugin-base";
+import { createCrusoeApi, isStatus, listAll, seg, type CrusoeApi } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 import { fetchCrusoeCostData } from "./cost-data.js";
 import { buildCreateConfig } from "./create-config.js";
 import {
@@ -47,27 +49,26 @@ import { DEFAULT_METRICS_WINDOW_MS, fetchVmMetrics } from "./metrics.js";
 import { renderCrusoeDetail, renderCrusoeSidebarItem } from "./render.js";
 import type {
   CrusoeAsyncResponse,
-  CrusoeCluster,
-  CrusoeDisk,
   CrusoeEntity,
-  CrusoeFirewallRule,
-  CrusoeKubeCredentials,
-  CrusoeLoadBalancer,
-  CrusoeNodePool,
   CrusoeOperation,
   CrusoeProject,
   CrusoeQuota,
-  CrusoeReservation,
-  CrusoeSnapshot,
-  CrusoeSshKey,
-  CrusoeVm,
   CrusoeVmType,
-  CrusoeVpcNetwork,
-  CrusoeVpcSubnet,
 } from "./types.js";
 
+type Collection =
+  | "compute/vms/instances"
+  | "storage/disks"
+  | "storage/snapshots"
+  | "networking/vpc-networks"
+  | "networking/vpc-subnets"
+  | "networking/vpc-firewall-rules"
+  | "kubernetes/clusters"
+  | "kubernetes/nodepools"
+  | "networking/load-balancers";
+
 /** Collection path under `/projects/{id}` for each project-scoped type. */
-export const COLLECTIONS: Record<string, string> = {
+export const COLLECTIONS: Record<string, Collection> = {
   vm: "compute/vms/instances",
   disk: "storage/disks",
   snapshot: "storage/snapshots",
@@ -83,9 +84,16 @@ const CACHE_TTL_MS = 60_000;
 const OPERATION_POLL_MS = 2_000;
 const OPERATION_TIMEOUT_MS = 120_000;
 
+const VM_ACTIONS = { start: "START", stop: "STOP", reset: "RESET" } as const;
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function str(v: unknown): string {
+/** A body whose every field was left out, so there is nothing to ask for. */
+function isBlank(body: object): boolean {
+  return Object.values(body).every((value) => value === undefined);
+}
+
+function str(v: string | null | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
 }
 
@@ -111,7 +119,7 @@ export class CrusoeClient implements PluginClient {
     if (!accessKeyId || !secretKey) {
       throw new Error("Crusoe plugin: missing accessKeyId or secretKey credential");
     }
-    this.api = new CrusoeApi(
+    this.api = createCrusoeApi(
       {
         accessKeyId,
         secretKey,
@@ -127,9 +135,7 @@ export class CrusoeClient implements PluginClient {
 
   async organizations(): Promise<CrusoeEntity[]> {
     if (!this.orgsCache || Date.now() - this.orgsCache.at > CACHE_TTL_MS) {
-      const value = this.api
-        .request<{ items?: CrusoeEntity[] }>("/organizations/entities")
-        .then((r) => r?.items ?? []);
+      const value = this.api.get("/organizations/entities").then((r) => r?.items ?? []);
       value.catch(() => (this.orgsCache = undefined));
       this.orgsCache = { at: Date.now(), value };
     }
@@ -138,9 +144,7 @@ export class CrusoeClient implements PluginClient {
 
   async projects(): Promise<CrusoeProject[]> {
     if (!this.projectsCache || Date.now() - this.projectsCache.at > CACHE_TTL_MS) {
-      const value = this.api
-        .request<{ items?: CrusoeProject[] }>("/organizations/projects")
-        .then((r) => r?.items ?? []);
+      const value = this.api.get("/organizations/projects").then((r) => r?.items ?? []);
       value.catch(() => (this.projectsCache = undefined));
       this.projectsCache = { at: Date.now(), value };
     }
@@ -151,7 +155,7 @@ export class CrusoeClient implements PluginClient {
     let cached = this.vmTypesCache.get(projectId);
     if (!cached) {
       cached = this.api
-        .request<{ items?: CrusoeVmType[] }>(`/projects/${projectId}/compute/vms/types`)
+        .get(`/projects/${seg(projectId)}/compute/vms/types`)
         .then((r) => r?.items ?? [])
         .catch(() => []);
       this.vmTypesCache.set(projectId, cached);
@@ -160,7 +164,7 @@ export class CrusoeClient implements PluginClient {
   }
 
   async locations(): Promise<string[]> {
-    const res = await this.api.request<{ items?: string[] }>("/locations");
+    const res = await this.api.get("/locations");
     return res?.items ?? [];
   }
 
@@ -198,7 +202,7 @@ export class CrusoeClient implements PluginClient {
           return projects.map((p) => mapProject(p, accountId, byId));
         }
         case "ssh-key": {
-          const res = await this.api.request<{ items?: CrusoeSshKey[] }>("/users/ssh-keys");
+          const res = await this.api.get("/users/ssh-keys");
           return (res?.items ?? []).map((k) => mapSshKey(k, accountId));
         }
         case "reservation":
@@ -206,7 +210,9 @@ export class CrusoeClient implements PluginClient {
         case "vm":
           return this.perProject(async (pid) => {
             const [vms, types] = await Promise.all([
-              this.api.listAll<CrusoeVm>(`/projects/${pid}/${COLLECTIONS["vm"]}`),
+              listAll((query) =>
+                this.api.get(`/projects/${seg(pid)}/compute/vms/instances`, { query }),
+              ),
               this.vmTypes(pid),
             ]);
             const byName = new Map(types.map((t) => [t.product_name, t]));
@@ -214,59 +220,65 @@ export class CrusoeClient implements PluginClient {
           });
         case "disk":
           return this.perProject(async (pid) =>
-            (await this.api.listAll<CrusoeDisk>(`/projects/${pid}/${COLLECTIONS["disk"]}`)).map(
-              (d) => mapDisk(d, pid, accountId),
-            ),
+            (
+              await listAll((query) =>
+                this.api.get(`/projects/${seg(pid)}/storage/disks`, { query }),
+              )
+            ).map((d) => mapDisk(d, pid, accountId)),
           );
         case "snapshot":
           return this.perProject(async (pid) =>
             (
-              await this.api.listAll<CrusoeSnapshot>(`/projects/${pid}/${COLLECTIONS["snapshot"]}`)
+              await listAll((query) =>
+                this.api.get(`/projects/${seg(pid)}/storage/snapshots`, { query }),
+              )
             ).map((s) => mapSnapshot(s, pid, accountId)),
           );
         case "vpc-network":
           return this.perProject(async (pid) =>
             (
-              await this.api.listAll<CrusoeVpcNetwork>(
-                `/projects/${pid}/${COLLECTIONS["vpc-network"]}`,
+              await listAll((query) =>
+                this.api.get(`/projects/${seg(pid)}/networking/vpc-networks`, { query }),
               )
             ).map((n) => mapNetwork(n, pid, accountId)),
           );
         case "vpc-subnet":
           return this.perProject(async (pid) =>
             (
-              await this.api.listAll<CrusoeVpcSubnet>(
-                `/projects/${pid}/${COLLECTIONS["vpc-subnet"]}`,
+              await listAll((query) =>
+                this.api.get(`/projects/${seg(pid)}/networking/vpc-subnets`, { query }),
               )
             ).map((s) => mapSubnet(s, pid, accountId)),
           );
         case "firewall-rule":
           return this.perProject(async (pid) =>
             (
-              await this.api.listAll<CrusoeFirewallRule>(
-                `/projects/${pid}/${COLLECTIONS["firewall-rule"]}`,
+              await listAll((query) =>
+                this.api.get(`/projects/${seg(pid)}/networking/vpc-firewall-rules`, { query }),
               )
             ).map((r) => mapFirewallRule(r, pid, accountId)),
           );
         case "kubernetes-cluster":
           return this.perProject(async (pid) =>
             (
-              await this.api.listAll<CrusoeCluster>(
-                `/projects/${pid}/${COLLECTIONS["kubernetes-cluster"]}`,
+              await listAll((query) =>
+                this.api.get(`/projects/${seg(pid)}/kubernetes/clusters`, { query }),
               )
             ).map((c) => mapCluster(c, pid, accountId)),
           );
         case "node-pool":
           return this.perProject(async (pid) =>
             (
-              await this.api.listAll<CrusoeNodePool>(`/projects/${pid}/${COLLECTIONS["node-pool"]}`)
+              await listAll((query) =>
+                this.api.get(`/projects/${seg(pid)}/kubernetes/nodepools`, { query }),
+              )
             ).map((np) => mapNodePool(np, pid, accountId)),
           );
         case "load-balancer":
           return this.perProject(async (pid) =>
             (
-              await this.api.listAll<CrusoeLoadBalancer>(
-                `/projects/${pid}/${COLLECTIONS["load-balancer"]}`,
+              await listAll((query) =>
+                this.api.get(`/projects/${seg(pid)}/networking/load-balancers`, { query }),
               )
             ).map((lb) => mapLoadBalancer(lb, pid, accountId)),
           );
@@ -281,9 +293,7 @@ export class CrusoeClient implements PluginClient {
     const lists = await Promise.all(
       orgs.map(async (org) => {
         try {
-          const res = await this.api.request<{ items?: CrusoeReservation[] }>(
-            `/organizations/${org.id}/reservations`,
-          );
+          const res = await this.api.get(`/organizations/${seg(org.id)}/reservations`);
           return (res?.items ?? []).map((r) => mapReservation(r, org.id, accountId));
         } catch (e) {
           // Reservations are an org-member feature; a key without access lists none.
@@ -318,9 +328,9 @@ export class CrusoeClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "kubernetes-cluster" && outputKey === "kubeconfig") {
         const { projectId, id } = parseScopedId(resourceId);
-        const creds = await this.api.request<CrusoeKubeCredentials>(
-          `/projects/${projectId}/kubernetes/clusters/${id}/get-credentials`,
-          { method: "POST", query: { auth_type: "admin_cert" } },
+        const creds = await this.api.post(
+          `/projects/${seg(projectId)}/kubernetes/clusters/${seg(id)}/get-credentials`,
+          { query: { auth_type: "admin_cert" } },
         );
         return creds?.kube_config ?? "";
       }
@@ -350,13 +360,12 @@ export class CrusoeClient implements PluginClient {
     const deadline = Date.now() + OPERATION_TIMEOUT_MS;
     while (op?.state === "IN_PROGRESS" && Date.now() < deadline) {
       await sleep(OPERATION_POLL_MS);
-      op = await this.api.request<CrusoeOperation>(
-        `/projects/${projectId}/${collection}/operations/${op.operation_id}`,
+      op = await this.api.get(
+        `/projects/${seg(projectId)}/${collection}/operations/${seg(op.operation_id)}`,
       );
     }
     if (op?.state === "FAILED") {
-      const result = op.result as { message?: string } | undefined;
-      throw new Error(`Crusoe operation failed: ${result?.message ?? "no reason given"}`);
+      throw new Error(`Crusoe operation failed: ${op.result?.message ?? "no reason given"}`);
     }
     return op;
   }
@@ -386,8 +395,7 @@ export class CrusoeClient implements PluginClient {
         const organizationId = str(fields["organizationId"]) || orgs[0]?.id;
         if (!organizationId)
           throw new Error("Crusoe plugin: no organization to create the project in");
-        const res = await this.api.request<{ project?: CrusoeProject }>("/organizations/projects", {
-          method: "POST",
+        const res = await this.api.post("/organizations/projects", {
           body: { name, organization_id: organizationId },
         });
         this.invalidate();
@@ -396,8 +404,7 @@ export class CrusoeClient implements PluginClient {
       }
 
       if (typeId === "ssh-key") {
-        const res = await this.api.request<{ ssh_key?: CrusoeSshKey }>("/users/ssh-keys", {
-          method: "POST",
+        const res = await this.api.post("/users/ssh-keys", {
           body: { name, public_key: str(fields["publicKey"]) },
         });
         if (!res?.ssh_key) throw new Error("Crusoe plugin: SSH key create returned no key");
@@ -410,8 +417,7 @@ export class CrusoeClient implements PluginClient {
         const op = await this.awaitOperation(
           projectId,
           typeId,
-          await this.api.request<CrusoeAsyncResponse>(`/projects/${projectId}/storage/snapshots`, {
-            method: "POST",
+          await this.api.post(`/projects/${seg(projectId)}/storage/snapshots`, {
             body: { name, disk_id: diskId },
           }),
         );
@@ -419,19 +425,15 @@ export class CrusoeClient implements PluginClient {
       }
       if (typeId === "vpc-subnet") {
         const { projectId, id: networkId } = parseScopedId(str(fields["networkId"]));
-        const res = await this.api.request<{ subnet?: CrusoeVpcSubnet }>(
-          `/projects/${projectId}/networking/vpc-subnets`,
-          {
-            method: "POST",
-            body: {
-              name,
-              cidr: str(fields["cidr"]),
-              location: str(fields["location"]),
-              vpc_network_id: networkId,
-              nat_gateway_enabled: fields["natGateway"] === "true",
-            },
+        const res = await this.api.post(`/projects/${seg(projectId)}/networking/vpc-subnets`, {
+          body: {
+            name,
+            cidr: str(fields["cidr"]),
+            location: str(fields["location"]),
+            vpc_network_id: networkId,
+            nat_gateway_enabled: fields["natGateway"] === "true",
           },
-        );
+        });
         if (res?.subnet) return mapSubnet(res.subnet, projectId, accountId);
         return this.resolveCreated(typeId, accountId, projectId, undefined, name);
       }
@@ -441,26 +443,22 @@ export class CrusoeClient implements PluginClient {
         const op = await this.awaitOperation(
           projectId,
           typeId,
-          await this.api.request<CrusoeAsyncResponse>(
-            `/projects/${projectId}/networking/vpc-firewall-rules`,
-            {
-              method: "POST",
-              body: {
-                name,
-                vpc_network_id: networkId,
-                direction: str(fields["direction"]) || "ingress",
-                action: str(fields["action"]) || "allow",
-                protocols: splitList(fields["protocols"] || "tcp"),
-                sources: parseFirewallTargets(str(fields["sources"]) || "0.0.0.0/0"),
-                source_ports: splitList(fields["sourcePorts"] || "1-65535"),
-                // No destination means "the whole VPC network".
-                destinations: destinations
-                  ? parseFirewallTargets(destinations)
-                  : [{ resource_id: networkId }],
-                destination_ports: splitList(fields["destinationPorts"] || "1-65535"),
-              },
+          await this.api.post(`/projects/${seg(projectId)}/networking/vpc-firewall-rules`, {
+            body: {
+              name,
+              vpc_network_id: networkId,
+              direction: str(fields["direction"]) || "ingress",
+              action: str(fields["action"]) || "allow",
+              protocols: splitList(fields["protocols"] || "tcp"),
+              sources: parseFirewallTargets(str(fields["sources"]) || "0.0.0.0/0"),
+              source_ports: splitList(fields["sourcePorts"] || "1-65535"),
+              // No destination means "the whole VPC network".
+              destinations: destinations
+                ? parseFirewallTargets(destinations)
+                : [{ resource_id: networkId }],
+              destination_ports: splitList(fields["destinationPorts"] || "1-65535"),
             },
-          ),
+          }),
         );
         return this.resolveCreated(typeId, accountId, projectId, op, name);
       }
@@ -474,20 +472,16 @@ export class CrusoeClient implements PluginClient {
         const op = await this.awaitOperation(
           projectId,
           typeId,
-          await this.api.request<CrusoeAsyncResponse>(
-            `/projects/${projectId}/kubernetes/nodepools`,
-            {
-              method: "POST",
-              body: {
-                name,
-                cluster_id: clusterId,
-                product_name: str(fields["type"]),
-                count: Number.isFinite(count) ? count : 1,
-                ssh_public_key: str(fields["sshPublicKey"]),
-                ...(version ? { node_pool_version: version } : {}),
-              },
+          await this.api.post(`/projects/${seg(projectId)}/kubernetes/nodepools`, {
+            body: {
+              name,
+              cluster_id: clusterId,
+              product_name: str(fields["type"]),
+              count: Number.isFinite(count) ? count : 1,
+              ssh_public_key: str(fields["sshPublicKey"]),
+              ...(version ? { node_pool_version: version } : {}),
             },
-          ),
+          }),
         );
         return this.resolveCreated(typeId, accountId, projectId, op, name);
       }
@@ -501,23 +495,19 @@ export class CrusoeClient implements PluginClient {
           const op = await this.awaitOperation(
             projectId,
             typeId,
-            await this.api.request<CrusoeAsyncResponse>(
-              `/projects/${projectId}/compute/vms/instances`,
-              {
-                method: "POST",
-                body: {
-                  name,
-                  type: str(fields["type"]),
-                  location: str(fields["location"]),
-                  image: str(fields["image"]),
-                  ssh_public_key: str(fields["sshPublicKey"]),
-                  ...(startup.trim() ? { startup_script: startup } : {}),
-                  reservation_specification: {
-                    selection_strategy: str(fields["reservationStrategy"]) || "lowest_cost",
-                  },
+            await this.api.post(`/projects/${seg(projectId)}/compute/vms/instances`, {
+              body: {
+                name,
+                type: str(fields["type"]),
+                location: str(fields["location"]),
+                image: str(fields["image"]),
+                ssh_public_key: str(fields["sshPublicKey"]),
+                ...(startup.trim() ? { startup_script: startup } : {}),
+                reservation_specification: {
+                  selection_strategy: str(fields["reservationStrategy"]) || "lowest_cost",
                 },
               },
-            ),
+            }),
           );
           return this.resolveCreated(typeId, accountId, projectId, op, name);
         }
@@ -528,8 +518,7 @@ export class CrusoeClient implements PluginClient {
           const op = await this.awaitOperation(
             projectId,
             typeId,
-            await this.api.request<CrusoeAsyncResponse>(`/projects/${projectId}/storage/disks`, {
-              method: "POST",
+            await this.api.post(`/projects/${seg(projectId)}/storage/disks`, {
               body: {
                 name,
                 location: str(fields["location"]),
@@ -541,10 +530,9 @@ export class CrusoeClient implements PluginClient {
           return this.resolveCreated(typeId, accountId, projectId, op, name);
         }
         case "vpc-network": {
-          const res = await this.api.request<{ network?: CrusoeVpcNetwork }>(
-            `/projects/${projectId}/networking/vpc-networks`,
-            { method: "POST", body: { name, cidr: str(fields["cidr"]) } },
-          );
+          const res = await this.api.post(`/projects/${seg(projectId)}/networking/vpc-networks`, {
+            body: { name, cidr: str(fields["cidr"]) },
+          });
           if (res?.network) return mapNetwork(res.network, projectId, accountId);
           return this.resolveCreated(typeId, accountId, projectId, undefined, name);
         }
@@ -553,19 +541,15 @@ export class CrusoeClient implements PluginClient {
           const op = await this.awaitOperation(
             projectId,
             typeId,
-            await this.api.request<CrusoeAsyncResponse>(
-              `/projects/${projectId}/kubernetes/clusters`,
-              {
-                method: "POST",
-                body: {
-                  name,
-                  location: str(fields["location"]),
-                  version: str(fields["version"]),
-                  private: fields["private"] === "true",
-                  ...(subnet ? { subnet_id: subnet } : {}),
-                },
+            await this.api.post(`/projects/${seg(projectId)}/kubernetes/clusters`, {
+              body: {
+                name,
+                location: str(fields["location"]),
+                version: str(fields["version"]),
+                private: fields["private"] === "true",
+                ...(subnet ? { subnet_id: subnet } : {}),
               },
-            ),
+            }),
           );
           return this.resolveCreated(typeId, accountId, projectId, op, name);
         }
@@ -587,7 +571,7 @@ export class CrusoeClient implements PluginClient {
     op: CrusoeOperation | undefined,
     name: string,
   ): Promise<ResourceInstance> {
-    const resultId = (op?.result as { id?: string } | undefined)?.id;
+    const resultId = op?.result?.id;
     const all = await runPluginEffect(this.listResources(typeId, accountId)).catch(() => []);
     const found =
       (resultId && all.find((r) => r.externalId === scopedId(projectId, resultId))) ||
@@ -619,8 +603,7 @@ export class CrusoeClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "project") {
         const id = externalOf(resourceId);
-        await this.api.request("/organizations/projects", {
-          method: "PUT",
+        await this.api.put("/organizations/projects", {
           query: { project_id: id },
           body: { name: str(fields["name"]) },
         });
@@ -628,97 +611,115 @@ export class CrusoeClient implements PluginClient {
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
       const { projectId, id } = parseScopedId(resourceId);
-      const collection = COLLECTIONS[typeId];
-      if (!collection) throw new Error(`Crusoe plugin: cannot update "${typeId}"`);
-      const path = `/projects/${projectId}/${collection}/${id}`;
-      let body: Record<string, unknown> = {};
+      if (!COLLECTIONS[typeId]) throw new Error(`Crusoe plugin: cannot update "${typeId}"`);
+      const project = seg(projectId);
+      const item = seg(id);
+      const current = () => runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const settled = async (res: CrusoeAsyncResponse | undefined) => {
+        await this.awaitOperation(projectId, typeId, res);
+        return current();
+      };
+      /** A field the form left out is not sent: `JSON.stringify` drops `undefined`. */
+      const given = <T>(key: string, read: (value: string) => T): T | undefined => {
+        const value = fields[key];
+        return value === undefined ? undefined : read(value);
+      };
 
       switch (typeId) {
         case "vm":
-          if (!fields["type"]) break;
-          body = { action: "UPDATE", type: str(fields["type"]) };
-          break;
+          if (!fields["type"]) return current();
+          return settled(
+            await this.api.patch(`/projects/${project}/compute/vms/instances/${item}`, {
+              body: { action: "UPDATE", type: str(fields["type"]) },
+            }),
+          );
         case "disk": {
           const size = Number(fields["sizeGib"]);
-          if (!Number.isFinite(size) || size <= 0) break;
-          body = { size: `${Math.round(size)}GiB` };
-          break;
+          if (!Number.isFinite(size) || size <= 0) return current();
+          return settled(
+            await this.api.patch(`/projects/${project}/storage/disks/${item}`, {
+              body: { size: `${Math.round(size)}GiB` },
+            }),
+          );
         }
         case "vpc-network":
-          if (fields["name"] !== undefined) body = { name: str(fields["name"]) };
-          break;
-        case "vpc-subnet":
-          if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
-          if (fields["natGateway"] !== undefined) {
-            body["nat_gateway_action"] = fields["natGateway"] === "true" ? "enable" : "disable";
-          }
-          break;
-        case "firewall-rule":
-          if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
-          if (fields["protocols"] !== undefined) body["protocols"] = splitList(fields["protocols"]);
-          if (fields["sources"] !== undefined)
-            body["sources"] = parseFirewallTargets(fields["sources"]);
-          if (fields["sourcePorts"] !== undefined) {
-            body["source_ports"] = splitList(fields["sourcePorts"]);
-          }
-          if (fields["destinations"] !== undefined) {
-            body["destinations"] = parseFirewallTargets(fields["destinations"]);
-          }
-          if (fields["destinationPorts"] !== undefined) {
-            body["destination_ports"] = splitList(fields["destinationPorts"]);
-          }
-          break;
+          if (fields["name"] === undefined) return current();
+          return settled(
+            await this.api.patch(`/projects/${project}/networking/vpc-networks/${item}`, {
+              body: { name: str(fields["name"]) },
+            }),
+          );
+        case "vpc-subnet": {
+          const body: ApiBody<operations["patchVPCSubnet"]> = {
+            name: given("name", str),
+            nat_gateway_action: given("natGateway", (v) => (v === "true" ? "enable" : "disable")),
+          };
+          if (isBlank(body)) return current();
+          return settled(
+            await this.api.patch(`/projects/${project}/networking/vpc-subnets/${item}`, { body }),
+          );
+        }
+        case "firewall-rule": {
+          const body: ApiBody<operations["patchVPCFirewallRule"]> = {
+            name: given("name", str),
+            protocols: given("protocols", splitList),
+            sources: given("sources", parseFirewallTargets),
+            source_ports: given("sourcePorts", splitList),
+            destinations: given("destinations", parseFirewallTargets),
+            destination_ports: given("destinationPorts", splitList),
+          };
+          if (isBlank(body)) return current();
+          return settled(
+            await this.api.patch(`/projects/${project}/networking/vpc-firewall-rules/${item}`, {
+              body,
+            }),
+          );
+        }
         case "node-pool": {
-          const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-          if (fields["count"] !== undefined) body["count"] = Number(fields["count"]);
+          const pool = await current();
           const touchesAutoscaling =
             fields["autoscaling"] !== undefined ||
             fields["minNodes"] !== undefined ||
             fields["maxNodes"] !== undefined;
-          if (touchesAutoscaling) {
-            const pick = (key: string) => fields[key] ?? String(current.fields[key] ?? "");
-            body["autoscaling_config"] = {
-              enabled: pick("autoscaling") === "true",
-              min_node_size: Number(pick("minNodes")) || 0,
-              max_node_size: Number(pick("maxNodes")) || 0,
-            };
-          }
-          break;
+          const pick = (key: string) => fields[key] ?? String(pool.fields[key] ?? "");
+          const body: ApiBody<operations["updateNodePool"]> = {
+            // Required by the document, whose own text says it defaults to UPDATE.
+            action: undefined,
+            count: given("count", Number),
+            autoscaling_config: touchesAutoscaling
+              ? {
+                  enabled: pick("autoscaling") === "true",
+                  min_node_size: Number(pick("minNodes")) || 0,
+                  max_node_size: Number(pick("maxNodes")) || 0,
+                }
+              : undefined,
+          };
+          if (isBlank(body)) return current();
+          return settled(
+            await this.api.patch(`/projects/${project}/kubernetes/nodepools/${item}`, { body }),
+          );
         }
         default:
           throw new Error(`Crusoe plugin: cannot update "${typeId}"`);
       }
-      if (Object.keys(body).length === 0)
-        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
-      const res = await this.api.request<CrusoeAsyncResponse>(path, { method: "PATCH", body });
-      await this.awaitOperation(projectId, typeId, res);
-      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
     });
   }
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       if (typeId === "project") {
-        await this.api.request(`/organizations/projects/${externalOf(resourceId)}`, {
-          method: "DELETE",
-        });
+        await this.api.delete(`/organizations/projects/${seg(externalOf(resourceId))}`);
         this.invalidate();
         return;
       }
       if (typeId === "ssh-key") {
-        await this.api.request("/users/ssh-keys", {
-          method: "DELETE",
-          query: { id: externalOf(resourceId) },
-        });
+        await this.api.delete("/users/ssh-keys", { query: { id: externalOf(resourceId) } });
         return;
       }
       const collection = COLLECTIONS[typeId];
       if (!collection) throw new Error(`Crusoe plugin: cannot delete "${typeId}"`);
       const { projectId, id } = parseScopedId(resourceId);
-      const res = await this.api.request<CrusoeAsyncResponse>(
-        `/projects/${projectId}/${collection}/${id}`,
-        { method: "DELETE" },
-      );
+      const res = await this.api.delete(`/projects/${seg(projectId)}/${collection}/${seg(id)}`);
       await this.awaitOperation(projectId, typeId, res);
     });
   }
@@ -737,9 +738,11 @@ export class CrusoeClient implements PluginClient {
         typeId === "vm" &&
         (actionId === "start" || actionId === "stop" || actionId === "reset")
       ) {
-        const res = await this.api.request<CrusoeAsyncResponse>(
-          `/projects/${projectId}/compute/vms/instances/${id}`,
-          { method: "PATCH", body: { action: actionId.toUpperCase() } },
+        const res = await this.api.patch(
+          `/projects/${seg(projectId)}/compute/vms/instances/${seg(id)}`,
+          {
+            body: { action: VM_ACTIONS[actionId] },
+          },
         );
         await this.awaitOperation(projectId, typeId, res);
         return;
@@ -748,9 +751,9 @@ export class CrusoeClient implements PluginClient {
         const disk = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
         const vmIds = splitList(String(disk.fields["attachedVmIds"] ?? ""));
         for (const vmId of vmIds) {
-          const res = await this.api.request<CrusoeAsyncResponse>(
-            `/projects/${projectId}/compute/vms/instances/${vmId}/detach-disks`,
-            { method: "POST", body: { detach_disks: [id] } },
+          const res = await this.api.post(
+            `/projects/${seg(projectId)}/compute/vms/instances/${seg(vmId)}/detach-disks`,
+            { body: { detach_disks: [id] } },
           );
           await this.awaitOperation(projectId, "vm", res);
         }
@@ -759,16 +762,12 @@ export class CrusoeClient implements PluginClient {
       if (typeId === "disk" && actionId === "snapshot") {
         const disk = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
         const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-        const res = await this.api.request<CrusoeAsyncResponse>(
-          `/projects/${projectId}/storage/snapshots`,
-          {
-            method: "POST",
-            body: {
-              disk_id: id,
-              name: `${String(disk.fields["name"] || id)}-${stamp}`.slice(0, 63),
-            },
+        const res = await this.api.post(`/projects/${seg(projectId)}/storage/snapshots`, {
+          body: {
+            disk_id: id,
+            name: `${String(disk.fields["name"] || id)}-${stamp}`.slice(0, 63),
           },
-        );
+        });
         await this.awaitOperation(projectId, "snapshot", res);
         return;
       }
@@ -792,10 +791,9 @@ export class CrusoeClient implements PluginClient {
       if (disk.projectId !== vm.projectId) {
         throw new Error("Crusoe plugin: a disk can only be attached to a VM in the same project");
       }
-      const res = await this.api.request<CrusoeAsyncResponse>(
-        `/projects/${vm.projectId}/compute/vms/instances/${vm.id}/attach-disks`,
+      const res = await this.api.post(
+        `/projects/${seg(vm.projectId)}/compute/vms/instances/${seg(vm.id)}/attach-disks`,
         {
-          method: "POST",
           body: {
             attach_disks: [{ disk_id: disk.id, attachment_type: "data", mode: "read-write" }],
           },
@@ -855,9 +853,7 @@ export class CrusoeClient implements PluginClient {
       let denied = 0;
       for (const org of orgs) {
         try {
-          const res = await this.api.request<{ total_balance?: string; grants_count?: number }>(
-            `/organizations/${org.id}/billing/credit-balance`,
-          );
+          const res = await this.api.get(`/organizations/${seg(org.id)}/billing/credit-balance`);
           const remaining = Number(res?.total_balance ?? "0");
           if (!Number.isFinite(remaining)) continue;
           balances.push({
@@ -890,11 +886,9 @@ export class CrusoeClient implements PluginClient {
       const records: CommitmentRecord[] = [];
       const now = Date.now();
       for (const org of orgs) {
-        let items: CrusoeReservation[];
+        let items;
         try {
-          const res = await this.api.request<{ items?: CrusoeReservation[] }>(
-            `/organizations/${org.id}/reservations`,
-          );
+          const res = await this.api.get(`/organizations/${seg(org.id)}/reservations`);
           items = res?.items ?? [];
         } catch (e) {
           // No reservations feature for this org: it holds none. Anything else
@@ -941,10 +935,9 @@ export class CrusoeClient implements PluginClient {
       let denied = 0;
       for (const org of orgs) {
         try {
-          const res = await this.api.request<{ quotas?: CrusoeQuota[] }>(
-            `/organizations/${org.id}/quotas`,
-          );
-          for (const q of res?.quotas ?? []) {
+          const res = await this.api.get(`/organizations/${seg(org.id)}/quotas`);
+          const quotas: CrusoeQuota[] = res?.quotas ?? [];
+          for (const q of quotas) {
             if (typeof q.max !== "number" || q.max <= 0 || !q.programmatic_name) continue;
             out.push({
               id: `${org.id}/${q.programmatic_name}`,
