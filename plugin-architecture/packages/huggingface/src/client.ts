@@ -20,6 +20,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   pathEncode,
+  requireListPage,
   streamOpenAiSseChat,
   type ApiBody,
   type ApiResponse,
@@ -296,18 +297,23 @@ export class HuggingFaceClient implements PluginClient {
   private async listScheduledJobs(accountId: string): Promise<ResourceInstance[]> {
     const ns = await this.namespace();
     const jobs = await this.api.hub
-      .get(`/api/scheduled-jobs/${pathEncode(ns)}`)
+      .getAll(`/api/scheduled-jobs/${pathEncode(ns)}`, null)
       .catch((err): ScheduledJob[] => {
         if (statusOf(err) === 403) return [];
         throw err;
       });
-    return (jobs ?? []).filter((j) => j.id).map((j) => mapScheduledJob(accountId, j, ns));
+    return jobs.filter((j) => j.id).map((j) => mapScheduledJob(accountId, j, ns));
   }
 
   /** `GET https://router.huggingface.co/v1/models` */
   private async listProviderModels(accountId: string): Promise<ResourceInstance[]> {
     const res = await hfJson<RouterModels>(this.ctx, `${ROUTER_BASE}/models`);
-    return (res.data ?? []).filter((m) => m.id).map((m) => mapProviderModel(accountId, m));
+    const models = requireListPage(res.data, {
+      vendor: "Hugging Face",
+      path: "/v1/models",
+      key: "data",
+    });
+    return models.filter((m) => m.id).map((m) => mapProviderModel(accountId, m));
   }
 
   /**
@@ -319,8 +325,11 @@ export class HuggingFaceClient implements PluginClient {
     if (!(await this.isOrgNamespace())) return [];
     const ns = await this.namespace();
     try {
-      const list = await this.api.hub.get(`/api/organizations/${pathEncode(ns)}/service-accounts`);
-      return (list ?? []).filter((s) => s._id).map((s) => mapServiceAccount(accountId, s));
+      const list = await this.api.hub.getAll(
+        `/api/organizations/${pathEncode(ns)}/service-accounts`,
+        null,
+      );
+      return list.filter((s) => s._id).map((s) => mapServiceAccount(accountId, s));
     } catch (err) {
       if ([401, 402, 403, 404].includes(statusOf(err) ?? 0)) return [];
       throw err;
@@ -348,8 +357,8 @@ export class HuggingFaceClient implements PluginClient {
   /** `GET /api/settings/webhooks`: the token user's webhooks (not per-org). */
   private async listWebhooks(accountId: string): Promise<ResourceInstance[]> {
     try {
-      const list = await this.api.hub.get("/api/settings/webhooks");
-      return (list ?? []).filter((w) => w.id).map((w) => mapWebhook(accountId, w));
+      const list = await this.api.hub.getAll("/api/settings/webhooks", null);
+      return list.filter((w) => w.id).map((w) => mapWebhook(accountId, w));
     } catch (err) {
       if (statusOf(err) === 403) return [];
       throw err;

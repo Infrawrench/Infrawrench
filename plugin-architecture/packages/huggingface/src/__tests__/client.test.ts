@@ -338,6 +338,35 @@ describe("lists that page by Link header", () => {
 });
 
 describe("answers that are not a list", () => {
+  it.each([
+    ["hf-job"],
+    ["hf-scheduled-job"],
+    ["hf-service-account"],
+    ["hf-member-token"],
+    ["hf-webhook"],
+    ["hf-model"],
+  ])("throws on %s answered with no body, rather than read it as empty", async (type) => {
+    const { http } = host((req) => {
+      if (req.url.endsWith("/api/whoami-v2")) return { body: WHOAMI };
+      return { body: "" };
+    });
+    await expect(org(http).listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["hf-job"],
+    ["hf-scheduled-job"],
+    ["hf-service-account"],
+    ["hf-member-token"],
+    ["hf-webhook"],
+  ])("throws on %s answered with null", async (type) => {
+    const { http } = host((req) => {
+      if (req.url.endsWith("/api/whoami-v2")) return { body: WHOAMI };
+      return { body: "null" };
+    });
+    await expect(org(http).listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
   it("throws on a later Jobs page that is not a list", async () => {
     const { http } = host((req) => {
       if (req.url === "https://huggingface.co/api/jobs/acme") {
@@ -349,6 +378,13 @@ describe("answers that are not a list", () => {
       return { body: { renamed: [] } };
     });
     await expect(org(http).listResources("hf-job", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("throws when the router's model list loses its key", async () => {
+    const { http } = host(() => ({ body: { models: [] } }));
+    await expect(org(http).listResources("hf-provider-model", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
   });
 
   it("throws when the endpoint list loses its key, on the first page or a later one", async () => {
@@ -369,6 +405,28 @@ describe("answers that are not a list", () => {
     await expect(org(later.http).listResources("hf-inference-endpoint", ACCOUNT)).rejects.toThrow(
       "is not a list",
     );
+  });
+
+  it("throws when the Jobs usage answer has no job list", async () => {
+    const { http } = host((req) => {
+      if (req.url.endsWith("/api/whoami-v2")) return { body: { name: "alice", orgs: [] } };
+      return { body: { hasAccess: true, usage: { totalMinutes: 3 } } };
+    });
+    const client = hostClient(new HuggingFaceClient({ apiToken: "hf_x" }, { http }));
+    await expect(
+      client.fetchCostData!(ACCOUNT, { fromDate: "2026-11-01", toDate: "2026-11-07" }),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("reads a user without Jobs access as no usage", async () => {
+    const { http } = host((req) => {
+      if (req.url.endsWith("/api/whoami-v2")) return { body: { name: "alice", orgs: [] } };
+      return { body: { hasAccess: false } };
+    });
+    const client = hostClient(new HuggingFaceClient({ apiToken: "hf_x" }, { http }));
+    expect(
+      await client.fetchCostData!(ACCOUNT, { fromDate: "2026-11-01", toDate: "2026-11-07" }),
+    ).toEqual([]);
   });
 });
 

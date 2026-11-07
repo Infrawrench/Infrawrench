@@ -1,4 +1,4 @@
-import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import { requireListPage, type CostFetchRange, type CostRow } from "@infrawrench/plugin-base";
 import type { InferenceUsagePeriod, JobsUsage } from "./wire.js";
 
 function inRange(date: string, range: CostFetchRange): boolean {
@@ -19,7 +19,11 @@ export function inferenceUsageRows(
   for (const period of periods) {
     const date = String(period.period ?? "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !inRange(date, range)) continue;
-    for (const u of period.usage ?? []) {
+    for (const u of requireListPage(period.usage, {
+      vendor: "Hugging Face",
+      path: "/api/organizations/{name}/billing/usage/inference",
+      key: "usage",
+    })) {
       const cents = Number(u.costCents ?? 0);
       const requests = Number(u.requestCount ?? 0);
       if (!cents && !requests) continue;
@@ -47,8 +51,15 @@ export function inferenceUsageRows(
  * a per-job total, not a daily split.
  */
 export function jobsUsageRows(usage: JobsUsage, range: CostFetchRange): CostRow[] {
+  // The document gives every answer a `usage`, and this keeps a user without access apart
+  // from an answer that has lost it: only the first means there is nothing to bill.
+  if (usage.hasAccess === false && !usage.usage) return [];
   const rows: CostRow[] = [];
-  for (const job of usage.usage?.jobDetails ?? []) {
+  for (const job of requireListPage(usage.usage?.jobDetails, {
+    vendor: "Hugging Face",
+    path: "/api/settings/billing/usage/jobs",
+    key: "usage.jobDetails",
+  })) {
     const date = String(job.startedAt ?? "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !inRange(date, range)) continue;
     const micro = Number(job.totalCostMicroUsd ?? 0);
