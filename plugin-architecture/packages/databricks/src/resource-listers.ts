@@ -1,6 +1,14 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { reportUnreadListPart } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  reportUnreadListPart,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import { isAccessRefusal, isGone } from "./api-errors.js";
+
+const VENDOR = "Databricks";
+/** What one poll can read in sequence. A poll past that is killed with no message. */
+const MAX_LIST_PAGES = 1000;
 
 export interface ListerContext {
   api<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T>;
@@ -52,21 +60,27 @@ async function listPaginated(
 ): Promise<Record<string, unknown>[]> {
   const all: Record<string, unknown>[] = [];
   let token = "";
-  do {
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
     const separator = path.includes("?") ? "&" : "?";
     const requestPath = token
       ? `${path}${separator}${tokenParam}=${encodeURIComponent(token)}`
       : path;
-    const data = await ctx.api<Record<string, unknown>>("GET", requestPath);
-    all.push(
-      ...(((data[resultKey] as Record<string, unknown>[] | undefined) ?? []) as Record<
-        string,
-        unknown
-      >[]),
+    const data = await ctx.api<Record<string, Record<string, unknown>[] | undefined>>(
+      "GET",
+      requestPath,
     );
+    // Databricks leaves the key out of an empty answer, and a page can be empty with more
+    // to come: only a missing next_page_token ends the list.
+    all.push(...requireListPage(data[resultKey] ?? [], { vendor: VENDOR, path, key: resultKey }));
     token = String(data["next_page_token"] ?? "");
-  } while (token);
-  return all;
+    if (!token) return all;
+  }
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path,
+    items: all.length,
+    maxPages: MAX_LIST_PAGES,
+  });
 }
 
 export async function listClusters(

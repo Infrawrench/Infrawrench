@@ -272,3 +272,59 @@ describe("workspace objects", () => {
     expect(unread).toHaveBeenCalledExactlyOnceWith({ idPrefixes: [""] });
   });
 });
+
+describe("the shared list loop", () => {
+  const CLUSTERS = "/api/2.1/clusters/list?page_size=100";
+  const page = (token: string) => `${CLUSTERS}&page_token=${token}`;
+
+  it("stops at its cap and says so, after exactly that many requests", async () => {
+    let requests = 0;
+    vi.stubGlobal("fetch", async () => {
+      requests++;
+      return new Response(JSON.stringify({ clusters: [], next_page_token: `t${requests}` }));
+    });
+    await expect(list("databricks-cluster")).rejects.toThrow("has more than Infrawrench reads");
+    expect(requests).toBe(1000);
+  });
+
+  it("a child list past the cap reaches the caller through the fan-out", async () => {
+    let requests = 0;
+    vi.stubGlobal("fetch", async (input: string) => {
+      if (new URL(input).pathname.endsWith("/catalogs")) {
+        return new Response(JSON.stringify({ catalogs: [{ name: "a" }] }));
+      }
+      requests++;
+      return new Response(JSON.stringify({ schemas: [], next_page_token: `t${requests}` }));
+    });
+    await expect(list("databricks-schema")).rejects.toThrow("has more than Infrawrench reads");
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("refuses a first page whose list is not a list", async () => {
+    serve({ [CLUSTERS]: ok({ clusters: "maintenance" }) });
+    await expect(list("databricks-cluster")).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a later page whose list is not a list", async () => {
+    serve({
+      [CLUSTERS]: ok({ clusters: [{ cluster_id: "c1" }], next_page_token: "t" }),
+      [page("t")]: ok({ clusters: { error: "maintenance" } }),
+    });
+    await expect(list("databricks-cluster")).rejects.toThrow("is not a list");
+  });
+
+  it("reads a left out key and a null as an empty list", async () => {
+    serve({ [CLUSTERS]: ok({}) });
+    await expect(list("databricks-cluster")).resolves.toEqual([]);
+    serve({ [CLUSTERS]: ok({ clusters: null }) });
+    await expect(list("databricks-cluster")).resolves.toEqual([]);
+  });
+
+  it("keeps reading past an empty page that gives a next token", async () => {
+    serve({
+      [CLUSTERS]: ok({ next_page_token: "t" }),
+      [page("t")]: ok({ clusters: [{ cluster_id: "c1" }] }),
+    });
+    expect(externalIds(await list("databricks-cluster"))).toEqual(["c1"]);
+  });
+});
