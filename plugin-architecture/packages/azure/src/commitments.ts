@@ -36,6 +36,7 @@
  * reservations that did come back.
  */
 
+import { isArmRefusal, listAllPages } from "./arm-list.js";
 import type {
   CommitmentProviderUtilization,
   CommitmentRecord,
@@ -274,17 +275,8 @@ async function listPages<T>(
   firstUrl: string,
   map: (item: T) => CommitmentRecord | null,
 ): Promise<CommitmentRecord[]> {
-  const records: CommitmentRecord[] = [];
-  let url: string | null | undefined = firstUrl;
-  while (url) {
-    const page: { value?: T[]; nextLink?: string | null } = await ctx.getJson(url);
-    for (const item of page.value ?? []) {
-      const record = map(item);
-      if (record) records.push(record);
-    }
-    url = page.nextLink;
-  }
-  return records;
+  const items = await listAllPages<T>({ get: (url) => ctx.getJson(url) }, firstUrl);
+  return items.flatMap((item) => map(item) ?? []);
 }
 
 export async function fetchAzureCommitments(
@@ -292,9 +284,13 @@ export async function fetchAzureCommitments(
 ): Promise<CommitmentRecord[]> {
   const reservations = await listPages(ctx, LIST_URL, mapAzureReservation);
   // See the module comment: savings-plan access is granted separately, so a
-  // refusal here must not discard the reservations above.
+  // refusal here must not discard the reservations above. Only a refusal: the host
+  // replaces stored commitments, so anything else read as none would end every plan.
   const savingsPlans = await listPages(ctx, SAVINGS_PLAN_LIST_URL, mapAzureSavingsPlan).catch(
-    () => [],
+    (err: unknown) => {
+      if (isArmRefusal(err)) return [];
+      throw err;
+    },
   );
   return [...reservations, ...savingsPlans];
 }
