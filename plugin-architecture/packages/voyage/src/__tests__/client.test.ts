@@ -160,6 +160,18 @@ describe("Voyage", () => {
     });
   });
 
+  it("says the file read failed rather than that no files were uploaded", async () => {
+    const { http } = host(() => ({ status: 500, body: { detail: "down" } }));
+    const config = await hostClient(new VoyageClient({ apiKey: "k" }, { http })).getCreateConfig(
+      "voyage-batch",
+    );
+    const input = config.fields.find((f) => f.key === "inputFileId");
+    expect(input?.options).toEqual([]);
+    expect(input?.description).toContain("Could not read your Voyage files");
+    expect(input?.description).toContain("500");
+    expect(input?.description).not.toContain("No batch files uploaded");
+  });
+
   it("creates a batch with the model picked for its endpoint", async () => {
     const { http, calls } = host(() => ({
       body: { id: "batch-9", status: "validating", model: "rerank-3" },

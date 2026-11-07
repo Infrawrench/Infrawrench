@@ -334,9 +334,13 @@ export class VoyageClient implements PluginClient {
   getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
     return attempt(async () => {
       if (typeId !== "voyage-batch") throw new Error(`Voyage plugin: ${typeId} cannot be created`);
-      const newest = await this.call((api) =>
-        api.getAll("/files", "data", FILE_PICKER_PAGES),
-      ).catch((): VoyageFile[] => []);
+      let newest: VoyageFile[] = [];
+      let readFailure = "";
+      try {
+        newest = await this.call((api) => api.getAll("/files", "data", FILE_PICKER_PAGES));
+      } catch (err) {
+        readFailure = err instanceof Error ? err.message : String(err);
+      }
       const files = newest.filter((f) => f.id && (f.purpose ?? "batch") === "batch");
       const fileOptions = files.map((f) => ({
         id: s(f.id),
@@ -368,9 +372,11 @@ export class VoyageClient implements PluginClient {
             required: true,
             options: fileOptions,
             ...(fileOptions[0] ? { defaultValue: fileOptions[0].id } : {}),
-            description: fileOptions.length
-              ? 'A JSONL file uploaded with purpose "batch".'
-              : "No batch files uploaded yet. Upload a JSONL request file to Voyage first.",
+            description: readFailure
+              ? `Could not read your Voyage files, so none can be picked. ${readFailure}`
+              : fileOptions.length
+                ? 'A JSONL file uploaded with purpose "batch".'
+                : "No batch files uploaded yet. Upload a JSONL request file to Voyage first.",
           },
           {
             key: "endpoint",
