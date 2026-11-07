@@ -487,7 +487,7 @@ export class AWSClient implements PluginClient {
         stopAtFailure: true,
       });
       if (failure !== undefined) throw failure;
-      if (refusal !== undefined) reportTypeUnread();
+      if (refusal !== undefined) reportTypeUnread(refusal);
       return rows;
     });
   }

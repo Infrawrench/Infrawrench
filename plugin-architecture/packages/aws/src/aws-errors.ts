@@ -143,9 +143,12 @@ export function rethrowUnlessRowUnreadable(err: unknown): void {
  * key is normal, so that is neither an error, which would fail the type on every poll,
  * nor an empty list, which would prune what it could once read. An empty prefix is every
  * stored row of this type: the host filters by type before it matches a prefix.
+ *
+ * Throws `refusal` where nobody keeps the rows (the desktop, a read outside a sync), so
+ * the refusal still shows there instead of an empty list.
  */
-export function reportTypeUnread(): void {
-  reportUnreadListPart({ idPrefixes: [""] });
+export function reportTypeUnread(refusal: unknown): void {
+  if (!reportUnreadListPart({ idPrefixes: [""] })) throw refusal;
 }
 
 /**
@@ -155,16 +158,20 @@ export function reportTypeUnread(): void {
  */
 export class UnreadableRows {
   private refusals = 0;
+  private refusal: unknown;
 
   /** Call from the catch. Rethrows anything that does not mean "no row". */
   note(err: unknown): void {
     rethrowUnlessRowUnreadable(err);
-    if (classifyAwsFailure(err) === "refused") this.refusals++;
+    if (classifyAwsFailure(err) === "refused") {
+      this.refusals++;
+      this.refusal = err;
+    }
   }
 
   /** Call after the loop, with how many rows were listed. */
   reportIfEveryRowRefused(listed: number): void {
-    if (listed > 0 && this.refusals === listed) reportTypeUnread();
+    if (listed > 0 && this.refusals === listed) reportTypeUnread(this.refusal);
   }
 }
 

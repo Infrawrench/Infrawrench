@@ -223,6 +223,17 @@ describe("a regional fan-out", () => {
     expect(unread).toEqual(WHOLE_TYPE_UNREAD);
   });
 
+  it("fails with the refusal when nobody keeps the rows, as on the desktop", async () => {
+    const { c } = lambdaClient(accessDenied(), accessDenied());
+    await expect(c.listResources("lambda-function", "acct")).rejects.toThrow(/not authorized/);
+    Reflect.set(globalThis, UNREAD_HOOK, () => false);
+    try {
+      await expect(c.listResources("lambda-function", "acct")).rejects.toThrow(/not authorized/);
+    } finally {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    }
+  });
+
   it("keeps stored rows when every region has no endpoint, which may be a DNS outage", async () => {
     const { c } = lambdaClient(noSuchHost("a"), accessDenied());
     const { value, unread } = await inListScope(() => c.listResources("lambda-function", "acct"));
@@ -509,6 +520,19 @@ describe.each(rowCases)("a failed describe in $name", ({ lister, list, keepsRow 
     },
   );
 });
+
+describe.each(rowCases.filter((c) => !c.keepsRow))(
+  "every describe refused in $name, where nobody keeps the rows",
+  ({ lister, list }) => {
+    it("fails with the refusal rather than returning none", async () => {
+      const refusal = new Error("AWS x failed: 403: AccessDenied");
+      const ctx = rowCtx(list, () => {
+        throw refusal;
+      });
+      await expect(lister(ctx, "acct")).rejects.toBe(refusal);
+    });
+  },
+);
 
 describe("a describe refused for only some rows", () => {
   it("leaves those out and names nothing unread", async () => {
