@@ -45,7 +45,7 @@ Replicate has one kind of token, and it covers predictions, models, trainings, d
 - **Uploaded input files expire on their own schedule.** Check the expiry time on each file's detail page.
 - **`aborted` isn't `canceled`.** `canceled` means a run was stopped while running. `aborted` means it was ended before it started, usually because it missed a deadline. Both appear, with different labels and colours.
 - **Official models show their version as `hidden`.** That's Replicate's placeholder, not a missing value.
-- **The Models list shows models your account uses**: anything it deploys, trains into, or has run recently. A brand-new account with no predictions has an empty Models list, and a model you just created appears once a training writes to it or it's run. Model versions are listed for the models in that list that you own.
+- **The Models list shows models your account uses**: anything it deploys, trains into, or has run recently. A brand-new account with no predictions has an empty Models list, and a model you just created appears once a training writes to it or it's run. Model versions are listed for the models in that list that you own. Replicate has no list of an account's own models, so a model of yours stays here once seen, even after it falls out of your recent runs. One you delete on Replicate stays too, until you remove it here.
 - **There's no model search.** The model pickers offer the models your account already uses.
 - **Deployments can only be deleted after 15 minutes offline and unused**, which is Replicate's rule.
 

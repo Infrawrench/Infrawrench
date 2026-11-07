@@ -501,14 +501,30 @@ describe("reading a whole list", () => {
     );
   });
 
-  it("lists children of the 30 most recently updated repositories only", async () => {
+  it("lists children of the 30 most recently updated repositories, and says which it left unread", async () => {
     const { c, calls } = client((call) =>
       call.url.pathname === REPOS
-        ? { values: Array.from({ length: 40 }, (_, i) => ({ ...REPO, slug: `r${i}` })) }
+        ? { values: Array.from({ length: 32 }, (_, i) => ({ ...REPO, slug: `r${i}` })) }
         : none(),
     );
+    const seen: unknown[] = [];
+    const hook = Symbol.for("infrawrench.unreadListPart");
+    Reflect.set(globalThis, hook, (part: unknown) => seen.push(part));
     await c.listResources("repository-webhook", ACC);
+    Reflect.deleteProperty(globalThis, hook);
     expect(calls.filter((x) => x.url.pathname.endsWith("/hooks"))).toHaveLength(30);
+    expect(seen).toEqual([
+      { parentResourceIds: [`${ACC}:repository:r30`, `${ACC}:repository:r31`] },
+    ]);
+  });
+
+  it("names a repository the way its children name their parent", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname === REPOS) return { values: [{ ...REPO, slug: "r0" }] };
+      return call.url.pathname.endsWith("/hooks") ? { values: [{ uuid: "{h}" }] } : none();
+    });
+    const [hook] = await c.listResources("repository-webhook", ACC);
+    expect(hook?.parentResourceId).toBe(`${ACC}:repository:r0`);
   });
 
   it("reads project deploy keys of up to 1,000 projects, and refuses past that", async () => {

@@ -205,6 +205,21 @@ describe("cancel", () => {
 });
 
 describe("models", () => {
+  it("keeps an owned model and its versions once seen, since no route lists them (#692)", async () => {
+    installFetch((url) =>
+      url.endsWith("/account") ? jsonResponse({ username: "acme" }) : jsonResponse({ results: [] }),
+    );
+    const seen: unknown[] = [];
+    const hook = Symbol.for("infrawrench.unreadListPart");
+    Reflect.set(globalThis, hook, (part: unknown) => seen.push(part));
+    await client().listResources("model", ACCOUNT);
+    expect(seen).toEqual([{ idPrefixes: [`${ACCOUNT}:model:acme/`] }]);
+    seen.length = 0;
+    await client().listResources("model-version", ACCOUNT);
+    expect(seen).toContainEqual({ idPrefixes: [`${ACCOUNT}:model-version:acme/`] });
+    Reflect.deleteProperty(globalThis, hook);
+  });
+
   it("derives the account's models from deployments, trainings and predictions", async () => {
     installFetch((url) => {
       if (url.endsWith("/account")) return jsonResponse({ type: "user", username: "acme" });

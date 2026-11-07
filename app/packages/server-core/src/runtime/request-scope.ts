@@ -14,6 +14,7 @@
  * when one is active and falls back to the process-wide pool otherwise.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { UnreadListPart } from "@infrawrench/plugin-base";
 
 export interface RequestScope {
   /** The invocation's own Drizzle handle (edge only; Node uses the shared pool). */
@@ -63,6 +64,8 @@ interface GatewayOnlyTracker {
  */
 interface IncompleteListTracker {
   error?: Error;
+  /** What the list said it did not read, for the prune. Only the list's own scope needs it. */
+  unread?: UnreadListPart[];
   parent?: IncompleteListTracker | undefined;
 }
 
@@ -128,16 +131,28 @@ function noteIncompleteList(error: Error): void {
 // own copy of plugin-base, the same reason `GatewayOnlyError`'s stub reaches a hook.
 Reflect.set(globalThis, Symbol.for("infrawrench.incompleteList"), noteIncompleteList);
 
+function noteUnreadListPart(part: UnreadListPart): void {
+  const tracker = storage.getStore()?.incompleteList;
+  if (tracker) (tracker.unread ??= []).push(part);
+}
+
+// `reportUnreadListPart` calls this, a global for the same reason.
+Reflect.set(globalThis, Symbol.for("infrawrench.unreadListPart"), noteUnreadListPart);
+
 /**
  * Run a read whose result gets pruned or reconciled against, and fail if a list
  * inside it was refused, whether or not the plugin caught that. A list read twice by
  * a plugin's cache only marks the scope that started it.
  */
-export async function runListChecked<T>(fn: () => Promise<T>): Promise<T> {
+export async function runListChecked<T>(
+  fn: () => Promise<T>,
+  onUnread?: (parts: UnreadListPart[]) => void,
+): Promise<T> {
   const parent = storage.getStore();
   const tracker: IncompleteListTracker = { parent: parent?.incompleteList };
   const value = await storage.run({ ...parent, incompleteList: tracker }, fn);
   if (tracker.error) throw tracker.error;
+  if (tracker.unread) onUnread?.(tracker.unread);
   return value;
 }
 

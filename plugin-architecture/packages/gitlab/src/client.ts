@@ -32,6 +32,7 @@ import {
   externalIdOf,
   pathEncode,
   rethrowIncompleteList,
+  reportUnreadListPart,
   withinListCap,
 } from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
@@ -118,8 +119,9 @@ import type {
  * listed: the most recently active non-archived ones. A sync runs about 13 child
  * types at once at one request per project, which is 1,300 requests for 100. GitLab.com
  * allows 2,000 a minute per user and 200 a minute for project members, and a raised
- * cap would also outlast the sync's lease. A project past this has its children pruned:
- * #573 is open for that.
+ * cap would also outlast the sync's lease. A project past this has its children left
+ * as they are by a sync, through `reportUnreadListPart`: they go stale, not deleted,
+ * until the project is active enough to be read again.
  */
 export const FANOUT_LIMIT = 100;
 /**
@@ -222,6 +224,11 @@ export class GitLabClient implements PluginClient {
     return (await this.activeProjects()).slice(0, FANOUT_LIMIT).filter(filter);
   }
 
+  /** The projects whose children are not listed, which a sync must not read as having none. */
+  private async projectsPastFanout(): Promise<GlProject[]> {
+    return (await this.activeProjects()).slice(FANOUT_LIMIT);
+  }
+
   /** The projects whose reports are read. Findings a read misses are closed, so it refuses past the cap. */
   private async reportProjects(): Promise<GlProject[]> {
     return withinListCap(await this.activeProjects(), REPORT_PROJECT_LIMIT, {
@@ -275,10 +282,17 @@ export class GitLabClient implements PluginClient {
 
   /** Every project-scoped list, one project at a time, skipping projects that refuse. */
   private async perProject(
+    accountId: string,
     filter: (p: GlProject) => boolean,
     fn: (scope: Scope, p: GlProject) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
     const out: ResourceInstance[] = [];
+    const past = await this.projectsPastFanout();
+    if (past.length > 0) {
+      reportUnreadListPart({
+        parentResourceIds: past.map((p) => `${accountId}:project:${p.id}`),
+      });
+    }
     for (const p of await this.fanout(filter)) {
       try {
         out.push(...(await fn(scopeOfProject(p), p)));
@@ -352,6 +366,7 @@ export class GitLabClient implements PluginClient {
         }
         case "pipeline": {
           const out = await this.perProject(
+            accountId,
             (p) => enabled(p.builds_access_level) && p.jobs_enabled !== false && !p.empty_repo,
             async (s) =>
               (
@@ -370,6 +385,7 @@ export class GitLabClient implements PluginClient {
         }
         case "environment":
           return this.perProject(
+            accountId,
             (p) => enabled(p.environments_access_level),
             async (s) =>
               (await this.api.getAll(`/projects/${pathEncode(s.id)}/environments`, null)).map((e) =>
@@ -378,6 +394,7 @@ export class GitLabClient implements PluginClient {
           );
         case "protected-branch":
           return this.perProject(
+            accountId,
             (p) => !p.empty_repo,
             async (s) =>
               (await this.api.getAll(`/projects/${pathEncode(s.id)}/protected_branches`, null)).map(
@@ -385,7 +402,7 @@ export class GitLabClient implements PluginClient {
               ),
           );
         case "project-variable":
-          return this.perProject(GitLabClient.maintainer, async (s) =>
+          return this.perProject(accountId, GitLabClient.maintainer, async (s) =>
             (await this.api.getAll(`/projects/${pathEncode(s.id)}/variables`, null)).map((v) =>
               mapVariable(accountId, s, v),
             ),
@@ -398,6 +415,7 @@ export class GitLabClient implements PluginClient {
           );
         case "pipeline-schedule":
           return this.perProject(
+            accountId,
             (p) => enabled(p.builds_access_level) && p.jobs_enabled !== false,
             async (s) =>
               (await this.api.getAll(`/projects/${pathEncode(s.id)}/pipeline_schedules`, null)).map(
@@ -406,6 +424,7 @@ export class GitLabClient implements PluginClient {
           );
         case "container-repository":
           return this.perProject(
+            accountId,
             (p) =>
               enabled(p.container_registry_access_level) && p.container_registry_enabled !== false,
             async (s) =>
@@ -440,6 +459,7 @@ export class GitLabClient implements PluginClient {
             });
           }
           return this.perProject(
+            accountId,
             (p) => p.packages_enabled !== false,
             async (s) =>
               (
@@ -450,13 +470,13 @@ export class GitLabClient implements PluginClient {
           );
         }
         case "deploy-key":
-          return this.perProject(GitLabClient.maintainer, async (s) =>
+          return this.perProject(accountId, GitLabClient.maintainer, async (s) =>
             (await this.api.getAll(`/projects/${pathEncode(s.id)}/deploy_keys`, null)).map((k) =>
               mapDeployKey(accountId, s, k),
             ),
           );
         case "deploy-token":
-          return this.perProject(GitLabClient.maintainer, async (s) =>
+          return this.perProject(accountId, GitLabClient.maintainer, async (s) =>
             (await this.api.getAll(`/projects/${pathEncode(s.id)}/deploy_tokens`, null)).map((t) =>
               mapDeployToken(accountId, s, t),
             ),
@@ -468,7 +488,7 @@ export class GitLabClient implements PluginClient {
             ),
           );
         case "project-webhook":
-          return this.perProject(GitLabClient.maintainer, async (s) =>
+          return this.perProject(accountId, GitLabClient.maintainer, async (s) =>
             (await this.api.getAll(`/projects/${pathEncode(s.id)}/hooks`, null)).map((h) =>
               mapHook(accountId, s, h),
             ),
@@ -481,6 +501,7 @@ export class GitLabClient implements PluginClient {
           );
         case "release":
           return this.perProject(
+            accountId,
             (p) => enabled(p.releases_access_level) && !p.empty_repo,
             async (s) =>
               (
@@ -491,6 +512,7 @@ export class GitLabClient implements PluginClient {
           );
         case "project-member":
           return this.perProject(
+            accountId,
             () => true,
             async (s) =>
               (await this.api.getAll(`/projects/${pathEncode(s.id)}/members`, null)).map((m) =>
@@ -504,7 +526,7 @@ export class GitLabClient implements PluginClient {
             ),
           );
         case "runner":
-          return (await this.runners()).map((r) => mapRunner(accountId, r));
+          return (await this.runners(accountId)).map((r) => mapRunner(accountId, r));
         default:
           throw new Error(`GitLab plugin: unknown resource type "${typeId}"`);
       }
@@ -518,7 +540,7 @@ export class GitLabClient implements PluginClient {
    * out on purpose: on GitLab.com they are GitLab's fleet, not yours. The
    * list omits tags, version and last contact, so each runner is read once.
    */
-  private async runners(): Promise<GlRunner[]> {
+  private async runners(accountId: string): Promise<GlRunner[]> {
     const byId = new Map<number, GlRunner>();
     const add = (list: GlRunner[]) => {
       for (const r of list)
@@ -536,6 +558,10 @@ export class GitLabClient implements PluginClient {
               throw err;
             }),
         );
+      }
+      // A runner names no parent, so a project's runners can only be left as a whole type.
+      if ((await this.projectsPastFanout()).length > 0) {
+        reportUnreadListPart({ idPrefixes: [`${accountId}:runner:`] });
       }
       for (const p of await this.fanout(GitLabClient.maintainer)) {
         add(

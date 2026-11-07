@@ -47,7 +47,7 @@ A workspace access token (Premium) also works. Leave the email empty and type th
 
 ## Tips & limits
 
-- Bitbucket limits most repository requests to about 1,000 an hour per user (more on paid plans). So pipelines, variables, environments and other per-repository items are listed for the 30 most recently updated repositories. Up to 500 repositories are listed in total.
+- Bitbucket limits most repository requests to about 1,000 an hour per user (more on paid plans). So pipelines, variables, environments and other per-repository items are listed for the 30 most recently updated repositories. A repository past that keeps what was last read, which refreshes once it is updated again. Up to 500 repositories are listed in total.
 - Bitbucket has no billing or usage API, so there are no costs or quotas for Bitbucket accounts. Build minutes per repository come from each pipeline's build time. Check your plan's allowance under **Workspace settings**, **Plan details**.
 - Pipeline schedules use seven-field Quartz cron with seconds first, in UTC: `0 0 12 * * ? *` runs at noon every day. You can only turn a schedule on or off. To change its time or branch, create a new one.
 - Secured variables can never be read back. To change whether one is secured, type its value again under **Edit**.

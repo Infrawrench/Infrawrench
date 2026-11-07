@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { isIncompleteListError, rethrowIncompleteList, SecretReadError } from "../list-errors.js";
+import {
+  isIncompleteListError,
+  reportUnreadListPart,
+  rethrowIncompleteList,
+  SecretReadError,
+} from "../list-errors.js";
+
+describe("reportUnreadListPart", () => {
+  it("tells the host's hook, and does nothing where there is none", () => {
+    const seen: unknown[] = [];
+    const hook = Symbol.for("infrawrench.unreadListPart");
+    expect(() => reportUnreadListPart({ idPrefixes: ["a:"] })).not.toThrow();
+    Reflect.set(globalThis, hook, (part: unknown) => seen.push(part));
+    try {
+      reportUnreadListPart({ parentResourceIds: ["a:project:1"] });
+      expect(seen).toEqual([{ parentResourceIds: ["a:project:1"] }]);
+    } finally {
+      Reflect.deleteProperty(globalThis, hook);
+    }
+  });
+});
 
 describe("SecretReadError", () => {
   it("counts as an incomplete list, so a catch around a list read passes it on", () => {

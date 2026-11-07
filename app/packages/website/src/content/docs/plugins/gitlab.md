@@ -79,7 +79,7 @@ GitLab.com accounts report their subscription seats to Seats, which flags member
 
 ## Tips and limits
 
-- Pipelines, variables, environments and the other per-project items are listed for the 100 most recently active, non-archived projects. Up to 500 projects are listed in total.
+- Pipelines, variables, environments and the other per-project items are listed for the 100 most recently active, non-archived projects. A project past that keeps what was last read, which refreshes once it is active again. Up to 500 projects are listed in total.
 - GitLab only shows the compute minutes quota to instance administrators, so the [quota radar](../features/quota-radar.md) only shows compute minutes when the token belongs to one. Namespace storage appears when GitLab enforces a storage limit on the group.
 - Changing who may push or merge to a protected branch removes and re-adds the protection with the new levels. Rules for specific users, groups or deploy keys are Premium and Ultimate features.
 - A CI/CD variable that is masked and hidden can never be read back. To change its other settings, type the value again under **Edit**.

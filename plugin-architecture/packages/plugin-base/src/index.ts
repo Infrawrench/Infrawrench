@@ -535,6 +535,7 @@ export {
   isIncompleteListError,
   isSameOrigin,
   linkHostsUnder,
+  reportUnreadListPart,
   requireListPage,
   rethrowIncompleteList,
   withinListCap,
@@ -545,6 +546,7 @@ export type {
   ListPageProblem,
   ListPlace,
   ListTruncation,
+  UnreadListPart,
 } from "./list-errors.js";
 
 export {

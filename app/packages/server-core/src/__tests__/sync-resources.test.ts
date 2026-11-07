@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { UnreadListPart } from "@infrawrench/plugin-base";
 import { fakePostgres } from "./helpers/fake-postgres";
 
 /**
@@ -65,9 +66,9 @@ vi.mock("@infrawrench/plugin-base", async (importOriginal) => ({
   evaluatePeerIntegrationUnreachable,
 }));
 
-const { ListTruncatedError } = await vi.importActual<typeof import("@infrawrench/plugin-base")>(
-  "@infrawrench/plugin-base",
-);
+const { ListTruncatedError, reportUnreadListPart } = await vi.importActual<
+  typeof import("@infrawrench/plugin-base")
+>("@infrawrench/plugin-base");
 
 let sync: typeof import("../sync-resources");
 
@@ -324,6 +325,135 @@ describe("a list a plugin could not read whole", () => {
     const result = await sync.syncAccountResources("acc-1", "org-1");
     expect(result.failedTypeIds).toEqual(["vm"]);
     expect(softDeletes()).toHaveLength(0);
+  });
+
+  describe("that said which part it did not read", () => {
+    const prior = (id: string, parentResourceId: string | null, resourceTypeId = "vm") => ({
+      id,
+      pluginId: "aws",
+      resourceTypeId,
+      displayName: id,
+      fieldsJson: {},
+      outputsJson: {},
+      deletedAt: null,
+      parentResourceId,
+    });
+    const listed = (id: string) => resourceInstance({ id, displayName: id });
+    const pruned = () => softDeletes()[0]!.params;
+
+    function unreadAccount(
+      rows: Record<string, unknown>[],
+      part: UnreadListPart,
+      live: string[] = ["acc-1:vm:a"],
+    ) {
+      pg.queueRows([accountRow()]);
+      pg.queueRows(rows);
+      getPlugin.mockResolvedValue({
+        plugin: fakePlugin({
+          resourceTypes: [{ id: "vm", pluralDisplayName: "VMs" }],
+          createClient: vi.fn(() =>
+            makeClient({
+              listResources: async () => {
+                reportUnreadListPart(part);
+                return live.map(listed);
+              },
+            }),
+          ),
+        }),
+      });
+    }
+
+    it("leaves a row under a parent it did not read, and prunes the rest", async () => {
+      unreadAccount(
+        [
+          prior("acc-1:vm:a", "acc-1:project:read"),
+          prior("acc-1:vm:gone", "acc-1:project:read"),
+          prior("acc-1:vm:unread", "acc-1:project:past-the-cap"),
+        ],
+        { parentResourceIds: ["acc-1:project:past-the-cap"] },
+      );
+      const result = await sync.syncAccountResources("acc-1", "org-1");
+      expect(result.succeededTypeIds).toEqual(["vm"]);
+      expect(pruned()).toContain("acc-1:vm:unread");
+      expect(pruned()).not.toContain("acc-1:vm:gone");
+    });
+
+    it("leaves a row whose parent's parent it did not read", async () => {
+      unreadAccount(
+        [
+          prior("acc-1:vm:deep", "acc-1:environment:e"),
+          prior("acc-1:environment:e", "acc-1:project:past-the-cap", "environment"),
+        ],
+        { parentResourceIds: ["acc-1:project:past-the-cap"] },
+      );
+      await sync.syncAccountResources("acc-1", "org-1");
+      expect(pruned()).toContain("acc-1:vm:deep");
+    });
+
+    it("leaves a row by its id, for a list with no parents to name", async () => {
+      unreadAccount([prior("acc-1:vm:mine/old", null), prior("acc-1:vm:public/old", null)], {
+        idPrefixes: ["acc-1:vm:mine/"],
+      });
+      await sync.syncAccountResources("acc-1", "org-1");
+      expect(pruned()).toContain("acc-1:vm:mine/old");
+      expect(pruned()).not.toContain("acc-1:vm:public/old");
+    });
+
+    it("records no deletion for what it left", async () => {
+      unreadAccount(
+        [prior("acc-1:vm:gone", "acc-1:project:read"), prior("acc-1:vm:unread", "acc-1:project:x")],
+        { parentResourceIds: ["acc-1:project:x"] },
+      );
+      const onChanges = vi.fn();
+      await sync.syncAccountResources("acc-1", "org-1", { onChanges });
+      const events = onChanges.mock.calls[0]![0] as Array<{
+        resourceId: string;
+        changeKind: string;
+      }>;
+      const deleted = events.filter((e) => e.changeKind === "deleted").map((e) => e.resourceId);
+      expect(deleted).toContain("acc-1:vm:gone");
+      expect(deleted).not.toContain("acc-1:vm:unread");
+    });
+
+    it("prunes nothing of the type when it cannot tell which rows those are", async () => {
+      pg.queueRows([accountRow()]);
+      const realSelect = pg.db.select.bind(pg.db);
+      const select = vi
+        .spyOn(pg.db, "select")
+        // The account is the first read, and the prior snapshots the second.
+        .mockImplementationOnce((() => realSelect()) as never)
+        .mockImplementationOnce(() => {
+          throw new Error("snapshots down");
+        });
+      const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+      getPlugin.mockResolvedValue({
+        plugin: fakePlugin({
+          resourceTypes: [{ id: "vm", pluralDisplayName: "VMs" }],
+          createClient: vi.fn(() =>
+            makeClient({
+              listResources: async () => {
+                reportUnreadListPart({ idPrefixes: ["acc-1:vm:"] });
+                return [];
+              },
+            }),
+          ),
+        }),
+      });
+      await sync.syncAccountResources("acc-1", "org-1");
+      expect(softDeletes()).toHaveLength(0);
+      select.mockRestore();
+      quiet.mockRestore();
+    });
+
+    it("does the same on a one-type sync", async () => {
+      unreadAccount(
+        [prior("acc-1:vm:gone", "acc-1:project:read"), prior("acc-1:vm:unread", "acc-1:project:x")],
+        { parentResourceIds: ["acc-1:project:x"] },
+      );
+      await sync.syncAccountResourceType("acc-1", "org-1", "vm");
+      expect(pruned()).toContain("acc-1:vm:unread");
+      expect(pruned()).not.toContain("acc-1:vm:gone");
+    });
   });
 
   it("keeps a swallowed refusal in one type from failing another", async () => {

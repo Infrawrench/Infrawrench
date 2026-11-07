@@ -271,6 +271,40 @@ export class SecretReadError extends IncompleteListError {
   }
 }
 
+/**
+ * What a list that cannot be read whole left unread, so a sync does not read those
+ * rows as deleted. A row stays if it matches either: its parent, or its parent's parent
+ * and so on, is named here, or its id starts with one of the prefixes. Anything else of
+ * the type a sync still prunes.
+ */
+export interface UnreadListPart {
+  /** For a list that reads children for only some parents. */
+  parentResourceIds?: readonly string[];
+  /** For a list with no parents to name, whose rows a whole id prefix cannot vouch for. */
+  idPrefixes?: readonly string[];
+}
+
+const UNREAD_LIST_PART_HOOK = Symbol.for("infrawrench.unreadListPart");
+
+/**
+ * Called from inside `listResources`, for a list no request budget can read whole: a
+ * fan-out over more parents than the provider's rate limit allows, or a type whose
+ * only source is a rolling window. Not for a list that could be read and was cut short,
+ * which throws. A row it leaves goes stale rather than being deleted, so name only what
+ * really was not read. What is deleted upstream under a named parent stays until a read
+ * reaches it; a parent that is gone upstream is no longer named, and its children go.
+ *
+ *   reportUnreadListPart({ parentResourceIds: pastTheCap.map((p) => `${accountId}:project:${p.id}`) });
+ *
+ * A global because the plugin's copy of this package is not the host's, as for
+ * {@link IncompleteListError}. Where a host keeps no track, as on the desktop, whose lists
+ * prune nothing, it does nothing.
+ */
+export function reportUnreadListPart(part: UnreadListPart): void {
+  const note: unknown = Reflect.get(globalThis, UNREAD_LIST_PART_HOOK);
+  if (typeof note === "function") note(part);
+}
+
 /** True for any {@link IncompleteListError}, or anything wrapping one as its `cause`. */
 export function isIncompleteListError(err: unknown): boolean {
   let current: unknown = err;

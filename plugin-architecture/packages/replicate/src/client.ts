@@ -25,6 +25,7 @@ import {
   withMetricsCapability,
   type ApiBody,
   type ApiClient,
+  reportUnreadListPart,
 } from "@infrawrench/plugin-base";
 import {
   API_BASE,
@@ -288,7 +289,8 @@ export class ReplicateClient implements PluginClient {
    * shows up as a deployment target, a training destination, or a recent
    * prediction. `getResource` then fetches the full record for whichever one
    * the user opens. A failed read fails the list, since a sync would read what
-   * that read held as deleted. Only the account is optional: it decides the order.
+   * that read held as deleted. Only the account is optional: it decides the order
+   * and whose models a sync keeps.
    */
   private async listAccountModels(accountId: string): Promise<ResourceInstance[]> {
     const [account, deployments, trainings, predictions] = await Promise.all([
@@ -319,6 +321,12 @@ export class ReplicateClient implements PluginClient {
     for (const prediction of predictions) remember(prediction.model, prediction.version);
 
     const username = account.username ?? "";
+    // Those windows move on, so an owned model that is still there stops showing up in
+    // them. Replicate has no list of an account's models to check it against (#692),
+    // so a sync keeps one once seen: without the account's name, any.
+    reportUnreadListPart({
+      idPrefixes: [`${accountId}:model:${username ? `${username}/` : ""}`],
+    });
     return [...refs.entries()]
       .sort(([a], [b]) => {
         // Models this account owns sort first: they're the ones the user manages.
@@ -352,6 +360,8 @@ export class ReplicateClient implements PluginClient {
       );
     }
     const models = await this.listAccountModels(accountId);
+    // A model that left those windows has its versions go unread with it.
+    reportUnreadListPart({ idPrefixes: [`${accountId}:model-version:${username}/`] });
     const owned = models.filter((model) => model.fields["owner"] === username);
     const perModel = await Promise.all(
       owned.map(async (model) => {

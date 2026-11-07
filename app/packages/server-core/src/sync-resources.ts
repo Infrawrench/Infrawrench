@@ -10,6 +10,7 @@ import type {
 import {
   evaluatePeerIntegrationUnreachable,
   isIncompleteListError,
+  type UnreadListPart,
 } from "@infrawrench/plugin-base";
 import { db } from "./db/client";
 import { accounts, dashboardPins, resources, secretFieldStates } from "./db/schema";
@@ -128,6 +129,8 @@ async function upsertResource(
     });
 }
 
+type PriorRow = PriorResourceSnapshot & { parentResourceId: string | null };
+
 /**
  * Load the stored snapshots the change differ compares fresh fetches against.
  * Must run before the upserts, which overwrite the prior state.
@@ -136,7 +139,7 @@ async function loadPriorSnapshots(
   accountId: string,
   organizationId: string,
   typeId?: string,
-): Promise<PriorResourceSnapshot[]> {
+): Promise<PriorRow[]> {
   const conditions = [
     eq(resources.accountId, accountId),
     eq(resources.organizationId, organizationId),
@@ -151,9 +154,33 @@ async function loadPriorSnapshots(
       fieldsJson: resources.fieldsJson,
       outputsJson: resources.outputsJson,
       deletedAt: resources.deletedAt,
+      parentResourceId: resources.parentResourceId,
     })
     .from(resources)
     .where(and(...conditions));
+}
+
+/**
+ * The stored rows of `typeId` a list said it did not read, which it therefore cannot
+ * say are gone. A parent counts at any depth: a Bitbucket deployment variable hangs off
+ * an environment, which hangs off the repository that went unread.
+ */
+function rowsLeftUnread(rows: PriorRow[], typeId: string, parts: UnreadListPart[]): string[] {
+  const parents = new Set(parts.flatMap((part) => part.parentResourceIds ?? []));
+  const prefixes = parts.flatMap((part) => part.idPrefixes ?? []);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const under = (row: PriorRow): boolean => {
+    let at: PriorRow | undefined = row;
+    for (let depth = 0; at?.parentResourceId && depth < 8; depth++) {
+      if (parents.has(at.parentResourceId)) return true;
+      at = byId.get(at.parentResourceId);
+    }
+    return false;
+  };
+  return rows
+    .filter((row) => row.resourceTypeId === typeId)
+    .filter((row) => prefixes.some((prefix) => row.id.startsWith(prefix)) || under(row))
+    .map((row) => row.id);
 }
 
 /**
@@ -226,12 +253,27 @@ export async function syncAccountResourceType(
   const typeDef = plugin.resourceTypes.find((t) => t.id === typeId);
   if (!typeDef) throw new Error(`Resource type "${typeId}" not found`);
 
-  const fetched = await runListChecked(() => client.listResources(typeId, accountId));
+  let unreadParts: UnreadListPart[] = [];
+  const fetched = await runListChecked(
+    () => client.listResources(typeId, accountId),
+    (parts) => {
+      unreadParts = parts;
+    },
+  );
 
-  const prior = await loadPriorSnapshots(accountId, organizationId, typeId).catch((err) => {
+  // Every type when the list left part unread: a row's parents can be of any type.
+  const loaded = await loadPriorSnapshots(
+    accountId,
+    organizationId,
+    unreadParts.length > 0 ? undefined : typeId,
+  ).catch((err) => {
     console.error(`[sync] loading prior snapshots for account ${accountId} failed:`, err);
     return null;
   });
+  const unreadIds = new Set(loaded ? rowsLeftUnread(loaded, typeId, unreadParts) : []);
+  const prior = loaded
+    ?.filter((row) => row.resourceTypeId === typeId)
+    .filter((row) => !unreadIds.has(row.id));
 
   await Promise.all(fetched.map((r) => upsertResource(organizationId, accountId, r)));
   await recordDeploys(organizationId, accountId, plugin, fetched);
@@ -243,8 +285,11 @@ export async function syncAccountResourceType(
     });
   }
 
+  // Which rows the list left unread is not known, so none of the type can be called gone.
+  if (!loaded && unreadParts.length > 0) return fetched;
+
   // Soft-delete resources of this type that no longer exist upstream.
-  const liveIds = fetched.map((r) => r.id);
+  const liveIds = [...fetched.map((r) => r.id), ...unreadIds];
   const deleteConditions = [
     eq(resources.accountId, accountId),
     eq(resources.organizationId, organizationId),
@@ -331,9 +376,15 @@ export async function syncAccountResources(
   // a failed type even when the plugin swallowed the error and returned
   // placeholders, so the edge never persists (or diffs, or deletes against) a
   // degraded list. A plain call on Node.
+  const unreadByType = new Map<string, UnreadListPart[]>();
   const fetchResults = await Promise.allSettled(
     runnableTypeIds.map((typeId) =>
-      runGatewayChecked(() => runListChecked(() => client.listResources(typeId, accountId))),
+      runGatewayChecked(() =>
+        runListChecked(
+          () => client.listResources(typeId, accountId),
+          (parts) => unreadByType.set(typeId, parts),
+        ),
+      ),
     ),
   );
 
@@ -361,10 +412,21 @@ export async function syncAccountResources(
     }
   }
 
-  const prior = await loadPriorSnapshots(accountId, organizationId).catch((err) => {
+  const loaded = await loadPriorSnapshots(accountId, organizationId).catch((err) => {
     console.error(`[sync] loading prior snapshots for account ${accountId} failed:`, err);
     return null;
   });
+  // What a list said it did not read is not gone, in the timeline or in the prune below.
+  const unreadIds = new Set(
+    loaded
+      ? succeededTypeIds.flatMap((typeId) =>
+          rowsLeftUnread(loaded, typeId, unreadByType.get(typeId) ?? []),
+        )
+      : [],
+  );
+  const prior = loaded?.filter((row) => !unreadIds.has(row.id));
+  // Without the snapshots there is no telling which rows those are, so none of the type go.
+  const prunableTypeIds = succeededTypeIds.filter((typeId) => loaded || !unreadByType.has(typeId));
 
   await Promise.all(allResources.map((r) => upsertResource(organizationId, accountId, r)));
   await recordDeploys(organizationId, accountId, plugin, allResources);
@@ -385,13 +447,13 @@ export async function syncAccountResources(
   // The provider's list is authoritative: anything we have for a succeeded type
   // that isn't in the live response is gone. Never delete across failed types:
   // transient API errors must not wipe data.
-  const liveIds = allResources.map((r) => r.id);
-  if (succeededTypeIds.length > 0) {
+  const liveIds = [...allResources.map((r) => r.id), ...unreadIds];
+  if (prunableTypeIds.length > 0) {
     const deleteConditions = [
       eq(resources.accountId, accountId),
       eq(resources.organizationId, organizationId),
       isNull(resources.deletedAt),
-      inArray(resources.resourceTypeId, succeededTypeIds),
+      inArray(resources.resourceTypeId, prunableTypeIds),
     ];
     if (liveIds.length > 0) deleteConditions.push(notInArray(resources.id, liveIds));
     await db

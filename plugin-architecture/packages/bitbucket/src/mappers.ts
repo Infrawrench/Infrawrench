@@ -474,6 +474,7 @@ export function mapRunner(
       createdAt: r.created_on,
     },
     { runnerUuid: r.uuid },
+    slug ? repoParent(slug) : undefined,
   );
 }
 

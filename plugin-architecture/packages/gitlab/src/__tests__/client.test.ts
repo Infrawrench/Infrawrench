@@ -1,6 +1,6 @@
 import { pathEncode } from "@infrawrench/plugin-base";
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { GitLabApiError, gitlabApi, resolveBaseUrl, statusOf } from "../api.js";
 import { FANOUT_LIMIT, GitLabClient, cleanTrace, parseListish, splitVariable } from "../client.js";
 import { hookEventFlags, parseVariableLines } from "../inputs.js";
@@ -13,6 +13,17 @@ import type { Call } from "./helpers.js";
 import { makeHttp, makeSecrets } from "./helpers.js";
 
 const ACC = "acc";
+
+/** What a list says it left unread, through the same hook a host sets. */
+function collectUnread() {
+  const seen: unknown[] = [];
+  const hook = Symbol.for("infrawrench.unreadListPart");
+  Reflect.set(globalThis, hook, (part: unknown) => seen.push(part));
+  onTestFinished(() => {
+    Reflect.deleteProperty(globalThis, hook);
+  });
+  return () => seen;
+}
 
 function client(
   route: (call: Call) => unknown,
@@ -145,13 +156,45 @@ describe("the projects whose reports are read", () => {
     expect(calls.filter((x) => x.url.pathname === "/api/graphql")).toEqual([]);
   });
 
-  it("still lists children for the 100 most active projects, the cap #573 leaves open", async () => {
+  it("lists children for the 100 most active projects, and says which it left unread", async () => {
     const { c, calls } = client((call) =>
-      call.url.pathname === "/api/v4/projects" ? projects(101) : [],
+      call.url.pathname === "/api/v4/projects" ? projects(102) : [],
     );
+    const unread = collectUnread();
     await c.listResources("environment", ACC);
     const asked = calls.filter((x) => x.url.pathname.endsWith("/environments"));
     expect(asked).toHaveLength(FANOUT_LIMIT);
+    expect(unread()).toEqual([{ parentResourceIds: [`${ACC}:project:101`, `${ACC}:project:102`] }]);
+  });
+
+  it("says nothing when it read every project", async () => {
+    const { c } = client((call) => (call.url.pathname === "/api/v4/projects" ? projects(100) : []));
+    const unread = collectUnread();
+    await c.listResources("environment", ACC);
+    expect(unread()).toEqual([]);
+  });
+
+  it("names the projects the same way its children name their parent", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname === "/api/v4/projects") return projects(1);
+      return call.url.pathname.endsWith("/environments") ? [{ id: 7, name: "prod" }] : [];
+    });
+    const [env] = await c.listResources("environment", ACC);
+    expect(env?.parentResourceId).toBe(`${ACC}:project:1`);
+  });
+
+  it("leaves every runner of a group-scoped account alone, since a runner names no parent", async () => {
+    const { c } = client(
+      (call) => {
+        if (call.url.pathname.endsWith("/projects")) return projects(101);
+        if (call.url.pathname === "/api/v4/groups/g") return { id: 1, full_path: "g" };
+        return [];
+      },
+      { group: "g" },
+    );
+    const unread = collectUnread();
+    await c.listResources("runner", ACC);
+    expect(unread()).toEqual([{ idPrefixes: [`${ACC}:runner:`] }]);
   });
 });
 
