@@ -87,6 +87,59 @@ function client(
 }
 
 describe("ElasticCloudClient listing", () => {
+  describe("an answer without its list", () => {
+    const orgs = { organizations: [{ id: "org1", name: "Acme" }] };
+
+    it.each([
+      ["deployment", "/api/v1/deployments", { items: [{ id: "dep1" }] }],
+      ["traffic-filter", "/api/v1/deployments/traffic-filter/rulesets", { items: [{ id: "r" }] }],
+      ["extension", "/api/v1/deployments/extensions", { items: [{ id: "e" }] }],
+      ["organization", "/api/v1/organizations", { orgs: [{ id: "org1" }] }],
+      ["project", "/api/v1/serverless/projects/security", { projects: [{ id: "p" }] }],
+    ])("fails a %s list rather than read it as empty", async (typeId, path, body) => {
+      const { c } = client((url) => (url.pathname === path ? { body } : { body: { items: [] } }));
+      await expect(c.listResources(typeId, "acct")).rejects.toThrow("is not a list");
+    });
+
+    it("fails a budget list that is not an array", async () => {
+      const { c } = client((url) => {
+        if (url.pathname === "/api/v1/organizations") return { body: orgs };
+        if (url.pathname.endsWith("/budgets")) return { body: { budgets: [{ id: 7 }] } };
+        if (url.pathname === "/api/v1/deployments") return { body: { deployments: [] } };
+        return { body: { items: [] } };
+      });
+      await expect(c.listResources("budget", "acct")).rejects.toThrow("is not a list");
+    });
+
+    it.each([
+      ["deployments", "/api/v1/deployments", { items: [] }],
+      ["projects", "/api/v1/serverless/projects/vectordb", { projects: [] }],
+    ])("does not swallow unreadable %s while labelling budgets", async (_name, path, body) => {
+      const { c } = client((url) => {
+        if (url.pathname === path) return { body };
+        if (url.pathname === "/api/v1/organizations") return { body: orgs };
+        if (url.pathname.endsWith("/budgets")) return { body: [] };
+        if (url.pathname === "/api/v1/deployments") return { body: { deployments: [] } };
+        return { body: { items: [] } };
+      });
+      await expect(c.listResources("budget", "acct")).rejects.toThrow("is not a list");
+    });
+
+    it("still lists nothing for an empty account", async () => {
+      const { c } = client((url) => {
+        if (url.pathname === "/api/v1/organizations") return { body: orgs };
+        if (url.pathname.endsWith("/budgets")) return { body: [] };
+        if (url.pathname === "/api/v1/deployments") return { body: { deployments: [] } };
+        if (url.pathname.endsWith("/rulesets")) return { body: { rulesets: [] } };
+        if (url.pathname.endsWith("/extensions")) return { body: { extensions: [] } };
+        return { body: { items: [] } };
+      });
+      for (const typeId of ["deployment", "project", "traffic-filter", "extension", "budget"]) {
+        await expect(c.listResources(typeId, "acct")).resolves.toEqual([]);
+      }
+    });
+  });
+
   describe("serverless traffic filters", () => {
     const PATH = "/api/v1/serverless/traffic-filters";
     const filter = (id: string) => ({

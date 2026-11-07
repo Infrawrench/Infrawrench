@@ -20,10 +20,11 @@ import {
   ListTruncatedError,
   pathEncode,
   requireListPage,
+  rethrowIncompleteList,
   type ApiBody,
 } from "@infrawrench/plugin-base";
 import type { EcContext } from "./api.js";
-import { createEcContext, isProjectType, statusOf } from "./api.js";
+import { createEcContext, isProjectType, statusOf, VENDOR } from "./api.js";
 import type { operations as BillingOperations } from "./api-types.billing.gen.js";
 import type { operations as ServerlessOperations } from "./api-types.serverless.gen.js";
 import {
@@ -214,8 +215,11 @@ export class ElasticCloudClient implements PluginClient {
           );
         case "extension":
           return this.scoped(async () => {
-            const res = await this.ctx.cloud.get("/deployments/extensions");
-            return (res.extensions ?? []).map((e) => mapExtension(accountId, e));
+            const path = "/deployments/extensions";
+            const res = await this.ctx.cloud.get(path);
+            return requireListPage(res.extensions, { vendor: VENDOR, path, key: "extensions" }).map(
+              (e) => mapExtension(accountId, e),
+            );
           });
         case "budget":
           return this.listBudgets(accountId);
@@ -241,9 +245,14 @@ export class ElasticCloudClient implements PluginClient {
     });
   }
 
+  private async fetchDeploymentListing(): Promise<EcDeploymentListing[]> {
+    const path = "/deployments";
+    const res = await this.ctx.cloud.get(path);
+    return requireListPage(res.deployments, { vendor: VENDOR, path, key: "deployments" });
+  }
+
   private async fetchDeployments(): Promise<EcDeployment[]> {
-    const res = await this.ctx.cloud.get("/deployments");
-    const listing = (res.deployments ?? []).filter((d) => d.id);
+    const listing = (await this.fetchDeploymentListing()).filter((d) => d.id);
     return mapLimited(listing, DEPLOYMENT_CONCURRENCY, async (d): Promise<EcDeployment> => {
       try {
         return await this.fetchDeployment(d.id!);
@@ -272,8 +281,9 @@ export class ElasticCloudClient implements PluginClient {
 
   private async fetchProjectsOfType(type: ProjectType): Promise<EcProject[]> {
     try {
-      const res = await this.ctx.projects.get(`/api/v1/serverless/projects/${pathEncode(type)}`);
-      return res.items ?? [];
+      const path = `/api/v1/serverless/projects/${pathEncode(type)}` as const;
+      const res = await this.ctx.projects.get(path);
+      return requireListPage<EcProject>(res.items, { vendor: VENDOR, path, key: "items" });
     } catch (err) {
       const s = statusOf(err);
       if (s === 403 || s === 404) return [];
@@ -289,10 +299,11 @@ export class ElasticCloudClient implements PluginClient {
   }
 
   private async fetchRulesets(region?: string): Promise<EcTrafficRuleset[]> {
-    const res = await this.ctx.cloud.get("/deployments/traffic-filter/rulesets", {
+    const path = "/deployments/traffic-filter/rulesets";
+    const res = await this.ctx.cloud.get(path, {
       query: { include_associations: true, ...(region ? { region } : {}) },
     });
-    return res.rulesets ?? [];
+    return requireListPage(res.rulesets, { vendor: VENDOR, path, key: "rulesets" });
   }
 
   /**
@@ -318,12 +329,12 @@ export class ElasticCloudClient implements PluginClient {
         if (page === 0 && (s === 403 || s === 404)) return [];
         throw err;
       }
-      out.push(...requireListPage(res.items, { vendor: "Elastic Cloud", path, key: "items" }));
+      out.push(...requireListPage(res.items, { vendor: VENDOR, path, key: "items" }));
       token = res.next_page;
       if (!token) return out;
     }
     throw new ListTruncatedError({
-      vendor: "Elastic Cloud",
+      vendor: VENDOR,
       path,
       items: out.length,
       maxPages: SERVERLESS_FILTER_MAX_PAGES,
@@ -331,21 +342,23 @@ export class ElasticCloudClient implements PluginClient {
   }
 
   private async fetchBudgets(orgId: string): Promise<EcBudget[]> {
-    const res = await this.ctx.billing.get(
-      `/api/v1/billing/organization/${pathEncode(orgId)}/budgets`,
-    );
-    return Array.isArray(res) ? res : [];
+    const path = `/api/v1/billing/organization/${pathEncode(orgId)}/budgets` as const;
+    const res = await this.ctx.billing.get(path);
+    return requireListPage(res, { vendor: VENDOR, path, key: null });
   }
 
   /** Deployment and project names by id, for labelling budgets and associations. */
   private async instanceNames(): Promise<Map<string, string>> {
     const names = new Map<string, string>();
+    // Only labels depend on these, but a list that came back unreadable must not pass
+    // for an empty one on the way to `listResources`.
+    const none = (err: unknown): [] => {
+      rethrowIncompleteList(err);
+      return [];
+    };
     const [deployments, projects] = await Promise.all([
-      this.ctx.cloud
-        .get("/deployments")
-        .then((r) => r.deployments ?? [])
-        .catch((): EcDeploymentListing[] => []),
-      Promise.all(PROJECT_TYPES.map((t) => this.fetchProjectsOfType(t).catch(() => []))),
+      this.fetchDeploymentListing().catch(none),
+      Promise.all(PROJECT_TYPES.map((t) => this.fetchProjectsOfType(t).catch(none))),
     ]);
     for (const d of deployments) if (d.id) names.set(d.id, d.name ?? d.id);
     for (const p of projects.flat()) if (p.id) names.set(p.id, p.name ?? p.id);
@@ -679,10 +692,7 @@ export class ElasticCloudClient implements PluginClient {
   /** Hosted regions in use, from deployments and existing rulesets. */
   private async hostedRegions(): Promise<string[]> {
     const [deployments, rulesets] = await Promise.all([
-      this.ctx.cloud
-        .get("/deployments")
-        .then((r) => r.deployments ?? [])
-        .catch((): EcDeploymentListing[] => []),
+      this.fetchDeploymentListing().catch((): EcDeploymentListing[] => []),
       this.fetchRulesets().catch((): EcTrafficRuleset[] => []),
     ]);
     const regions = new Set<string>();
@@ -756,10 +766,7 @@ export class ElasticCloudClient implements PluginClient {
         case "traffic-filter": {
           const [regions, deployments] = await Promise.all([
             this.hostedRegions(),
-            this.ctx.cloud
-              .get("/deployments")
-              .then((r) => r.deployments ?? [])
-              .catch((): EcDeploymentListing[] => []),
+            this.fetchDeploymentListing().catch((): EcDeploymentListing[] => []),
           ]);
           return {
             fields: [

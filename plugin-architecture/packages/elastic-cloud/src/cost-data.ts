@@ -21,14 +21,20 @@
  */
 
 import type { CostFetchRange, CostRow, CreditBalance } from "@infrawrench/plugin-base";
-import { CostSetupError, CreditAccessError, pathEncode } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  CreditAccessError,
+  pathEncode,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import type { EcContext } from "./api.js";
-import { isPermissionError, statusOf } from "./api.js";
+import { isPermissionError, statusOf, VENDOR } from "./api.js";
 import type { EcCostsOverview, EcInstanceCosts, EcOrganization } from "./types.js";
 
 const DAY_MS = 86_400_000;
 /** Day requests in flight at once, per organization. */
 const DAY_CONCURRENCY = 4;
+const INSTANCE_COSTS_PATH = "/api/v2/billing/organizations/{organization_id}/costs/instances";
 
 const BILLING_HELP = {
   label: "Elastic Cloud API keys",
@@ -102,16 +108,24 @@ export function completeDays(range: CostFetchRange, nowMs: number): Array<[numbe
 
 /** The organizations the key can see. Most keys see exactly one. */
 export async function listOrganizations(ctx: EcContext): Promise<EcOrganization[]> {
-  const res = await ctx.cloud.get("/organizations");
-  return (res.organizations ?? []).filter((o) => o.id);
+  const path = "/organizations";
+  const res = await ctx.cloud.get(path);
+  return requireListPage(res.organizations, { vendor: VENDOR, path, key: "organizations" }).filter(
+    (o) => o.id,
+  );
 }
 
 /** Rows for one organization and one day, from that day's instance costs. */
 export function rowsForDay(date: string, orgId: string, body: EcInstanceCosts): CostRow[] {
   const rows: CostRow[] = [];
-  for (const inst of body.instances ?? []) {
+  const place = { vendor: VENDOR, path: INSTANCE_COSTS_PATH };
+  for (const inst of requireListPage(body.instances, { ...place, key: "instances" })) {
     const instanceId = inst.id ?? "";
-    for (const item of inst.product_line_items ?? []) {
+    const items = requireListPage(inst.product_line_items, {
+      ...place,
+      key: "product_line_items",
+    });
+    for (const item of items) {
       const amount = Number(item.total_ecu ?? 0);
       if (!Number.isFinite(amount) || amount === 0) continue;
       const region = regionFromSku(item.sku);

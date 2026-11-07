@@ -28,6 +28,7 @@ import type {
  */
 export const CLOUD_API = "https://api.elastic-cloud.com";
 export const BILLING_API = "https://billing.elastic-cloud.com";
+export const VENDOR = "Elastic Cloud";
 
 /** Where the Cloud API document's paths start. The other two write it into each path. */
 const CLOUD_BASE_PATH = "/api/v1";
@@ -97,7 +98,7 @@ export function createEcContext(options: {
 }): EcContext {
   const { apiKey, caCert, http } = options;
   const shared = {
-    vendor: "Elastic Cloud",
+    vendor: VENDOR,
     headers: { Accept: "application/json", Authorization: `ApiKey ${apiKey}` },
     ...(caCert ? { caCert } : {}),
     ...(http ? { http } : {}),

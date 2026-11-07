@@ -192,6 +192,35 @@ describe("fetchElasticCostData", () => {
     expect(calls[0]!.url.host).toBe("api.elastic-cloud.com");
   });
 
+  const billingAnswering = (body: unknown) =>
+    makeHttp((url) =>
+      url.pathname === "/api/v1/organizations"
+        ? { body: { organizations: [{ id: "org1" }] } }
+        : { body },
+    ).http;
+  const oneDay = { fromDate: "2026-10-02", toDate: "2026-10-02" };
+
+  it.each([
+    ["a renamed list", { total_ecu: 1, items: [] }],
+    ["no body", undefined],
+    ["an instance with its line items renamed", { instances: [{ id: "dep1", items: [] }] }],
+  ])("fails a day answering %s rather than read it as no cost", async (_name, body) => {
+    await expect(
+      fetchElasticCostData(ctxWith(billingAnswering(body)), oneDay, NOW),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("collects nothing for a day with no usage", async () => {
+    const http = billingAnswering({ total_ecu: 0, instances: [] });
+    await expect(fetchElasticCostData(ctxWith(http), oneDay, NOW)).resolves.toEqual([]);
+  });
+
+  it("fails when the organization list is renamed, for costs and for credits", async () => {
+    const { http } = makeHttp(() => ({ body: { orgs: [{ id: "org1" }] } }));
+    await expect(fetchElasticCostData(ctxWith(http), oneDay, NOW)).rejects.toThrow("is not a list");
+    await expect(fetchElasticCreditBalance(ctxWith(http), NOW)).rejects.toThrow("is not a list");
+  });
+
   it("turns a 403 on billing into a setup error naming the role", async () => {
     const { http } = makeHttp((url) =>
       url.pathname === "/api/v1/organizations"
