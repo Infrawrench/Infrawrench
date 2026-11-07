@@ -168,8 +168,9 @@ export class CloudflareClient implements PluginClient {
         } catch (err) {
           if (!(await isScopeRefusal(this.api, err))) throw err;
           // Restricted tokens are normal, so failing this type on every poll would only page
-          // someone. The stored rows stay, and nothing is read as deleted.
-          reportUnreadListPart({ idPrefixes: [""] });
+          // someone. The stored rows stay, and nothing is read as deleted. A host that keeps
+          // no track (the desktop) answers false, and there the refusal should still show.
+          if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
           return [];
         }
       });

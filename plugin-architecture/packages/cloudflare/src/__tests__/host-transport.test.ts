@@ -197,6 +197,14 @@ describe("the Cloudflare SDK through the host's HTTP service", () => {
       expect(noted).toHaveBeenCalledWith({ idPrefixes: [""] });
     });
 
+    it("shows the refusal where the host keeps no track", async () => {
+      vi.stubGlobal(UNREAD_HOOK, undefined);
+      const path = "/client/v4/accounts/acc1/workers/scripts";
+      await expect(list(route({ [path]: SCOPE_MISSING }), "worker")).rejects.toThrow(
+        "Authentication error",
+      );
+    });
+
     it("keeps Basin table rows when no namespace can be read", async () => {
       const request = route({
         "/client/v4/accounts/acc1/r2-catalog": ok({
