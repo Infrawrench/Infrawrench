@@ -386,3 +386,17 @@ describe("field listings", () => {
     });
   }
 });
+
+describe("annotations", () => {
+  it("lists every annotation, with neither of the time filters the document refuses alone", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname !== "/v2/annotations") return { status: 404 };
+      const start = url.searchParams.has("start");
+      if (start !== url.searchParams.has("end")) return { status: 400, body: { message: "range" } };
+      return { body: [{ id: "ann_1", type: "deploy", datasets: ["a"] }] };
+    });
+    const rows = await c.listResources("annotation", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["ann_1"]);
+    expect(calls[0]?.url.search).toBe("");
+  });
+});

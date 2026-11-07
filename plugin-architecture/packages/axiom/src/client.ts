@@ -64,7 +64,6 @@ import type {
 
 const TOKEN_SECRET_FIELD = "token";
 const POOL = 4;
-const MAX_ANNOTATION_DAYS = 90;
 
 const opt = (id: string, label = id) => ({ id, label });
 
@@ -402,12 +401,11 @@ export class AxiomClient implements PluginClient {
             return out.map((q) => mapStarredQuery(accountId, q));
           });
         case "annotation":
-          return this.scoped(async () => {
-            const start = new Date(Date.now() - MAX_ANNOTATION_DAYS * 86400_000).toISOString();
-            return ((await this.api.get("/annotations", { query: { start } })) ?? []).map((a) =>
-              mapAnnotation(accountId, a),
-            );
-          });
+          // No time filter: the document answers all of them without one, and a window
+          // would prune an annotation from the inventory as it aged out of it.
+          return this.scoped(async () =>
+            ((await this.api.get("/annotations")) ?? []).map((a) => mapAnnotation(accountId, a)),
+          );
         case "api-token":
           return this.scoped(async () =>
             ((await this.api.get("/tokens")) ?? []).map((t) => mapToken(accountId, t)),
