@@ -343,9 +343,14 @@ describe("reading a list to its end", () => {
       await expect(client.listResources(typeId, "acct")).rejects.toThrow("is not a list");
     });
 
-    it.each([400, 404])("reads a %i on the first page as a region with nothing", async (status) => {
-      const { client } = onRoute(() => ({ status }));
+    it("reads a 404 on the first page as a region with nothing", async () => {
+      const { client } = onRoute(() => ({ status: 404 }));
       expect(await client.listResources(typeId, "acct")).toEqual([]);
+    });
+
+    it("fails on a 400 on the first page, which says nothing about the region's rows", async () => {
+      const { client } = onRoute(() => ({ status: 400, body: "bad request" }));
+      await expect(client.listResources(typeId, "acct")).rejects.toThrow("error 400");
     });
 
     it.each([400, 404])("fails on a %i on a later page", async (status) => {

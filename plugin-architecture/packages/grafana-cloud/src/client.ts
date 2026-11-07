@@ -235,8 +235,8 @@ export class GrafanaCloudClient implements PluginClient {
   /**
    * A hand loop rather than `getAll`: it runs on past an empty page, a `nextPage`
    * it cannot read fails the list rather than ending it, and only the first
-   * request can say the region has nothing. A region the org has nothing in can
-   * answer 404 or 400; on a later page that is a failure part way through a list.
+   * request can say the region has nothing, by a 404. A 400 says the request was
+   * refused, which is no answer about the rows: read as empty it would prune them.
    */
   private async cursorList<T>(
     path: string,
@@ -246,7 +246,7 @@ export class GrafanaCloudClient implements PluginClient {
     let cursor: string | undefined;
     for (let page = 0; page < MAX_CURSOR_PAGES; page++) {
       const res = await load(cursor).catch((err): undefined => {
-        if (page === 0 && (statusOf(err) === 404 || statusOf(err) === 400)) return undefined;
+        if (page === 0 && statusOf(err) === 404) return undefined;
         throw err;
       });
       if (res === undefined) return out;
