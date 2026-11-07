@@ -578,13 +578,7 @@ export class VaultClient implements PluginClient {
         case "vault-pki-cert": {
           const { mount, rest } = splitId(id);
           const c = await this.cert(mount, rest);
-          const r = mapPkiCert(
-            accountId,
-            mount,
-            rest,
-            parsePemCertificate(c?.pem ?? ""),
-            c?.revocation,
-          );
+          const r = mapPkiCert(accountId, mount, rest, parsePemCertificate(c.pem), c.revocation);
           return c.pem
             ? { ...r, resolvedOutputs: { ...r.resolvedOutputs, certificate: c.pem } }
             : r;
