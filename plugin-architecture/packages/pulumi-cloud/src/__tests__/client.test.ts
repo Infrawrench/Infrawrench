@@ -4,6 +4,7 @@ import { consoleUrl, createPulumiApi, normaliseApiUrl, statusOf } from "../api.j
 import { PulumiCloudClient, decodePlaintext, tailLines, unwrapEscValue } from "../client.js";
 import { updateSeries } from "../metrics.js";
 import { plugin } from "../plugin.js";
+import { DETAIL_KEYS } from "../render.js";
 import { mapComponent } from "../status-feed.js";
 import { fetchUsageCost, ratesFor } from "../usage.js";
 import type { Call } from "./helpers.js";
@@ -348,5 +349,90 @@ describe("status feed", () => {
     expect(mapComponent("API")).toMatchObject({ providerWide: true });
     expect(mapComponent("ESC")!.resourceTypes).toEqual(["environment"]);
     expect(mapComponent("GitHub")).toBeNull();
+  });
+});
+
+describe("update history (#442)", () => {
+  const stackRoutes = (updates: unknown[]) => (call: Call) => {
+    const path = call.url.pathname;
+    if (path.endsWith("/updates")) return { updates };
+    if (path === "/api/stacks/acme/net/prod") {
+      return { orgName: "acme", projectName: "net", stackName: "prod", id: "s1" };
+    }
+    return { status: 404, body: { message: "none" } };
+  };
+
+  it("reads the service format's rows, whose fields are under info", async () => {
+    const { c, calls } = client(
+      stackRoutes([
+        {
+          version: 7,
+          latestVersion: 7,
+          updateID: "u",
+          info: {
+            kind: "update",
+            startTime: 1_790_000_000,
+            endTime: 1_790_000_060,
+            result: "succeeded",
+            message: "ship it",
+            version: 7,
+            resourceChanges: { create: 2, delete: 1 },
+            resourceCount: 12,
+          },
+        },
+      ]),
+    );
+    const r = await c.getResource("stack", `${ACC}:stack:net/prod`, ACC);
+    const call = calls.find((x) => x.url.pathname.endsWith("/updates"));
+    expect(call!.url.searchParams.get("output-type")).toBe("service");
+    expect(JSON.parse(r.resolvedOutputs[DETAIL_KEYS.updates]!)).toEqual([
+      {
+        version: 7,
+        kind: "update",
+        result: "succeeded",
+        start: new Date(1_790_000_000_000).toISOString(),
+        durationSecs: 60,
+        message: "ship it",
+        changes: "2 create, 1 delete",
+      },
+    ]);
+    expect(r.fields["lastUpdate"]).toBe(new Date(1_790_000_060_000).toISOString());
+    expect(r.fields["resourceCount"]).toBe(12);
+  });
+
+  it("still reads rows in the flat format", async () => {
+    const { c } = client(
+      stackRoutes([{ version: 3, kind: "refresh", startTime: 1_790_000_000, result: "failed" }]),
+    );
+    const r = await c.getResource("stack", `${ACC}:stack:net/prod`, ACC);
+    expect(JSON.parse(r.resolvedOutputs[DETAIL_KEYS.updates]!)[0]).toMatchObject({
+      version: 3,
+      kind: "refresh",
+      result: "failed",
+    });
+  });
+
+  it("dates a running update by its start, as endTime is 0 until it ends", async () => {
+    const { c } = client(
+      stackRoutes([{ version: 8, info: { startTime: 1_790_000_000, endTime: 0, version: 8 } }]),
+    );
+    const r = await c.getResource("stack", `${ACC}:stack:net/prod`, ACC);
+    expect(r.fields["lastUpdate"]).toBe(new Date(1_790_000_000_000).toISOString());
+  });
+
+  it("charts rows in either format", async () => {
+    const startTime = Date.UTC(2026, 9, 1) / 1000;
+    const { c } = client(() => ({
+      updates: [
+        { version: 2, info: { startTime, endTime: startTime + 10, result: "failed", version: 2 } },
+        { version: 1, startTime, endTime: startTime + 10, result: "succeeded" },
+      ],
+    }));
+    const series = await c.fetchMetricSeries!("stack", `${ACC}:stack:net/prod`, ACC, {
+      startMs: (startTime - 60) * 1000,
+      endMs: (startTime + 60) * 1000,
+    });
+    const by = Object.fromEntries(series.map((s) => [s.label, s.points[0]!.value]));
+    expect(by).toMatchObject({ Updates: 2, "Failed updates": 1 });
   });
 });

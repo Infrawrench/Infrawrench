@@ -761,6 +761,11 @@ export interface components {
             count?: number;
             name?: string;
         };
+        AppConfigValue: {
+            object: boolean;
+            secret: boolean;
+            string: string;
+        };
         AppCreateStackRequest: {
             config?: components["schemas"]["AppStackConfig"];
             createManagedEnvironment?: boolean;
@@ -898,6 +903,31 @@ export interface components {
             features?: string[];
             /** Format: int64 */
             version?: number;
+        };
+        AppUpdateInfo: {
+            config: {
+                [key: string]: components["schemas"]["AppConfigValue"];
+            };
+            deployment?: Record<string, never>;
+            /** Format: int64 */
+            endTime: number;
+            environment: {
+                [key: string]: string;
+            };
+            /** @enum {string} */
+            kind: "update" | "preview" | "refresh" | "rename" | "destroy" | "import" | "resource-import" | "Pupdate" | "Prefresh" | "Pdestroy" | "Pimport" | "Prename";
+            message: string;
+            resourceChanges?: {
+                [key: string]: number;
+            };
+            /** Format: int64 */
+            resourceCount?: number;
+            /** @enum {string} */
+            result: "not-started" | "in-progress" | "succeeded" | "failed";
+            /** Format: int64 */
+            startTime: number;
+            /** Format: int64 */
+            version: number;
         };
         AppUpdatePolicyGroupRequest: {
             addInsightsAccount?: components["schemas"]["AppInsightsAccountReference"];
@@ -3171,6 +3201,7 @@ export interface operations {
                             environment?: {
                                 [key: string]: string;
                             };
+                            info?: components["schemas"]["AppUpdateInfo"];
                             kind?: string;
                             message?: string;
                             resourceChanges?: {

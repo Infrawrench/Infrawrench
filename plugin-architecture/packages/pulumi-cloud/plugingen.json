@@ -73,13 +73,16 @@
                   "additionalProperties": {
                     "type": "string"
                   }
+                },
+                "info": {
+                  "$ref": "#/components/schemas/AppUpdateInfo"
                 }
               }
             }
           }
         }
       },
-      "why": "The document types this response as a bare object. These are the fields the plugin reads, taken from AppUpdateInfo and all optional."
+      "why": "The document types this response as a bare object. With output-type set it answers GetStackUpdatesResponse rows, whose fields are under info (AppUpdateInfo) with version beside it; unset, the legacy format has them flat, which is what these all-optional fields are. The plugin reads both."
     },
     {
       "pointer": "/paths/~1api~1esc~1environments~1{orgName}~1{projectName}~1{envName}~1open~1{openSessionID}/get/responses/200/content/application~1json/schema",

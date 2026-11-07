@@ -34,6 +34,7 @@ import {
 import type { operations } from "./api-types.gen.js";
 import type { PuDeployment, PuEnvironment, PuStackSummary, PuUpdate } from "./mappers.js";
 import {
+  flattenUpdate,
   mapDeployment,
   mapEnvironment,
   mapOrganization,
@@ -481,7 +482,8 @@ export class PulumiCloudClient implements PluginClient {
       this.api.get(`${path}/deployments/schedules`).catch(() => undefined),
       this.api.get(`${path}/deployments/settings`).catch(() => undefined),
     ]);
-    const updates: UpdateRow[] = (history?.updates ?? []).map((u) => {
+    const updateRows = (history?.updates ?? []).map(flattenUpdate);
+    const updates: UpdateRow[] = updateRows.map((u) => {
       const ch = u.resourceChanges ?? {};
       const changes = ["create", "update", "delete", "replace"]
         .filter((k) => ch[k])
@@ -511,13 +513,14 @@ export class PulumiCloudClient implements PluginClient {
     });
     const sc = settings?.sourceContext;
     const op = settings?.operationContext?.operation;
-    const latest = history?.updates?.[0];
+    const latest = updateRows[0];
     const r = mapStack(
       accountId,
       {
         ...s,
         resourceCount: count?.resourceCount ?? latest?.resourceCount,
-        lastUpdate: latest?.endTime ?? latest?.startTime,
+        // A running update's endTime is 0.
+        lastUpdate: latest?.endTime || latest?.startTime,
       },
       this.stackUrl(project, stack),
       {
@@ -650,7 +653,7 @@ export class PulumiCloudClient implements PluginClient {
           const res = await this.api.get(`${this.sp(p!, s!)}/updates`, {
             query: { page, pageSize: 100 },
           });
-          const batch = res?.updates ?? [];
+          const batch = (res?.updates ?? []).map(flattenUpdate);
           updates.push(...batch);
           if (batch.length < 100 || batch.some((u) => (u.startTime ?? 0) * 1000 < range.startMs))
             break;

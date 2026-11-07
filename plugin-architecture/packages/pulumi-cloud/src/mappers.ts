@@ -66,7 +66,8 @@ type StackListItem = ApiListItem<operations["ListUserStacks"], "stacks">;
 
 export type PuStackSummary = Known<StackListItem, "orgName" | "projectName" | "stackName">;
 export type PuStack = ApiResponse<operations["GetStack"]>;
-export type PuUpdate = ApiListItem<operations["GetStackUpdates"], "updates">;
+type UpdateListItem = ApiListItem<operations["GetStackUpdates"], "updates">;
+export type PuUpdate = Omit<UpdateListItem, "info">;
 export type PuDeployment = Known<
   Omit<ApiListItem<operations["ListOrgDeployments"], "deployments">, "pulumiOperation">,
   "id"
@@ -206,6 +207,11 @@ export function mapStack(
     { name: s.stackName, fullyQualifiedName: `${s.orgName}/${s.projectName}/${s.stackName}`, url },
     { typeId: "project", externalId: s.projectName },
   );
+}
+
+/** With `output-type` set an update's fields are under `info`; without it they are on the row. */
+export function flattenUpdate({ info, ...row }: UpdateListItem): PuUpdate {
+  return { ...info, ...row };
 }
 
 /** Output values are any JSON; strings stay strings. */
