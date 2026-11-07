@@ -52,17 +52,11 @@ describe("pagination", () => {
     expect(calls[0]?.url).toBe("https://api.mistral.ai/v1/models");
   });
 
-  it("uses limit/offset for voices and page/page_size for files", async () => {
-    installFetch((url) =>
-      url.includes("/audio/voices")
-        ? jsonResponse({ items: [], total: 0 })
-        : jsonResponse({ data: [] }),
-    );
+  it("uses the cursor route for voices and page/page_size for files", async () => {
+    installFetch(() => jsonResponse({ data: [] }));
 
     await client().listResources("mistral-voice", ACCOUNT);
-    expect(calls[0]?.url).toBe(
-      "https://api.mistral.ai/v1/audio/voices?limit=100&offset=0&type=all",
-    );
+    expect(calls[0]?.url).toBe("https://api.mistral.ai/v2/audio/voices?type=all&page_size=100");
 
     calls = [];
     await client().listResources("mistral-file", ACCOUNT);
@@ -91,7 +85,7 @@ function fullPage(key: string, count: number, idKey = "id"): Record<string, unkn
 /** Each inventory list: the most requests it may take, and what a full page holds. */
 const CAPPED_LISTS = [
   { type: "mistral-file", key: "data", pageSize: 100, maxPages: 500 },
-  { type: "mistral-voice", key: "items", pageSize: 100, maxPages: 100 },
+  { type: "mistral-voice", key: "data", pageSize: 100, maxPages: 100 },
   { type: "mistral-fine-tuning-job", key: "data", pageSize: 100, maxPages: 100 },
   { type: "mistral-api-key", key: "keys", pageSize: 100, maxPages: 100, idKey: "key_id" },
   { type: "mistral-agent", key: "data", pageSize: 1000, maxPages: 50 },
@@ -180,24 +174,46 @@ describe("incomplete lists", () => {
     expect(libraries.map((l) => l.externalId)).toEqual(["lib_2"]);
   });
 
-  it("pages voices by offset and stops at the reported total", async () => {
-    installFetch(() =>
-      jsonResponse({ items: Array.from({ length: 100 }, (_, i) => ({ id: `v${i}` })), total: 100 }),
+  it("follows the voice cursor until the document's null token", async () => {
+    installFetch((url) =>
+      url.includes("page_token=t1")
+        ? jsonResponse({ data: [{ id: "v2", name: "Two" }], next_page_token: null })
+        : jsonResponse({ data: [{ id: "v1", name: "One" }], next_page_token: "t1" }),
     );
-    await client().listResources("mistral-voice", ACCOUNT);
-    expect(calls).toHaveLength(1);
+    const voices = await client().listResources("mistral-voice", ACCOUNT);
+    expect(voices.map((v) => v.externalId)).toEqual(["v1", "v2"]);
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.mistral.ai/v2/audio/voices?type=all&page_size=100",
+      "https://api.mistral.ai/v2/audio/voices?type=all&page_size=100&page_token=t1",
+    ]);
   });
 
-  it("advances the voice offset by what the page held", async () => {
-    installFetch(() =>
-      calls.length === 1
-        ? jsonResponse({ ...fullPage("items", 100), total: 150 })
-        : jsonResponse({ items: [{ id: "last" }], total: 150 }),
+  it("falls back to the offset route where the cursor route is not there", async () => {
+    installFetch((url) =>
+      url.includes("/v2/")
+        ? jsonResponse({ detail: "Not Found" }, 404)
+        : jsonResponse({ items: [{ id: "old", name: "Old" }], total: 1 }),
     );
-    await client().listResources("mistral-voice", ACCOUNT);
-    expect(calls[1]?.url).toBe(
-      "https://api.mistral.ai/v1/audio/voices?limit=100&offset=100&type=all",
+    const voices = await client().listResources("mistral-voice", ACCOUNT);
+    expect(voices.map((v) => v.externalId)).toEqual(["old"]);
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.mistral.ai/v2/audio/voices?type=all&page_size=100",
+      "https://api.mistral.ai/v1/audio/voices?limit=100&offset=0&type=all",
+    ]);
+  });
+
+  it("fails when neither voice route is there, so stored voices stay", async () => {
+    installFetch(() => jsonResponse({ detail: "Not Found" }, 404));
+    await expect(client().listResources("mistral-voice", ACCOUNT)).rejects.toThrow("API error 404");
+    expect(calls).toHaveLength(2);
+  });
+
+  it.each([401, 403, 429, 500])("does not fall back from a %i on voices", async (status) => {
+    installFetch(() => jsonResponse({ detail: "no" }, status));
+    await expect(client().listResources("mistral-voice", ACCOUNT)).rejects.toThrow(
+      `API error ${status}`,
     );
+    expect(calls).toHaveLength(1);
   });
 
   it("offers what it read of a long file list in the create form", async () => {
@@ -220,7 +236,7 @@ describe("incomplete lists", () => {
     installFetch((url) =>
       url.includes("/models")
         ? jsonResponse({ data: [{ id: "voxtral-mini-latest" }] })
-        : jsonResponse(fullPage("items", 100)),
+        : jsonResponse(fullPage("data", 100)),
     );
     const model = await client().getResource(
       "mistral-model",
@@ -564,8 +580,8 @@ describe("getResource", () => {
     installFetch((url) => {
       if (url.includes("/audio/voices")) {
         return jsonResponse({
-          items: [{ id: "amelie", name: "Amélie", gender: "female", languages: ["fr"] }],
-          total: 1,
+          data: [{ id: "amelie", name: "Amélie", gender: "female", languages: ["fr"] }],
+          next_page_token: null,
         });
       }
       return jsonResponse({

@@ -20,12 +20,16 @@ import {
   type PageAnswer,
   withCursorPagination,
 } from "@infrawrench/plugin-base";
-import type { components, operations, paths } from "./api-types.gen.js";
+import type { components, operations, paths } from "./api-types.v1.gen.js";
+import type { operations as V2Operations, paths as V2Paths } from "./api-types.v2.gen.js";
 
 /** Data plane, and the admin plane under `/admin`. */
 export const BASE = "https://api.mistral.ai/v1";
+/** Only the cursor-paged voice listing lives here so far. */
+const BASE_V2 = "https://api.mistral.ai/v2";
 
 export type MistralApi = ApiClient<paths>;
+type MistralV2Api = ApiClient<V2Paths>;
 
 /** Base models carry neither field in the document, and the plugin reads both off any model. */
 export type MistralModel = ApiListItem<operations["list_models_v1_models_get"], "data"> & {
@@ -33,7 +37,7 @@ export type MistralModel = ApiListItem<operations["list_models_v1_models_get"], 
   job?: string | null;
 };
 export type ModelList = ApiResponse<operations["list_models_v1_models_get"]>;
-export type MistralVoice = ApiListItem<operations["list_voices_v1_audio_voices_get"], "items">;
+export type MistralVoice = ApiListItem<V2Operations["audio_v2_voices_list"], "data">;
 export type VoiceUpdate = ApiBody<operations["update_voice_v1_audio_voices__voice_id__patch"]>;
 export type MistralFile = ApiListItem<operations["files_api_routes_list_files"], "data">;
 export type MistralFineTuningJob = ApiListItem<
@@ -102,9 +106,9 @@ function nextOffset({ cursor, items }: PageAnswer): number {
 /**
  * Mistral's three list dialects, each only accepting the routes it fits. The document
  * gives no largest `page_size` for numbered lists and defaults to 100, so that is kept,
- * and caps `limit` on voices and `page_size` on libraries at 100.
+ * and caps voices and `page_size` on libraries at 100.
  */
-function listClients(data: MistralApi) {
+function listClients(data: MistralApi, v2: MistralV2Api) {
   const numbered = {
     cursorParam: "page",
     sizeParam: "page_size",
@@ -113,6 +117,16 @@ function listClients(data: MistralApi) {
     maxPages: 100,
     next: nextPageNumber,
     stopOnShortPage: true,
+  } as const;
+  const tokens = {
+    cursorParam: "page_token",
+    sizeParam: "page_size",
+    next: "next_page_token",
+    pageSize: 100,
+    maxPages: 100,
+    // The document ends these lists on a null token, not an empty page, and agents
+    // are filtered by per-agent sharing, so a page can hold none and still have more.
+    continueOnEmptyPage: true,
   } as const;
   return {
     numbered: withCursorPagination(data, numbered),
@@ -129,16 +143,8 @@ function listClients(data: MistralApi) {
       total: "total",
       pagingFirst: true,
     }),
-    tokens: withCursorPagination(data, {
-      cursorParam: "page_token",
-      sizeParam: "page_size",
-      next: "next_page_token",
-      pageSize: 100,
-      maxPages: 100,
-      // The document ends these lists on a null token, not an empty page, and agents
-      // are filtered by per-agent sharing, so a page can hold none and still have more.
-      continueOnEmptyPage: true,
-    }),
+    tokens: withCursorPagination(data, tokens),
+    voices: withCursorPagination(v2, tokens),
   };
 }
 
@@ -156,13 +162,12 @@ export function createMistralApis(options: {
     caCert: options.caCert,
     http: options.http,
   };
-  const data = createApiClient<paths>({
-    ...shared,
-    headers: { Authorization: `Bearer ${options.apiKey}`, Accept: "application/json" },
-  });
+  const dataHeaders = { Authorization: `Bearer ${options.apiKey}`, Accept: "application/json" };
+  const data = createApiClient<paths>({ ...shared, headers: dataHeaders });
+  const v2 = createApiClient<V2Paths>({ ...shared, baseUrl: BASE_V2, headers: dataHeaders });
   return {
     data,
-    lists: listClients(data),
+    lists: listClients(data, v2),
     admin: createApiClient<paths>({
       ...shared,
       headers: {

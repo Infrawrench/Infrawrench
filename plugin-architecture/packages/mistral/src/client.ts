@@ -193,9 +193,9 @@ function isSttModel(id: string): boolean {
  * degrades to an empty listing when the admin key is absent rather than
  * failing the sync.
  *
- * Mistral genuinely pages in four ways: `limit`/`offset` for admin keys and
- * voices, `page`/`page_size` for files, batches and fine-tuning, `page_token`
- * for agents and libraries, and nothing at all for `/models`. A list that cannot
+ * Mistral genuinely pages in four ways: `limit`/`offset` for admin keys,
+ * `page`/`page_size` for files, batches and fine-tuning, `page_token` for agents,
+ * libraries and voices, and nothing at all for `/models`. A list that cannot
  * say it has every row throws, because a sync prunes whatever a list stops
  * returning.
  */
@@ -310,9 +310,8 @@ export class MistralClient implements PluginClient {
   }
 
   /**
-   * https://docs.mistral.ai/api/endpoint/audio/voices: `GET /v1/audio/voices`.
-   * Request side takes `limit`/`offset`; the envelope reports
-   * `page`/`page_size`/`total`/`total_pages`.
+   * https://docs.mistral.ai/api/endpoint/audio/voices: `GET /v2/audio/voices`
+   * (`page_token`/`page_size`), which replaces the deprecated offset route.
    */
   private async listVoices(accountId: string): Promise<ResourceInstance[]> {
     const raw = await this.fetchAllVoices();
@@ -320,11 +319,16 @@ export class MistralClient implements PluginClient {
     return raw.filter((v) => Boolean(v.id)).map((v) => this.mapVoice(accountId, v, now));
   }
 
-  private fetchAllVoices(options: { partial?: boolean } = {}): Promise<MistralVoice[]> {
-    return this.lists.offsets.getAll("/audio/voices", "items", {
-      query: { type: "all" },
-      ...options,
-    });
+  private async fetchAllVoices(options: { partial?: boolean } = {}): Promise<MistralVoice[]> {
+    const read = { query: { type: "all" }, ...options } as const;
+    try {
+      return await this.lists.voices.getAll("/audio/voices", "data", read);
+    } catch (error) {
+      // The cursor route has not been called live yet and the offset route is known to
+      // work. Drop this when the document drops the offset route; plugingen will say so.
+      if (!isRouteGone(error)) throw error;
+      return this.lists.offsets.getAll("/audio/voices", "items", read);
+    }
   }
 
   private mapVoice(accountId: string, voice: MistralVoice, now: string): ResourceInstance {

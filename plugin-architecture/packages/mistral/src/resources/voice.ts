@@ -4,16 +4,9 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * A text-to-speech voice: either one of Mistral's presets or a clone the
  * workspace created from an audio sample.
  *
- * `GET https://api.mistral.ai/v1/audio/voices`: paginated with
- * `limit`/`offset`, and the response envelope reports `page`/`page_size`/
- * `total`/`total_pages`. Neither scheme matches `/models` (none) or the admin
- * API, which is why this plugin has no single shared paginator.
+ * `GET https://api.mistral.ai/v2/audio/voices`: paginated with
+ * `page_token`/`page_size`. Editing and deleting a voice are still on `/v1`.
  * https://docs.mistral.ai/api/endpoint/audio/voices
- *
- * The OpenAPI document now marks this listing deprecated ("offset pagination
- * will not be supported anymore") in favour of `GET /v2/audio/voices`, but
- * that replacement is not documented anywhere yet, so the listing stays on
- * v1 until it is.
  */
 export const MistralVoiceResourceType = rt({
   name: "Voice",
