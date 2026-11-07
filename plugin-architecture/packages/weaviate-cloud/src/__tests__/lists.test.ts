@@ -148,3 +148,46 @@ describe("a cluster that cannot be read", () => {
     expect(http.calls.some((x) => x.url.host === OTHER)).toBe(false);
   });
 });
+
+describe("Weaviate Cloud's cluster list", () => {
+  function signedIn(answer: unknown) {
+    const http = fakeHttp();
+    http.route("POST", "auth.weaviate.cloud/oauth2/v1/apps/token", {
+      access_token: "access-1",
+      refresh_token: "refresh-2",
+      expires_in: 3600,
+    });
+    http.route("GET", "api-cloud.weaviate.cloud/v1/regions", { data: [], metadata: {} });
+    http.route("GET", "api-cloud.weaviate.cloud/v1/clusters", answer);
+    return hostClient(
+      new WeaviateClient({ cloudToken: "refresh-1" }, RESOURCE_TYPES, http.services),
+    );
+  }
+
+  it.each([
+    ["an empty body", respond(200, "", true)],
+    ["no envelope", { metadata: {} }],
+  ])("fails on %s rather than reading no clusters", async (_, answer) => {
+    await expect(signedIn(answer).listResources("cluster", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("reads a bare array of clusters too", async () => {
+    const clusters = await signedIn([
+      {
+        id: "c-a",
+        name: "a",
+        status: "READY",
+        endpoint: "https://aaa.c0.europe-west3.gcp.weaviate.cloud",
+      },
+    ]).listResources("cluster", ACCOUNT);
+    expect(clusters.map((x) => x.displayName)).toEqual(["a"]);
+  });
+
+  it("reads null data as no clusters", async () => {
+    expect(await signedIn({ data: null, metadata: {} }).listResources("cluster", ACCOUNT)).toEqual(
+      [],
+    );
+  });
+});

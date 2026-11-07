@@ -1,4 +1,5 @@
 import type { HostServices } from "@infrawrench/plugin-base";
+import { ListPageError } from "@infrawrench/plugin-base";
 import type { WcCluster, WcRegion, WcWhoAmI } from "./types.js";
 
 /**
@@ -220,6 +221,38 @@ export class WeaviateCloudApi {
     path: string,
     opts: { method?: "GET" | "POST"; body?: unknown; headers?: Record<string, string> } = {},
   ): Promise<T> {
+    const env = await this.envelope<{ data: T } | undefined>(accountId, path, opts);
+    return env === undefined ? (undefined as unknown as T) : env.data;
+  }
+
+  /**
+   * A list route's rows: the envelope's `data` array, `null` being Go's empty slice.
+   * Anything else is not read as no rows, since that would prune every cluster. A bare
+   * array is read too.
+   */
+  private async list<T>(accountId: string, path: string): Promise<T[]> {
+    const env = await this.envelope<{ data?: T[] | null } | T[] | null | undefined>(
+      accountId,
+      path,
+    );
+    if (Array.isArray(env)) return env;
+    const data = env && typeof env === "object" ? env.data : undefined;
+    if (data === null) return [];
+    if (Array.isArray(data)) return data;
+    throw new ListPageError({
+      vendor: "Weaviate Cloud",
+      path,
+      key: "data",
+      found: data,
+      page: env,
+    });
+  }
+
+  private async envelope<T>(
+    accountId: string,
+    path: string,
+    opts: { method?: "GET" | "POST"; body?: unknown; headers?: Record<string, string> } = {},
+  ): Promise<T> {
     const token = await this.token(accountId);
     const method = opts.method ?? "GET";
     const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
@@ -244,7 +277,7 @@ export class WeaviateCloudApi {
       throw new WeaviateCloudError(res.status, code, explain(res.status, code, message));
     }
     if (!res.body) return undefined as unknown as T;
-    return (JSON.parse(res.body) as { data: T }).data;
+    return JSON.parse(res.body) as T;
   }
 
   whoami(accountId: string): Promise<WcWhoAmI> {
@@ -252,11 +285,11 @@ export class WeaviateCloudApi {
   }
 
   async regions(accountId: string): Promise<WcRegion[]> {
-    return (await this.request<WcRegion[] | null>(accountId, "/regions")) ?? [];
+    return this.list<WcRegion>(accountId, "/regions");
   }
 
   async clusters(accountId: string): Promise<WcCluster[]> {
-    return (await this.request<WcCluster[] | null>(accountId, "/clusters")) ?? [];
+    return this.list<WcCluster>(accountId, "/clusters");
   }
 
   cluster(accountId: string, id: string): Promise<WcCluster> {
