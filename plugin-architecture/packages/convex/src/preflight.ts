@@ -81,7 +81,9 @@ export async function verifyConvexCredentials(
   let deployments: CvDeployment[] = [];
   const inventory = await probe("inventory", [P.team, P.projects], async () => {
     const team = pathEncode(await teamId());
-    deployments = await paged((query) => api.get(`/teams/${team}/list_deployments`, { query }));
+    deployments = await paged("/teams/{team_id}/list_deployments", (query) =>
+      api.get(`/teams/${team}/list_deployments`, { query }),
+    );
   });
   const cloudUrl = deployments.find((d) => d.kind !== "local" && d.deploymentUrl)?.deploymentUrl;
   const deployment: PreflightCapabilityCheck = cloudUrl

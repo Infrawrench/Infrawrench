@@ -30,7 +30,15 @@ import type {
   UpdateProjectBody,
   UsageLimitBody,
 } from "./api.js";
-import { ConvexApiError, deploymentApi, managementApi, paged, statusOf } from "./api.js";
+import {
+  ConvexApiError,
+  deploymentApi,
+  environmentVariablesOf,
+  managementApi,
+  paged,
+  rowsOf,
+  statusOf,
+} from "./api.js";
 import { getCreateConfig } from "./create-config.js";
 import { verifyConvexCredentials } from "./preflight.js";
 import {
@@ -147,12 +155,16 @@ export class ConvexClient implements PluginClient {
 
   private async projects(): Promise<CvProject[]> {
     const team = pathEncode(await this.teamId());
-    return paged((query) => this.api.get(`/teams/${team}/projects`, { query }));
+    return paged("/teams/{team_id}/projects", (query) =>
+      this.api.get(`/teams/${team}/projects`, { query }),
+    );
   }
 
   private async deployments(): Promise<CvDeployment[]> {
     const team = pathEncode(await this.teamId());
-    const all = await paged((query) => this.api.get(`/teams/${team}/list_deployments`, { query }));
+    const all = await paged("/teams/{team_id}/list_deployments", (query) =>
+      this.api.get(`/teams/${team}/list_deployments`, { query }),
+    );
     return all.filter((d) => d.kind !== "local");
   }
 
@@ -189,23 +201,25 @@ export class ConvexClient implements PluginClient {
   }
 
   private members(team: string | number) {
-    return paged((query) => this.api.get(`/teams/${pathEncode(team)}/list_members`, { query }));
+    return paged("/teams/{team_id}/list_members", (query) =>
+      this.api.get(`/teams/${pathEncode(team)}/list_members`, { query }),
+    );
   }
 
   private invites(team: string | number) {
-    return paged((query) =>
+    return paged("/teams/{team_id}/list_pending_invites", (query) =>
       this.api.get(`/teams/${pathEncode(team)}/list_pending_invites`, { query }),
     );
   }
 
   private customRoles(team: string | number) {
-    return paged((query) =>
+    return paged("/teams/{team_id}/list_custom_roles", (query) =>
       this.api.get(`/teams/${pathEncode(team)}/list_custom_roles`, { query }),
     );
   }
 
   private accessTokens(team: string | number) {
-    return paged((query) =>
+    return paged("/teams/{team_id}/list_access_tokens", (query) =>
       this.api.get(`/teams/${pathEncode(team)}/list_access_tokens`, { query }),
     );
   }
@@ -265,7 +279,7 @@ export class ConvexClient implements PluginClient {
             this.ctx,
             d.deploymentUrl ?? `https://${d.name}.convex.cloud`,
           ).get("/list_environment_variables");
-          return Object.keys(res?.environmentVariables ?? {})
+          return Object.keys(environmentVariablesOf(res))
             .sort()
             .map((name) =>
               instance(
@@ -285,10 +299,12 @@ export class ConvexClient implements PluginClient {
         const projects = await this.projects();
         const lists = await Promise.all(
           projects.map(async (p) => {
-            const vars = await paged((query) =>
-              this.api.get(`/projects/${pathEncode(p.id)}/list_default_environment_variables`, {
-                query,
-              }),
+            const vars = await paged(
+              "/projects/{project_id}/list_default_environment_variables",
+              (query) =>
+                this.api.get(`/projects/${pathEncode(p.id)}/list_default_environment_variables`, {
+                  query,
+                }),
             );
             return vars.flatMap((v) =>
               v.deploymentTypes.map((t) =>
@@ -308,9 +324,11 @@ export class ConvexClient implements PluginClient {
       }
       case "convex-deploy-key":
         return this.perDeployment(only, async (d) =>
-          ((await this.api.get(`/deployments/${pathEncode(d.name)}/list_deploy_keys`)) ?? []).map(
-            (k) => toDeployKey(k, d.name, accountId),
-          ),
+          rowsOf(
+            await this.api.get(`/deployments/${pathEncode(d.name)}/list_deploy_keys`),
+            "/deployments/{deployment_name}/list_deploy_keys",
+            null,
+          ).map((k) => toDeployKey(k, d.name, accountId)),
         );
       case "convex-preview-deploy-key": {
         const projects = await this.projects();
@@ -322,30 +340,41 @@ export class ConvexClient implements PluginClient {
                 query: { includeManaged: true },
               },
             );
-            return (res?.items ?? []).map((k) => toPreviewKey(k, p.id, accountId));
+            return rowsOf(
+              res?.items,
+              "/projects/{project_id}/list_preview_deploy_keys",
+              "items",
+              res,
+            ).map((k) => toPreviewKey(k, p.id, accountId));
           }),
         );
         return lists.flat();
       }
       case "convex-custom-domain":
-        return this.perDeployment(only, async (d) =>
-          (
-            (await this.api.get(`/deployments/${pathEncode(d.name)}/custom_domains`))?.domains ?? []
-          ).map((cd) => toCustomDomain(cd, accountId)),
-        );
+        return this.perDeployment(only, async (d) => {
+          const res = await this.api.get(`/deployments/${pathEncode(d.name)}/custom_domains`);
+          return rowsOf(
+            res?.domains,
+            "/deployments/{deployment_name}/custom_domains",
+            "domains",
+            res,
+          ).map((cd) => toCustomDomain(cd, accountId));
+        });
       case "convex-log-stream":
         return this.perDeployment(only, async (d) =>
-          (
-            (await deploymentApi(this.ctx, d.deploymentUrl ?? `https://${d.name}.convex.cloud`).get(
+          rowsOf(
+            await deploymentApi(this.ctx, d.deploymentUrl ?? `https://${d.name}.convex.cloud`).get(
               "/list_log_streams",
-            )) ?? []
+            ),
+            "/list_log_streams",
+            null,
           ).map((s) => toLogStream(s, d.name, accountId)),
         );
       case "convex-usage-limit":
         return this.perDeployment(only, async (d) => {
           const api = deploymentApi(this.ctx, d.deploymentUrl ?? `https://${d.name}.convex.cloud`);
           const res = await api.get("/list_usage_limits");
-          const limits = res?.usageLimits ?? [];
+          const limits = rowsOf(res?.usageLimits, "/list_usage_limits", "usageLimits", res);
           if (limits.length === 0) return [];
           const usage = await api.get("/get_current_usage").catch(() => undefined);
           return limits.map((l) => toUsageLimit(l, d.name, accountId, usage));
@@ -530,10 +559,12 @@ export class ConvexClient implements PluginClient {
         }
         case "convex-default-env-var.value": {
           const [type, name] = head(rest);
-          const vars = await paged((paging) =>
-            this.api.get(`/projects/${pathEncode(first)}/list_default_environment_variables`, {
-              query: { ...(name ? { name } : {}), ...paging },
-            }),
+          const vars = await paged(
+            "/projects/{project_id}/list_default_environment_variables",
+            (paging) =>
+              this.api.get(`/projects/${pathEncode(first)}/list_default_environment_variables`, {
+                query: { ...(name ? { name } : {}), ...paging },
+              }),
           );
           const match = vars.find((v) => v.name === name && v.deploymentTypes.includes(type));
           if (!match)
@@ -645,8 +676,10 @@ export class ConvexClient implements PluginClient {
     return attempt(async () => {
       const readings = await this.perDeployment(undefined, async (d) => {
         const api = deploymentApi(this.ctx, d.deploymentUrl ?? `https://${d.name}.convex.cloud`);
-        const limits =
-          (await api.get("/list_usage_limits"))?.usageLimits?.filter((l) => l.enabled) ?? [];
+        const res = await api.get("/list_usage_limits");
+        const limits = rowsOf(res?.usageLimits, "/list_usage_limits", "usageLimits", res).filter(
+          (l) => l.enabled,
+        );
         if (limits.length === 0) return [];
         const usage = await api.get("/get_current_usage");
         return limits.flatMap((l): QuotaUsage[] => {
@@ -982,9 +1015,10 @@ export class ConvexClient implements PluginClient {
           break;
         }
         case "convex-usage-limit": {
-          const current = (
-            await this.onDeployment(first, (api) => api.get("/list_usage_limits"))
-          )?.usageLimits?.find((l) => l.id === rest);
+          const res = await this.onDeployment(first, (api) => api.get("/list_usage_limits"));
+          const current = rowsOf(res?.usageLimits, "/list_usage_limits", "usageLimits", res).find(
+            (l) => l.id === rest,
+          );
           if (!current)
             throw new ConvexApiError(404, "Convex plugin: the usage limit no longer exists.");
           // Update replaces the whole config, so unchanged values are carried over.
@@ -1056,7 +1090,11 @@ export class ConvexClient implements PluginClient {
         }
         case "convex-deploy-key": {
           const key = findKeyName(
-            await this.api.get(`/deployments/${pathEncode(first)}/list_deploy_keys`),
+            rowsOf(
+              await this.api.get(`/deployments/${pathEncode(first)}/list_deploy_keys`),
+              "/deployments/{deployment_name}/list_deploy_keys",
+              null,
+            ),
             rest,
           );
           await this.api.post(`/deployments/${pathEncode(first)}/delete_deploy_key`, {
@@ -1065,10 +1103,14 @@ export class ConvexClient implements PluginClient {
           return;
         }
         case "convex-preview-deploy-key": {
-          const key = findKeyName(
-            await this.api.get(`/projects/${pathEncode(first)}/list_preview_deploy_keys`, {
+          const res = await this.api.get(
+            `/projects/${pathEncode(first)}/list_preview_deploy_keys`,
+            {
               query: { includeManaged: true },
-            }),
+            },
+          );
+          const key = findKeyName(
+            rowsOf(res?.items, "/projects/{project_id}/list_preview_deploy_keys", "items", res),
             rest,
           );
           await this.api.post(`/projects/${pathEncode(first)}/delete_preview_deploy_key`, {
@@ -1179,8 +1221,7 @@ export class ConvexClient implements PluginClient {
 }
 
 /** Deploy keys are deleted by name (or secret); our ids are numeric. */
-function findKeyName(res: CvDeployKey[] | { items?: CvDeployKey[] }, id: string): string {
-  const keys = Array.isArray(res) ? res : (res?.items ?? []);
+function findKeyName(keys: CvDeployKey[], id: string): string {
   const key = keys.find((k) => String(k.id) === id);
   if (!key) throw new ConvexApiError(404, "Convex plugin: the deploy key no longer exists.");
   return key.name;

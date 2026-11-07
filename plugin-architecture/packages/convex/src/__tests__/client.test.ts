@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { ConvexApiError, statusOf } from "../api.js";
 import { ConvexClient, logStreamBody, usageLimitBody } from "../client.js";
@@ -247,6 +247,115 @@ describe("ConvexClient", () => {
     await expect(
       client.resolveOutput("convex-deploy-key", resource.id, "deployKey", ACCOUNT),
     ).rejects.toThrow(/only when it is created/);
+  });
+});
+
+describe("lists that cannot say they are complete", () => {
+  const PROJECTS = `${API}/teams/42/projects`;
+  const project = { id: 1, name: "A", slug: "a", teamId: 42, teamSlug: "acme", createTime: 1 };
+  const deployments = on("GET", `${API}/teams/42/list_deployments`, {
+    items: [deployment],
+    pagination: { hasMore: false },
+  });
+  const projects = on("GET", PROJECTS, { items: [project], pagination: { hasMore: false } });
+  const onDeploymentApi = `${deployment.deploymentUrl}/api/v1`;
+
+  it("throws at the page cap, after exactly that many requests", async () => {
+    const { client, calls } = fake([
+      teamToken,
+      on("GET", PROJECTS, {
+        items: [project],
+        pagination: { hasMore: true, nextCursor: "again" },
+      }),
+    ]);
+    await expect(client.listResources("convex-project", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => c.url.includes("/projects"))).toHaveLength(500);
+  });
+
+  it("throws on a renamed list key on the first page", async () => {
+    const { client } = fake([
+      teamToken,
+      on("GET", PROJECTS, { projects: [project], pagination: { hasMore: false } }),
+    ]);
+    await expect(client.listResources("convex-project", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("throws on a renamed list key on a later page", async () => {
+    const { client } = fake([
+      teamToken,
+      (call) => {
+        const u = new URL(call.url);
+        if (u.pathname !== "/v1/teams/42/projects") return undefined;
+        return u.searchParams.get("cursor")
+          ? { status: 200, body: { projects: [project], pagination: { hasMore: false } } }
+          : {
+              status: 200,
+              body: { items: [project], pagination: { hasMore: true, nextCursor: "c" } },
+            };
+      },
+    ]);
+    await expect(client.listResources("convex-project", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads a list key set to null as an empty list", async () => {
+    const { client } = fake([
+      teamToken,
+      on("GET", PROJECTS, { items: null, pagination: { hasMore: false } }),
+    ]);
+    await expect(client.listResources("convex-project", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it.each([
+    ["convex-env-var", `${onDeploymentApi}/list_environment_variables`, { variables: {} }],
+    ["convex-env-var", `${onDeploymentApi}/list_environment_variables`, "<html>sign in</html>"],
+    ["convex-deploy-key", `${API}/deployments/happy-otter-123/list_deploy_keys`, { keys: [] }],
+    ["convex-preview-deploy-key", `${API}/projects/1/list_preview_deploy_keys`, { keys: [] }],
+    ["convex-custom-domain", `${API}/deployments/happy-otter-123/custom_domains`, { items: [] }],
+    ["convex-log-stream", `${onDeploymentApi}/list_log_streams`, { streams: [] }],
+    ["convex-usage-limit", `${onDeploymentApi}/list_usage_limits`, { limits: [] }],
+  ])("throws rather than reading %s from %s answered with %j as empty", async (type, url, body) => {
+    const { client } = fake([teamToken, deployments, projects, on("GET", url, body)]);
+    await expect(client.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reports no quotas only when the limits list really says so", async () => {
+    const { client } = fake([
+      teamToken,
+      deployments,
+      on("GET", `${onDeploymentApi}/list_usage_limits`, { limits: [] }),
+    ]);
+    await expect(client.fetchQuotas(ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("does not call a deploy key gone because its list came back in the wrong shape", async () => {
+    const { client, calls } = fake([
+      on("GET", `${API}/deployments/happy-otter-123/list_deploy_keys`, { keys: [] }),
+    ]);
+    await expect(
+      client.deleteResource(
+        "convex-deploy-key",
+        `${ACCOUNT}:convex-deploy-key:happy-otter-123/5`,
+        ACCOUNT,
+      ),
+    ).rejects.toThrow("is not a list");
+    expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+  });
+
+  it("uses the host's transport with no CA, and never fetch", async () => {
+    const stub = vi.fn(() => {
+      throw new Error("fetch must not be called");
+    });
+    vi.stubGlobal("fetch", stub);
+    try {
+      const { client, calls } = fake([teamToken, projects]);
+      await client.listResources("convex-project", ACCOUNT);
+      expect(calls.length).toBeGreaterThan(0);
+      expect(stub).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

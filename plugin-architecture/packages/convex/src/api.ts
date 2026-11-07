@@ -1,5 +1,8 @@
 import {
   createApiClient,
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
   type ApiBody,
   type ApiClient,
   type ApiClientOptions,
@@ -173,28 +176,67 @@ interface Page<T> {
   pagination?: { hasMore?: boolean; nextCursor?: string | null } | null;
 }
 
+/** 50,000 rows at the document's largest page of 100: the most the host can prune. */
+const MAX_PAGES = 500;
+
 /**
  * Drain a `{items, pagination: {hasMore, nextCursor}}` listing, asking for each
  * page through `fetchPage`, which puts `paging` in the query:
  *
- *   paged((query) => api.get(`/teams/${team}/projects`, { query }));
+ *   paged("/teams/{team_id}/projects", (query) => api.get(`/teams/${team}/projects`, { query }));
  *
- * A loop rather than `withCursorPagination`, whose `getAll` reads an `items` that
- * is not an array as an empty page; this fails on it, as it always has.
+ * A loop rather than `withCursorPagination`, whose typed `getAll` does not take
+ * `list_members` and `list_pending_invites`: their documented answers have no
+ * `pagination`. Throws on a page with no list and at the cap, since a sync prunes
+ * whatever a list leaves out.
  */
 export async function paged<T>(
+  route: string,
   fetchPage: (paging: Paging) => Promise<Page<T> | undefined>,
 ): Promise<T[]> {
   const out: T[] = [];
   let cursor: string | undefined;
-  for (let page = 0; page < 100; page++) {
+  for (let page = 0; page < MAX_PAGES; page++) {
     // `String`: a cursor that is not the string the document promises still goes as text.
     const res = await fetchPage({ limit: 100, ...(cursor ? { cursor: String(cursor) } : {}) });
-    out.push(...(res?.items ?? []));
+    out.push(...rowsOf(res?.items, route, "items", res));
     cursor = res?.pagination?.nextCursor ?? undefined;
     if (!res?.pagination?.hasMore || !cursor) return out;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: "Convex",
+    path: route,
+    items: out.length,
+    maxPages: MAX_PAGES,
+  });
+}
+
+/** The rows of a list read in one request; `key` is null where the answer is the array. */
+export function rowsOf<T>(
+  list: readonly T[] | null | undefined,
+  route: string,
+  key: string | null,
+  page?: unknown,
+): T[] {
+  return requireListPage(list, { vendor: "Convex", path: route, key, page });
+}
+
+/** A deployment's variables, a map rather than a list, held to the same standard. */
+export function environmentVariablesOf(
+  res: { environmentVariables?: Record<string, string> | null } | undefined,
+): Record<string, string> {
+  const vars = res?.environmentVariables;
+  if (vars === null) return {};
+  if (typeof vars !== "object" || Array.isArray(vars)) {
+    throw new ListPageError({
+      vendor: "Convex",
+      path: "/list_environment_variables",
+      key: "environmentVariables",
+      found: vars,
+      page: res,
+    });
+  }
+  return vars;
 }
 
 // ---- wire shapes ---------------------------------------------------------------
