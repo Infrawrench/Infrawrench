@@ -214,6 +214,13 @@ export function flattenUpdate({ info, ...row }: UpdateListItem): PuUpdate {
   return { ...info, ...row };
 }
 
+/** The document spells this `repoUrl`. `repoURL` is what this plugin always read, so it still counts. */
+export function repoUrlOf(git: { repoUrl?: string } | undefined): string | undefined {
+  if (!git) return undefined;
+  if (git.repoUrl) return git.repoUrl;
+  return "repoURL" in git && typeof git.repoURL === "string" ? git.repoURL : undefined;
+}
+
 /** Output values are any JSON; strings stay strings. */
 export function outputText(v: unknown): string {
   if (typeof v === "string") return v;

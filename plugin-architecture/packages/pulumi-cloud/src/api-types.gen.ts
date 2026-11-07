@@ -1737,7 +1737,6 @@ export interface components {
             gitAuth?: components["schemas"]["GitAuthConfig"];
             repoDir?: string;
             repoUrl?: string;
-            repoURL?: string;
             tag?: string;
         };
         SourceContextGitRequest: {

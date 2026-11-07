@@ -436,3 +436,31 @@ describe("update history (#442)", () => {
     expect(by).toMatchObject({ Updates: 2, "Failed updates": 1 });
   });
 });
+
+describe("deployment settings (#443)", () => {
+  const settingsRoutes = (git: Record<string, unknown>) => (call: Call) => {
+    const path = call.url.pathname;
+    if (path.endsWith("/deployments/settings")) return { sourceContext: { git } };
+    if (path === "/api/stacks/acme/net/prod") {
+      return { orgName: "acme", projectName: "net", stackName: "prod", id: "s1" };
+    }
+    return { status: 404, body: { message: "none" } };
+  };
+
+  it.each(["repoUrl", "repoURL"])("reads the repository from %s", async (spelling) => {
+    const { c } = client(settingsRoutes({ [spelling]: "https://example.com/r.git", branch: "b" }));
+    const r = await c.getResource("stack", `${ACC}:stack:net/prod`, ACC);
+    expect(r.fields["repository"]).toBe("https://example.com/r.git");
+    expect(JSON.parse(r.resolvedOutputs[DETAIL_KEYS.settings]!)).toMatchObject({
+      repo: "https://example.com/r.git",
+      branch: "b",
+    });
+  });
+
+  it("starts a stack with no settings from the documented spelling", async () => {
+    const { c } = client(() => ({ status: 404, body: { message: "none" } }));
+    const manifest = JSON.parse(await c.getManifest!(`${ACC}:stack:net/prod`, ACC));
+    expect(Object.keys(manifest.sourceContext.git)).toContain("repoUrl");
+    expect(Object.keys(manifest.sourceContext.git)).not.toContain("repoURL");
+  });
+});

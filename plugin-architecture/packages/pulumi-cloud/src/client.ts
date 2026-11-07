@@ -48,6 +48,7 @@ import {
   mapWebhook,
   outputText,
   parts,
+  repoUrlOf,
   unixIso,
 } from "./mappers.js";
 import { DEFAULT_METRICS_WINDOW_MS, rangeOrDefault, updateSeries } from "./metrics.js";
@@ -512,6 +513,7 @@ export class PulumiCloudClient implements PluginClient {
       };
     });
     const sc = settings?.sourceContext;
+    const repo = repoUrlOf(sc?.git);
     const op = settings?.operationContext?.operation;
     const latest = updateRows[0];
     const r = mapStack(
@@ -526,14 +528,14 @@ export class PulumiCloudClient implements PluginClient {
       {
         driftDetected: drift?.driftDetected,
         outputCount: outputs?.outputs ? Object.keys(outputs.outputs).length : undefined,
-        repo: sc?.git?.repoURL,
+        repo,
       },
     );
     return stash(r, {
       [DETAIL_KEYS.updates]: updates,
       [DETAIL_KEYS.schedules]: scheduleRows,
       [DETAIL_KEYS.settings]: settings
-        ? { repo: sc?.git?.repoURL, branch: sc?.git?.branch, dir: sc?.git?.repoDir, operation: op }
+        ? { repo, branch: sc?.git?.branch, dir: sc?.git?.repoDir, operation: op }
         : undefined,
     });
   }
@@ -722,7 +724,7 @@ export class PulumiCloudClient implements PluginClient {
             {
               sourceContext: {
                 git: {
-                  repoURL: "https://github.com/acme/infra.git",
+                  repoUrl: "https://github.com/acme/infra.git",
                   branch: "refs/heads/main",
                   repoDir: ".",
                 },

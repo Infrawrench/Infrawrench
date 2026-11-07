@@ -136,13 +136,6 @@
       "why": "The mode is form text that goes through as typed, so the provider's own validation error reaches the user."
     },
     {
-      "pointer": "/components/schemas/SourceContextGit/properties/repoURL",
-      "value": {
-        "type": "string"
-      },
-      "why": "The document spells this repoUrl, and the plugin has always read repoURL: see #443. Remove this with that fix."
-    },
-    {
       "pointer": "/components/schemas/EnvironmentReferrerMetadata/properties/stackReferrers",
       "value": {
         "type": "integer"
