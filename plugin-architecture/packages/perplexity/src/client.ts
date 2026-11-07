@@ -24,6 +24,7 @@ import {
 } from "@infrawrench/plugin-base";
 import {
   API_BASE,
+  MAX_SKILL_ROWS,
   createPerplexityApis,
   statusErrors,
   type AsyncRequest,
@@ -377,16 +378,33 @@ export class PerplexityClient implements PluginClient {
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (resource.resourceTypeId !== "perplexity-skill") return resource;
-      const res = await statusErrors(
-        this.api.get(`/v1/skills/${pathEncode(resource.externalId ?? "")}/revisions`),
-      ).catch(() => ({ revisions: [] }));
-      return {
-        ...resource,
-        resolvedOutputs: {
-          ...resource.resolvedOutputs,
-          __revisions__: JSON.stringify(res.revisions ?? []),
-        },
-      };
+      try {
+        // Newest first, so a cap keeps the ones anyone would look at, and the view says so.
+        const revisions = await statusErrors(
+          this.api.getAll(
+            `/v1/skills/${pathEncode(resource.externalId ?? "")}/revisions`,
+            "revisions",
+            {
+              partial: true,
+            },
+          ),
+        );
+        return {
+          ...resource,
+          resolvedOutputs: {
+            ...resource.resolvedOutputs,
+            __revisions__: JSON.stringify(revisions),
+          },
+        };
+      } catch (err) {
+        return {
+          ...resource,
+          resolvedOutputs: {
+            ...resource.resolvedOutputs,
+            __revisionsError__: err instanceof Error ? err.message : String(err),
+          },
+        };
+      }
     });
   }
 
@@ -701,6 +719,16 @@ export class PerplexityClient implements PluginClient {
         } catch {
           revisions = [];
         }
+        const capped: SchemaNode[] =
+          revisions.length >= MAX_SKILL_ROWS
+            ? [
+                {
+                  kind: "text",
+                  variant: "muted",
+                  content: `Showing the newest ${MAX_SKILL_ROWS} revisions.`,
+                },
+              ]
+            : [];
         return {
           title: r.displayName,
           subtitle: "Agent API Skill",
@@ -720,6 +748,7 @@ export class PerplexityClient implements PluginClient {
               ),
             ]),
             section("Revisions", [
+              ...capped,
               revisions.length
                 ? {
                     kind: "table",
@@ -731,7 +760,13 @@ export class PerplexityClient implements PluginClient {
                       cells: { revision: s(v.revision), created: s(v.created_at) },
                     })),
                   }
-                : { kind: "text", variant: "muted", content: "No revision history returned." },
+                : {
+                    kind: "text",
+                    variant: "muted",
+                    content: r.resolvedOutputs["__revisionsError__"]
+                      ? `Could not read the revision history: ${r.resolvedOutputs["__revisionsError__"]}`
+                      : "No revision history returned.",
+                  },
             ]),
           ],
           headerActions: [REFRESH],

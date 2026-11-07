@@ -1,5 +1,6 @@
 import {
   createApiClient,
+  withCursorPagination,
   type ApiClient,
   type ApiClientOptions,
   type ApiResponse,
@@ -26,7 +27,23 @@ export const API_BASE = "https://api.perplexity.ai";
  */
 const ROUTER_PREFIX = "/router/v1";
 
-export type PlatformApi = ApiClient<platformPaths>;
+/** The largest `limit` the skill routes take. */
+const SKILL_PAGE_SIZE = 200;
+/** 10,000 rows, for the skill list and for one skill's revisions. */
+const SKILL_MAX_PAGES = 50;
+export const MAX_SKILL_ROWS = SKILL_PAGE_SIZE * SKILL_MAX_PAGES;
+
+function createPlatformApi(options: ApiClientOptions) {
+  return withCursorPagination(createApiClient<platformPaths>(options), {
+    cursorParam: "page_token",
+    next: "next_page_token",
+    sizeParam: "limit",
+    pageSize: SKILL_PAGE_SIZE,
+    maxPages: SKILL_MAX_PAGES,
+  });
+}
+
+export type PlatformApi = ReturnType<typeof createPlatformApi>;
 export type RouterApi = ApiClient<orchestratorPaths>;
 
 /** A platform operation's response, by its `operationId`. */
@@ -69,7 +86,7 @@ export function createPerplexityApis(credentials: {
   http: HttpHostServices | undefined;
 }): { platform: PlatformApi; router: RouterApi } {
   return {
-    platform: createApiClient<platformPaths>(createOptions(credentials, "")),
+    platform: createPlatformApi(createOptions(credentials, "")),
     router: createApiClient<orchestratorPaths>(createOptions(credentials, ROUTER_PREFIX)),
   };
 }

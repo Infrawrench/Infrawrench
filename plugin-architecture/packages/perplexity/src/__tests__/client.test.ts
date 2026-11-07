@@ -205,6 +205,61 @@ describe("Perplexity", () => {
     });
   });
 
+  const SKILL = {
+    id: `${ACCOUNT}:perplexity-skill:sk1`,
+    pluginId: "perplexity",
+    resourceTypeId: "perplexity-skill",
+    accountId: ACCOUNT,
+    displayName: "Skill",
+    externalId: "sk1",
+    fields: {},
+    resolvedOutputs: {},
+    secretStates: [],
+    createdAt: "",
+    updatedAt: "",
+  };
+
+  it("reads every page of a skill's revisions", async () => {
+    const { http, calls } = host((url) =>
+      url.includes("page_token=t2")
+        ? { body: { revisions: [{ revision: "r2" }] } }
+        : { body: { revisions: [{ revision: "r1" }], next_page_token: "t2" } },
+    );
+    const client = new PerplexityClient({ apiKey: "k" }, { http });
+    const enriched = await hostClient(client).enrichDetail?.(SKILL);
+    expect(JSON.parse(enriched?.resolvedOutputs["__revisions__"] ?? "[]")).toEqual([
+      { revision: "r1" },
+      { revision: "r2" },
+    ]);
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.perplexity.ai/v1/skills/sk1/revisions?limit=200",
+      "https://api.perplexity.ai/v1/skills/sk1/revisions?limit=200&page_token=t2",
+    ]);
+  });
+
+  it("stops at the newest revisions and says that is what it shows", async () => {
+    const { http, calls } = host(() => ({
+      body: {
+        revisions: Array.from({ length: 200 }, (_, i) => ({ revision: `r${i}` })),
+        next_page_token: "more",
+      },
+    }));
+    const client = new PerplexityClient({ apiKey: "k" }, { http });
+    const enriched = await hostClient(client).enrichDetail?.(SKILL);
+    expect(calls).toHaveLength(50);
+    const detail = client.renderDetail(enriched ?? SKILL);
+    expect(JSON.stringify(detail.sections)).toContain("Showing the newest 10000 revisions");
+  });
+
+  it("says the revision history could not be read, rather than that there is none", async () => {
+    const { http } = host(() => ({ status: 500, body: { error: "boom" } }));
+    const client = new PerplexityClient({ apiKey: "k" }, { http });
+    const enriched = await hostClient(client).enrichDetail?.(SKILL);
+    const shown = JSON.stringify(client.renderDetail(enriched ?? SKILL).sections);
+    expect(shown).toContain("Could not read the revision history");
+    expect(shown).not.toContain("No revision history");
+  });
+
   it("attaches the HTTP status to errors", async () => {
     const { http } = host(() => ({ status: 401, body: { error: "bad key" } }));
     await expect(
