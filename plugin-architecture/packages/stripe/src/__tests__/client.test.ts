@@ -553,6 +553,70 @@ describe("meter metrics", () => {
     ]);
     expect(calls.some((x) => x.url.searchParams.get("price") === "price_2")).toBe(false);
   });
+
+  const meterRoute =
+    (summary: (customer: string) => unknown) =>
+    (call: Call): unknown => {
+      if (call.url.pathname === "/v1/prices")
+        return { data: [{ id: "price_1", recurring: { meter: "mtr_1" } }], has_more: false };
+      if (call.url.pathname === "/v1/subscriptions") {
+        return {
+          data: [
+            { id: "sub_1", customer: { id: "cus_1", name: "Acme" } },
+            { id: "sub_2", customer: { id: "cus_2", name: "Globex" } },
+            { id: "sub_3", customer: { id: "cus_3", object: "customer", deleted: true } },
+          ],
+          has_more: false,
+        };
+      }
+      if (call.url.pathname === "/v1/billing/meters/mtr_1/event_summaries")
+        return summary(call.url.searchParams.get("customer") ?? "");
+      throw new Error(call.url.pathname);
+    };
+  const range = {
+    startMs: Date.parse("2026-09-01T05:00:00Z"),
+    endMs: Date.parse("2026-09-10T05:00:00Z"),
+  };
+  const usage = { data: [{ id: "s1", start_time: 1_700_006_400, aggregated_value: 7 }] };
+
+  it("fails the chart when one customer's usage read is throttled instead of dropping it", async () => {
+    const { c } = client(
+      meterRoute((customer) =>
+        customer === "cus_2"
+          ? {
+              status: 429,
+              body: { error: { message: "Too many requests", type: "rate_limit_error" } },
+            }
+          : { ...usage, has_more: false },
+      ),
+    );
+    await expect(
+      c.fetchMetricSeries("stripe-meter", "acc:stripe-meter:mtr_1", ACC, range),
+    ).rejects.toThrow(/429/);
+  });
+
+  it("drops only a customer Stripe no longer has, and never asks for a deleted one", async () => {
+    const { c, calls } = client(
+      meterRoute((customer) =>
+        customer === "cus_2"
+          ? {
+              status: 400,
+              body: {
+                error: {
+                  message: "No such customer: 'cus_2'",
+                  type: "invalid_request_error",
+                  code: "resource_missing",
+                  param: "customer",
+                },
+              },
+            }
+          : { ...usage, has_more: false },
+      ),
+    );
+    const series = await c.fetchMetricSeries("stripe-meter", "acc:stripe-meter:mtr_1", ACC, range);
+    expect(series.map((s) => s.label)).toEqual(["Usage: Acme"]);
+    expect(calls.some((x) => x.url.searchParams.get("customer") === "cus_3")).toBe(false);
+  });
 });
 
 describe("logs", () => {

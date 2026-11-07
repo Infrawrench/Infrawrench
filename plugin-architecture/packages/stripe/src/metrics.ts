@@ -1,7 +1,7 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { pathEncode } from "@infrawrench/plugin-base";
 import type { StripeApi } from "./api.js";
-import { fromMinor } from "./api.js";
+import { StripeApiError, fromMinor } from "./api.js";
 import { dailyVolume, daysBetween, mapLimit, transactionsForDay } from "./balance.js";
 
 /** Days charted on the account Metrics tab, at most. Each is one or more requests. */
@@ -80,6 +80,8 @@ export async function accountMetrics(
  * (`GET /v1/subscriptions?price=`), capped at {@link MAX_METER_CUSTOMERS}.
  * `start_time`/`end_time` must sit on the grouping window's boundaries, so
  * the range is widened to whole days (or hours for ranges under two days).
+ * A deleted customer is skipped; any failed read other than a missing customer
+ * fails the whole chart, so the combined series is never a silent undercount.
  */
 export async function meterMetrics(
   api: StripeApi,
@@ -103,6 +105,7 @@ export async function meterMetrics(
     });
     for (const sub of subs) {
       const c = sub.customer;
+      if (typeof c === "object" && c && "deleted" in c && c.deleted) continue;
       const id = typeof c === "string" ? c : (c?.id ?? "");
       if (!id || customers.has(id)) continue;
       const label =
@@ -131,7 +134,13 @@ export async function meterMetrics(
         maxPages: 5,
         partial: true,
       })
-      .catch(() => []);
+      .catch((err: unknown) => {
+        // A customer deleted since the subscription was read: Stripe names the
+        // missing object with `resource_missing`. Anything else (a throttle, a 5xx,
+        // a refused key) fails the chart rather than understate the combined total.
+        if (err instanceof StripeApiError && err.code === "resource_missing") return [];
+        throw err;
+      });
     return {
       label,
       points: summaries
