@@ -23,7 +23,7 @@ import {
   requireListPage,
 } from "@infrawrench/plugin-base";
 import type { SentryApi, SentryContext } from "./api.js";
-import { sentryApi, statusOf } from "./api.js";
+import { isPermissionError, sentryApi, statusOf } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import type { CostInputs, MonitorCounts, StatsResponse } from "./cost-data.js";
 import { fetchSentryCostData, fetchStats, fetchUsageSummary } from "./cost-data.js";
@@ -215,7 +215,11 @@ export class SentryClient implements PluginClient {
   }
 
   private async projectSlugs(): Promise<Map<string, string>> {
-    const projects = await this.projects().catch((): SentryProject[] => []);
+    const projects = await this.projects().catch((err: unknown): SentryProject[] => {
+      // A token that may not read projects still gets ids. Any other failure is not "none".
+      if (isPermissionError(err)) return [];
+      throw err;
+    });
     return new Map(projects.map((p) => [String(p.id), p.slug]));
   }
 
@@ -382,10 +386,9 @@ export class SentryClient implements PluginClient {
       switch (typeId) {
         case "organization": {
           const org = await this.api.get(`/organizations/${this.o}/`);
-          const summary = await fetchUsageSummary(
-            this.ctx,
-            this.costInputs(await this.projectSlugs()),
-          ).catch(() => undefined);
+          const summary = await this.projectSlugs()
+            .then((slugs) => fetchUsageSummary(this.ctx, this.costInputs(slugs)))
+            .catch(() => undefined);
           const r = mapOrganization(
             accountId,
             inst,

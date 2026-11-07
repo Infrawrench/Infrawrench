@@ -221,6 +221,15 @@ describe("next links", () => {
     await expect(c.listResources("team", ACCOUNT)).rejects.toThrow(REFUSED);
     expect(calls).toHaveLength(1);
   });
+
+  it("carries a refusal through the project lookup a monitor list makes", async () => {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/projects/")
+        ? { body: [], headers: nextLink("https://evil.example/api/0/x/") }
+        : [],
+    );
+    await expect(c.listResources("monitor", ACCOUNT)).rejects.toThrow(REFUSED);
+  });
 });
 
 describe("host HTTP", () => {
@@ -238,6 +247,45 @@ describe("host HTTP", () => {
     expect(request.mock.calls[0]).not.toHaveProperty("0.caCert");
     expect(fetchStub).not.toHaveBeenCalled();
   });
+});
+
+describe("a failed read behind a list", () => {
+  it("fails the monitor list when the project lookup fails", async () => {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/projects/") ? { status: 500, body: { detail: "down" } } : [],
+    );
+    await expect(c.listResources("monitor", ACCOUNT)).rejects.toThrow(/500/);
+  });
+
+  it("lists monitors without slugs for a token that may not read projects", async () => {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/projects/")
+        ? { status: 403, body: { detail: "no" } }
+        : [{ id: "7", name: "Errors", type: "metric_issue", projectId: "11" }],
+    );
+    const [m] = await c.listResources("monitor", ACCOUNT);
+    expect(m?.externalId).toBe("7");
+  });
+
+  it("still shows an organization when the project lookup for its usage fails", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname === `${ORG}/`) return { id: "1", slug: "acme", name: "Acme" };
+      return { status: 500, body: { detail: "down" } };
+    });
+    await expect(
+      c.getResource("organization", `${ACCOUNT}:organization:acme`, ACCOUNT),
+    ).resolves.toMatchObject({ externalId: "acme" });
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+  const range = { fromDate: `${today.slice(0, 7)}-01`, toDate: today };
+
+  /** Everything cost collection reads, with the uptime list answered by `uptime`. */
+  const costRoute = (uptime: () => unknown) => (call: Call) => {
+    if (call.url.pathname.endsWith("/stats_v2/")) return stats(range.fromDate, 1, []);
+    if (call.url.pathname.endsWith("/uptime/")) return uptime();
+    return [];
+  };
 });
 
 describe("writes with a blank id", () => {
