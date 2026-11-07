@@ -887,7 +887,7 @@ export class NetlifyClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (typeId === "netlify-site") {
-        const siteId = resourceId.split(":").pop() ?? "";
+        const siteId = lastId(resourceId);
         const body: NetlifySiteUpdate = {};
         if (fields["name"]) body.name = fields["name"];
         if (fields["forceSsl"] !== undefined) body.force_ssl = fields["forceSsl"] === "true";
@@ -964,7 +964,7 @@ export class NetlifyClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const last = resourceId.split(":").pop() ?? "";
+      const last = lastId(resourceId);
       if (typeId === "netlify-site") {
         switch (actionId) {
           case "build":
@@ -1131,6 +1131,7 @@ export class NetlifyClient implements PluginClient {
         if (slashIdx < 0) throw new Error("Netlify plugin: cannot parse env var");
         const siteId = compound.slice(0, slashIdx);
         const key = compound.slice(slashIdx + 1);
+        if (!siteId || !key) throw new Error("Netlify plugin: cannot parse env var");
         const account = await this.siteAccountId(siteId);
         await this.api.delete(`/accounts/${pathEncode(account)}/env/${pathEncode(key)}`, {
           query: { site_id: siteId },
@@ -1150,7 +1151,7 @@ export class NetlifyClient implements PluginClient {
       }
 
       if (typeId === "netlify-database") {
-        await this.api.delete(`/sites/${pathEncode(resourceId.split(":").pop() ?? "")}/database`);
+        await this.api.delete(`/sites/${pathEncode(lastId(resourceId))}/database`);
         return;
       }
 
@@ -2331,8 +2332,18 @@ function wholeNumber(fields: Record<string, string>, key: string): number | unde
 function splitSiteChild(resourceId: string): { siteId: string; childId: string } {
   const compound = resourceId.split(":").slice(2).join(":");
   const slash = compound.indexOf("/");
-  if (slash <= 0) throw new Error(`Netlify plugin: cannot parse resource id "${resourceId}"`);
-  return { siteId: compound.slice(0, slash), childId: compound.slice(slash + 1) };
+  const childId = compound.slice(slash + 1);
+  if (slash <= 0 || !childId) {
+    throw new Error(`Netlify plugin: cannot parse resource id "${resourceId}"`);
+  }
+  return { siteId: compound.slice(0, slash), childId };
+}
+
+/** The id ending a resource id. A blank one is refused: it would aim a write at another route. */
+function lastId(resourceId: string): string {
+  const id = resourceId.split(":").pop();
+  if (!id) throw new Error(`Netlify plugin: cannot parse resource id "${resourceId}"`);
+  return id;
 }
 
 /** A `policy-picker` value: a JSON array of ids (tolerates a comma list). */

@@ -2186,3 +2186,46 @@ describe("reading a list to the end or failing", () => {
     });
   });
 });
+
+describe("a write with a blank id", () => {
+  const calledNothing = () => expect(calls).toEqual([]);
+  beforeEach(() => {
+    installFetch(() => {
+      throw new Error("nothing should be sent");
+    });
+  });
+
+  it.each([
+    ["netlify-database", "acct-1:netlify-database:"],
+    ["netlify-env-var", "acct-1:netlify-env-var:site1/"],
+    ["netlify-notification-hook", "acct-1:netlify-notification-hook:site1/"],
+    ["netlify-snippet", "acct-1:netlify-snippet:site1/"],
+  ])("refuses to delete %s", async (typeId, id) => {
+    await expect(client().deleteResource(typeId, id, ACCOUNT)).rejects.toThrow("cannot parse");
+    calledNothing();
+  });
+
+  it("refuses to update a site", async () => {
+    await expect(
+      client().updateResource("netlify-site", "acct-1:netlify-site:", ACCOUNT, { name: "n" }),
+    ).rejects.toThrow("cannot parse");
+    calledNothing();
+  });
+
+  it.each(["build", "rollback", "provision-ssl", "purge-cache"])(
+    "refuses the site action %s",
+    async (actionId) => {
+      await expect(
+        client().invokeAction("netlify-site", "acct-1:netlify-site:", actionId, ACCOUNT),
+      ).rejects.toThrow("cannot parse");
+      calledNothing();
+    },
+  );
+
+  it("refuses a database snapshot", async () => {
+    await expect(
+      client().invokeAction("netlify-database", "acct-1:netlify-database:", "snapshot", ACCOUNT),
+    ).rejects.toThrow("cannot parse");
+    calledNothing();
+  });
+});
