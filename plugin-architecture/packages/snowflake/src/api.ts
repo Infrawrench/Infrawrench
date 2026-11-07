@@ -15,7 +15,8 @@
  * - 202 means still running; the body carries `statementHandle` and
  *   `statementStatusUrl`, polled with GET until it turns into a 200.
  * - 422 is a SQL error with `code`, `message` and `sqlState`; 408 a timeout;
- *   429 a rate limit, retried with the same `requestId` and `retry=true`.
+ *   429 a rate limit, retried with the same `requestId` and `retry=true`. The
+ *   reference allows retrying 429, 503 and 504 with backoff on the GETs too.
  * - Values arrive as strings: numbers in decimal, booleans as "true"/"false",
  *   DATE as days since the epoch, TIMESTAMP_* as seconds since the epoch with
  *   nine decimals (TIMESTAMP_TZ followed by a space and the offset).
@@ -267,6 +268,21 @@ async function answerOf(
   }
 }
 
+const RETRIED_STATUSES = new Set([429, 503, 504]);
+const ATTEMPTS = 4;
+
+/** {@link answerOf}, sending again with backoff while Snowflake says to come back later. */
+async function answerWithRetries(
+  signal: AbortSignal | undefined,
+  call: (attempt: number) => Promise<{ status: number; body: string }>,
+): Promise<RawResponse> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await answerOf(signal, () => call(attempt));
+    if (!RETRIED_STATUSES.has(res.status) || attempt === ATTEMPTS - 1) return res;
+    await sleep(1000 * 2 ** attempt);
+  }
+}
+
 function parseBody(res: RawResponse): ResultSetBody {
   if (!res.text) return {};
   try {
@@ -388,17 +404,11 @@ export async function runSql(
   const api = apiOf(ctx);
   const requestId = uuid();
 
-  let res: RawResponse | undefined;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const retry = attempt > 0 ? "&retry=true" : "";
-    res = await answerOf(signal, () =>
-      submit(ctx, `?requestId=${requestId}${retry}`, body, signal),
-    );
-    if (res.status !== 429 && res.status !== 503 && res.status !== 504) break;
-    await sleep(1000 * 2 ** attempt);
-  }
-  let parsed = parseBody(res!);
-  let status = res!.status;
+  const res = await answerWithRetries(signal, (attempt) =>
+    submit(ctx, `?requestId=${requestId}${attempt > 0 ? "&retry=true" : ""}`, body, signal),
+  );
+  let parsed = parseBody(res);
+  let status = res.status;
 
   // Still running: poll the statement until it finishes.
   const started = Date.now();
@@ -411,19 +421,24 @@ export async function runSql(
     }
     await sleep(delay);
     delay = Math.min(delay * 2, 5000);
+    // Best effort: stop the warehouse work the caller no longer wants.
+    const cancel = () =>
+      api.post(`/api/v2/statements/${pathEncode(handle)}/cancel`).catch(() => undefined);
     if (signal?.aborted) {
-      // Best effort: stop the warehouse work the caller no longer wants.
-      await api.post(`/api/v2/statements/${pathEncode(handle)}/cancel`).catch(() => undefined);
+      await cancel();
       throw new SnowflakeError("Snowflake: the statement was cancelled.", 499);
     }
-    const poll = await answerOf(signal, () =>
+    const poll = await answerWithRetries(signal, () =>
       api.getText(`/api/v2/statements/${pathEncode(handle)}`, withSignal),
-    );
+    ).catch(async (err: unknown) => {
+      if (signal?.aborted) await cancel();
+      throw err;
+    });
     status = poll.status;
     parsed = parseBody(poll);
     if (status !== 200 && status !== 202) throw errorFor(poll, parsed);
   }
-  if (status !== 200) throw errorFor(res!, parsed);
+  if (status !== 200) throw errorFor(res, parsed);
 
   const columns: ColumnMeta[] = (parsed.resultSetMetaData?.rowType ?? []).map((c) => ({
     name: c.name,
@@ -442,7 +457,7 @@ export async function runSql(
     }
     const handle = parsed.statementHandle;
     if (!handle) break;
-    const part = await answerOf(signal, () =>
+    const part = await answerWithRetries(signal, () =>
       api.getText(`/api/v2/statements/${pathEncode(handle)}`, {
         query: { partition: p },
         ...withSignal,

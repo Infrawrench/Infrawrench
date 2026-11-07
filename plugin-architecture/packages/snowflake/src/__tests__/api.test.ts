@@ -37,6 +37,131 @@ describe("decodeCell", () => {
   });
 });
 
+/** Answers each request from a script, and fails the test on anything it did not expect. */
+function scriptedFetch(
+  script: Array<{ match: (method: string, url: string) => boolean; res: () => Response }>,
+) {
+  const calls: Array<{ method: string; url: string }> = [];
+  const remaining = [...script];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      const url = String(input);
+      calls.push({ method, url });
+      const at = remaining.findIndex((step) => step.match(method, url));
+      if (at < 0) throw new Error(`unexpected request: ${method} ${url}`);
+      return remaining.splice(at, 1)[0]!.res();
+    }),
+  );
+  return calls;
+}
+
+const isPost = (method: string) => method === "POST";
+const isPoll = (method: string, url: string) => method === "GET" && url.endsWith("/statements/abc");
+const isPartition = (method: string, url: string) =>
+  method === "GET" && url.endsWith("partition=1");
+const accepted = () => jsonResponse(202, { statementHandle: "abc" });
+const finished = () =>
+  jsonResponse(200, resultSet([{ name: "NAME" }], [["a"]], { statementHandle: "abc" }));
+const twoPartitions = () =>
+  jsonResponse(
+    200,
+    resultSet([{ name: "NAME" }], [["a"]], {
+      statementHandle: "abc",
+      resultSetMetaData: {
+        rowType: [{ name: "NAME", type: "text" }],
+        partitionInfo: [{ rowCount: 1 }, { rowCount: 1 }],
+      },
+    }),
+  );
+
+/** Runs `read` to the end with the backoff sleeps skipped. */
+async function withoutWaiting<T>(read: () => Promise<T>): Promise<T> {
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  try {
+    const running = read();
+    const settled = running.then(
+      () => undefined,
+      () => undefined,
+    );
+    await vi.runAllTimersAsync();
+    await settled;
+    return await running;
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+describe("runSql on a transient answer after the submit", () => {
+  it.each([429, 503, 504])(
+    "polls again after a %d rather than losing the statement",
+    async (status) => {
+      const calls = scriptedFetch([
+        { match: isPost, res: accepted },
+        { match: isPoll, res: () => jsonResponse(status, { message: "busy" }) },
+        { match: isPoll, res: finished },
+      ]);
+      const res = await withoutWaiting(() => runSql(ctx(), "SELECT 1"));
+      expect(res.rows).toEqual([{ name: "a" }]);
+      expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+      expect(calls.filter((c) => c.method === "GET")).toHaveLength(2);
+    },
+  );
+
+  it.each([429, 503, 504])("reads a partition again after a %d", async (status) => {
+    const calls = scriptedFetch([
+      { match: isPost, res: twoPartitions },
+      { match: isPartition, res: () => jsonResponse(status, { message: "busy" }) },
+      { match: isPartition, res: () => jsonResponse(200, { data: [["b"]] }) },
+    ]);
+    const res = await withoutWaiting(() => runSql(ctx(), "SELECT 1"));
+    expect(res.rows).toEqual([{ name: "a" }, { name: "b" }]);
+    expect(calls.filter((c) => c.method === "GET")).toHaveLength(2);
+  });
+
+  it("gives up on a poll after four answers, with the status Snowflake sent", async () => {
+    const busy = { match: isPoll, res: () => jsonResponse(503, { message: "busy" }) };
+    const calls = scriptedFetch([{ match: isPost, res: accepted }, busy, busy, busy, busy]);
+    const err = await withoutWaiting(() => runSql(ctx(), "SELECT 1")).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SnowflakeError);
+    expect(err).toMatchObject({ status: 503 });
+    expect(calls.filter((c) => c.method === "GET")).toHaveLength(4);
+  });
+
+  it("does not repeat a poll that failed for good", async () => {
+    const calls = scriptedFetch([
+      { match: isPost, res: accepted },
+      { match: isPoll, res: () => jsonResponse(422, { code: "000603", message: "SQL failed" }) },
+    ]);
+    await expect(runSql(ctx(), "SELECT 1")).rejects.toMatchObject({ status: 422 });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("cancels the statement when the caller aborts while a poll is backing off", async () => {
+    const controller = new AbortController();
+    const calls = scriptedFetch([
+      { match: isPost, res: accepted },
+      {
+        match: isPoll,
+        res: () => {
+          controller.abort();
+          return jsonResponse(503, { message: "busy" });
+        },
+      },
+      {
+        match: (method, url) => isPost(method) && url.endsWith("/statements/abc/cancel"),
+        res: () => jsonResponse(200, { statementHandle: "abc" }),
+      },
+    ]);
+    const err = await withoutWaiting(() =>
+      runSql(ctx(), "SELECT 1", { signal: controller.signal }),
+    ).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 499 });
+    expect(calls.at(-1)?.url).toMatch(/\/statements\/abc\/cancel$/);
+  });
+});
+
 describe("quoting", () => {
   it("doubles quotes in identifiers and escapes literals", () => {
     expect(qualified('my"db', "s")).toBe('"my""db"."s"');
