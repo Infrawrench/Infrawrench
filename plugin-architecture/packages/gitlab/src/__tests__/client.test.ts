@@ -167,6 +167,28 @@ describe("the projects whose reports are read", () => {
     expect(unread()).toEqual([{ parentResourceIds: [`${ACC}:project:101`, `${ACC}:project:102`] }]);
   });
 
+  it("lists children for every project where the host keeps no track of the rest", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === "/api/v4/projects" ? projects(102) : [],
+    );
+    await c.listResources("environment", ACC);
+    expect(calls.filter((x) => x.url.pathname.endsWith("/environments"))).toHaveLength(102);
+  });
+
+  it("reads every project's runners where the host keeps no track of the rest", async () => {
+    const { c, calls } = client(
+      (call) => {
+        if (call.url.pathname.endsWith("/projects")) return projects(101);
+        if (call.url.pathname === "/api/v4/groups/g") return { id: 1, full_path: "g" };
+        return [];
+      },
+      { group: "g" },
+    );
+    await c.listResources("runner", ACC);
+    const asked = calls.filter((x) => /\/projects\/\d+\/runners$/.test(x.url.pathname));
+    expect(asked.length).toBeGreaterThan(FANOUT_LIMIT);
+  });
+
   it("says nothing when it read every project", async () => {
     const { c } = client((call) => (call.url.pathname === "/api/v4/projects" ? projects(100) : []));
     const unread = collectUnread();

@@ -224,8 +224,16 @@ export class GitLabClient implements PluginClient {
   }
 
   /** The projects whose children are listed. */
-  private async fanout(filter: (p: GlProject) => boolean = () => true): Promise<GlProject[]> {
-    return (await this.activeProjects()).slice(0, FANOUT_LIMIT).filter(filter);
+  /**
+   * The projects whose children are read. `tracked` is false where the host keeps no track
+   * of the rest, which then reads every project: it prunes nothing and has no poll to outlast.
+   */
+  private async fanout(
+    filter: (p: GlProject) => boolean = () => true,
+    tracked = true,
+  ): Promise<GlProject[]> {
+    const projects = await this.activeProjects();
+    return (tracked ? projects.slice(0, FANOUT_LIMIT) : projects).filter(filter);
   }
 
   /** The projects whose children are not listed, which a sync must not read as having none. */
@@ -292,12 +300,12 @@ export class GitLabClient implements PluginClient {
   ): Promise<ResourceInstance[]> {
     const out: ResourceInstance[] = [];
     const past = await this.projectsPastFanout();
-    if (past.length > 0) {
+    const tracked =
+      past.length === 0 ||
       reportUnreadListPart({
         parentResourceIds: past.map((p) => `${accountId}:project:${p.id}`),
       });
-    }
-    for (const p of await this.fanout(filter)) {
+    for (const p of await this.fanout(filter, tracked)) {
       try {
         out.push(...(await fn(scopeOfProject(p), p)));
       } catch (err) {
@@ -564,10 +572,10 @@ export class GitLabClient implements PluginClient {
         );
       }
       // A runner names no parent, so a project's runners can only be left as a whole type.
-      if ((await this.projectsPastFanout()).length > 0) {
+      const tracked =
+        (await this.projectsPastFanout()).length === 0 ||
         reportUnreadListPart({ idPrefixes: [`${accountId}:runner:`] });
-      }
-      for (const p of await this.fanout(GitLabClient.maintainer)) {
+      for (const p of await this.fanout(GitLabClient.maintainer, tracked)) {
         add(
           await this.api
             .getAll(`/projects/${pathEncode(p.id)}/runners`, null, {
