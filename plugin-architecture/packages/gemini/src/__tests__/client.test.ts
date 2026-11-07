@@ -261,19 +261,52 @@ describe("file-search documents fan out over stores", () => {
     expect(docs[0]!.parentResourceId).toBe(`${ACCOUNT}:file-search-store:s1`);
   });
 
-  it("does not let one unreadable store blank the whole listing", async () => {
+  const twoStores = {
+    fileSearchStores: [{ name: "fileSearchStores/s1" }, { name: "fileSearchStores/s2" }],
+  };
+
+  it.each([403, 429, 500])("fails the list when a store's documents answer %i", async (status) => {
     installFetch((url) => {
-      if (url.includes("fileSearchStores/s1/documents")) return jsonResponse("nope", 403);
+      if (url.includes("fileSearchStores/s1/documents")) return jsonResponse("nope", status);
       if (url.includes("/documents")) {
         return jsonResponse({ documents: [{ name: "fileSearchStores/s2/documents/d1" }] });
       }
-      return jsonResponse({
-        fileSearchStores: [{ name: "fileSearchStores/s1" }, { name: "fileSearchStores/s2" }],
-      });
+      return jsonResponse(twoStores);
+    });
+
+    await expect(client().listResources("file-search-document", ACCOUNT)).rejects.toThrow(
+      `Gemini API error ${status}`,
+    );
+  });
+
+  it("fails the list when a later page of a store's documents fails", async () => {
+    installFetch((url) => {
+      if (url.includes("pageToken=t2")) return jsonResponse("boom", 500);
+      if (url.includes("/documents")) {
+        return jsonResponse({
+          documents: [{ name: "fileSearchStores/s1/documents/d1" }],
+          nextPageToken: "t2",
+        });
+      }
+      return jsonResponse(twoStores);
+    });
+
+    await expect(client().listResources("file-search-document", ACCOUNT)).rejects.toThrow(
+      "Gemini API error 500",
+    );
+  });
+
+  it("reads a store deleted since the store list as having no documents", async () => {
+    installFetch((url) => {
+      if (url.includes("fileSearchStores/s1/documents")) return jsonResponse("gone", 404);
+      if (url.includes("/documents")) {
+        return jsonResponse({ documents: [{ name: "fileSearchStores/s2/documents/d1" }] });
+      }
+      return jsonResponse(twoStores);
     });
 
     const docs = await client().listResources("file-search-document", ACCOUNT);
-    expect(docs).toHaveLength(1);
+    expect(docs.map((d) => d.externalId)).toEqual(["fileSearchStores/s2/documents/d1"]);
   });
 });
 

@@ -607,8 +607,12 @@ export class GeminiClient implements PluginClient {
     for (const store of stores) {
       const storeName = store.name;
       if (!storeName) continue;
-      // One unreadable store shouldn't blank the whole listing.
-      const documents = await this.safely(() => this.fetchFileSearchDocuments(storeName), []);
+      // A store deleted since the store list has no documents. Any other failure throws,
+      // because a sync prunes what a list stops returning.
+      const documents = await this.fetchFileSearchDocuments(storeName).catch((error: unknown) => {
+        if (error instanceof Error && error.message.startsWith("Gemini API error 404 ")) return [];
+        throw error;
+      });
       for (const doc of documents) {
         if (!doc.name) continue;
         out.push(this.mapFileSearchDocument(accountId, storeName, doc, now));
