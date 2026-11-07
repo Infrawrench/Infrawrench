@@ -769,3 +769,81 @@ describe("reading a list", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe("a failed read under a derived list", () => {
+  /** An account with two owned models, one a deployment's target and one a training's destination. */
+  const routes =
+    (overrides: Record<string, () => Response>) =>
+    (url: string): Response => {
+      const path = new URL(url).pathname.replace("/v1", "");
+      const override = overrides[path];
+      if (override) return override();
+      if (path === "/account") return jsonResponse({ type: "user", username: "acme" });
+      if (path === "/deployments") {
+        return jsonResponse({
+          results: [{ owner: "acme", name: "d", current_release: { model: "acme/one" } }],
+        });
+      }
+      if (path === "/trainings") {
+        return jsonResponse({
+          results: [{ id: "t", model: "o/trainer", input: { destination: "acme/two" } }],
+        });
+      }
+      if (path === "/predictions") return jsonResponse({ results: [] });
+      if (path === "/models/acme/one/versions") return jsonResponse({ results: [{ id: "v1" }] });
+      if (path === "/models/acme/two/versions") return jsonResponse({ results: [{ id: "v2" }] });
+      throw new Error(`unrouted: ${url}`);
+    };
+  const failing = () => jsonResponse("boom", 500);
+
+  it.each([["/deployments"], ["/trainings"], ["/predictions"]])(
+    "fails the model list when %s fails, rather than dropping what it holds",
+    async (path) => {
+      installFetch(routes({ [path]: failing }));
+      await expect(client().listResources("model", ACCOUNT)).rejects.toThrow(
+        `Replicate API error 500 for ${path}`,
+      );
+    },
+  );
+
+  it("fails the version list when one of the reads under the model list fails", async () => {
+    installFetch(routes({ "/deployments": failing }));
+    await expect(client().listResources("model-version", ACCOUNT)).rejects.toThrow(
+      "Replicate API error 500 for /deployments",
+    );
+  });
+
+  it("still lists models when only the account fails, which only decides their order", async () => {
+    installFetch(routes({ "/account": failing }));
+    const models = await client().listResources("model", ACCOUNT);
+    expect(models.map((m) => m.externalId)).toEqual(["acme/one", "acme/two", "o/trainer"]);
+  });
+
+  it("fails the version list when the account fails, not knowing which models are owned", async () => {
+    installFetch(routes({ "/account": failing }));
+    await expect(client().listResources("model-version", ACCOUNT)).rejects.toThrow(
+      "Replicate API error 500 for /account",
+    );
+  });
+
+  it("fails the version list when the account names no username", async () => {
+    installFetch(routes({ "/account": () => jsonResponse({ type: "user" }) }));
+    await expect(client().listResources("model-version", ACCOUNT)).rejects.toThrow("no username");
+  });
+
+  it.each([[500], [401], [403], [429]])(
+    "fails the version list when a model's versions answer %i",
+    async (status) => {
+      installFetch(routes({ "/models/acme/two/versions": () => jsonResponse("boom", status) }));
+      await expect(client().listResources("model-version", ACCOUNT)).rejects.toThrow(
+        `Replicate API error ${status} for /models/acme/two/versions`,
+      );
+    },
+  );
+
+  it("keeps the other models' versions when one model has been deleted", async () => {
+    installFetch(routes({ "/models/acme/two/versions": () => jsonResponse("gone", 404) }));
+    const versions = await client().listResources("model-version", ACCOUNT);
+    expect(versions.map((v) => v.externalId)).toEqual(["acme/one/v1"]);
+  });
+});

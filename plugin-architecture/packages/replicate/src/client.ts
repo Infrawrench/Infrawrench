@@ -22,7 +22,6 @@ import {
   formatBytes,
   pathEncode,
   requireListPage,
-  rethrowIncompleteList,
   withMetricsCapability,
   type ApiBody,
   type ApiClient,
@@ -33,6 +32,7 @@ import {
   createReplicateTextApi,
   deleteVersionRequest,
   encodePath,
+  isNotFound,
   replicatePages,
   VENDOR,
   type ReplicateAccount,
@@ -287,23 +287,15 @@ export class ReplicateClient implements PluginClient {
    * derive the models this account actually touches: everything it owns that
    * shows up as a deployment target, a training destination, or a recent
    * prediction. `getResource` then fetches the full record for whichever one
-   * the user opens.
+   * the user opens. A failed read fails the list, since a sync would read what
+   * that read held as deleted. Only the account is optional: it decides the order.
    */
   private async listAccountModels(accountId: string): Promise<ResourceInstance[]> {
     const [account, deployments, trainings, predictions] = await Promise.all([
       this.fetchAccount().catch((): ReplicateAccount => ({})),
-      this.pages.getAll("/deployments", "results").catch((err): ReplicateDeployment[] => {
-        rethrowIncompleteList(err);
-        return [];
-      }),
-      this.recentTrainings().catch((err): ReplicateTraining[] => {
-        rethrowIncompleteList(err);
-        return [];
-      }),
-      this.recentPredictions().catch((err): ReplicatePrediction[] => {
-        rethrowIncompleteList(err);
-        return [];
-      }),
+      this.pages.getAll("/deployments", "results"),
+      this.recentTrainings(),
+      this.recentPredictions(),
     ]);
 
     /** `owner/name` → most recently seen version id. */
@@ -347,14 +339,18 @@ export class ReplicateClient implements PluginClient {
    * Versions of the models this account owns. Only owned models are walked:
    * `GET /v1/models/{owner}/{name}/versions` works on any public model, but
    * the only versions a user can act on (delete, deploy from their own
-   * pushes) are their own. A failing model is skipped rather than failing the
-   * whole list, since one deleted model should not hide every other version.
+   * pushes) are their own. A model that answers 404 has no versions, since this
+   * list can know one from an old run after it was deleted, and one deleted model
+   * should not hide every other version. Any other failure fails the list.
    * https://replicate.com/docs/reference/http#models.versions.list
    */
   private async listOwnedModelVersions(accountId: string): Promise<ResourceInstance[]> {
-    const account = await this.fetchAccount().catch((): ReplicateAccount => ({}));
-    const username = account.username ?? "";
-    if (!username) return [];
+    const { username } = await this.fetchAccount();
+    if (!username) {
+      throw new Error(
+        "Replicate plugin: GET /account answered with no username, so which models this account owns is unknown",
+      );
+    }
     const models = await this.listAccountModels(accountId);
     const owned = models.filter((model) => model.fields["owner"] === username);
     const perModel = await Promise.all(
@@ -365,8 +361,8 @@ export class ReplicateClient implements PluginClient {
             maxPages: MAX_PAGES_VERSIONS,
           })
           .catch((err): ReplicateVersion[] => {
-            rethrowIncompleteList(err);
-            return [];
+            if (isNotFound(err)) return [];
+            throw err;
           });
         // The list is newest first, so the first entry is the latest version.
         return versions.map((version, index) =>

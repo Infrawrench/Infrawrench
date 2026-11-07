@@ -46,6 +46,20 @@ export interface ReplicateConnection {
   http: HttpHostServices | undefined;
 }
 
+/** A non-2xx answer, for a read that has to tell "this is gone" from "this failed". */
+export class ReplicateApiError extends Error {
+  readonly status: number;
+  constructor(status: number, target: string, body: string) {
+    super(`${VENDOR} API error ${status} for ${target}: ${body}`);
+    this.name = "ReplicateApiError";
+    this.status = status;
+  }
+}
+
+export function isNotFound(err: unknown): boolean {
+  return err instanceof ReplicateApiError && err.status === 404;
+}
+
 function jsonHeaders(apiToken: string): Record<string, string> {
   return { Authorization: `Bearer ${apiToken}`, Accept: "application/json" };
 }
@@ -65,6 +79,7 @@ export function createReplicateApi({
     headers: jsonHeaders(apiToken),
     http,
     caCert,
+    httpError: ({ status, target, body }) => new ReplicateApiError(status, target, body),
   });
 }
 
