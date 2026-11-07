@@ -1,5 +1,5 @@
 import type { CostFetchRange, CostRow, MetricSeries } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import { CostSetupError, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { PostHogContext, SpendPoint, SpendQuery } from "./api.js";
 import { statusOf } from "./api.js";
 
@@ -14,6 +14,11 @@ import { statusOf } from "./api.js";
  */
 
 const HELP = { label: "PostHog billing", url: "https://posthog.com/docs/billing" };
+
+const SPEND_PATH = "/api/billing/spend/";
+/** The most `page_size` allows. */
+const SPEND_PAGE = 1000;
+const MAX_SPEND_PAGES = 20;
 
 /** Product label and team id of one series. */
 export function seriesKey(s: SpendPoint): { product: string; teamId?: string } {
@@ -34,10 +39,10 @@ export function seriesKey(s: SpendPoint): { product: string; teamId?: string } {
 async function spend(ctx: PostHogContext, query: SpendQuery): Promise<SpendPoint[]> {
   const out: SpendPoint[] = [];
   let after: string | undefined;
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < MAX_SPEND_PAGES; i++) {
     let res;
     try {
-      res = await ctx.api.get("/api/billing/spend/", {
+      res = await ctx.api.get(SPEND_PATH, {
         query: { ...query, ...(after ? { after } : {}) },
       });
     } catch (err) {
@@ -56,11 +61,19 @@ async function spend(ctx: PostHogContext, query: SpendQuery): Promise<SpendPoint
       }
       throw err;
     }
-    out.push(...(res?.results ?? []));
+    out.push(
+      ...requireListPage(res?.results, { vendor: "PostHog", path: SPEND_PATH, key: "results" }),
+    );
     after = typeof res?.next === "string" && res.next ? cursorOf(res.next) : undefined;
-    if (!after || !query.page_size) break;
+    // `after` is ignored without `page_size`, so there is no second page to ask for.
+    if (!after || !query.page_size) return out;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: "PostHog",
+    path: SPEND_PATH,
+    items: out.length,
+    maxPages: MAX_SPEND_PAGES,
+  });
 }
 
 function cursorOf(next: string): string | undefined {
@@ -82,7 +95,7 @@ export async function fetchPostHogCost(
     end_date: range.toDate || null,
     interval: "day",
     breakdowns: JSON.stringify(["type", "team"]),
-    page_size: 100,
+    page_size: SPEND_PAGE,
   });
   const merged = new Map<string, CostRow>();
   for (const s of series) {

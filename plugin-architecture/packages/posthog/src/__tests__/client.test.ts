@@ -336,6 +336,82 @@ describe("reading a whole list", () => {
   });
 });
 
+describe("reading all of the spend", () => {
+  const RANGE = { fromDate: "2026-10-01", toDate: "2026-10-02" };
+  const spendClient = (
+    spend: (url: URL) => object,
+    projects: object = PROJECTS,
+  ): { read: () => Promise<unknown>; calls: Recorded[] } => {
+    const { http, calls } = makeHttp((url) => {
+      if (url.pathname === "/api/organizations/org-1/projects/") return { body: projects };
+      if (url.pathname === "/api/billing/spend/") return { body: spend(url) };
+      return undefined;
+    });
+    const client = hostClient(new PostHogClient(CREDS, { http }));
+    return { read: () => client.fetchCostData("acct", RANGE), calls };
+  };
+  const spendCalls = (calls: Recorded[]) =>
+    calls.filter((c) => c.url.pathname === "/api/billing/spend/");
+
+  it("asks for the largest page the document allows and follows the cursor", async () => {
+    const { read, calls } = spendClient((url) =>
+      url.searchParams.get("after")
+        ? { results: [] }
+        : { results: [], next: "https://eu.posthog.com/api/billing/spend/?after=abc" },
+    );
+    await read();
+    expect(spendCalls(calls).map((c) => c.url.searchParams.get("page_size"))).toEqual([
+      "1000",
+      "1000",
+    ]);
+    expect(spendCalls(calls)[1]?.url.searchParams.get("after")).toBe("abc");
+  });
+
+  it("throws at the page cap rather than answer part of the spend", async () => {
+    const { read, calls } = spendClient(() => ({ results: [], next: "more" }));
+    await expect(read()).rejects.toThrow("has more than Infrawrench reads");
+    expect(spendCalls(calls)).toHaveLength(20);
+  });
+
+  it("throws on a page whose list is not a list, first or later", async () => {
+    await expect(spendClient(() => ({ rows: [] })).read()).rejects.toThrow("is not a list");
+    await expect(
+      spendClient((url) =>
+        url.searchParams.get("after") ? { rows: [] } : { results: [], next: "more" },
+      ).read(),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("does not take a project list it could not read as no projects", async () => {
+    await expect(spendClient(() => ({ results: [] }), { rows: [] }).read()).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("still costs an account whose key cannot list projects, by project id", async () => {
+    const { http } = makeHttp((url) => {
+      if (url.pathname === "/api/organizations/org-1/projects/") {
+        return { status: 403, body: { detail: "scope" } };
+      }
+      if (url.pathname !== "/api/billing/spend/") return undefined;
+      return {
+        body: {
+          results: [
+            {
+              label: "7::Events",
+              dates: ["2026-10-01"],
+              data: [2],
+              breakdown_value: ["events", "7"],
+            },
+          ],
+        },
+      };
+    });
+    const rows = await hostClient(new PostHogClient(CREDS, { http })).fetchCostData("acct", RANGE);
+    expect(rows[0]?.tags).toEqual({ project: "7" });
+  });
+});
+
 describe("helpers", () => {
   it("builds rollouts, escapes HogQL and reads spend keys", () => {
     expect(withRollout({}, 20)).toEqual({ groups: [{ properties: [], rollout_percentage: 20 }] });

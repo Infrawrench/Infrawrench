@@ -14,7 +14,12 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, unencodedSegment } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  pathEncode,
+  rethrowIncompleteList,
+  unencodedSegment,
+} from "@infrawrench/plugin-base";
 import type {
   FlagFilters,
   ObjectPatches,
@@ -321,8 +326,11 @@ export class PostHogClient implements PluginClient {
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
       const names = new Map<string, string>();
-      for (const p of await this.projects().catch(() => []))
-        names.set(str(p.id), str(p.name) || str(p.id));
+      const projects = await this.projects().catch((err) => {
+        rethrowIncompleteList(err);
+        return [];
+      });
+      for (const p of projects) names.set(str(p.id), str(p.name) || str(p.id));
       return fetchPostHogCost(this.ctx, range, names);
     });
   }
