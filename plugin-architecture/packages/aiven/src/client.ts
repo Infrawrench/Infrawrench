@@ -54,6 +54,7 @@ import type {
   AvService,
   AvServiceTypes,
   AvTopicDetail,
+  AvVpc,
   AvVpcRow,
   JsonValue,
   Loose,
@@ -139,6 +140,7 @@ export class AivenClient implements PluginClient {
     projects: ttlCache<AvProject[]>(),
     services: ttlCache<Array<{ project: string; svc: AvService }>>(),
     vpcs: ttlCache<Array<{ project: string; vpc: AvVpcRow }>>(),
+    vpcDetails: ttlCache<Array<{ project: string; vpc: Loose<AvVpc> }>>(),
     billingGroups: ttlCache<AvBillingGroup[]>(),
     clouds: ttlCache<AvCloud[]>(),
     plans: ttlCache<AvPlan[]>(),
@@ -199,6 +201,26 @@ export class AivenClient implements PluginClient {
         const res = await this.api.get(`/project/${enc(p.project_name)}/vpcs`);
         for (const vpc of res?.vpcs ?? [])
           if (vpc.state !== "DELETED") out.push({ project: p.project_name, vpc });
+      }
+      return out;
+    });
+  }
+
+  /** A row of the list route has no peerings, so the count and the peerings come from here. */
+  private vpcDetails(): Promise<Array<{ project: string; vpc: Loose<AvVpc> }>> {
+    return this.cache.vpcDetails.get("vpc-details", async () => {
+      const out: Array<{ project: string; vpc: Loose<AvVpc> }> = [];
+      for (const { project, vpc } of await this.vpcs()) {
+        if (!vpc.project_vpc_id) continue;
+        try {
+          const full = await this.api.get(
+            `/project/${enc(project)}/vpcs/${enc(vpc.project_vpc_id)}`,
+          );
+          out.push({ project, vpc: { ...vpc, ...full } });
+        } catch (err) {
+          // Deleted since the list was read.
+          if (statusOf(err) !== 404) throw err;
+        }
       }
       return out;
     });
@@ -362,18 +384,15 @@ export class AivenClient implements PluginClient {
           return [...seen.values()];
         }
         case T.vpc:
-          return (await this.vpcs()).map(({ project, vpc }) => mapVpc(accountId, project, vpc));
-        case T.peering: {
-          const out: ResourceInstance[] = [];
-          for (const { project, vpc } of await this.vpcs()) {
-            const full = await this.api
-              .get(`/project/${enc(project)}/vpcs/${enc(vpc.project_vpc_id ?? "")}`)
-              .catch(() => undefined);
-            for (const p of full?.peering_connections ?? [])
-              out.push(mapPeering(accountId, project, vpc.project_vpc_id ?? "", p));
-          }
-          return out;
-        }
+          return (await this.vpcDetails()).map(({ project, vpc }) =>
+            mapVpc(accountId, project, vpc),
+          );
+        case T.peering:
+          return (await this.vpcDetails()).flatMap(({ project, vpc }) =>
+            (vpc.peering_connections ?? []).map((p) =>
+              mapPeering(accountId, project, vpc.project_vpc_id ?? "", p),
+            ),
+          );
         case T.billingGroup:
           return (await this.billingGroups()).map((b) => mapBillingGroup(accountId, b));
         default:

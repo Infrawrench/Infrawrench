@@ -207,6 +207,70 @@ describe("Kafka topic partitions", () => {
   });
 });
 
+describe("VPC peering count", () => {
+  const routes = {
+    "GET /project": { projects: [{ project_name: "acme" }] },
+    "GET /project/acme/vpcs": {
+      vpcs: [
+        {
+          project_vpc_id: "v1",
+          cloud_name: "aws-eu-west-1",
+          network_cidr: "10.0.0.0/24",
+          state: "ACTIVE",
+        },
+      ],
+    },
+    "GET /project/acme/vpcs/v1": {
+      project_vpc_id: "v1",
+      cloud_name: "aws-eu-west-1",
+      network_cidr: "10.0.0.0/24",
+      state: "ACTIVE",
+      peering_connections: [
+        { peer_cloud_account: "111", peer_vpc: "vpc-a", state: "ACTIVE" },
+        { peer_cloud_account: "222", peer_vpc: "vpc-b", state: "PENDING_PEER" },
+      ],
+    },
+  };
+
+  it("reads the count from the detail route, which is the only one that has it", async () => {
+    mockFetch(routes);
+    const [vpc] = await hostClient(new AivenClient({ apiToken: "x" })).listResources(
+      "aiven-vpc",
+      ACC,
+    );
+    expect(vpc!.fields["peerings"]).toBe(2);
+    expect(vpc!.externalId).toBe("acme/v1");
+  });
+
+  it("reads each VPC once when both the VPCs and their peerings are listed", async () => {
+    const calls = mockFetch(routes);
+    const c = hostClient(new AivenClient({ apiToken: "x" }));
+    await c.listResources("aiven-vpc", ACC);
+    const peerings = await c.listResources("aiven-vpc-peering", ACC);
+    expect(peerings).toHaveLength(2);
+    expect(calls.filter((x) => x.url.pathname.endsWith("/vpcs/v1"))).toHaveLength(1);
+  });
+
+  it("drops a VPC deleted between the list and its read", async () => {
+    const { "GET /project/acme/vpcs/v1": _gone, ...rest } = routes;
+    mockFetch(rest);
+    await expect(
+      hostClient(new AivenClient({ apiToken: "x" })).listResources("aiven-vpc", ACC),
+    ).resolves.toEqual([]);
+  });
+
+  it("fails the list when a VPC cannot be read, so stored rows are kept", async () => {
+    const failure = () =>
+      new Response(JSON.stringify({ message: "boom" }), {
+        status: 500,
+      });
+    mockFetch({ ...routes, "GET /project/acme/vpcs/v1": failure });
+    const c = hostClient(new AivenClient({ apiToken: "x" }));
+    await expect(c.listResources("aiven-vpc", ACC)).rejects.toThrow(/500/);
+    await expect(c.listResources("aiven-vpc-peering", ACC)).rejects.toThrow(/500/);
+  });
+});
+
 describe("Kafka connection string", () => {
   it("uses the SASL endpoint and inlines the CA", () => {
     const uri = serviceConnectionString(
