@@ -125,6 +125,8 @@ const SERVICE_CHILD_TYPES = new Set([
 interface ServiceRead {
   services: FastlyServiceDetail[];
   later: ReadonlySet<string>;
+  /** Services whose details the token was refused, with the refusal. */
+  refused: ReadonlyMap<string, unknown>;
 }
 
 /**
@@ -181,6 +183,8 @@ export function parseKeys(raw: string): string[] {
 export class FastlyClient implements PluginClient {
   private readonly ctx: FastlyContext;
   private servicesCache: { at: number; value: Promise<ServiceRead> } | undefined;
+  /** The same with every service's details, for a host that keeps no track of the rest. */
+  private wholeServicesCache: { at: number; value: Promise<ServiceRead> } | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["apiToken"] ?? "").trim();
@@ -225,12 +229,14 @@ export class FastlyClient implements PluginClient {
     return (await this.serviceRead()).services;
   }
 
-  /** The same, saying which services have only their summary because of the budget. */
-  private serviceRead(): Promise<ServiceRead> {
+  /**
+   * The same, saying which services have only their summary because of the budget, or
+   * with every service's details when `whole`, for a host that keeps no track of the rest.
+   */
+  private serviceRead(whole = false): Promise<ServiceRead> {
     const now = Date.now();
-    if (this.servicesCache && now - this.servicesCache.at < CACHE_TTL_MS) {
-      return this.servicesCache.value;
-    }
+    const cached = whole ? this.wholeServicesCache : this.servicesCache;
+    if (cached && now - cached.at < CACHE_TTL_MS) return cached.value;
     const value = (async () => {
       const list = await fastlyPaged<FastlyServiceSummary>(
         this.ctx,
@@ -239,30 +245,32 @@ export class FastlyClient implements PluginClient {
         SERVICE_PAGE,
       );
       const later = new Set(
-        fanOutWindow(list, MAX_DETAIL_SERVICES).later.map((svc) => svc.id ?? ""),
+        whole ? [] : fanOutWindow(list, MAX_DETAIL_SERVICES).later.map((svc) => svc.id ?? ""),
       );
+      const refused = new Map<string, unknown>();
       const services = await mapLimit(list, FAN_OUT, async (svc) => {
         if (!svc.id || later.has(svc.id)) return svc as FastlyServiceDetail;
         try {
           return await this.serviceDetail(svc.id);
         } catch (err) {
           // A token limited to other services sees the summary but not details.
+          if (statusOf(err) === 403) refused.set(svc.id, err);
           if (statusOf(err) === 403 || statusOf(err) === 404) return svc as FastlyServiceDetail;
           throw err;
         }
       });
-      return { services, later };
+      return { services, later, refused };
     })();
     const entry = { at: now, value };
-    this.servicesCache = entry;
-    value.then(
-      () => {
-        entry.at = Date.now();
-      },
-      () => {
-        if (this.servicesCache === entry) this.servicesCache = undefined;
-      },
-    );
+    const clear = () => {
+      if (whole && this.wholeServicesCache === entry) this.wholeServicesCache = undefined;
+      if (!whole && this.servicesCache === entry) this.servicesCache = undefined;
+    };
+    if (whole) this.wholeServicesCache = entry;
+    else this.servicesCache = entry;
+    value.then(() => {
+      entry.at = Date.now();
+    }, clear);
     return value;
   }
 
@@ -275,6 +283,7 @@ export class FastlyClient implements PluginClient {
 
   private invalidate(): void {
     this.servicesCache = undefined;
+    this.wholeServicesCache = undefined;
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
@@ -284,17 +293,19 @@ export class FastlyClient implements PluginClient {
           return [await this.loadAccount(accountId)];
         case "service":
           return this.scoped(async () => {
-            const [{ services, later }, products] = await Promise.all([
+            const [windowed, products] = await Promise.all([
               this.serviceRead(),
               enabledProductsByService(this.ctx).catch(() => new Map<string, string[]>()),
             ]);
             // A summary has no domains or backends, so writing one would blank them until
-            // this service's turn comes round. Its stored row stays as it is instead.
-            if (later.size > 0) {
+            // this service's turn comes round. Its stored row stays as it is instead. A host
+            // that keeps no track answers false, and there every service's details are read.
+            const tracked =
+              windowed.later.size === 0 ||
               reportUnreadListPart({
-                idPrefixes: [...later].map((id) => serviceResourceId(accountId, id)),
+                idPrefixes: [...windowed.later].map((id) => serviceResourceId(accountId, id)),
               });
-            }
+            const { services, later } = tracked ? windowed : await this.serviceRead(true);
             return services
               .filter((s) => !later.has(s.id ?? ""))
               .map((s) => mapService(accountId, s, products.get(s.id ?? "") ?? []));
@@ -410,10 +421,11 @@ export class FastlyClient implements PluginClient {
     return this.readDictionaries(accountId, [s]);
   }
 
-  private reportUnreadChildren(accountId: string, services: FastlyServiceDetail[]): void {
+  /** Whether the host keeps these services' stored children; true when there are none. */
+  private reportUnreadChildren(accountId: string, services: FastlyServiceDetail[]): boolean {
     const ids = services.flatMap((s) => (s.id ? [s.id] : []));
-    if (ids.length === 0) return;
-    reportUnreadListPart({
+    if (ids.length === 0) return true;
+    return reportUnreadListPart({
       parentResourceIds: ids.map((id) => serviceResourceId(accountId, id)),
     });
   }
@@ -428,16 +440,23 @@ export class FastlyClient implements PluginClient {
     unread: (s: FastlyServiceDetail) => boolean,
     children: (s: FastlyServiceDetail) => ResourceInstance[],
   ): Promise<ResourceInstance[]> {
-    const services = await this.services();
-    this.reportUnreadChildren(accountId, services.filter(unread));
-    return services.flatMap(children);
+    const windowed = await this.services();
+    if (this.reportUnreadChildren(accountId, windowed.filter(unread))) {
+      return windowed.flatMap(children);
+    }
+    // A host that keeps no track answers false: every service's details, or the refusal.
+    const whole = await this.serviceRead(true);
+    for (const s of whole.services) {
+      if (unread(s) && s.id && whole.refused.has(s.id)) throw whole.refused.get(s.id);
+    }
+    return whole.services.flatMap(children);
   }
 
   private async listLogging(accountId: string): Promise<ResourceInstance[]> {
     const parents = (await this.services()).filter((svc) => svc.id && liveVersionOf(svc));
     const { now, later } = fanOutWindow(parents, MAX_LOGGING_SERVICES);
-    this.reportUnreadChildren(accountId, later);
-    return this.readLogging(accountId, now);
+    // A host that keeps no track answers false, and there every service is read.
+    return this.readLogging(accountId, this.reportUnreadChildren(accountId, later) ? now : parents);
   }
 
   private async readLogging(
@@ -467,12 +486,14 @@ export class FastlyClient implements PluginClient {
     });
     // Nothing read at all is a token that cannot read this type, which `scoped` handles.
     if (refused[0] && refused.length === jobs.length) throw refused[0].err;
-    if (refused.length > 0) {
+    if (refused[0]) {
       // By id prefix rather than by service: one kind refused says nothing of the service's
-      // other kinds, and naming the service would keep their deleted rows forever.
-      reportUnreadListPart({
+      // other kinds, and naming the service would keep their deleted rows forever. A host
+      // that keeps no track answers false, and there the refusal shows.
+      const tracked = reportUnreadListPart({
         idPrefixes: refused.map((r) => `${accountId}:logging-endpoint:${r.serviceId}/${r.type}/`),
       });
+      if (!tracked) throw refused[0].err;
     }
     return results.flat();
   }
@@ -482,8 +503,11 @@ export class FastlyClient implements PluginClient {
       (svc) => svc.type !== "wasm" && svc.id && liveVersionOf(svc),
     );
     const { now, later } = fanOutWindow(parents, MAX_DICTIONARY_SERVICES);
-    this.reportUnreadChildren(accountId, later);
-    return this.readDictionaries(accountId, now);
+    // A host that keeps no track answers false, and there every service is read.
+    return this.readDictionaries(
+      accountId,
+      this.reportUnreadChildren(accountId, later) ? now : parents,
+    );
   }
 
   private async readDictionaries(
@@ -514,10 +538,16 @@ export class FastlyClient implements PluginClient {
     });
     // Nothing read at all is a token that cannot read this type, which `scoped` handles.
     if (refused[0] && refused.length === asked) throw refused[0].err;
-    this.reportUnreadChildren(
-      accountId,
-      refused.map((r) => r.svc),
-    );
+    // A host that keeps no track answers false, and there the refusal shows.
+    if (
+      refused[0] &&
+      !this.reportUnreadChildren(
+        accountId,
+        refused.map((r) => r.svc),
+      )
+    ) {
+      throw refused[0].err;
+    }
     return perService.flat();
   }
 

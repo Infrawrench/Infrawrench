@@ -308,6 +308,23 @@ describe("a refused list keeps its stored rows", () => {
     },
   );
 
+  it("shows a service's refused details where no host keeps track", async () => {
+    const { c } = clientWith(refusedOne);
+    await expect(c.listResources("domain", ACCOUNT)).rejects.toThrow(/403/);
+  });
+
+  it("shows one kind's refused logging and one service's refused dictionaries where no host keeps track", async () => {
+    const logging = clientWith((url) => {
+      if (url.pathname === "/service/SU1/version/2/logging/s3") {
+        return { status: 403, body: {} };
+      }
+      return oneServiceRefuses(url);
+    });
+    await expect(logging.c.listResources("logging-endpoint", ACCOUNT)).rejects.toThrow(/403/);
+    const dictionaries = clientWith(oneServiceRefuses);
+    await expect(dictionaries.c.listResources("dictionary", ACCOUNT)).rejects.toThrow(/403/);
+  });
+
   it("names no parent when every service's details were read", async () => {
     const parts = trackUnread();
     const { c } = clientWith((url) => serviceRoute(url) ?? { body: [] });
@@ -507,6 +524,16 @@ describe("a fan-out past one poll's budget", () => {
     expect([...unread.parents].sort()).toEqual([...later].sort());
     await expect(c.listResources("service-version", ACCOUNT)).resolves.toHaveLength(2003);
     expect(requestsTo(calls, (p) => p.endsWith("/details"))).toBe(2000);
+  });
+
+  it("reads every service where no host keeps track of the rest", async () => {
+    const { c, calls } = account(2003);
+    await expect(c.listResources("service", ACCOUNT)).resolves.toHaveLength(2003);
+    await expect(c.listResources("domain", ACCOUNT)).resolves.toHaveLength(2003);
+    expect(requestsTo(calls, (p) => p.endsWith("/details"))).toBe(2000 + 2003);
+    await expect(c.listResources("logging-endpoint", ACCOUNT)).resolves.toHaveLength(2003);
+    await c.listResources("dictionary", ACCOUNT);
+    expect(requestsTo(calls, (p) => p.endsWith("/dictionary"))).toBe(2003);
   });
 
   it("keeps one read of the services for the length of a large account's poll", async () => {
