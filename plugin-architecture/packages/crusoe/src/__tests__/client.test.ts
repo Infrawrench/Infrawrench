@@ -125,6 +125,21 @@ describe("listing", () => {
     expect(vm.resolvedOutputs).toMatchObject({ publicIp: "1.2.3.4", privateIp: "10.0.0.2" });
   });
 
+  it("asks for VM types again after a failed read", async () => {
+    route("GET", "/projects/p-1/compute/vms/instances", {
+      items: [{ id: "vm-1", type: "a40.1x" }],
+    });
+    route("GET", "/projects/p-2/compute/vms/instances", { items: [] });
+    route("GET", "/projects/p-2/compute/vms/types", { items: [] });
+    route("GET", "/projects/p-1/compute/vms/types", () => new Response("{}", { status: 500 }));
+    const c = client();
+    expect((await c.listResources("vm", "acct"))[0]!.fields["gpuCount"]).toBeFalsy();
+    route("GET", "/projects/p-1/compute/vms/types", {
+      items: [{ product_name: "a40.1x", num_gpu: 1 }],
+    });
+    expect((await c.listResources("vm", "acct"))[0]!.fields["gpuCount"]).toBe(1);
+  });
+
   it("follows next_page_token pagination", async () => {
     route("GET", "/projects/p-1/storage/disks", (c: Call) =>
       c.query.get("next_token")

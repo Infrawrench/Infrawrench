@@ -170,7 +170,10 @@ export class CrusoeClient implements PluginClient {
       cached = this.api
         .get(`/projects/${seg(projectId)}/compute/vms/types`)
         .then((r) => r?.items ?? [])
-        .catch(() => []);
+        .catch(() => {
+          this.vmTypesCache.delete(projectId);
+          return [];
+        });
       this.vmTypesCache.set(projectId, cached);
     }
     return cached;
