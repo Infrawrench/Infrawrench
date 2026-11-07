@@ -3086,6 +3086,22 @@ export class TogetherClient implements PluginClient {
       subtitle: joinSubtitle("Dedicated endpoint", fields["model"]),
       status: { kind: "status-dot", status: mapped.status, label: mapped.label },
       sections: [
+        ...(fields["state"] === "STOPPED"
+          ? [
+              {
+                kind: "section" as const,
+                title: "Stopped for good",
+                children: [
+                  {
+                    kind: "text" as const,
+                    content:
+                      "Together no longer restarts v1 endpoints, so this one can't be started again. Create a managed endpoint to serve the model.",
+                    variant: "muted" as const,
+                  },
+                ],
+              },
+            ]
+          : []),
         {
           kind: "section",
           title: "Endpoint",
@@ -3139,29 +3155,25 @@ export class TogetherClient implements PluginClient {
           ],
         },
       ],
+      // Together refuses to restart a stopped v1 endpoint, so there is no Start to offer.
+      // https://docs.together.ai/docs/dedicated-endpoints/migrate-from-v1
       headerActions: [
-        running
-          ? {
-              kind: "action",
-              label: "Stop",
-              variant: "danger",
-              action: {
-                type: "plugin-action",
-                actionId: "stop",
-                confirmMessage:
-                  "Stop this endpoint? In-flight requests fail and the next request pays a cold start.",
-                successMessage: "Stopping endpoint.",
+        ...(running
+          ? [
+              {
+                kind: "action" as const,
+                label: "Stop",
+                variant: "danger" as const,
+                action: {
+                  type: "plugin-action" as const,
+                  actionId: "stop",
+                  confirmMessage:
+                    "Stop this endpoint? In-flight requests fail, and Together no longer restarts v1 endpoints, so it cannot be started again. Move its traffic to a managed endpoint first.",
+                  successMessage: "Stopping endpoint.",
+                },
               },
-            }
-          : {
-              kind: "action",
-              label: "Start",
-              action: {
-                type: "plugin-action",
-                actionId: "start",
-                successMessage: "Starting endpoint.",
-              },
-            },
+            ]
+          : []),
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
       ],
     };

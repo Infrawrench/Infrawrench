@@ -1,6 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TogetherClient } from "../client.js";
+import { EndpointResourceType } from "../resources/endpoint.js";
 
 const ACCOUNT = "acct-1";
 
@@ -609,6 +610,36 @@ describe("v1 endpoints Together has closed to new work", () => {
     await expect(
       client().createResource("endpoint", ACCOUNT, { model: "m", hardware: "h" }),
     ).rejects.toThrow("no longer lets this account");
+  });
+
+  describe("a type that cannot wake again", () => {
+    const stored = (state: string) => ({
+      id: `${ACCOUNT}:endpoint:e1`,
+      pluginId: "together",
+      resourceTypeId: "endpoint",
+      accountId: ACCOUNT,
+      displayName: "prod",
+      fields: { state, name: "acme/prod" },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    });
+
+    it("declares no lifecycle, so no sleep schedule can stop it for good", () => {
+      expect(EndpointResourceType.lifecycle).toBeUndefined();
+    });
+
+    it("offers no Start on a stopped endpoint, and says why", () => {
+      const detail = client().renderDetail(stored("STOPPED"));
+      expect((detail.headerActions ?? []).map((action) => action.label)).toEqual(["Refresh"]);
+      expect(JSON.stringify(detail.sections)).toContain("can't be started again");
+    });
+
+    it("warns before a Stop that cannot be undone", () => {
+      const detail = client().renderDetail(stored("STARTED"));
+      expect(JSON.stringify(detail.headerActions)).toContain("cannot be started again");
+    });
   });
 
   it("says what to do when a restart is refused", async () => {
