@@ -9,9 +9,12 @@ import type {
   PluginClient,
   ResourceInstance,
   ResourceStatus,
+  SchemaNode,
   SidebarItemSchema,
   SpeechPanelOption,
+  TableNode,
   TableRow,
+  TextNode,
   TranscribeAudioPayload,
   TranscribeAudioResult,
 } from "@infrawrench/plugin-base";
@@ -33,7 +36,10 @@ import {
   cohereHeaders,
   cohereLists,
   createCohereApi,
+  EVENT_PAGES,
   FINETUNE_PAGES,
+  finetuneHistory,
+  STEP_METRIC_PAGES,
   type CheckApiKeyOperation,
   type CohereApi,
   type CohereBatch,
@@ -258,10 +264,15 @@ export class CohereClient implements PluginClient {
       if (typeId === "finetuned-model") {
         const id = resource.externalId ?? "";
         const [events, stepMetrics] = await Promise.all([
-          this.safely(() => this.fetchFinetuneEvents(id), []),
-          this.safely(() => this.fetchTrainingStepMetrics(id), []),
+          this.fetchFinetuneEvents(id),
+          this.fetchTrainingStepMetrics(id),
         ]);
-        return withStash(resource, { __events__: events, __stepMetrics__: stepMetrics });
+        return withStash(resource, {
+          __events__: events.rows,
+          __eventsRead__: events.read,
+          __stepMetrics__: stepMetrics.rows,
+          __stepMetricsRead__: stepMetrics.read,
+        });
       }
 
       return resource;
@@ -419,20 +430,38 @@ export class CohereClient implements PluginClient {
     );
   }
 
-  /** `GET /v1/finetuning/finetuned-models/{id}/events` */
-  private async fetchFinetuneEvents(
-    id: string,
-  ): Promise<Array<{ status: string; userId: string; createdAt: string }>> {
-    if (!id) return [];
-    const data = await this.api.get(`/v1/finetuning/finetuned-models/${pathEncode(id)}/events`, {
-      query: { page_size: 50 },
+  /** Read a detail tab's rows without letting a failure break the rest of the page. */
+  private async readHistory<T>(
+    read: (history: ReturnType<typeof finetuneHistory>) => Promise<T[]>,
+  ): Promise<{ rows: T[]; read: HistoryRead }> {
+    const cap = { reached: false };
+    const history = finetuneHistory(this.api, () => {
+      cap.reached = true;
     });
-    return (data.events ?? []).map((e) => ({
-      status: e.status ?? "",
-      // Cohere documents an empty user_id as "initiated by the system".
-      userId: e.user_id || "system",
-      createdAt: e.created_at ?? "",
-    }));
+    try {
+      const rows = await read(history);
+      return { rows, read: cap.reached ? "truncated" : "complete" };
+    } catch {
+      return { rows: [], read: "failed" };
+    }
+  }
+
+  /** `GET /v1/finetuning/finetuned-models/{id}/events` */
+  private fetchFinetuneEvents(id: string) {
+    return this.readHistory(async (history) => {
+      if (!id) return [];
+      const events = await history.getAll(
+        `/v1/finetuning/finetuned-models/${pathEncode(id)}/events`,
+        "events",
+        EVENT_PAGES,
+      );
+      return events.map<FinetuneEvent>((e) => ({
+        status: e.status ?? "",
+        // Cohere documents an empty user_id as "initiated by the system".
+        userId: e.user_id || "system",
+        createdAt: e.created_at ?? "",
+      }));
+    });
   }
 
   /**
@@ -441,19 +470,20 @@ export class CohereClient implements PluginClient {
    * ⚠️ The path segment is `training-step-metrics`, not `metrics`, and the
    * response key is `step_metrics`.
    */
-  private async fetchTrainingStepMetrics(
-    id: string,
-  ): Promise<Array<{ step: number; createdAt: string; metrics: Record<string, number> }>> {
-    if (!id) return [];
-    const data = await this.api.get(
-      `/v1/finetuning/finetuned-models/${pathEncode(id)}/training-step-metrics`,
-      { query: { page_size: 100 } },
-    );
-    return (data.step_metrics ?? []).map((m) => ({
-      step: m.step_number ?? 0,
-      createdAt: m.created_at ?? "",
-      metrics: m.metrics ?? {},
-    }));
+  private fetchTrainingStepMetrics(id: string) {
+    return this.readHistory(async (history) => {
+      if (!id) return [];
+      const steps = await history.getAll(
+        `/v1/finetuning/finetuned-models/${pathEncode(id)}/training-step-metrics`,
+        "step_metrics",
+        STEP_METRIC_PAGES,
+      );
+      return steps.map<FinetuneStepMetrics>((m) => ({
+        step: m.step_number ?? 0,
+        createdAt: m.created_at ?? "",
+        metrics: m.metrics ?? {},
+      }));
+    });
   }
 
   private async listFinetunedModels(accountId: string): Promise<ResourceInstance[]> {
@@ -1162,14 +1192,10 @@ export class CohereClient implements PluginClient {
   private renderFinetunedModelDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const status = String(fields["status"] ?? "");
-    const events = readStash<Array<{ status: string; userId: string; createdAt: string }>>(
-      resource,
-      "__events__",
-      [],
-    );
-    const stepMetrics = readStash<
-      Array<{ step: number; createdAt: string; metrics: Record<string, number> }>
-    >(resource, "__stepMetrics__", []);
+    const events = readStash<FinetuneEvent[]>(resource, "__events__", []);
+    const eventsRead = readStash<HistoryRead>(resource, "__eventsRead__", "complete");
+    const stepMetrics = readStash<FinetuneStepMetrics[]>(resource, "__stepMetrics__", []);
+    const stepMetricsRead = readStash<HistoryRead>(resource, "__stepMetricsRead__", "complete");
 
     const metricKeys = Array.from(
       new Set(stepMetrics.flatMap((m) => Object.keys(m.metrics))),
@@ -1258,32 +1284,26 @@ export class CohereClient implements PluginClient {
             {
               kind: "section",
               title: "Status history",
-              children:
-                events.length === 0
-                  ? [
-                      {
-                        kind: "text",
-                        variant: "muted",
-                        content: "No events reported for this fine-tune.",
-                      },
-                    ]
-                  : [
-                      {
-                        kind: "table",
-                        columns: [
-                          { key: "createdAt", label: "When", width: "wide" },
-                          { key: "status", label: "Status" },
-                          { key: "userId", label: "Initiated by" },
-                        ],
-                        rows: events.map<TableRow>((e) => ({
-                          cells: {
-                            createdAt: e.createdAt || "—",
-                            status: prettyEnum(e.status),
-                            userId: e.userId,
-                          },
-                        })),
-                      },
-                    ],
+              children: historyChildren(eventsRead, {
+                table: {
+                  kind: "table",
+                  columns: [
+                    { key: "createdAt", label: "When", width: "wide" },
+                    { key: "status", label: "Status" },
+                    { key: "userId", label: "Initiated by" },
+                  ],
+                  rows: events.map<TableRow>((e) => ({
+                    cells: {
+                      createdAt: e.createdAt || "—",
+                      status: prettyEnum(e.status),
+                      userId: e.userId,
+                    },
+                  })),
+                },
+                none: "No events reported for this fine-tune.",
+                failed: "This fine-tune's events could not be read. Refresh to try again.",
+                part: `Showing ${events.length} events. This fine-tune has more than Infrawrench reads.`,
+              }),
             },
           ],
         },
@@ -1294,37 +1314,32 @@ export class CohereClient implements PluginClient {
             {
               kind: "section",
               title: "Per-step metrics",
-              children:
-                stepMetrics.length === 0
-                  ? [
-                      {
-                        kind: "text",
-                        variant: "muted",
-                        content:
-                          "No training-step metrics are available. Cohere reports them only " +
-                          "while a fine-tune is training and for a period afterwards.",
-                      },
-                    ]
-                  : [
-                      {
-                        kind: "table",
-                        columns: [
-                          { key: "step", label: "Step", width: "narrow" },
-                          ...metricKeys.map((k) => ({ key: k, label: k, mono: true as const })),
-                        ],
-                        rows: stepMetrics.map<TableRow>((m) => ({
-                          cells: {
-                            step: String(m.step),
-                            ...Object.fromEntries(
-                              metricKeys.map((k) => [
-                                k,
-                                m.metrics[k] === undefined ? "—" : String(m.metrics[k]),
-                              ]),
-                            ),
-                          },
-                        })),
-                      },
-                    ],
+              children: historyChildren(stepMetricsRead, {
+                table: {
+                  kind: "table",
+                  columns: [
+                    { key: "step", label: "Step", width: "narrow" },
+                    ...metricKeys.map((k) => ({ key: k, label: k, mono: true as const })),
+                  ],
+                  rows: stepMetrics.map<TableRow>((m) => ({
+                    cells: {
+                      step: String(m.step),
+                      ...Object.fromEntries(
+                        metricKeys.map((k) => [
+                          k,
+                          m.metrics[k] === undefined ? "—" : String(m.metrics[k]),
+                        ]),
+                      ),
+                    },
+                  })),
+                },
+                none:
+                  "No training-step metrics are available. Cohere reports them only " +
+                  "while a fine-tune is training and for a period afterwards.",
+                failed:
+                  "This fine-tune's training metrics could not be read. Refresh to try again.",
+                part: `Showing ${stepMetrics.length} steps. This fine-tune has more than Infrawrench reads.`,
+              }),
             },
           ],
         },
@@ -1717,10 +1732,36 @@ function defaultTranscribeOption(): SpeechPanelOption {
   };
 }
 
+/** How a detail tab's read went, so a failure and a long run do not read as a short one. */
+type HistoryRead = "complete" | "truncated" | "failed";
+
+interface FinetuneEvent {
+  status: string;
+  userId: string;
+  createdAt: string;
+}
+
+interface FinetuneStepMetrics {
+  step: number;
+  createdAt: string;
+  metrics: Record<string, number>;
+}
+
+/** A history tab's body: its table, plus whatever the table cannot say for itself. */
+function historyChildren(
+  read: HistoryRead,
+  { table, none, failed, part }: { table: TableNode; none: string; failed: string; part: string },
+): SchemaNode[] {
+  const note = (content: string): TextNode => ({ kind: "text", variant: "muted", content });
+  if (read === "failed") return [note(failed)];
+  if (table.rows.length === 0) return [note(none)];
+  return read === "truncated" ? [table, note(part)] : [table];
+}
+
 /** Stash extra API data on a resource for the synchronous `renderDetail`. */
 function withStash(
   resource: ResourceInstance,
-  extra: Record<string, object | number | null>,
+  extra: Record<string, object | number | string | null>,
 ): ResourceInstance {
   const stash: Record<string, string> = {};
   for (const [key, value] of Object.entries(extra)) stash[key] = JSON.stringify(value);

@@ -414,6 +414,100 @@ describe("getResource enrichment", () => {
   });
 });
 
+describe("fine-tune events and training metrics", () => {
+  const FINETUNE = `${ACCOUNT}:finetuned-model:ft1`;
+  const tab = (detail: { customTabs?: Array<{ id: string }> }, id: string) =>
+    JSON.stringify(detail.customTabs!.find((t) => t.id === id));
+
+  /** Answers the fine-tune list, and hands the two history routes to `history`. */
+  function installHistory(history: (url: string, route: "events" | "metrics") => Response) {
+    installFetch((url) => {
+      if (url.includes("/events")) return history(url, "events");
+      if (url.includes("/training-step-metrics")) return history(url, "metrics");
+      return jsonResponse({ finetuned_models: [{ id: "ft1", name: "mine" }] });
+    });
+  }
+
+  const urlsOf = (route: string) => calls.map((c) => c.url).filter((u) => u.includes(route));
+
+  it("reads every page of both, at the sizes it has always asked for", async () => {
+    installHistory((url, route) => {
+      const key = route === "events" ? "events" : "step_metrics";
+      const row = (n: number) =>
+        route === "events" ? { status: `S${n}` } : { step_number: n, metrics: { loss: n } };
+      return url.includes("page_token=more")
+        ? jsonResponse({ [key]: [row(2)], next_page_token: "" })
+        : jsonResponse({ [key]: [row(1)], next_page_token: "more" });
+    });
+
+    const resource = await client().getResource("finetuned-model", FINETUNE, ACCOUNT);
+
+    const events = JSON.parse(resource.resolvedOutputs["__events__"]!);
+    expect(events.map((e: { status: string }) => e.status)).toEqual(["S1", "S2"]);
+    const metrics = JSON.parse(resource.resolvedOutputs["__stepMetrics__"]!);
+    expect(metrics.map((m: { step: number }) => m.step)).toEqual([1, 2]);
+
+    expect(urlsOf("/events")[0]).toContain("page_size=50");
+    expect(urlsOf("/events")[1]).toContain("page_token=more");
+    expect(urlsOf("/training-step-metrics")[0]).toContain("page_size=100");
+    expect(urlsOf("/training-step-metrics")[1]).toContain("page_token=more");
+
+    const detail = client().renderDetail(resource);
+    expect(tab(detail, "events")).not.toContain("more than Infrawrench reads");
+    expect(tab(detail, "training-metrics")).not.toContain("more than Infrawrench reads");
+  });
+
+  it("keeps what it read at the cap, and says there is more", async () => {
+    let served = 0;
+    installHistory((_url, route) => {
+      served += 1;
+      return route === "events"
+        ? jsonResponse({ events: [{ status: `S${served}` }], next_page_token: `t${served}` })
+        : jsonResponse({
+            step_metrics: [{ step_number: served, metrics: { loss: 1 } }],
+            next_page_token: `t${served}`,
+          });
+    });
+
+    const resource = await client().getResource("finetuned-model", FINETUNE, ACCOUNT);
+
+    // 10,000 rows at each route's page size.
+    expect(urlsOf("/events")).toHaveLength(200);
+    expect(urlsOf("/training-step-metrics")).toHaveLength(100);
+    expect(JSON.parse(resource.resolvedOutputs["__events__"]!)).toHaveLength(200);
+    expect(JSON.parse(resource.resolvedOutputs["__stepMetrics__"]!)).toHaveLength(100);
+
+    const detail = client().renderDetail(resource);
+    expect(tab(detail, "events")).toContain("Showing 200 events");
+    expect(tab(detail, "training-metrics")).toContain("Showing 100 steps");
+  });
+
+  it("says a failed read failed, rather than that there is no history", async () => {
+    installHistory((url, route) => {
+      if (route === "metrics") return jsonResponse("boom", 500);
+      return url.includes("page_token=more")
+        ? jsonResponse("boom", 429)
+        : jsonResponse({ events: [{ status: "S1" }], next_page_token: "more" });
+    });
+
+    const resource = await client().getResource("finetuned-model", FINETUNE, ACCOUNT);
+    const detail = client().renderDetail(resource);
+
+    expect(tab(detail, "events")).toContain("could not be read");
+    expect(tab(detail, "events")).not.toContain("No events reported");
+    expect(tab(detail, "training-metrics")).toContain("could not be read");
+    expect(tab(detail, "training-metrics")).not.toContain("No training-step metrics");
+  });
+
+  it("still says so when a fine-tune really has no history", async () => {
+    installHistory(() => jsonResponse({}));
+    const resource = await client().getResource("finetuned-model", FINETUNE, ACCOUNT);
+    const detail = client().renderDetail(resource);
+    expect(tab(detail, "events")).toContain("No events reported");
+    expect(tab(detail, "training-metrics")).toContain("No training-step metrics");
+  });
+});
+
 describe("resolveOutput", () => {
   it("answers the model endpoint without a network call", async () => {
     installFetch(() => jsonResponse({}));

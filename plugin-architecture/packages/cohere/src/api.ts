@@ -77,6 +77,25 @@ const TOKEN_PAGES = {
   continueOnEmptyPage: true,
 } as const;
 
+/** 10,000 rows of each, at the page size always sent: the document gives neither route a largest. */
+export const EVENT_PAGES = { pageSize: 50, maxPages: 200 };
+export const STEP_METRIC_PAGES = { pageSize: 100, maxPages: 100 };
+
+/**
+ * A fine-tune's events and training steps, for a detail tab: part of a long run is
+ * fine to show, so `onReachedCap` is what lets the tab say it is only part. Proto3, as
+ * in `cohereLists`.
+ */
+export function finetuneHistory(api: CohereApi, onReachedCap: () => void) {
+  return withCursorPagination(api, {
+    ...TOKEN_PAGES,
+    ...STEP_METRIC_PAGES,
+    missingListIsEmpty: true,
+    partial: true,
+    onTruncated: onReachedCap,
+  });
+}
+
 export function cohereLists(api: CohereApi) {
   return {
     /** The document requires `models`, so a page without it is not a page of models. */
