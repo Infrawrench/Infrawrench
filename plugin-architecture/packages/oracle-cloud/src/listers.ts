@@ -1,4 +1,8 @@
-import { rethrowIncompleteList, type ResourceInstance } from "@infrawrench/plugin-base";
+import {
+  reportUnreadListPart,
+  rethrowIncompleteList,
+  type ResourceInstance,
+} from "@infrawrench/plugin-base";
 import { isAuthorizationGap, type OciApi } from "./api.js";
 import { mapLimit, type OciInventory, type Scope, type SearchType } from "./inventory.js";
 
@@ -47,21 +51,36 @@ export function makeResource(
   };
 }
 
-/** Run a per-scope lister, treating authorisation gaps as empty scopes. */
+/**
+ * Run a per-scope lister, treating authorisation gaps as empty scopes. When
+ * every scope refuses, the credential has lost this type, not just some
+ * compartments, so its stored rows are kept rather than pruned. That stays
+ * quiet on a host that keeps no track (the desktop) too: OCI answers the same
+ * 404 for a root compartment a compartment-scoped user cannot read, which is
+ * every scope of a type that user simply has none of.
+ */
 async function perScope<T>(
   ctx: ListContext,
   type: SearchType,
   fn: (scope: Scope) => Promise<T[]>,
 ): Promise<T[]> {
   const scopes = await ctx.inventory.scopes(type, ctx.regionHint);
+  let refused = 0;
   const results = await mapLimit(scopes, CONCURRENCY, async (scope) => {
     try {
       return await fn(scope);
     } catch (err) {
-      if (isAuthorizationGap(err)) return [];
+      if (isAuthorizationGap(err)) {
+        refused++;
+        return [];
+      }
       throw err;
     }
   });
+  if (scopes.length > 0 && refused === scopes.length) {
+    reportUnreadListPart({ idPrefixes: [""] });
+    return [];
+  }
   return results.flat();
 }
 
@@ -1182,8 +1201,11 @@ export async function listBudgets(ctx: ListContext): Promise<ResourceInstance[]>
     });
     return budgets.map((b) => mapBudget(ctx, b));
   } catch (err) {
-    if (isAuthorizationGap(err)) return [];
-    throw err;
+    if (!isAuthorizationGap(err)) throw err;
+    // This type's stored rows stay. A host that keeps no track (the desktop) answers
+    // false, and there the refusal should still show.
+    if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+    return [];
   }
 }
 
@@ -1235,9 +1257,11 @@ export async function listAlertRules(ctx: ListContext): Promise<ResourceInstance
         query: { limit: 1000 },
       })
       .then((rows) => rows.map((r) => ({ ...r, budgetId: r.budgetId || b.externalId! })))
-      .catch((err: unknown) => {
-        if (isAuthorizationGap(err)) return [] as OciAlertRule[];
-        throw err;
+      .catch((err: unknown): OciAlertRule[] => {
+        if (!isAuthorizationGap(err)) throw err;
+        // This budget's rules stay rather than read as deleted.
+        reportUnreadListPart({ parentResourceIds: [b.id] });
+        return [];
       }),
   );
   return rules.flat().map((r) => mapAlertRule(ctx, r));

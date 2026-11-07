@@ -163,4 +163,72 @@ describe("Oracle Cloud lists that cannot be read whole", () => {
       "has more than Infrawrench reads",
     );
   });
+
+  it("keeps a type's rows when every scope refuses the credential", async () => {
+    const parts = trackUnread();
+    const { client } = makeClient((url) => {
+      if (url.pathname === "/20160918/vcns") return refused;
+      return identityRoute(url);
+    });
+    await expect(client.listResources("vcn", "acct")).resolves.toEqual([]);
+    expect(parts).toEqual([{ idPrefixes: [""] }]);
+  });
+
+  it("reads one refused compartment as empty and keeps the type pruning", async () => {
+    const parts = trackUnread();
+    const { client } = makeClient((url) => {
+      if (url.pathname === "/20160918/vcns") {
+        return url.searchParams.get("compartmentId") === PROD ? refused : { body: [vcn(TENANCY)] };
+      }
+      return identityRoute(url);
+    });
+    const vcns = await client.listResources("vcn", "acct");
+    expect(vcns).toHaveLength(1);
+    expect(parts).toEqual([]);
+  });
+
+  it("keeps budgets when the credential cannot read them", async () => {
+    const parts = trackUnread();
+    const { client } = makeClient((url) => identityRoute(url));
+    await expect(client.listResources("budget", "acct")).resolves.toEqual([]);
+    expect(parts).toEqual([{ idPrefixes: [""] }]);
+  });
+
+  it("shows a budget refusal where the host keeps no track", async () => {
+    const { client } = makeClient((url) => identityRoute(url));
+    await expect(client.listResources("budget", "acct")).rejects.toThrow("NotAuthorizedOrNotFound");
+  });
+
+  it("names the budget whose alert rules were refused, so its rules stay", async () => {
+    const parts = trackUnread();
+    const { client } = makeClient((url) => {
+      if (url.pathname === "/20190111/budgets") {
+        return {
+          body: [
+            { id: "ocid1.budget.oc1.iad.a", displayName: "a", amount: 1, lifecycleState: "ACTIVE" },
+            { id: "ocid1.budget.oc1.iad.b", displayName: "b", amount: 1, lifecycleState: "ACTIVE" },
+          ],
+        };
+      }
+      if (url.pathname === "/20190111/budgets/ocid1.budget.oc1.iad.a/alertRules") {
+        return {
+          body: [
+            {
+              id: "rule1",
+              budgetId: "ocid1.budget.oc1.iad.a",
+              displayName: "",
+              type: "ACTUAL",
+              thresholdType: "PERCENTAGE",
+              threshold: 80,
+              lifecycleState: "ACTIVE",
+            },
+          ],
+        };
+      }
+      return identityRoute(url);
+    });
+    const rules = await client.listResources("budget-alert-rule", "acct");
+    expect(rules.map((r) => r.externalId)).toEqual(["ocid1.budget.oc1.iad.a/rule1"]);
+    expect(parts).toEqual([{ parentResourceIds: ["acct:budget:ocid1.budget.oc1.iad.b"] }]);
+  });
 });
