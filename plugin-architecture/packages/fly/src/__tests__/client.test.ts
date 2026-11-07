@@ -149,17 +149,46 @@ describe("listResources", () => {
     expect(res).toEqual([]);
   });
 
-  it("lists machines across apps, skipping failures", async () => {
+  it("lists machines across apps", async () => {
     router([
       [(u) => u.includes("/v1/apps?"), APP_LIST],
       [(u) => u.includes("/v1/apps/app-one/machines"), [MACHINE]],
-      [(u) => u.includes("/v1/apps/app-two/machines"), "boom", 500],
+      [(u) => u.includes("/v1/apps/app-two/machines"), []],
     ]);
     const res = await client().listResources("machine", ACCOUNT);
     expect(res).toHaveLength(1);
     expect(res[0]!.id).toBe("acct-1:machine:app-one/m1");
     expect(res[0]!.fields["image"]).toBe("nginx:latest");
     expect(res[0]!.resolvedOutputs["privateIp"]).toBe("fdaa::1");
+  });
+
+  // A sync prunes what a list stops returning, so one app's failure cannot read as "none".
+  describe.each([
+    ["machine", "machines", [MACHINE]],
+    ["volume", "volumes", [VOLUME]],
+    ["certificate", "certificates", { certificates: [{ hostname: "a.example.com" }] }],
+    ["ip-allocation", "ip_assignments", { ips: [{ ip: "1.1.1.1" }] }],
+    ["app-secret", "secrets", { secrets: [{ name: "S" }] }],
+  ])("a failed per-app %s list", (typeId, route, page) => {
+    it.each([500, 403, 429])("throws on %i from one app", async (status) => {
+      router([
+        [(u) => u.includes("/v1/apps?"), APP_LIST],
+        [(u) => u.includes(`/v1/apps/app-one/${route}`), page],
+        [(u) => u.includes(`/v1/apps/app-two/${route}`), "boom", status],
+      ]);
+      await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow(
+        new RegExp(`Fly API error ${status} .*app-two/${route}`),
+      );
+    });
+
+    it("reads a 404 as an app deleted since the app list", async () => {
+      router([
+        [(u) => u.includes("/v1/apps?"), APP_LIST],
+        [(u) => u.includes(`/v1/apps/app-one/${route}`), page],
+        [(u) => u.includes(`/v1/apps/app-two/${route}`), "gone", 404],
+      ]);
+      expect(await client().listResources(typeId, ACCOUNT)).toHaveLength(1);
+    });
   });
 
   it("machine maps image from image_ref fallback and null machines", async () => {
@@ -183,11 +212,11 @@ describe("listResources", () => {
     expect(res[0]!.fields["image"]).toBe("repo/img");
   });
 
-  it("lists volumes across apps, skipping failures", async () => {
+  it("lists volumes across apps", async () => {
     router([
       [(u) => u.includes("/v1/apps?"), APP_LIST],
       [(u) => u.includes("/v1/apps/app-one/volumes"), [VOLUME]],
-      [(u) => u.includes("/v1/apps/app-two/volumes"), "boom", 500],
+      [(u) => u.includes("/v1/apps/app-two/volumes"), []],
     ]);
     const res = await client().listResources("volume", ACCOUNT);
     expect(res).toHaveLength(1);

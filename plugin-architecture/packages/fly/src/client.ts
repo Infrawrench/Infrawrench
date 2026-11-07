@@ -1704,7 +1704,10 @@ export class FlyClient implements PluginClient {
     );
   }
 
-  /** Run `load` for every app in the org, dropping apps whose call fails. */
+  /**
+   * Run `load` for every app in the org. A failure throws, since a sync prunes what a
+   * list stops returning; only a 404 means none, the app having gone since the app list.
+   */
   private async perApp(
     accountId: string,
     load: (appName: string) => Promise<ResourceInstance[]>,
@@ -1714,8 +1717,9 @@ export class FlyClient implements PluginClient {
       apps.map(async (app) => {
         try {
           return await load(String(app.fields["name"]));
-        } catch {
-          return [];
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith("Fly API error 404 ")) return [];
+          throw error;
         }
       }),
     );
