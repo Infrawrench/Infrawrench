@@ -123,7 +123,16 @@ export async function walkFolders<R extends WalkRoot>(
       ? [...new Set(pending.map(({ root }) => root.idPrefix))]
       : pending.map(({ root, prefix }) => `${root.idPrefix}${prefix}`);
   const unread = [...refused, ...unreached];
-  if (unread.length > 0) reportUnreadListPart({ idPrefixes: unread });
+  // A host that keeps no track (the desktop) answers false, and there the list is short.
+  if (unread.length > 0 && !reportUnreadListPart({ idPrefixes: unread })) {
+    if (firstRefusal !== undefined) throw firstRefusal;
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path: roots[0]?.path ?? "",
+      items: leaves.length,
+      maxPages: requests,
+    });
+  }
 
   const idOf = ({ root, key }: WalkLeaf<R>) => `${root.idPrefix}${key}`;
   return leaves
@@ -186,12 +195,17 @@ export async function readWithinBudget<T, R>(
     return read(item);
   });
   if (reached.size < ordered.length) {
-    reportUnreadListPart({
+    const tracked = reportUnreadListPart({
       idPrefixes: unreadPrefixes(
         ordered.map(({ id }) => id),
         reached,
       ),
     });
+    // A host that keeps no track prunes nothing and has no poll to outlast: it reads the rest.
+    if (!tracked) {
+      const rest = ordered.filter(({ id }) => !reached.has(id));
+      rows.push(...(await mapLimit(rest, CONCURRENCY, ({ item }) => read(item))));
+    }
   }
   return rows.filter((row): row is R => row !== undefined);
 }

@@ -163,6 +163,14 @@ describe("a list too long to read in one poll", () => {
     },
   );
 
+  it("reads every detail where the host keeps no track of the rest", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const type = FAN_OUTS[0]!;
+    const keys = Array.from({ length: 2600 }, (_, i) => `k${pad(i)}`);
+    const { c } = client(fanOutRoute(type, keys));
+    await expect(c.listResources(type.typeId, ACCOUNT)).resolves.toHaveLength(2600);
+  });
+
   it("starts from a different place each poll", async () => {
     const type = FAN_OUTS[0]!;
     const keys = Array.from({ length: 2600 }, (_, i) => `k${pad(i)}`);
@@ -213,6 +221,20 @@ describe("a list too long to read in one poll", () => {
     }
   });
 
+  it("fails past the walk's budget where the host keeps no track of the rest", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const folders = Array.from({ length: 1500 }, (_, i) => `f${pad(i)}/`);
+    const { c } = client((call) => {
+      if (call.url.pathname === "/v1/sys/mounts") return KV_MOUNTS;
+      if (!isList(call)) return { data: {} };
+      if (call.url.pathname === "/v1/secret/metadata/") return { data: { keys: folders } };
+      return { data: { keys: ["s"] } };
+    });
+    await expect(c.listResources("vault-kv-secret", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
   it("names the mount rather than thousands of folders", async () => {
     const folders = Array.from({ length: 5000 }, (_, i) => `f${pad(i)}/`);
     const { c } = client((call) => {
@@ -248,6 +270,19 @@ describe("a failed read does not read as gone", () => {
     const rows = await c.listResources("vault-kv-secret", ACCOUNT);
     expect(rows.map((r) => r.externalId)).toEqual(["secret::b/s"]);
     expect(unreadIdPrefixes()).toEqual([`${ACCOUNT}:vault-kv-secret:secret::a/`]);
+  });
+
+  it("shows a refused folder where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const { c } = client((call) => {
+      if (call.url.pathname === "/v1/sys/mounts") return KV_MOUNTS;
+      if (!isList(call)) return { data: {} };
+      if (call.url.pathname === "/v1/secret/metadata/") return { data: { keys: ["a/", "b/"] } };
+      if (call.url.pathname === "/v1/secret/metadata/a/")
+        return { status: 403, body: { errors: ["permission denied"] } };
+      return { data: { keys: ["s"] } };
+    });
+    await expect(c.listResources("vault-kv-secret", ACCOUNT)).rejects.toThrow("permission denied");
   });
 
   it("keeps a refused mount's rows and still lists another mount", async () => {
