@@ -23,7 +23,15 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, bytesToBase64, hostFetch, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  hostFetch,
+  jsonRestFetch,
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import { fetchSpeechmaticsCostData, normalizeMode, normalizeOperatingPoint } from "./cost-data.js";
 
 /* -------------------------------------------------------------------------- */
@@ -285,6 +293,10 @@ const ACCEPTED_AUDIO_TYPES = [
  * (`RangeError: Invalid string length`) before it ever reaches the network.
  * The transport is the binding constraint here, not the API.
  */
+/** `GET /v2/jobs` takes `limit` up to 100. */
+const JOB_PAGE_SIZE = 100;
+/** 10,000 jobs: a week of them, since Speechmatics purges a job seven days after it runs. */
+const MAX_JOB_PAGES = 100;
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // Speechmatics accepts 1 GB; our transport does not.
 
 /**
@@ -644,22 +656,23 @@ export class SpeechmaticsClient implements PluginClient {
   }
 
   /**
-   * `GET /v2/jobs` with the documented cursor pagination: `limit` (1–100) plus
+   * `GET /v2/jobs` with the documented cursor pagination: `limit` (1-100) plus
    * `created_before`, a UTC timestamp that walks backwards from the most
-   * recent job. Bounded so a busy workspace can't stall the sidebar.
+   * recent job. Jobs are purged seven days after they run, so the whole list
+   * is read; past the cap it throws rather than let a sync read the rest as
+   * deleted.
    */
   private async listJobs(accountId: string): Promise<ResourceInstance[]> {
-    const pageSize = 100;
-    const maxPages = 5;
+    const path = "/jobs";
     const seen = new Set<string>();
     const jobs: SpeechmaticsJob[] = [];
     let createdBefore: string | undefined;
 
-    for (let page = 0; page < maxPages; page++) {
-      const params = new URLSearchParams({ limit: String(pageSize) });
+    for (let page = 0; page < MAX_JOB_PAGES; page++) {
+      const params = new URLSearchParams({ limit: String(JOB_PAGE_SIZE) });
       if (createdBefore) params.set("created_before", createdBefore);
-      const res = await this.fetch<RetrieveJobsResponse>(`/jobs?${params.toString()}`);
-      const batch = res?.jobs ?? [];
+      const res = await this.fetch<RetrieveJobsResponse>(`${path}?${params.toString()}`);
+      const batch = requireListPage(res?.jobs, { vendor: VENDOR, path, key: "jobs" });
       let added = 0;
       for (const job of batch) {
         if (!job?.id || seen.has(job.id)) continue;
@@ -667,14 +680,30 @@ export class SpeechmaticsClient implements PluginClient {
         jobs.push(job);
         added++;
       }
-      // Stop when the page is short (last page) or the cursor stopped moving.
-      if (batch.length < pageSize || added === 0) break;
-      const oldest = batch[batch.length - 1];
-      if (!oldest?.created_at) break;
-      createdBefore = oldest.created_at;
+      if (batch.length < JOB_PAGE_SIZE) return jobs.map((job) => this.mapJob(job, accountId));
+      // `created_before` is exclusive and to the millisecond, so the cursor is one past
+      // the oldest job's time: a job sharing that millisecond comes back again rather
+      // than being skipped, and `seen` drops the repeat.
+      const oldest = Date.parse(batch[batch.length - 1]?.created_at ?? "");
+      const next = Number.isFinite(oldest) ? new Date(oldest + 1).toISOString() : undefined;
+      if (!next || added === 0 || next === createdBefore) {
+        throw new ListPageError({
+          vendor: VENDOR,
+          path,
+          key: "jobs",
+          found: batch,
+          saysMoreWith: "no cursor",
+        });
+      }
+      createdBefore = next;
     }
 
-    return jobs.map((job) => this.mapJob(job, accountId));
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path,
+      items: jobs.length,
+      maxPages: MAX_JOB_PAGES,
+    });
   }
 
   private async listProjects(accountId: string): Promise<ResourceInstance[]> {

@@ -83,11 +83,85 @@ describe("listResources — job", () => {
     expect(resources).toHaveLength(100);
     expect(calls[0]?.url).toContain("limit=100");
     expect(authHeader(calls[0]?.init)).toBe("Bearer sm-key");
-    expect(calls[1]?.url).toContain("created_before=2026-07-27T10%3A00%3A00.000Z");
+    expect(calls[1]?.url).toContain("created_before=2026-07-27T10%3A00%3A00.001Z");
     expect(resources[0]?.id).toBe(`${ACCOUNT}:job:job-0`);
     expect(resources[0]?.resolvedOutputs["transcriptUrl"]).toBe(
       "https://eu1.asr.api.speechmatics.com/v2/jobs/job-0/transcript?format=txt",
     );
+  });
+
+  it("throws past 10,000 jobs instead of keeping the newest 500", async () => {
+    let n = 0;
+    installFetch(() => {
+      const start = n;
+      n += 100;
+      return response({
+        jobs: Array.from({ length: 100 }, (_, i) => ({
+          id: `job-${start + i}`,
+          status: "done",
+          created_at: new Date(Date.UTC(2026, 6, 28) - (start + i) * 1000).toISOString(),
+        })),
+      });
+    });
+    await expect(client().listResources("job", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("reads past 500 jobs to the end of the list", async () => {
+    let n = 0;
+    installFetch(() => {
+      const start = n;
+      const size = start >= 700 ? 30 : 100;
+      n += size;
+      return response({
+        jobs: Array.from({ length: size }, (_, i) => ({
+          id: `job-${start + i}`,
+          status: "done",
+          created_at: new Date(Date.UTC(2026, 6, 28) - (start + i) * 1000).toISOString(),
+        })),
+      });
+    });
+    const jobs = await client().listResources("job", ACCOUNT);
+    expect(jobs).toHaveLength(730);
+  });
+
+  it("refuses a page without a jobs list, first or later", async () => {
+    installFetch(() => response({ items: [] }));
+    await expect(client().listResources("job", ACCOUNT)).rejects.toThrow("is not a list");
+
+    vi.restoreAllMocks();
+    installFetch((url) =>
+      url.includes("created_before=")
+        ? response({ items: [] })
+        : response({
+            jobs: Array.from({ length: 100 }, (_, i) => ({
+              id: `job-${i}`,
+              status: "done",
+              created_at: new Date(Date.UTC(2026, 6, 28) - i * 1000).toISOString(),
+            })),
+          }),
+    );
+    await expect(client().listResources("job", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("does not skip a job that shares the boundary millisecond with the page before", async () => {
+    const at = "2026-07-27T10:00:00.000Z";
+    const page1 = Array.from({ length: 100 }, (_, i) => ({ id: `job-${i}`, created_at: at }));
+    installFetch((url) =>
+      url.includes("created_before=")
+        ? response({
+            jobs: [
+              { id: "job-99", created_at: at },
+              { id: "job-100", created_at: at },
+            ],
+          })
+        : response({ jobs: page1 }),
+    );
+    const jobs = await client().listResources("job", ACCOUNT);
+    expect(jobs).toHaveLength(101);
+    expect(calls[1]?.url).toContain("created_before=2026-07-27T10%3A00%3A00.001Z");
   });
 
   it("reads the deprecated operating_point when a job has no model", async () => {
