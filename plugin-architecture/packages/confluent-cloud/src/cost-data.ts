@@ -30,13 +30,12 @@ import type { CcCost } from "./types.js";
 /** Max days per request: Confluent allows "one month", 28 is safe for every month. */
 const WINDOW_DAYS = 28;
 const DAY_MS = 86_400_000;
-/** The document's `maximum`. */
-const COST_PAGE_SIZE = 10_000;
 /**
- * Cost lines do not go through the resource sync, so this has no ceiling to respect.
- * It is this high because the document also says `x-max-page-items: 500`, and at
- * that size it still reads what 100 pages of the old 5,000 did.
+ * The route's default. The document also gives `maximum: 10000` and `x-max-page-items:
+ * 500`, which disagree, and a rejected size would fail every cost sync.
  */
+const COST_PAGE_SIZE = 5000;
+/** Cost lines do not go through the resource sync, so this has no ceiling to respect. */
 const COST_MAX_PAGES = 1000;
 
 const PRODUCT_LABELS: Record<string, string> = {

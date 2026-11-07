@@ -186,7 +186,7 @@ describe("list reads (#384)", () => {
     ).rejects.toThrow(TRUNCATED);
     // Never below the 100 pages of 5,000 this read used to allow.
     expect(calls).toHaveLength(1000);
-    expect(calls[0]!.url.searchParams.get("page_size")).toBe("10000");
+    expect(calls[0]!.url.searchParams.get("page_size")).toBe("5000");
   });
 });
 
