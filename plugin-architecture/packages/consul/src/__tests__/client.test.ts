@@ -335,6 +335,26 @@ describe("lists a sync prunes against", () => {
     });
   });
 
+  describe("a feature the cluster has turned off", () => {
+    it.each([
+      [
+        "consul-peering",
+        "rpc error: code = FailedPrecondition desc = peering must be enabled to use this endpoint",
+      ],
+      ["consul-intention", "Connect must be enabled in order to use this endpoint"],
+    ])("%s reads as none, on a 500 or a 400", async (typeId, text) => {
+      for (const status of [500, 400]) {
+        const { c } = client(() => ({ status, text }));
+        expect(await c.listResources(typeId, ACCOUNT)).toEqual([]);
+      }
+    });
+
+    it("any other 500 still fails the type", async () => {
+      const { c } = client(() => ({ status: 500, text: "No cluster leader" }));
+      await expect(c.listResources("consul-peering", ACCOUNT)).rejects.toThrow("500");
+    });
+  });
+
   describe("a token refused a whole type", () => {
     it("keeps the rows without an error", async () => {
       const parts = trackUnread();

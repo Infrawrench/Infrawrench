@@ -234,7 +234,9 @@ export class ConsulClient implements PluginClient {
       if (
         s === 404 ||
         s === 501 ||
-        (s === 400 && /not (supported|enabled)|ACL support disabled|enterprise/i.test(msg))
+        (s === 400 && /not (supported|enabled)|ACL support disabled|enterprise/i.test(msg)) ||
+        // Turned off in the agent's config. Peering's FailedPrecondition arrives as a 500.
+        ((s === 400 || s === 500) && /must be enabled/i.test(msg))
       )
         return [];
       if (s === 401 && /ACL support disabled/i.test(msg)) return [];
