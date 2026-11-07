@@ -25,8 +25,9 @@ import { parseTags } from "./mappers.js";
  * - `pinecone_service_account`: `name`; import id is the service account id.
  *
  * `spec`, `read_capacity`, `embed` are attribute objects in this provider,
- * written as `tf.map`, not nested blocks. Document (full-text search) indexes
- * have no Terraform representation yet and are reported unsupported.
+ * written as `tf.map`, not nested blocks. `embed` is the legacy integrated
+ * index; document indexes (full-text search, or hosted embeddings on a string
+ * field) have no Terraform representation here and are reported unsupported.
  */
 
 function mapIndex(resource: ResourceInstance): TerraformExportResult | null {

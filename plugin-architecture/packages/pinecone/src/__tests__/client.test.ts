@@ -258,6 +258,56 @@ describe("mappers", () => {
     ).toMatchObject({ kind: "documents", fullTextFields: ["body"] });
   });
 
+  it("reads the hosted embedding on a string field (#469)", () => {
+    const embed = { model: "llama-text-embed-v2", dimension: 1024, metric: "cosine" };
+    const sparseEmbed = { model: "pinecone-sparse-english-v0" };
+    const fullText = { language: "en", stemming: true, stop_words: false };
+
+    expect(indexShape({ body: { type: "string", embed } })).toMatchObject({
+      kind: "documents",
+      vectorType: "dense",
+      dimension: 1024,
+      metric: "cosine",
+      embedModel: "llama-text-embed-v2",
+    });
+    expect(indexShape({ body: { type: "string", sparse_embed: sparseEmbed } })).toMatchObject({
+      kind: "documents",
+      vectorType: "sparse",
+      dimension: undefined,
+      metric: "dotproduct",
+      embedModel: "pinecone-sparse-english-v0",
+    });
+    // The document's own example: one field with both, beside a full-text one.
+    expect(
+      indexShape({
+        body: { type: "string", embed, sparse_embed: sparseEmbed },
+        title: { type: "string", full_text_search: fullText },
+      }),
+    ).toMatchObject({
+      kind: "documents",
+      vectorType: "dense",
+      dimension: 1024,
+      metric: "cosine",
+      embedModel: "llama-text-embed-v2, pinecone-sparse-english-v0",
+      fullTextFields: ["title"],
+    });
+    expect(
+      indexShape({ body: { type: "string", embed, full_text_search: fullText } }),
+    ).toMatchObject({
+      kind: "documents",
+      vectorType: "dense",
+      embedModel: "llama-text-embed-v2",
+      fullTextFields: ["body"],
+    });
+  });
+
+  it("calls a named sparse-only schema sparse, not dense", () => {
+    expect(indexShape({ terms: { type: "sparse_vector" } })).toMatchObject({
+      kind: "sparse",
+      vectorType: "sparse",
+    });
+  });
+
   it("parses and diffs tags", () => {
     expect(parseTags("a=1, b = two")).toEqual({ a: "1", b: "two" });
     expect(() => parseTags("novalue")).toThrow();
@@ -353,5 +403,21 @@ describe("terraform", () => {
     });
     const p = pineconeTerraformExport.mapResource(mapIndex(pod, ACCOUNT))!;
     expect(JSON.stringify(p.resource.attributes["spec"])).toContain("p1.x1");
+  });
+
+  it("does not export a document index whose only field carries a hosted embedding (#469)", () => {
+    const documentIndex: PcIndex = {
+      ...serverless,
+      name: "articles",
+      schema: {
+        fields: {
+          body: {
+            type: "string",
+            embed: { model: "llama-text-embed-v2", dimension: 1024, metric: "cosine" },
+          },
+        },
+      },
+    };
+    expect(pineconeTerraformExport.mapResource(mapIndex(documentIndex, ACCOUNT))).toBeNull();
   });
 });

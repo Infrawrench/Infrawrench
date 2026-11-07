@@ -85,7 +85,7 @@ export const IndexResourceType = rt({
       required: false,
       editable: false,
       description:
-        "dense or sparse vectors, integrated (Pinecone embeds text with a hosted model), or documents (full-text search fields)",
+        "dense or sparse vectors, integrated (legacy: Pinecone embeds text with a hosted model), or documents (named fields with full-text search or hosted embeddings)",
     }),
     f("vectorType", "Vector Type", { required: false, editable: false }),
     f("dimension", "Dimension", { kind: "number", required: false, editable: false }),

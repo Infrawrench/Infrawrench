@@ -100,7 +100,7 @@ export function tagPatch(
 }
 
 export interface IndexShape {
-  /** dense, sparse, integrated (semantic_text) or documents (full-text search). */
+  /** dense, sparse, integrated (semantic_text) or documents (named search fields). */
   kind: string;
   vectorType: string;
   dimension: number | undefined;
@@ -113,14 +113,18 @@ export interface IndexShape {
 /**
  * Summarise a `2026-07` index schema. Classic vector indexes report their
  * vectors under the reserved `_values` / `_sparse_values` names (dense ones
- * report both), integrated-embedding indexes a `semantic_text` field, and
- * document indexes named vector and full-text-search fields.
+ * report both), legacy integrated indexes a `semantic_text` field, and
+ * document indexes named vector fields and `string` fields carrying any of
+ * `full_text_search`, `embed` and `sparse_embed`.
  */
 export function indexShape(fields: Record<string, PcSchemaField> | undefined): IndexShape {
   const entries = Object.entries(fields ?? {});
   let dense: PcSchemaField | undefined;
   let sparse = false;
   let semantic: PcSchemaField | undefined;
+  let embed: PcSchemaField["embed"];
+  const embedModels = new Set<string>();
+  let hostedSparse = false;
   const fullText: string[] = [];
   const filterable: string[] = [];
   let classic = false;
@@ -137,6 +141,14 @@ export function indexShape(fields: Record<string, PcSchemaField> | undefined): I
         semantic ??= f;
         break;
       case "string":
+        if (f.embed) {
+          embed ??= f.embed;
+          embedModels.add(f.embed.model);
+        }
+        if (f.sparse_embed) {
+          hostedSparse = true;
+          embedModels.add(f.sparse_embed.model);
+        }
         if (f.full_text_search) fullText.push(name);
         else if (f.filterable) filterable.push(name);
         break;
@@ -155,13 +167,19 @@ export function indexShape(fields: Record<string, PcSchemaField> | undefined): I
       filterableFields: filterable,
     };
   }
-  const kind = classic ? (dense ? "dense" : "sparse") : fullText.length ? "documents" : "dense";
+  const anySparse = sparse || hostedSparse;
+  let kind = "dense";
+  // Hosted embeddings on a string field mean a document index, whatever else it holds.
+  if (embedModels.size) kind = "documents";
+  else if (classic) kind = dense ? "dense" : "sparse";
+  else if (fullText.length) kind = "documents";
+  else if (sparse && !dense) kind = "sparse";
   return {
     kind,
-    vectorType: dense ? "dense" : sparse ? "sparse" : "",
-    dimension: dense?.dimension ?? undefined,
-    metric: dense?.metric ?? (sparse ? "dotproduct" : ""),
-    embedModel: "",
+    vectorType: dense || embed ? "dense" : anySparse ? "sparse" : "",
+    dimension: dense?.dimension ?? embed?.dimension,
+    metric: dense?.metric ?? embed?.metric ?? (anySparse ? "dotproduct" : ""),
+    embedModel: [...embedModels].join(", "),
     fullTextFields: fullText,
     filterableFields: filterable,
   };
