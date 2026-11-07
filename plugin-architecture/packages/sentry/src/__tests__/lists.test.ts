@@ -279,6 +279,24 @@ describe("a failed read behind a list", () => {
     ).resolves.toMatchObject({ externalId: "acme" });
   });
 
+  it("fails the project list on usage stats that are not a list", async () => {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/stats_v2/")
+        ? { start: "x", end: "y" }
+        : [{ id: "1", slug: "a" }],
+    );
+    await expect(c.listResources("project", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("still lists projects when the usage stats are down", async () => {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/stats_v2/")
+        ? { status: 500, body: { detail: "down" } }
+        : [{ id: "1", slug: "a" }],
+    );
+    await expect(c.listResources("project", ACCOUNT)).resolves.toHaveLength(1);
+  });
+
   const today = new Date().toISOString().slice(0, 10);
   const range = { fromDate: `${today.slice(0, 7)}-01`, toDate: today };
 

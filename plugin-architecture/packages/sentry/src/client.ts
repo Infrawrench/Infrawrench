@@ -21,6 +21,7 @@ import {
   externalIdOf,
   pathEncode,
   requireListPage,
+  rethrowIncompleteList,
 } from "@infrawrench/plugin-base";
 import type { SentryApi, SentryContext } from "./api.js";
 import { isPermissionError, sentryApi, statusOf } from "./api.js";
@@ -290,7 +291,10 @@ export class SentryClient implements PluginClient {
           this.projectsCache = undefined;
           const [projects, stats] = await Promise.all([
             this.projects(),
-            this.stats24h().catch(() => new Map<string, ProjectStats>()),
+            this.stats24h().catch((err: unknown) => {
+              rethrowIncompleteList(err);
+              return new Map<string, ProjectStats>();
+            }),
           ]);
           return projects.map((p) =>
             mapProject(accountId, inst, this.org, p, stats.get(String(p.id)) ?? {}),
