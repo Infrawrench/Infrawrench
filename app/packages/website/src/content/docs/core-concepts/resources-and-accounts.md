@@ -73,7 +73,18 @@ The [mobile app](../features/mobile-app.md) has the same sections and search, sh
 
 ### When a list can't be read whole
 
-A sync removes a resource when the provider stops listing it, so Infrawrench only trusts a list it read to the end. If a section has more rows than Infrawrench reads, or the provider answers with something that isn't a list, that section keeps the rows it already had and shows why. The other sections carry on syncing as usual.
+A sync removes a resource when the provider stops listing it, so Infrawrench only trusts a list it read to the end. If a section has more rows than Infrawrench reads, or the provider answers with something that isn't a list, the sync refuses that list. The section keeps the rows it already had, which may be out of date, and the other sections carry on syncing as usual.
+
+You see the reason in these places:
+
+- **Account page:** on the section itself, when it refreshes.
+- **Web sidebar:** a warning triangle next to the account. Hover it to read why.
+- **[Mobile app](../features/mobile-app.md):** below **Sync from provider** on the account page.
+- **[CLI](../features/cli.md):** the sync counts as failed, and the CLI prints the last copy it has and says why on stderr.
+
+If your organization has paging on, a list that keeps being refused opens a [sync failure incident](../features/mobile-push-notifications.md#sync-failure-incidents) like any other failing section.
+
+A few plugins read only part of a list on purpose, because the provider's rate limit wouldn't allow more, such as [GitLab](../plugins/gitlab.md) past its 100 most recently active projects. Those rows stay as last read instead of being removed, and the plugin's page says so.
 
 ### Providers with a single root
 

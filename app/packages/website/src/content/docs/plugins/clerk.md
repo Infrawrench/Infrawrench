@@ -35,7 +35,7 @@ Each secret key belongs to one instance, so add a separate account for developme
 - **Users**: the actions match the user's state (Ban or Unban, Lock or Unlock). **Sign out everywhere** revokes every active session, or you can revoke a single one from the list. To add a user to an organization, pick the organization and a role.
 - **Organizations**: add members, change roles, invite by email and revoke pending invitations, all from pickers that list the instance's users and organization roles.
 - **Domains**: each domain lists the CNAME records Clerk expects (Frontend API, Account Portal, email) and which ones are required.
-- **Secrets shown once**: rotating an OAuth application's client secret or a machine's secret key shows the new value only once. Machine keys can rotate with a one-hour grace period for the old key.
+- **Secrets**: Clerk only returns an OAuth application's client secret when it's created or rotated, so one created or rotated from Infrawrench stays in Outputs. For an older application, rotate it from **Get credentials** to keep it here. A machine's secret key can be read at any time, and can rotate with a one-hour grace period for the old key.
 - **Metrics**: the instance's Metrics tab charts new users per day and shows active users over the last day, week and month. The dashboard card shows total, active and banned users.
 
 <insert [Clerk instance Restrictions tab showing the allowlist, blocklist and organization toggles] here>

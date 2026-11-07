@@ -69,5 +69,5 @@ PagerDuty has no API for what your subscription costs, so there's no cost data. 
 
 ## Limits
 
-- Lists show up to 2,000 items per type. Incidents cover every open incident plus those resolved in the last week.
+- Lists show up to 10,000 items per type, the most PagerDuty hands out. Incidents cover every open incident plus those resolved in the last week.
 - Edit escalation policy levels after the first, schedule layers, event orchestration rules and service orchestration rules in PagerDuty.

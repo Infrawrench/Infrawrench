@@ -16,7 +16,7 @@ Infrawrench treats Stripe as part of your infrastructure, not as a payments dash
 - **Prices**: listed under their product. Create one-time, recurring per-seat or metered prices with product, currency and meter pickers. Sub-cent amounts work for metered prices. Edit the nickname, lookup key (moved from another price if it already has it), tax behavior and active state.
 - **Billing meters**: create with the event name, aggregation (sum, count or last), customer and value payload keys and pre-aggregation window. Rename, **Deactivate** and **Reactivate**. The Metrics tab charts daily usage for the customers subscribed to prices on the meter.
 - **Connected accounts** (Connect platforms): type, who controls the dashboard, requirement collection, losses and fees, charges and payouts state, and requirements due with their deadline. **Reject**, **Unreject** and delete.
-- **Payouts**: the 100 most recent, with arrival date, method, reconciliation state and failure reason. You can cancel a pending manual payout.
+- **Payouts**: every payout, up to 50,000, with arrival date, method, reconciliation state and failure reason. You can cancel a pending manual payout.
 - **Report runs**: start a Reporting API report (balance summary, itemized balance changes, payout reconciliation and the rest) by picking a report type and a date range within the data Stripe has. The 100 most recent runs are listed.
 - **Sigma query runs**: runs of your scheduled Sigma queries, with their SQL, data freshness and result file.
 
@@ -73,5 +73,5 @@ Incidents from [stripestatus.com](https://www.stripestatus.com) show on your Str
 - You can only delete products without prices. Archive the others.
 - Price amounts, currencies and intervals can't change after creation. Create a new price and archive the old one.
 - The subscriptions overview covers the 1,000 most recent subscriptions, and says so on larger accounts. Its recurring revenue is at list price, before discounts and tax, and leaves out metered items.
-- On very busy accounts, cost reads up to 10,000 balance transactions per day (2,000 per day for metrics).
+- Cost reads up to 100,000 balance transactions per day, and a day past that fails rather than under-reports. Metrics read up to 2,000 per day.
 - Report and Sigma result files need your API key to download, so download them from the Stripe Dashboard.

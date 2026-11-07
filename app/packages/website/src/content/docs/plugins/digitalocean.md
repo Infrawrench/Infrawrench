@@ -257,13 +257,14 @@ Tasks and models come from DigitalOcean's presets, so every choice is valid.
 
 ### Dedicated Inference
 
-Dedicated Inference is the always-on GPU version of serverless inference. Use it when your traffic is steady, you have strict latency targets, or you want to bring your own model. The create form asks for:
+Dedicated Inference is the always-on GPU version of serverless inference. Use it when your traffic is steady or you have strict latency targets. The create form asks for:
 
 - **Region**: only Gradient AI regions are shown.
-- **GPU Size**: shows GPU count and monthly price.
-- **Model**: pick from the list of models each GPU size supports, or paste a Hugging Face model ID to bring your own.
+- **GPU Size**: each size with its hourly price. It has to be one the model runs on.
+- **GPU Count**: how many of that size to run the model on. It starts at 1.
+- **Model**: pick from DigitalOcean's list. Each model says which GPU sizes it runs on and whether it's gated.
 - **Public endpoint**: when on, you get both public and private VPC addresses; otherwise only the private one.
-- **VPC**: optional; defaults to the region's default VPC.
+- **VPC**: pick one in the chosen region, or leave it empty for that region's default VPC.
 - **Hugging Face token**: only needed for gated Hugging Face models.
 
 When provisioning finishes, the `publicEndpointUrl` and `privateEndpointUrl` outputs are filled in.
@@ -280,9 +281,9 @@ These keys authenticate requests to `https://inference.do-ai.run/v1/*` (serverle
 
 For the rest of the DigitalOcean API (`/v2/...`), keep using the personal access token you added when you connected the account.
 
-The detail page shows **Name**, **Created By** and **Last Used**, with **Refresh** and delete. There's no secret to reveal; the key only exists in Model Studio. Don't confuse these with **Agent API Keys**, which do show a secret once.
+The detail page shows **Name**, **Created By** and **Created**, with **Refresh** and delete. DigitalOcean doesn't report when a key was last used. There's no secret to reveal; the key only exists in Model Studio. Don't confuse these with **Agent API Keys**, which do show a secret once.
 
-<insert [DigitalOcean Model API Key detail page showing the Name / Created By / Last Used details and no secret value] here>
+<insert [DigitalOcean Model API Key detail page showing the Name / Created By / Created details and no secret value] here>
 
 ### Vector Databases (Weaviate / OpenSearch / PostgreSQL)
 

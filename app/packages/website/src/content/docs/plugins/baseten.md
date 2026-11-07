@@ -37,6 +37,7 @@ Spend matches Baseten's Billing page and is **billed, not estimated**:
 - **Chains**: per chain, tagged with the chainlet.
 - **Training**: per training job.
 - **Model APIs**: per model, per day, with input plus output tokens as the usage amount.
+- **Loops**: serverless Loops per base model, per day, tagged `base_model`, with tokens as the usage amount. Dedicated Loops runs, samplers and trainers appear under the same service.
 
 History starts on 1 January 2026, the earliest date Baseten provides. Amounts are before credits, because Baseten only reports credits as a total with no date.
 

@@ -47,7 +47,7 @@ Devin accounts show up in [cost graphs & budgets](../features/cloud-costs.md) wi
 
 ## Tips & limits
 
-- Up to 1,000 of each organization's most recent sessions are listed.
+- Up to 50,000 sessions are listed per organization.
 - On very busy organizations, some ACUs from sessions that span several days may be counted under the user rather than the session.
 - Service users have no names in Devin, so their cost is tagged `Service user <id>`. The service user you connect with is tagged with its own name.
 - Devin incidents from [devinstatus.com](https://www.devinstatus.com) appear on the account, and Cloud Agent incidents are flagged on sessions.

@@ -65,6 +65,6 @@ A workspace that's running while Anyscale reports it idle (no Ray workload, no r
 
 ## Tips & limits
 
-- **Jobs show the most recent 1,000** unarchived batch jobs. Archived jobs aren't shown.
+- **Jobs show the most recent 10,000** unarchived batch jobs. Archived jobs aren't shown.
 - **Utilization charts are per cloud.** Anyscale reports utilization for a whole cloud, optionally narrowed to one project. There's no per-workspace or per-job chart, so each workload's page shows its spend instead.
 - **Spend breakdowns are estimates.** Anyscale's usage figures can differ slightly from the invoice.

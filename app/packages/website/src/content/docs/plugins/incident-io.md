@@ -71,6 +71,6 @@ incident.io doesn't share what your subscription costs, so there's no cost data.
 
 ## Limits
 
-- Incidents include every open incident and those changed in the last week, up to 1,000 each. Escalations and maintenance windows show the most recent 250.
+- Incidents include every open incident and those changed in the last week. Escalations include every open one and those changed in the last 90 days. Each list is read up to 10,000 rows.
 - Workflows, alert routes, escalation paths and schedule rotations are read-only here.
 - Escalations are acknowledged as the API key. incident.io may require a person to acknowledge some escalations. If so, the error tells you, and you acknowledge in incident.io.

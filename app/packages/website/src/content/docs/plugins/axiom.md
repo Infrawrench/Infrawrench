@@ -59,6 +59,5 @@ Datasets, virtual fields, monitors and notifiers export as `axiomhq/axiom` resou
 
 ## Limits
 
-- Annotations from the last 90 days are listed.
 - A dataset's edge deployment is set when you create it and can't be changed.
 - Axiom doesn't let you change a token's capabilities. Create a new token instead.

@@ -16,8 +16,7 @@ Connect an Atlas **organization** to track spend and manage its projects, cluste
   - **Edit**: tier, storage, compute and storage auto-scaling, termination protection.
   - **Take snapshot**: an on-demand snapshot with its own retention.
   - **Metrics**: connections, query/insert/update/delete/getmore/command rates, CPU, memory, disk read and write IOPS, replication lag, network in and out, and query targeting.
-- **Flex clusters**: region, storage and connection string. Edit termination protection.
-- **Serverless instances** (legacy): listed with their connection strings while MongoDB moves them to Flex.
+- **Flex clusters**: region, storage and connection string. Edit termination protection. Former serverless instances are here too, since MongoDB moved them to Flex.
 - **Database users**: create one with a role (optionally limited to one cluster), edit its roles and description, or delete it.
 - **IP access list**: add an address, CIDR block or temporary entry, edit its comment, or remove it.
 - **Backup snapshots**: list, take on demand and delete. **Backup policies**: retention per frequency, the next snapshot, and editable snapshot time and restore window.

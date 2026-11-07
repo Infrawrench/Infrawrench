@@ -42,7 +42,7 @@ For a self-managed instance with its own certificate authority, paste the CA cer
 
 ## Find leaked secrets
 
-With GitLab **Ultimate**, Infrawrench reads the secret detection findings from the vulnerability report of your 100 most recently active projects, every 30 minutes, and shows them in [Leaked credentials](../features/leaked-credentials.md) on the Posture tab. Projects on other tiers are skipped.
+With GitLab **Ultimate**, Infrawrench reads the secret detection findings from the vulnerability report of your active projects, up to 1,000 of them, every 30 minutes, and shows them in [Leaked credentials](../features/leaked-credentials.md) on the Posture tab. Projects on other tiers are skipped.
 
 - **Permissions.** Reading findings needs `read_api` and the Developer role on the project. Resolving a finding after a rotation, or dismissing it with your reason, needs `api` and the Maintainer role (or Security Manager).
 - **Matched by token type.** GitLab never returns the secret itself, only the rule that found it (`gitlab_personal_access_token`, `AWS` and so on). Infrawrench matches the finding to your accounts on the provider that issues that kind of token. With exactly one such account it is shown as probably that account; with several, they are listed as candidates. Either way it may be another key from the same provider.
@@ -64,7 +64,7 @@ If none of your projects can show the report, the account tells you it is a tier
 
 **What findings attach to.** A container scanning finding names the scanned image (for example `registry.gitlab.com/acme/web/app`, with its digest when the scan recorded one), so it matches every running pod, task or service from any provider that runs that image. A dependency scanning finding attaches to the **project** in your inventory.
 
-**Limits.** A group-scoped account reads the group's report (subgroups included) up to 5,000 findings. Without a group, the report of each of the 100 most recently active projects is read, up to 1,000 findings each. On a large instance these limits can cut the list short, so it is marked partial.
+**Limits.** A group-scoped account reads the group's report (subgroups included) up to 20,000 findings. Without a group, the report of each active project is read, for up to 1,000 projects and up to 5,000 findings each. Past these limits the read fails and the findings from the last read stay, so nothing is reported as fixed because it wasn't read.
 
 ## Seats
 
@@ -79,7 +79,7 @@ GitLab.com accounts report their subscription seats to Seats, which flags member
 
 ## Tips and limits
 
-- Pipelines, variables, environments and the other per-project items are listed for the 100 most recently active, non-archived projects. A project past that keeps what was last read, which refreshes once it is active again. Up to 500 projects are listed in total.
+- Pipelines, variables, environments and the other per-project items are listed for the 100 most recently active, non-archived projects. A project past that keeps what was last read, which refreshes once it is active again. Up to 10,000 projects are listed in total.
 - GitLab only shows the compute minutes quota to instance administrators, so the [quota radar](../features/quota-radar.md) only shows compute minutes when the token belongs to one. Namespace storage appears when GitLab enforces a storage limit on the group.
 - Changing who may push or merge to a protected branch removes and re-adds the protection with the new levels. Rules for specific users, groups or deploy keys are Premium and Ultimate features.
 - A CI/CD variable that is masked and hidden can never be read back. To change its other settings, type the value again under **Edit**.

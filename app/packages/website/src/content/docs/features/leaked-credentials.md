@@ -24,7 +24,7 @@ GitHub matches are exact. See [how matching works](#how-matching-works).
 
 ### GitLab secret detection
 
-A [GitLab](../plugins/gitlab.md) account reads the secret detection findings in the vulnerability report of its 100 most recently active projects.
+A [GitLab](../plugins/gitlab.md) account reads the secret detection findings in the vulnerability report of its active projects, up to 1,000 of them.
 
 - **Tier.** The vulnerability report is a GitLab **Ultimate** feature. Projects on other tiers are skipped.
 - **Token.** `read_api` and the Developer role to read findings; `api` and the Maintainer role (or Security Manager) to resolve or dismiss them from Infrawrench.
@@ -112,5 +112,5 @@ The [mobile app](./mobile-app.md) shows leaks read-only at the top of its Postur
 
 - Desktop only shows leaks in cloud mode, not local-only mode.
 - Each scan reads up to 1,000 findings per scanner account, most recently updated first.
-- GitLab covers your 100 most recently active projects.
+- GitLab covers up to 1,000 active projects. With more than that, the scan fails rather than reading only some.
 - A leak whose account or stored secret has since been deleted stays open. Removing it from Infrawrench doesn't revoke the token at the provider.

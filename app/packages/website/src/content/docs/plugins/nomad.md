@@ -41,7 +41,7 @@ Connect a Nomad cluster to run and operate jobs and look after the nodes they ru
 ## Tips and limits
 
 - **Private clusters**: the desktop app connects directly. The cloud app reaches a private cluster through an [SSH tunnel](../features/ssh-tunnels.md) on the account. Through a tunnel the connection goes to `127.0.0.1`, so an HTTPS certificate must also cover that address.
-- Up to 3,000 jobs, 3,000 allocations (running ones first) and 500 deployments are listed.
+- Up to 50,000 jobs, 50,000 allocations (running and pending ones first), 50,000 deployments and 1,000 ACL policies are listed. A longer list [keeps the rows it already has and says why](../core-concepts/resources-and-accounts.md#when-a-list-cant-be-read-whole).
 - Logs and allocation and node metrics need the client node to be reachable from the Nomad servers.
 - Nomad keeps no metric history, so charts fill in from the moment you connect.
 - Enterprise features (quotas, Sentinel policies, multi-region deployments) aren't managed here.

@@ -131,7 +131,7 @@ On top of the billing permissions, you need:
 
 If the token is refused, the account shows a permission gap with the steps above, not zero vulnerabilities.
 
-Findings belong to a **repository** (`owner/name`), not a running workload, so they appear in the vulnerability inventory without links to pods or functions. GitHub only reports the vulnerable range, not the installed version, so that column stays empty. Up to 5,000 open alerts are read per account.
+Findings belong to a **repository** (`owner/name`), not a running workload, so they appear in the vulnerability inventory without links to pods or functions. GitHub only reports the vulnerable range, not the installed version, so that column stays empty. Up to 100,000 open alerts are read per account, and past that the read fails and the alerts from the last read stay.
 
 ## Tips and limits
 

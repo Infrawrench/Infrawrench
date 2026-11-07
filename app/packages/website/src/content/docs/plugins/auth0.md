@@ -49,4 +49,4 @@ You connect with a Machine to Machine application authorized for the Auth0 Manag
 - Log streams to EventBridge, Event Grid, Segment and Mixpanel are listed and can be paused, resumed and deleted, but you create them in the Auth0 dashboard.
 - Auth0 has no billing or usage API beyond active users and daily stats.
 - Infrawrench follows Auth0's US public cloud status feed, so incidents are matched to US tenants only.
-- The Management API returns at most 1,000 users per query. Very large tenants show the 1,000 most recently created users.
+- The Management API returns at most 1,000 users per query, so a tenant with more can't be read whole. The Users section then [keeps the rows it already has and says why](../core-concepts/resources-and-accounts.md#when-a-list-cant-be-read-whole).

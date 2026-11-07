@@ -65,7 +65,7 @@ Local accounts are listed live from the provider, just like the desktop sidebar,
 volume: 403 Forbidden: token is missing the "block_storage:read" scope
 ```
 
-The rest of the account still lists. Org accounts are refreshed from the provider first, so they're current too. If the refresh fails (a provider outage or rate limit), the CLI prints the last copy it has and says so on stderr. The TUI works the same way: when you open an account you see the last copy straight away, and it updates in place when the refresh finishes.
+The rest of the account still lists. Org accounts are refreshed from the provider first, so they're current too. If the refresh fails (a provider outage, a rate limit or [a list too long to read whole](../core-concepts/resources-and-accounts.md#when-a-list-cant-be-read-whole)), the CLI prints the last copy it has and says so on stderr. The TUI works the same way: when you open an account you see the last copy straight away, and it updates in place when the refresh finishes.
 
 ## Search and starred items
 

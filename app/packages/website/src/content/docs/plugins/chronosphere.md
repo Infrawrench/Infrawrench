@@ -45,6 +45,6 @@ Teams, buckets and collections export to the `chronosphereio/chronosphere` provi
 
 ## Limits
 
-- Lists show up to 15,000 objects per type.
+- Lists show up to 50,000 objects per type.
 - Graphite and log monitors are listed and shown only as text. Edit their queries in Chronosphere.
 - Edit dashboard panels, notifier settings and SLO indicators in Chronosphere.

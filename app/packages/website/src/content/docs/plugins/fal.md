@@ -11,17 +11,17 @@ Connect fal to see which models you call and what they cost, keep an eye on your
 - **Models**: every Model API endpoint your workspace called in the last 30 days. You see its catalogue name and category, unit price, units used and cost over those 30 days, the queue URL, and the 20 most recent requests. The **Metrics** tab charts request counts, successes, user and server errors, cold boots, execution time p50/p90/p99 and queue time p50/p90.
 - **Serverless Apps**: your deployed apps with machine type, regions, routes, concurrency, keep-alive and timeouts, the current queue size, revision history (and which one is serving), recent requests, a **Logs** tab and the same **Metrics** as models. **Flush queue** drops every pending request.
 - **Compute Instances**: dedicated H100 machines with region, status and IP. Delete an instance when you're done with it.
-- **API Keys**: every key with its alias, scope and creator. To rotate a key, use **Get credentials > Create a replacement key**. It creates a new key with the same alias (shown once). Then delete the old one.
+- **API Keys**: every key with its alias, access (a preset, custom permissions or a legacy scope), permissions and creator. To rotate a key, use **Get credentials > Create a replacement key**. It creates a new key with the same alias, description and permissions (shown once), and a legacy ADMIN key's replacement gets the FULL preset. Switch your apps over, then delete the old one.
 - **Workflows**: your workflows and the endpoints they chain.
 
 ## Connect your account
 
-1. Open [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys) and create a key with the **ADMIN** scope.
-2. Paste the whole value, `key_id:key_secret`, into **Admin API Key**.
+1. Open [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys) and create a key with the **FULL** preset, the only one that covers everything here. A legacy **ADMIN** key works the same.
+2. Paste the whole value, `key_id:key_secret`, into **API Key**.
 
-On fal, usage, cost, credits, API keys and Compute instances are admin-only. An **API**-scope key still works for Serverless apps, workflows, analytics and logs, but the model list, costs and credits stay empty.
+A narrower preset works too, and whatever it can't read stays empty. **READONLY** shows Serverless apps, Compute instances, workflows and credits, but not models, costs or API keys, and changes nothing.
 
-<insert [fal Add-account form with the Admin API Key field and the Create an API key help link] here>
+<insert [fal Add-account form with the API Key field and the Create an API key help link] here>
 
 ## Costs and credits
 

@@ -8,7 +8,7 @@ Connect a Honeycomb team to manage its setup and chart what your services send i
 
 ## What you can manage
 
-- **Environments**: every environment on the team, with its color, description and delete protection. Create, rename, recolor and delete environments, and use **Connect environment** to give Infrawrench access to what's inside one (see [Connect your account](#connect-your-account)). The Metrics tab charts the events the environment stores, which is the volume Honeycomb bills on.
+- **Environments**: every environment on the team, with its color, description and delete protection. Create, recolor and delete environments (Honeycomb doesn't let you rename one), and use **Connect environment** to give Infrawrench access to what's inside one (see [Connect your account](#connect-your-account)). The Metrics tab charts the events the environment stores, which is the volume Honeycomb bills on.
 - **Datasets**: create datasets, edit the description, JSON unpacking depth and delete protection, and set the **dataset definitions**: the columns Honeycomb treats as trace id, span id, duration, error, service name, route and so on. The Metrics tab charts event volume, P50/P95/P99 of the duration column and the error rate.
 - **Columns**: add a column before your events carry it, change its type, description or visibility, or delete one nobody sends any more.
 - **Derived columns**: per dataset or environment-wide. Create them and edit the formula and description.
