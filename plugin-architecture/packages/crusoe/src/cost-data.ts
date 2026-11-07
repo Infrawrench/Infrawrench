@@ -1,5 +1,5 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import { CostSetupError, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import { isStatus, seg, type CrusoeApi } from "./api.js";
 import { normalizeHeader, parseCsv } from "./csv.js";
 import type { CrusoeBillingCost, CrusoeEntity } from "./types.js";
@@ -259,11 +259,25 @@ export function aggregateRows(rows: CostRow[]): CostRow[] {
   return [...byKey.values()].map((r) => ({ ...r, amount: Math.round(r.amount * 1e6) / 1e6 }));
 }
 
+const EXPORT_PATH = "/organizations/{organization_id}/billing/export-productline";
+const COSTS_PATH = "/organizations/{organization_id}/billing/costs";
+
+/** One request each, so a cap. Crusoe's data starts on 2025-05-01. */
+const MAX_EXPORT_DAYS = 1_000;
+
 function eachDay(range: CostFetchRange): string[] {
   const out: string[] = [];
   const d = new Date(`${range.fromDate}T00:00:00Z`);
   const end = new Date(`${range.toDate}T00:00:00Z`);
-  while (d <= end && out.length < 400) {
+  while (d <= end) {
+    if (out.length === MAX_EXPORT_DAYS) {
+      throw new ListTruncatedError({
+        vendor: "Crusoe",
+        path: EXPORT_PATH,
+        items: out.length,
+        maxItems: MAX_EXPORT_DAYS,
+      });
+    }
     out.push(d.toISOString().slice(0, 10));
     d.setUTCDate(d.getUTCDate() + 1);
   }
@@ -328,7 +342,13 @@ export async function fetchCrusoeCostData(
     }
     try {
       const res = await api.get(`/organizations/${seg(org.id)}/billing/costs`);
-      rows.push(...mapIntelligenceCosts(res, range, ctx));
+      const data = requireListPage(res?.data, {
+        vendor: "Crusoe",
+        path: COSTS_PATH,
+        key: "data",
+        page: res,
+      });
+      rows.push(...mapIntelligenceCosts({ data }, range, ctx));
     } catch (e) {
       // Organizations without Intelligence Billing may be refused here; the
       // infrastructure costs above are still complete.

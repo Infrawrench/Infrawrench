@@ -153,6 +153,88 @@ describe("listing", () => {
   });
 });
 
+describe("a list that cannot say it has every row", () => {
+  const OWN = /has more than Infrawrench reads/;
+  const NOT_A_LIST = /is not a list/;
+  const pagesOf = (path: string) => calls.filter((x) => x.path === path).length;
+
+  it("throws at the page cap rather than returning what it read", async () => {
+    route("GET", "/projects/p-1/storage/disks", {
+      items: [{ id: "d-1" }],
+      next_page_token: "again",
+    });
+    route("GET", "/projects/p-2/storage/disks", { items: [] });
+    await expect(client().listResources("disk", "acct")).rejects.toThrow(OWN);
+    expect(pagesOf("/projects/p-1/storage/disks")).toBe(1000);
+  });
+
+  it("throws at the row cap, whatever size a page turns out to be", async () => {
+    let page = 0;
+    route("GET", "/projects/p-1/storage/disks", () => ({
+      items: Array.from({ length: 5000 }, (_, i) => ({ id: `d-${page}-${i}` })),
+      next_page_token: `t-${++page}`,
+    }));
+    route("GET", "/projects/p-2/storage/disks", { items: [] });
+    await expect(client().listResources("disk", "acct")).rejects.toThrow(OWN);
+    expect(pagesOf("/projects/p-1/storage/disks")).toBe(10);
+  });
+
+  it("reads more than the old 100 pages", async () => {
+    route("GET", "/projects/p-1/storage/disks", (c: Call) => {
+      const page = Number(c.query.get("next_token") ?? "0");
+      return {
+        items: [{ id: `d-${page}` }],
+        ...(page < 149 ? { next_page_token: String(page + 1) } : {}),
+      };
+    });
+    route("GET", "/projects/p-2/storage/disks", { items: [] });
+    expect(await client().listResources("disk", "acct")).toHaveLength(150);
+  });
+
+  it("refuses a renamed list on the first page and on a later one", async () => {
+    route("GET", "/projects/p-1/storage/disks", { rows: [] });
+    route("GET", "/projects/p-2/storage/disks", { items: [] });
+    await expect(client().listResources("disk", "acct")).rejects.toThrow(NOT_A_LIST);
+    route("GET", "/projects/p-1/storage/disks", (c: Call) =>
+      c.query.get("next_token") ? { rows: [] } : { items: [{ id: "d-1" }], next_page_token: "t" },
+    );
+    await expect(client().listResources("disk", "acct")).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("reads a list key set to null as empty, as Go writes a nil slice", async () => {
+    route("GET", "/projects/p-1/storage/disks", { items: null });
+    route("GET", "/projects/p-2/storage/disks", { items: null });
+    expect(await client().listResources("disk", "acct")).toEqual([]);
+  });
+
+  it.each([
+    ["VMs from the project list", "/organizations/projects", "vm"],
+    ["projects from the project list", "/organizations/projects", "project"],
+    ["projects from the organization list", "/organizations/entities", "project"],
+    ["reservations from the organization list", "/organizations/entities", "reservation"],
+    ["SSH keys from their list", "/users/ssh-keys", "ssh-key"],
+    ["reservations from their list", "/organizations/org-1/reservations", "reservation"],
+  ])("does not read %s, broken, as no rows", async (_what, path, typeId) => {
+    route("GET", "/organizations/org-1/reservations", { items: [] });
+    route("GET", "/users/ssh-keys", { items: [] });
+    route("GET", path, { error: "nope" });
+    await expect(client().listResources(typeId, "acct")).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("does not read a broken reservation list as commitments ending", async () => {
+    route("GET", "/organizations/org-1/reservations", { error: "nope" });
+    await expect(client().fetchCommitments("acct")).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("fails a cost read whose project names cannot be trusted", async () => {
+    route("GET", "/organizations/projects", { error: "nope" });
+    route("GET", "/organizations/org-1/billing/export-productline", "Date,Cost\n2026-09-01,3");
+    await expect(
+      client().fetchCostData("acct", { fromDate: "2026-09-01", toDate: "2026-09-01" }),
+    ).rejects.toThrow(NOT_A_LIST);
+  });
+});
+
 describe("actions", () => {
   it("starts, stops and resets VMs with the PATCH action", async () => {
     route("PATCH", "/projects/p-1/compute/vms/instances/vm-1", done);

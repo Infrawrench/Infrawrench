@@ -19,10 +19,19 @@ import type {
 import {
   CreditAccessError,
   QuotaAccessError,
+  rethrowIncompleteList,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { ApiBody } from "@infrawrench/plugin-base";
-import { createCrusoeApi, isStatus, listAll, requireId, seg, type CrusoeApi } from "./api.js";
+import {
+  createCrusoeApi,
+  isStatus,
+  listAll,
+  pageItems,
+  requireId,
+  seg,
+  type CrusoeApi,
+} from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import { fetchCrusoeCostData } from "./cost-data.js";
 import { buildCreateConfig } from "./create-config.js";
@@ -135,7 +144,9 @@ export class CrusoeClient implements PluginClient {
 
   async organizations(): Promise<CrusoeEntity[]> {
     if (!this.orgsCache || Date.now() - this.orgsCache.at > CACHE_TTL_MS) {
-      const value = this.api.get("/organizations/entities").then((r) => r?.items ?? []);
+      const value = this.api
+        .get("/organizations/entities")
+        .then((r) => pageItems(r, "/organizations/entities"));
       value.catch(() => (this.orgsCache = undefined));
       this.orgsCache = { at: Date.now(), value };
     }
@@ -144,7 +155,9 @@ export class CrusoeClient implements PluginClient {
 
   async projects(): Promise<CrusoeProject[]> {
     if (!this.projectsCache || Date.now() - this.projectsCache.at > CACHE_TTL_MS) {
-      const value = this.api.get("/organizations/projects").then((r) => r?.items ?? []);
+      const value = this.api
+        .get("/organizations/projects")
+        .then((r) => pageItems(r, "/organizations/projects"));
       value.catch(() => (this.projectsCache = undefined));
       this.projectsCache = { at: Date.now(), value };
     }
@@ -196,21 +209,25 @@ export class CrusoeClient implements PluginClient {
         case "project": {
           const [projects, orgs] = await Promise.all([
             this.projects(),
-            this.organizations().catch(() => []),
+            // Only the organization's name on each row, but not at the cost of hiding a bad list.
+            this.organizations().catch((err) => {
+              rethrowIncompleteList(err);
+              return [];
+            }),
           ]);
           const byId = new Map(orgs.map((o) => [o.id, o]));
           return projects.map((p) => mapProject(p, accountId, byId));
         }
         case "ssh-key": {
           const res = await this.api.get("/users/ssh-keys");
-          return (res?.items ?? []).map((k) => mapSshKey(k, accountId));
+          return pageItems(res, "/users/ssh-keys").map((k) => mapSshKey(k, accountId));
         }
         case "reservation":
           return this.listReservations(accountId);
         case "vm":
           return this.perProject(async (pid) => {
             const [vms, types] = await Promise.all([
-              listAll((query) =>
+              listAll("/projects/{project_id}/compute/vms/instances", (query) =>
                 this.api.get(`/projects/${seg(pid)}/compute/vms/instances`, { query }),
               ),
               this.vmTypes(pid),
@@ -221,7 +238,7 @@ export class CrusoeClient implements PluginClient {
         case "disk":
           return this.perProject(async (pid) =>
             (
-              await listAll((query) =>
+              await listAll("/projects/{project_id}/storage/disks", (query) =>
                 this.api.get(`/projects/${seg(pid)}/storage/disks`, { query }),
               )
             ).map((d) => mapDisk(d, pid, accountId)),
@@ -229,7 +246,7 @@ export class CrusoeClient implements PluginClient {
         case "snapshot":
           return this.perProject(async (pid) =>
             (
-              await listAll((query) =>
+              await listAll("/projects/{project_id}/storage/snapshots", (query) =>
                 this.api.get(`/projects/${seg(pid)}/storage/snapshots`, { query }),
               )
             ).map((s) => mapSnapshot(s, pid, accountId)),
@@ -237,7 +254,7 @@ export class CrusoeClient implements PluginClient {
         case "vpc-network":
           return this.perProject(async (pid) =>
             (
-              await listAll((query) =>
+              await listAll("/projects/{project_id}/networking/vpc-networks", (query) =>
                 this.api.get(`/projects/${seg(pid)}/networking/vpc-networks`, { query }),
               )
             ).map((n) => mapNetwork(n, pid, accountId)),
@@ -245,7 +262,7 @@ export class CrusoeClient implements PluginClient {
         case "vpc-subnet":
           return this.perProject(async (pid) =>
             (
-              await listAll((query) =>
+              await listAll("/projects/{project_id}/networking/vpc-subnets", (query) =>
                 this.api.get(`/projects/${seg(pid)}/networking/vpc-subnets`, { query }),
               )
             ).map((s) => mapSubnet(s, pid, accountId)),
@@ -253,7 +270,7 @@ export class CrusoeClient implements PluginClient {
         case "firewall-rule":
           return this.perProject(async (pid) =>
             (
-              await listAll((query) =>
+              await listAll("/projects/{project_id}/networking/vpc-firewall-rules", (query) =>
                 this.api.get(`/projects/${seg(pid)}/networking/vpc-firewall-rules`, { query }),
               )
             ).map((r) => mapFirewallRule(r, pid, accountId)),
@@ -261,7 +278,7 @@ export class CrusoeClient implements PluginClient {
         case "kubernetes-cluster":
           return this.perProject(async (pid) =>
             (
-              await listAll((query) =>
+              await listAll("/projects/{project_id}/kubernetes/clusters", (query) =>
                 this.api.get(`/projects/${seg(pid)}/kubernetes/clusters`, { query }),
               )
             ).map((c) => mapCluster(c, pid, accountId)),
@@ -269,7 +286,7 @@ export class CrusoeClient implements PluginClient {
         case "node-pool":
           return this.perProject(async (pid) =>
             (
-              await listAll((query) =>
+              await listAll("/projects/{project_id}/kubernetes/nodepools", (query) =>
                 this.api.get(`/projects/${seg(pid)}/kubernetes/nodepools`, { query }),
               )
             ).map((np) => mapNodePool(np, pid, accountId)),
@@ -277,7 +294,7 @@ export class CrusoeClient implements PluginClient {
         case "load-balancer":
           return this.perProject(async (pid) =>
             (
-              await listAll((query) =>
+              await listAll("/projects/{project_id}/networking/load-balancers", (query) =>
                 this.api.get(`/projects/${seg(pid)}/networking/load-balancers`, { query }),
               )
             ).map((lb) => mapLoadBalancer(lb, pid, accountId)),
@@ -294,7 +311,9 @@ export class CrusoeClient implements PluginClient {
       orgs.map(async (org) => {
         try {
           const res = await this.api.get(`/organizations/${seg(org.id)}/reservations`);
-          return (res?.items ?? []).map((r) => mapReservation(r, org.id, accountId));
+          return pageItems(res, "/organizations/{organization_id}/reservations").map((r) =>
+            mapReservation(r, org.id, accountId),
+          );
         } catch (e) {
           // Reservations are an org-member feature; a key without access lists none.
           if (isStatus(e, 403, 404)) return [];
@@ -844,7 +863,10 @@ export class CrusoeClient implements PluginClient {
     return attempt(async () => {
       const [orgs, projects] = await Promise.all([
         this.organizations(),
-        this.projects().catch(() => []),
+        this.projects().catch((err) => {
+          rethrowIncompleteList(err);
+          return [];
+        }),
       ]);
       const names = new Map(projects.map((p) => [p.id, p.name || p.id]));
       return fetchCrusoeCostData(this.api, orgs, names, range);
@@ -894,7 +916,7 @@ export class CrusoeClient implements PluginClient {
         let items;
         try {
           const res = await this.api.get(`/organizations/${seg(org.id)}/reservations`);
-          items = res?.items ?? [];
+          items = pageItems(res, "/organizations/{organization_id}/reservations");
         } catch (e) {
           // No reservations feature for this org: it holds none. Anything else
           // must throw, because a short list reads as commitments ending.

@@ -1,5 +1,7 @@
 import {
   createApiClient,
+  ListTruncatedError,
+  requireListPage,
   type ApiClient,
   type HostServices,
   type HttpHostServices,
@@ -147,28 +149,55 @@ export function createCrusoeApi(
   };
 }
 
+const VENDOR = "Crusoe";
+
+/**
+ * The document gives no page size or maximum for any list, so none is sent and a page
+ * can hold any number of rows: the page cap stops a repeating token, the row cap
+ * stops a list longer than the host can prune.
+ */
+const MAX_PAGES = 1_000;
+const MAX_ROWS = 50_000;
+
+/** A list answer's rows. The document requires `items`, so an answer without it is no answer. */
+export function pageItems<Item>(
+  res: { items?: readonly Item[] | null } | undefined,
+  path: string,
+): Item[] {
+  return requireListPage(res?.items, { vendor: VENDOR, path, key: "items", page: res });
+}
+
 /**
  * Every page of a list endpoint. Crusoe paginates with `next_token` in the
  * request and `next_page_token` in the response, and only some lists
  * paginate at all; one that returns no token is simply a single page.
  *
- * A loop rather than `withCursorPagination`, whose `getAll` reads a list that is
- * not an array as empty, where this has always failed on it.
+ * `path` names the route in errors. A loop rather than `withCursorPagination`, which
+ * only takes the routes the document says have a cursor: most of these do not.
  */
 export async function listAll<Item>(
+  path: string,
   fetchPage: (query: {
     next_token?: string;
   }) => Promise<{ items?: readonly Item[]; next_page_token?: string } | undefined>,
 ): Promise<Item[]> {
   const items: Item[] = [];
   let token: string | undefined;
-  for (let page = 0; page < 100; page++) {
+  for (let page = 0; page < MAX_PAGES; page++) {
     const res = await fetchPage(token ? { next_token: token } : {});
-    items.push(...(res?.items ?? []));
+    items.push(...pageItems(res, path));
     token = res?.next_page_token || undefined;
-    if (!token) break;
+    if (!token) return items;
+    if (items.length >= MAX_ROWS) {
+      throw new ListTruncatedError({
+        vendor: VENDOR,
+        path,
+        items: items.length,
+        maxItems: MAX_ROWS,
+      });
+    }
   }
-  return items;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: items.length, maxPages: MAX_PAGES });
 }
 
 export function isStatus(err: unknown, ...statuses: number[]): boolean {

@@ -187,6 +187,53 @@ describe("fetchCrusoeCostData", () => {
     expect(rows.map((r) => r.date)).toEqual(["2026-09-01", "2026-09-02"]);
   });
 
+  it("does not read a broken intelligence billing answer as no spend", async () => {
+    const api = fakeApi({
+      "/organizations/org-1/billing/export-productline": () => "Date,Cost\n2026-09-01,3",
+      "/organizations/org-1/billing/costs": () => JSON.stringify({ rows: [] }),
+    });
+    await expect(fetchCrusoeCostData(api, [{ id: "org-1" }], new Map(), range)).rejects.toThrow(
+      /is not a list/,
+    );
+  });
+
+  it("reads intelligence billing's null data as no spend", async () => {
+    const api = fakeApi({
+      "/organizations/org-1/billing/export-productline": () => "Date,Cost\n2026-09-01,3",
+      "/organizations/org-1/billing/costs": () => JSON.stringify({ data: null }),
+    });
+    const rows = await fetchCrusoeCostData(api, [{ id: "org-1" }], new Map(), range);
+    expect(rows.map((r) => r.amount)).toEqual([3]);
+  });
+
+  it("reads every day of a long range when the export has no date column", async () => {
+    const days: string[] = [];
+    const api = fakeApi({
+      "/organizations/org-1/billing/export-productline": (query) => {
+        if (query["start_date"] !== query["end_date"]) return "Product,Cost\na40,9";
+        days.push(query["start_date"] ?? "");
+        return "Product,Cost\na40,4";
+      },
+    });
+    await fetchCrusoeCostData(api, [{ id: "org-1" }], new Map(), {
+      fromDate: "2025-05-01",
+      toDate: "2026-11-01",
+    });
+    expect(days).toHaveLength(550);
+  });
+
+  it("throws rather than drop days past the cap", async () => {
+    const api = fakeApi({
+      "/organizations/org-1/billing/export-productline": () => "Product,Cost\na40,4",
+    });
+    await expect(
+      fetchCrusoeCostData(api, [{ id: "org-1" }], new Map(), {
+        fromDate: "2020-01-01",
+        toDate: "2026-11-01",
+      }),
+    ).rejects.toThrow(/has more than Infrawrench reads/);
+  });
+
   it("raises a setup error when every organization refuses billing access", async () => {
     const api = fakeApi({
       "/organizations/org-1/billing/export-productline": () =>
