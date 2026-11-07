@@ -1268,7 +1268,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "AwsExternalStorageProviderResponse";
+            type: "aws";
         };
         AzureExternalStorageProviderResponse: {
             account_name: string;
@@ -1281,7 +1281,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "AzureExternalStorageProviderResponse";
+            type: "azure";
         };
         Batch: {
             /** Format: unixtime */
@@ -1363,14 +1363,14 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "ContainerNetworkPolicyAllowlistParam";
+            type: "allowlist";
         };
         ContainerNetworkPolicyDisabledParam: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "ContainerNetworkPolicyDisabledParam";
+            type: "disabled";
         };
         ContainerNetworkPolicyDomainSecretParam: {
             domain: string;
@@ -1411,7 +1411,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "CostsResult";
+            object: "organization.costs.result";
             project_id?: string | null;
             quantity?: number | null;
             quantity_unit?: string | ("tokens" | "1000_tokens" | "duration_seconds" | "duration_minutes" | "duration_hours" | "gibibyte_hours" | "images" | "characters") | null;
@@ -1783,7 +1783,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "GcpExternalStorageProviderResponse";
+            type: "gcp";
             workload_identity_pool_id: string;
             workload_identity_project_number: string;
             workload_identity_provider_id: string;
@@ -1872,7 +1872,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "InlineSkillParam";
+            type: "inline";
         };
         InlineSkillSourceParam: {
             data: string;
@@ -2013,7 +2013,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "OciExternalStorageProviderResponse";
+            type: "oci";
         };
         OpenAIFile: {
             bytes: number | null;
@@ -2348,7 +2348,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "SkillReferenceParam";
+            type: "skill_reference";
             version?: string;
         };
         SpeechAudioDeltaEvent: {
@@ -2468,7 +2468,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "TranscriptTextUsageDuration";
+            type: "duration";
         };
         TranscriptTextUsageTokens: {
             input_token_details?: {
@@ -2482,7 +2482,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            type: "TranscriptTextUsageTokens";
+            type: "tokens";
         };
         UpdateOrganizationSpendLimitBody: {
             /** @enum {string} */
@@ -2517,7 +2517,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "UsageAudioSpeechesResult";
+            object: "organization.usage.audio_speeches.result";
             project_id?: string | null;
             user_id?: string | null;
         };
@@ -2529,7 +2529,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "UsageAudioTranscriptionsResult";
+            object: "organization.usage.audio_transcriptions.result";
             project_id?: string | null;
             /** Format: int64 */
             seconds: number;
@@ -2541,7 +2541,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "UsageCodeInterpreterSessionsResult";
+            object: "organization.usage.code_interpreter_sessions.result";
             project_id?: string | null;
         };
         UsageCompletionsResult: {
@@ -2566,7 +2566,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "UsageCompletionsResult";
+            object: "organization.usage.completions.result";
             output_audio_tokens?: number;
             output_image_tokens?: number;
             output_text_tokens?: number;
@@ -2584,7 +2584,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "UsageEmbeddingsResult";
+            object: "organization.usage.embeddings.result";
             project_id?: string | null;
             user_id?: string | null;
         };
@@ -2595,7 +2595,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "UsageFileSearchCallsResult";
+            object: "organization.usage.file_searches.result";
             project_id?: string | null;
             user_id?: string | null;
             vector_store_id?: string | null;
@@ -2609,7 +2609,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "UsageImagesResult";
+            object: "organization.usage.images.result";
             project_id?: string | null;
             size?: string | null;
             source?: string | null;
@@ -2624,7 +2624,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "UsageModerationsResult";
+            object: "organization.usage.moderations.result";
             project_id?: string | null;
             user_id?: string | null;
         };
@@ -2647,7 +2647,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "UsageVectorStoresResult";
+            object: "organization.usage.vector_stores.result";
             project_id?: string | null;
             usage_bytes: number;
         };
@@ -2662,7 +2662,7 @@ export interface components {
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
-            object: "UsageWebSearchCallsResult";
+            object: "organization.usage.web_searches.result";
             project_id?: string | null;
             user_id?: string | null;
         };

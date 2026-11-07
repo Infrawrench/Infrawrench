@@ -1,6 +1,7 @@
 import openapiTS, { astToString, type OpenAPI3 } from "openapi-typescript";
 import type { DocumentConfig, PluginConfig } from "./config.js";
 import { PluginGenError } from "./errors.js";
+import { completeDiscriminatorMappings } from "./discriminators.js";
 import type { FetchText } from "./fetching.js";
 import type { JsonObject } from "./json.js";
 import { assertTypesOnly, generatedHeader } from "./output.js";
@@ -45,6 +46,7 @@ export async function documentToTypes(
   const pruned = prune(withoutDocs(doc), config.paths);
   dropErrorResponses(pruned);
   containExternalRefs(pruned);
+  completeDiscriminatorMappings(pruned);
   if (!isOpenApi3(pruned)) throw new PluginGenError("parse", "The document has no info object");
   // `defaultNonNullable` would make any field with a server-side default required
   // in request bodies too, which is the opposite of what a default means.

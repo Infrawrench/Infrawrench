@@ -3359,7 +3359,7 @@ export class OpenAIClient implements PluginClient {
       }
 
       const usage = result.usage;
-      const usedSeconds = usage && "seconds" in usage ? usage.seconds : undefined;
+      const usedSeconds = usage?.type === "duration" ? usage.seconds : undefined;
       const duration = typeof result.duration === "number" ? result.duration : usedSeconds;
       const language = detectedLanguage(result);
 
