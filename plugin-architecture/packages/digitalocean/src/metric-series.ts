@@ -105,12 +105,12 @@ export async function fetchDoMetricSeries(
     const resource = await ctx.getResource(resourceTypeId, resourceId, accountId);
     const dropletId = resource.externalId ?? resourceId.split(":").pop();
     if (!dropletId) return [];
-    // Every droplet metric DO exposes: see
-    // https://docs.digitalocean.com/reference/api/digitalocean/#tag/Monitoring
-    // Bandwidth and filesystem metrics need extra query parameters; the rest
-    // share the host_id+start+end shape. Memory/disk/filesystem/load metrics
-    // require the DO Metrics Agent to be installed on the droplet: DO will
-    // 404 those endpoints for droplets without the agent, which
+    // The droplet metrics in https://docs.digitalocean.com/reference/api/digitalocean/#tag/Monitoring
+    // plus `disk_read` and `disk_write`, which the document does not list (#418): if they
+    // are not there, the 404 means those two lines do not show. Bandwidth and filesystem
+    // metrics need extra query parameters; the rest share the host_id+start+end shape.
+    // Memory/disk/filesystem/load metrics require the DO Metrics Agent to be installed
+    // on the droplet: DO will 404 those endpoints for droplets without the agent, which
     // `fetchPromMetric` swallows.
     const hostId = dropletId;
     const plain = [
