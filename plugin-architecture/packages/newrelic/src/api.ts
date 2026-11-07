@@ -1,5 +1,5 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { jsonRestFetch, requireListPage } from "@infrawrench/plugin-base";
 import type { NewRelicRegion } from "./regions.js";
 
 /**
@@ -26,7 +26,7 @@ export class NewRelicApiError extends Error {
   }
 }
 
-interface GraphQlError {
+export interface GraphQlError {
   message?: string;
   path?: Array<string | number>;
   extensions?: { errorClass?: string; code?: string };
@@ -39,10 +39,8 @@ const STATUS_IN_MESSAGE = /New Relic API error (\d{3})/;
  * authenticates with the `API-Key` header and a User key (`NRAK-…`), which
  * carries the permissions of the user it belongs to.
  *
- * NerdGraph answers most failures with HTTP 200 and an `errors` array. With
- * `allowPartial`, errors that came back alongside data (one inaccessible
- * account in a multi-account query, say) are tolerated and the data returned;
- * otherwise any error throws.
+ * NerdGraph answers most failures with HTTP 200 and an `errors` array, and any
+ * error throws unless `tolerate` accepts it and data came back with it.
  *
  * Routed through the host HTTP service whenever there is one: that is the
  * only path that honours bastion egress and a custom CA.
@@ -51,7 +49,7 @@ export async function nerdgraph<T>(
   ctx: NewRelicContext,
   query: string,
   variables: Record<string, unknown> = {},
-  opts: { allowPartial?: boolean } = {},
+  opts: { tolerate?: (error: GraphQlError) => boolean } = {},
 ): Promise<T> {
   let res: { data?: T | null; errors?: GraphQlError[] };
   try {
@@ -71,7 +69,8 @@ export async function nerdgraph<T>(
     throw err;
   }
   const errors = res?.errors ?? [];
-  if (errors.length > 0 && !(opts.allowPartial && res?.data)) {
+  const { tolerate } = opts;
+  if (errors.length > 0 && !(tolerate && res?.data && errors.every(tolerate))) {
     const first = errors[0]!;
     const errorClass = first.extensions?.errorClass ?? first.extensions?.code ?? "";
     const status =
@@ -91,6 +90,16 @@ export async function nerdgraph<T>(
 /** HTTP-ish status of a failed call (403 for a GraphQL permission error), or 0. */
 export function statusOf(err: unknown): number {
   return err instanceof NewRelicApiError ? err.status : 0;
+}
+
+/**
+ * The key is good but may not read this. `UNAUTHORIZED` is left out because it is also
+ * how a rejected key answers, which has to fail rather than pass for a restricted one.
+ */
+export function isForbidden(err: unknown): boolean {
+  return (
+    statusOf(err) === 403 && !(err instanceof NewRelicApiError && err.errorClass === "UNAUTHORIZED")
+  );
 }
 
 export function isPermissionError(err: unknown): boolean {
@@ -122,7 +131,11 @@ export async function runNrql(
 }`,
     { accountId, nrql, timeout: timeoutSeconds },
   );
-  return data.actor?.account?.nrql?.results ?? [];
+  return requireListPage(data.actor?.account?.nrql?.results, {
+    vendor: "New Relic",
+    path: "actor.account.nrql",
+    key: "results",
+  });
 }
 
 /** A string literal safe to splice into NRQL (single quotes, escaped). */
@@ -140,7 +153,11 @@ export async function listAccounts(ctx: NewRelicContext): Promise<NewRelicAccoun
   const data = await nerdgraph<{
     actor?: { accounts?: Array<{ id?: number; name?: string }> | null };
   }>(ctx, `{ actor { accounts { id name } } }`);
-  return (data.actor?.accounts ?? [])
+  return requireListPage(data.actor?.accounts, {
+    vendor: "New Relic",
+    path: "actor",
+    key: "accounts",
+  })
     .filter((a): a is { id: number; name?: string } => typeof a.id === "number")
     .map((a) => ({ id: a.id, name: a.name ?? String(a.id) }))
     .sort((a, b) => a.name.localeCompare(b.name));

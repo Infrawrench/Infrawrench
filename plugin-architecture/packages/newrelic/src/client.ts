@@ -13,9 +13,16 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, externalIdOf } from "@infrawrench/plugin-base";
-import type { NewRelicAccount, NewRelicContext } from "./api.js";
-import { listAccounts, nerdgraph, nrqlString, statusOf } from "./api.js";
+import {
+  CostSetupError,
+  ListPageError,
+  ListTruncatedError,
+  externalIdOf,
+  reportUnreadListPart,
+  requireListPage,
+} from "@infrawrench/plugin-base";
+import type { GraphQlError, NewRelicAccount, NewRelicContext } from "./api.js";
+import { isForbidden, listAccounts, nerdgraph, nrqlString, statusOf } from "./api.js";
 import { fetchNewRelicCostData, fetchUsageSummary } from "./cost-data.js";
 import type { NrCondition, NrEntity, NrPolicy } from "./mappers.js";
 import {
@@ -45,10 +52,12 @@ import type { NewRelicRegion } from "./regions.js";
 import { resolveRegion } from "./regions.js";
 import { USAGE_SUMMARY_KEY, renderNewRelicDetail, renderNewRelicSidebar } from "./render.js";
 
-const MAX_ENTITY_PAGES = 50;
-const MAX_ALERT_PAGES = 50;
-/** Alert listing is per account; beyond this many accounts it stops (and says so in docs). */
-const MAX_ALERT_ACCOUNTS = 100;
+// 100,000 rows at the 200 entities a page NerdGraph documents.
+const MAX_ENTITY_PAGES = 500;
+// NerdGraph documents no page size for these and takes no argument to set one.
+const MAX_ALERT_PAGES = 1000;
+// One or two requests per account per poll. NerdGraph limits concurrency, not rate.
+const MAX_ALERT_ACCOUNTS = 1000;
 const ACCOUNT_CONCURRENCY = 5;
 
 /**
@@ -122,6 +131,53 @@ async function mapLimit<T, R>(
   return out;
 }
 
+/**
+ * The accounts to read alerts for this poll and those left for later. Polls share
+ * nothing, so past the budget the start moves with the clock by the golden ratio, which
+ * spreads evenly over the list however long it is.
+ */
+function alertAccountWindow(accounts: NewRelicAccount[]): {
+  now: NewRelicAccount[];
+  later: NewRelicAccount[];
+} {
+  if (accounts.length <= MAX_ALERT_ACCOUNTS) return { now: accounts, later: [] };
+  const sorted = [...accounts].sort((a, b) => a.id - b.id);
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  return { now: rotated.slice(0, MAX_ALERT_ACCOUNTS), later: rotated.slice(MAX_ALERT_ACCOUNTS) };
+}
+
+/** Every page of a NerdGraph cursor list. A missing list throws; null is an empty one. */
+async function readCursorList<T>(
+  where: { path: string; key: string; maxPages: number },
+  readPage: (
+    cursor: string | null,
+  ) => Promise<{ nextCursor: string | null | undefined; rows: T[] | null | undefined }>,
+): Promise<T[]> {
+  const { path, key, maxPages } = where;
+  const out: T[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < maxPages; page++) {
+    const { nextCursor, rows } = await readPage(cursor);
+    out.push(...requireListPage(rows, { vendor: "New Relic", path, key }));
+    cursor = nextCursor ?? null;
+    if (!cursor) return out;
+  }
+  throw new ListTruncatedError({ vendor: "New Relic", path, items: out.length, maxPages });
+}
+
+/**
+ * Whether an error alongside entity search data is about a field of one row, which
+ * leaves the list whole. Anything else may have nulled the list or the cursor, and a
+ * null cursor reads as the last page.
+ */
+function isInsideEntityRow(error: GraphQlError): boolean {
+  const path = error.path ?? [];
+  const at = path.indexOf("entities");
+  return at >= 0 && typeof path[at + 1] === "number" && path.length > at + 2;
+}
+
 export class NewRelicClient implements PluginClient {
   private readonly ctx: NewRelicContext;
   private readonly usageAccountId: number | undefined;
@@ -181,36 +237,52 @@ export class NewRelicClient implements PluginClient {
       if (typeId === "alert-condition") return this.listConditions(accountId);
       const query = ENTITY_QUERIES[typeId];
       if (!query) throw new Error(`New Relic plugin: unknown resource type "${typeId}"`);
-      return (await this.searchEntities(query)).map((e) =>
-        mapEntity(accountId, typeId, this.region, e),
-      );
+      try {
+        return (await this.searchEntities(query)).map((e) =>
+          mapEntity(accountId, typeId, this.region, e),
+        );
+      } catch (err) {
+        if (!isForbidden(err)) throw err;
+        // This type's stored rows stay. A host that keeps no track (the desktop) answers
+        // false, and there the refusal should still show.
+        if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+        return [];
+      }
     });
   }
 
   private async searchEntities(query: string): Promise<NrEntity[]> {
-    const out: NrEntity[] = [];
-    let cursor: string | null = null;
-    for (let page = 0; page < MAX_ENTITY_PAGES; page++) {
-      const data: {
-        actor?: {
-          entitySearch?: {
-            results?: { nextCursor?: string | null; entities?: NrEntity[] | null } | null;
-          } | null;
-        };
-      } = await nerdgraph(
-        this.ctx,
-        `query($query: String!, $cursor: String) {
+    const path = "actor.entitySearch.results";
+    const rows = await readCursorList<NrEntity | null>(
+      { path, key: "entities", maxPages: MAX_ENTITY_PAGES },
+      async (cursor) => {
+        const data = await nerdgraph<{
+          actor?: {
+            entitySearch?: {
+              results?: {
+                nextCursor?: string | null;
+                entities?: Array<NrEntity | null> | null;
+              } | null;
+            } | null;
+          };
+        }>(
+          this.ctx,
+          `query($query: String!, $cursor: String) {
   actor { entitySearch(query: $query) { results(cursor: $cursor) { nextCursor entities { ${ENTITY_FIELDS} } } } }
 }`,
-        { query, cursor },
-        { allowPartial: true },
-      );
-      const results = data.actor?.entitySearch?.results;
-      out.push(...(results?.entities ?? []));
-      cursor = results?.nextCursor ?? null;
-      if (!cursor) break;
+          { query, cursor },
+          { tolerate: isInsideEntityRow },
+        );
+        const results = data.actor?.entitySearch?.results;
+        return { nextCursor: results?.nextCursor, rows: results?.entities };
+      },
+    );
+    // A failed non-null field nulls its whole row, so a row is gone with nothing to name it.
+    const whole = rows.filter((e): e is NrEntity => e !== null);
+    if (whole.length !== rows.length) {
+      throw new ListPageError({ vendor: "New Relic", path, key: "entities", found: rows });
     }
-    return out;
+    return whole;
   }
 
   private async entityByGuid(guid: string): Promise<NrEntity | undefined> {
@@ -218,92 +290,116 @@ export class NewRelicClient implements PluginClient {
     return found.find((e) => e.guid === guid) ?? found[0];
   }
 
-  private alertAccounts(): Promise<NewRelicAccount[]> {
-    return this.accounts().then((all) => all.slice(0, MAX_ALERT_ACCOUNTS));
-  }
-
-  private async policiesIn(account: NewRelicAccount): Promise<NrPolicy[]> {
-    const out: NrPolicy[] = [];
-    let cursor: string | null = null;
-    for (let page = 0; page < MAX_ALERT_PAGES; page++) {
-      const data: {
-        actor?: {
-          account?: {
-            alerts?: {
-              policiesSearch?: { nextCursor?: string | null; policies?: NrPolicy[] | null } | null;
-            } | null;
-          } | null;
-        };
-      } = await nerdgraph(
-        this.ctx,
-        `query($accountId: Int!, $cursor: String) {
-  actor { account(id: $accountId) { alerts { policiesSearch(cursor: $cursor) { nextCursor policies { id name incidentPreference accountId } } } } }
-}`,
-        { accountId: account.id, cursor },
-      );
-      const res = data.actor?.account?.alerts?.policiesSearch;
-      out.push(...(res?.policies ?? []));
-      cursor = res?.nextCursor ?? null;
-      if (!cursor) break;
-    }
-    return out;
-  }
-
-  private async conditionsIn(account: NewRelicAccount): Promise<NrCondition[]> {
-    const out: NrCondition[] = [];
-    let cursor: string | null = null;
-    for (let page = 0; page < MAX_ALERT_PAGES; page++) {
-      const data: {
-        actor?: {
-          account?: {
-            alerts?: {
-              nrqlConditionsSearch?: {
-                nextCursor?: string | null;
-                nrqlConditions?: NrCondition[] | null;
+  private policiesIn(account: NewRelicAccount): Promise<NrPolicy[]> {
+    return readCursorList(
+      {
+        path: "actor.account.alerts.policiesSearch",
+        key: "policies",
+        maxPages: MAX_ALERT_PAGES,
+      },
+      async (cursor) => {
+        const data = await nerdgraph<{
+          actor?: {
+            account?: {
+              alerts?: {
+                policiesSearch?: {
+                  nextCursor?: string | null;
+                  policies?: NrPolicy[] | null;
+                } | null;
               } | null;
             } | null;
-          } | null;
-        };
-      } = await nerdgraph(
-        this.ctx,
-        `query($accountId: Int!, $cursor: String) {
+          };
+        }>(
+          this.ctx,
+          `query($accountId: Int!, $cursor: String) {
+  actor { account(id: $accountId) { alerts { policiesSearch(cursor: $cursor) { nextCursor policies { id name incidentPreference accountId } } } } }
+}`,
+          { accountId: account.id, cursor },
+        );
+        const res = data.actor?.account?.alerts?.policiesSearch;
+        return { nextCursor: res?.nextCursor, rows: res?.policies };
+      },
+    );
+  }
+
+  private conditionsIn(account: NewRelicAccount): Promise<NrCondition[]> {
+    return readCursorList(
+      {
+        path: "actor.account.alerts.nrqlConditionsSearch",
+        key: "nrqlConditions",
+        maxPages: MAX_ALERT_PAGES,
+      },
+      async (cursor) => {
+        const data = await nerdgraph<{
+          actor?: {
+            account?: {
+              alerts?: {
+                nrqlConditionsSearch?: {
+                  nextCursor?: string | null;
+                  nrqlConditions?: NrCondition[] | null;
+                } | null;
+              } | null;
+            } | null;
+          };
+        }>(
+          this.ctx,
+          `query($accountId: Int!, $cursor: String) {
   actor { account(id: $accountId) { alerts { nrqlConditionsSearch(cursor: $cursor) { nextCursor nrqlConditions { ${CONDITION_FIELDS} } } } } }
 }`,
-        { accountId: account.id, cursor },
-      );
-      const res = data.actor?.account?.alerts?.nrqlConditionsSearch;
-      out.push(...(res?.nrqlConditions ?? []));
-      cursor = res?.nextCursor ?? null;
-      if (!cursor) break;
-    }
-    return out;
+          { accountId: account.id, cursor },
+        );
+        const res = data.actor?.account?.alerts?.nrqlConditionsSearch;
+        return { nextCursor: res?.nextCursor, rows: res?.nrqlConditions };
+      },
+    );
   }
 
   /**
-   * A permission error in one account (the key's user has no alerts access
-   * there) lists that account empty; anything else fails the listing.
+   * Reads a type across the key's accounts. A permission error in one account (the key's
+   * user has no alerts access there) lists that account empty; every account refusing
+   * keeps the type's rows; anything else fails the listing. Accounts past the budget are
+   * named so their rows go stale rather than being pruned.
    */
   private async perAccount<T>(
+    accountId: string,
+    typeId: string,
     load: (a: NewRelicAccount) => Promise<T[]>,
   ): Promise<Array<[NewRelicAccount, T[]]>> {
-    const accounts = await this.alertAccounts();
-    return mapLimit(accounts, ACCOUNT_CONCURRENCY, async (a): Promise<[NewRelicAccount, T[]]> => {
-      try {
-        return [a, await load(a)];
-      } catch (err) {
-        if (statusOf(err) === 403) return [a, []];
-        throw err;
-      }
-    });
+    const { now, later } = alertAccountWindow(await this.accounts());
+    if (later.length > 0) {
+      // The trailing colon keeps account 4 from vouching for account 42's rows.
+      reportUnreadListPart({ idPrefixes: later.map((a) => `${accountId}:${typeId}:${a.id}:`) });
+    }
+    const refusals: unknown[] = [];
+    const all = await mapLimit(
+      now,
+      ACCOUNT_CONCURRENCY,
+      async (a): Promise<[NewRelicAccount, T[]]> => {
+        try {
+          return [a, await load(a)];
+        } catch (err) {
+          if (statusOf(err) !== 403) throw err;
+          refusals.push(err);
+          return [a, []];
+        }
+      },
+    );
+    if (now.length > 0 && refusals.length === now.length) {
+      // This type's stored rows stay. A host that keeps no track (the desktop) answers
+      // false, and there the refusal should still show.
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw refusals[0];
+      return [];
+    }
+    return all;
   }
 
   private async listPolicies(accountId: string): Promise<ResourceInstance[]> {
-    const all = await this.perAccount((a) => this.policiesIn(a));
+    const all = await this.perAccount(accountId, "alert-policy", (a) => this.policiesIn(a));
     return all.flatMap(([a, policies]) => policies.map((p) => mapPolicy(accountId, a, p)));
   }
 
   private async listConditions(accountId: string): Promise<ResourceInstance[]> {
-    const all = await this.perAccount(async (a) => {
+    const all = await this.perAccount(accountId, "alert-condition", async (a) => {
       const [conditions, policies] = await Promise.all([this.conditionsIn(a), this.policiesIn(a)]);
       const names = new Map(policies.map((p) => [String(p.id), p.name ?? String(p.id)]));
       return conditions.map((c) => ({ c, names }));
