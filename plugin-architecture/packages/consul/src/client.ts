@@ -263,6 +263,14 @@ export class ConsulClient implements PluginClient {
     return this.rows<Check>("/health/state/any");
   }
 
+  /** The check counts on a node or service. Any failure but a refusal fails the read: as no checks, a sick cluster would show nothing critical. */
+  private checksOrRefused(read: Promise<Check[]>): Promise<Check[]> {
+    return read.catch((err: unknown) => {
+      if (isPermissionRefused(err)) return [];
+      throw err;
+    });
+  }
+
   private async cluster(accountId: string): Promise<ResourceInstance> {
     const [leader, self, raft, autopilot, dcs, members, nodes, services, checks] =
       await Promise.all([
@@ -376,27 +384,27 @@ export class ConsulClient implements PluginClient {
       case "consul-node": {
         const [nodes, checks] = await Promise.all([
           this.rows<CatalogNode>("/catalog/nodes"),
-          this.soft(this.checks()),
+          this.checksOrRefused(this.checks()),
         ]);
         return nodes.map((n) =>
           mapNode(
             accountId,
             n,
-            (checks ?? []).filter((c) => c.Node === n.Node),
+            checks.filter((c) => c.Node === n.Node),
           ),
         );
       }
       case "consul-service": {
         const [services, checks] = await Promise.all([
           this.serviceTags(),
-          this.soft(this.checks()),
+          this.checksOrRefused(this.checks()),
         ]);
         return Object.entries(services).map(([name, tags]) =>
           mapService(
             accountId,
             name,
             tags ?? [],
-            (checks ?? []).filter((c) => c.ServiceName === name),
+            checks.filter((c) => c.ServiceName === name),
             {
               ...(name === "consul" ? { kind: "consul servers" } : {}),
             },
@@ -494,11 +502,11 @@ export class ConsulClient implements PluginClient {
             this.get<{ Node?: CatalogNode; Services?: unknown[] } | null>(
               `/catalog/node-services/${encodeURIComponent(name!)}`,
             ),
-            this.soft(this.get<Check[]>(`/health/node/${encodeURIComponent(name!)}`)),
+            this.checksOrRefused(this.rows<Check>(`/health/node/${encodeURIComponent(name!)}`)),
           ]);
           if (!svc?.Node)
             throw new ConsulApiError(404, `Consul plugin: node "${name}" is not in the catalog`);
-          return mapNode(accountId, svc.Node, checks ?? [], svc.Services?.length ?? 0);
+          return mapNode(accountId, svc.Node, checks, svc.Services?.length ?? 0);
         }
         case "consul-service": {
           const [name, ns] = splitId(id, 1);

@@ -335,6 +335,40 @@ describe("lists a sync prunes against", () => {
     });
   });
 
+  describe("check counts on nodes and services", () => {
+    const route = (reply: unknown) => (call: Call) => {
+      if (call.url.pathname === "/v1/health/state/any") return reply;
+      return call.url.pathname === "/v1/catalog/nodes" ? [{ Node: "n1" }] : { web: [] };
+    };
+
+    it.each(["consul-node", "consul-service"])(
+      "%s fails the type when the read fails, rather than show nothing critical",
+      async (typeId) => {
+        const { c } = client(route({ status: 503, text: "No cluster leader" }));
+        await expect(c.listResources(typeId, ACCOUNT)).rejects.toThrow("503");
+      },
+    );
+
+    it("a node's detail fails too", async () => {
+      const { c } = client((call) =>
+        call.url.pathname.startsWith("/v1/health/node/")
+          ? { status: 503, text: "No cluster leader" }
+          : { Node: { Node: "n1" }, Services: [] },
+      );
+      await expect(
+        c.getResource("consul-node", `${ACCOUNT}:consul-node:n1`, ACCOUNT),
+      ).rejects.toThrow("503");
+    });
+
+    it.each(["consul-node", "consul-service"])(
+      "%s still lists when the token may not read checks",
+      async (typeId) => {
+        const { c } = client(route(denied));
+        expect(await c.listResources(typeId, ACCOUNT)).toHaveLength(1);
+      },
+    );
+  });
+
   describe("a feature the cluster has turned off", () => {
     it.each([
       [
