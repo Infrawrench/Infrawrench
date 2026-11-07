@@ -1,5 +1,5 @@
 import type { Credentials } from "./plugin.js";
-import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import { attempt } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
@@ -79,16 +79,26 @@ export class PostgresClient implements PluginClient {
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
-    return attempt(async () => {
-      switch (typeId) {
-        case "pg-database":
-          return this.listDatabases(accountId);
-        case "pg-schema":
-          return this.listSchemas(accountId);
-        default:
-          throw new Error(`Postgres plugin: unknown resource type "${typeId}"`);
-      }
-    });
+    return attempt(() => this.list(typeId, accountId, false));
+  }
+
+  /**
+   * `lookup` is for finding one row or naming what is there, which a refused list of the
+   * rest says nothing about.
+   */
+  private async list(
+    typeId: string,
+    accountId: string,
+    lookup: boolean,
+  ): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "pg-database":
+        return this.listDatabases(accountId, lookup);
+      case "pg-schema":
+        return this.listSchemas(accountId, lookup);
+      default:
+        throw new Error(`Postgres plugin: unknown resource type "${typeId}"`);
+    }
   }
 
   getResource(
@@ -97,7 +107,7 @@ export class PostgresClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const all = await this.list(typeId, accountId, true);
       const found = all.find((r) => r.id === resourceId);
       if (!found) throw new Error(`Postgres plugin: resource ${typeId}/${resourceId} not found`);
       return found;
@@ -124,7 +134,7 @@ export class PostgresClient implements PluginClient {
           .join(" ");
       }
       if (typeId === "pg-database" && outputKey === "schemaNames") {
-        const schemas = await this.listSchemas(accountId);
+        const schemas = await this.listSchemas(accountId, true);
         return JSON.stringify(schemas.map((schema) => String(schema.fields["name"] ?? "")));
       }
       if (typeId === "pg-schema" && outputKey === "tableCount") {
@@ -465,7 +475,7 @@ export class PostgresClient implements PluginClient {
     });
   }
 
-  private async listDatabases(accountId: string): Promise<ResourceInstance[]> {
+  private async listDatabases(accountId: string, lookup: boolean): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();
 
     // If host SQL services are available, query the actual catalog
@@ -495,7 +505,8 @@ export class PostgresClient implements PluginClient {
       } catch (err) {
         if (!isCatalogRefused(err)) throw err;
         // Shows only the database the login connects to, which says nothing about the rest.
-        reportUnreadListPart({ idPrefixes: [""] });
+        // A host that keeps no track answers false, and there the refusal shows instead.
+        if (!lookup && !reportUnreadListPart({ idPrefixes: [""] })) throw err;
       }
     }
 
@@ -517,7 +528,7 @@ export class PostgresClient implements PluginClient {
     ];
   }
 
-  private async listSchemas(accountId: string): Promise<ResourceInstance[]> {
+  private async listSchemas(accountId: string, lookup: boolean): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();
     const { database, host } = this.connectionInfo();
 
@@ -543,8 +554,9 @@ export class PostgresClient implements PluginClient {
         }));
       } catch (err) {
         if (!isCatalogRefused(err)) throw err;
-        // Shows only the default schema, which says nothing about the rest.
-        reportUnreadListPart({ idPrefixes: [""] });
+        // Shows only the default schema, which says nothing about the rest. A host that
+        // keeps no track answers false, and there the refusal shows instead.
+        if (!lookup && !reportUnreadListPart({ idPrefixes: [""] })) throw err;
       }
     }
 

@@ -191,6 +191,14 @@ describe("PostgresClient", () => {
         expect(res[0]!.fields).toMatchObject({ database: "appdb", host: "db.example.com" });
         expect(unread).toEqual([{ idPrefixes: [""] }]);
       });
+
+      it("shows the refusal where the host keeps no track, and still finds the default row", async () => {
+        const error = Object.assign(new Error("permission denied"), { code: "42501" });
+        sql.query.mockRejectedValue(error);
+        await expect(client().listResources(typeId, "acct")).rejects.toBe(error);
+        const id = typeId === "pg-database" ? "acct:pg-database:appdb" : "acct:pg-schema:public";
+        expect((await client().getResource(typeId, id, "acct")).id).toBe(id);
+      });
     });
   });
 
