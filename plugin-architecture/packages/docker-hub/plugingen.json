@@ -329,7 +329,7 @@
     {
       "pointer": "/components/schemas/update_repository_immutable_tags_request/required",
       "value": ["immutable_tags"],
-      "why": "The plugin leaves the rules out when there are none, so the types have to allow it."
+      "why": "The document requires the rules, but Docker's own Terraform client leaves them out when there are none, and leaving them out keeps what is stored. The plugin does the same, and sends an empty list only to clear rules."
     },
     {
       "pointer": "/components/schemas/RepositoryGroupCreationRequest/properties/permission",

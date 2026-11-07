@@ -109,6 +109,34 @@ const list = (raw: string | undefined): string[] =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+/**
+ * Immutable tag rules from the comma-separated field. Rules are regular expressions, so a
+ * comma inside `{1,3}`, `[a,b]` or `(x,y)`, or escaped, belongs to its rule.
+ */
+export function ruleList(raw: string | undefined): string[] {
+  const rules: string[] = [];
+  let rule = "";
+  let depth = 0;
+  let inClass = false;
+  let escaped = false;
+  for (const c of raw ?? "") {
+    if (escaped) escaped = false;
+    else if (c === "\\") escaped = true;
+    else if (inClass) inClass = c !== "]";
+    else if (c === "[") inClass = true;
+    else if (c === "(" || c === "{") depth++;
+    else if ((c === ")" || c === "}") && depth > 0) depth--;
+    else if (c === "," && depth === 0) {
+      rules.push(rule);
+      rule = "";
+      continue;
+    }
+    rule += c;
+  }
+  rules.push(rule);
+  return rules.map((r) => r.trim()).filter(Boolean);
+}
+
 /** Create-form JSON-array values (`policy-picker`), tolerating a plain comma list. */
 function pickList(raw: string | undefined): string[] {
   const value = (raw ?? "").trim();
@@ -1104,18 +1132,33 @@ export class DockerHubClient implements PluginClient {
             const enabled = has("immutableTags")
               ? bool(fields["immutableTags"])
               : (current.immutable_tags_settings?.enabled ?? false);
+            const stored = current.immutable_tags_settings?.rules ?? [];
             const rules = has("immutableTagsRules")
-              ? list(fields["immutableTagsRules"])
-              : (current.immutable_tags_settings?.rules ?? []);
-            await this.api.patch(
+              ? ruleList(fields["immutableTagsRules"])
+              : stored;
+            // The document requires the rules, but Docker's own client leaves them out when
+            // there are none, and says leaving them out keeps what is stored. So an empty list
+            // goes only when it has something to clear.
+            const clearing = rules.length === 0 && stored.length > 0;
+            const answer = await this.api.patch(
               `/v2/namespaces/${enc(ns)}/repositories/${enc(rest)}/immutabletags`,
               {
                 body: {
                   immutable_tags: enabled,
-                  ...(rules.length ? { immutable_tags_rules: rules } : {}),
+                  ...(rules.length > 0 || clearing ? { immutable_tags_rules: rules } : {}),
                 },
               },
             );
+            const after = answer?.immutable_tags_settings?.rules;
+            if (
+              clearing &&
+              after?.length === stored.length &&
+              after.every((r, i) => r === stored[i])
+            ) {
+              throw new Error(
+                `Docker Hub plugin: Docker Hub kept the immutable tag rules of ${ns}/${rest} (${stored.join(", ")}) when asked to remove them.`,
+              );
+            }
           }
           break;
         }
