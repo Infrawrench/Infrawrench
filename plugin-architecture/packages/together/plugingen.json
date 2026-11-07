@@ -49,10 +49,10 @@
     "/v2/supported-models": ["get"],
     "/v2/public/inference-instance-types": ["get"],
     "/v2/organizations/{organizationId}/endpoints": ["get"],
-    "/v2/projects/{projectId}/endpoints": ["get"],
-    "/v2/projects/{projectId}/endpoints/{id}": ["delete"],
-    "/v2/projects/{projectId}/endpoints/{endpointId}/deployments": ["get"],
-    "/v2/projects/{projectId}/endpoints/{endpointId}/deployments/{id}": ["delete"],
+    "/v2/projects/{projectId}/endpoints": ["get", "post"],
+    "/v2/projects/{projectId}/endpoints/{id}": ["get", "patch", "delete"],
+    "/v2/projects/{projectId}/endpoints/{endpointId}/deployments": ["get", "post"],
+    "/v2/projects/{projectId}/endpoints/{endpointId}/deployments/{id}": ["get", "patch", "delete"],
     "/v2/projects/{projectId}/endpoints/{id}/events": ["get"],
     "/v2/projects/{projectId}/endpoints/{id}/analytics": ["get"]
   }

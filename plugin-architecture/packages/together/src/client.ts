@@ -206,6 +206,20 @@ function routeHasGone(error: unknown): boolean {
   return status === 404 || status === 405 || status === 410;
 }
 
+function endpointPath(project: string, endpointId: string) {
+  return `/v2/projects/${pathEncode(project)}/endpoints/${pathEncode(endpointId)}` as const;
+}
+
+function deploymentPath(project: string, endpointId: string, deploymentId: string) {
+  return `${endpointPath(project, endpointId)}/deployments/${pathEncode(deploymentId)}` as const;
+}
+
+/** Together turned this write down, as opposed to being unable to answer or to let the key in. */
+function refusedTheWrite(error: unknown): boolean {
+  const status = apiErrorStatus(error);
+  return status === 400 || status === 409 || status === 412 || status === 422;
+}
+
 /** `/v1/models` calls each of these by a plain `type`, which the batch picker filters on. */
 const MODEL_TYPES: Array<[SupportedModel["capabilities"][number], string]> = [
   ["CAPABILITY_CHAT", "chat"],
@@ -2037,28 +2051,66 @@ export class TogetherClient implements PluginClient {
   }
 
   /**
-   * A v2 DMI endpoint cannot be deleted while it still has deployments:
-   * Together's own docs say "delete its deployments first". The user asked to
-   * delete the endpoint, so we do the cascade for them rather than surfacing a
-   * 409 they'd have to decode.
+   * A v2 DMI endpoint cannot be deleted while it still has deployments, and a deployment
+   * cannot while it is in the traffic split. The user asked to delete the endpoint, so this
+   * does what `tg endpoints rm --force` does rather than surfacing a refusal to decode.
+   * https://docs.together.ai/docs/dedicated-endpoints/manage
    */
   private async deleteManagedEndpoint(endpointId: string): Promise<void> {
-    const project = pathEncode(await this.projectOf(endpointId));
-    const endpoint = pathEncode(endpointId);
+    const project = await this.projectOf(endpointId);
+    const path = endpointPath(project, endpointId);
     // All of them or none: this deletes what it reads, and the endpoint cannot go while
     // one is left. 500 is the document's largest page.
-    const deployments = await this.dmi.getAll(
-      `/v2/projects/${project}/endpoints/${endpoint}/deployments`,
-      "data",
-      { pageSize: 500, maxPages: 20 },
-    );
+    const deployments = await this.dmi.getAll(`${path}/deployments`, "data", {
+      pageSize: 500,
+      maxPages: 20,
+    });
+    if (deployments.length > 0) {
+      const current = await this.api.get(path);
+      if (current.trafficSplit?.length) {
+        await this.api.patch(path, {
+          query: { updateMask: "trafficSplit" },
+          body: { trafficSplit: [] },
+        });
+      }
+    }
     for (const deployment of deployments) {
       if (!deployment.id) continue;
-      await this.api.delete(
-        `/v2/projects/${project}/endpoints/${endpoint}/deployments/${pathEncode(deployment.id)}`,
+      await this.deleteDeployment(project, endpointId, deployment.id);
+    }
+    await this.api.delete(path);
+  }
+
+  /**
+   * Together's guide has a deployment scaled to zero before its delete, but its CLI tries the
+   * delete first and only scales down on a refusal, which is what keeps a stopped one from
+   * being touched. Stopping takes minutes, so one that is still draining is left to a retry.
+   */
+  private async deleteDeployment(
+    project: string,
+    endpointId: string,
+    deploymentId: string,
+  ): Promise<void> {
+    const path = deploymentPath(project, endpointId, deploymentId);
+    try {
+      await this.api.delete(path);
+      return;
+    } catch (error) {
+      if (!refusedTheWrite(error)) throw error;
+    }
+    await this.api.patch(path, {
+      query: { updateMask: "autoscaling" },
+      body: { autoscaling: { minReplicas: 0, maxReplicas: 0 } },
+    });
+    try {
+      await this.api.delete(path);
+    } catch (error) {
+      if (!refusedTheWrite(error)) throw error;
+      throw new Error(
+        "Together is stopping this endpoint's deployments. Delete the endpoint again once they have stopped.",
+        { cause: error },
       );
     }
-    await this.api.delete(`/v2/projects/${project}/endpoints/${endpoint}`);
   }
 
   /**
@@ -3167,7 +3219,7 @@ export class TogetherClient implements PluginClient {
             {
               kind: "text",
               content:
-                "Deleting removes the endpoint's deployments first, then the endpoint and its traffic split.",
+                "Deleting takes the endpoint's deployments out of its traffic split and removes them, then the endpoint. A deployment still running is scaled to zero first; if it has not stopped yet, delete the endpoint again once it has.",
               variant: "muted",
             },
           ],

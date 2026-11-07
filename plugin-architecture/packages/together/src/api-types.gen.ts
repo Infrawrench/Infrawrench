@@ -603,7 +603,7 @@ export interface paths {
         };
         get: operations["EndpointService_ListEndpoints"];
         put?: never;
-        post?: never;
+        post: operations["EndpointService_CreateEndpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -619,7 +619,7 @@ export interface paths {
         };
         get: operations["DeploymentService_ListDeployments"];
         put?: never;
-        post?: never;
+        post: operations["DeploymentService_CreateDeployment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -633,13 +633,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["DeploymentService_GetDeployment"];
         put?: never;
         post?: never;
         delete: operations["DeploymentService_DeleteDeployment"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["DeploymentService_UpdateDeployment"];
         trace?: never;
     };
     "/v2/projects/{projectId}/endpoints/{id}": {
@@ -649,13 +649,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["EndpointService_GetEndpoint"];
         put?: never;
         post?: never;
         delete: operations["EndpointService_DeleteEndpoint"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["EndpointService_UpdateEndpoint"];
         trace?: never;
     };
     "/v2/projects/{projectId}/endpoints/{id}/analytics": {
@@ -964,6 +964,26 @@ export interface components {
         "DE.CompliancePolicy": {
             hipaa?: boolean;
         };
+        "DE.CreateDeploymentRequest": {
+            autoscaling: components["schemas"]["DE.Autoscaling"];
+            config?: string;
+            configId?: string;
+            inactiveTimeout?: number;
+            maxConcurrentRequestsPerReplica?: string;
+            model?: string;
+            modelId?: string;
+            modelRevisionId?: string;
+            name: string;
+            placement?: components["schemas"]["DE.Placement"];
+        };
+        "DE.CreateEndpointRequest": {
+            name: string;
+            /**
+             * @default VISIBILITY_PRIVATE
+             * @enum {string}
+             */
+            visibility?: "VISIBILITY_PRIVATE" | "VISIBILITY_INTERNAL";
+        };
         "DE.DeleteResponse": Record<string, never>;
         "DE.Deployment": {
             autoscaling: components["schemas"]["DE.AutoscalingResponse"];
@@ -1098,6 +1118,16 @@ export interface components {
             throughputMetrics?: components["schemas"]["DE.ThroughputMetrics"];
             timeRange?: components["schemas"]["DE.MetricsTimeRange"];
             tokenMetrics?: components["schemas"]["DE.TokenMetrics"];
+        };
+        "DE.EndpointUpdate": {
+            etag?: string;
+            name?: string;
+            trafficSplit?: components["schemas"]["DE.TrafficSplitEntry"][];
+            /**
+             * @default VISIBILITY_PRIVATE
+             * @enum {string}
+             */
+            visibility?: "VISIBILITY_PRIVATE" | "VISIBILITY_INTERNAL";
         };
         "DE.ErrorMetrics": {
             errorRate?: number;
@@ -1313,6 +1343,13 @@ export interface components {
         "DE.TrafficSplitEntry": {
             deploymentId: string;
             weight: number;
+        };
+        "DE.UpdateDeploymentRequest": {
+            autoscaling?: components["schemas"]["DE.Autoscaling"];
+            etag?: string;
+            inactiveTimeout?: number;
+            maxConcurrentRequestsPerReplica?: string;
+            name?: string;
         };
         ErrorData: {
             error: {
@@ -2405,6 +2442,31 @@ export interface operations {
             };
         };
     };
+    EndpointService_CreateEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DE.CreateEndpointRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DE.Endpoint"];
+                };
+            };
+        };
+    };
     DeploymentService_ListDeployments: {
         parameters: {
             query?: {
@@ -2428,6 +2490,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DE.ListDeploymentsResponse"];
+                };
+            };
+        };
+    };
+    DeploymentService_CreateDeployment: {
+        parameters: {
+            query?: {
+                validateOnly?: boolean;
+            };
+            header?: never;
+            path: {
+                endpointId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DE.CreateDeploymentRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DE.Deployment"];
+                };
+            };
+        };
+    };
+    DeploymentService_GetDeployment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpointId: string;
+                id: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DE.Deployment"];
                 };
             };
         };
@@ -2457,6 +2570,57 @@ export interface operations {
             };
         };
     };
+    DeploymentService_UpdateDeployment: {
+        parameters: {
+            query?: {
+                updateMask?: string;
+            };
+            header?: never;
+            path: {
+                endpointId: string;
+                id: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DE.UpdateDeploymentRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DE.Deployment"];
+                };
+            };
+        };
+    };
+    EndpointService_GetEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DE.Endpoint"];
+                };
+            };
+        };
+    };
     EndpointService_DeleteEndpoint: {
         parameters: {
             query?: {
@@ -2477,6 +2641,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DE.DeleteResponse"];
+                };
+            };
+        };
+    };
+    EndpointService_UpdateEndpoint: {
+        parameters: {
+            query?: {
+                updateMask?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DE.EndpointUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DE.Endpoint"];
                 };
             };
         };

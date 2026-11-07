@@ -122,6 +122,7 @@ describe("v2 DMI endpoints", () => {
         return jsonResponse({ data: [{ id: "d1" }, { id: "d2" }] });
       }
       if (init?.method === "DELETE") return jsonResponse({}, 204);
+      if (url.endsWith("/endpoints/e1")) return jsonResponse({ id: "e1", trafficSplit: [] });
       throw new Error(`unrouted: ${init?.method ?? "GET"} ${url}`);
     });
 
@@ -750,6 +751,7 @@ describe("deleting a managed endpoint", () => {
       if (url.endsWith("/deployments?limit=500&after=cur-2")) {
         return jsonResponse({ data: [{ id: "d2" }], next_cursor: null });
       }
+      if (url.endsWith("/endpoints/e1")) return jsonResponse({ id: "e1", trafficSplit: [] });
       throw new Error(`unrouted: ${url}`);
     });
     await client().deleteResource("managed-endpoint", resourceId, ACCOUNT);
@@ -758,6 +760,105 @@ describe("deleting a managed endpoint", () => {
       "https://api.together.ai/v2/projects/proj-1/endpoints/e1/deployments/d2",
       "https://api.together.ai/v2/projects/proj-1/endpoints/e1",
     ]);
+  });
+
+  describe("with a deployment in the traffic split", () => {
+    const base = "https://api.together.ai/v2/projects/proj-1/endpoints/e1";
+    const writes = () =>
+      calls
+        .filter((call) => call.init?.method === "PATCH" || call.init?.method === "DELETE")
+        .map((call) => `${call.init?.method} ${call.url}`);
+
+    function installCascade(onWrite?: (url: string, init: RequestInit) => Response | undefined) {
+      installFetch((url, init) => {
+        if (url.includes("whoami")) return jsonResponse({ project: { id: "proj-1" } });
+        if (init?.method === "PATCH" || init?.method === "DELETE") {
+          return onWrite?.(url, init) ?? jsonResponse({});
+        }
+        if (url.endsWith("/deployments?limit=500")) return jsonResponse({ data: [{ id: "d1" }] });
+        if (url === base) {
+          return jsonResponse({
+            id: "e1",
+            trafficSplit: [{ deploymentId: "d1", weight: 1 }],
+          });
+        }
+        throw new Error(`unrouted: ${url}`);
+      });
+    }
+
+    it("takes it out of the split first, as Together's own CLI does", async () => {
+      installCascade();
+      await client().deleteResource("managed-endpoint", resourceId, ACCOUNT);
+      expect(writes()).toEqual([
+        `PATCH ${base}?updateMask=trafficSplit`,
+        `DELETE ${base}/deployments/d1`,
+        `DELETE ${base}`,
+      ]);
+      const patch = calls.find((call) => call.init?.method === "PATCH");
+      expect(JSON.parse(String(patch?.init?.body))).toEqual({ trafficSplit: [] });
+    });
+
+    it("deletes nothing when the split cannot be cleared", async () => {
+      installCascade((_url, init) =>
+        init.method === "PATCH" ? jsonResponse({ error: { message: "rollout" } }, 409) : undefined,
+      );
+      await expect(
+        client().deleteResource("managed-endpoint", resourceId, ACCOUNT),
+      ).rejects.toThrow(/409/);
+      expect(deletes()).toEqual([]);
+    });
+
+    it("scales a deployment to zero when its delete is refused, then deletes it", async () => {
+      let refused = false;
+      installCascade((url, init) => {
+        if (init.method === "DELETE" && url.endsWith("/deployments/d1") && !refused) {
+          refused = true;
+          return jsonResponse({ error: { message: "still running" } }, 409);
+        }
+        return undefined;
+      });
+      await client().deleteResource("managed-endpoint", resourceId, ACCOUNT);
+      expect(writes()).toEqual([
+        `PATCH ${base}?updateMask=trafficSplit`,
+        `DELETE ${base}/deployments/d1`,
+        `PATCH ${base}/deployments/d1?updateMask=autoscaling`,
+        `DELETE ${base}/deployments/d1`,
+        `DELETE ${base}`,
+      ]);
+      const scale = calls.find(
+        (call) => call.init?.method === "PATCH" && call.url.includes("/deployments/d1"),
+      );
+      expect(JSON.parse(String(scale?.init?.body))).toEqual({
+        autoscaling: { minReplicas: 0, maxReplicas: 0 },
+      });
+    });
+
+    it("asks for another delete while a deployment is still stopping", async () => {
+      installCascade((url, init) =>
+        init.method === "DELETE" && url.endsWith("/deployments/d1")
+          ? jsonResponse({ error: { message: "must be stopped" } }, 400)
+          : undefined,
+      );
+      await expect(
+        client().deleteResource("managed-endpoint", resourceId, ACCOUNT),
+      ).rejects.toThrow("Delete the endpoint again");
+      expect(deletes()).not.toContain(base);
+    });
+
+    it("does not scale anything down over a failure that is not a refusal", async () => {
+      installCascade((url, init) =>
+        init.method === "DELETE" && url.endsWith("/deployments/d1")
+          ? jsonResponse({ error: { message: "try later" } }, 500)
+          : undefined,
+      );
+      await expect(
+        client().deleteResource("managed-endpoint", resourceId, ACCOUNT),
+      ).rejects.toThrow(/500/);
+      expect(writes()).toEqual([
+        `PATCH ${base}?updateMask=trafficSplit`,
+        `DELETE ${base}/deployments/d1`,
+      ]);
+    });
   });
 
   it("deletes nothing when the deployments cannot be read", async () => {
