@@ -46,6 +46,14 @@
       "why": "Goes with the query parameter above: the plugin sends this PUT with no body."
     },
     {
+      "pointer": "/paths/~1folders~1{folder}/get/parameters",
+      "value": [
+        { "name": "max_results", "in": "query", "schema": { "type": "integer", "maximum": 500 } },
+        { "name": "next_cursor", "in": "query", "schema": { "type": "string" } }
+      ],
+      "why": "The document has no query parameters here, and calls next_cursor always null. The Admin API reference (https://cloudinary.com/documentation/admin_api_folders) gives max_results, 10 by default and up to 500, and a next_cursor to follow."
+    },
+    {
       "pointer": "/paths/~1upload_mappings/get/responses/200/content/application~1json/schema",
       "value": { "$ref": "#/components/schemas/upload_mapping_list_response" },
       "why": "The document answers either a list or, given ?folder=, one mapping. The plugin never passes folder here, so it only ever lists."

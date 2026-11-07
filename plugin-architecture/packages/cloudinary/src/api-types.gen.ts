@@ -889,7 +889,10 @@ export interface operations {
     };
     showFolder: {
         parameters: {
-            query?: never;
+            query?: {
+                max_results?: number;
+                next_cursor?: string;
+            };
             header?: never;
             path: {
                 cloud_name: components["parameters"]["cloud_name"];

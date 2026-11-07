@@ -309,6 +309,68 @@ describe("listResources", () => {
     });
   });
 
+  describe("folders", () => {
+    const named = (path: string) => ({ name: path.split("/").pop(), path });
+
+    it("reads every subfolder, 500 at a time, following next_cursor", async () => {
+      installFetch((url) => {
+        if (url.endsWith("/folders")) return jsonResponse({ folders: [named("a")] });
+        if (url.endsWith("/folders/a?max_results=500")) {
+          return jsonResponse({ folders: [named("a/one")], next_cursor: "two", total_count: 2 });
+        }
+        if (url.endsWith("/folders/a?max_results=500&next_cursor=two")) {
+          return jsonResponse({ folders: [named("a/two")], next_cursor: null, total_count: 2 });
+        }
+        throw new Error(`unrouted: GET ${url}`);
+      });
+      const folders = await client().listResources("folder", ACCOUNT);
+      expect(folders.map((f) => f.externalId)).toEqual(["a", "a/one", "a/two"]);
+      expect(folders[2]?.parentResourceId).toBe(`${ACCOUNT}:folder:a`);
+    });
+
+    it("rejects subfolders that never end, after exactly its page cap", async () => {
+      installFetch((url) =>
+        url.endsWith("/folders")
+          ? jsonResponse({ folders: [named("a")] })
+          : jsonResponse({ folders: [named("a/one")], next_cursor: "again" }),
+      );
+      await expect(client().listResources("folder", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls.filter((c) => c.url.includes("/folders/a"))).toHaveLength(20);
+    });
+
+    it("rejects a subfolder page whose list is not an array, on a later page too", async () => {
+      installFetch((url) => {
+        if (url.endsWith("/folders")) return jsonResponse({ folders: [named("a")] });
+        if (url.includes("next_cursor=two")) return jsonResponse({ error: { message: "x" } });
+        return jsonResponse({ folders: [named("a/one")], next_cursor: "two" });
+      });
+      await expect(client().listResources("folder", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("rejects a list cut off at the provider's limit of 2000", async () => {
+      const rows = Array.from({ length: 2000 }, (_, i) => named(`f${i}`));
+      installFetch(() => jsonResponse({ folders: rows, next_cursor: null, total_count: 2001 }));
+      await expect(client().listResources("folder", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(1);
+    });
+
+    it("rejects root folders that come with a cursor, which the document rules out", async () => {
+      installFetch(() => jsonResponse({ folders: [named("a")], next_cursor: "more" }));
+      await expect(client().listResources("folder", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+
+    it("rejects a root answer that is not a list", async () => {
+      installFetch(() => jsonResponse({ message: "nope" }));
+      await expect(client().listResources("folder", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+  });
+
   it("paginates upload presets and accepts Cloudinary response envelopes", async () => {
     installFetch((url) => {
       if (url.endsWith("/upload_presets?max_results=500")) {

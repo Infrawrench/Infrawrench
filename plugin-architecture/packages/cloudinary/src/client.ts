@@ -17,15 +17,16 @@ import type {
 import {
   formatBytes,
   joinSubtitle,
+  ListTruncatedError,
   pathEncode,
   readOAuthGrantState,
   normalizeQuotaUsage,
+  requireListPage,
   unencodedSegment,
   withinListCap,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import {
-  CloudinaryApiError,
   createCloudinaryApis,
   cursorQuery,
   readEveryPage,
@@ -72,6 +73,14 @@ const GIB = 1024 * 1024 * 1024;
 const MAX_ASSETS = 50_000;
 const ASSET_PAGES = 100;
 
+/**
+ * Both folder lists are "limited to 2000 results". The pages allow for 10,000 in
+ * case that only bounds one answer, and {@link wholeFolderList} notices if it is real.
+ * https://cloudinary.com/documentation/admin_api_folders
+ */
+const FOLDER_LIMIT = 2000;
+const FOLDER_PAGES = 20;
+
 /** The two types with a Metrics tab, for `withMetricsCapability`. */
 const METRIC_RESOURCE_TYPES = [MediaAssetResourceType, ProductEnvironmentResourceType];
 
@@ -98,6 +107,19 @@ const VIEWS_PAGE_SIZE = 500;
 const VIEWS_MAX_PAGES = 10;
 const VIEWS_BUCKETS = 48;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Refuses a folder list cut off at the provider's limit, which it shows only by its total. */
+function wholeFolderList<T>(rows: T[], total: number | undefined, path: string): T[] {
+  if (rows.length >= FOLDER_LIMIT && total !== undefined && total > rows.length) {
+    throw new ListTruncatedError({
+      vendor: "Cloudinary",
+      path,
+      items: rows.length,
+      maxItems: FOLDER_LIMIT,
+    });
+  }
+  return rows;
+}
 
 function titleCase(value: string): string {
   return value
@@ -1554,60 +1576,71 @@ export class CloudinaryClient implements PluginClient {
     };
   }
 
+  private mapFolder(
+    folder: CloudinaryFolder,
+    accountId: string,
+    parentPath?: string,
+  ): ResourceInstance {
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:folder:${folder.path}`,
+      pluginId: "cloudinary",
+      resourceTypeId: "folder",
+      accountId,
+      displayName: folder.name,
+      fields: {
+        name: folder.name,
+        path: folder.path,
+        ...(folder.external_id ? { externalId: folder.external_id } : {}),
+      },
+      resolvedOutputs: { path: folder.path, name: folder.name },
+      secretStates: [],
+      externalId: folder.path,
+      ...(parentPath ? { parentResourceId: `${accountId}:folder:${parentPath}` } : {}),
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  /** A folder's direct subfolders. One that went away since the root listing has none. */
+  private async listSubfolders(parentPath: string): Promise<CloudinaryFolder[]> {
+    let reported: number | undefined;
+    const folders = await readEveryPage<CloudinaryFolder>(
+      { path: "/folders/{folder}", key: "folders", maxPages: FOLDER_PAGES, notFoundIsEmpty: true },
+      async (cursor) => {
+        const data = await this.api.get(`/folders/${pathEncode(parentPath)}`, {
+          query: { max_results: 500, ...cursorQuery(cursor) },
+        });
+        reported = data.total_count;
+        return { rows: data.folders, next: data.next_cursor };
+      },
+    );
+    return wholeFolderList(folders, reported, "/folders/{folder}");
+  }
+
   private async listFolders(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.api.get("/folders");
-    const results: ResourceInstance[] = [];
-
-    for (const folder of data.folders ?? []) {
-      results.push({
-        id: `${accountId}:folder:${folder.path}`,
-        pluginId: "cloudinary",
-        resourceTypeId: "folder",
-        accountId,
-        displayName: folder.name,
-        fields: {
-          name: folder.name,
-          path: folder.path,
-          ...(folder.external_id ? { externalId: folder.external_id } : {}),
-        },
-        resolvedOutputs: { path: folder.path, name: folder.name },
-        secretStates: [],
-        externalId: folder.path,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+    const rows = requireListPage(data.folders, {
+      vendor: "Cloudinary",
+      path: "/folders",
+      key: "folders",
+    });
+    // The document says this is always null, so one means the list is not all here.
+    if (data.next_cursor) {
+      throw new ListTruncatedError({
+        vendor: "Cloudinary",
+        path: "/folders",
+        items: rows.length,
+        maxPages: 1,
       });
-
-      // Fetch subfolders one level deep
-      let subData;
-      try {
-        subData = await this.api.get(`/folders/${pathEncode(folder.path)}`);
-      } catch (err) {
-        // The folder went away after the root listing, so it has no subfolders.
-        if (err instanceof CloudinaryApiError && err.status === 404) continue;
-        throw err;
-      }
-      for (const sub of subData.folders ?? []) {
-        results.push({
-          id: `${accountId}:folder:${sub.path}`,
-          pluginId: "cloudinary",
-          resourceTypeId: "folder",
-          accountId,
-          displayName: sub.name,
-          fields: {
-            name: sub.name,
-            path: sub.path,
-            ...(sub.external_id ? { externalId: sub.external_id } : {}),
-          },
-          resolvedOutputs: { path: sub.path, name: sub.name },
-          secretStates: [],
-          externalId: sub.path,
-          parentResourceId: `${accountId}:folder:${folder.path}`,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
+    }
+    const results: ResourceInstance[] = [];
+    for (const folder of wholeFolderList(rows, data.total_count, "/folders")) {
+      results.push(this.mapFolder(folder, accountId));
+      for (const sub of await this.listSubfolders(folder.path)) {
+        results.push(this.mapFolder(sub, accountId, folder.path));
       }
     }
-
     return results;
   }
 
