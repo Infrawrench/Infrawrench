@@ -28,6 +28,11 @@ export type WosMembership = ApiListItem<
   operations["UserlandUserOrganizationMembershipsController_list"],
   "data"
 >;
+export type WosMembershipStatus = NonNullable<
+  NonNullable<
+    operations["UserlandUserOrganizationMembershipsController_list"]["parameters"]["query"]
+  >["statuses"]
+>[number];
 export type WosMemberRow = ApiListItem<
   operations["GroupMembershipsController_listMembers"],
   "data"

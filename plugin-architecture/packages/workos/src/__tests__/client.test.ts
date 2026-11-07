@@ -108,6 +108,25 @@ describe("listing", () => {
     expect(calls[1]!.url).toContain("after=cur");
   });
 
+  it("asks for every membership status, so a deactivated member stays in the inventory", async () => {
+    installFetch((url) => {
+      if (url.includes("/user_management/users")) return jsonResponse(list([]));
+      if (url.includes("/user_management/organization_memberships")) {
+        return jsonResponse(
+          list([{ id: "om_1", user_id: "user_1", organization_id: ORG, status: "inactive" }]),
+        );
+      }
+      return jsonResponse(list([{ id: ORG, name: "Acme" }]));
+    });
+
+    const memberships = await client().listResources("organization-membership", ACCOUNT);
+
+    expect(memberships.map((m) => m.fields["status"])).toEqual(["inactive"]);
+    const sent = calls.find((c) => c.url.includes("/organization_memberships"))!.url;
+    // The document's `style: form, explode: false`, one comma-separated value.
+    expect(new URL(sent).searchParams.getAll("statuses")).toEqual(["active,inactive,pending"]);
+  });
+
   it("fans memberships out per organization and labels them with user emails", async () => {
     installFetch((url) => {
       if (url.includes("/user_management/users")) {

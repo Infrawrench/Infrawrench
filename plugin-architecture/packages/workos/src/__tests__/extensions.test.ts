@@ -327,6 +327,48 @@ describe("organizations", () => {
     expect(exported.content).toBe("https://setup.workos.com/portal/launch?secret=x");
   });
 
+  it("counts active members apart from deactivated ones", async () => {
+    const { client } = routed({
+      "GET /user_management/organization_memberships": list([
+        { id: "om_1", status: "active" },
+        { id: "om_2", status: "inactive" },
+        { id: "om_3", status: "pending" },
+      ]),
+      "GET /user_management/invitations": list([]),
+      "GET /connections": list([]),
+      "GET /directories": list([]),
+    });
+    const stats = await client.fetchDashboardStats(
+      "organization",
+      `${ACCOUNT}:organization:${ORG}`,
+      ACCOUNT,
+    );
+    expect(stats).toEqual(
+      expect.arrayContaining([
+        { label: "Members", value: "1" },
+        { label: "Inactive Members", value: "1" },
+      ]),
+    );
+  });
+
+  it("offers only active memberships as group member candidates", async () => {
+    const { client, calls } = routed({
+      "GET /user_management/users": list([]),
+      "GET /user_management/organization_memberships": list([{ id: "om_1", user_id: "user_1" }]),
+      [`GET /organizations/${ORG}/groups/group_1/organization-memberships`]: list([]),
+    });
+    await client.enrichDetail({
+      id: `${ACCOUNT}:group:${ORG}/group_1`,
+      resourceTypeId: "group",
+      accountId: ACCOUNT,
+      resolvedOutputs: {},
+    } as never);
+    const sent = calls.find((c) => c.url.startsWith("/user_management/organization_memberships"))!;
+    expect(new URL(`https://api.workos.com${sent.url}`).searchParams.get("statuses")).toBe(
+      "active",
+    );
+  });
+
   it("reads organization events with the required repeated events filter", async () => {
     const { client, calls } = routed({
       "GET /events": list([

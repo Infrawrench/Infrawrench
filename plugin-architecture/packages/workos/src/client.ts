@@ -13,7 +13,7 @@ import type {
   ResourceStatus,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { commaSeparated, joinSubtitle, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type {
   ApiBody,
   CredentialExport,
@@ -39,6 +39,7 @@ import {
   type WosInvitation,
   type WosMemberRow,
   type WosMembership,
+  type WosMembershipStatus,
   type WosOrganization,
   type WosOrganizationDomain,
   type WosPermission,
@@ -57,6 +58,9 @@ const EVENTS_MAX_RANGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Roughly how many points each metric series is bucketed into. */
 const METRIC_BUCKETS = 48;
+
+/** WorkOS lists only active memberships unless asked for the others. */
+const ALL_MEMBERSHIP_STATUSES = ["active", "inactive", "pending"] as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -376,9 +380,18 @@ export class WorkosClient implements PluginClient {
     );
   }
 
-  private async fetchMemberships(organizationId: string): Promise<WosMembership[]> {
+  private async fetchMemberships(
+    organizationId: string,
+    statuses: readonly WosMembershipStatus[] = ALL_MEMBERSHIP_STATUSES,
+  ): Promise<WosMembership[]> {
     return paginate("/user_management/organization_memberships", (path, paging) =>
-      this.api.get(path, { query: { organization_id: organizationId, ...paging } }),
+      this.api.get(path, {
+        query: {
+          organization_id: organizationId,
+          statuses: commaSeparated(statuses),
+          ...paging,
+        },
+      }),
     );
   }
 
@@ -1160,8 +1173,13 @@ export class WorkosClient implements PluginClient {
           this.fetchDirectories(id).catch(() => []),
         ]);
         const pending = invitations.filter((invitation) => invitation.state === "pending").length;
+        const active = memberships.filter((membership) => membership.status === "active").length;
+        const inactive = memberships.filter(
+          (membership) => membership.status === "inactive",
+        ).length;
         return [
-          { label: "Members", value: String(memberships.length) },
+          { label: "Members", value: String(active) },
+          { label: "Inactive Members", value: String(inactive) },
           { label: "Pending Invites", value: String(pending) },
           { label: "SSO Connections", value: String(connections.length) },
           { label: "Directories", value: String(directories.length) },
@@ -2156,7 +2174,9 @@ export class WorkosClient implements PluginClient {
               `/organizations/${pathEncode(orgId)}/groups/${pathEncode(groupId)}/organization-memberships`,
               (path, query) => this.api.get(path, { query }),
             ).catch(() => []),
-            this.fetchMemberships(orgId).catch(() => []),
+            // Only an active membership is offered, as before: the document does not
+            // say a deactivated or pending one can join a group.
+            this.fetchMemberships(orgId, ["active"]).catch(() => []),
             this.fetchUserEmailMap(),
           ]);
           const label = (m: WosMemberRow) =>
