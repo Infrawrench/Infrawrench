@@ -24,7 +24,9 @@ import {
   externalIdOf,
   hostFetch,
   isSameOrigin,
+  ListTruncatedError,
   pathEncode,
+  requireListPage,
   withAiCostTags,
   type ApiBody,
 } from "@infrawrench/plugin-base";
@@ -35,6 +37,7 @@ import {
   HOST,
   MAX_PAGES,
   PAGE_SIZE,
+  PICKER_MAX_PAGES,
   type ApiKey,
   type AuditLogEntry,
   type BatchInferenceJob,
@@ -453,14 +456,29 @@ export class FireworksClient implements PluginClient {
    * `GET /v1/accounts/{aid}/users/{uid}/apiKeys`. Passing `-` as the user id
    * asks for every user's keys (and service accounts'), which is what an
    * account-level listing should show. Pagination on this route is a documented
-   * TODO, so we do not rely on `nextPageToken` here.
+   * TODO, so a long list may stop with no `nextPageToken`, and only `totalSize`
+   * says so.
    * https://docs.fireworks.ai/api-reference/list-api-keys
    */
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.api.get(`/users/${pathEncode("-")}/apiKeys`, {
-      query: { pageSize: PAGE_SIZE },
-    });
-    return (data.apiKeys ?? []).map((key) => this.mapApiKey(key, accountId, "-"));
+    const path = "/users/-/apiKeys";
+    const place = { vendor: "Fireworks", path };
+    const keys: ApiKey[] = [];
+    let pageToken: string | undefined;
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+      const data = await this.api.get(`/users/${pathEncode("-")}/apiKeys`, {
+        query: { pageSize: PAGE_SIZE, ...(pageToken ? { pageToken } : {}) },
+      });
+      keys.push(...requireListPage(data.apiKeys ?? [], { ...place, key: "apiKeys" }));
+      if (!data.nextPageToken) {
+        if ((data.totalSize ?? 0) > keys.length) {
+          throw new ListTruncatedError({ ...place, items: keys.length, maxItems: keys.length });
+        }
+        return keys.map((key) => this.mapApiKey(key, accountId, "-"));
+      }
+      pageToken = data.nextPageToken;
+    }
+    throw new ListTruncatedError({ ...place, items: keys.length, maxPages: MAX_PAGES });
   }
 
   // -------------------------------------------------------------------------
@@ -1119,7 +1137,7 @@ export class FireworksClient implements PluginClient {
    */
   private async getRouterCreateConfig(): Promise<CreateResourceConfig> {
     const deployments = await this.api
-      .getAll("/deployments", "deployments")
+      .getAll("/deployments", "deployments", { maxPages: PICKER_MAX_PAGES, partial: true })
       .catch((): Deployment[] => []);
     const deploymentOptions = deployments
       .filter((deployment) => Boolean(deployment.name) && deployment.state !== "DELETED")
@@ -1201,7 +1219,9 @@ export class FireworksClient implements PluginClient {
   }
 
   private async getApiKeyCreateConfig(): Promise<CreateResourceConfig> {
-    const users = await this.api.getAll("/users", "users").catch((): User[] => []);
+    const users = await this.api
+      .getAll("/users", "users", { maxPages: PICKER_MAX_PAGES, partial: true })
+      .catch((): User[] => []);
     const options = users
       .filter((user) => Boolean(user.name))
       .map((user) => ({
@@ -1651,7 +1671,7 @@ export class FireworksClient implements PluginClient {
     let scope: "ACCOUNT" | "SELF" = "ACCOUNT";
     let attempted = false;
 
-    for (
+    windows: for (
       let windowStart = range.fromDate;
       windowStart <= range.toDate;
       windowStart = addDays(windowStart, MAX_USAGE_WINDOW_DAYS)
@@ -1695,7 +1715,12 @@ export class FireworksClient implements PluginClient {
         }
         attempted = true;
 
-        for (const row of data.rows ?? []) {
+        const costRows = requireListPage(data.rows ?? [], {
+          vendor: "Fireworks",
+          path: "/usageCosts:query",
+          key: "rows",
+        });
+        for (const row of costRows) {
           const date = isoDate(row.dimensions?.startTime) || windowStart;
           const amount = moneyToNumber(row.subtotal);
           if (!amount) continue;
@@ -1707,9 +1732,15 @@ export class FireworksClient implements PluginClient {
             amount,
           });
         }
-        if (!data.nextPageToken) break;
+        if (!data.nextPageToken) continue windows;
         pageToken = data.nextPageToken;
       }
+      throw new ListTruncatedError({
+        vendor: "Fireworks",
+        path: "/usageCosts:query",
+        items: rows.length,
+        maxPages: MAX_PAGES,
+      });
     }
 
     return rows;

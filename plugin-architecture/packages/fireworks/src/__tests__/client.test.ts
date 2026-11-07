@@ -102,6 +102,125 @@ describe("control plane", () => {
   });
 });
 
+describe("list completeness", () => {
+  it("rejects a list that never ends, after exactly the page cap", async () => {
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      return jsonResponse({
+        deployments: [{ name: `accounts/my-team/deployments/d${page}` }],
+        nextPageToken: `tok${page}`,
+      });
+    });
+    await expect(client().listResources("deployment", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(250);
+  });
+
+  it("reads 10,000 rows and more before it gives up", async () => {
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      return jsonResponse({
+        models: Array.from({ length: 200 }, (_, i) => ({
+          name: `accounts/my-team/models/m${page}-${i}`,
+        })),
+        ...(page < 60 ? { nextPageToken: `tok${page}` } : {}),
+      });
+    });
+    await expect(client().listResources("model", ACCOUNT)).resolves.toHaveLength(12_000);
+  });
+
+  it("reads an empty account whose answer leaves the list out", async () => {
+    // proto3 JSON drops an empty repeated field.
+    installFetch(() => jsonResponse({}));
+    await expect(client().listResources("deployment", ACCOUNT)).resolves.toEqual([]);
+    await expect(client().listResources("api-key", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("rejects a list that is there but is not an array", async () => {
+    installFetch(() => jsonResponse({ deployments: { error: "oops" } }));
+    await expect(client().listResources("deployment", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a later page that is not a list", async () => {
+    installFetch((url) =>
+      url.includes("pageToken=tok2")
+        ? jsonResponse({ models: "nope" })
+        : jsonResponse({ models: [{ name: "accounts/my-team/models/m1" }], nextPageToken: "tok2" }),
+    );
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("follows the token past an empty page", async () => {
+    installFetch((url) =>
+      url.includes("pageToken=tok2")
+        ? jsonResponse({ models: [{ name: "accounts/my-team/models/m2" }] })
+        : jsonResponse({ nextPageToken: "tok2" }),
+    );
+    const items = await client().listResources("model", ACCOUNT);
+    expect(items.map((item) => item.externalId)).toEqual(["m2"]);
+  });
+
+  it("follows an API key page token, should the route start giving one", async () => {
+    installFetch((url) =>
+      url.includes("pageToken=tok2")
+        ? jsonResponse({ apiKeys: [{ keyId: "k2" }], totalSize: 2 })
+        : jsonResponse({ apiKeys: [{ keyId: "k1" }], nextPageToken: "tok2", totalSize: 2 }),
+    );
+    const items = await client().listResources("api-key", ACCOUNT);
+    expect(items.map((item) => item.externalId)).toEqual(["k1", "k2"]);
+  });
+
+  it("rejects API keys when the total says the page was cut off with no token", async () => {
+    installFetch(() => jsonResponse({ apiKeys: [{ keyId: "k1" }], totalSize: 2 }));
+    await expect(client().listResources("api-key", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("rejects an API key list that is not a list", async () => {
+    installFetch(() => jsonResponse({ apiKeys: { error: "oops" } }));
+    await expect(client().listResources("api-key", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a cost query that never ends, after exactly the page cap", async () => {
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      return jsonResponse({ rows: [], nextPageToken: `tok${page}` });
+    });
+    await expect(
+      client().fetchCostData(ACCOUNT, { fromDate: "2026-07-01", toDate: "2026-07-01" }),
+    ).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls).toHaveLength(250);
+  });
+
+  it("reads a cost window with nothing in it, and refuses rows that are not a list", async () => {
+    installFetch(() => jsonResponse({}));
+    const range = { fromDate: "2026-07-01", toDate: "2026-07-01" };
+    await expect(client().fetchCostData(ACCOUNT, range)).resolves.toEqual([]);
+    vi.restoreAllMocks();
+    installFetch(() => jsonResponse({ rows: "nope" }));
+    await expect(client().fetchCostData(ACCOUNT, range)).rejects.toThrow("is not a list");
+  });
+
+  it("still offers what it read when a picker's list is longer than the cap", async () => {
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      return jsonResponse({
+        deployments: [{ name: `accounts/my-team/deployments/d${page}` }],
+        nextPageToken: `tok${page}`,
+      });
+    });
+    const config = await client().getCreateConfig("router");
+    const picker = config.fields.find((field) => field.key === "deployments");
+    expect(picker?.policies).toHaveLength(20);
+  });
+});
+
 describe("deployments", () => {
   it("scales through the colon-suffix RPC, not an ordinary PATCH", async () => {
     installFetch((url, init) => {

@@ -12,7 +12,10 @@ export const HOST = "https://api.fireworks.ai";
 
 /** `pageSize` is clamped server-side at 200; anything larger is silently coerced. */
 export const PAGE_SIZE = 200;
-export const MAX_PAGES = 20;
+/** 50,000 rows, the most the host can prune against. */
+export const MAX_PAGES = 250;
+/** A create form can offer part of a long list. */
+export const PICKER_MAX_PAGES = 20;
 
 /** Carries the status, because a path or a response body can hold any digits. */
 export class FireworksApiError extends Error {
@@ -81,7 +84,12 @@ export function createFireworksApi(options: {
         pageSize: PAGE_SIZE,
         maxPages: MAX_PAGES,
         next: "nextPageToken",
+        // The document: "If this field is omitted, there are no subsequent pages."
+        // So the token ends a list, not an empty page.
         continueOnEmptyPage: true,
+        // The document is generated from protobuf (`protobufAny`, int64 as a string),
+        // and proto3 JSON leaves an empty repeated field out of the answer.
+        missingListIsEmpty: true,
       },
     ),
     /** The audit log's filter goes form-encoded, so a space in it is `+`. */
