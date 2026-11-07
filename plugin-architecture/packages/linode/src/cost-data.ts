@@ -36,7 +36,7 @@ import {
   type CostFetchRange,
   type CostRow,
 } from "@infrawrench/plugin-base";
-import { segment, xFilter, type LinodeApi } from "./api.js";
+import { segment, statusOf, xFilter, type LinodeApi } from "./api.js";
 import { SERVICE, parseInvoiceItemLabel } from "./invoice-label.js";
 import {
   type PriceCatalog,
@@ -437,7 +437,14 @@ export function openPeriodStart(
 }
 
 async function loadInventory(api: LinodeApi): Promise<UninvoicedInventory> {
-  const safe = <T>(p: Promise<T[]>) => p.catch((): T[] => []);
+  // A token without this scope, or an account without this product, has none to price
+  // and its share stays in the uninvoiced residual. Any other failure says nothing.
+  const safe = <T>(p: Promise<T[]>) =>
+    p.catch((err: unknown): T[] => {
+      const status = statusOf(err);
+      if (status === 401 || status === 403 || status === 404) return [];
+      throw err;
+    });
   const [linodes, volumes, nodeBalancers, lkeClusters, databases, buckets, reservedIps] =
     await Promise.all([
       api.getAll("/linode/instances", "data"),

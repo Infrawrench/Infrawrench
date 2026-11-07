@@ -9,8 +9,8 @@
  * healthy resource.
  */
 
-import { pathEncode, type ResourceInstance } from "@infrawrench/plugin-base";
-import { segment, xFilter, type LinodeApi } from "./api.js";
+import { pathEncode, rethrowIncompleteList, type ResourceInstance } from "@infrawrench/plugin-base";
+import { segment, statusOf, xFilter, type LinodeApi } from "./api.js";
 import type {
   LinodeAccount,
   LinodeBucket,
@@ -110,9 +110,16 @@ export function firewallIndex(firewalls: LinodeFirewall[]): Map<string, string[]
 async function firewallsOrEmpty(api: LinodeApi): Promise<LinodeFirewall[] | null> {
   try {
     return await api.getAll("/networking/firewalls", "data");
-  } catch {
+  } catch (err) {
+    rethrowIncompleteList(err);
     return null;
   }
+}
+
+/** A parent that has gone since the list has no children. Any other failure says nothing. */
+function noneIfGone(err: unknown): never[] {
+  if (statusOf(err) === 404) return [];
+  throw err;
 }
 
 // --- Linodes ---------------------------------------------------------------
@@ -247,7 +254,8 @@ export async function listNodeBalancers(
     let configs: LinodeNodeBalancerConfig[] | null = null;
     try {
       configs = await api.getAll(`/nodebalancers/${segment(nb.id)}/configs`, "data");
-    } catch {
+    } catch (err) {
+      rethrowIncompleteList(err);
       configs = null;
     }
     return mapNodeBalancer(
@@ -314,35 +322,33 @@ export function mapLkePool(
   );
 }
 
-async function clustersWithPools(
-  api: LinodeApi,
-): Promise<Array<{ cluster: LinodeLkeCluster; pools: LinodeLkePool[] | null }>> {
-  const clusters = await api.getAll("/lke/clusters", "data");
-  return mapPooled(clusters, 8, async (cluster) => {
-    try {
-      return {
-        cluster,
-        pools: await api.getAll(`/lke/clusters/${segment(cluster.id)}/pools`, "data"),
-      };
-    } catch {
-      return { cluster, pools: null };
-    }
-  });
+function poolsOf(api: LinodeApi, cluster: LinodeLkeCluster): Promise<LinodeLkePool[]> {
+  return api.getAll(`/lke/clusters/${segment(cluster.id)}/pools`, "data");
 }
 
 export async function listLkeClusters(
   api: LinodeApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const rows = await clustersWithPools(api);
-  return rows.map(({ cluster, pools }) => mapLkeCluster(cluster, accountId, pools));
+  const clusters = await api.getAll("/lke/clusters", "data");
+  return mapPooled(clusters, 8, async (cluster) => {
+    let pools: LinodeLkePool[] | null = null;
+    try {
+      pools = await poolsOf(api, cluster);
+    } catch (err) {
+      rethrowIncompleteList(err);
+    }
+    return mapLkeCluster(cluster, accountId, pools);
+  });
 }
 
+/** Pools are rows of their own, so a failed read has to throw: none would prune them. */
 export async function listLkePools(api: LinodeApi, accountId: string): Promise<ResourceInstance[]> {
-  const rows = await clustersWithPools(api);
-  return rows.flatMap(({ cluster, pools }) =>
-    (pools ?? []).map((p) => mapLkePool(p, cluster, accountId)),
+  const clusters = await api.getAll("/lke/clusters", "data");
+  const rows = await mapPooled(clusters, 8, async (cluster) =>
+    (await poolsOf(api, cluster).catch(noneIfGone)).map((p) => mapLkePool(p, cluster, accountId)),
   );
+  return rows.flat();
 }
 
 // --- Object Storage ----------------------------------------------------------
@@ -585,35 +591,35 @@ export function mapDomainRecord(
   );
 }
 
-async function domainsWithRecords(
-  api: LinodeApi,
-): Promise<Array<{ domain: LinodeDomain; records: LinodeDomainRecord[] | null }>> {
-  const domains = await api.getAll("/domains", "data");
-  return mapPooled(domains, 8, async (domain) => {
-    try {
-      return {
-        domain,
-        records: await api.getAll(`/domains/${segment(domain.id)}/records`, "data"),
-      };
-    } catch {
-      return { domain, records: null };
-    }
-  });
+function recordsOf(api: LinodeApi, domain: LinodeDomain): Promise<LinodeDomainRecord[]> {
+  return api.getAll(`/domains/${segment(domain.id)}/records`, "data");
 }
 
 export async function listDomains(api: LinodeApi, accountId: string): Promise<ResourceInstance[]> {
-  const rows = await domainsWithRecords(api);
-  return rows.map(({ domain, records }) => mapDomain(domain, accountId, records?.length));
+  const domains = await api.getAll("/domains", "data");
+  return mapPooled(domains, 8, async (domain) => {
+    let records: LinodeDomainRecord[] | undefined;
+    try {
+      records = await recordsOf(api, domain);
+    } catch (err) {
+      rethrowIncompleteList(err);
+    }
+    return mapDomain(domain, accountId, records?.length);
+  });
 }
 
+/** Records are rows of their own, so a failed read has to throw: none would prune them. */
 export async function listDomainRecords(
   api: LinodeApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const rows = await domainsWithRecords(api);
-  return rows.flatMap(({ domain, records }) =>
-    (records ?? []).map((r) => mapDomainRecord(r, domain, accountId)),
+  const domains = await api.getAll("/domains", "data");
+  const rows = await mapPooled(domains, 8, async (domain) =>
+    (await recordsOf(api, domain).catch(noneIfGone)).map((r) =>
+      mapDomainRecord(r, domain, accountId),
+    ),
   );
+  return rows.flat();
 }
 
 // --- Images and StackScripts ------------------------------------------------------

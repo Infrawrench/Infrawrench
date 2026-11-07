@@ -22,6 +22,7 @@
  * monthly figures at 730 hours).
  */
 
+import { rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { LinodeApi } from "./api.js";
 import type {
   LinodeDatabaseType,
@@ -126,8 +127,11 @@ export function createPriceCatalogCache(api: LinodeApi): PriceCatalogCache {
   let cached: { at: number; value: Promise<PriceCatalog> } | null = null;
 
   async function load(): Promise<PriceCatalog> {
-    const pick = <T>(r: PromiseSettledResult<T[]>): T[] =>
-      r.status === "fulfilled" ? r.value : [];
+    const pick = <T>(r: PromiseSettledResult<T[]>): T[] => {
+      if (r.status === "fulfilled") return r.value;
+      rethrowIncompleteList(r.reason);
+      return [];
+    };
     const [linodeTypes, volumes, nbs, lke, obj, transfer, reserved, dbs] = await Promise.allSettled(
       [
         api.getAll("/linode/types", "data"),
