@@ -15,7 +15,13 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, type ApiBody } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  ListTruncatedError,
+  pathEncode,
+  requireListPage,
+  type ApiBody,
+} from "@infrawrench/plugin-base";
 import type { EcContext } from "./api.js";
 import { createEcContext, isProjectType, statusOf } from "./api.js";
 import type { operations as BillingOperations } from "./api-types.billing.gen.js";
@@ -74,6 +80,8 @@ import type {
 import { PROJECT_TYPES } from "./types.js";
 
 const DEPLOYMENT_CONCURRENCY = 4;
+/** 50,000 filters at the document's largest page, 1,000, which is also its default. */
+const SERVERLESS_FILTER_MAX_PAGES = 50;
 const SOURCE_TYPES = new Set([
   "ip",
   "vpce",
@@ -201,10 +209,8 @@ export class ElasticCloudClient implements PluginClient {
             (await this.fetchRulesets()).map((r) => mapTrafficFilter(accountId, r)),
           );
         case "serverless-traffic-filter":
-          return this.scoped(async () =>
-            (await this.fetchServerlessFilters()).map((t) =>
-              mapServerlessTrafficFilter(accountId, t),
-            ),
+          return (await this.fetchServerlessFilters()).map((t) =>
+            mapServerlessTrafficFilter(accountId, t),
           );
         case "extension":
           return this.scoped(async () => {
@@ -289,9 +295,39 @@ export class ElasticCloudClient implements PluginClient {
     return res.rulesets ?? [];
   }
 
+  /**
+   * The token goes back in a header, which `getAll` has no way to send. The document
+   * says to page until `next_page` is absent, as a token does not promise a next page
+   * with anything on it, so an empty page does not end the list.
+   */
   private async fetchServerlessFilters(): Promise<EcServerlessTrafficFilter[]> {
-    const res = await this.ctx.serverless.get("/api/v1/serverless/traffic-filters");
-    return res.items ?? [];
+    const path = "/api/v1/serverless/traffic-filters";
+    const out: EcServerlessTrafficFilter[] = [];
+    let token: string | null | undefined;
+    for (let page = 0; page < SERVERLESS_FILTER_MAX_PAGES; page++) {
+      let res;
+      try {
+        res = await this.ctx.serverless.get(
+          path,
+          token ? { headers: { "X-Elastic-Next-Page": token } } : {},
+        );
+      } catch (err) {
+        // Only a first answer can mean the key has no filters. Later on, the same
+        // status would read the rows already in hand as none.
+        const s = statusOf(err);
+        if (page === 0 && (s === 403 || s === 404)) return [];
+        throw err;
+      }
+      out.push(...requireListPage(res.items, { vendor: "Elastic Cloud", path, key: "items" }));
+      token = res.next_page;
+      if (!token) return out;
+    }
+    throw new ListTruncatedError({
+      vendor: "Elastic Cloud",
+      path,
+      items: out.length,
+      maxPages: SERVERLESS_FILTER_MAX_PAGES,
+    });
   }
 
   private async fetchBudgets(orgId: string): Promise<EcBudget[]> {

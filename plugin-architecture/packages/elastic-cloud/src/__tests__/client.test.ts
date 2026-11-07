@@ -87,6 +87,79 @@ function client(
 }
 
 describe("ElasticCloudClient listing", () => {
+  describe("serverless traffic filters", () => {
+    const PATH = "/api/v1/serverless/traffic-filters";
+    const filter = (id: string) => ({
+      id,
+      name: id,
+      type: "ip",
+      region: "aws-us-east-1",
+      include_by_default: false,
+      rules: [{ source: "203.0.113.0/24" }],
+    });
+
+    it("sends each next_page back in X-Elastic-Next-Page until it is absent", async () => {
+      const replies: Record<string, Reply> = {
+        "": { body: { items: [filter("f1")], next_page: "t1" } },
+        // The document: a token does not promise the next page has anything on it.
+        t1: { body: { items: [], next_page: "t2" } },
+        t2: { body: { items: [filter("f2")], next_page: null } },
+      };
+      const token = () => calls.at(-1)?.headers["X-Elastic-Next-Page"] ?? "";
+      const { c, calls } = client(() => replies[token()] ?? { status: 500 });
+      const rows = await c.listResources("serverless-traffic-filter", "acct");
+      expect(rows.map((r) => r.externalId)).toEqual(["f1", "f2"]);
+      expect(calls.map((x) => x.headers["X-Elastic-Next-Page"])).toEqual([undefined, "t1", "t2"]);
+      expect(new Set(calls.map((x) => x.url.pathname))).toEqual(new Set([PATH]));
+    });
+
+    it("throws at the page cap rather than return part of the list", async () => {
+      const { c, calls } = client(() => ({
+        body: { items: [filter("f1")], next_page: "again" },
+      }));
+      await expect(c.listResources("serverless-traffic-filter", "acct")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(50);
+    });
+
+    it("throws on a renamed list, on the first page and on a later one", async () => {
+      const first = client(() => ({ body: { filters: [filter("f1")] } }));
+      await expect(first.c.listResources("serverless-traffic-filter", "acct")).rejects.toThrow(
+        "is not a list",
+      );
+      expect(first.calls).toHaveLength(1);
+
+      const later = client(() => ({
+        body:
+          later.calls.length === 1
+            ? { items: [filter("f1")], next_page: "t1" }
+            : { filters: [filter("f2")] },
+      }));
+      await expect(later.c.listResources("serverless-traffic-filter", "acct")).rejects.toThrow(
+        "is not a list",
+      );
+      expect(later.calls).toHaveLength(2);
+    });
+
+    it("lists nothing when the key cannot read filters, but only on the first page", async () => {
+      const denied = client(() => ({ status: 403, body: { errors: [] } }));
+      await expect(denied.c.listResources("serverless-traffic-filter", "acct")).resolves.toEqual(
+        [],
+      );
+
+      const midway = client(() =>
+        midway.calls.length === 1
+          ? { body: { items: [filter("f1")], next_page: "t1" } }
+          : { status: 403, body: { errors: [] } },
+      );
+      await expect(midway.c.listResources("serverless-traffic-filter", "acct")).rejects.toThrow(
+        "403",
+      );
+      expect(midway.calls).toHaveLength(2);
+    });
+  });
+
   it("lists hosted deployments with version, region, size, health and endpoints", async () => {
     const { c } = client((url) => {
       if (url.pathname === "/api/v1/deployments") {
