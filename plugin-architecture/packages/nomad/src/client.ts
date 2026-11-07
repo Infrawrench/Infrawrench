@@ -22,6 +22,7 @@ import {
   pathEncode,
   unencodedSegment,
   utf8ToBase64,
+  withinListCap,
 } from "@infrawrench/plugin-base";
 import type { NomadApi, NomadContext } from "./api.js";
 import {
@@ -52,9 +53,11 @@ import {
 } from "./mappers.js";
 import { COMMANDS, renderNomadDetail, renderNomadSidebar } from "./render.js";
 
-const MAX_JOBS = 3000;
-const MAX_ALLOCS = 3000;
-const MAX_DEPLOYMENTS = 500;
+/** Nomad answers a list whole when `per_page` is left out, so this only refuses what the host cannot prune (#572). */
+const MAX_LISTED = 50_000;
+/** One request each per sync. `http_max_conns_per_client` is 100 by default, so few at once. */
+const MAX_POLICY_READS = 1000;
+const POLICY_READS_AT_ONCE = 20;
 const ALL = { namespace: "*" };
 
 type Job = ApiResponse<operations["GetJob"]>;
@@ -339,7 +342,7 @@ export class NomadClient implements PluginClient {
             this.api.get("/jobs", { query: ALL }),
             this.jobVersions(),
           ]);
-          return jobs.slice(0, MAX_JOBS).map((j) => {
+          return withinListCap(jobs, MAX_LISTED, { vendor: "Nomad", path: "/jobs" }).map((j) => {
             const version = versions.get(joinId(j.Namespace ?? "default", j.ID ?? ""));
             return mapJob(accountId, {
               ...j,
@@ -352,30 +355,38 @@ export class NomadClient implements PluginClient {
             (await this.api.get("/allocations", { query: { ...ALL, resources: false } })) ?? [];
           const live = (a: AllocStub) =>
             a.ClientStatus === "running" || a.ClientStatus === "pending" ? 1 : 0;
-          return allocs
+          return withinListCap(allocs, MAX_LISTED, { vendor: "Nomad", path: "/allocations" })
             .sort((a, b) => live(b) - live(a) || (b.ModifyTime ?? 0) - (a.ModifyTime ?? 0))
-            .slice(0, MAX_ALLOCS)
             .map((a) => mapAllocation(accountId, a));
         }
         case "nomad-deployment":
-          return ((await this.api.get("/deployments", { query: ALL })) ?? [])
-            .slice(0, MAX_DEPLOYMENTS)
-            .map((d) => mapDeployment(accountId, d));
+          return withinListCap(
+            (await this.api.get("/deployments", { query: ALL })) ?? [],
+            MAX_LISTED,
+            { vendor: "Nomad", path: "/deployments" },
+          ).map((d) => mapDeployment(accountId, d));
         case "nomad-variable":
           return (await this.variables()).map((v) => mapVariable(accountId, v));
         case "nomad-acl-policy": {
           // The list omits the rules; read them (policies are few) so Terraform export has them.
-          const list = await this.optional(this.api.get("/acl/policies"));
-          return Promise.all(
-            list
-              .slice(0, 200)
+          const list = withinListCap(
+            await this.optional(this.api.get("/acl/policies")),
+            MAX_POLICY_READS,
+            { vendor: "Nomad", path: "/acl/policies" },
+          );
+          const policies: ResourceInstance[] = [];
+          for (let i = 0; i < list.length; i += POLICY_READS_AT_ONCE) {
+            const read = list
+              .slice(i, i + POLICY_READS_AT_ONCE)
               .map(async (p) =>
                 this.mapPolicy(
                   accountId,
                   (await this.soft(this.api.get(`/acl/policy/${pathEncode(p.Name ?? "")}`))) ?? p,
                 ),
-              ),
-          );
+              );
+            policies.push(...(await Promise.all(read)));
+          }
+          return policies;
         }
         case "nomad-acl-token":
           return (await this.optional(this.api.get("/acl/tokens"))).map((t) =>

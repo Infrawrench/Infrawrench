@@ -292,3 +292,65 @@ describe("the version of a listed job", () => {
     expect(after.fields).toEqual({ id: "web", status: "running", version: 3 });
   });
 });
+
+describe("list caps", () => {
+  const many = (n: number, row: (i: number) => Record<string, unknown>) =>
+    Array.from({ length: n }, (_, i) => row(i));
+
+  it.each([
+    ["nomad-job", "/v1/jobs", 3001, (i: number) => ({ ID: `j${i}`, Namespace: "prod" })],
+    ["nomad-allocation", "/v1/allocations", 3001, (i: number) => ({ ID: `a${i}` })],
+    ["nomad-deployment", "/v1/deployments", 501, (i: number) => ({ ID: `d${i}` })],
+  ])("keeps every %s past the old cap", async (type, path, count, row) => {
+    const { c } = client((call) => (call.url.pathname === path ? many(count, row) : []));
+    expect(await c.listResources(type, ACCOUNT)).toHaveLength(count);
+  });
+
+  it.each([
+    ["nomad-job", "/v1/jobs", (i: number) => ({ ID: `j${i}`, Namespace: "prod" })],
+    ["nomad-allocation", "/v1/allocations", (i: number) => ({ ID: `a${i}` })],
+    ["nomad-deployment", "/v1/deployments", (i: number) => ({ ID: `d${i}` })],
+  ])("refuses a %s list past the new cap rather than cut it", async (type, path, row) => {
+    const { c } = client((call) => (call.url.pathname === path ? many(50_001, row) : []));
+    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("reads the rules of every ACL policy past the old cap, a few at a time", async () => {
+    let open = 0;
+    let most = 0;
+    const { http } = makeHttp(() => undefined);
+    const request = async (req: { url: string }) => {
+      if (new URL(req.url).pathname === "/v1/acl/policies")
+        return {
+          status: 200,
+          headers: {},
+          body: JSON.stringify(many(201, (i) => ({ Name: `p${i}` }))),
+        };
+      open++;
+      most = Math.max(most, open);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      open--;
+      const name = new URL(req.url).pathname.split("/").pop();
+      return { status: 200, headers: {}, body: JSON.stringify({ Name: name, Rules: `r-${name}` }) };
+    };
+    const c = hostClient(
+      new NomadClient({ address: "nomad.example.com:4646", token: "tok" }, {
+        http: { ...http, request },
+      } as never),
+    );
+    const policies = await c.listResources("nomad-acl-policy", ACCOUNT);
+    expect(policies).toHaveLength(201);
+    expect(policies[200]!.resolvedOutputs["rules"]).toBe("r-p200");
+    expect(most).toBeLessThanOrEqual(20);
+  });
+
+  it("refuses more ACL policies than it reads one by one, before reading any", async () => {
+    const { c, calls } = client(() => many(1001, (i) => ({ Name: `p${i}` })));
+    await expect(c.listResources("nomad-acl-policy", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(1);
+  });
+});
