@@ -15,8 +15,8 @@
  */
 
 import type { MetricSeries } from "@infrawrench/plugin-base";
+import { pathEncode } from "@infrawrench/plugin-base";
 import type { EcContext } from "./api.js";
-import { billingApi } from "./api.js";
 import type { EcChartItems } from "./types.js";
 
 const DAY_MS = 86_400_000;
@@ -86,7 +86,11 @@ export function chartToSeries(chart: EcChartItems): MetricSeries[] {
 
 const round = (n: number) => Math.round(n * 10_000) / 10_000;
 
-function window(range: TimeRange) {
+function window(range: TimeRange): {
+  from: string;
+  to: string;
+  bucketing_strategy: "daily" | "monthly";
+} {
   return {
     from: new Date(range.startMs).toISOString(),
     to: new Date(range.endMs).toISOString(),
@@ -99,11 +103,9 @@ export async function organizationCostSeries(
   orgId: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
-  const chart = await billingApi<EcChartItems>(
-    ctx,
-    `/api/v2/billing/organizations/${encodeURIComponent(orgId)}/charts`,
-    { query: window(range) },
-  );
+  const chart = await ctx.billing.get(`/api/v2/billing/organizations/${pathEncode(orgId)}/charts`, {
+    query: window(range),
+  });
   return chartToSeries(chart ?? {});
 }
 
@@ -114,9 +116,8 @@ export async function instanceCostSeries(
   instanceType: "deployments" | "projects",
   range: TimeRange,
 ): Promise<MetricSeries[]> {
-  const chart = await billingApi<EcChartItems>(
-    ctx,
-    `/api/v2/billing/organizations/${encodeURIComponent(orgId)}/instances/${encodeURIComponent(instanceId)}/charts`,
+  const chart = await ctx.billing.get(
+    `/api/v2/billing/organizations/${pathEncode(orgId)}/instances/${pathEncode(instanceId)}/charts`,
     { query: { ...window(range), instance_type: instanceType } },
   );
   return chartToSeries(chart ?? {});

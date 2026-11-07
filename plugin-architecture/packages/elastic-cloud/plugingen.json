@@ -1,0 +1,96 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "cloud",
+      "specUrl": "https://www.elastic.co/docs/api/doc/cloud.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/CreateExtensionRequest/properties/extension_type",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field; our select offers the valid values and Elastic validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        }
+      ],
+      "paths": {
+        "/organizations": ["get"],
+        "/billing/costs/{organization_id}": ["get"],
+        "/deployments": ["get"],
+        "/deployments/{deployment_id}": ["get", "put"],
+        "/deployments/{deployment_id}/_shutdown": ["post"],
+        "/deployments/{deployment_id}/tags": ["put"],
+        "/deployments/{deployment_id}/elasticsearch/{ref_id}/tiers": ["get", "patch"],
+        "/deployments/{deployment_id}/elasticsearch/{ref_id}/_restart": ["post"],
+        "/deployments/{deployment_id}/{stateless_resource_kind}/{ref_id}/_restart": ["post"],
+        "/deployments/traffic-filter/rulesets": ["get", "post"],
+        "/deployments/traffic-filter/rulesets/{ruleset_id}": ["get", "put", "delete"],
+        "/deployments/traffic-filter/rulesets/{ruleset_id}/associations": ["post"],
+        "/deployments/traffic-filter/rulesets/{ruleset_id}/associations/{association_type}/{associated_entity_id}": [
+          "delete"
+        ],
+        "/deployments/extensions": ["get", "post"],
+        "/deployments/extensions/{extension_id}": ["get", "post", "delete"]
+      }
+    },
+    {
+      "name": "serverless",
+      "specUrl": "https://www.elastic.co/docs/api/doc/elastic-cloud-serverless.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/ElasticsearchOptimizedFor",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field; our select offers the valid values and Elastic validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/ObservabilityProjectProductTier",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field, like `optimized_for`."
+        }
+      ],
+      "paths": {
+        "/api/v1/serverless/regions": ["get"],
+        "/api/v1/serverless/traffic-filters": ["get", "post"],
+        "/api/v1/serverless/traffic-filters/{id}": ["get", "patch", "delete"],
+        "/api/v1/serverless/projects/elasticsearch": ["get", "post"],
+        "/api/v1/serverless/projects/elasticsearch/{id}": ["get", "patch", "delete"],
+        "/api/v1/serverless/projects/elasticsearch/{id}/status": ["get"],
+        "/api/v1/serverless/projects/elasticsearch/{id}/_resume": ["post"],
+        "/api/v1/serverless/projects/elasticsearch/{id}/_reset-credentials": ["post"],
+        "/api/v1/serverless/projects/observability": ["get", "post"],
+        "/api/v1/serverless/projects/observability/{id}": ["get", "patch", "delete"],
+        "/api/v1/serverless/projects/observability/{id}/status": ["get"],
+        "/api/v1/serverless/projects/observability/{id}/_resume": ["post"],
+        "/api/v1/serverless/projects/observability/{id}/_reset-credentials": ["post"],
+        "/api/v1/serverless/projects/security": ["get", "post"],
+        "/api/v1/serverless/projects/security/{id}": ["get", "patch", "delete"],
+        "/api/v1/serverless/projects/security/{id}/status": ["get"],
+        "/api/v1/serverless/projects/security/{id}/_resume": ["post"],
+        "/api/v1/serverless/projects/security/{id}/_reset-credentials": ["post"],
+        "/api/v1/serverless/projects/vectordb": ["get", "post"],
+        "/api/v1/serverless/projects/vectordb/{id}": ["get", "patch", "delete"],
+        "/api/v1/serverless/projects/vectordb/{id}/status": ["get"],
+        "/api/v1/serverless/projects/vectordb/{id}/_resume": ["post"],
+        "/api/v1/serverless/projects/vectordb/{id}/_reset-credentials": ["post"]
+      }
+    },
+    {
+      "name": "billing",
+      "specUrl": "https://www.elastic.co/docs/api/doc/cloud-billing.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1api~1v1~1billing~1organization~1{organization_id}~1budget/post/requestBody/content/application~1json/schema/properties/recipient_group/items",
+          "value": { "type": "string" },
+          "why": "Parsed from a form field holding the picker's choices; Elastic validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        }
+      ],
+      "paths": {
+        "/api/v1/billing/organization/{organization_id}/budget": ["post"],
+        "/api/v1/billing/organization/{organization_id}/budget/{budget_id}": ["post"],
+        "/api/v1/billing/organization/{organization_id}/budgets": ["get"],
+        "/api/v1/billing/organization/{organization_id}/budgets/{budget_id}": ["get", "delete"],
+        "/api/v2/billing/organizations/{organization_id}/charts": ["get"],
+        "/api/v2/billing/organizations/{organization_id}/costs/instances": ["get"],
+        "/api/v2/billing/organizations/{organization_id}/instances/{instance_id}/charts": ["get"]
+      }
+    }
+  ]
+}
