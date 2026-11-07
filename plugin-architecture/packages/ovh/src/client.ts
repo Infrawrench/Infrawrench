@@ -2050,13 +2050,14 @@ export class OvhClient implements PluginClient {
     const clusters = await Promise.all(
       clusterIds.map(async (id) => {
         const cluster = await this.ovhFetch<OvhKubeCluster>(this.cloudPath(`/kube/${id}`));
-        let pools: OvhKubeNodePool[] = [];
-        try {
-          pools = await this.ovhFetch<OvhKubeNodePool[]>(this.cloudPath(`/kube/${id}/nodepool`));
-        } catch (err) {
+        // These two only fill in fields. A failed read leaves its fields out, so
+        // the sync keeps what is stored instead of blanking them for one poll.
+        const pools = await this.ovhFetch<OvhKubeNodePool[]>(
+          this.cloudPath(`/kube/${id}/nodepool`),
+        ).catch((err) => {
           rethrowIncompleteList(err);
-          // No permission to list node pools: leave fields empty
-        }
+          return null;
+        });
         // The only metric the MKS API exposes: etcd usage against its quota.
         const etcd = await this.ovhFetch<{ quota?: number; usage?: number }>(
           this.cloudPath(`/kube/${id}/metrics/etcdUsage`),
@@ -2065,11 +2066,6 @@ export class OvhClient implements PluginClient {
       }),
     );
     return clusters.map(({ cluster: c, pools, etcd }) => {
-      const firstPool = pools[0];
-      const totalNodes = pools.reduce(
-        (sum, p) => sum + Number(p.desiredNodes ?? p.currentNodes ?? 0),
-        0,
-      );
       return {
         id: `${accountId}:managed-kube:${c.id}`,
         pluginId: "ovh",
@@ -2081,17 +2077,20 @@ export class OvhClient implements PluginClient {
           region: c.region ?? "",
           version: c.version ?? "",
           status: c.status ?? "",
-          // The read model names it `flavor`; `flavorName` is the create field.
-          flavor: firstPool?.flavor ?? firstPool?.flavorName ?? "",
-          nodeCount: totalNodes,
-          nodePoolCount: pools.length,
+          ...(pools ? kubePoolFields(pools) : {}),
           nodesUrl: c.nodesUrl ?? "",
           updatePolicy: c.updatePolicy ?? "",
           isUpToDate: c.isUpToDate ?? false,
           nextUpgradeVersions: (c.nextUpgradeVersions ?? []).join(", "),
           plan: c.plan ?? "",
-          etcdUsagePercent:
-            etcd?.quota && etcd.quota > 0 ? Math.round((etcd.usage! / etcd.quota) * 1000) / 10 : 0,
+          ...(etcd
+            ? {
+                etcdUsagePercent:
+                  etcd.quota && etcd.quota > 0
+                    ? Math.round((Number(etcd.usage ?? 0) / etcd.quota) * 1000) / 10
+                    : 0,
+              }
+            : {}),
           // The OpenStack id of the private network the cluster's nodes sit
           // in: matched against a private network's per-region
           // `regions[].openstackId`, not its OVH `pn-…` id.
@@ -2320,3 +2319,13 @@ interface OvhRegion {
 
 /** Output keys resolved straight from `resolvedOutputs` for the newer types. */
 const OUTPUT_KEYS_BY_TYPE: Record<string, true> = { vipAddress: true, floatingIp: true, url: true };
+
+function kubePoolFields(pools: OvhKubeNodePool[]) {
+  const first = pools[0];
+  return {
+    // The read model names it `flavor`; `flavorName` is the create field.
+    flavor: first?.flavor ?? first?.flavorName ?? "",
+    nodeCount: pools.reduce((sum, p) => sum + Number(p.desiredNodes ?? p.currentNodes ?? 0), 0),
+    nodePoolCount: pools.length,
+  };
+}

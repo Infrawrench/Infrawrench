@@ -76,13 +76,14 @@ export async function listOctaviaLoadBalancers(
   return perRegion(regions, "octavia-load-balancer", accountId, async (region) => {
     const [lbs, flavors] = await Promise.all([
       readList<OctaviaLb>(api.fetch, api.cloudPath(`${lbBase(region)}/loadbalancer`)),
-      // Only names a flavor id: a row without its flavor's name is still a whole row.
-      api.fetch<OctaviaFlavor[]>(api.cloudPath(`${lbBase(region)}/flavor`)).catch((err) => {
+      // Only names a flavor: a row without it is still a whole row, and leaving the
+      // field out keeps the stored name rather than writing the bare id for one poll.
+      api.fetch<OctaviaFlavor[]>(api.cloudPath(`${lbBase(region)}/flavor`)).catch((err): null => {
         rethrowIncompleteList(err);
-        return [] as OctaviaFlavor[];
+        return null;
       }),
     ]);
-    const flavorNames = new Map(flavors.map((f) => [f.id, f.name]));
+    const flavorNames = flavors && new Map(flavors.map((f) => [f.id, f.name]));
     return lbs.map((lb) => mapOctaviaLb(lb, region, flavorNames, accountId));
   });
 }
@@ -90,7 +91,8 @@ export async function listOctaviaLoadBalancers(
 function mapOctaviaLb(
   lb: OctaviaLb,
   region: string,
-  flavorNames: Map<string, string>,
+  /** Null when the flavor list could not be read: the flavor field is then left out. */
+  flavorNames: Map<string, string> | null,
   accountId: string,
 ): ResourceInstance {
   const lbRegion = lb.region ?? region;
@@ -105,7 +107,9 @@ function mapOctaviaLb(
     fields: {
       name: lb.name ?? "",
       region: lbRegion,
-      flavor: (lb.flavorId && flavorNames.get(lb.flavorId)) || lb.flavorId || "",
+      ...(flavorNames
+        ? { flavor: (lb.flavorId && flavorNames.get(lb.flavorId)) || lb.flavorId || "" }
+        : {}),
       provisioningStatus: lb.provisioningStatus ?? "",
       operatingStatus: lb.operatingStatus ?? "",
       vipAddress: lb.vipAddress ?? "",
@@ -129,10 +133,11 @@ export async function updateOctaviaLoadBalancer(
   const { region, id } = splitRegional(current.id);
   const body: Record<string, unknown> = {};
   if (fields["name"]) body["name"] = fields["name"];
-  const flavors = await api
-    .fetch<OctaviaFlavor[]>(api.cloudPath(`${lbBase(region)}/flavor`))
-    .catch(() => [] as OctaviaFlavor[]);
-  if (fields["flavor"]) {
+  // A resize needs the list to resolve the name, so its failure fails the edit. A
+  // rename only uses it to name the flavor on the returned row.
+  const flavorsRead = api.fetch<OctaviaFlavor[]>(api.cloudPath(`${lbBase(region)}/flavor`));
+  const flavors = fields["flavor"] ? await flavorsRead : await flavorsRead.catch((): null => null);
+  if (fields["flavor"] && flavors) {
     const flavor = flavors.find(
       (f) => f.name.toLowerCase() === fields["flavor"]!.toLowerCase() || f.id === fields["flavor"],
     );
@@ -149,7 +154,8 @@ export async function updateOctaviaLoadBalancer(
     body: JSON.stringify(body),
   });
   const lb = await api.fetch<OctaviaLb>(api.cloudPath(`${lbBase(region)}/loadbalancer/${enc(id)}`));
-  return mapOctaviaLb(lb, region, new Map(flavors.map((f) => [f.id, f.name])), current.accountId);
+  const flavorNames = flavors && new Map(flavors.map((f) => [f.id, f.name]));
+  return mapOctaviaLb(lb, region, flavorNames, current.accountId);
 }
 
 export async function deleteOctaviaLoadBalancer(api: OvhApi, resourceId: string): Promise<void> {

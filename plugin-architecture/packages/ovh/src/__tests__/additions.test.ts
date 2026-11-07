@@ -26,6 +26,11 @@ function okJson(body: unknown, status = 200): Response {
 }
 
 type Call = { url: string; method: string; body: unknown };
+
+/** A table value that answers with this HTTP status instead of a body. */
+class Status {
+  constructor(readonly code: number) {}
+}
 let fetchMock: MockInstance<typeof fetch>;
 let calls: Call[];
 
@@ -39,8 +44,9 @@ function route(table: Record<string, unknown>) {
     const path = url.replace(BASE, "");
     const key = `${method} ${path}`;
     const keyNoQuery = `${method} ${path.split("?")[0]}`;
-    if (key in table) return okJson(table[key]);
-    if (keyNoQuery in table) return okJson(table[keyNoQuery]);
+    const hit = key in table ? table[key] : keyNoQuery in table ? table[keyNoQuery] : undefined;
+    if (hit instanceof Status) return okJson({ message: `status ${hit.code}` }, hit.code);
+    if (key in table || keyNoQuery in table) return okJson(hit);
     return okJson({ message: `unexpected ${key}` }, 404);
   });
 }
@@ -214,6 +220,41 @@ describe("managed kubernetes", () => {
     });
   });
 
+  it.each([
+    ["a 429", 429],
+    ["a 503", 503],
+    ["a 403", 403],
+    ["a 409", 409],
+  ])("leaves the pool and etcd fields out on %s, so the stored ones stay", async (_, code) => {
+    route({
+      "GET /kube": ["k1"],
+      "GET /kube/k1": { id: "k1", name: "prod", version: "1.32" },
+      "GET /kube/k1/nodepool": new Status(code),
+      "GET /kube/k1/metrics/etcdUsage": new Status(code),
+    });
+    const [k] = await makeClient().listResources("managed-kube", ACCOUNT);
+    for (const key of ["flavor", "nodeCount", "nodePoolCount", "etcdUsagePercent"]) {
+      expect(k!.fields).not.toHaveProperty(key);
+    }
+    expect(k!.fields).toMatchObject({ name: "prod", version: "1.32" });
+  });
+
+  it("writes zero nodes for a cluster whose pool list is really empty", async () => {
+    route({
+      "GET /kube": ["k1"],
+      "GET /kube/k1": { id: "k1", name: "prod" },
+      "GET /kube/k1/nodepool": [],
+      "GET /kube/k1/metrics/etcdUsage": { quota: 0, usage: 0 },
+    });
+    const [k] = await makeClient().listResources("managed-kube", ACCOUNT);
+    expect(k!.fields).toMatchObject({
+      flavor: "",
+      nodeCount: 0,
+      nodePoolCount: 0,
+      etcdUsagePercent: 0,
+    });
+  });
+
   it("offers the creatable versions from the schema enum", async () => {
     route({ "GET /region": [], "GET /flavor": [] });
     const cfg = await makeClient().getCreateConfig("managed-kube");
@@ -344,6 +385,75 @@ describe("Octavia load balancers", () => {
     const [lb] = await makeClient().listResources("octavia-load-balancer", ACCOUNT);
     expect(lb!.externalId).toBe("GRA11/lb1");
     expect(lb!.fields).toMatchObject({ flavor: "small", floatingIp: "51.1.1.1" });
+  });
+
+  it.each([
+    ["a 429", 429],
+    ["a 503", 503],
+    ["a 403", 403],
+  ])("leaves the flavor out when the flavor list answers %s", async (_, code) => {
+    route({
+      "GET /region": ["GRA11"],
+      "GET /region/GRA11/loadbalancing/loadbalancer": [
+        { id: "lb1", name: "edge", flavorId: "fl-small" },
+      ],
+      "GET /region/GRA11/loadbalancing/flavor": new Status(code),
+    });
+    const [lb] = await makeClient().listResources("octavia-load-balancer", ACCOUNT);
+    expect(lb!.fields).not.toHaveProperty("flavor");
+    expect(lb!.fields).toMatchObject({ name: "edge", region: "GRA11" });
+  });
+
+  it("still shows the flavor id for a flavor the list does not name", async () => {
+    route({
+      "GET /region": ["GRA11"],
+      "GET /region/GRA11/loadbalancing/loadbalancer": [{ id: "lb1", flavorId: "fl-gone" }],
+      "GET /region/GRA11/loadbalancing/flavor": [{ id: "fl-small", name: "small" }],
+    });
+    const [lb] = await makeClient().listResources("octavia-load-balancer", ACCOUNT);
+    expect(lb!.fields["flavor"]).toBe("fl-gone");
+  });
+
+  it("refuses a resize with the flavor list's own error when that list fails", async () => {
+    route({
+      "GET /region": ["GRA11"],
+      "GET /region/GRA11/loadbalancing/loadbalancer": [{ id: "lb1", name: "edge" }],
+      "GET /region/GRA11/loadbalancing/flavor": new Status(503),
+    });
+    await expect(
+      makeClient().updateResource(
+        "octavia-load-balancer",
+        `${ACCOUNT}:octavia-load-balancer:GRA11/lb1`,
+        ACCOUNT,
+        { flavor: "large" },
+      ),
+    ).rejects.toThrow(/503|status/);
+    expect(mutations()).toEqual([]);
+  });
+
+  it("renames without the flavor list and keeps the stored flavor", async () => {
+    route({
+      "GET /region": ["GRA11"],
+      "GET /region/GRA11/loadbalancing/loadbalancer": [{ id: "lb1", name: "edge" }],
+      "GET /region/GRA11/loadbalancing/flavor": new Status(503),
+      "PUT /region/GRA11/loadbalancing/loadbalancer/lb1": {},
+      "GET /region/GRA11/loadbalancing/loadbalancer/lb1": {
+        id: "lb1",
+        name: "renamed",
+        flavorId: "fl-small",
+      },
+    });
+    const lb = await makeClient().updateResource(
+      "octavia-load-balancer",
+      `${ACCOUNT}:octavia-load-balancer:GRA11/lb1`,
+      ACCOUNT,
+      { name: "renamed" },
+    );
+    expect(mutations()).toEqual([
+      expect.objectContaining({ method: "PUT", body: { name: "renamed" } }),
+    ]);
+    expect(lb.fields).not.toHaveProperty("flavor");
+    expect(lb.fields["name"]).toBe("renamed");
   });
 
   it("resizes by flavor name", async () => {

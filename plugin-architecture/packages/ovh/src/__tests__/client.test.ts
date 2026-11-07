@@ -435,8 +435,8 @@ describe("listResources managed-kube", () => {
       return okJson([]);
     });
     const res = await c.listResources("managed-kube", ACCOUNT);
-    expect(res[0]!.fields["nodeCount"]).toBe(0);
-    expect(res[0]!.fields["nodePoolCount"]).toBe(0);
+    expect(res[0]!.fields).not.toHaveProperty("nodeCount");
+    expect(res[0]!.fields).not.toHaveProperty("nodePoolCount");
     expect(res[0]!.fields["privateNetworkId"]).toBe("");
     expect(res[0]!.displayName).toBe("c-1");
   });
