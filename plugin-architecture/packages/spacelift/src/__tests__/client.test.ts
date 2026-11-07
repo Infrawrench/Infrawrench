@@ -157,20 +157,27 @@ describe("listing", () => {
         .filter((b) => b.query.includes("runs(before"))
         .map((b) => String(b.variables?.id));
 
-    it("reads 15 stacks a poll and names the rest as unread, so their runs stay", async () => {
-      const unread = vi.fn();
-      Reflect.set(globalThis, UNREAD_HOOK, unread);
-      const { c, calls } = fanOut();
-      const runs = await c.listResources("run", ACC);
-      const read = readStacks(calls);
-      expect(read).toHaveLength(15);
-      // Rolling window: the newest five runs of each stack read.
-      expect(runs).toHaveLength(75);
-      const left = stacks.map((s) => s.id).filter((id) => !read.includes(id));
-      expect(unread).toHaveBeenCalledWith({
-        parentResourceIds: left.map((id) => `${ACC}:stack:${id}`),
-      });
-    });
+    it.each([0, 7, 13])(
+      "reads 15 stacks a poll and names the rest as unread, so their runs stay (minute %i)",
+      async (minute) => {
+        vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 10, 7) + minute * 60_000);
+        const unread = vi.fn();
+        Reflect.set(globalThis, UNREAD_HOOK, unread);
+        const { c, calls } = fanOut();
+        const runs = await c.listResources("run", ACC);
+        const read = readStacks(calls);
+        expect(read).toHaveLength(15);
+        // Rolling window: the newest five runs of each stack read.
+        expect(runs).toHaveLength(75);
+        const left = stacks.map((s) => s.id).filter((id) => !read.includes(id));
+        // The order follows the rotation, which moves with the clock, so compare as sets.
+        expect(unread).toHaveBeenCalledTimes(1);
+        expect(unread).toHaveBeenCalledWith({
+          parentResourceIds: expect.arrayContaining(left.map((id) => `${ACC}:stack:${id}`)),
+        });
+        expect(unread.mock.calls[0]?.[0]?.parentResourceIds).toHaveLength(left.length);
+      },
+    );
 
     it("rotates which stacks it reads so every stack is read over time", async () => {
       Reflect.set(globalThis, UNREAD_HOOK, vi.fn());
