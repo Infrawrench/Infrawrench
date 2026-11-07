@@ -1,183 +1,36 @@
 /**
- * incident.io response shapes (the fields this plugin reads, verified against
- * the OpenAPI document, 2026-10) and their mapping to `ResourceInstance`s and
- * to the paging capability's normalized incident.
+ * incident.io response shapes, named from the OpenAPI document, and their
+ * mapping to `ResourceInstance`s and to the paging capability's normalized
+ * incident.
  */
 import type {
   PagingIncident,
   PagingIncidentStatus,
   ResourceInstance,
 } from "@infrawrench/plugin-base";
+import type { components } from "./api-types.gen.js";
 
 export const PLUGIN_ID = "incident-io";
 
-export interface IoUser {
-  id?: string;
-  name?: string;
-  email?: string;
-  role?: string;
-  slack_user_id?: string;
-  is_active?: boolean;
-  base_role?: { name?: string; slug?: string };
-  seats?: { on_call?: string; response?: string };
-}
+type Schemas = components["schemas"];
 
-export interface IoIncidentStatus {
-  id?: string;
-  name?: string;
-  category?: string;
-  rank?: number;
-  description?: string;
-}
-
-export interface IoSeverity {
-  id?: string;
-  name?: string;
-  rank?: number;
-  description?: string;
-}
-
-export interface IoIncident {
-  id?: string;
-  reference?: string;
-  name?: string;
-  summary?: string;
-  permalink?: string;
-  created_at?: string;
-  updated_at?: string;
-  mode?: string;
-  visibility?: string;
-  incident_status?: IoIncidentStatus;
-  severity?: IoSeverity | null;
-  incident_type?: { id?: string; name?: string } | null;
-  incident_role_assignments?: Array<{
-    assignee?: IoUser | null;
-    role?: { name?: string; role_type?: string };
-  }>;
-  slack_channel_url?: string;
-  call_url?: string;
-  incident_timestamp_values?: Array<{
-    incident_timestamp?: { name?: string };
-    value?: { value?: string } | null;
-  }>;
-  duration_metrics?: Array<{
-    duration_metric?: { name?: string };
-    value_seconds?: number;
-  }>;
-}
-
-export interface IoShift {
-  start_at?: string;
-  end_at?: string;
-  rotation_id?: string;
-  user?: IoUser;
-}
-
-export interface IoRotation {
-  id?: string;
-  name?: string;
-  layers?: Array<{ id?: string; name?: string }>;
-  users?: IoUser[];
-}
-
-export interface IoSchedule {
-  id?: string;
-  name?: string;
-  timezone?: string;
-  permalink?: string;
-  team_ids?: string[];
-  current_shifts?: IoShift[];
-  next_shifts?: IoShift[];
-  config?: { rotations?: IoRotation[] };
-}
-
-export interface IoEscalationPath {
-  id?: string;
-  name?: string;
-  kind?: string;
-  current_responders?: IoUser[];
-  path?: Array<{ type?: string }>;
-  team_ids?: string[];
-}
-
-export interface IoAlert {
-  id?: string;
-  title?: string;
-  status?: string;
-  deduplication_key?: string;
-  alert_source_id?: string;
-  source_url?: string;
-}
-
-export interface IoEscalation {
-  id?: string;
-  title?: string;
-  status?: string;
-  created_at?: string;
-  updated_at?: string;
-  escalation_path_id?: string;
-  priority?: { name?: string } | null;
-  related_alerts?: IoAlert[];
-  related_incidents?: Array<{ id?: string; reference?: string; name?: string }>;
-  events?: Array<{ event?: string; occurred_at?: string; users?: IoUser[] }>;
-}
-
-export interface IoAlertSource {
-  id?: string;
-  name?: string;
-  source_type?: string;
-  alert_events_url?: string;
-  secret_token?: string;
-  auto_resolve_timeout_minutes?: number;
-}
-
-export interface IoAlertRoute {
-  id?: string;
-  name?: string;
-  enabled?: boolean;
-}
-
-export interface IoCatalogType {
-  id?: string;
-  name?: string;
-  description?: string;
-  type_name?: string;
-  estimated_count?: number;
-  is_editable?: boolean;
-  last_synced_at?: string;
-  registry_type?: string;
-}
-
-export interface IoWorkflow {
-  id?: string;
-  name?: string;
-  state?: string;
-  folder?: string;
-  trigger?: { label?: string; name?: string };
-  steps?: Array<{ label?: string }>;
-}
-
-export interface IoStatusPage {
-  id?: string;
-  name?: string;
-  description?: string;
-  public_url?: string;
-}
-
-export interface IoMaintenanceWindow {
-  id?: string;
-  name?: string;
-  start_at?: string;
-  end_at?: string;
-  archived_at?: string | null;
-  notification_message?: string;
-}
-
-export interface IoTeam {
-  id?: string;
-  name?: string;
-  members?: unknown[];
-}
+export type IoUser = Schemas["UserWithRolesV2"];
+/** What every user shape in the document has: list rows, assignees, team members. */
+export type IoPerson = Schemas["UserV3"];
+export type IoIncidentStatus = Schemas["IncidentStatusV1"];
+export type IoSeverity = Schemas["SeverityV1"];
+export type IoIncident = Schemas["IncidentV2"];
+export type IoShift = Schemas["ScheduleEntryV2"];
+export type IoSchedule = Schemas["ScheduleV2"];
+export type IoEscalationPath = Schemas["EscalationPathV2"];
+export type IoEscalation = Schemas["EscalationV2"];
+export type IoAlertSource = Schemas["AlertSourceV2"];
+export type IoAlertRoute = Schemas["AlertRouteSlimV2"];
+export type IoCatalogType = Schemas["CatalogTypeV3"];
+export type IoWorkflow = Schemas["WorkflowSlimV2"];
+export type IoStatusPage = Schemas["StatusPageV2"];
+export type IoMaintenanceWindow = Schemas["MaintenanceWindowV1"];
+export type IoTeam = Schemas["TeamV3"];
 
 type Fields = ResourceInstance["fields"];
 
@@ -217,9 +70,9 @@ function instance(
   };
 }
 
-const userName = (u: IoUser | null | undefined): string => u?.name ?? u?.email ?? "";
+const userName = (u: IoPerson | null | undefined): string => u?.name ?? u?.email ?? "";
 
-export function leadOf(i: IoIncident): IoUser | null {
+export function leadOf(i: Partial<IoIncident>): IoPerson | null {
   return (
     (i.incident_role_assignments ?? []).find((a) => a.role?.role_type === "lead")?.assignee ?? null
   );
@@ -476,7 +329,7 @@ export function mapTeam(accountId: string, t: IoTeam): ResourceInstance {
 }
 
 /** An incident.io incident in the paging capability's provider-neutral shape. */
-export function toPagingIncident(i: IoIncident): PagingIncident {
+export function toPagingIncident(i: Partial<IoIncident>): PagingIncident {
   const lead = leadOf(i);
   const status = pagingStatusOf(i.incident_status?.category);
   const resolvedAt =

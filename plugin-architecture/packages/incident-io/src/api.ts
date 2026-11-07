@@ -16,7 +16,13 @@
  * - HTTP alert events go to `POST /v2/alert_events/http/{alert_source_config_id}`
  *   with the source's own `secret_token` as the bearer token, not the API key.
  */
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  withCursorPagination,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { components, paths } from "./api-types.gen.js";
 
 export const API_BASE = "https://api.incident.io";
 export const INCIDENT_IO_HOSTNAMES = ["api.incident.io"];
@@ -45,26 +51,13 @@ export function statusOf(err: unknown): number | undefined {
   return err instanceof IncidentIoApiError ? err.status : undefined;
 }
 
-/** A plain value, a list (repeated), or a deep object (`key[op]=v`). */
-export type QueryValue =
-  string | number | boolean | undefined | string[] | Record<string, string[]>;
-
-export interface IoRequest {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-  /** Bearer token override (an alert source's secret token). */
-  token?: string;
-}
+type ErrorResponse = components["schemas"]["ErrorResponse"];
 
 function describeError(status: number, text: string, path: string): IncidentIoApiError {
   let message = text;
   let code: string | undefined;
   try {
-    const parsed = JSON.parse(text) as {
-      type?: string;
-      errors?: Array<{ code?: string; message?: string; source?: { field?: string } }>;
-    };
+    const parsed: Partial<Pick<ErrorResponse, "type" | "errors">> = JSON.parse(text);
     const errors = parsed.errors ?? [];
     if (errors.length > 0) {
       message = errors
@@ -92,77 +85,51 @@ function describeError(status: number, text: string, path: string): IncidentIoAp
   );
 }
 
-export function queryString(query: Record<string, QueryValue> | undefined): string {
+/**
+ * Lists repeat their key and deep objects go as `key[op]=v`, form-encoded. A
+ * top-level empty string is not sent: a filter with no value is no filter.
+ */
+export function queryString(query: Record<string, ParamValue> | undefined): string {
   const qs = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) {
-    if (v === undefined || v === "") continue;
-    if (Array.isArray(v)) for (const item of v) qs.append(k, item);
-    else if (typeof v === "object") {
-      for (const [op, values] of Object.entries(v)) {
-        for (const item of values) qs.append(`${k}[${op}]`, item);
-      }
-    } else qs.append(k, String(v));
-  }
+  const add = (key: string, value: ParamValue) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) for (const item of value) add(key, item);
+    else if (typeof value === "object") {
+      for (const [op, item] of Object.entries(value)) add(`${key}[${op}]`, item);
+    } else qs.append(key, String(value));
+  };
+  for (const [key, value] of Object.entries(query ?? {})) if (value !== "") add(key, value);
   const s = qs.toString();
   return s ? `?${s}` : "";
 }
 
-export async function ioFetch<T>(
-  transport: IncidentIoTransport,
-  path: string,
-  req: IoRequest = {},
-): Promise<T> {
-  const method = req.method ?? (req.body !== undefined ? "POST" : "GET");
-  const url = `${API_BASE}${path}${queryString(req.query)}`;
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    Authorization: `Bearer ${req.token ?? transport.apiKey}`,
-  };
-  const body = req.body !== undefined ? JSON.stringify(req.body) : undefined;
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  let status: number;
-  let text: string;
-  if (transport.http) {
-    const res = await transport.http.request({
-      url,
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      ...(transport.caCert ? { caCert: transport.caCert } : {}),
-    });
-    status = res.status;
-    text = res.body;
-  } else {
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    status = res.status;
-    text = await res.text();
-  }
-  if (status < 200 || status >= 300) throw describeError(status, text, path);
-  if (status === 204 || !text) return undefined as T;
-  return JSON.parse(text) as T;
+export function createIoApi(transport: IncidentIoTransport) {
+  const api = createApiClient<paths>({
+    vendor: "incident.io",
+    baseUrl: API_BASE,
+    headers: { Accept: "application/json", Authorization: `Bearer ${transport.apiKey}` },
+    http: transport.http,
+    caCert: transport.caCert,
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    serializeQuery: (query) => queryString(query).slice(1),
+    httpError: ({ status, body, path }) => describeError(status, body, path),
+  });
+  return withCursorPagination(api, {
+    cursorParam: "after",
+    sizeParam: "page_size",
+    pageSize: PAGE_SIZE,
+    maxPages: 100,
+    next: "pagination_meta.after",
+    stopOnRepeatedCursor: true,
+    emptyBodyEndsList: true,
+  });
 }
 
-/** Walk a cursor-paginated list, reading the array under `key`. */
-export async function ioList<T>(
-  transport: IncidentIoTransport,
-  path: string,
-  key: string,
-  query: Record<string, QueryValue> = {},
-  options: { pageSize?: number; maxItems?: number } = {},
-): Promise<T[]> {
-  const out: T[] = [];
-  const pageSize = options.pageSize ?? PAGE_SIZE;
-  const maxItems = options.maxItems ?? 2000;
-  let after: string | undefined;
-  for (let page = 0; page < 100 && out.length < maxItems; page++) {
-    const res = await ioFetch<Record<string, unknown>>(transport, path, {
-      query: { ...query, page_size: pageSize, ...(after ? { after } : {}) },
-    });
-    const items = Array.isArray(res?.[key]) ? (res[key] as T[]) : [];
-    out.push(...items);
-    const meta = res?.["pagination_meta"] as { after?: string } | undefined;
-    if (!meta?.after || items.length === 0 || meta.after === after) break;
-    after = meta.after;
-  }
-  return out;
+export type IoApi = ReturnType<typeof createIoApi>;
+
+/** End a list once it holds this many items. The page that reaches it is kept whole. */
+export function upTo(maxItems = 2000): (batch: { length: number }) => boolean {
+  let seen = 0;
+  return (batch) => (seen += batch.length) >= maxItems;
 }

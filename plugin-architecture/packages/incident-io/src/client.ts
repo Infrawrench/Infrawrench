@@ -17,26 +17,16 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import type { IncidentIoTransport, QueryValue } from "./api.js";
-import { IncidentIoApiError, ioFetch, ioList } from "./api.js";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { IoApi } from "./api.js";
+import { IncidentIoApiError, createIoApi, upTo } from "./api.js";
 import type {
-  IoAlert,
-  IoAlertRoute,
-  IoAlertSource,
-  IoCatalogType,
-  IoEscalation,
-  IoEscalationPath,
   IoIncident,
   IoIncidentStatus,
-  IoMaintenanceWindow,
-  IoSchedule,
+  IoPerson,
   IoSeverity,
   IoShift,
-  IoStatusPage,
-  IoTeam,
   IoUser,
-  IoWorkflow,
 } from "./mappers.js";
 import {
   OPEN_CATEGORIES,
@@ -102,7 +92,7 @@ export function parsePromptValues(args: (string | number)[]): Record<string, str
   }
 }
 
-const userOption = (u: IoUser): Option => ({
+const userOption = (u: IoPerson): Option => ({
   id: u.id ?? "",
   name: u.name ?? u.email ?? u.id ?? "",
   ...(u.email ? { description: u.email } : {}),
@@ -117,7 +107,7 @@ function shiftRow(s: IoShift): ShiftRow {
 }
 
 export class IncidentIoClient implements PluginClient {
-  private readonly transport: IncidentIoTransport;
+  private readonly api: IoApi;
   private readonly paging: PagingContext;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -126,25 +116,21 @@ export class IncidentIoClient implements PluginClient {
       throw new Error("incident.io plugin: enter an API key (Settings, API keys in incident.io)");
     }
     const caCert = credentials["caCert"] ?? "";
-    this.transport = {
+    this.api = createIoApi({
       apiKey,
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
-    };
-    this.paging = { transport: this.transport, sources: new Map() };
-  }
-
-  private get<T>(path: string, query?: Record<string, QueryValue>): Promise<T> {
-    return ioFetch<T>(this.transport, path, query ? { query } : {});
+    });
+    this.paging = { api: this.api, sources: new Map() };
   }
 
   private async severities(): Promise<IoSeverity[]> {
-    const res = await this.get<{ severities?: IoSeverity[] }>("/v1/severities");
+    const res = await this.api.get("/v1/severities");
     return [...(res?.severities ?? [])].sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
   }
 
   private async users(): Promise<IoUser[]> {
-    return ioList<IoUser>(this.transport, "/v2/users", "users", {}, { pageSize: 250 });
+    return this.api.getAll("/v2/users", "users", { pageSize: 250, stopWhen: upTo() });
   }
 
   // -------------------------------------------------------------------------
@@ -157,20 +143,16 @@ export class IncidentIoClient implements PluginClient {
         case "incident-io-incident": {
           const since = new Date(Date.now() - RECENT_WINDOW_MS).toISOString().slice(0, 10);
           const [open, recent] = await Promise.all([
-            ioList<IoIncident>(
-              this.transport,
-              "/v2/incidents",
-              "incidents",
-              { status_category: { one_of: OPEN_CATEGORIES } },
-              { pageSize: 250, maxItems: 1000 },
-            ),
-            ioList<IoIncident>(
-              this.transport,
-              "/v2/incidents",
-              "incidents",
-              { updated_at: { gte: [since] } },
-              { pageSize: 250, maxItems: 1000 },
-            ),
+            this.api.getAll("/v2/incidents", "incidents", {
+              query: { status_category: { one_of: OPEN_CATEGORIES } },
+              pageSize: 250,
+              stopWhen: upTo(1000),
+            }),
+            this.api.getAll("/v2/incidents", "incidents", {
+              query: { updated_at: { gte: [since] } },
+              pageSize: 250,
+              stopWhen: upTo(1000),
+            }),
           ]);
           const byId = new Map<string, IoIncident>();
           for (const i of [...recent, ...open]) if (i.id) byId.set(i.id, i);
@@ -178,92 +160,58 @@ export class IncidentIoClient implements PluginClient {
         }
         case "incident-io-escalation":
           return (
-            await ioList<IoEscalation>(
-              this.transport,
-              "/v2/escalations",
-              "escalations",
-              {},
-              {
-                pageSize: 50,
-                maxItems: 250,
-              },
-            )
+            await this.api.getAll("/v2/escalations", "escalations", {
+              pageSize: 50,
+              stopWhen: upTo(250),
+            })
           ).map((e) => mapEscalation(accountId, e));
         case "incident-io-alert-source":
-          return (
-            (await this.get<{ alert_sources?: IoAlertSource[] }>("/v2/alert_sources"))
-              ?.alert_sources ?? []
-          ).map((s) => mapAlertSource(accountId, s));
+          return ((await this.api.get("/v2/alert_sources"))?.alert_sources ?? []).map((s) =>
+            mapAlertSource(accountId, s),
+          );
         case "incident-io-alert-route":
           return (
-            await ioList<IoAlertRoute>(
-              this.transport,
-              "/v2/alert_routes",
-              "alert_routes",
-              {},
-              {
-                pageSize: 50,
-              },
-            )
+            await this.api.getAll("/v2/alert_routes", "alert_routes", {
+              pageSize: 50,
+              stopWhen: upTo(),
+            })
           ).map((r) => mapAlertRoute(accountId, r));
         case "incident-io-schedule":
           return (
-            await ioList<IoSchedule>(
-              this.transport,
-              "/v2/schedules",
-              "schedules",
-              {},
-              {
-                pageSize: 25,
-              },
-            )
+            await this.api.getAll("/v2/schedules", "schedules", { pageSize: 25, stopWhen: upTo() })
           ).map((s) => mapSchedule(accountId, s));
         case "incident-io-escalation-path":
           return (
-            await ioList<IoEscalationPath>(
-              this.transport,
-              "/v2/escalation_paths",
-              "escalation_paths",
-              {},
-              { pageSize: 25 },
-            )
+            await this.api.getAll("/v2/escalation_paths", "escalation_paths", {
+              pageSize: 25,
+              stopWhen: upTo(),
+            })
           ).map((p) => mapEscalationPath(accountId, p));
         case "incident-io-severity":
           return (await this.severities()).map((s) => mapSeverity(accountId, s));
         case "incident-io-status":
-          return (await incidentStatuses(this.transport)).map((s) =>
-            mapIncidentStatus(accountId, s),
-          );
+          return (await incidentStatuses(this.api)).map((s) => mapIncidentStatus(accountId, s));
         case "incident-io-catalog-type":
-          return (
-            (await this.get<{ catalog_types?: IoCatalogType[] }>("/v3/catalog_types"))
-              ?.catalog_types ?? []
-          ).map((t) => mapCatalogType(accountId, t));
+          return ((await this.api.get("/v3/catalog_types"))?.catalog_types ?? []).map((t) =>
+            mapCatalogType(accountId, t),
+          );
         case "incident-io-workflow":
-          return (
-            (await this.get<{ workflows?: IoWorkflow[] }>("/v2/workflows"))?.workflows ?? []
-          ).map((w) => mapWorkflow(accountId, w));
+          return ((await this.api.get("/v2/workflows"))?.workflows ?? []).map((w) =>
+            mapWorkflow(accountId, w),
+          );
         case "incident-io-status-page":
           return (
-            await ioList<IoStatusPage>(
-              this.transport,
-              "/v2/status_pages",
-              "status_pages",
-              {},
-              {
-                pageSize: 100,
-              },
-            )
+            await this.api.getAll("/v2/status_pages", "status_pages", {
+              pageSize: 100,
+              stopWhen: upTo(),
+            })
           ).map((p) => mapStatusPage(accountId, p));
         case "incident-io-maintenance-window":
           return (
-            await ioList<IoMaintenanceWindow>(
-              this.transport,
-              "/v1/maintenance_windows",
-              "maintenance_windows",
-              {},
-              { pageSize: 50, maxItems: 250 },
-            )
+            await this.api.getAll("/v1/maintenance_windows", "maintenance_windows", {
+              pageSize: 50,
+              stopWhen: upTo(250),
+            })
           )
             .filter((w) => !w.archived_at)
             .map((w) => mapMaintenanceWindow(accountId, w));
@@ -271,7 +219,7 @@ export class IncidentIoClient implements PluginClient {
           return (await this.users()).map((u) => mapUser(accountId, u));
         case "incident-io-team":
           return (
-            await ioList<IoTeam>(this.transport, "/v3/teams", "teams", {}, { pageSize: 100 })
+            await this.api.getAll("/v3/teams", "teams", { pageSize: 100, stopWhen: upTo() })
           ).map((t) => mapTeam(accountId, t));
         default:
           throw new Error(`incident.io plugin: unknown resource type "${typeId}"`);
@@ -290,15 +238,15 @@ export class IncidentIoClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
-      const id = encodeURIComponent(ext);
+      const id = pathEncode(ext);
       switch (typeId) {
         case "incident-io-incident": {
-          const res = await this.get<{ incident?: IoIncident }>(`/v2/incidents/${id}`);
+          const res = await this.api.get(`/v2/incidents/${id}`);
           if (!res?.incident) throw new IncidentIoApiError(404, "incident.io incident not found");
           const r = mapIncident(accountId, res.incident);
           const [statuses, severities] = await Promise.all([
-            incidentStatuses(this.transport).catch(() => [] as IoIncidentStatus[]),
-            this.severities().catch(() => [] as IoSeverity[]),
+            incidentStatuses(this.api).catch((): IoIncidentStatus[] => []),
+            this.severities().catch((): IoSeverity[] => []),
           ]);
           const durations: DurationRow[] = (res.incident.duration_metrics ?? [])
             .filter((d) => typeof d.value_seconds === "number")
@@ -313,7 +261,7 @@ export class IncidentIoClient implements PluginClient {
           return r;
         }
         case "incident-io-escalation": {
-          const res = await this.get<{ escalation?: IoEscalation }>(`/v2/escalations/${id}`);
+          const res = await this.api.get(`/v2/escalations/${id}`);
           if (!res?.escalation)
             throw new IncidentIoApiError(404, "incident.io escalation not found");
           const r = mapEscalation(accountId, res.escalation);
@@ -326,17 +274,17 @@ export class IncidentIoClient implements PluginClient {
           return r;
         }
         case "incident-io-alert-source": {
-          const res = await this.get<{ alert_source?: IoAlertSource }>(`/v2/alert_sources/${id}`);
+          const res = await this.api.get(`/v2/alert_sources/${id}`);
           if (!res?.alert_source)
             throw new IncidentIoApiError(404, "incident.io alert source not found");
           const r = mapAlertSource(accountId, res.alert_source);
-          const alerts = await ioList<IoAlert & { created_at?: string }>(
-            this.transport,
-            "/v2/alerts",
-            "alerts",
-            { alert_source: { one_of: [ext] } },
-            { pageSize: 25, maxItems: 25 },
-          ).catch(() => []);
+          const alerts = await this.api
+            .getAll("/v2/alerts", "alerts", {
+              query: { alert_source: { one_of: [ext] } },
+              pageSize: 25,
+              stopWhen: upTo(25),
+            })
+            .catch(() => []);
           const rows: AlertRow[] = alerts.map((a) => ({
             title: a.title ?? "",
             status: a.status ?? "",
@@ -347,24 +295,28 @@ export class IncidentIoClient implements PluginClient {
           return r;
         }
         case "incident-io-schedule": {
-          const res = await this.get<{ schedule?: IoSchedule }>(`/v2/schedules/${id}`);
+          const res = await this.api.get(`/v2/schedules/${id}`);
           if (!res?.schedule) throw new IncidentIoApiError(404, "incident.io schedule not found");
           const r = mapSchedule(accountId, res.schedule);
           const now = Date.now();
           const [entries, overrides, users] = await Promise.all([
-            this.get<{ schedule_entries?: { final?: IoShift[] } }>("/v2/schedule_entries", {
-              schedule_id: ext,
-              entry_window_start: new Date(now).toISOString(),
-              entry_window_end: new Date(now + 7 * 24 * 3600_000).toISOString(),
-            }).catch(() => undefined),
-            ioList<IoShift & { id?: string }>(
-              this.transport,
-              "/v2/schedule_overrides",
-              "overrides",
-              { schedule_id: ext },
-              { pageSize: 50, maxItems: 200 },
-            ).catch(() => []),
-            this.users().catch(() => [] as IoUser[]),
+            this.api
+              .get("/v2/schedule_entries", {
+                query: {
+                  schedule_id: ext,
+                  entry_window_start: new Date(now).toISOString(),
+                  entry_window_end: new Date(now + 7 * 24 * 3600_000).toISOString(),
+                },
+              })
+              .catch(() => undefined),
+            this.api
+              .getAll("/v2/schedule_overrides", "overrides", {
+                query: { schedule_id: ext },
+                pageSize: 50,
+                stopWhen: upTo(200),
+              })
+              .catch(() => []),
+            this.users().catch((): IoUser[] => []),
           ]);
           const layers: Option[] = (res.schedule.config?.rotations ?? []).flatMap((rot) =>
             (rot.layers ?? []).map((layer) => ({
@@ -387,9 +339,7 @@ export class IncidentIoClient implements PluginClient {
           return r;
         }
         case "incident-io-escalation-path": {
-          const res = await this.get<{ escalation_path?: IoEscalationPath }>(
-            `/v2/escalation_paths/${id}`,
-          );
+          const res = await this.api.get(`/v2/escalation_paths/${id}`);
           if (!res?.escalation_path) {
             throw new IncidentIoApiError(404, "incident.io escalation path not found");
           }
@@ -400,14 +350,12 @@ export class IncidentIoClient implements PluginClient {
           return r;
         }
         case "incident-io-severity": {
-          const res = await this.get<{ severity?: IoSeverity }>(`/v1/severities/${id}`);
+          const res = await this.api.get(`/v1/severities/${id}`);
           if (!res?.severity) throw new IncidentIoApiError(404, "incident.io severity not found");
           return mapSeverity(accountId, res.severity);
         }
         case "incident-io-maintenance-window": {
-          const res = await this.get<{ maintenance_window?: IoMaintenanceWindow }>(
-            `/v1/maintenance_windows/${id}`,
-          );
+          const res = await this.api.get(`/v1/maintenance_windows/${id}`);
           if (!res?.maintenance_window) {
             throw new IncidentIoApiError(404, "incident.io maintenance window not found");
           }
@@ -433,9 +381,7 @@ export class IncidentIoClient implements PluginClient {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
       if (typeId === "incident-io-alert-source") {
-        const res = await this.get<{ alert_source?: IoAlertSource }>(
-          `/v2/alert_sources/${encodeURIComponent(ext)}`,
-        );
+        const res = await this.api.get(`/v2/alert_sources/${pathEncode(ext)}`);
         if (outputKey === "secretToken") return res?.alert_source?.secret_token ?? "";
         if (outputKey === "alertEventsUrl") {
           return (
@@ -463,8 +409,9 @@ export class IncidentIoClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "incident-io-incident") {
         const [severities, types] = await Promise.all([
-          this.severities().catch(() => [] as IoSeverity[]),
-          this.get<{ incident_types?: Array<{ id?: string; name?: string }> }>("/v1/incident_types")
+          this.severities().catch((): IoSeverity[] => []),
+          this.api
+            .get("/v1/incident_types")
             .then((r) => r?.incident_types ?? [])
             .catch(() => []),
         ]);
@@ -557,7 +504,7 @@ export class IncidentIoClient implements PluginClient {
       if (typeId === "incident-io-incident") {
         const name = trimmed(fields, "name");
         if (!name) throw new Error("Give the incident a name.");
-        const res = await ioFetch<{ incident?: IoIncident }>(this.transport, "/v2/incidents", {
+        const res = await this.api.post("/v2/incidents", {
           body: {
             idempotency_key: `infrawrench-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             name,
@@ -577,7 +524,7 @@ export class IncidentIoClient implements PluginClient {
       }
       if (typeId === "incident-io-severity") {
         const rank = trimmed(fields, "rank");
-        const res = await ioFetch<{ severity?: IoSeverity }>(this.transport, "/v1/severities", {
+        const res = await this.api.post("/v1/severities", {
           body: {
             name: trimmed(fields, "name"),
             description: trimmed(fields, "description"),
@@ -598,25 +545,27 @@ export class IncidentIoClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       if (typeId === "incident-io-incident") {
-        const incident: Record<string, string> = {};
-        if ("name" in fields) incident["name"] = trimmed(fields, "name");
-        if ("summary" in fields) incident["summary"] = trimmed(fields, "summary");
-        await ioFetch(this.transport, `/v2/incidents/${id}/actions/edit`, {
-          body: { incident, notify_incident_channel: true },
+        await this.api.post(`/v2/incidents/${id}/actions/edit`, {
+          body: {
+            incident: {
+              ...("name" in fields ? { name: trimmed(fields, "name") } : {}),
+              ...("summary" in fields ? { summary: trimmed(fields, "summary") } : {}),
+            },
+            notify_incident_channel: true,
+          },
         });
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
       if (typeId === "incident-io-severity") {
-        const current = await this.get<{ severity?: IoSeverity }>(`/v1/severities/${id}`);
-        const s = current?.severity ?? {};
-        const rank = "rank" in fields ? Number(trimmed(fields, "rank")) : s.rank;
-        await ioFetch(this.transport, `/v1/severities/${id}`, {
-          method: "PUT",
+        const current = await this.api.get(`/v1/severities/${id}`);
+        const s = current?.severity;
+        const rank = "rank" in fields ? Number(trimmed(fields, "rank")) : s?.rank;
+        await this.api.put(`/v1/severities/${id}`, {
           body: {
-            name: "name" in fields ? trimmed(fields, "name") : s.name,
-            description: "description" in fields ? trimmed(fields, "description") : s.description,
+            name: "name" in fields ? trimmed(fields, "name") : s?.name,
+            description: "description" in fields ? trimmed(fields, "description") : s?.description,
             ...(typeof rank === "number" && Number.isFinite(rank) ? { rank } : {}),
           },
         });
@@ -628,17 +577,26 @@ export class IncidentIoClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
-      const paths: Record<string, string> = {
-        "incident-io-alert-source": `/v2/alert_sources/${id}`,
-        "incident-io-schedule": `/v2/schedules/${id}`,
-        "incident-io-escalation-path": `/v2/escalation_paths/${id}`,
-        "incident-io-severity": `/v1/severities/${id}`,
-        "incident-io-maintenance-window": `/v1/maintenance_windows/${id}`,
-      };
-      const path = paths[typeId];
-      if (!path) throw new Error(`incident.io plugin: deleting "${typeId}" is not supported`);
-      await ioFetch(this.transport, path, { method: "DELETE" });
+      const id = pathEncode(externalIdOf(resourceId));
+      switch (typeId) {
+        case "incident-io-alert-source":
+          await this.api.delete(`/v2/alert_sources/${id}`);
+          return;
+        case "incident-io-schedule":
+          await this.api.delete(`/v2/schedules/${id}`);
+          return;
+        case "incident-io-escalation-path":
+          await this.api.delete(`/v2/escalation_paths/${id}`);
+          return;
+        case "incident-io-severity":
+          await this.api.delete(`/v1/severities/${id}`);
+          return;
+        case "incident-io-maintenance-window":
+          await this.api.delete(`/v1/maintenance_windows/${id}`);
+          return;
+        default:
+          throw new Error(`incident.io plugin: deleting "${typeId}" is not supported`);
+      }
     });
   }
 
@@ -653,31 +611,25 @@ export class IncidentIoClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const ext = externalIdOf(resourceId);
-      const id = encodeURIComponent(ext);
+      const id = pathEncode(externalIdOf(resourceId));
       if (typeId === "incident-io-escalation" && actionId === ACTIONS.acknowledge) {
-        await ioFetch(this.transport, `/v2/escalations/${id}/actions/respond`, {
+        await this.api.post(`/v2/escalations/${id}/actions/respond`, {
           body: { response: "ack" },
         });
         return;
       }
       if (typeId === "incident-io-escalation" && actionId === ACTIONS.cancel) {
-        await ioFetch(this.transport, `/v2/escalations/${id}/actions/cancel`, { method: "POST" });
+        await this.api.post(`/v2/escalations/${id}/actions/cancel`);
         return;
       }
       if (typeId === "incident-io-maintenance-window" && actionId === ACTIONS.endMaintenance) {
         // `force` archives an active window, which ends it immediately.
-        await ioFetch(this.transport, `/v1/maintenance_windows/${id}`, {
-          method: "DELETE",
-          query: { force: true },
-        });
+        await this.api.delete(`/v1/maintenance_windows/${id}`, { query: { force: true } });
         return;
       }
       if (typeId === "incident-io-schedule" && actionId.startsWith(ACTIONS.deleteOverridePrefix)) {
         const overrideId = actionId.slice(ACTIONS.deleteOverridePrefix.length);
-        await ioFetch(this.transport, `/v2/schedule_overrides/${encodeURIComponent(overrideId)}`, {
-          method: "DELETE",
-        });
+        await this.api.delete(`/v2/schedule_overrides/${pathEncode(overrideId)}`);
         return;
       }
       throw new Error(`incident.io plugin: unknown action "${actionId}" for "${typeId}"`);
@@ -697,7 +649,7 @@ export class IncidentIoClient implements PluginClient {
       if (typeId === "incident-io-incident" && command === COMMANDS.postUpdate) {
         const message = (values["message"] ?? "").trim();
         if (!message) throw new Error("Write the update.");
-        return ioFetch(this.transport, "/v2/incident_updates", {
+        return this.api.post("/v2/incident_updates", {
           body: {
             incident_id: ext,
             message,
@@ -718,7 +670,7 @@ export class IncidentIoClient implements PluginClient {
         if (Date.parse(end) <= Date.parse(start)) {
           throw new Error("The override must end after it starts.");
         }
-        return ioFetch(this.transport, "/v2/schedule_overrides", {
+        return this.api.post("/v2/schedule_overrides", {
           body: {
             schedule_id: ext,
             rotation_id: rotationId,

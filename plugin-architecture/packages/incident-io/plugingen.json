@@ -1,0 +1,53 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.incident.io/v1/openapiV3.json",
+  "patches": [
+    {
+      "pointer": "/components/schemas/IncidentsCreatePayloadV2/properties/visibility",
+      "value": {
+        "type": "string"
+      },
+      "why": "The create form's select value goes through as typed, so a value the provider refuses gets the provider's own validation error."
+    },
+    {
+      "pointer": "/components/schemas/IncidentsCreatePayloadV2/properties/mode",
+      "value": {
+        "type": "string"
+      },
+      "why": "As with visibility: the create form's select value goes through as typed."
+    }
+  ],
+  "paths": {
+    "/v1/incident_statuses": ["get"],
+    "/v1/incident_types": ["get"],
+    "/v1/maintenance_windows": ["get"],
+    "/v1/maintenance_windows/{id}": ["get", "delete"],
+    "/v1/severities": ["get", "post"],
+    "/v1/severities/{id}": ["get", "put", "delete"],
+    "/v2/alert_events/http/{alert_source_config_id}": ["post"],
+    "/v2/alert_routes": ["get"],
+    "/v2/alert_sources": ["get"],
+    "/v2/alert_sources/{id}": ["get", "delete"],
+    "/v2/alerts": ["get"],
+    "/v2/escalation_paths": ["get"],
+    "/v2/escalation_paths/{id}": ["get", "delete"],
+    "/v2/escalations": ["get"],
+    "/v2/escalations/{escalation_id}/actions/respond": ["post"],
+    "/v2/escalations/{id}": ["get"],
+    "/v2/escalations/{id}/actions/cancel": ["post"],
+    "/v2/incident_updates": ["post"],
+    "/v2/incidents": ["get", "post"],
+    "/v2/incidents/{id}": ["get"],
+    "/v2/incidents/{id}/actions/edit": ["post"],
+    "/v2/schedule_entries": ["get"],
+    "/v2/schedule_overrides": ["get", "post"],
+    "/v2/schedule_overrides/{id}": ["delete"],
+    "/v2/schedules": ["get"],
+    "/v2/schedules/{id}": ["get", "delete"],
+    "/v2/status_pages": ["get"],
+    "/v2/users": ["get"],
+    "/v2/workflows": ["get"],
+    "/v3/catalog_types": ["get"],
+    "/v3/teams": ["get"]
+  }
+}
