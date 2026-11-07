@@ -250,6 +250,108 @@ describe("ConvexClient", () => {
   });
 });
 
+describe("custom roles", () => {
+  const INVITE_ID = `${ACCOUNT}:convex-invite:42/ada@example.com`;
+  const invites = (items: unknown[]) =>
+    on("GET", `${API}/teams/42/list_pending_invites`, { items });
+  const cancel = on("POST", `${API}/teams/42/cancel_team_member_invite`, {});
+  const invite = on("POST", `${API}/teams/42/invite_team_member`, {});
+  const posts = (calls: Call[]) => calls.filter((c) => c.method === "POST");
+
+  it("shows a member's custom roles by name", async () => {
+    const { client } = fake([
+      teamToken,
+      on("GET", `${API}/teams/42/list_members`, {
+        items: [
+          {
+            id: 1,
+            email: "ada@example.com",
+            role: "custom",
+            customRoles: [
+              { id: 3, name: "Billing" },
+              { id: 4, name: "On call" },
+            ],
+          },
+          { id: 2, email: "bob@example.com", role: "admin", customRoles: null },
+        ],
+      }),
+    ]);
+    const members = await client.listResources("convex-member", ACCOUNT);
+    expect(members.map((m) => m.fields["customRoles"])).toEqual(["Billing, On call", ""]);
+  });
+
+  it("resends a custom-role invite with the role ids, not the listed objects", async () => {
+    const { client, calls } = fake([
+      invites([
+        {
+          email: "ada@example.com",
+          role: "custom",
+          expired: false,
+          customRoles: [
+            { id: 3, name: "Billing" },
+            { id: 4, name: "On call" },
+          ],
+        },
+      ]),
+      cancel,
+      invite,
+    ]);
+    await client.invokeAction("convex-invite", INVITE_ID, "resend", ACCOUNT);
+    const [cancelled, sent] = posts(calls);
+    expect(cancelled!.url).toContain("cancel_team_member_invite");
+    expect(JSON.parse(String(sent!.body))).toEqual({
+      email: "ada@example.com",
+      role: "custom",
+      customRoles: [3, 4],
+    });
+  });
+
+  it("still resends if roles are listed as bare ids", async () => {
+    const { client, calls } = fake([
+      invites([{ email: "ada@example.com", role: "custom", expired: false, customRoles: [3] }]),
+      cancel,
+      invite,
+    ]);
+    await client.invokeAction("convex-invite", INVITE_ID, "resend", ACCOUNT);
+    expect(JSON.parse(String(posts(calls)[1]!.body)).customRoles).toEqual([3]);
+  });
+
+  it("does not cancel an invite it cannot find, or invite someone as a developer instead", async () => {
+    const { client, calls } = fake([invites([]), cancel, invite]);
+    await expect(
+      client.invokeAction("convex-invite", INVITE_ID, "resend", ACCOUNT),
+    ).rejects.toThrow(/no longer pending/);
+    expect(posts(calls)).toEqual([]);
+  });
+
+  it("does not cancel a custom-role invite it could not send again", async () => {
+    const { client, calls } = fake([
+      invites([{ email: "ada@example.com", role: "custom", expired: false, customRoles: [] }]),
+      cancel,
+      invite,
+    ]);
+    await expect(
+      client.invokeAction("convex-invite", INVITE_ID, "resend", ACCOUNT),
+    ).rejects.toThrow(/no custom roles/);
+    expect(posts(calls)).toEqual([]);
+  });
+
+  it("says the invite is gone when sending it again fails", async () => {
+    const { client } = fake([
+      invites([{ email: "ada@example.com", role: "developer", expired: false }]),
+      cancel,
+      on("POST", `${API}/teams/42/invite_team_member`, { code: "Bad", message: "no" }, 400),
+    ]);
+    const err = await client
+      .invokeAction("convex-invite", INVITE_ID, "resend", ACCOUNT)
+      .catch((e: unknown) => e);
+    expect(statusOf(err)).toBe(400);
+    expect(String(err)).toMatch(
+      /invite to ada@example\.com was cancelled but could not be sent again/,
+    );
+  });
+});
+
 describe("helpers", () => {
   it("builds log stream bodies per destination", () => {
     expect(

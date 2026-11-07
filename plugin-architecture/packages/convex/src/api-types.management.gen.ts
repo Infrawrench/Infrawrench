@@ -547,7 +547,7 @@ export interface components {
         };
         CreateDeploymentType: string;
         CreateInvitationArgs: {
-            customRoles?: (components["schemas"]["CustomRoleId"] | components["schemas"]["TeamMemberCustomRole"])[] | null;
+            customRoles?: components["schemas"]["CustomRoleId"][] | null;
             email: string;
             role: components["schemas"]["Role"];
         };

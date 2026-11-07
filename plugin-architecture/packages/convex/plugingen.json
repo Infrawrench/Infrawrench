@@ -99,16 +99,6 @@
           "pointer": "/components/schemas/UpdateTeamMemberRoleArgs/properties/role",
           "value": { "type": ["string", "null"] },
           "why": "Passed through from a form field; our select offers the valid values and Convex validates whatever else arrives."
-        },
-        {
-          "pointer": "/components/schemas/CreateInvitationArgs/properties/customRoles/items",
-          "value": {
-            "oneOf": [
-              { "$ref": "#/components/schemas/CustomRoleId" },
-              { "$ref": "#/components/schemas/TeamMemberCustomRole" }
-            ]
-          },
-          "why": "The document asks for role ids here, but resending an invite passes on what list_pending_invites returned, which it documents as objects (#546). Remove this with the fix."
         }
       ],
       "paths": {

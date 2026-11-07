@@ -83,6 +83,17 @@ function listValue(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+/** The document lists a custom role as `{id, name}`; a bare id is read too, and shown as itself. */
+type ListedRole = { id: number; name?: string } | number;
+
+function roleId(role: ListedRole): number {
+  return typeof role === "number" ? role : role.id;
+}
+
+function roleLabel(role: ListedRole): string {
+  return typeof role === "number" ? String(role) : role.name || String(role.id);
+}
+
 function isoToMs(value: string | undefined): number | null | undefined {
   if (value === undefined) return undefined;
   if (value.trim() === "") return null;
@@ -352,7 +363,7 @@ export class ConvexClient implements PluginClient {
               email: m.email,
               name: m.name ?? "",
               role: m.role,
-              customRoles: (m.customRoles ?? []).join(", "),
+              customRoles: (m.customRoles ?? []).map(roleLabel).join(", "),
             },
             { parentTypeId: "convex-team", parentExternalId: String(teamId) },
           ),
@@ -1130,18 +1141,36 @@ export class ConvexClient implements PluginClient {
         const [teamId, email] = head(externalId);
         const invites = await this.invites(teamId);
         const invite = invites.find((i) => i.email === email);
+        // Resending is a cancel and then a new invite, so everything the new one
+        // needs is settled before the old one goes.
+        if (!invite)
+          throw new ConvexApiError(
+            404,
+            `Convex plugin: the invite to ${email} is no longer pending.`,
+          );
+        const customRoles = (invite.customRoles ?? []).map(roleId);
+        if (invite.role === "custom" && customRoles.length === 0)
+          throw new Error(
+            `Convex plugin: the invite to ${email} has no custom roles to send again, so it was left as it is.`,
+          );
         await this.api.post(`/teams/${pathEncode(teamId)}/cancel_team_member_invite`, {
           body: { email },
         });
-        await this.api.post(`/teams/${pathEncode(teamId)}/invite_team_member`, {
-          body: {
-            email,
-            role: invite?.role ?? "developer",
-            ...(invite?.role === "custom" && invite.customRoles?.length
-              ? { customRoles: invite.customRoles }
-              : {}),
-          },
-        });
+        await this.api
+          .post(`/teams/${pathEncode(teamId)}/invite_team_member`, {
+            body: {
+              email,
+              role: invite.role,
+              ...(invite.role === "custom" ? { customRoles } : {}),
+            },
+          })
+          .catch((err: unknown) => {
+            const why = err instanceof Error ? err.message : String(err);
+            throw new ConvexApiError(
+              statusOf(err),
+              `Convex plugin: the invite to ${email} was cancelled but could not be sent again, so they need inviting again. ${why}`,
+            );
+          });
         return;
       }
       throw new Error(`Convex plugin: unknown action "${actionId}" for "${typeId}".`);
