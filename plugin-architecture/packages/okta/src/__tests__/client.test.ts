@@ -388,6 +388,81 @@ describe("list reads", () => {
   });
 });
 
+describe("editing an authorization server", () => {
+  const A = `${ACCOUNT}:authorization-server:as1`;
+  const jwks = {
+    keys: [
+      { kty: "RSA", id: "apk1", status: "ACTIVE", kid: "enc1", use: "enc", e: "AQAB", n: "abc" },
+    ],
+  };
+  const current = {
+    id: "as1",
+    name: "Old",
+    description: "Before",
+    audiences: ["api://default"],
+    issuer: `${ORG}/oauth2/as1`,
+    issuerMode: "ORG_URL",
+    status: "ACTIVE",
+    created: "2020-01-01T00:00:00.000Z",
+    lastUpdated: "2020-01-01T00:00:00.000Z",
+    credentials: {
+      signing: {
+        rotationMode: "MANUAL",
+        use: "sig",
+        kid: "k1",
+        lastRotated: "2020-01-01T00:00:00.000Z",
+        nextRotation: "2020-03-01T00:00:00.000Z",
+      },
+    },
+    accessTokenEncryptedResponseAlgorithm: "RSA-OAEP-256",
+    jwks,
+    _links: { self: { href: `${ORG}/api/v1/authorizationServers/as1` } },
+  };
+  const edit = async (fields: Record<string, string>, read: object = current) => {
+    const client = ssws((call) => ({
+      body: call.method === "PUT" ? { ...read, ...JSON.parse(call.body!) } : read,
+    }));
+    await client.updateResource("authorization-server", A, ACCOUNT, fields);
+    return JSON.parse(calls.find((c) => c.method === "PUT")!.body!);
+  };
+
+  it("keeps the rotation mode and token encryption on a rename", async () => {
+    expect(await edit({ name: "New" })).toEqual({
+      name: "New",
+      description: "Before",
+      audiences: ["api://default"],
+      issuerMode: "ORG_URL",
+      status: "ACTIVE",
+      credentials: { signing: { rotationMode: "MANUAL", use: "sig" } },
+      accessTokenEncryptedResponseAlgorithm: "RSA-OAEP-256",
+      jwks,
+    });
+  });
+
+  it("applies the fields the user changed", async () => {
+    const body = await edit({
+      description: "After",
+      audiences: "api://other",
+      issuerMode: "DYNAMIC",
+    });
+    expect(body).toMatchObject({
+      name: "Old",
+      description: "After",
+      audiences: ["api://other"],
+      issuerMode: "DYNAMIC",
+      credentials: { signing: { rotationMode: "MANUAL" } },
+    });
+    expect(body).not.toHaveProperty("issuer");
+  });
+
+  it("sends no credentials or issuer mode for a server that has none", async () => {
+    const { credentials: _c, issuerMode: _m, ...bare } = current;
+    const body = await edit({ name: "New" }, bare);
+    expect(body).not.toHaveProperty("credentials");
+    expect(body).not.toHaveProperty("issuerMode");
+  });
+});
+
 describe("editing an event hook", () => {
   const H = `${ACCOUNT}:event-hook:who1`;
   const expression = "event.target.?[displayName eq 'Sales'].size()>0";

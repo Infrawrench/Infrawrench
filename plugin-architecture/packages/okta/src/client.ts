@@ -194,6 +194,15 @@ function eventFilterFor(
   return entries.length > 0 ? { ...filter, eventFilterMap: entries } : undefined;
 }
 
+/** Signing settings without the fields the document marks read-only. */
+function writableCredentials(
+  credentials: Schemas["AuthorizationServerCredentials"],
+): Schemas["AuthorizationServerCredentials"] {
+  if (!credentials.signing) return credentials;
+  const { kid: _kid, lastRotated: _last, nextRotation: _next, ...signing } = credentials.signing;
+  return { ...credentials, signing };
+}
+
 type GroupStats = NonNullable<NonNullable<Schemas["Group"]["_embedded"]>["stats"]>;
 
 type ZoneItem = string | Schemas["NetworkZoneLocation"];
@@ -1466,17 +1475,28 @@ export class OktaClient implements PluginClient {
         }
         case "authorization-server": {
           const current = await this.api.rest.get(`/api/v1/authorizationServers/${id}`);
+          // A replace: rotation mode and token encryption go back as they were read. Okta
+          // works `issuer` out from `issuerMode`, so the one read would fight a new mode.
+          const {
+            _links: _notSentBack,
+            id: _id,
+            created: _created,
+            lastUpdated: _lastUpdated,
+            issuer: _issuer,
+            credentials,
+            ...kept
+          } = current;
           return this.mapAuthServer(
             accountId,
             await this.api.rest.put(`/api/v1/authorizationServers/${id}`, {
               body: {
+                ...kept,
+                ...(credentials ? { credentials: writableCredentials(credentials) } : {}),
                 name: fields["name"] ?? current.name,
                 description: fields["description"] ?? current.description ?? "",
                 audiences:
                   fields["audiences"] !== undefined ? list(fields["audiences"]) : current.audiences,
-                ...(fields["issuerMode"] || current.issuerMode
-                  ? { issuerMode: fields["issuerMode"] || current.issuerMode }
-                  : {}),
+                ...(fields["issuerMode"] ? { issuerMode: fields["issuerMode"] } : {}),
               },
             }),
           );
