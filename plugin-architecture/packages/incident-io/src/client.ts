@@ -17,7 +17,7 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { IoApi } from "./api.js";
 import { IncidentIoApiError, createIoApi, upTo } from "./api.js";
 import type {
@@ -53,6 +53,7 @@ import {
   listOnCallSources,
   listTargets,
   resolveOnCall,
+  scheduleEntries,
   sendPagingEvent,
   updateIncident,
 } from "./paging.js";
@@ -300,15 +301,12 @@ export class IncidentIoClient implements PluginClient {
           const r = mapSchedule(accountId, res.schedule);
           const now = Date.now();
           const [entries, overrides, users] = await Promise.all([
-            this.api
-              .get("/v2/schedule_entries", {
-                query: {
-                  schedule_id: ext,
-                  entry_window_start: new Date(now).toISOString(),
-                  entry_window_end: new Date(now + 7 * 24 * 3600_000).toISOString(),
-                },
-              })
-              .catch(() => undefined),
+            scheduleEntries(this.api, ext, new Date(now), new Date(now + 7 * 24 * 3600_000)).catch(
+              (err: unknown): IoShift[] => {
+                rethrowIncompleteList(err);
+                return [];
+              },
+            ),
             this.api
               .getAll("/v2/schedule_overrides", "overrides", {
                 query: { schedule_id: ext },
@@ -330,9 +328,7 @@ export class IncidentIoClient implements PluginClient {
           const upcoming: OverrideRow[] = overrides
             .filter((o) => !o.end_at || Date.parse(o.end_at) > now)
             .map((o) => ({ id: o.id ?? "", ...shiftRow(o) }));
-          r.fields[SHIFTS_KEY] = JSON.stringify(
-            (entries?.schedule_entries?.final ?? []).map(shiftRow),
-          );
+          r.fields[SHIFTS_KEY] = JSON.stringify(entries.map(shiftRow));
           r.fields[OVERRIDES_KEY] = JSON.stringify(upcoming);
           r.fields[USERS_KEY] = JSON.stringify(users.map(userOption));
           r.fields[LAYERS_KEY] = JSON.stringify(layers);

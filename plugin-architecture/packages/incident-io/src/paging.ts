@@ -42,14 +42,22 @@ import {
   bytesToBase64,
   constantTimeEqual,
   hmacSha256,
+  ListTruncatedError,
   pathEncode,
   rejectedPagingWebhook,
+  requireListPage,
   type ApiBody,
 } from "@infrawrench/plugin-base";
 import type { IoApi } from "./api.js";
 import { IncidentIoApiError, statusOf, upTo } from "./api.js";
 import type { operations } from "./api-types.gen.js";
-import type { IoAlertSource, IoEscalation, IoIncident, IoIncidentStatus } from "./mappers.js";
+import type {
+  IoAlertSource,
+  IoEscalation,
+  IoIncident,
+  IoIncidentStatus,
+  IoShift,
+} from "./mappers.js";
 import { OPEN_CATEGORIES, toPagingIncident } from "./mappers.js";
 
 export const SCHEDULE_PREFIX = "schedule:";
@@ -57,6 +65,8 @@ export const PATH_PREFIX = "path:";
 /** Webhook deliveries older (or newer) than this are rejected as replays. */
 export const WEBHOOK_TOLERANCE_MS = 5 * 60_000;
 const TITLE_LIMIT = 500;
+/** The document gives no page size for schedule entries, so this counts requests. */
+const ENTRY_MAX_PAGES = 100;
 
 export interface PagingContext {
   api: IoApi;
@@ -167,6 +177,49 @@ export async function listOnCallSources(ctx: PagingContext): Promise<PagingOnCal
   ];
 }
 
+/**
+ * Who a schedule has on call across a window, every page of it. This route has no
+ * `after` parameter: `pagination_meta.after` is an opaque cursor that goes back as
+ * `entry_window_start` with `entry_window_end` unchanged, and the list is complete
+ * once `pagination_meta` is absent. So it can't go through `getAll`.
+ */
+export async function scheduleEntries(
+  api: IoApi,
+  scheduleId: string,
+  from: Date,
+  to: Date,
+): Promise<IoShift[]> {
+  const path = "/v2/schedule_entries";
+  const shifts = new Map<string, IoShift>();
+  const entry_window_end = to.toISOString();
+  let entry_window_start = from.toISOString();
+  for (let page = 0; page < ENTRY_MAX_PAGES; page++) {
+    const res = await api.get(path, {
+      query: { schedule_id: scheduleId, entry_window_start, entry_window_end },
+    });
+    const rows = requireListPage(res?.schedule_entries?.final, {
+      vendor: "incident.io",
+      path,
+      key: "schedule_entries.final",
+      page: res,
+    });
+    // The document offers the fingerprint for deduplicating, and does not rule out a
+    // shift that overlaps the cursor coming back on the next page.
+    for (const row of rows) {
+      shifts.set(row.fingerprint ?? `${row.user?.id}|${row.start_at}|${row.end_at}`, row);
+    }
+    const after = res?.pagination_meta?.after;
+    if (!after) return [...shifts.values()];
+    entry_window_start = after;
+  }
+  throw new ListTruncatedError({
+    vendor: "incident.io",
+    path,
+    items: shifts.size,
+    maxPages: ENTRY_MAX_PAGES,
+  });
+}
+
 export async function resolveOnCall(
   ctx: PagingContext,
   sourceId: string,
@@ -174,16 +227,10 @@ export async function resolveOnCall(
 ): Promise<PagingOnCallPerson[]> {
   if (sourceId.startsWith(SCHEDULE_PREFIX)) {
     const id = sourceId.slice(SCHEDULE_PREFIX.length);
-    const res = await ctx.api.get("/v2/schedule_entries", {
-      query: {
-        schedule_id: id,
-        entry_window_start: at.toISOString(),
-        entry_window_end: new Date(at.getTime() + 60_000).toISOString(),
-      },
-    });
+    const entries = await scheduleEntries(ctx.api, id, at, new Date(at.getTime() + 60_000));
     const seen = new Set<string>();
     const out: PagingOnCallPerson[] = [];
-    for (const entry of res?.schedule_entries?.final ?? []) {
+    for (const entry of entries) {
       const start = entry.start_at ? Date.parse(entry.start_at) : -Infinity;
       const end = entry.end_at ? Date.parse(entry.end_at) : Infinity;
       if (start > at.getTime() || end <= at.getTime()) continue;

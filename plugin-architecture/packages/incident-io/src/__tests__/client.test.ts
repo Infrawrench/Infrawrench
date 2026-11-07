@@ -6,6 +6,7 @@ import { IncidentIoClient } from "../client.js";
 import { queryString } from "../api.js";
 import { pagingStatusOf, toPagingIncident } from "../mappers.js";
 import { buildAlertEvent, verifyWebhook } from "../paging.js";
+import { SHIFTS_KEY } from "../render.js";
 import { parseStatusFeed } from "../status-feed.js";
 
 interface Call {
@@ -201,6 +202,122 @@ describe("paging: on-call", () => {
     expect(await c.resolvePagingOnCall("path:P1", new Date())).toEqual([
       { userId: "U9", name: "Cy", email: "cy@x.io", level: 1 },
     ]);
+  });
+});
+
+describe("schedule entries", () => {
+  const shift = (user: string, fingerprint?: string) => ({
+    start_at: "2026-10-06T09:00:00Z",
+    end_at: "2026-10-06T17:00:00Z",
+    user: { id: user, name: user },
+    ...(fingerprint ? { fingerprint } : {}),
+  });
+  /** Pages keyed by the `entry_window_start` that asks for them; anything else is the first. */
+  const entries = (pages: Record<string, unknown>) => (call: Call) => {
+    const url = new URL(call.url);
+    if (url.pathname === "/v2/schedules/S1") {
+      return { status: 200, body: { schedule: { id: "S1", name: "Primary" } } };
+    }
+    if (url.pathname === "/v2/schedule_entries") {
+      const start = url.searchParams.get("entry_window_start") ?? "";
+      return { status: 200, body: pages[start] ?? pages["first"] };
+    }
+    return { status: 403, body: { errors: [{ message: "not this test" }] } };
+  };
+  const onCallAt = new Date("2026-10-06T10:00:00Z");
+
+  it("finds who is on call on a later page", async () => {
+    const { c, calls } = client(
+      entries({
+        first: {
+          schedule_entries: { final: [shift("U1")] },
+          pagination_meta: { after: "opaque+cursor/1", after_url: "https://evil.example/next" },
+        },
+        "opaque+cursor/1": { schedule_entries: { final: [shift("U2")] } },
+      }),
+    );
+    const people = await c.resolvePagingOnCall("schedule:S1", onCallAt);
+    expect(people.map((p) => p.userId)).toEqual(["U1", "U2"]);
+    expect(calls).toHaveLength(2);
+    const [first, second] = calls.map((x) => new URL(x.url).searchParams);
+    // The cursor goes back as the window's start, untouched, and the end does not move.
+    expect(second!.get("entry_window_start")).toBe("opaque+cursor/1");
+    expect(second!.get("entry_window_end")).toBe(first!.get("entry_window_end"));
+    expect(second!.get("schedule_id")).toBe("S1");
+    expect(calls.some((x) => x.url.includes("evil.example"))).toBe(false);
+  });
+
+  it("fills the shifts table from every page, once per shift", async () => {
+    const { c } = client(
+      entries({
+        first: {
+          schedule_entries: { final: [shift("U1", "f1"), shift("U2", "f2")] },
+          pagination_meta: { after: "c1" },
+        },
+        // A shift that overlaps the cursor comes back on the next page too.
+        c1: { schedule_entries: { final: [shift("U2", "f2"), shift("U3", "f3")] } },
+      }),
+    );
+    const r = await c.getResource("incident-io-schedule", "acc:incident-io-schedule:S1", "acc");
+    const rows: { name: string }[] = JSON.parse(String(r.fields[SHIFTS_KEY]));
+    expect(rows.map((row) => row.name)).toEqual(["U1", "U2", "U3"]);
+  });
+
+  it("compares who and when for a shift with no fingerprint", async () => {
+    const { c } = client(
+      entries({
+        first: {
+          schedule_entries: { final: [shift("U1"), shift("U2")] },
+          pagination_meta: { after: "c1" },
+        },
+        c1: { schedule_entries: { final: [shift("U2")] } },
+      }),
+    );
+    const r = await c.getResource("incident-io-schedule", "acc:incident-io-schedule:S1", "acc");
+    const rows: { name: string }[] = JSON.parse(String(r.fields[SHIFTS_KEY]));
+    expect(rows.map((row) => row.name)).toEqual(["U1", "U2"]);
+  });
+
+  it("rejects entries whose next page never ends, on both reads", async () => {
+    const endless = {
+      first: { schedule_entries: { final: [shift("U1")] }, pagination_meta: { after: "again" } },
+    };
+    const { c, calls } = client(entries(endless));
+    await expect(c.resolvePagingOnCall("schedule:S1", onCallAt)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+    const detail = client(entries(endless));
+    await expect(
+      detail.c.getResource("incident-io-schedule", "acc:incident-io-schedule:S1", "acc"),
+    ).rejects.toThrow("has more than Infrawrench reads");
+  });
+
+  it("rejects a page of entries with no final list, on the first page and a later one", async () => {
+    const first = client(entries({ first: { schedule_entries: { shifts: [shift("U1")] } } }));
+    await expect(first.c.resolvePagingOnCall("schedule:S1", onCallAt)).rejects.toThrow(
+      "is not a list",
+    );
+    const later = client(
+      entries({
+        first: { schedule_entries: { final: [shift("U1")] }, pagination_meta: { after: "c1" } },
+        c1: { error: "wrapped" },
+      }),
+    );
+    await expect(later.c.resolvePagingOnCall("schedule:S1", onCallAt)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("still shows the schedule when the entries read is refused", async () => {
+    const { c } = client((call) => {
+      if (new URL(call.url).pathname === "/v2/schedules/S1") {
+        return { status: 200, body: { schedule: { id: "S1", name: "Primary" } } };
+      }
+      return { status: 403, body: { errors: [{ message: "no" }] } };
+    });
+    const r = await c.getResource("incident-io-schedule", "acc:incident-io-schedule:S1", "acc");
+    expect(JSON.parse(String(r.fields[SHIFTS_KEY]))).toEqual([]);
   });
 });
 
