@@ -38,8 +38,8 @@ export interface CartesiaAgent {
  * alignment does not empty the list.
  */
 export interface CartesiaAgentsResponse {
-  summaries?: CartesiaAgent[];
-  data?: CartesiaAgent[];
+  summaries?: CartesiaAgent[] | null;
+  data?: CartesiaAgent[] | null;
 }
 
 export interface CartesiaDeployment {

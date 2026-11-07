@@ -283,3 +283,22 @@ describe("missing admin key", () => {
     expect(requests).toHaveLength(0);
   });
 });
+
+describe("fetchCartesiaCostData on an answer that is not a list", () => {
+  const RANGE = { fromDate: "2026-07-01", toDate: "2026-07-02" };
+
+  it("throws rather than report no spend when the list is renamed", async () => {
+    const { http } = stubHttp([{ group_by: "capability", series: [] }]);
+    await expect(fetchCartesiaCostData(ctx(http), RANGE)).rejects.toThrow("is not a list");
+  });
+
+  it("throws rather than drop a group whose buckets are renamed", async () => {
+    const { http } = stubHttp([{ group_by: "capability", data: [{ id: "tts", days: [] }] }]);
+    await expect(fetchCartesiaCostData(ctx(http), RANGE)).rejects.toThrow("is not a list");
+  });
+
+  it("reads an empty list as no spend", async () => {
+    const { http } = stubHttp([{ group_by: "capability", data: [] }]);
+    await expect(fetchCartesiaCostData(ctx(http), RANGE)).resolves.toEqual([]);
+  });
+});

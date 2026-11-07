@@ -25,6 +25,10 @@ import {
   bytesToBase64,
   jsonRestFetch,
   externalIdOf,
+  ListPageError,
+  ListTruncatedError,
+  reportUnreadListPart,
+  requireListPage,
 } from "@infrawrench/plugin-base";
 import { cartesiaCostSetupError, fetchCartesiaCostData } from "./cost-data.js";
 import { LANGUAGES } from "./languages.js";
@@ -92,7 +96,7 @@ const ACCEPTED_AUDIO_TYPES = [
  * `starting_after`, answered with `{ data, has_more, next_page }`.
  */
 interface CartesiaPage<T> {
-  data?: T[];
+  data?: T[] | null;
   has_more?: boolean;
   next_page?: string | null;
 }
@@ -184,9 +188,10 @@ interface CartesiaTranscript {
   words?: Array<{ word?: string; start?: number; end?: number }>;
 }
 
-/** Guard rail on the shared voice library, which is far larger than one org. */
-const MAX_LIST_PAGES = 5;
+/** Every paged list documents a `limit` of at most 100. */
 const PAGE_SIZE = 100;
+/** The voice list includes the shared library, so it can run far past one org's own rows. */
+const MAX_LIST_PAGES = 1000;
 /** How many voices the Speech tab's picker carries in the detail payload. */
 const MAX_PICKER_VOICES = 200;
 
@@ -265,8 +270,8 @@ function voiceSubtitle(voice: {
  * Created per account. Every request carries `Authorization: Bearer sk_car_…`
  * plus the mandatory `Cartesia-Version` header. `/usage/credits` and
  * `/api-keys` are the two surfaces Cartesia gates behind a *separate* admin
- * key; when the account has none we degrade those to empty rather than
- * failing the whole account.
+ * key; when the account has none we list nothing and keep the stored rows
+ * rather than failing the whole account.
  */
 export class CartesiaClient implements PluginClient {
   private readonly apiKey: string;
@@ -318,16 +323,21 @@ export class CartesiaClient implements PluginClient {
     });
   }
 
-  /** Walk the shared `limit` / `starting_after` cursor until it runs out. */
-  private async listPaginated<T>(
+  /**
+   * Walk the shared `limit` / `starting_after` cursor until it runs out. Past the
+   * cap it throws, because a sync reads rows it did not see as deleted. Only a read
+   * that stores nothing, a picker, passes `partialAfterPages` to stop early instead.
+   */
+  private async listPaginated<T extends { id?: string }>(
     path: string,
     params: Record<string, string | string[]>,
-    admin = false,
+    { admin = false, partialAfterPages }: { admin?: boolean; partialAfterPages?: number } = {},
   ): Promise<T[]> {
     const out: T[] = [];
     let cursor: string | undefined;
+    const maxPages = partialAfterPages ?? MAX_LIST_PAGES;
 
-    for (let page = 0; page < MAX_LIST_PAGES; page++) {
+    for (let page = 0; page < maxPages; page++) {
       const query = new URLSearchParams();
       query.set("limit", String(PAGE_SIZE));
       for (const [key, value] of Object.entries(params)) {
@@ -341,16 +351,35 @@ export class CartesiaClient implements PluginClient {
         undefined,
         admin,
       );
-      const items = body.data ?? [];
+      const items = requireListPage(body.data, { vendor: "Cartesia", path, key: "data" });
       out.push(...items);
+      if (!body.has_more) return out;
       // Phone numbers answer `has_more` without `next_page`; every list here
       // is keyed by `id`, so the last one is the documented cursor.
-      const next = body.next_page ?? (items.at(-1) as { id?: string } | undefined)?.id;
-      if (!body.has_more || !next) break;
+      const next = body.next_page ?? items.at(-1)?.id;
+      if (!next) {
+        throw new ListPageError({
+          vendor: "Cartesia",
+          path,
+          key: "data",
+          found: items,
+          saysMoreWith: items.length > 0 ? "no cursor" : "no rows",
+        });
+      }
       cursor = next;
     }
 
-    return out;
+    if (partialAfterPages !== undefined) return out;
+    throw new ListTruncatedError({ vendor: "Cartesia", path, items: out.length, maxPages });
+  }
+
+  /**
+   * Nothing can be read without an admin key, which says nothing about what exists.
+   * An account that dropped its key keeps its stored rows rather than losing them.
+   */
+  private noAdminKeyList<T>(): T[] {
+    reportUnreadListPart({ idPrefixes: [""] });
+    return [];
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
@@ -1048,7 +1077,11 @@ export class CartesiaClient implements PluginClient {
   }
 
   private async fetchVoicePickerOptions(): Promise<SpeechPanelOption[]> {
-    const voices = await this.fetchVoices();
+    const voices = await this.listPaginated<CartesiaVoice>(
+      "/voices",
+      {},
+      { partialAfterPages: Math.ceil(MAX_PICKER_VOICES / PAGE_SIZE) },
+    );
     return voices.slice(0, MAX_PICKER_VOICES).map((voice) => {
       const description = voiceSubtitle(voice);
       return {
@@ -1074,8 +1107,8 @@ export class CartesiaClient implements PluginClient {
    * Admin-key only; without one we list nothing rather than break the account.
    */
   private async fetchApiKeys(): Promise<CartesiaApiKey[]> {
-    if (!this.hasAdminKey) return [];
-    return this.listPaginated<CartesiaApiKey>("/api-keys", {}, true);
+    if (!this.hasAdminKey) return this.noAdminKeyList();
+    return this.listPaginated<CartesiaApiKey>("/api-keys", {}, { admin: true });
   }
 
   /**
@@ -1084,7 +1117,12 @@ export class CartesiaClient implements PluginClient {
    */
   private async fetchAgents(): Promise<CartesiaAgent[]> {
     const body = await this.fetch<CartesiaAgentsResponse>("/agents");
-    return (body.summaries ?? body.data ?? []).filter((agent) => !agent.deleted_at);
+    const agents = requireListPage(body.summaries === undefined ? body.data : body.summaries, {
+      vendor: "Cartesia",
+      path: "/agents",
+      key: "summaries",
+    });
+    return agents.filter((agent) => !agent.deleted_at);
   }
 
   /**
@@ -1092,8 +1130,12 @@ export class CartesiaClient implements PluginClient {
    * https://docs.cartesia.ai/api-reference/organizations/list-users
    */
   private async fetchOrganizationUsers(): Promise<CartesiaOrganizationUser[]> {
-    if (!this.hasAdminKey) return [];
-    return this.listPaginated<CartesiaOrganizationUser>("/organizations/users", {}, true);
+    if (!this.hasAdminKey) return this.noAdminKeyList();
+    return this.listPaginated<CartesiaOrganizationUser>(
+      "/organizations/users",
+      {},
+      { admin: true },
+    );
   }
 
   /**

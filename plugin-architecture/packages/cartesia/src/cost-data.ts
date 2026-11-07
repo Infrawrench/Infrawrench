@@ -25,7 +25,7 @@
  */
 
 import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
-import { CostSetupError, jsonRestFetch } from "@infrawrench/plugin-base";
+import { CostSetupError, jsonRestFetch, requireListPage } from "@infrawrench/plugin-base";
 
 /**
  * USD per credit.
@@ -83,12 +83,12 @@ interface CreditBucket {
 interface CreditGroup extends CreditBucket {
   id?: string;
   label?: string;
-  buckets?: CreditBucket[];
+  buckets?: CreditBucket[] | null;
 }
 
 interface CreditsResponse {
   group_by?: string;
-  data?: CreditGroup[];
+  data?: CreditGroup[] | null;
 }
 
 /** `2026-07-01` + 3 → `2026-07-04`. Pure UTC date arithmetic. */
@@ -129,8 +129,12 @@ function groupService(group: CreditGroup): string {
  * (e.g. an account whose credits predate capability tagging) still lands.
  */
 function bucketsOf(group: CreditGroup): CreditBucket[] {
-  if (Array.isArray(group.buckets)) return group.buckets;
-  return group.start_ts ? [group] : [];
+  if (group.start_ts && !Array.isArray(group.buckets)) return [group];
+  return requireListPage(group.buckets, {
+    vendor: "Cartesia",
+    path: "/usage/credits",
+    key: "buckets",
+  });
 }
 
 /**
@@ -190,7 +194,12 @@ export async function fetchCartesiaCostData(
       ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
     });
 
-    for (const group of body.data ?? []) {
+    const groups = requireListPage(body.data, {
+      vendor: "Cartesia",
+      path: "/usage/credits",
+      key: "data",
+    });
+    for (const group of groups) {
       const service = groupService(group);
       for (const bucket of bucketsOf(group)) {
         const date = (bucket.start_ts ?? "").slice(0, 10);

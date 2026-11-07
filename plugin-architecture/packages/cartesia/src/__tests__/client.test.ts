@@ -418,7 +418,11 @@ describe("2026-08-14 response shapes", () => {
 
 describe("edits", () => {
   it("patches only the changed voice fields", async () => {
-    installFetch(() => jsonResponse({ ...VOICE }));
+    installFetch((url) =>
+      url.includes("/voices?")
+        ? jsonResponse({ data: [], has_more: false })
+        : jsonResponse({ ...VOICE }),
+    );
     await client().updateResource("voice", `${ACCOUNT}:voice:${VOICE.id}`, ACCOUNT, {
       tagline: "Calm",
       gender: "",
@@ -699,5 +703,128 @@ describe("admin surfaces", () => {
       [],
     );
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("lists a sync prunes against", () => {
+  const ADMIN = { adminApiKey: "sk_car_admin_test" };
+  const PAGED: Array<[string, string]> = [
+    ["voice", "/voices"],
+    ["pronunciation-dict", "/pronunciation-dicts/"],
+    ["phone-number", "/agents/phone-numbers"],
+    ["api-key", "/api-keys"],
+    ["organization-user", "/organizations/users"],
+  ];
+
+  it.each(PAGED)("reads a %s list past 10,000 rows", async (typeId) => {
+    const lastPage = 120;
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      return jsonResponse({
+        data: Array.from({ length: 100 }, (_, i) => ({ id: `row-${page}-${i}` })),
+        has_more: page < lastPage,
+        next_page: page < lastPage ? `row-${page}-99` : null,
+      });
+    });
+
+    const rows = await client(ADMIN).listResources(typeId, ACCOUNT);
+
+    expect(rows).toHaveLength(12_000);
+    expect(calls).toHaveLength(lastPage);
+  });
+
+  it.each(PAGED)("throws at the cap on a %s list that never ends", async (typeId, path) => {
+    installFetch(() => {
+      const id = `row-${calls.length}`;
+      return jsonResponse({ data: [{ id }], has_more: true, next_page: id });
+    });
+
+    await expect(client(ADMIN).listResources(typeId, ACCOUNT)).rejects.toThrow(
+      `${path} has more than Infrawrench reads`,
+    );
+    expect(calls).toHaveLength(1000);
+  });
+
+  it.each(PAGED)("refuses a %s page with its list renamed, on the first page", async (typeId) => {
+    installFetch(() => jsonResponse({ items: [], has_more: false }));
+    await expect(client(ADMIN).listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("refuses a page with its list renamed, on a later page", async () => {
+    installFetch(() =>
+      calls.length === 1
+        ? jsonResponse({ data: [VOICE], has_more: true, next_page: VOICE.id })
+        : jsonResponse({ items: [], has_more: false }),
+    );
+    await expect(client().listResources("voice", ACCOUNT)).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("reads a null list as empty", async () => {
+    installFetch(() => jsonResponse({ data: null, has_more: false }));
+    await expect(client().listResources("voice", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("refuses a page that says there is more and has no rows to page from", async () => {
+    installFetch(() => jsonResponse({ data: [], has_more: true }));
+    await expect(client().listResources("phone-number", ACCOUNT)).rejects.toThrow(
+      "says there is more",
+    );
+  });
+
+  it("refuses an agent answer with its list renamed", async () => {
+    installFetch(() => jsonResponse({ agents: [] }));
+    await expect(client().listResources("agent", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads an agent answer of null summaries as empty", async () => {
+    installFetch(() => jsonResponse({ summaries: null }));
+    await expect(client().listResources("agent", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("still reads the data envelope on agents", async () => {
+    installFetch(() => jsonResponse({ data: [{ id: "agent_1", name: "Front desk" }] }));
+    const agents = await client().listResources("agent", ACCOUNT);
+    expect(agents.map((agent) => agent.externalId)).toEqual(["agent_1"]);
+  });
+
+  it.each(["api-key", "organization-user"])(
+    "keeps stored %s rows when the account has no admin key to read them with",
+    async (typeId) => {
+      const hook = Symbol.for("infrawrench.unreadListPart");
+      const unread: unknown[] = [];
+      Reflect.set(globalThis, hook, (part: unknown) => unread.push(part));
+      installFetch(() => {
+        throw new Error("no request should be made");
+      });
+      try {
+        await expect(client().listResources(typeId, ACCOUNT)).resolves.toEqual([]);
+      } finally {
+        Reflect.deleteProperty(globalThis, hook);
+      }
+      expect(unread).toEqual([{ idPrefixes: [""] }]);
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it("fills the voice picker from the first pages of a library it cannot finish", async () => {
+    installFetch((url) => {
+      if (url.startsWith("https://api.cartesia.ai/voices/")) return jsonResponse(VOICE);
+      const page = calls.length;
+      return jsonResponse({
+        data: Array.from({ length: 100 }, (_, i) => ({ ...VOICE, id: `voice-${page}-${i}` })),
+        has_more: true,
+        next_page: `voice-${page}-99`,
+      });
+    });
+
+    const voice = await client().getResource("voice", `${ACCOUNT}:voice:${VOICE.id}`, ACCOUNT);
+
+    const picker = JSON.parse(voice.resolvedOutputs?.["__voices__"] ?? "[]") as unknown[];
+    expect(picker).toHaveLength(200);
+    // One read of the voice itself, and two pages for the picker.
+    expect(calls).toHaveLength(3);
   });
 });
