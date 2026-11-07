@@ -292,14 +292,16 @@ export class SplunkObservabilityClient implements PluginClient {
             ),
           );
         case "slo":
-          return this.scoped(async () => {
-            const res = await sfFetch<{ results?: SfSlo[] }>(this.ctx, "/v2/slo/search", {
-              method: "POST",
-              query: { limit: 1000, offset: 0 },
-              body: JSON.stringify({}),
-            });
-            return (res.results ?? []).map((s) => mapSlo(accountId, s));
-          });
+          return this.scoped(async () =>
+            (
+              await offsetList<SfSlo>(
+                this.ctx,
+                "/v2/slo/search",
+                {},
+                { init: { method: "POST", body: JSON.stringify({}) }, idOf: (s) => s.id },
+              )
+            ).map((s) => mapSlo(accountId, s)),
+          );
         case "synthetic-test":
           return this.scoped(async () => (await this.tests()).map((t) => mapTest(accountId, t)));
         default:

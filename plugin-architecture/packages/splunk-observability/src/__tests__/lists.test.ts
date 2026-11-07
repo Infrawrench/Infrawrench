@@ -131,6 +131,40 @@ describe("offset lists", () => {
   });
 });
 
+describe("SLOs", () => {
+  it("reads every page", async () => {
+    const all = rows(1500, 0, "S");
+    const { http, calls } = strictHttp((url, method) =>
+      url.pathname === "/v2/slo/search" && method === "POST"
+        ? {
+            body: {
+              count: 1500,
+              results: all.slice(offsetOf(url), offsetOf(url) + limitOf(url)),
+            },
+          }
+        : undefined,
+    );
+    const list = await hostClient(new SplunkObservabilityClient(CREDS, { http })).listResources(
+      "slo",
+      "acct",
+    );
+    expect(list).toHaveLength(1500);
+    expect(new Set(list.map((r) => r.externalId)).size).toBe(1500);
+    expect(calls[1]?.url.searchParams.get("offset")).toBe("1000");
+  });
+
+  it("refuses a search that answers the same page whatever the offset", async () => {
+    const { http } = strictHttp((url, method) =>
+      url.pathname === "/v2/slo/search" && method === "POST"
+        ? { body: { count: 1500, results: rows(1000, 0, "S") } }
+        : undefined,
+    );
+    await expect(
+      hostClient(new SplunkObservabilityClient(CREDS, { http })).listResources("slo", "acct"),
+    ).rejects.toThrow("on two pages");
+  });
+});
+
 describe("synthetic tests", () => {
   it("refuses a list that never ends, after exactly the page cap", async () => {
     const { http, calls } = strictHttp((url) => {
