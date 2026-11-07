@@ -166,3 +166,34 @@ describe("terraform", () => {
     });
   });
 });
+
+describe("a job read in full", () => {
+  const route = (job: Record<string, unknown>) => (call: Call) =>
+    call.url.pathname.endsWith("/summary") ? {} : { ID: "web", Namespace: "prod", ...job };
+
+  it("says a periodic job is periodic, from its schedule object", async () => {
+    const { c } = client(route({ Periodic: { Enabled: true, Spec: "* * * * *" } }));
+    const job = await c.getResource("nomad-job", "acct:nomad-job:prod/web", ACCOUNT);
+    expect(job.fields["periodic"]).toBe(true);
+    expect(job.fields["parameterized"]).toBe(false);
+  });
+
+  it("says a parameterized job is parameterized, from its config object", async () => {
+    const { c } = client(route({ ParameterizedJob: { Payload: "required" }, Periodic: null }));
+    const job = await c.getResource("nomad-job", "acct:nomad-job:prod/web", ACCOUNT);
+    expect(job.fields["parameterized"]).toBe(true);
+    expect(job.fields["periodic"]).toBe(false);
+  });
+
+  it("says an ordinary job is neither, not nothing", async () => {
+    const { c } = client(route({ Periodic: null, ParameterizedJob: null }));
+    const job = await c.getResource("nomad-job", "acct:nomad-job:prod/web", ACCOUNT);
+    expect(job.fields).toMatchObject({ periodic: false, parameterized: false });
+  });
+
+  it("does not offer Dispatch on a job already dispatched", async () => {
+    const { c } = client(route({ ParameterizedJob: { Payload: "optional" }, Dispatched: true }));
+    const job = await c.getResource("nomad-job", "acct:nomad-job:prod/web", ACCOUNT);
+    expect(job.fields["parameterized"]).toBe(false);
+  });
+});

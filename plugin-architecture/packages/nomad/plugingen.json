@@ -1010,20 +1010,6 @@
         "format": "date-time"
       },
       "why": "Added in Nomad 1.4, and the document's list row lacks it (api/acl.go ACLTokenListStub)."
-    },
-    {
-      "pointer": "/components/schemas/Job/properties/Periodic",
-      "value": {
-        "type": "boolean"
-      },
-      "why": "Not what Nomad sends: a full job has an object here and only a list row has a boolean. mapJob reads both through one type and passes this straight into a field, which is #487. Fixing that removes this patch."
-    },
-    {
-      "pointer": "/components/schemas/Job/properties/ParameterizedJob",
-      "value": {
-        "type": "boolean"
-      },
-      "why": "Not what Nomad sends: a full job has an object here and only a list row has a boolean. mapJob reads both through one type and passes this straight into a field, which is #487. Fixing that removes this patch."
     }
   ],
   "paths": {

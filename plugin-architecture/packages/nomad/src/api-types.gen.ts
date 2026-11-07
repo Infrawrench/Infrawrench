@@ -1603,11 +1603,11 @@ export interface components {
             Namespace?: string;
             NodePool?: string;
             NomadTokenID?: string;
-            ParameterizedJob?: boolean;
+            ParameterizedJob?: components["schemas"]["ParameterizedJobConfig"];
             ParentID?: string;
             /** Format: byte */
             Payload?: string;
-            Periodic?: boolean;
+            Periodic?: components["schemas"]["PeriodicConfig"];
             Priority?: number;
             Region?: string;
             Reschedule?: components["schemas"]["ReschedulePolicy"];
@@ -2028,6 +2028,18 @@ export interface components {
             Name?: string;
             Objects?: components["schemas"]["ObjectDiff"][];
             Type?: string;
+        };
+        ParameterizedJobConfig: {
+            MetaOptional?: string[];
+            MetaRequired?: string[];
+            Payload?: string;
+        };
+        PeriodicConfig: {
+            Enabled?: boolean;
+            ProhibitOverlap?: boolean;
+            Spec?: string;
+            SpecType?: string;
+            TimeZone?: string;
         };
         PeriodicForceResponse: {
             EvalCreateIndex?: number;

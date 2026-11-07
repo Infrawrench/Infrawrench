@@ -14,6 +14,21 @@ type Job = ApiResponse<operations["GetJob"]>;
 export type JobStub = ApiListItem<operations["GetJobs"], null> &
   Pick<Job, "TaskGroups" | "Version">;
 
+/**
+ * What Nomad's own `Job.Stub()` makes of a full job: there these two are a config
+ * object or null, on a list row they say yes or no, and a dispatched child of a
+ * parameterized job is not itself parameterized.
+ */
+export function jobRow(job: Job, summary?: JobStub["JobSummary"]): JobStub {
+  const { Periodic, ParameterizedJob, ...rest } = job;
+  return {
+    ...rest,
+    Periodic: Boolean(Periodic),
+    ParameterizedJob: Boolean(ParameterizedJob) && !job.Dispatched,
+    ...(summary ? { JobSummary: summary } : {}),
+  };
+}
+
 export type AllocStub = ApiListItem<operations["GetAllocations"], null>;
 
 export type Deployment = ApiResponse<operations["GetDeployment"]>;

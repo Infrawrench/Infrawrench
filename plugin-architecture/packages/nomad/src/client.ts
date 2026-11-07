@@ -39,6 +39,7 @@ import {
   mapAllocation,
   mapCsiPlugin,
   mapDeployment,
+  jobRow,
   mapJob,
   mapNode,
   mapService,
@@ -482,7 +483,7 @@ export class NomadClient implements PluginClient {
               this.api.get(`/job/${pathEncode(jobId!)}/summary`, { query: { namespace: ns! } }),
             ),
           ]);
-          return mapJob(accountId, { ...job, ...(summary ? { JobSummary: summary } : {}) });
+          return mapJob(accountId, jobRow(job, summary));
         }
         case "nomad-allocation":
           return mapAllocation(accountId, await this.api.get(`/allocation/${pathEncode(id)}`));
