@@ -142,6 +142,20 @@ export function isNotAuthorized(err: unknown): boolean {
   );
 }
 
+/**
+ * The SQL answer that says this role may not read the object. Unlike
+ * {@link isNotAuthorized} it leaves out a 401 or 403, which say the connection
+ * failed and nothing about what is there, so only this one can mean "list none".
+ */
+export function isPrivilegeDenied(err: unknown): boolean {
+  return (
+    err instanceof SnowflakeError &&
+    err.status !== 401 &&
+    err.status !== 403 &&
+    isNotAuthorized(err)
+  );
+}
+
 /** Quote an identifier for SQL: `"name"` with embedded quotes doubled. */
 export function ident(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;

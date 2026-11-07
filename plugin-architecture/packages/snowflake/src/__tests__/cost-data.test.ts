@@ -26,6 +26,25 @@ const meteringByWarehouse = () =>
     ),
   );
 
+describe("a read that fails while collecting", () => {
+  it("fails the estimate on a 403 for storage rather than leaving storage out", async () => {
+    mockSnowflake((s) => {
+      if (s.includes("WAREHOUSE_METERING_HISTORY")) return meteringByWarehouse();
+      if (s.includes("USAGE_IN_CURRENCY_DAILY")) return sqlError("002003", "not authorized");
+      if (s.includes("CURRENT_REGION"))
+        return jsonResponse(200, resultSet([{ name: "R" }], [["X"]]));
+      if (s.includes("METERING_DAILY_HISTORY")) {
+        return jsonResponse(200, resultSet([{ name: "D" }], []));
+      }
+      if (s.includes("STORAGE_USAGE")) return jsonResponse(403, { message: "blocked" });
+      return undefined;
+    });
+    await expect(
+      fetchSnowflakeCostData(ctx, parseRates({}), "2026-09-01", "2026-09-02"),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+});
+
 describe("billed path (ORGANIZATION_USAGE)", () => {
   it("maps services, charge types and splits warehouse compute pro rata", async () => {
     const { statements } = mockSnowflake((s) => {

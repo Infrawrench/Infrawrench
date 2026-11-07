@@ -27,7 +27,16 @@ import { CostSetupError, decodePromptArgs, externalIdOf } from "@infrawrench/plu
 import type { SnowflakeAccount } from "./account.js";
 import { parseAccount, snowsightUrl } from "./account.js";
 import type { QueryResult, SnowflakeContext, StatementOptions } from "./api.js";
-import { ident, isNotAuthorized, literal, num, qualified, runSql, str } from "./api.js";
+import {
+  ident,
+  isNotAuthorized,
+  isPrivilegeDenied,
+  literal,
+  num,
+  qualified,
+  runSql,
+  str,
+} from "./api.js";
 import { SnowflakeAuth, parseCredential } from "./auth.js";
 import type { SnowflakeRates } from "./catalog.js";
 import { WAREHOUSE_SIZES, findSize, parseRates } from "./catalog.js";
@@ -203,7 +212,7 @@ export class SnowflakeClient implements PluginClient {
         case TYPE.resourceMonitor: {
           const [monitors, warehouses] = await Promise.all([
             this.rows("SHOW RESOURCE MONITORS"),
-            this.rows("SHOW WAREHOUSES").catch(() => []),
+            this.optional("SHOW WAREHOUSES"),
           ]);
           const byMonitor = warehousesByMonitor(warehouses);
           return monitors.map((r) =>
@@ -228,7 +237,7 @@ export class SnowflakeClient implements PluginClient {
     try {
       return await this.rows(statement);
     } catch (err) {
-      if (isNotAuthorized(err)) return [];
+      if (isPrivilegeDenied(err)) return [];
       throw err;
     }
   }

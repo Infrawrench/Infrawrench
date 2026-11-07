@@ -71,6 +71,55 @@ describe("listing", () => {
   });
 });
 
+describe("a read that fails while listing", () => {
+  it.each([401, 403])(
+    "fails the user list on a %d rather than reading no users",
+    async (status) => {
+      mockSnowflake(() => jsonResponse(status, { message: "denied" }));
+      await expect(
+        hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.user, "acc"),
+      ).rejects.toMatchObject({ status });
+    },
+  );
+
+  const showMonitors = () =>
+    jsonResponse(
+      200,
+      resultSet(
+        [
+          { name: "name" },
+          { name: "credit_quota", type: "fixed" },
+          { name: "used_credits", type: "fixed" },
+        ],
+        [["LIMIT", "10", "1"]],
+      ),
+    );
+
+  it("fails the monitor list when SHOW WAREHOUSES fails for another reason", async () => {
+    mockSnowflake((s) =>
+      s === "SHOW RESOURCE MONITORS"
+        ? showMonitors()
+        : jsonResponse(500, { message: "internal error" }),
+    );
+    await expect(
+      hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.resourceMonitor, "acc"),
+    ).rejects.toMatchObject({ status: 500 });
+  });
+
+  it("still lists monitors when the role cannot see warehouses", async () => {
+    mockSnowflake((s) =>
+      s === "SHOW RESOURCE MONITORS"
+        ? showMonitors()
+        : jsonResponse(422, { code: "003001", message: "Insufficient privileges" }),
+    );
+    const list = await hostClient(new SnowflakeClient(CREDS)).listResources(
+      TYPE.resourceMonitor,
+      "acc",
+    );
+    expect(list.map((r) => r.id)).toEqual(["acc:snowflake-resource-monitor:LIMIT"]);
+  });
+});
+
 describe("actions", () => {
   it("resizes, sets auto-suspend and assigns monitors with quoted identifiers", async () => {
     const { statements } = mockSnowflake(() =>

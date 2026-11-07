@@ -33,7 +33,7 @@
 
 import type { CostChargeType, CostRow } from "@infrawrench/plugin-base";
 import type { SnowflakeContext } from "./api.js";
-import { isNotAuthorized, num, runSql, str } from "./api.js";
+import { isNotAuthorized, isPrivilegeDenied, num, runSql, str } from "./api.js";
 import type { SnowflakeRates } from "./catalog.js";
 import { SERVICE, humanServiceType, serviceGroup } from "./catalog.js";
 
@@ -206,7 +206,7 @@ export async function fetchEstimatedRows(
        FROM SNOWFLAKE.ACCOUNT_USAGE.STORAGE_USAGE
        WHERE USAGE_DATE BETWEEN '${f}' AND '${t}'`,
     ).catch((err: unknown) => {
-      if (isNotAuthorized(err)) return { rows: [] as Record<string, unknown>[] };
+      if (isPrivilegeDenied(err)) return { rows: [] as Record<string, unknown>[] };
       throw err;
     }),
     rates.transferPerTb === undefined
@@ -220,7 +220,7 @@ export async function fetchEstimatedRows(
              AND TRANSFER_TYPE <> 'INTERNAL'
            GROUP BY 1, 2`,
         ).catch((err: unknown) => {
-          if (isNotAuthorized(err)) return { rows: [] as Record<string, unknown>[] };
+          if (isPrivilegeDenied(err)) return { rows: [] as Record<string, unknown>[] };
           throw err;
         }),
   ]);
