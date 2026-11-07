@@ -4,6 +4,7 @@
  * https://docs.temporal.io/cloud/namespaces (names, tags, descriptions) and
  * https://docs.temporal.io/evaluate/cloud/limits (retention, search attributes).
  */
+import type { TcSearchAttributeType } from "./types.js";
 
 export const RETENTION_MIN_DAYS = 1;
 export const RETENTION_MAX_DAYS = 90;
@@ -19,6 +20,10 @@ export const SEARCH_ATTRIBUTE_LIMITS: Record<string, number> = {
   SEARCH_ATTRIBUTE_TYPE_KEYWORD_LIST: 5,
   SEARCH_ATTRIBUTE_TYPE_TEXT: 5,
 };
+
+export function isSearchAttributeType(type: string): type is TcSearchAttributeType {
+  return type in SEARCH_ATTRIBUTE_LIMITS;
+}
 
 export function validateRetention(raw: string): number {
   const days = Number(raw);

@@ -25,11 +25,19 @@
  * rows a collection no longer writes).
  */
 
-import type { CostChargeType, CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import {
+  pathEncode,
+  type ApiResponse,
+  type CostChargeType,
+  type CostFetchRange,
+  type CostRow,
+} from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
 import type { TemporalContext } from "./api.js";
-import { fetchText, isPermissionError, statusOf, tcFetch } from "./api.js";
+import { fetchText, isPermissionError, statusOf } from "./api.js";
 import type { TemporalRates } from "./pricing.js";
 import { actionsCost, byteSecondsToGbh, planCost } from "./pricing.js";
+import type { TcUsageSummary } from "./types.js";
 
 export const COST_SOURCE_TAG = "cost_source";
 
@@ -236,12 +244,6 @@ export function billingReportRows(
 // Report generation
 // ---------------------------------------------------------------------------
 
-interface BillingReport {
-  id?: string;
-  state?: string;
-  downloadInfo?: Array<{ url?: string; fileFormat?: string }>;
-}
-
 export class BillingReportUnavailable extends Error {
   constructor(
     message: string,
@@ -277,10 +279,9 @@ export async function generateBillingReport(
   granularity: "DAILY" | "MONTHLY",
   timing: ReportTiming = DEFAULT_REPORT_TIMING,
 ): Promise<string> {
-  let created: { billingReportId?: string };
+  let created: ApiResponse<operations["CreateBillingReport"]>;
   try {
-    created = await tcFetch<{ billingReportId?: string }>(ctx, "/cloud/billing-reports", {
-      method: "POST",
+    created = await ctx.api.post("/cloud/billing-reports", {
       body: {
         spec: {
           startTimeInclusive: `${startMonth}T00:00:00Z`,
@@ -307,10 +308,7 @@ export async function generateBillingReport(
   const deadline = Date.now() + timing.timeoutMs;
   let wait = timing.initialPollMs;
   for (;;) {
-    const res = await tcFetch<{ billingReport?: BillingReport }>(
-      ctx,
-      `/cloud/billing-reports/${encodeURIComponent(id)}`,
-    );
+    const res = await ctx.api.get(`/cloud/billing-reports/${pathEncode(id)}`);
     const report = res.billingReport;
     if (report?.state === "BILLING_REPORT_STATE_GENERATED") {
       const urls = (report.downloadInfo ?? []).map((d) => d.url ?? "").filter(Boolean);
@@ -352,35 +350,22 @@ export async function generateBillingReport(
 // Usage fallback
 // ---------------------------------------------------------------------------
 
-interface UsageSummary {
-  startTime?: string;
-  incomplete?: boolean;
-  recordGroups?: Array<{
-    groupBys?: Array<{ key?: string; value?: string }>;
-    records?: Array<{ type?: string; unit?: string; value?: number }>;
-  }>;
-}
-
 export async function fetchUsageSummaries(
   ctx: TemporalContext,
   startDay: string,
   endDayExclusive: string,
-): Promise<UsageSummary[]> {
-  const out: UsageSummary[] = [];
+): Promise<TcUsageSummary[]> {
+  const out: TcUsageSummary[] = [];
   let pageToken: string | undefined;
   for (let page = 0; page < 100; page++) {
-    const res = await tcFetch<{ summaries?: UsageSummary[]; nextPageToken?: string }>(
-      ctx,
-      "/cloud/usage",
-      {
-        query: {
-          startTimeInclusive: `${startDay}T00:00:00Z`,
-          endTimeExclusive: `${endDayExclusive}T00:00:00Z`,
-          pageSize: 1000,
-          ...(pageToken ? { pageToken } : {}),
-        },
+    const res = await ctx.api.get("/cloud/usage", {
+      query: {
+        startTimeInclusive: `${startDay}T00:00:00Z`,
+        endTimeExclusive: `${endDayExclusive}T00:00:00Z`,
+        pageSize: 1000,
+        ...(pageToken ? { pageToken } : {}),
       },
-    );
+    });
     out.push(...(res.summaries ?? []));
     if (!res.nextPageToken) break;
     pageToken = res.nextPageToken;

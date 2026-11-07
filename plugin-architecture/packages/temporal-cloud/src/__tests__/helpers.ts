@@ -1,4 +1,4 @@
-import type { TemporalContext } from "../api.js";
+import { createTemporalContext, type TemporalContext } from "../api.js";
 
 export interface Reply {
   status?: number;
@@ -39,5 +39,5 @@ export function makeHttp(route: (url: URL, method: string, body: unknown) => Rep
 }
 
 export function ctxWith(http: ReturnType<typeof makeHttp>["http"]): TemporalContext {
-  return { apiKey: "api-key", metricsApiKey: "metrics-key", http };
+  return createTemporalContext({ apiKey: "api-key", metricsApiKey: "metrics-key", http });
 }
