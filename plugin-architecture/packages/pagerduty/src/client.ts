@@ -295,7 +295,11 @@ export class PagerDutyClient implements PluginClient {
             mapSchedule(accountId, s),
           );
         case "pagerduty-team": {
-          const teams = await this.api.getAll("/teams", "teams");
+          const teams = await this.api.getAll("/teams", "teams").catch((err: unknown): PdTeam[] => {
+            // The document's 402: this account does not have the teams ability, so none to list.
+            if (statusOf(err) === 402) return [];
+            throw err;
+          });
           const names = teamNamesOf(teams);
           return teams.map((t) => mapTeam(accountId, t, names));
         }

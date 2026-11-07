@@ -681,3 +681,18 @@ describe("team names", () => {
     expect(row.fields["parentTeam"]).toBe("Payments");
   });
 });
+
+describe("accounts without teams", () => {
+  it("lists no teams on the 402 the document gives an account without the ability", async () => {
+    const { c } = client(() => ({
+      status: 402,
+      body: { error: { message: "Account does not have the abilities to perform the action" } },
+    }));
+    await expect(c.listResources("pagerduty-team", "acc")).resolves.toEqual([]);
+  });
+
+  it("still fails a team list on any other error", async () => {
+    const { c } = client(() => ({ status: 500, body: { error: { message: "boom" } } }));
+    await expect(c.listResources("pagerduty-team", "acc")).rejects.toThrow("500");
+  });
+});
