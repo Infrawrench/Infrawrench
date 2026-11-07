@@ -1092,6 +1092,17 @@ describe("renderSidebarItem", () => {
     );
   });
 
+  it.each([
+    ["new", "provisioning"],
+    ["accepted", "provisioning"],
+    ["processed", "provisioning"],
+    ["retrying", "provisioning"],
+    ["rejected", "error"],
+    ["pending_review", "info"],
+  ])("a deploy in the documented state %s reads as %s", (state, status) => {
+    expect((res("netlify-deploy", { state }).status as { status: string }).status).toBe(status);
+  });
+
   it("default sidebar uses state mapping", () => {
     expect((res("netlify-site", { state: "current" }).status as { status: string }).status).toBe(
       "healthy",

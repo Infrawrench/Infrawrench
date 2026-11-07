@@ -48,15 +48,20 @@ function mapDeployState(state: string): ResourceStatus {
   switch (state) {
     case "ready":
       return "healthy";
+    case "new":
+    case "accepted":
     case "building":
     case "enqueued":
+    case "retrying":
     case "uploading":
     case "uploaded":
     case "preparing":
     case "prepared":
     case "processing":
+    case "processed":
       return "provisioning";
     case "error":
+    case "rejected":
       return "error";
     case "skipped":
       return "degraded";
