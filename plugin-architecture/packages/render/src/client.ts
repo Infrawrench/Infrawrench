@@ -30,6 +30,8 @@ import {
   listOwners,
   listPostgres,
   listProjects,
+  listRecentDeploys,
+  listRecentJobs,
   listServices,
   type RenderApi,
 } from "./api.js";
@@ -187,10 +189,8 @@ export class RenderClient implements PluginClient {
           return this.perService(
             () => true,
             async (s) => {
-              const rows = await this.api.get(`/services/${pathEncode(s.id)}/deploys`, {
-                query: { limit: DEPLOYS_PER_SERVICE },
-              });
-              return (rows ?? []).map((r) => mapDeploy(r.deploy, s, accountId));
+              const deploys = await listRecentDeploys(this.api, s.id, DEPLOYS_PER_SERVICE);
+              return deploys.map((d) => mapDeploy(d, s, accountId));
             },
           );
         case "env-var":
@@ -210,10 +210,8 @@ export class RenderClient implements PluginClient {
           return this.perService(
             (s) => s.type !== "static_site",
             async (s) => {
-              const rows = await this.api.get(`/services/${pathEncode(s.id)}/jobs`, {
-                query: { limit: JOBS_PER_SERVICE },
-              });
-              return (rows ?? []).map((r) => mapJob(r.job, s, accountId));
+              const jobs = await listRecentJobs(this.api, s.id, JOBS_PER_SERVICE);
+              return jobs.map((j) => mapJob(j, s, accountId));
             },
           );
         case "disk": {

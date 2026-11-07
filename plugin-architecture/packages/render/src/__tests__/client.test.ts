@@ -147,6 +147,95 @@ describe("reading a whole list", () => {
       "/owners has more than Infrawrench reads",
     );
   });
+
+  it("throws after 500 pages of 100 rather than keep part of a list", async () => {
+    let page = 0;
+    route("GET", "/services", () => {
+      page++;
+      return Array.from({ length: 100 }, (_, i) => ({
+        service: { ...WEB, id: `srv-${page}-${i}` },
+        cursor: `c${page}-${i}`,
+      }));
+    });
+    await expect(client().listResources("service", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(state.calls).toHaveLength(500);
+  });
+
+  it("does not read a cursor handed back as the end of the list", async () => {
+    route(
+      "GET",
+      "/services",
+      Array.from({ length: 100 }, (_, i) => ({
+        service: { ...WEB, id: `srv-${i}` },
+        cursor: "same",
+      })),
+    );
+    await expect(client().listResources("service", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("refuses a page that is not a list, on the first page and on a later one", async () => {
+    route("GET", "/services", { items: [] });
+    await expect(client().listResources("service", ACCOUNT)).rejects.toThrow("is not a list");
+
+    route("GET", "/services", (call: { query: URLSearchParams }) =>
+      call.query.get("cursor")
+        ? { message: "try later" }
+        : Array.from({ length: 100 }, (_, i) => ({
+            service: { ...WEB, id: `srv-${i}` },
+            cursor: `c${i}`,
+          })),
+    );
+    await expect(client().listResources("service", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a 200 with no body rather than read it as no rows", async () => {
+    route("GET", "/blueprints", () => new Response("", { status: 200 }));
+    await expect(client().listResources("blueprint", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["deploy", "deploys"],
+    ["job", "jobs"],
+  ])("refuses a %s answer that is not a list", async (typeId, segment) => {
+    route("GET", "/services", [{ service: WEB, cursor: "x" }]);
+    route("GET", `/services/srv-web/${segment}`, () => new Response("", { status: 200 }));
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+    route("GET", `/services/srv-web/${segment}`, { error: "nope" });
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["deploy", "deploys", "10"],
+    ["job", "jobs", "20"],
+  ])("reads the newest page of %s rows and no more", async (typeId, segment, limit) => {
+    route("GET", "/services", [{ service: WEB, cursor: "x" }]);
+    const key = typeId;
+    const rows = Array.from({ length: Number(limit) }, (_, i) => ({
+      [key]: { id: `r-${i}`, startCommand: "x", status: "succeeded" },
+      cursor: `c${i}`,
+    }));
+    route("GET", `/services/srv-web/${segment}`, rows);
+    expect(await client().listResources(typeId, ACCOUNT)).toHaveLength(Number(limit));
+    const reads = state.calls.filter((c) => c.path.endsWith(segment));
+    expect(reads).toHaveLength(1);
+    expect(reads[0]!.query.get("limit")).toBe(limit);
+  });
+
+  it("uses the host transport with no CA and never the global fetch", async () => {
+    const stubbed = vi.fn(() => Promise.reject(new Error("unexpected fetch")));
+    vi.stubGlobal("fetch", stubbed);
+    const request = vi.fn(async () => ({ status: 200, headers: {}, body: "[]" }));
+    const c = hostClient(new RenderClient({ apiKey: "k" }, RESOURCE_TYPES, { http: { request } }));
+    await c.listResources("blueprint", ACCOUNT);
+    expect(request).toHaveBeenCalledOnce();
+    const [arg] = (request.mock.calls as unknown as Array<[{ caCert?: string }]>)[0]!;
+    expect(arg.caCert).toBeUndefined();
+    expect(stubbed).not.toHaveBeenCalled();
+  });
 });
 
 describe("mappers", () => {

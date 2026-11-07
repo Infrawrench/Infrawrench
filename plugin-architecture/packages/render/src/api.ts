@@ -20,7 +20,7 @@ import { RenderApiError, buildQuery, sendRequest } from "./kit.js";
  *
  * Lists are arrays of `{<item>, cursor}` wrappers; the next page is
  * `?cursor=<last cursor>` and the list ends on a short page. `limit` tops
- * out at 100.
+ * out at 100, and 500 pages is the 50,000 rows the host can sync.
  *
  * Rate limits (per user): 400 GETs a minute, 30 other writes a minute,
  * 30 log reads a minute, 10 deploy/suspend/resume/PATCH a minute per
@@ -30,7 +30,7 @@ import { RenderApiError, buildQuery, sendRequest } from "./kit.js";
 
 export const API_BASE = "https://api.render.com/v1";
 const PAGE_SIZE = 100;
-const MAX_PAGES = 50;
+const MAX_PAGES = 500;
 const MAX_RETRY_S = 5;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -97,8 +97,6 @@ export function createRenderApi(
     maxPages: MAX_PAGES,
     next: nextCursor,
     stopOnShortPage: true,
-    stopOnRepeatedCursor: true,
-    emptyBodyEndsList: true,
   });
 }
 
@@ -179,3 +177,23 @@ export const listEnvGroups = async (api: RenderApi, query: OwnerQuery) =>
 /** For a picker, where the groups it could read are better than none. */
 export const listEnvGroupChoices = async (api: RenderApi, query: OwnerQuery) =>
   (await api.getAll("/env-groups", null, { query, partial: true })).map(unwrapEnvGroup);
+
+// Rolling window: the newest N. Older rows falling off is what this type means.
+// The document states no order for these two, so a live read should confirm it.
+export const listRecentDeploys = async (api: RenderApi, serviceId: string, count: number) =>
+  (
+    await api.getAll(`/services/${pathEncode(serviceId)}/deploys`, null, {
+      pageSize: count,
+      maxPages: 1,
+      partial: true,
+    })
+  ).map((row) => row.deploy);
+
+export const listRecentJobs = async (api: RenderApi, serviceId: string, count: number) =>
+  (
+    await api.getAll(`/services/${pathEncode(serviceId)}/jobs`, null, {
+      pageSize: count,
+      maxPages: 1,
+      partial: true,
+    })
+  ).map((row) => row.job);
