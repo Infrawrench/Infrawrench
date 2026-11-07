@@ -151,6 +151,21 @@ describe("MSSQLClient", () => {
         expect(res[0]!.fields["host"]).toBe("db.example.com");
         expect(unread).toEqual([{ idPrefixes: [""] }]);
       });
+
+      it("shows the refusal where the host keeps no track, and still finds the connected database", async () => {
+        const error = Object.assign(new Error("The SELECT permission was denied."), {
+          code: "EREQUEST",
+          number: 229,
+        });
+        sql.query.mockRejectedValue(error);
+        await expect(client().listResources("mssql-database", "acct")).rejects.toBe(error);
+        const found = await client().getResource(
+          "mssql-database",
+          "acct:mssql-database:appdb",
+          "acct",
+        );
+        expect(found.displayName).toBe("appdb");
+      });
     });
   });
 

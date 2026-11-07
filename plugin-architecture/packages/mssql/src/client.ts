@@ -1,5 +1,5 @@
 import type { Credentials } from "./plugin.js";
-import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import { attempt } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
@@ -43,69 +43,77 @@ export class MSSQLClient implements PluginClient {
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
-    return attempt(async () => {
-      if (typeId !== "mssql-database") {
-        throw new Error(`MSSQL plugin: unknown resource type "${typeId}"`);
-      }
-      const now = new Date().toISOString();
+    return attempt(() => this.list(typeId, accountId, false));
+  }
 
-      if (this.services?.sql) {
-        try {
-          const rows = await this.services.sql.query(
-            "SELECT name FROM sys.databases WHERE database_id > 4 ORDER BY name",
-          );
-          let host = "unknown";
-          try {
-            host = new URL(this.connectionString).hostname;
-          } catch {
-            /* ignore */
-          }
-          return (rows as { name: string }[]).map((row) => ({
-            id: `${accountId}:mssql-database:${row.name}`,
-            pluginId: "mssql",
-            resourceTypeId: "mssql-database",
-            accountId,
-            displayName: row.name,
-            externalId: row.name,
-            fields: { host, database: row.name },
-            resolvedOutputs: {},
-            secretStates: [],
-            createdAt: now,
-            updatedAt: now,
-          }));
-        } catch (err) {
-          if (!isCatalogRefused(err)) throw err;
-          // Shows only the database the login connects to, which says nothing about the rest.
-          reportUnreadListPart({ idPrefixes: [""] });
-        }
-      }
+  /** `lookup` is for finding one row, which a refused list of the rest says nothing about. */
+  private async list(
+    typeId: string,
+    accountId: string,
+    lookup: boolean,
+  ): Promise<ResourceInstance[]> {
+    if (typeId !== "mssql-database") {
+      throw new Error(`MSSQL plugin: unknown resource type "${typeId}"`);
+    }
+    const now = new Date().toISOString();
 
-      let dbName = "master";
-      let host = "unknown";
+    if (this.services?.sql) {
       try {
-        const url = new URL(this.connectionString);
-        dbName = url.pathname.replace(/^\//, "") || "master";
-        host = url.hostname;
-      } catch {
-        /* connection string may not be a parseable URL */
-      }
-
-      return [
-        {
-          id: `${accountId}:mssql-database:${dbName}`,
+        const rows = await this.services.sql.query(
+          "SELECT name FROM sys.databases WHERE database_id > 4 ORDER BY name",
+        );
+        let host = "unknown";
+        try {
+          host = new URL(this.connectionString).hostname;
+        } catch {
+          /* ignore */
+        }
+        return (rows as { name: string }[]).map((row) => ({
+          id: `${accountId}:mssql-database:${row.name}`,
           pluginId: "mssql",
           resourceTypeId: "mssql-database",
           accountId,
-          displayName: dbName,
-          externalId: dbName,
-          fields: { host, database: dbName },
+          displayName: row.name,
+          externalId: row.name,
+          fields: { host, database: row.name },
           resolvedOutputs: {},
           secretStates: [],
           createdAt: now,
           updatedAt: now,
-        },
-      ];
-    });
+        }));
+      } catch (err) {
+        if (!isCatalogRefused(err)) throw err;
+        // Shows only the database the login connects to, which says nothing about the rest.
+        // A host that keeps no track answers false, and there the refusal shows instead.
+        if (!lookup && !reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      }
+    }
+
+    let dbName = "master";
+    let host = "unknown";
+    try {
+      const url = new URL(this.connectionString);
+      dbName = url.pathname.replace(/^\//, "") || "master";
+      host = url.hostname;
+    } catch {
+      /* connection string may not be a parseable URL */
+    }
+
+    return [
+      {
+        id: `${accountId}:mssql-database:${dbName}`,
+        pluginId: "mssql",
+        resourceTypeId: "mssql-database",
+        accountId,
+        displayName: dbName,
+        externalId: dbName,
+        fields: { host, database: dbName },
+        resolvedOutputs: {},
+        secretStates: [],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
   }
 
   getResource(
@@ -114,7 +122,7 @@ export class MSSQLClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const all = await this.list(typeId, accountId, true);
       const found = all.find((r) => r.id === resourceId);
       if (!found) throw new Error(`MSSQL plugin: resource ${typeId}/${resourceId} not found`);
       return found;
