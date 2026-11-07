@@ -218,6 +218,33 @@ describe("CockroachClient", () => {
     const probe = calls.find((c) => c.url.includes("sql-users"))!;
     expect(new URL(probe.url).pathname).toBe("/api/v1/clusters/c%2F1%3Fx/sql-users");
   });
+
+  it("scales a host cluster through its own part of the update", async () => {
+    const hosted: CCluster = { ...cluster, config: { host: cluster.config.dedicated! } };
+    const { client, calls } = fake([
+      on("GET", "/api/v1/clusters/c1", hosted),
+      on("PATCH", "/api/v1/clusters/c1", hosted),
+    ]);
+    await client
+      .updateResource("crdb-cluster", `${ACCOUNT}:crdb-cluster:c1`, ACCOUNT, {
+        vcpus: "8",
+        storageGib: "300",
+        diskIops: "6000",
+        nodeCount: "5",
+      })
+      .catch(() => undefined);
+    const patch = calls.find((c) => c.method === "PATCH")!;
+    expect(JSON.parse(String(patch.body))).toEqual({
+      host: {
+        hardware: {
+          machine_spec: { num_virtual_cpus: 8 },
+          storage_gib: 300,
+          disk_iops: 6000,
+        },
+        region_nodes: { "us-east-1": 5 },
+      },
+    });
+  });
 });
 
 describe("helpers", () => {

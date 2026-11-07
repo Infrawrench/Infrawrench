@@ -1344,7 +1344,7 @@ function planUpdate(
   current: CCluster,
   fields: Record<string, string>,
 ): ApiBody<operations["CockroachCloud_UpdateCluster"]> {
-  if (current.config.dedicated) {
+  if (current.config.dedicated || current.config.host) {
     const vcpus = num(fields["vcpus"]);
     const storage = num(fields["storageGib"]);
     const iops = num(fields["diskIops"]);
@@ -1354,7 +1354,7 @@ function planUpdate(
       ...(storage !== undefined ? { storage_gib: storage } : {}),
       ...(iops !== undefined ? { disk_iops: iops } : {}),
     };
-    const dedicated = {
+    const spec = {
       ...(Object.keys(hardware).length ? { hardware } : {}),
       ...(nodes !== undefined
         ? {
@@ -1364,7 +1364,8 @@ function planUpdate(
           }
         : {}),
     };
-    return Object.keys(dedicated).length ? { dedicated } : {};
+    if (!Object.keys(spec).length) return {};
+    return current.config.dedicated ? { dedicated: spec } : { host: spec };
   }
   if (current.config.serverless) {
     const provisioned = num(fields["provisionedVcpus"]);
