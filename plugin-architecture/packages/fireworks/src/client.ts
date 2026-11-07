@@ -22,12 +22,15 @@ import type {
 import {
   CostSetupError,
   externalIdOf,
+  hostFetch,
+  isSameOrigin,
   pathEncode,
   withAiCostTags,
   type ApiBody,
 } from "@infrawrench/plugin-base";
 import {
   createFireworksApi,
+  FireworksApiError,
   hasStatus,
   HOST,
   MAX_PAGES,
@@ -348,24 +351,23 @@ export class FireworksClient implements PluginClient {
    * to Fireworks' own host.
    */
   private async fetchText(url: string): Promise<string> {
-    const headers: Record<string, string> = { Accept: "text/plain, */*" };
-    if (url.startsWith(HOST)) headers["Authorization"] = `Bearer ${this.apiKey}`;
-    const label = url.startsWith(HOST) ? url.slice(HOST.length).split("?")[0] : "signed log URL";
-    if (this.services?.http) {
-      const result = await this.services.http.request({
-        url,
-        method: "GET",
-        headers,
-        ...(this.caCert && url.startsWith(HOST) ? { caCert: this.caCert } : {}),
-      });
-      if (result.status < 200 || result.status >= 300) {
-        throw new Error(`Fireworks API error ${result.status} for ${label}: ${result.body}`);
-      }
-      return result.body;
-    }
-    const res = await fetch(url, { headers });
+    const ours = isSameOrigin(url, HOST);
+    const res = await hostFetch(
+      { http: this.services?.http, ...(ours ? { caCert: this.caCert } : {}) },
+      url,
+      {
+        headers: {
+          Accept: "text/plain, */*",
+          ...(ours ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+        },
+      },
+    );
     if (!res.ok) {
-      throw new Error(`Fireworks API error ${res.status} for ${label}: ${await res.text()}`);
+      const label = ours ? new URL(url, HOST).pathname : "signed log URL";
+      throw new FireworksApiError(
+        res.status,
+        `Fireworks API error ${res.status} for ${label}: ${await res.text()}`,
+      );
     }
     return res.text();
   }

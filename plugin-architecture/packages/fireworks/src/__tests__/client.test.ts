@@ -580,6 +580,63 @@ describe("logs", () => {
     expect(result.text).toBe("line two\nline three\n");
   });
 
+  it("keeps the API key off a host that only starts with Fireworks' own", async () => {
+    for (const signedUri of [
+      "https://api.fireworks.ai.evil.example/log.txt",
+      "https://api.fireworks.ai@evil.example/log.txt",
+    ]) {
+      calls = [];
+      vi.restoreAllMocks();
+      installFetch((url) =>
+        url.includes(":getExecutionLogEndpoint")
+          ? jsonResponse({ executionLogSignedUri: signedUri })
+          : jsonResponse("line\n"),
+      );
+      await client().getLogs("evaluation-job", `${ACCOUNT}:evaluation-job:ej1`, ACCOUNT, {});
+      const signed = calls[1]?.init?.headers as Record<string, string>;
+      expect(calls[1]?.url).toBe(signedUri);
+      expect(signed["Authorization"]).toBeUndefined();
+    }
+  });
+
+  it("fetches a signed URL through the host, without the account's CA or key", async () => {
+    const fetchStub = installFetch(() => {
+      throw new Error("no direct fetch with a host transport");
+    });
+    const request = vi.fn(
+      async (req: { url: string; headers?: Record<string, string>; caCert?: string }) =>
+        req.url.includes(":getExecutionLogEndpoint")
+          ? {
+              status: 200,
+              body: JSON.stringify({
+                executionLogSignedUri: "https://storage.googleapis.com/fw/log.txt?sig=1",
+              }),
+              headers: {},
+            }
+          : { status: 200, body: "line one\n", headers: {} },
+    );
+    const hosted = hostClient(
+      new FireworksClient(
+        { apiKey: "fw_test", accountId: "my-team", caCert: "CA" },
+        { http: { request } },
+      ),
+    );
+    const result = await hosted.getLogs(
+      "evaluation-job",
+      `${ACCOUNT}:evaluation-job:ej1`,
+      ACCOUNT,
+      {},
+    );
+    expect(result.text).toBe("line one\n");
+    expect(fetchStub).not.toHaveBeenCalled();
+    const signed = request.mock.calls[1]?.[0];
+    expect(signed?.url).toContain("storage.googleapis.com");
+    expect(signed?.caCert).toBeUndefined();
+    expect(Object.keys(signed?.headers ?? {}).map((name) => name.toLowerCase())).not.toContain(
+      "authorization",
+    );
+  });
+
   it("says so when the evaluator has no build log yet", async () => {
     installFetch(() => jsonResponse({}));
     const result = await client().getLogs("evaluator", `${ACCOUNT}:evaluator:ev1`, ACCOUNT, {});
