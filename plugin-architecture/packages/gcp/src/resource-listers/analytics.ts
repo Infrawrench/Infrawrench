@@ -1,5 +1,52 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { readEachParent, readEachRegion, type ListerContext } from "./shared.js";
+import {
+  mapWithConcurrency,
+  readEachParent,
+  readEachRegion,
+  type ListerContext,
+} from "./shared.js";
+
+/** BigQuery's per-item GETs in flight at once, well inside its per-method request rate. */
+const BQ_HYDRATE_CONCURRENCY = 8;
+
+/**
+ * The fields BigQuery's list answers carry (`datasets.list`, `tables.list`). When an
+ * item's GET fails these are all a row can vouch for, and the rest are left out: the
+ * sync merges fields over the stored ones, so a field left out keeps its last value
+ * where writing a blank would show `0` rows and no schema until the next sync.
+ */
+const BQ_DATASET_LIST_FIELDS = new Set(["name", "friendlyName", "location", "labels"]);
+const BQ_TABLE_LIST_FIELDS = new Set([
+  "name",
+  "datasetId",
+  "friendlyName",
+  "type",
+  "labels",
+  "creationTime",
+  "expirationTime",
+  "partitioning",
+  "clusteringFields",
+]);
+
+function keepListedFields<V>(
+  hydrated: boolean,
+  keep: ReadonlySet<string>,
+  fields: Record<string, V>,
+): Record<string, V> {
+  if (hydrated) return fields;
+  return Object.fromEntries(Object.entries(fields).filter(([key]) => keep.has(key)));
+}
+
+/** An item's full resource, or undefined when its GET failed and only the list's part is known. */
+async function hydrate(ctx: ListerContext, url: string) {
+  try {
+    return await ctx.get<Record<string, unknown>>(url);
+  } catch {
+    // A throttle, a 5xx, a refused get or an item deleted since the list: the list
+    // still named it, so the row stays and only its detail fields wait for a later sync.
+    return undefined;
+  }
+}
 
 /** BigQuery returns millisecond-epoch strings in most timestamp fields. */
 function formatBqTimestamp(value: unknown): string {
@@ -39,53 +86,48 @@ export async function listBigQueryDatasets(
   // Hydrate each dataset with its full metadata: the list endpoint only
   // returns {id, datasetReference, location, friendlyName, labels}, but
   // the detail view wants defaultRoundingMode / isCaseInsensitive / etc.
-  return Promise.all(
-    items.map(async (ds) => {
-      const ref = ds["datasetReference"] as Record<string, string> | undefined;
-      const datasetId = ref?.["datasetId"] ?? String(ds["id"]).split(":").pop() ?? "";
-      let full: Record<string, unknown> = ds;
-      try {
-        full = await ctx.get<Record<string, unknown>>(
-          `https://bigquery.googleapis.com/bigquery/v2/projects/${p}/datasets/${datasetId}`,
-        );
-      } catch {
-        /* fall back to the listing payload */
-      }
-      const labelsObj = (full["labels"] as Record<string, string> | undefined) ?? {};
-      const labels = Object.entries(labelsObj)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(", ");
-      const friendlyName = String(full["friendlyName"] ?? "");
-      return {
-        id: ctx.id(accountId, "bigquery-dataset", `${p}:${datasetId}`),
-        pluginId: "gcp",
-        resourceTypeId: "bigquery-dataset",
-        accountId,
-        displayName: friendlyName || datasetId,
-        fields: {
-          name: datasetId,
-          friendlyName,
-          location: String(full["location"] ?? ""),
-          description: String(full["description"] ?? ""),
-          defaultTableExpirationMs: Number(full["defaultTableExpirationMs"] ?? 0),
-          defaultPartitionExpirationMs: Number(full["defaultPartitionExpirationMs"] ?? 0),
-          defaultCollation: String(full["defaultCollation"] ?? ""),
-          defaultRoundingMode: String(full["defaultRoundingMode"] ?? ""),
-          isCaseInsensitive: Boolean(full["isCaseInsensitive"] ?? false),
-          storageBillingModel: String(full["storageBillingModel"] ?? ""),
-          maxTimeTravelHours: Number(full["maxTimeTravelHours"] ?? 0),
-          labels,
-          creationTime: formatBqTimestamp(full["creationTime"]),
-          lastModifiedTime: formatBqTimestamp(full["lastModifiedTime"]),
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: `${p}:${datasetId}`,
-        createdAt: ctx.now(),
-        updatedAt: ctx.now(),
-      };
-    }),
-  );
+  return mapWithConcurrency(items, BQ_HYDRATE_CONCURRENCY, async (ds) => {
+    const ref = ds["datasetReference"] as Record<string, string> | undefined;
+    const datasetId = ref?.["datasetId"] ?? String(ds["id"]).split(":").pop() ?? "";
+    const hydrated = await hydrate(
+      ctx,
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${p}/datasets/${datasetId}`,
+    );
+    const full = hydrated ?? ds;
+    const labelsObj = (full["labels"] as Record<string, string> | undefined) ?? {};
+    const labels = Object.entries(labelsObj)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(", ");
+    const friendlyName = String(full["friendlyName"] ?? "");
+    return {
+      id: ctx.id(accountId, "bigquery-dataset", `${p}:${datasetId}`),
+      pluginId: "gcp",
+      resourceTypeId: "bigquery-dataset",
+      accountId,
+      displayName: friendlyName || datasetId,
+      fields: keepListedFields(hydrated !== undefined, BQ_DATASET_LIST_FIELDS, {
+        name: datasetId,
+        friendlyName,
+        location: String(full["location"] ?? ""),
+        description: String(full["description"] ?? ""),
+        defaultTableExpirationMs: Number(full["defaultTableExpirationMs"] ?? 0),
+        defaultPartitionExpirationMs: Number(full["defaultPartitionExpirationMs"] ?? 0),
+        defaultCollation: String(full["defaultCollation"] ?? ""),
+        defaultRoundingMode: String(full["defaultRoundingMode"] ?? ""),
+        isCaseInsensitive: Boolean(full["isCaseInsensitive"] ?? false),
+        storageBillingModel: String(full["storageBillingModel"] ?? ""),
+        maxTimeTravelHours: Number(full["maxTimeTravelHours"] ?? 0),
+        labels,
+        creationTime: formatBqTimestamp(full["creationTime"]),
+        lastModifiedTime: formatBqTimestamp(full["lastModifiedTime"]),
+      }),
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: `${p}:${datasetId}`,
+      createdAt: ctx.now(),
+      updatedAt: ctx.now(),
+    };
+  });
 }
 
 async function hydrateBqTable(
@@ -97,14 +139,11 @@ async function hydrateBqTable(
 ): Promise<ResourceInstance> {
   const ref = listItem["tableReference"] as Record<string, string> | undefined;
   const tableId = ref?.["tableId"] ?? "";
-  let full: Record<string, unknown> = listItem;
-  try {
-    full = await ctx.get<Record<string, unknown>>(
-      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables/${tableId}`,
-    );
-  } catch {
-    /* fall back to listing payload (missing numRows / numBytes) */
-  }
+  const hydrated = await hydrate(
+    ctx,
+    `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables/${tableId}`,
+  );
+  const full = hydrated ?? listItem;
 
   const schema = full["schema"] as { fields?: Array<Record<string, unknown>> } | undefined;
   const tableConstraints = full["tableConstraints"] as
@@ -144,7 +183,7 @@ async function hydrateBqTable(
     accountId,
     displayName: friendlyName || tableId,
     parentResourceId: ctx.id(accountId, "bigquery-dataset", `${project}:${datasetId}`),
-    fields: {
+    fields: keepListedFields(hydrated !== undefined, BQ_TABLE_LIST_FIELDS, {
       name: tableId,
       // Fully-qualified, matching a dataset's external id: dataset names are
       // only unique within a project, so the bare id would be ambiguous.
@@ -173,7 +212,7 @@ async function hydrateBqTable(
       numLongTermPhysicalBytes: formatBqBytes(full["numLongTermPhysicalBytes"]),
       numTimeTravelPhysicalBytes: formatBqBytes(full["numTimeTravelPhysicalBytes"]),
       schemaJson: schema ? JSON.stringify(schema.fields ?? [], null, 2) : "",
-    },
+    }),
     resolvedOutputs: {},
     secretStates: [],
     externalId,
@@ -214,7 +253,9 @@ export async function listBigQueryTables(
         "tables",
       );
       // Hydrate each table with GET: list endpoint omits storage + schema.
-      return Promise.all(tables.map((t) => hydrateBqTable(ctx, accountId, p, datasetId, t)));
+      return mapWithConcurrency(tables, BQ_HYDRATE_CONCURRENCY, (t) =>
+        hydrateBqTable(ctx, accountId, p, datasetId, t),
+      );
     },
     {
       sequential: true,

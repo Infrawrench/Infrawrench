@@ -190,6 +190,27 @@ function answerOfRegion(err: unknown): FanOutAnswer {
   return isPermissionRefusal(err) ? "refused" : "failed";
 }
 
+/** Whether a location-scoped read refused the location rather than failing. */
+export function isRegionRefusal(err: unknown): boolean {
+  return answerOfRegion(err) === "refused";
+}
+
+/** `items.map(read)` with at most `limit` reads in flight, in the order given. */
+export async function mapWithConcurrency<P, T>(
+  items: readonly P[],
+  limit: number,
+  read: (item: P) => Promise<T>,
+): Promise<T[]> {
+  const out: T[] = new Array<T>(items.length);
+  // One iterator shared by every worker, so each item is taken exactly once.
+  const queue = items.entries();
+  const worker = async (): Promise<void> => {
+    for (const [index, item] of queue) out[index] = await read(item);
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 async function readFanOut<P, T>(
   parents: readonly P[],
   read: (parent: P) => Promise<T[]>,

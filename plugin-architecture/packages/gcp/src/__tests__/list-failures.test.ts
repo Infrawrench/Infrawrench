@@ -358,3 +358,114 @@ describe.each([
     await expect(list(ctx, ACCT, PROJ)).rejects.toBe(err);
   });
 });
+
+describe("BigQuery hydration when a dataset's or table's GET fails", () => {
+  const DATASET = {
+    datasetReference: { datasetId: "d" },
+    friendlyName: "Dataset",
+    location: "US",
+    labels: { team: "data" },
+  };
+  const TABLE = {
+    tableReference: { tableId: "t" },
+    friendlyName: "Table",
+    type: "TABLE",
+    labels: { team: "data" },
+    creationTime: "1700000000000",
+    clustering: { fields: ["a"] },
+  };
+
+  function bqCtx(get: (url: string) => Promise<unknown>): ListerContext {
+    const ctx = makeCtx((url) => (url.endsWith("/datasets") ? [DATASET] : [TABLE]));
+    ctx.get = vi.fn(get) as ListerContext["get"];
+    return ctx;
+  }
+
+  it.each([
+    ["a 429", apiError(429)],
+    ["a 503", apiError(503)],
+    ["a 403", apiError(403, "PERMISSION_DENIED")],
+  ])("leaves a dataset's detail fields out on %s, so the stored ones stay", async (_, err) => {
+    const rows = await listers.listBigQueryDatasets(
+      bqCtx(async () => {
+        throw err;
+      }),
+      ACCT,
+      PROJ,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.fields).toEqual({
+      name: "d",
+      friendlyName: "Dataset",
+      location: "US",
+      labels: "team=data",
+    });
+  });
+
+  it("writes every field of a dataset that hydrated", async () => {
+    const rows = await listers.listBigQueryDatasets(
+      bqCtx(async () => ({ ...DATASET, description: "about", maxTimeTravelHours: "168" })),
+      ACCT,
+      PROJ,
+    );
+    expect(rows[0]!.fields).toMatchObject({ description: "about", maxTimeTravelHours: 168 });
+  });
+
+  it.each([
+    ["a 429", apiError(429)],
+    ["a 503", apiError(503)],
+    ["a 404", apiError(404)],
+  ])("leaves a table's detail fields out on %s, so the stored ones stay", async (_, err) => {
+    const rows = await listers.listBigQueryTables(
+      bqCtx(async () => {
+        throw err;
+      }),
+      ACCT,
+      PROJ,
+      "d",
+    );
+    expect(rows).toHaveLength(1);
+    const fields = rows[0]!.fields;
+    for (const key of ["numRows", "numBytes", "schemaJson", "description", "location"]) {
+      expect(fields).not.toHaveProperty(key);
+    }
+    expect(fields).toMatchObject({
+      name: "t",
+      datasetId: `${PROJ}:d`,
+      type: "TABLE",
+      labels: "team=data",
+      clusteringFields: "a",
+      expirationTime: "NEVER",
+    });
+  });
+
+  it("writes a table's storage fields when it hydrated", async () => {
+    const rows = await listers.listBigQueryTables(
+      bqCtx(async () => ({ ...TABLE, numRows: "5", location: "US" })),
+      ACCT,
+      PROJ,
+      "d",
+    );
+    expect(rows[0]!.fields).toMatchObject({ numRows: "5", location: "US" });
+  });
+
+  it("hydrates a large dataset's tables a few at a time", async () => {
+    const ctx = makeCtx(() =>
+      Array.from({ length: 40 }, (_, i) => ({ tableReference: { tableId: `t${i}` } })),
+    );
+    let inFlight = 0;
+    let most = 0;
+    ctx.get = vi.fn(async () => {
+      inFlight += 1;
+      most = Math.max(most, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight -= 1;
+      return {};
+    }) as ListerContext["get"];
+    const rows = await listers.listBigQueryTables(ctx, ACCT, PROJ, "d");
+    expect(rows.map((r) => r.externalId)).toEqual(
+      Array.from({ length: 40 }, (_, i) => `${PROJ}:d/t${i}`),
+    );
+    expect(most).toBeLessThanOrEqual(8);
+  });
+});
