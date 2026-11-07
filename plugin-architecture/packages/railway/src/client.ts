@@ -348,25 +348,17 @@ export class RailwayClient implements PluginClient {
       now = parents;
       later = [];
     }
-    let readOne = false;
-    let refused: unknown;
     const lists = await mapLimit(now, FAN_OUT, async (p) => {
       try {
-        const rows = await read(p);
-        readOne = true;
-        return rows;
+        return await read(p);
       } catch (e) {
-        if (isStatus(e, 404)) {
-          readOne = true;
-          return [];
-        }
+        if (isStatus(e, 404)) return [];
         if (!isStatus(e, 403)) throw e;
-        if (!reportUnreadListPart({ parentResourceIds: [parentId(p)] })) refused = e;
+        // A host that keeps no track (the desktop) answers false, and there the refusal shows.
+        if (!reportUnreadListPart({ parentResourceIds: [parentId(p)] })) throw e;
         return [];
       }
     });
-    // Refused throughout on a host that keeps no track (the desktop): a missing scope to show.
-    if (refused !== undefined && !readOne) throw refused;
     return lists.flat();
   }
 

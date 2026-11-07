@@ -126,6 +126,21 @@ describe("per-service fan-out", () => {
     expect(parts).toEqual([{ parentResourceIds: [`${ACC}:environment:e1`] }]);
   });
 
+  it("shows one environment's refusal on a host that keeps no track", async () => {
+    const { c } = client(
+      routes(
+        () => project({ environments: conn([env("e1", []), env("e2", [])]) }),
+        (call) => {
+          if (!call.query.includes("query Variables(")) return undefined;
+          if (call.variables["environmentId"] === "e1")
+            return { data: null, errors: [{ message: "Not Authorized" }] };
+          return { data: { variables: { TOKEN: "x" } } };
+        },
+      ),
+    );
+    await expect(c.listResources("shared-variable", ACC)).rejects.toMatchObject({ status: 403 });
+  });
+
   it("shows a refusal on a host that keeps no track when every service is refused", async () => {
     const { c } = client(
       routes(
