@@ -28,12 +28,7 @@ import type {
   SidebarItemSchema,
   VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
-import {
-  externalIdOf,
-  pathEncode,
-  rethrowIncompleteList,
-  unencodedSegment,
-} from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
 import { listSecretDetectionFindings, resolveSecretDetectionFinding } from "./secret-detection.js";
 import {
@@ -1911,8 +1906,7 @@ export class GitLabClient implements PluginClient {
     name: string,
     o: { push: number; merge: number; force: boolean; codeOwners: boolean },
   ): Promise<GlProtectedBranch> {
-    // Not encoded: `ownerId` reaches here raw on an edit, unlike every other path.
-    return this.api.post(`/projects/${unencodedSegment(String(projectId))}/protected_branches`, {
+    return this.api.post(`/projects/${pathEncode(projectId)}/protected_branches`, {
       body: {
         name,
         push_access_level: o.push,

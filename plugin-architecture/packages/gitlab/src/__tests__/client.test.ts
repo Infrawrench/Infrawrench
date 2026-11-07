@@ -275,6 +275,25 @@ describe("listing", () => {
 });
 
 describe("edits", () => {
+  it("re-protects a branch on the same project path it unprotected", async () => {
+    const { c, calls } = client((call) => {
+      if (call.method === "DELETE") return { status: 204 };
+      if (call.method === "POST") return { name: "main" };
+      if (call.url.pathname === "/api/v4/projects") return [];
+      return { name: "main", push_access_levels: [{ access_level: 40 }] };
+    });
+    await c.updateResource("protected-branch", "acc:protected-branch:a?b/main", ACC, {
+      pushAccess: "Maintainers",
+    });
+    const paths = calls
+      .filter((x) => x.method !== "GET")
+      .map((x) => `${x.method} ${x.url.pathname}`);
+    expect(paths).toEqual([
+      "DELETE /api/v4/projects/a%3Fb/protected_branches/main",
+      "POST /api/v4/projects/a%3Fb/protected_branches",
+    ]);
+  });
+
   it("keeps a variable's current value when only settings change", async () => {
     const { c, calls } = client((call) => {
       if (call.method === "GET" && call.url.pathname === "/api/v4/projects/7/variables/TOKEN") {
