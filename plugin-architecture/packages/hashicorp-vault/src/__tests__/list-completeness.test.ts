@@ -367,3 +367,63 @@ describe("a 200 that is not a LIST answer", () => {
     expect(await c.listResources("vault-policy", ACCOUNT)).toEqual([]);
   });
 });
+
+describe("a credential refused for a whole type", () => {
+  const refused = { status: 403, body: { errors: ["permission denied"] } };
+
+  it("keeps the rows with no error when the token itself still works", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === "/v1/auth/token/lookup-self"
+        ? { data: { display_name: "t" } }
+        : refused,
+    );
+    for (const type of ["vault-audit-device", "vault-token", "vault-lease", "vault-policy"]) {
+      unread.mockClear();
+      expect(await c.listResources(type, ACCOUNT)).toEqual([]);
+      expect(unreadIdPrefixes()).toEqual([""]);
+    }
+  });
+
+  it("keeps the rows when every KV folder refuses and sys/mounts does not", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname === "/v1/sys/mounts") return KV_MOUNTS;
+      if (call.url.pathname === "/v1/auth/token/lookup-self") return { data: {} };
+      return refused;
+    });
+    expect(await c.listResources("vault-kv-secret", ACCOUNT)).toEqual([]);
+    expect(unreadIdPrefixes()).toEqual([""]);
+  });
+
+  it("keeps the rows when listing works and every lookup is refused", async () => {
+    const { c } = client((call) => {
+      if (isList(call)) return { data: { keys: ["a", "b"] } };
+      if (call.url.pathname === "/v1/auth/token/lookup-self") return { data: {} };
+      return refused;
+    });
+    expect(await c.listResources("vault-token", ACCOUNT)).toEqual([]);
+    expect(unreadIdPrefixes()).toEqual([""]);
+  });
+
+  it("still fails when the token itself is dead", async () => {
+    const { c } = client(() => refused);
+    await expect(c.listResources("vault-audit-device", ACCOUNT)).rejects.toThrow(
+      "permission denied",
+    );
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("still shows the refusal where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const { c } = client((call) =>
+      call.url.pathname === "/v1/auth/token/lookup-self" ? { data: {} } : refused,
+    );
+    await expect(c.listResources("vault-audit-device", ACCOUNT)).rejects.toThrow(
+      "permission denied",
+    );
+  });
+
+  it("does not hide a 500", async () => {
+    const { c } = client(() => ({ status: 500, body: { errors: ["boom"] } }));
+    await expect(c.listResources("vault-audit-device", ACCOUNT)).rejects.toThrow("boom");
+  });
+});

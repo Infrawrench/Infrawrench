@@ -16,7 +16,7 @@ import type {
   SecretVersionMutation,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
+import { decodePromptArgs, externalIdOf, reportUnreadListPart } from "@infrawrench/plugin-base";
 import type { VaultContext } from "./api.js";
 import {
   encodePath,
@@ -373,133 +373,150 @@ export class VaultClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
+  /**
+   * Vault answers 403 for a missing capability and for a dead token alike, so only
+   * asking about the token itself tells whether this is a restricted token, which is
+   * normal: listing tokens, leases and audit devices needs sudo.
+   */
+  private tokenWorks(): Promise<boolean> {
+    return vaultFetch(this.ctx, "/auth/token/lookup-self").then(
+      () => true,
+      () => false,
+    );
+  }
+
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      switch (typeId) {
-        case "vault-cluster":
-          return [await this.cluster(accountId)];
-        case "vault-mount":
-          return Object.entries(await this.mounts(true)).map(([p, m]) => mapMount(accountId, p, m));
-        case "vault-kv-secret": {
-          const roots = (await this.mountsOfType("kv-v2")).map((mount) => ({
-            mount,
-            path: `/${encodePath(mount)}/metadata/`,
-            idPrefix: `${accountId}:vault-kv-secret:${mount}${SEP}`,
-          }));
-          let detailed = 0;
-          return mapLimit(
-            await walkFolders(this.ctx, roots, listDeadline()),
-            6,
-            async ({ root, key }) => {
-              if (detailed++ >= MAX_KV_METADATA) return mapKvSecret(accountId, root.mount, key);
-              return mapKvSecret(
-                accountId,
-                root.mount,
-                key,
-                await this.kvMetadata(root.mount, key).catch(() => undefined),
-              );
-            },
-          );
-        }
-        case "vault-auth-method": {
-          const res = payload<Record<string, VaultMount>>(await vaultFetch(this.ctx, "/sys/auth"));
-          return Object.entries(res)
-            .filter(([k, v]) => k.endsWith("/") && v && typeof v === "object" && "type" in v)
-            .map(([p, m]) => mapAuthMethod(accountId, p, m));
-        }
-        case "vault-policy": {
-          const names = await vaultList(this.ctx, "/sys/policies/acl");
-          return mapLimit(names, 6, async (n) => {
-            const text = await this.policyText(n).catch(() => undefined);
-            return mapPolicy(accountId, n, text);
-          });
-        }
-        case "vault-pki-role": {
-          const out: ResourceInstance[] = [];
-          for (const mount of await this.mountsOfType("pki")) {
-            const names = await vaultList(this.ctx, `/${encodePath(mount)}/roles`);
-            out.push(
-              ...(await mapLimit(names, 6, async (n) =>
-                mapPkiRole(
-                  accountId,
-                  mount,
-                  n,
-                  await vaultFetch<{ data?: VaultPkiRole }>(
-                    this.ctx,
-                    `/${encodePath(mount)}/roles/${encodeURIComponent(n)}`,
-                  )
-                    .then((r) => r?.data)
-                    .catch(() => undefined),
-                ),
-              )),
-            );
-          }
-          return out;
-        }
-        case "vault-pki-cert": {
-          const roots = (await this.mountsOfType("pki")).map((mount) => ({
-            mount,
-            path: `/${encodePath(mount)}/certs`,
-            idPrefix: `${accountId}:vault-pki-cert:${mount}${SEP}`,
-          }));
-          const deadline = listDeadline();
-          return readWithinBudget(
-            await walkFolders(this.ctx, roots, deadline),
-            ({ root, key }) => `${root.idPrefix}${hyphenSerial(key)}`,
-            deadline,
-            async ({ root, key }) => {
-              const c = await this.cert(root.mount, key).catch(
-                () => ({ pem: "" }) as { pem: string; revocation?: number },
-              );
-              return mapPkiCert(
-                accountId,
-                root.mount,
-                key,
-                parsePemCertificate(c.pem),
-                c.revocation,
-              );
-            },
-          );
-        }
-        case "vault-lease": {
-          const deadline = listDeadline();
-          const idPrefix = `${accountId}:vault-lease:`;
-          return readWithinBudget(
-            await walkFolders(this.ctx, [{ path: "/sys/leases/lookup/", idPrefix }], deadline),
-            ({ key }) => `${idPrefix}${key}`,
-            deadline,
-            async ({ key }) =>
-              mapLease(accountId, key, await this.lease(key).catch(() => undefined)),
-          );
-        }
-        case "vault-token": {
-          const deadline = listDeadline();
-          const idPrefix = `${accountId}:vault-token:`;
-          return readWithinBudget(
-            await walkFolders(this.ctx, [{ path: "/auth/token/accessors", idPrefix }], deadline),
-            ({ key }) => `${idPrefix}${key}`,
-            deadline,
-            async ({ key }) => {
-              const token = await this.tokenByAccessor(key).catch((err: unknown) => {
-                if (tokenIsGone(err)) return undefined;
-                throw err;
-              });
-              return token && mapToken(accountId, token);
-            },
-          );
-        }
-        case "vault-audit-device": {
-          const res = payload<Record<string, VaultAuditDevice>>(
-            await vaultFetch(this.ctx, "/sys/audit"),
-          );
-          return Object.entries(res)
-            .filter(([k, v]) => k.endsWith("/") && v && typeof v === "object" && "type" in v)
-            .map(([p, a]) => mapAudit(accountId, p, a));
-        }
-        default:
-          throw new Error(`Vault plugin: unknown resource type "${typeId}"`);
+      try {
+        return await this.listType(typeId, accountId);
+      } catch (err) {
+        if (statusOf(err) !== 403 || !(await this.tokenWorks())) throw err;
+        // This type's stored rows stay. A host that keeps no track (the desktop) answers
+        // false, and there the refusal should still show.
+        if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+        return [];
       }
     });
+  }
+
+  private async listType(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "vault-cluster":
+        return [await this.cluster(accountId)];
+      case "vault-mount":
+        return Object.entries(await this.mounts(true)).map(([p, m]) => mapMount(accountId, p, m));
+      case "vault-kv-secret": {
+        const roots = (await this.mountsOfType("kv-v2")).map((mount) => ({
+          mount,
+          path: `/${encodePath(mount)}/metadata/`,
+          idPrefix: `${accountId}:vault-kv-secret:${mount}${SEP}`,
+        }));
+        let detailed = 0;
+        return mapLimit(
+          await walkFolders(this.ctx, roots, listDeadline()),
+          6,
+          async ({ root, key }) => {
+            if (detailed++ >= MAX_KV_METADATA) return mapKvSecret(accountId, root.mount, key);
+            return mapKvSecret(
+              accountId,
+              root.mount,
+              key,
+              await this.kvMetadata(root.mount, key).catch(() => undefined),
+            );
+          },
+        );
+      }
+      case "vault-auth-method": {
+        const res = payload<Record<string, VaultMount>>(await vaultFetch(this.ctx, "/sys/auth"));
+        return Object.entries(res)
+          .filter(([k, v]) => k.endsWith("/") && v && typeof v === "object" && "type" in v)
+          .map(([p, m]) => mapAuthMethod(accountId, p, m));
+      }
+      case "vault-policy": {
+        const names = await vaultList(this.ctx, "/sys/policies/acl");
+        return mapLimit(names, 6, async (n) => {
+          const text = await this.policyText(n).catch(() => undefined);
+          return mapPolicy(accountId, n, text);
+        });
+      }
+      case "vault-pki-role": {
+        const out: ResourceInstance[] = [];
+        for (const mount of await this.mountsOfType("pki")) {
+          const names = await vaultList(this.ctx, `/${encodePath(mount)}/roles`);
+          out.push(
+            ...(await mapLimit(names, 6, async (n) =>
+              mapPkiRole(
+                accountId,
+                mount,
+                n,
+                await vaultFetch<{ data?: VaultPkiRole }>(
+                  this.ctx,
+                  `/${encodePath(mount)}/roles/${encodeURIComponent(n)}`,
+                )
+                  .then((r) => r?.data)
+                  .catch(() => undefined),
+              ),
+            )),
+          );
+        }
+        return out;
+      }
+      case "vault-pki-cert": {
+        const roots = (await this.mountsOfType("pki")).map((mount) => ({
+          mount,
+          path: `/${encodePath(mount)}/certs`,
+          idPrefix: `${accountId}:vault-pki-cert:${mount}${SEP}`,
+        }));
+        const deadline = listDeadline();
+        return readWithinBudget(
+          await walkFolders(this.ctx, roots, deadline),
+          ({ root, key }) => `${root.idPrefix}${hyphenSerial(key)}`,
+          deadline,
+          async ({ root, key }) => {
+            const c = await this.cert(root.mount, key).catch(
+              () => ({ pem: "" }) as { pem: string; revocation?: number },
+            );
+            return mapPkiCert(accountId, root.mount, key, parsePemCertificate(c.pem), c.revocation);
+          },
+        );
+      }
+      case "vault-lease": {
+        const deadline = listDeadline();
+        const idPrefix = `${accountId}:vault-lease:`;
+        return readWithinBudget(
+          await walkFolders(this.ctx, [{ path: "/sys/leases/lookup/", idPrefix }], deadline),
+          ({ key }) => `${idPrefix}${key}`,
+          deadline,
+          async ({ key }) => mapLease(accountId, key, await this.lease(key).catch(() => undefined)),
+        );
+      }
+      case "vault-token": {
+        const deadline = listDeadline();
+        const idPrefix = `${accountId}:vault-token:`;
+        return readWithinBudget(
+          await walkFolders(this.ctx, [{ path: "/auth/token/accessors", idPrefix }], deadline),
+          ({ key }) => `${idPrefix}${key}`,
+          deadline,
+          async ({ key }) => {
+            const token = await this.tokenByAccessor(key).catch((err: unknown) => {
+              if (tokenIsGone(err)) return undefined;
+              throw err;
+            });
+            return token && mapToken(accountId, token);
+          },
+        );
+      }
+      case "vault-audit-device": {
+        const res = payload<Record<string, VaultAuditDevice>>(
+          await vaultFetch(this.ctx, "/sys/audit"),
+        );
+        return Object.entries(res)
+          .filter(([k, v]) => k.endsWith("/") && v && typeof v === "object" && "type" in v)
+          .map(([p, a]) => mapAudit(accountId, p, a));
+      }
+      default:
+        throw new Error(`Vault plugin: unknown resource type "${typeId}"`);
+    }
   }
 
   // -------------------------------------------------------------------------
