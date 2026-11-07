@@ -47,10 +47,8 @@ afterEach(() => {
 describe("attachResource", () => {
   it("applies a named transformation to an upload preset", async () => {
     installFetch((url, init) => {
-      if (url.endsWith("/transformations?named=true&max_results=500")) {
-        return jsonResponse({
-          transformations: [{ name: "thumb", named: true, used: false, derived: [] }],
-        });
+      if (url.endsWith("/transformations/thumb?max_results=500")) {
+        return jsonResponse({ name: "thumb", named: true, used: false, derived: [] });
       }
       if (url.endsWith("/upload_presets?max_results=500") && init?.method !== "PUT") {
         return jsonResponse({
@@ -82,10 +80,8 @@ describe("attachResource", () => {
     // field was `"\"t_thumb\""` and this comparison could never hold; every
     // attach re-issued the write against an already-attached preset.
     installFetch((url, init) => {
-      if (url.endsWith("/transformations?named=true&max_results=500")) {
-        return jsonResponse({
-          transformations: [{ name: "thumb", named: true, used: false, derived: [] }],
-        });
+      if (url.endsWith("/transformations/thumb?max_results=500")) {
+        return jsonResponse({ name: "thumb", named: true, used: false, derived: [] });
       }
       if (url.endsWith("/upload_presets?max_results=500") && init?.method !== "PUT") {
         return jsonResponse({
@@ -467,6 +463,73 @@ describe("listResources", () => {
   });
 });
 
+describe("a transformation's derived asset count", () => {
+  const id = `${ACCOUNT}:transformation:t_thumb`;
+
+  it("is left out of a listing, whose answer does not carry it", async () => {
+    installFetch(() =>
+      jsonResponse({ transformations: [{ name: "t_thumb", named: true, used: true }] }),
+    );
+    const [listed] = await client().listResources("transformation", ACCOUNT);
+    expect(listed?.fields).not.toHaveProperty("usageCount");
+    expect(listed?.fields["used"]).toBe(true);
+  });
+
+  it("comes from the single transformation's derived assets", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/transformations/t_thumb?max_results=500")) {
+        return jsonResponse({
+          name: "t_thumb",
+          named: true,
+          used: true,
+          allowed_for_strict: true,
+          derived: [{ id: "d1" }, { id: "d2" }],
+        });
+      }
+      throw new Error(`unrouted: GET ${url}`);
+    });
+    const resource = await client().getResource("transformation", id, ACCOUNT);
+    expect(resource.id).toBe(id);
+    expect(resource.fields).toMatchObject({ used: true, allowedForStrict: true, usageCount: 2 });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("falls back to the bare name, keeping the id the list gave", async () => {
+    installFetch((url) => {
+      if (url.includes("/transformations/t_thumb")) return jsonResponse({ error: {} }, 404);
+      if (url.endsWith("/transformations/thumb?max_results=500")) {
+        return jsonResponse({ name: "thumb", named: true, used: false, derived: [{ id: "d1" }] });
+      }
+      throw new Error(`unrouted: GET ${url}`);
+    });
+    const resource = await client().getResource("transformation", id, ACCOUNT);
+    expect(resource.id).toBe(id);
+    expect(resource.fields).toMatchObject({ name: "t_thumb", usageCount: 1 });
+  });
+
+  it("does not hide a failure behind the bare name", async () => {
+    installFetch(() => jsonResponse("Server Error", 500));
+    await expect(client().getResource("transformation", id, ACCOUNT)).rejects.toThrow(/500/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("shows as a lower bound when there are more than one page holds", async () => {
+    installFetch(() =>
+      jsonResponse({
+        name: "t_thumb",
+        named: true,
+        used: true,
+        derived: Array.from({ length: 500 }, (_, i) => ({ id: `d${i}` })),
+        next_cursor: "more",
+      }),
+    );
+    const resource = await client().getResource("transformation", id, ACCOUNT);
+    expect(calls).toHaveLength(1);
+    const detail = JSON.stringify(client().renderDetail(resource));
+    expect(detail).toContain('"key":"Derived Assets","value":"500+"');
+  });
+});
+
 describe("webhook notifications (triggers)", () => {
   it("creates a trigger with a parsed JSONLogic filter", async () => {
     installFetch((url, init) => {
@@ -631,8 +694,8 @@ describe("edits", () => {
   it("sends a new transformation definition as unsafe_update", async () => {
     installFetch((url, init) => {
       if (init?.method === "PUT") return jsonResponse({ message: "updated" });
-      if (url.includes("/transformations?named=true")) {
-        return jsonResponse({ transformations: [{ name: "thumb", named: true, used: true }] });
+      if (url.endsWith("/transformations/thumb?max_results=500")) {
+        return jsonResponse({ name: "thumb", named: true, used: true, derived: [] });
       }
       throw new Error(`unrouted: ${init?.method ?? "GET"} ${url}`);
     });

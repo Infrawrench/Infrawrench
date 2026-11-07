@@ -27,11 +27,10 @@ export type CloudinaryUploadPresetPage =
   | (CloudinaryResponse<"listUploadPresets"> & { upload_presets?: CloudinaryUploadPreset[] })
   | CloudinaryUploadPreset[];
 
-/** `derived` is only on a single transformation in the document, not on a listed one. */
 export type CloudinaryTransformation = ApiListItem<
   operations["listTransformations"],
   "transformations"
-> & { derived?: object[] };
+>;
 
 /** A mapping as the plugin keeps it: creating one answers no template, which the form supplies. */
 export type CloudinaryUploadMapping = Pick<

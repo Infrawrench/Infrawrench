@@ -7,9 +7,8 @@ export const TransformationResourceType = rt({
   fields: [
     f("name", "Name", { editable: false }),
     f("named", "Named", { kind: "boolean", required: false, editable: false }),
-    f("used", "Used", { kind: "boolean", required: false, editable: false }),
+    f("used", "Used", { showcase: true, kind: "boolean", required: false, editable: false }),
     f("usageCount", "Usage Count", {
-      showcase: true,
       kind: "number",
       required: false,
       editable: false,

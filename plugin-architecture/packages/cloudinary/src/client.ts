@@ -27,6 +27,7 @@ import {
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import {
+  CloudinaryApiError,
   createCloudinaryApis,
   cursorQuery,
   LIST_PAGES,
@@ -264,6 +265,11 @@ export class CloudinaryClient implements PluginClient {
         // The whole `{resource_type}/{type}/{public_id}`, whose slashes are real, as one segment.
         const data = await this.api.get(`/resources/${unencodedSegment(assetPath)}`);
         return this.mapMediaAsset(data, accountId);
+      }
+      if (typeId === "transformation") {
+        const name = resourceId.split(":").slice(2).join(":");
+        if (!name) throw new Error("Cannot parse transformation name");
+        return this.getTransformation(name, accountId);
       }
       // For other types, fall back to listing
       const all = await runPluginEffect(this.listResources(typeId, accountId));
@@ -1527,7 +1533,12 @@ export class CloudinaryClient implements PluginClient {
               { key: "Named", value: f["named"] ? "Yes" : "No" },
               { key: "Used", value: f["used"] ? "Yes" : "No" },
               ...(f["usageCount"] != null
-                ? [{ key: "Derived Assets", value: String(f["usageCount"]) }]
+                ? [
+                    {
+                      key: "Derived Assets",
+                      value: `${String(f["usageCount"])}${f["usageCountHasMore"] ? "+" : ""}`,
+                    },
+                  ]
                 : []),
               ...(f["allowedForStrict"] != null
                 ? [{ key: "Allowed for Strict", value: f["allowedForStrict"] ? "Yes" : "No" }]
@@ -1754,7 +1765,12 @@ export class CloudinaryClient implements PluginClient {
       { query: { named: true, max_results: 500 } },
     );
 
-    return transformations.map((t) => ({
+    return transformations.map((t) => this.mapTransformation(t, accountId));
+  }
+
+  private mapTransformation(t: CloudinaryTransformation, accountId: string): ResourceInstance {
+    const now = new Date().toISOString();
+    return {
       id: `${accountId}:transformation:${t.name}`,
       pluginId: "cloudinary",
       resourceTypeId: "transformation",
@@ -1764,15 +1780,42 @@ export class CloudinaryClient implements PluginClient {
         name: t.name,
         named: t.named ?? false,
         used: t.used ?? false,
-        usageCount: t.derived?.length ?? 0,
         ...(t.allowed_for_strict != null ? { allowedForStrict: t.allowed_for_strict } : {}),
       },
       resolvedOutputs: { transformationName: t.name },
       secretStates: [],
       externalId: t.name,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }));
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  /**
+   * One transformation with its derived asset count, which only this route has, so
+   * a sync cannot show it without a request per transformation. One page answers it:
+   * past 500 the count reads as "500+" rather than cost a request per 500 assets.
+   */
+  private async getTransformation(name: string, accountId: string): Promise<ResourceInstance> {
+    const read = (reference: string) =>
+      this.api.get(`/transformations/${pathEncode(reference)}`, { query: { max_results: 500 } });
+    // The list names a named one t_thumb, where the document's examples of this route
+    // give the bare name. Either way the id stays the one the list gave.
+    const details = await read(name).catch((err: unknown) => {
+      if (err instanceof CloudinaryApiError && err.status === 404 && name.startsWith("t_")) {
+        return read(name.slice(2));
+      }
+      throw err;
+    });
+    const mapped = this.mapTransformation({ ...details, name }, accountId);
+    if (!Array.isArray(details.derived)) return mapped;
+    return {
+      ...mapped,
+      fields: {
+        ...mapped.fields,
+        usageCount: details.derived.length,
+        ...(details.next_cursor ? { usageCountHasMore: true } : {}),
+      },
+    };
   }
 
   private mapTrigger(trigger: CloudinaryTrigger, accountId: string): ResourceInstance {

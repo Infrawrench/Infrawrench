@@ -156,7 +156,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["getTransformation"];
         put: operations["updateTransformation"];
         post: operations["createTransformation"];
         delete: operations["deleteTransformation"];
@@ -551,6 +551,29 @@ export interface components {
         };
         tags_param: string | string[];
         tags_response: string[] | null;
+        transformation_info: {
+            allowed_for_strict?: boolean;
+            derived?: {
+                bytes?: number;
+                format?: string;
+                id?: string;
+                public_id?: string;
+                resource_type?: string;
+                secure_url?: string;
+                type?: string;
+                url?: string;
+            }[];
+            info?: {
+                crop?: string;
+                gravity?: string;
+                height?: number | string;
+                width?: number | string;
+            }[];
+            name?: string;
+            named?: boolean;
+            next_cursor?: string;
+            used?: boolean;
+        };
         transformation_list_response: {
             next_cursor?: string | null;
             transformations?: components["schemas"]["transformation_summary"][];
@@ -1095,6 +1118,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["transformation_list_response"];
+                };
+            };
+        };
+    };
+    getTransformation: {
+        parameters: {
+            query?: {
+                max_results?: number;
+                next_cursor?: string;
+            };
+            header?: never;
+            path: {
+                cloud_name: components["parameters"]["cloud_name"];
+                transformation: components["parameters"]["transformation"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["transformation_info"];
                 };
             };
         };
