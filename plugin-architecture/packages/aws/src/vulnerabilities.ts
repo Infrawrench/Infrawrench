@@ -29,6 +29,7 @@
  */
 
 import {
+  ListTruncatedError,
   normalizeVulnerabilityFindings,
   normalizeVulnerabilitySeverity,
   VulnerabilityAccessError,
@@ -49,12 +50,11 @@ const INSPECTOR_ENABLE_HELP = {
 };
 
 /**
- * Pages read per region before stopping. With `maxResults: 100` this is
- * thousands of findings per region; the walk is sorted by severity so a bound
- * that bites drops the least severe first. It can bite, which is why the
- * manifest declares `partial: true`.
+ * Pages read per region before refusing. With `maxResults: 100` this is 50,000
+ * findings a region, the most the host stores for an account, so a region past
+ * it could not be stored whole anyway.
  */
-export const MAX_PAGES_PER_REGION = 200;
+export const MAX_PAGES_PER_REGION = 500;
 
 /** Regions read in parallel: the same bound quotas.ts uses. */
 const REGION_CONCURRENCY = 8;
@@ -371,9 +371,14 @@ async function readRegion(ctx: AwsVulnerabilityContext, region: string): Promise
     }
     for (const f of res.findings ?? []) out.push(...mapInspectorFinding(f, region));
     nextToken = res.nextToken ?? undefined;
-    if (!nextToken) break;
+    if (!nextToken) return { kind: "ok", findings: out };
   }
-  return { kind: "ok", findings: out };
+  throw new ListTruncatedError({
+    vendor: "Amazon Inspector",
+    path: `/findings/list in ${region}`,
+    items: out.length,
+    maxPages: MAX_PAGES_PER_REGION,
+  });
 }
 
 /**

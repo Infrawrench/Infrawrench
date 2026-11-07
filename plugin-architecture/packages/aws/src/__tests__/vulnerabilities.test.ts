@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { VulnerabilityAccessError } from "@infrawrench/plugin-base";
+import { ListTruncatedError, VulnerabilityAccessError } from "@infrawrench/plugin-base";
 import {
   artifactFor,
   fetchAwsVulnerabilityFindings,
@@ -261,12 +261,12 @@ describe("fetchAwsVulnerabilityFindings", () => {
     ).toBe(true);
   });
 
-  it("stops at the page bound", async () => {
+  it("refuses a region past its page cap instead of reading the rest as fixed", async () => {
     const ctx: AwsVulnerabilityContext = {
       regions: ["us-east-1"],
       listFindings: vi.fn(async () => ({ findings: [], nextToken: "again" })),
     };
-    await fetchAwsVulnerabilityFindings(ctx);
+    await expect(fetchAwsVulnerabilityFindings(ctx)).rejects.toBeInstanceOf(ListTruncatedError);
     expect(ctx.listFindings).toHaveBeenCalledTimes(MAX_PAGES_PER_REGION);
   });
 
