@@ -457,7 +457,7 @@ describe("host transport", () => {
           ? { upload_url: "https://cdn.assemblyai.com/upload/abc" }
           : req.url.includes("/v2/transcript?")
             ? { transcripts: [] }
-            : { id: JOB_ID, ...completedTranscript() },
+            : completedTranscript(),
       ),
     }));
   }
@@ -467,9 +467,7 @@ describe("host transport", () => {
       throw new Error("fetch must not be called");
     });
     const request = hostHttp();
-    const hosted = hostClient(
-      new AssemblyAIClient({ apiKey: "test-key" }, { http: { request } } as never),
-    );
+    const hosted = hostClient(new AssemblyAIClient({ apiKey: "test-key" }, { http: { request } }));
 
     await hosted.listResources("transcript", ACCOUNT);
     await hosted.transcribeAudio("account", "default", ACCOUNT, {
@@ -489,7 +487,7 @@ describe("host transport", () => {
     });
     const request = hostHttp();
     const hosted = hostClient(
-      new AssemblyAIClient({ apiKey: "test-key", caCert: "PEM" }, { http: { request } } as never),
+      new AssemblyAIClient({ apiKey: "test-key", caCert: "PEM" }, { http: { request } }),
     );
 
     await hosted.transcribeAudio("account", "default", ACCOUNT, {
