@@ -1,5 +1,7 @@
 import {
   createApiClient,
+  requireListPage,
+  withCursorPagination,
   type ApiClient,
   type HostServices,
   type HttpHostServices,
@@ -20,6 +22,7 @@ import type { paths } from "./api-types.gen.js";
  */
 
 export const API_HOST = "https://api.baseten.co";
+export const VENDOR = "Baseten";
 
 export class BasetenApiError extends Error {
   readonly status: number;
@@ -109,7 +112,7 @@ export function createBasetenApi(
   services: HostServices | undefined,
 ): BasetenApi {
   return createApiClient<paths>({
-    vendor: "Baseten",
+    vendor: VENDOR,
     baseUrl: API_HOST,
     headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
     http: retryingTransport(services),
@@ -117,6 +120,29 @@ export function createBasetenApi(
     contentType: "with-body",
     httpError: ({ status, path, body }) => new BasetenApiError(status, path, body),
   });
+}
+
+/** The most pages a cursor list reads, at the largest page Baseten documents (1000). */
+export const MAX_LIST_PAGES = 50;
+
+/** The lists answered with `pagination: {has_more, cursor}`. */
+export function basetenPages(api: BasetenApi) {
+  return withCursorPagination(api, {
+    cursorParam: "cursor",
+    next: "pagination.cursor",
+    hasMore: "pagination.has_more",
+    sizeParam: "limit",
+    maxPages: MAX_LIST_PAGES,
+  });
+}
+
+/** The list a response holds, or an error: the document requires every one of them. */
+export function listOf<Key extends string, Row>(
+  page: Partial<Record<Key, readonly Row[] | null>> | undefined,
+  key: Key,
+  path: string,
+): Row[] {
+  return requireListPage(page?.[key], { vendor: VENDOR, path, key, page });
 }
 
 export function isStatus(err: unknown, ...statuses: number[]): boolean {

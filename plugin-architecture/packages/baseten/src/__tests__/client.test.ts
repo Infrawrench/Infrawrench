@@ -6,7 +6,7 @@ import { buildAutoscalingPatch } from "../autoscaling.js";
 import { mapComponent, parseStatusFeed } from "../status-feed.js";
 import { evaluateOrphanRule } from "@infrawrench/plugin-base";
 import { DeploymentResourceType } from "../resource-types.js";
-import { installFetch, route, state } from "./helpers.js";
+import { installFetch, route, state, type Call } from "./helpers.js";
 
 const ACC = "acc-1";
 
@@ -298,6 +298,112 @@ describe("secrets, training and catalog", () => {
     expect(q).toEqual([
       expect.objectContaining({ limit: 16, used: 8, name: "Concurrent H100 GPUs" }),
     ]);
+  });
+});
+
+describe("reading every page", () => {
+  const job = (id: string) => ({
+    id,
+    current_status: "TRAINING_JOB_RUNNING",
+    training_project_id: "p1",
+  });
+  const project = (id: string) => ({ id, name: id });
+  const cursorOf = (call: Call): unknown => Reflect.get(Object(call.body), "cursor");
+
+  it("walks training projects to the last page", async () => {
+    route("GET", "/v1/training_projects", (call: Call) =>
+      call.query.get("cursor") === "next"
+        ? { training_projects: [project("p2")], pagination: { has_more: false } }
+        : { training_projects: [project("p1")], pagination: { has_more: true, cursor: "next" } },
+    );
+    const rows = await client().listResources("training-project", ACC);
+    expect(rows.map((r) => r.externalId)).toEqual(["p1", "p2"]);
+    expect(state.calls).toHaveLength(2);
+  });
+
+  it("walks training jobs, sending the same search with every page", async () => {
+    route("POST", "/v1/training_jobs/search", (call: Call) =>
+      cursorOf(call) === "next"
+        ? { training_jobs: [job("j2")], pagination: { has_more: false } }
+        : { training_jobs: [job("j1")], pagination: { has_more: true, cursor: "next" } },
+    );
+    const rows = await client().listResources("training-job", ACC);
+    expect(rows.map((r) => r.externalId)).toEqual(["j1", "j2"]);
+    expect(state.calls.map((x) => x.body)).toEqual([
+      { limit: 1000 },
+      { limit: 1000, cursor: "next" },
+    ]);
+  });
+
+  it("finds a job past the first page to stop it", async () => {
+    route("POST", "/v1/training_jobs/search", (call: Call) =>
+      cursorOf(call) === "next"
+        ? { training_jobs: [job("j2")], pagination: { has_more: false } }
+        : { training_jobs: [job("j1")], pagination: { has_more: true, cursor: "next" } },
+    );
+    route("POST", "/v1/training_projects/p1/jobs/j2/stop", { training_job: {} });
+    await client().invokeAction("training-job", `${ACC}:training-job:j2`, "stop", ACC);
+    expect(state.calls.some((x) => x.path === "/v1/training_projects/p1/jobs/j2/stop")).toBe(true);
+  });
+
+  it.each([
+    ["model-api", "GET", "/v1/model_apis", "items", 50],
+    ["training-project", "GET", "/v1/training_projects", "training_projects", 500],
+    ["training-job", "POST", "/v1/training_jobs/search", "training_jobs", 50],
+  ])("stops %s at its cap with an error", async (type, method, path, key, cap) => {
+    let n = 0;
+    route(method, path, () => ({
+      [key]: [{ id: `x${++n}`, name: `x${n}` }],
+      pagination: { has_more: true, cursor: `c${n}` },
+    }));
+    await expect(client().listResources(type, ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(state.calls).toHaveLength(cap);
+  });
+
+  it("will not read has_more with no cursor as the end of training jobs", async () => {
+    route("POST", "/v1/training_jobs/search", {
+      training_jobs: [job("j1")],
+      pagination: { has_more: true, cursor: null },
+    });
+    await expect(client().listResources("training-job", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it.each([
+    ["model", "GET", "/v1/models"],
+    ["chain", "GET", "/v1/chains"],
+    ["secret", "GET", "/v1/secrets"],
+    ["model-api", "GET", "/v1/model_apis"],
+    ["training-project", "GET", "/v1/training_projects"],
+    ["training-job", "POST", "/v1/training_jobs/search"],
+  ])("refuses a %s page with its list renamed", async (type, method, path) => {
+    route(method, path, { message: "maintenance" });
+    await expect(client().listResources(type, ACC)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["model-api", "GET", "/v1/model_apis", "items"],
+    ["training-project", "GET", "/v1/training_projects", "training_projects"],
+    ["training-job", "POST", "/v1/training_jobs/search", "training_jobs"],
+  ])("refuses a renamed list on a later %s page", async (type, method, path, key) => {
+    let n = 0;
+    route(method, path, () =>
+      n++ === 0
+        ? { [key]: [{ id: "x", name: "x" }], pagination: { has_more: true, cursor: "next" } }
+        : { message: "maintenance" },
+    );
+    await expect(client().listResources(type, ACC)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["deployment", "/v1/models/m-1/deployments"],
+    ["environment", "/v1/models/m-1/environments"],
+  ])("refuses a %s list with its key renamed", async (type, path) => {
+    route("GET", path, { message: "maintenance" });
+    await expect(client().listResources(type, ACC)).rejects.toThrow("is not a list");
   });
 });
 

@@ -16,8 +16,21 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { pathEncode, QuotaAccessError, withMetricsCapability } from "@infrawrench/plugin-base";
-import { createBasetenApi, isStatus, type BasetenApi } from "./api.js";
+import {
+  ListTruncatedError,
+  pathEncode,
+  QuotaAccessError,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
+import {
+  basetenPages,
+  createBasetenApi,
+  isStatus,
+  listOf,
+  MAX_LIST_PAGES,
+  VENDOR,
+  type BasetenApi,
+} from "./api.js";
 import { buildAutoscalingPatch } from "./autoscaling.js";
 import { fetchLogs } from "./logs.js";
 import {
@@ -65,6 +78,7 @@ import type {
   BasetenModelRef,
   BasetenTeam,
   BasetenTrainingCapacity,
+  BasetenTrainingJob,
   UpdateEnvironmentBody,
 } from "./types.js";
 
@@ -72,6 +86,13 @@ const MODELS_TTL_MS = 60_000;
 const CATALOG_TTL_MS = 10 * 60_000;
 const USAGE_TTL_MS = 5 * 60_000;
 const FAN_OUT = 8;
+/** Search documents 1000 as its default and maximum; Model APIs were already read at it. */
+const LARGEST_PAGE = 1000;
+/**
+ * The document in hand names no maximum for this route's `limit`, so the page size
+ * stays Baseten's own and the cap covers 10,000 projects at a default as small as 20.
+ */
+const TRAINING_PROJECT_PAGES = 500;
 
 function str(v: string | null | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
@@ -128,6 +149,7 @@ function parseFormArg(raw: string | number | undefined): Record<string, string> 
  */
 export class BasetenClient implements PluginClient {
   readonly api: BasetenApi;
+  private readonly pages: ReturnType<typeof basetenPages>;
   private readonly resourceTypes: ResourceTypeDefinition[];
   private modelsCache: Cached<BasetenModel[]> | undefined;
   private catalogCache: Cached<InstanceTypeIndex> | undefined;
@@ -142,6 +164,7 @@ export class BasetenClient implements PluginClient {
     const apiKey = str(credentials["apiKey"]);
     if (!apiKey) throw new Error("Baseten plugin: missing apiKey credential");
     this.api = createBasetenApi(apiKey, credentials["caCert"] ?? "", services);
+    this.pages = basetenPages(this.api);
     this.resourceTypes = resourceTypes;
   }
 
@@ -149,7 +172,7 @@ export class BasetenClient implements PluginClient {
 
   models(): Promise<BasetenModel[]> {
     this.modelsCache = cached(this.modelsCache, MODELS_TTL_MS, () =>
-      this.api.get("/v1/models").then((r) => r?.models ?? []),
+      this.api.get("/v1/models").then((r) => listOf(r, "models", "/v1/models")),
     );
     return this.modelsCache.value;
   }
@@ -214,8 +237,9 @@ export class BasetenClient implements PluginClient {
           ]);
           const lists = await mapLimit(models, FAN_OUT, async (m) => {
             try {
-              const res = await this.api.get(`/v1/models/${enc(m.id)}/deployments`);
-              return (res?.deployments ?? []).map((d) =>
+              const path = `/v1/models/${enc(m.id)}/deployments` as const;
+              const res = await this.api.get(path);
+              return listOf(res, "deployments", path).map((d) =>
                 mapDeployment(d, m, accountId, index, usage),
               );
             } catch (e) {
@@ -229,8 +253,11 @@ export class BasetenClient implements PluginClient {
           const [models, index] = await Promise.all([this.models(), this.instanceTypes()]);
           const lists = await mapLimit(models, FAN_OUT, async (m) => {
             try {
-              const res = await this.api.get(`/v1/models/${enc(m.id)}/environments`);
-              return (res?.environments ?? []).map((e) => mapEnvironment(e, m, accountId, index));
+              const path = `/v1/models/${enc(m.id)}/environments` as const;
+              const res = await this.api.get(path);
+              return listOf(res, "environments", path).map((e) =>
+                mapEnvironment(e, m, accountId, index),
+              );
             } catch (e) {
               if (isStatus(e, 403, 404)) return [];
               throw e;
@@ -240,7 +267,7 @@ export class BasetenClient implements PluginClient {
         }
         case "chain": {
           const res = await this.api.get("/v1/chains");
-          return (res?.chains ?? []).map((c) => mapChain(c, accountId));
+          return listOf(res, "chains", "/v1/chains").map((c) => mapChain(c, accountId));
         }
         case "instance-type": {
           const index = await this.instanceTypes();
@@ -255,16 +282,16 @@ export class BasetenClient implements PluginClient {
         }
         case "secret": {
           const res = await this.api.get("/v1/secrets");
-          return (res?.secrets ?? []).map((s) => mapSecret(s, accountId));
+          return listOf(res, "secrets", "/v1/secrets").map((s) => mapSecret(s, accountId));
         }
         case "training-project": {
-          const res = await this.api.get("/v1/training_projects");
-          return (res?.training_projects ?? []).map((p) => mapTrainingProject(p, accountId));
+          const projects = await this.pages.getAll("/v1/training_projects", "training_projects", {
+            maxPages: TRAINING_PROJECT_PAGES,
+          });
+          return projects.map((p) => mapTrainingProject(p, accountId));
         }
-        case "training-job": {
-          const res = await this.api.post("/v1/training_jobs/search", { body: {} });
-          return (res?.training_jobs ?? []).map((j) => mapTrainingJob(j, accountId));
-        }
+        case "training-job":
+          return (await this.listTrainingJobs()).map((j) => mapTrainingJob(j, accountId));
         case "model-api":
           return (await this.listModelApis()).map((m) => mapModelApi(m, accountId));
         default:
@@ -273,18 +300,41 @@ export class BasetenClient implements PluginClient {
     });
   }
 
-  private async listModelApis(): Promise<BasetenModelApi[]> {
-    const out: BasetenModelApi[] = [];
+  private listModelApis(): Promise<BasetenModelApi[]> {
+    return this.pages.getAll("/v1/model_apis", "items", {
+      query: { added_only: true },
+      pageSize: LARGEST_PAGE,
+    });
+  }
+
+  /** A hand loop because `getAll` only reads a GET, and this search is a POST. */
+  private async listTrainingJobs(): Promise<BasetenTrainingJob[]> {
+    const path = "/v1/training_jobs/search";
+    const out: BasetenTrainingJob[] = [];
     let cursor: string | undefined;
-    for (let page = 0; page < 20; page++) {
-      const res = await this.api.get("/v1/model_apis", {
-        query: { added_only: true, limit: 1000, ...(cursor ? { cursor } : {}) },
+    for (let page = 0; page < MAX_LIST_PAGES; page++) {
+      const res = await this.api.post(path, {
+        body: { limit: LARGEST_PAGE, ...(cursor ? { cursor } : {}) },
       });
-      out.push(...(res?.items ?? []));
-      if (!res?.pagination?.has_more || !res.pagination.cursor) break;
-      cursor = res.pagination.cursor;
+      out.push(...listOf(res, "training_jobs", path));
+      if (!res?.pagination?.has_more) return out;
+      // More to read and no way to ask for it is not the end of the list.
+      cursor = res.pagination.cursor ?? undefined;
+      if (!cursor) {
+        throw new ListTruncatedError({
+          vendor: VENDOR,
+          path,
+          items: out.length,
+          maxPages: page + 1,
+        });
+      }
     }
-    return out;
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path,
+      items: out.length,
+      maxPages: MAX_LIST_PAGES,
+    });
   }
 
   getResource(
