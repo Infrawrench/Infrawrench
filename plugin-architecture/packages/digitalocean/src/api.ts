@@ -1,16 +1,19 @@
 /**
  * The DigitalOcean control-plane client, typed from DO's OpenAPI document by
- * plugingen (`../plugingen.json`). Every request goes straight to `fetch`: the
- * plugin has never routed through the host's HTTP service or taken a custom CA.
+ * plugingen (`../plugingen.json`). Every provider call goes through the host's HTTP
+ * service when there is one, including the ones `DoApi.fetch` makes off this API.
  *
  * Ids go into paths and queries as written, which is what the plugin has always
  * sent (#417): `unencodedSegment` where a path holds one, `encodeQuery` for the query.
  */
 import {
   createApiClient,
+  hostFetch,
+  hostTransport,
   restRequest,
   type ApiClient,
   type ApiResponse,
+  type HttpHostServices,
 } from "@infrawrench/plugin-base";
 import type { operations, paths } from "./api-types.gen.js";
 
@@ -37,6 +40,11 @@ export type DoApi = ApiClient<paths> & {
     path: string,
     request?: WrittenRequest,
   ): Promise<DoResponse<Op>>;
+  /**
+   * A call off this API: the inference hosts, Spaces, a signed log URL. `stream` is
+   * for an answer that must arrive as it is written.
+   */
+  fetch(url: string, init?: RequestInit, options?: { stream?: boolean }): Promise<Response>;
 };
 
 /**
@@ -78,13 +86,14 @@ function hinted(send: (path: string, ...rest: unknown[]) => Promise<unknown>) {
   };
 }
 
-export function createDoApi(token: string): DoApi {
+export function createDoApi(token: string, http?: HttpHostServices): DoApi {
   const headers = { Authorization: `Bearer ${token}` };
   const client = createApiClient<paths>({
     vendor: "DO",
     baseUrl: BASE_URL,
     headers,
     encodeQuery: (value) => value,
+    http,
   });
   const sendWritten = async <Body>(path: string, request?: WrittenRequest) => {
     const answer = await restRequest<Body>({
@@ -92,6 +101,7 @@ export function createDoApi(token: string): DoApi {
       url: `${BASE_URL}${path}`,
       errorPath: path,
       headers,
+      ...hostTransport(http),
       ...(request ? { init: request } : {}),
     });
     return answer;
@@ -107,5 +117,6 @@ export function createDoApi(token: string): DoApi {
       async <Op extends keyof operations>(path: string, request?: WrittenRequest) =>
         (await sendWritten<DoResponse<Op>>(path, request)).body,
     ),
+    fetch: (url, init, options) => hostFetch({ http, ...options }, url, init),
   };
 }

@@ -225,7 +225,7 @@ export class DigitalOceanClient implements PluginClient {
     this.credentials = credentials;
     this.resourceTypes = resourceTypes;
     this.services = services;
-    this.api = createDoApi(token);
+    this.api = createDoApi(token, services?.http);
   }
 
   /**
@@ -346,6 +346,7 @@ export class DigitalOceanClient implements PluginClient {
           for (const region of regionsToProbe) {
             const url = `https://${externalId}.${region}.digitaloceanspaces.com/`;
             const res = await signedS3Fetch({
+              fetch: this.api.fetch,
               accessKey: accessKeyId,
               secretKey: secretAccessKey,
               region,
@@ -459,7 +460,8 @@ export class DigitalOceanClient implements PluginClient {
         // JSON envelope (verified in digitalocean/openapi
         // resources/kubernetes/responses/kubeconfig.yml). Bypass
         // jsonRestFetch and read the body as text directly.
-        const res = await fetch(`${this.baseUrl}/kubernetes/clusters/${externalId}/kubeconfig`, {
+        const url = `${this.baseUrl}/kubernetes/clusters/${externalId}/kubeconfig`;
+        const res = await this.api.fetch(url, {
           headers: { Authorization: `Bearer ${this.token}`, Accept: "application/yaml" },
         });
         const body = await res.text();
@@ -956,6 +958,7 @@ export class DigitalOceanClient implements PluginClient {
           }
           const deleteHost = `${bucketName}.${bucketRegion}.digitaloceanspaces.com`;
           const delRes = await signedS3Fetch({
+            fetch: this.api.fetch,
             accessKey: accessKeyId,
             secretKey: secretAccessKey,
             region: bucketRegion,
@@ -1053,10 +1056,10 @@ export class DigitalOceanClient implements PluginClient {
           await this.api.delete(`/dedicated-inferences/${id}`);
           break;
         case "inference-batch": {
-          // Batch jobs are cancelled rather than deleted. The endpoint lives
-          // on the data-plane host, so bypass `this.fetch` (which targets
-          // api.digitalocean.com) and call it directly with the same bearer.
-          const res = await fetch(`https://inference.do-ai.run/v1/batches/${externalId}/cancel`, {
+          // Batch jobs are cancelled rather than deleted. The endpoint lives on the
+          // data-plane host, off the typed client, and takes the same bearer.
+          const url = `https://inference.do-ai.run/v1/batches/${externalId}/cancel`;
+          const res = await this.api.fetch(url, {
             method: "POST",
             headers: { Authorization: `Bearer ${this.token}` },
           });
@@ -2082,6 +2085,7 @@ export class DigitalOceanClient implements PluginClient {
       const probeRegion = SPACES_REGIONS[0] ?? "nyc3";
       const probeHost = `${bucket}.${probeRegion}.digitaloceanspaces.com`;
       const res = await signedS3Fetch({
+        fetch: this.api.fetch,
         accessKey,
         secretKey,
         region: probeRegion,

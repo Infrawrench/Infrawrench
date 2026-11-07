@@ -45,7 +45,13 @@ import { DIGITALOCEAN_TRANSFER_RATES } from "./transfer-rates.js";
 
 export const manifest = {
   id: "digitalocean",
-  egressHosts: ["api.digitalocean.com"],
+  // The API; Spaces; the inference and agent hosts; where App Platform's archived logs live.
+  egressHosts: [
+    "api.digitalocean.com",
+    "*.digitaloceanspaces.com",
+    "*.do-ai.run",
+    "*.ondigitalocean.app",
+  ],
   displayName: "DigitalOcean",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#0080FF"/>

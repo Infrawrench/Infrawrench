@@ -378,7 +378,7 @@ async function listInferenceBatches(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   try {
-    const res = await fetch("https://inference.do-ai.run/v1/batches?limit=100", {
+    const res = await ctx.api.fetch("https://inference.do-ai.run/v1/batches?limit=100", {
       headers: { Authorization: `Bearer ${ctx.token}` },
     });
     if (!res.ok) return [];
@@ -859,6 +859,7 @@ export async function listSpacesBuckets(
     SPACES_REGIONS.map(async (region) => {
       const host = `${region}.digitaloceanspaces.com`;
       const res = await signedS3Fetch({
+        fetch: ctx.api.fetch,
         accessKey: accessKeyId,
         secretKey: secretAccessKey,
         region,

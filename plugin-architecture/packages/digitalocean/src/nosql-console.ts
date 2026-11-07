@@ -518,15 +518,19 @@ export async function* streamDoChatMessage(
 
   let res: Response;
   try {
-    res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
+    res = await ctx.api.fetch(
+      endpoint,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body,
       },
-      body,
-    });
+      { stream: true },
+    );
   } catch (err) {
     yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
     return;

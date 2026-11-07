@@ -37,6 +37,7 @@ export function fakeApi(fetch: Fetch): DoApi {
     delete: call("DELETE"),
     written: async (path: string, request?: RequestInit) =>
       request ? fetch(path, request) : fetch(path),
+    fetch: (url: string, init?: RequestInit) => globalThis.fetch(url, init),
   };
   return api as unknown as DoApi;
 }

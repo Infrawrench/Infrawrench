@@ -271,6 +271,7 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
       let ready = false;
       for (let i = 0; i < maxAttempts; i++) {
         const probe = await signedS3Fetch({
+          fetch: ctx.api.fetch,
           accessKey: accessKeyId,
           secretKey: secretAccessKey,
           region,
@@ -301,6 +302,7 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
     ): Promise<{ ok: true } | { ok: false; status: number; text: string }> => {
       for (let i = 0; i < attempts; i++) {
         const r = await signedS3Fetch({
+          fetch: ctx.api.fetch,
           accessKey: access,
           secretKey: secret,
           region,
@@ -358,6 +360,7 @@ export async function storageCreateResource(args: DoCreateArgs): Promise<Resourc
         const regionalEndpoint = `https://${region}.digitaloceanspaces.com/`;
         for (let i = 0; i < 15; i++) {
           const probe = await signedS3Fetch({
+            fetch: ctx.api.fetch,
             accessKey: accessKeyId,
             secretKey: secretAccessKey,
             region,

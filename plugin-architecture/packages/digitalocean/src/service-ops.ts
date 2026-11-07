@@ -805,7 +805,7 @@ export async function fetchDoAppLogs(
   const chunks = await Promise.all(
     urls.map(async (u) => {
       try {
-        const res = await fetch(u);
+        const res = await ctx.api.fetch(u);
         return res.ok ? await res.text() : "";
       } catch {
         return "";
