@@ -300,3 +300,130 @@ describe("credential options", () => {
     ]);
   });
 });
+
+describe("list pages", () => {
+  it("reads a list longer than the old 20 page cap to its end", async () => {
+    let served = 0;
+    routes["GET /apps"] = () => {
+      served += 1;
+      const row = { ...APP, id: `a${served}`, name: `app-${served}` };
+      return served < 30
+        ? reply([row], 206, { "Next-Range": `]a${served}..; max=1000;` })
+        : reply([row], 200);
+    };
+    const apps = await client().listResources("app", ACCOUNT);
+    expect(apps).toHaveLength(30);
+    expect(calls).toHaveLength(30);
+  });
+
+  it("throws at the page cap rather than return part of a list", async () => {
+    let served = 0;
+    routes["GET /apps"] = () => {
+      served += 1;
+      return reply([{ ...APP, id: `a${served}` }], 206, {
+        "Next-Range": `]a${served}..; max=1000;`,
+      });
+    };
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("throws on a first page that is not a list", async () => {
+    routes["GET /apps"] = { apps: [APP] };
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("throws on a later page that is not a list", async () => {
+    routes["GET /apps"] = (c) =>
+      c.headers["Range"] === "id ..; max=1000;"
+        ? reply([APP], 206, { "Next-Range": "]a1..; max=1000;" })
+        : reply({ apps: [] });
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("throws on a 2xx with no body rather than read it as no rows", async () => {
+    routes["GET /apps"] = () => new Response("", { status: 200 });
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("throws on a 206 with no way to read the rest", async () => {
+    routes["GET /apps"] = () => reply([APP], 206);
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("says there is more");
+  });
+
+  it("throws on a 206 whose Next-Range repeats the page it answers", async () => {
+    routes["GET /apps"] = (c) => reply([APP], 206, { "Next-Range": c.headers["Range"]! });
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("says there is more");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("throws on a release window that is not a list", async () => {
+    routes["GET /apps"] = [APP];
+    routes["GET /apps/a1/releases"] = { releases: [] };
+    await expect(client().listResources("release", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("does not follow a release window past its first page", async () => {
+    routes["GET /apps"] = [APP];
+    routes["GET /apps/a1/releases"] = () =>
+      reply([{ id: "r9", version: 9 }], 206, { "Next-Range": "]9..; order=desc, max=10;" });
+    const rows = await client().listResources("release", ACCOUNT);
+    expect(rows.map((r) => r.fields["version"])).toEqual([9]);
+    expect(calls.filter((c) => c.path.endsWith("/releases"))).toHaveLength(1);
+  });
+
+  it("fails the cost read rather than bill part of the invoices", async () => {
+    routes["GET /teams"] = [];
+    let served = 0;
+    routes["GET /account/invoices"] = () =>
+      reply([], 206, { "Next-Range": `]${(served += 1)}..; max=1000;` });
+    await expect(
+      client().fetchCostData!(ACCOUNT, { fromDate: "2026-01-01", toDate: "2026-02-01" }),
+    ).rejects.toThrow("has more than Infrawrench reads");
+  });
+});
+
+describe("catches around list reads", () => {
+  const endless = (c: Call) => reply([], 206, { "Next-Range": `]${calls.length}${c.path}..;` });
+
+  it("does not read a truncated add-on list as no add-ons for config vars", async () => {
+    routes["GET /apps"] = [APP];
+    routes["GET /addons"] = endless;
+    routes["GET /apps/a1/config-vars"] = { RAILS_ENV: "production" };
+    await expect(client().listResources("config-var", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("does not read a truncated app list as no names for couplings", async () => {
+    routes["GET /apps"] = endless;
+    routes["GET /pipelines"] = [{ id: "p1", name: "shop" }];
+    routes["GET /pipelines/p1/pipeline-couplings"] = [];
+    await expect(client().listResources("pipeline-coupling", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("does not store a coupling count of nought when the couplings failed to read", async () => {
+    routes["GET /pipelines"] = [{ id: "p1", name: "shop" }];
+    routes["GET /pipelines/p1/pipeline-couplings"] = () => reply({ id: "unavailable" }, 503);
+    await expect(client().listResources("pipeline", ACCOUNT)).rejects.toThrow("503");
+  });
+
+  it("keeps the pipeline when its couplings are refused", async () => {
+    routes["GET /pipelines"] = [{ id: "p1", name: "shop" }];
+    routes["GET /pipelines/p1/pipeline-couplings"] = () => reply({ id: "forbidden" }, 403);
+    const rows = await client().listResources("pipeline", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["p1"]);
+  });
+
+  it("fails a pipeline read whose couplings are past the cap", async () => {
+    routes["GET /pipelines/p1"] = { id: "p1", name: "shop" };
+    routes["GET /pipelines/p1/pipeline-couplings"] = endless;
+    await expect(client().getResource("pipeline", "acct:pipeline:p1", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+});

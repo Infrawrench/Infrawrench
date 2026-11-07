@@ -17,7 +17,7 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CreditAccessError } from "@infrawrench/plugin-base";
+import { CreditAccessError, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import { HerokuApi } from "./api.js";
 import { fetchHerokuCostData } from "./cost-data.js";
 import {
@@ -73,6 +73,7 @@ import type {
 
 const LIST_TTL_MS = 60_000;
 const FAN_OUT = 6;
+// Rolling window: the newest N. Older rows falling off is what this type means.
 const RELEASES_PER_APP = 10;
 
 /** First-party add-on services offered with a plan picker on create. */
@@ -160,6 +161,16 @@ export class HerokuClient implements PluginClient {
     return all.filter((p) => p.owner?.type === "team" && teamIds.has(p.owner.id));
   }
 
+  /** A pipeline's couplings; none only when the API says this key may not have them. */
+  private async couplingsOrNone(pipelineId: string): Promise<HkCoupling[]> {
+    try {
+      return await this.api.listAll<HkCoupling>(`/pipelines/${enc(pipelineId)}/pipeline-couplings`);
+    } catch (e) {
+      if (isStatus(e, 403, 404)) return [];
+      throw e;
+    }
+  }
+
   private async perPipeline(
     load: (p: HkPipeline) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
@@ -202,7 +213,10 @@ export class HerokuClient implements PluginClient {
             ),
           );
         case "config-var": {
-          const addons = await this.addons().catch(() => [] as HkAddon[]);
+          const addons = await this.addons().catch((err: unknown) => {
+            rethrowIncompleteList(err);
+            return [] as HkAddon[];
+          });
           return this.perApp(async (a) => {
             const vars = await this.api.request<Record<string, string | null>>(
               `/apps/${enc(a.id)}/config-vars`,
@@ -238,9 +252,7 @@ export class HerokuClient implements PluginClient {
         case "pipeline":
           return this.perPipeline(async (p) => {
             const [couplings, review] = await Promise.all([
-              this.api
-                .listAll<HkCoupling>(`/pipelines/${enc(p.id)}/pipeline-couplings`)
-                .catch(() => []),
+              this.couplingsOrNone(p.id),
               this.api
                 .request<HkReviewAppConfig>(`/pipelines/${enc(p.id)}/review-app-config`)
                 .catch(() => null),
@@ -255,9 +267,11 @@ export class HerokuClient implements PluginClient {
             ];
           });
         case "pipeline-coupling": {
-          const names = new Map(
-            (await this.apps().catch(() => [] as HkApp[])).map((a) => [a.id, a.name]),
-          );
+          const apps = await this.apps().catch((err: unknown) => {
+            rethrowIncompleteList(err);
+            return [] as HkApp[];
+          });
+          const names = new Map(apps.map((a) => [a.id, a.name]));
           return this.perPipeline(async (p) =>
             (await this.api.listAll<HkCoupling>(`/pipelines/${enc(p.id)}/pipeline-couplings`)).map(
               (c) => mapCoupling(c, p, names, accountId),
@@ -284,11 +298,8 @@ export class HerokuClient implements PluginClient {
   }
 
   /** Newest releases first: a descending Range on `version`. */
-  private async recentReleases(appId: string, max: number): Promise<HkRelease[]> {
-    const rows = await this.api.request<HkRelease[]>(`/apps/${enc(appId)}/releases`, {
-      headers: { Range: `version ..; order=desc, max=${max};` },
-    });
-    return Array.isArray(rows) ? rows : [];
+  private recentReleases(appId: string, max: number): Promise<HkRelease[]> {
+    return this.api.newest<HkRelease>(`/apps/${enc(appId)}/releases`, "version", max);
   }
 
   getResource(
@@ -305,9 +316,7 @@ export class HerokuClient implements PluginClient {
           return mapAddon(await this.api.request<HkAddon>(`/addons/${enc(id)}`), accountId);
         case "pipeline": {
           const p = await this.api.request<HkPipeline>(`/pipelines/${enc(id)}`);
-          const couplings = await this.api
-            .listAll<HkCoupling>(`/pipelines/${enc(id)}/pipeline-couplings`)
-            .catch(() => []);
+          const couplings = await this.couplingsOrNone(id);
           return mapPipeline(p, couplings.length, undefined, accountId);
         }
         case "space":

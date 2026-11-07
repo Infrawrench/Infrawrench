@@ -1,4 +1,5 @@
 import type { HostServices } from "@infrawrench/plugin-base";
+import { ListPageError, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import { HerokuApiError, buildQuery, sendRequest, type QueryValue } from "./kit.js";
 
 /**
@@ -16,7 +17,9 @@ import { HerokuApiError, buildQuery, sendRequest, type QueryValue } from "./kit.
 
 export const API_BASE = "https://api.heroku.com";
 const ACCEPT = "application/vnd.heroku+json; version=3";
-const MAX_PAGES = 20;
+const VENDOR = "Heroku";
+/** 100,000 rows at the documented maximum of 1,000 a page. */
+const MAX_PAGES = 100;
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -61,19 +64,50 @@ export class HerokuApi {
     return JSON.parse(res.body) as T;
   }
 
-  /** Every page of a list, following `Next-Range` while the API answers 206. */
+  /**
+   * Every page of a list, following `Next-Range` while the API answers 206, or a
+   * throw: a sync reads whatever this leaves out as deleted. The reference documents
+   * a 206 as a truncated answer with `Next-Range` set, so one without a new range has
+   * more to read and no way to read it.
+   */
   async listAll<T>(path: string, query?: Record<string, QueryValue>): Promise<T[]> {
     const out: T[] = [];
     let range = "id ..; max=1000;";
     for (let page = 0; page < MAX_PAGES; page++) {
       const res = await this.raw(path, { ...(query ? { query } : {}), headers: { Range: range } });
-      const rows = res.body ? (JSON.parse(res.body) as T[]) : [];
-      if (Array.isArray(rows)) out.push(...rows);
+      const rows = requireListPage<T>(res.body ? JSON.parse(res.body) : undefined, {
+        vendor: VENDOR,
+        path,
+        key: null,
+      });
+      out.push(...rows);
+      if (res.status !== 206) return out;
       const next = res.headers["next-range"];
-      if (res.status !== 206 || !next || next === range) break;
+      if (!next || next === range) {
+        throw new ListPageError({
+          vendor: VENDOR,
+          path,
+          key: null,
+          found: rows,
+          saysMoreWith: "no cursor",
+        });
+      }
       range = next;
     }
-    return out;
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path,
+      items: out.length,
+      maxPages: MAX_PAGES,
+    });
+  }
+
+  /** The newest `max` rows of a list by `field`, from one descending page. */
+  async newest<T>(path: string, field: string, max: number): Promise<T[]> {
+    const rows = await this.request<T[]>(path, {
+      headers: { Range: `${field} ..; order=desc, max=${max};` },
+    });
+    return requireListPage(rows, { vendor: VENDOR, path, key: null });
   }
 
   /** Fetch a URL the API handed back (log session), as text. */
