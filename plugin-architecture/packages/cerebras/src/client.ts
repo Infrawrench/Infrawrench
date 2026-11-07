@@ -1,6 +1,13 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import { hostFetch } from "@infrawrench/plugin-base";
+import {
+  hostFetch,
+  ListPageError,
+  ListTruncatedError,
+  reportUnreadListPart,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
@@ -40,6 +47,13 @@ const MGMT = `${API_BASE}/management/v1`;
 const CONSOLE_URL = "https://cloud.cerebras.ai";
 /** The metrics route reports the last complete minute only. */
 const METRICS_WINDOW_MS = 60 * 1000;
+const VENDOR = "Cerebras";
+/** The documented maximum for `limit` on `/v1/batches` and `/v1/files`. */
+const PAGE_SIZE = 100;
+/** 100,000 rows, the most one poll can read and store. */
+const MAX_LIST_PAGES = 1000;
+/** A create form's picker shows the first rows and acts on none it does not show. */
+const PICKER_PAGES = 20;
 
 interface ApiModel {
   id?: string;
@@ -254,26 +268,66 @@ export class CerebrasClient implements PluginClient {
     });
   }
 
-  /** Private Preview routes answer 403/404 for organizations without access. */
+  /**
+   * Private Preview routes answer 403/404 for organizations without access. That says
+   * nothing about rows read before access changed, so they stay. Unlike a refused scope
+   * this is the normal state of most organizations, so a host that keeps no track shows
+   * an empty list rather than an error.
+   */
   private async previewList(run: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
     try {
       return await run();
     } catch (err) {
-      if ([403, 404].includes(statusOf(err) ?? 0)) return [];
-      throw err;
+      if (![403, 404].includes(statusOf(err) ?? 0)) throw err;
+      reportUnreadListPart({ idPrefixes: [""] });
+      return [];
     }
+  }
+
+  /** `GET {path}?limit=100&after=`, the shape batches and files share. */
+  private async readPages<T extends { id?: string }>(
+    path: "/batches" | "/files",
+    picker = false,
+  ): Promise<T[]> {
+    const where = { vendor: VENDOR, path: `/v1${path}` };
+    const maxPages = picker ? PICKER_PAGES : MAX_LIST_PAGES;
+    const out: T[] = [];
+    let after = "";
+    for (let page = 0; page < maxPages; page++) {
+      const res = await this.api<{ data?: T[] | null; has_more?: boolean | null }>(
+        `${path}?limit=${PAGE_SIZE}${after ? `&after=${enc(after)}` : ""}`,
+      );
+      const rows = requireListPage(res.data, { ...where, key: "data" });
+      out.push(...rows);
+      if (!res.has_more) return out;
+      after = s(rows[rows.length - 1]?.id);
+      if (!after) {
+        throw new ListPageError({
+          ...where,
+          key: "data",
+          found: res.data,
+          saysMoreWith: rows.length ? "no cursor" : "no rows",
+        });
+      }
+    }
+    if (picker) return out;
+    throw new ListTruncatedError({ ...where, items: out.length, maxPages });
   }
 
   /** `GET /v1/models` (what this key can call) + `GET /public/v1/models` (metadata). */
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
     const [mine, catalogue] = await Promise.all([
-      this.api<{ data?: ApiModel[] }>("/models"),
+      this.api<{ data?: ApiModel[] | null }>("/models"),
+      // Only prices and limits come from here: the rows are what `/v1/models` answers.
       cerebrasFetch<{ data?: PublicModel[] }>(this.ctx, "", `${API_BASE}/public/v1/models`).catch(
-        () => ({ data: [] as PublicModel[] }),
+        (err: unknown) => {
+          rethrowIncompleteList(err);
+          return { data: [] as PublicModel[] };
+        },
       ),
     ]);
     const meta = new Map((catalogue.data ?? []).map((m) => [String(m.id), m]));
-    return (mine.data ?? [])
+    return requireListPage(mine.data, { vendor: VENDOR, path: "/v1/models", key: "data" })
       .filter((m) => m.id)
       .map((m) => this.mapModel(accountId, { ...meta.get(String(m.id)), ...m }));
   }
@@ -308,20 +362,9 @@ export class CerebrasClient implements PluginClient {
     );
   }
 
-  /** `GET /v1/batches?limit=100&after=` */
   private async listBatches(accountId: string): Promise<ResourceInstance[]> {
-    const out: Batch[] = [];
-    let after = "";
-    for (let page = 0; page < 20; page++) {
-      const res = await this.api<{ data?: Batch[] | null; has_more?: boolean | null }>(
-        `/batches?limit=100${after ? `&after=${enc(after)}` : ""}`,
-      );
-      const data = res.data ?? [];
-      out.push(...data);
-      if (!res.has_more || data.length === 0) break;
-      after = s(data[data.length - 1]?.id);
-    }
-    return out.filter((b) => b.id).map((b) => this.mapBatch(accountId, b));
+    const batches = await this.readPages<Batch>("/batches");
+    return batches.filter((b) => b.id).map((b) => this.mapBatch(accountId, b));
   }
 
   private mapBatch(accountId: string, b: Batch): ResourceInstance {
@@ -350,20 +393,9 @@ export class CerebrasClient implements PluginClient {
     );
   }
 
-  /** `GET /v1/files?limit=100&after=` */
-  private async listFiles(accountId: string): Promise<ResourceInstance[]> {
-    const out: CerebrasFile[] = [];
-    let after = "";
-    for (let page = 0; page < 20; page++) {
-      const res = await this.api<{ data?: CerebrasFile[]; has_more?: boolean }>(
-        `/files?limit=100${after ? `&after=${enc(after)}` : ""}`,
-      );
-      const data = res.data ?? [];
-      out.push(...data);
-      if (!res.has_more || data.length === 0) break;
-      after = s(data[data.length - 1]?.id);
-    }
-    return out.filter((f) => f.id).map((f) => this.mapFile(accountId, f));
+  private async listFiles(accountId: string, picker = false): Promise<ResourceInstance[]> {
+    const files = await this.readPages<CerebrasFile>("/files", picker);
+    return files.filter((f) => f.id).map((f) => this.mapFile(accountId, f));
   }
 
   private mapFile(accountId: string, f: CerebrasFile): ResourceInstance {
@@ -387,10 +419,13 @@ export class CerebrasClient implements PluginClient {
 
   /** `GET /management/v1/orgs/{org}/endpoints` */
   private async listEndpoints(accountId: string): Promise<ResourceInstance[]> {
-    const res = await this.mgmt<{ endpoints?: EndpointSummary[] }>(
-      `/orgs/${enc(this.orgName)}/endpoints`,
-    );
-    return (res.endpoints ?? [])
+    const path = `/orgs/${enc(this.orgName)}/endpoints`;
+    const res = await this.mgmt<{ endpoints?: EndpointSummary[] | null }>(path);
+    return requireListPage(res.endpoints, {
+      vendor: VENDOR,
+      path: `/management/v1${path}`,
+      key: "endpoints",
+    })
       .filter((e) => e.endpoint_id)
       .map((e) =>
         this.mapEndpoint(accountId, {
@@ -431,18 +466,43 @@ export class CerebrasClient implements PluginClient {
 
   /** Architectures, then `GET …/models/{arch}/versions` for each. */
   private async listVersions(accountId: string): Promise<ResourceInstance[]> {
-    const archs = await this.mgmt<{ model_architectures?: string[] }>(
-      `/orgs/${enc(this.orgName)}/models`,
-    );
+    const archPath = `/orgs/${enc(this.orgName)}/models`;
+    const res = await this.mgmt<{ model_architectures?: string[] | null }>(archPath);
+    const archs = requireListPage(res.model_architectures, {
+      vendor: VENDOR,
+      path: `/management/v1${archPath}`,
+      key: "model_architectures",
+    });
+    const refusals: Array<{ arch: string; err: unknown }> = [];
     const lists = await Promise.all(
-      (archs.model_architectures ?? []).map((arch) =>
-        this.mgmt<{ model_versions?: ModelVersion[] }>(
-          `/orgs/${enc(this.orgName)}/models/${enc(arch)}/versions`,
-        ).catch(() => ({ model_versions: [] as ModelVersion[] })),
-      ),
+      archs.map(async (arch) => {
+        const path = `${archPath}/${enc(arch)}/versions`;
+        try {
+          const versions = await this.mgmt<{ model_versions?: ModelVersion[] | null }>(path);
+          return requireListPage(versions.model_versions, {
+            vendor: VENDOR,
+            path: `/management/v1${path}`,
+            key: "model_versions",
+          });
+        } catch (err) {
+          // The architecture has gone since the list above named it.
+          if (statusOf(err) === 404) return [];
+          if (statusOf(err) !== 403) throw err;
+          refusals.push({ arch, err });
+          return [];
+        }
+      }),
     );
+    if (refusals.length > 0) {
+      // These stored rows stay. A host that keeps no track (the desktop) answers false, and
+      // there a refusal of everything should still show.
+      const tracked = reportUnreadListPart({
+        idPrefixes: refusals.map(({ arch }) => `${accountId}:cerebras-model-version:${arch}/`),
+      });
+      if (!tracked && refusals.length === archs.length) throw refusals[0]?.err;
+    }
     return lists
-      .flatMap((l) => l.model_versions ?? [])
+      .flat()
       .filter((v) => v.name)
       .map((v) => this.mapVersion(accountId, v));
   }
@@ -573,7 +633,7 @@ export class CerebrasClient implements PluginClient {
   getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
     return attempt(async () => {
       if (typeId === "cerebras-batch") {
-        const files = await this.previewList(() => this.listFiles("x"));
+        const files = await this.previewList(() => this.listFiles("x", true));
         const options = files
           .filter((f) => (f.fields["purpose"] ?? "batch") === "batch")
           .map((f) => ({

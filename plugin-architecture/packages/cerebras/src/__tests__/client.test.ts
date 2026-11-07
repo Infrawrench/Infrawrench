@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { CerebrasClient, parseVersionName } from "../client.js";
 import { parsePrometheus } from "../prometheus.js";
@@ -192,4 +192,224 @@ describe("helpers", () => {
     expect(incident?.services).toEqual(["GPT-OSS-120B"]);
     expect(incident?.resourceTypes).toContain("cerebras-model");
   });
+});
+
+const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+
+/** A host that tracks what a list did not read, as the server's sync does. */
+function trackUnread() {
+  const parts: Array<{ idPrefixes?: readonly string[] }> = [];
+  Reflect.set(globalThis, UNREAD_HOOK, (part: { idPrefixes?: readonly string[] }) => {
+    parts.push(part);
+  });
+  return parts;
+}
+
+describe("lists that cannot say they are whole", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
+  function client(http: HttpHostServices) {
+    return hostClient(
+      new CerebrasClient({ apiKey: "csk-x", managementKey: "mk", orgName: "acme" }, { http }),
+    );
+  }
+
+  it.each([
+    ["cerebras-batch", "/v1/batches"],
+    ["cerebras-file", "/v1/files"],
+  ])("%s throws at the cap rather than return part of a list", async (typeId, route) => {
+    let n = 0;
+    const { http, calls } = host((url) => {
+      if (!url.includes(route)) throw new Error(url);
+      n += 1;
+      return { body: { data: [{ id: `row_${n}` }], has_more: true } };
+    });
+    await expect(client(http).listResources(typeId, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(1000);
+  });
+
+  it.each([
+    ["cerebras-batch", "/v1/batches"],
+    ["cerebras-file", "/v1/files"],
+  ])("%s reads past the old 20 page cap to the last page", async (typeId, route) => {
+    let n = 0;
+    const { http } = host((url) => {
+      if (!url.includes(route)) throw new Error(url);
+      n += 1;
+      return { body: { data: [{ id: `row_${n}` }], has_more: n < 25 } };
+    });
+    expect(await client(http).listResources(typeId, ACCOUNT)).toHaveLength(25);
+  });
+
+  it.each([
+    ["cerebras-batch", "/v1/batches"],
+    ["cerebras-file", "/v1/files"],
+  ])("%s refuses a page with its key renamed, first or later", async (typeId, route) => {
+    const first = host((url) => {
+      if (!url.includes(route)) throw new Error(url);
+      return { body: { items: [{ id: "a" }] } };
+    });
+    await expect(client(first.http).listResources(typeId, ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+
+    const later = host((url) => {
+      if (!url.includes(route)) throw new Error(url);
+      return url.includes("after=")
+        ? { body: { items: [{ id: "b" }] } }
+        : { body: { data: [{ id: "a" }], has_more: true } };
+    });
+    await expect(client(later.http).listResources(typeId, ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("reads the documented null data as an empty list", async () => {
+    const { http } = host(() => ({ body: { data: null, has_more: null } }));
+    expect(await client(http).listResources("cerebras-batch", ACCOUNT)).toEqual([]);
+  });
+
+  it.each([
+    ["no rows", { data: [], has_more: true }],
+    ["no cursor", { data: [{ status: "queued" }], has_more: true }],
+  ])("refuses a page that says there is more with %s", async (saysMoreWith, body) => {
+    const { http, calls } = host(() => ({ body }));
+    await expect(client(http).listResources("cerebras-file", ACCOUNT)).rejects.toThrow(
+      `says there is more, with ${saysMoreWith}`,
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it("lets the batch form's file picker stop at its old cap instead of failing", async () => {
+    let n = 0;
+    const { http, calls } = host((url) => {
+      if (!url.includes("/v1/files")) throw new Error(url);
+      n += 1;
+      return { body: { data: [{ id: `file_${n}`, purpose: "batch" }], has_more: true } };
+    });
+    const config = await client(http).getCreateConfig!("cerebras-batch");
+    expect(calls).toHaveLength(20);
+    expect(config.fields[0]?.options).toHaveLength(20);
+  });
+
+  it("refuses model and management lists with their key renamed", async () => {
+    const models = host((url) => {
+      if (url.endsWith("/public/v1/models")) return { body: { data: [] } };
+      if (url.endsWith("/v1/models")) return { body: { models: [{ id: "m" }] } };
+      throw new Error(url);
+    });
+    await expect(client(models.http).listResources("cerebras-model", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+
+    const endpoints = host((url) => {
+      if (url.endsWith("/orgs/acme/endpoints")) return { body: { items: [] } };
+      throw new Error(url);
+    });
+    await expect(
+      client(endpoints.http).listResources("cerebras-endpoint", ACCOUNT),
+    ).rejects.toThrow("is not a list");
+
+    const archs = host((url) => {
+      if (url.endsWith("/orgs/acme/models")) return { body: { items: ["a"] } };
+      throw new Error(url);
+    });
+    await expect(
+      client(archs.http).listResources("cerebras-model-version", ACCOUNT),
+    ).rejects.toThrow("is not a list");
+
+    const versions = host((url) => {
+      if (url.endsWith("/orgs/acme/models")) return { body: { model_architectures: ["a"] } };
+      if (url.endsWith("/models/a/versions")) return { body: { items: [] } };
+      throw new Error(url);
+    });
+    await expect(
+      client(versions.http).listResources("cerebras-model-version", ACCOUNT),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("keeps a model's row when only the public catalogue fails", async () => {
+    const { http } = host((url) => {
+      if (url.endsWith("/public/v1/models")) return { status: 503, body: "down" };
+      if (url.endsWith("/v1/models")) return { body: { data: [{ id: "m" }] } };
+      throw new Error(url);
+    });
+    const rows = await client(http).listResources("cerebras-model", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["m"]);
+  });
+
+  describe("model versions per architecture", () => {
+    const VERSION = {
+      model_versions: [{ name: "orgs/acme/models/good/versions/1", done: true }],
+    };
+
+    function archs(bad: { status: number; body?: unknown }, ...names: string[]) {
+      return host((url) => {
+        if (url.endsWith("/orgs/acme/models")) return { body: { model_architectures: names } };
+        if (url.endsWith("/models/good/versions")) return { body: VERSION };
+        if (url.endsWith("/models/bad/versions")) return bad;
+        throw new Error(url);
+      });
+    }
+
+    it.each([401, 429, 500, 503])(
+      "fails the whole type on a %i for one architecture",
+      async (status) => {
+        const { http } = archs({ status, body: "nope" }, "good", "bad");
+        await expect(
+          client(http).listResources("cerebras-model-version", ACCOUNT),
+        ).rejects.toMatchObject({ status });
+      },
+    );
+
+    it("reads a 404 for an architecture as no versions", async () => {
+      const unread = trackUnread();
+      const { http } = archs({ status: 404, body: "gone" }, "good", "bad");
+      const rows = await client(http).listResources("cerebras-model-version", ACCOUNT);
+      expect(rows.map((r) => r.externalId)).toEqual(["good/1"]);
+      expect(unread).toEqual([]);
+    });
+
+    it("keeps a refused architecture's stored rows and reads the rest", async () => {
+      const unread = trackUnread();
+      const { http } = archs({ status: 403, body: "no" }, "good", "bad");
+      const rows = await client(http).listResources("cerebras-model-version", ACCOUNT);
+      expect(rows.map((r) => r.externalId)).toEqual(["good/1"]);
+      expect(unread).toEqual([{ idPrefixes: [`${ACCOUNT}:cerebras-model-version:bad/`] }]);
+    });
+
+    it("keeps every row quietly when each architecture refuses", async () => {
+      const unread = trackUnread();
+      const { http } = archs({ status: 403, body: "no" }, "bad");
+      expect(await client(http).listResources("cerebras-model-version", ACCOUNT)).toEqual([]);
+      expect(unread).toEqual([{ idPrefixes: [`${ACCOUNT}:cerebras-model-version:bad/`] }]);
+    });
+
+    it("shows the refusal on a host that keeps no track when nothing could be read", async () => {
+      const { http } = archs({ status: 403, body: "no" }, "bad");
+      await expect(
+        client(http).listResources("cerebras-model-version", ACCOUNT),
+      ).rejects.toMatchObject({ status: 403 });
+    });
+
+    it("still shows what it read on a host that keeps no track", async () => {
+      const { http } = archs({ status: 403, body: "no" }, "good", "bad");
+      const rows = await client(http).listResources("cerebras-model-version", ACCOUNT);
+      expect(rows.map((r) => r.externalId)).toEqual(["good/1"]);
+    });
+  });
+
+  it.each([403, 404])(
+    "keeps stored rows when a Private Preview route answers %i",
+    async (status) => {
+      const unread = trackUnread();
+      const { http } = host(() => ({ status, body: { message: "not enabled" } }));
+      expect(await client(http).listResources("cerebras-batch", ACCOUNT)).toEqual([]);
+      expect(unread).toEqual([{ idPrefixes: [""] }]);
+    },
+  );
 });
