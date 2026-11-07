@@ -257,8 +257,9 @@ export class PostmarkClient implements PluginClient {
       const reported = reportUnreadListPart({
         parentResourceIds: unread.sort().map((id) => resourceId(accountId, "postmark-server", id)),
       });
-      // A host that keeps no track (the desktop) still shows a refusal on every server.
-      if (!reported && refusal !== undefined && unread.length === entries.length) throw refusal;
+      // A host that keeps no track (the desktop) answers false, and there a refusal shows.
+      // A server with no token to read it by stays unread there too: it is not refused.
+      if (!reported && refusal !== undefined) throw refusal;
     }
     return results.flat();
   }

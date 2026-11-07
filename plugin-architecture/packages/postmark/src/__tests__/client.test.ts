@@ -184,6 +184,28 @@ describe("servers and server-scoped listings", () => {
     const rules = await c.listResources("postmark-inbound-rule", "a");
     expect(rules.map((r) => r.externalId).sort()).toEqual(["1/5", "2/5"]);
   });
+
+  it("shows one server's refused token where the host keeps no track", async () => {
+    let reads = 0;
+    const { c } = client((url) => {
+      if (url.pathname === "/servers") {
+        return {
+          body: {
+            TotalCount: 2,
+            Servers: [
+              { ID: 1, Name: "a", ApiTokens: ["t1"] },
+              { ID: 2, Name: "b", ApiTokens: ["t2"] },
+            ],
+          },
+        };
+      }
+      reads++;
+      return reads === 1
+        ? { status: 401, body: { ErrorCode: 10, Message: "no" } }
+        : { body: { TotalCount: 1, InboundRules: [{ ID: 5, Rule: "spam.example" }] } };
+    });
+    await expect(c.listResources("postmark-inbound-rule", "a")).rejects.toThrow("401");
+  });
 });
 
 describe("domains and required DNS records", () => {
