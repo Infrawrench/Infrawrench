@@ -175,9 +175,11 @@ export const stripeTerraformExport: TerraformExportCapability = {
           if (!url) return null;
           attributes["webhook_endpoint"] = tf.block({ url: tf.str(url) });
         } else if (type === "amazon_eventbridge") {
+          const region = fieldString(resource, "awsRegion");
+          if (!region) return null;
           attributes["amazon_eventbridge"] = tf.block({
             aws_account_id: tf.str(fieldString(resource, "awsAccountId")),
-            aws_region: tf.str(fieldString(resource, "awsRegion")),
+            aws_region: tf.str(region),
           });
         } else if (type === "azure_event_grid") {
           // An attribute (not a block) in the provider schema.

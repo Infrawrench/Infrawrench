@@ -197,6 +197,15 @@ export function mapWebhookEndpoint(accountId: string, ep: StripeWebhookEndpoint)
   );
 }
 
+/**
+ * A destination's AWS region. The document only takes `aws_region` on create and
+ * never returns it, so the source of truth is the region segment of the ARN Stripe
+ * returns; a stated region is still read first in case a later version returns it.
+ */
+function eventBridgeRegion(statedRegion: string | undefined, arn: string | undefined): string {
+  return statedRegion || (arn?.match(/^arn:[^:]+:[^:]+:([^:]+):/)?.[1] ?? "");
+}
+
 export function mapEventDestination(
   accountId: string,
   dest: StripeEventDestination,
@@ -224,7 +233,7 @@ export function mapEventDestination(
       status: dest.status ?? "",
       disabledReason: dest.status_details?.disabled?.reason ?? "",
       awsAccountId: eb.aws_account_id ?? "",
-      awsRegion: eb.aws_region ?? "",
+      awsRegion: eventBridgeRegion(eb.aws_region, eb.aws_event_source_arn),
       awsEventSourceArn: eb.aws_event_source_arn ?? "",
       awsEventSourceStatus: eb.aws_event_source_status ?? "",
       azureSubscriptionId: az.azure_subscription_id ?? "",

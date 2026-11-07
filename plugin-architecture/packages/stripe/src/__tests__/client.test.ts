@@ -330,6 +330,35 @@ describe("event destinations", () => {
   });
 });
 
+describe("event destination region", () => {
+  const destination = (eventbridge: Record<string, unknown>) =>
+    client(() => ({
+      id: "ed_1",
+      name: "bus",
+      type: "amazon_eventbridge",
+      amazon_eventbridge: { aws_account_id: "123456789012", ...eventbridge },
+    })).c.getResource("stripe-event-destination", "ed_1", ACC);
+
+  it("reads the region from the event source ARN, which is what Stripe returns", async () => {
+    const out = await destination({
+      aws_event_source_arn:
+        "arn:aws:events:eu-west-1::event-source/aws.partner/stripe.com/ed_test_1",
+      aws_event_source_status: "pending",
+    });
+    expect(out.fields["awsRegion"]).toBe("eu-west-1");
+  });
+
+  it("prefers a region Stripe states, and is blank when nothing names one", async () => {
+    const stated = await destination({
+      aws_region: "us-west-2",
+      aws_event_source_arn: "arn:aws:events:eu-west-1::event-source/x",
+    });
+    expect(stated.fields["awsRegion"]).toBe("us-west-2");
+    expect((await destination({})).fields["awsRegion"]).toBe("");
+    expect((await destination({ aws_event_source_arn: "nonsense" })).fields["awsRegion"]).toBe("");
+  });
+});
+
 describe("prices and products", () => {
   it("creates a metered price with a sub-cent amount as a decimal", async () => {
     const { c, calls } = client(() => ({ id: "price_9", product: "prod_1", currency: "usd" }));
@@ -652,6 +681,34 @@ describe("terraform", () => {
     expect(out?.resource.attributes["currency"]).toEqual({ kind: "string", value: "usd" });
     expect(out?.resource.attributes["recurring"]).toMatchObject({ kind: "block" });
     expect(out?.resource.attributes["tax_behavior"]).toBeUndefined();
+  });
+
+  it("exports an EventBridge destination with the region its ARN names", () => {
+    const eventBridge = (awsRegion: string) =>
+      stripeTerraformExport.mapResource({
+        id: "acc:stripe-event-destination:ed_1",
+        pluginId: "stripe",
+        resourceTypeId: "stripe-event-destination",
+        accountId: ACC,
+        displayName: "bus",
+        externalId: "ed_1",
+        fields: {
+          name: "bus",
+          type: "amazon_eventbridge",
+          eventPayload: "thin",
+          enabledEvents: "v1.billing.meter.error_report_triggered",
+          awsAccountId: "123456789012",
+          awsRegion,
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        createdAt: "",
+        updatedAt: "",
+      });
+    expect(eventBridge("eu-west-1")?.resource.attributes["amazon_eventbridge"]).toMatchObject({
+      kind: "block",
+    });
+    expect(eventBridge("")).toBeNull();
   });
 
   it("declares the official provider", () => {
