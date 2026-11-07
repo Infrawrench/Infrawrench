@@ -17,11 +17,13 @@ import type {
 import {
   buildCostEstimate,
   CreditAccessError,
+  ListPageError,
   pathEncode,
+  requireListPage,
   unencodedSegment,
 } from "@infrawrench/plugin-base";
 import type { ApiBody } from "@infrawrench/plugin-base";
-import { collectPages, createVastApi, isStatus, type VastApi } from "./api.js";
+import { createVastApi, isStatus, VENDOR, type VastApi } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import { fetchVastCostData } from "./cost-data.js";
 import { buildCreateConfig, NONE } from "./create-config.js";
@@ -73,7 +75,13 @@ function notFound(typeId: string, id: string): Error {
 
 /** The document says a list; this has always taken a wrapped one as well. */
 function sshKeysOf(res: VSshKey[] | { ssh_keys?: VSshKey[] }): VSshKey[] {
-  return Array.isArray(res) ? res : (res?.ssh_keys ?? []);
+  if (Array.isArray(res)) return res;
+  return requireListPage(res?.ssh_keys, {
+    vendor: VENDOR,
+    path: "/api/v0/ssh/",
+    key: "ssh_keys",
+    page: res,
+  });
 }
 
 /** Every field `PUT /api/v1/template` documents, plus the `readme_visible` vast-cli sends. */
@@ -162,33 +170,58 @@ export class VastClient implements PluginClient {
   }
 
   readonly raw = {
-    instances: () =>
-      collectPages(
-        (after) => this.api.get("/api/v1/instances/", { query: { limit: 25, ...after } }),
-        (page) => page?.instances,
-      ),
-    volumes: async (): Promise<VVolume[]> =>
-      (await this.api.get("/api/v0/volumes/", { query: { owner: "me", type: "all_volume" } }))
-        ?.volumes ?? [],
+    instances: () => this.api.getAll("/api/v1/instances/", "instances", { pageSize: 25 }),
+    volumes: async (): Promise<VVolume[]> => {
+      const path = "/api/v0/volumes/";
+      const res = await this.api.get(path, { query: { owner: "me", type: "all_volume" } });
+      return requireListPage(res?.volumes, { vendor: VENDOR, path, key: "volumes", page: res });
+    },
     sshKeys: async () => {
       const list = sshKeysOf(await this.api.get("/api/v0/ssh/"));
       return list.filter((k) => !k.deleted_at);
     },
-    endpoints: async () => (await this.api.get("/api/v0/endptjobs/"))?.results ?? [],
-    workergroups: async () => (await this.api.get("/api/v0/workergroups/"))?.results ?? [],
+    endpoints: async () => {
+      const path = "/api/v0/endptjobs/";
+      const res = await this.api.get(path);
+      return requireListPage(res?.results, { vendor: VENDOR, path, key: "results", page: res });
+    },
+    workergroups: async () => {
+      const path = "/api/v0/workergroups/";
+      const res = await this.api.get(path);
+      return requireListPage(res?.results, { vendor: VENDOR, path, key: "results", page: res });
+    },
+    /** Only the names: values are secrets and never enter inventory. */
+    envVarNames: async () => {
+      const path = "/api/v0/secrets/";
+      const res = await this.api.get(path);
+      const secrets = res?.secrets;
+      if (secrets === null) return [];
+      if (typeof secrets !== "object" || Array.isArray(secrets)) {
+        throw new ListPageError({
+          vendor: VENDOR,
+          path,
+          key: "secrets",
+          found: secrets,
+          page: res,
+        });
+      }
+      return Object.keys(secrets).sort();
+    },
   };
 
   /** Templates you created. */
   async ownTemplates(): Promise<VTemplate[]> {
     const me = await this.user();
-    if (!me?.id) return [];
-    const res = await this.api.get("/api/v0/template/", {
+    // No id to filter by is not the same as having no templates.
+    if (!me?.id) throw new Error("Vast.ai plugin: the account details came back with no id");
+    const path = "/api/v0/template/";
+    const res = await this.api.get(path, {
       query: {
         select_filters: JSON.stringify({ creator_id: { eq: me.id } }),
         select_cols: JSON.stringify(["*"]),
       },
     });
-    return res?.templates ?? [];
+    return requireListPage(res?.templates, { vendor: VENDOR, path, key: "templates", page: res });
   }
 
   /** Your templates first, then Vast's recommended ones. */
@@ -247,13 +280,8 @@ export class VastClient implements PluginClient {
           return (await this.raw.endpoints()).map((e) => mapEndpoint(e, accountId));
         case "workergroup":
           return (await this.raw.workergroups()).map((w) => mapWorkergroup(w, accountId));
-        case "env-var": {
-          const res = await this.api.get("/api/v0/secrets/");
-          // Only the names: values are secrets and never enter inventory.
-          return Object.keys(res?.secrets ?? {})
-            .sort()
-            .map((k) => mapEnvVar(k, accountId));
-        }
+        case "env-var":
+          return (await this.raw.envVarNames()).map((k) => mapEnvVar(k, accountId));
         default:
           throw new Error(`Vast.ai plugin: unknown resource type "${typeId}"`);
       }

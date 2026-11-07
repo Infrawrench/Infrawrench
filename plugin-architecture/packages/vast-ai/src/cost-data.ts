@@ -1,6 +1,6 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
-import { collectPages, isStatus, type VastApi } from "./api.js";
+import { isStatus, type VastApi } from "./api.js";
 import type { VChargeEntry } from "./types.js";
 
 /**
@@ -35,16 +35,26 @@ function dayOf(sec: number): string {
   return new Date(sec * 1000).toISOString().slice(0, 10);
 }
 
-/** Split `amount` over the UTC days `[start, end]` overlaps, by time share. */
-export function spreadByDay(start: number, end: number, amount: number): Array<[string, number]> {
+/**
+ * Split `amount` over the UTC days `[start, end]` overlaps, by time share, walking only
+ * `[from, to)`: an item can begin years before the range or end in Vast's far future.
+ */
+export function spreadByDay(
+  start: number,
+  end: number,
+  amount: number,
+  from = start,
+  to = end,
+): Array<[string, number]> {
   if (!Number.isFinite(start) || !Number.isFinite(amount)) return [];
   if (!Number.isFinite(end) || end <= start) return [[dayOf(start), amount]];
   const out: Array<[string, number]> = [];
   const total = end - start;
-  let cursor = start;
-  while (cursor < end && out.length < 1000) {
+  const stop = Math.min(end, to);
+  let cursor = Math.max(start, from);
+  while (cursor < stop) {
     const nextMidnight = (Math.floor(cursor / DAY) + 1) * DAY;
-    const sliceEnd = Math.min(end, nextMidnight);
+    const sliceEnd = Math.min(stop, nextMidnight);
     out.push([dayOf(cursor), (amount * (sliceEnd - cursor)) / total]);
     cursor = sliceEnd;
   }
@@ -83,6 +93,8 @@ export function mapCharges(entries: VChargeEntry[], range: CostFetchRange): Cost
         item.start ?? entry.start ?? NaN,
         item.end ?? entry.end ?? NaN,
         item.amount,
+        dayStart(range.fromDate),
+        dayStart(range.toDate) + DAY,
       )) {
         if (date < range.fromDate || date > range.toDate) continue;
         add({
@@ -104,20 +116,15 @@ export function mapCharges(entries: VChargeEntry[], range: CostFetchRange): Cost
 export async function fetchVastCostData(api: VastApi, range: CostFetchRange): Promise<CostRow[]> {
   let entries: VChargeEntry[];
   try {
-    entries = await collectPages(
-      (after) =>
-        api.get("/api/v0/charges/", {
-          query: {
-            select_filters: JSON.stringify({
-              day: { gte: dayStart(range.fromDate), lte: dayStart(range.toDate) + DAY - 1 },
-            }),
-            format: "table",
-            limit: 100,
-            ...after,
-          },
+    entries = await api.getAll("/api/v0/charges/", "results", {
+      query: {
+        select_filters: JSON.stringify({
+          day: { gte: dayStart(range.fromDate), lte: dayStart(range.toDate) + DAY - 1 },
         }),
-      (page) => page?.results,
-    );
+        format: "table",
+      },
+      pageSize: 500,
+    });
   } catch (e) {
     if (isStatus(e, 401, 403)) {
       throw new CostSetupError(

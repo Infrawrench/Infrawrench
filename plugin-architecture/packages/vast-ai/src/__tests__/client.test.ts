@@ -422,6 +422,111 @@ describe("template edits", () => {
   });
 });
 
+describe("lists that cannot say they have every row", () => {
+  const LISTS: Array<[string, string, string]> = [
+    ["instance", "/api/v1/instances/", "instances"],
+    ["volume", "/api/v0/volumes/", "volumes"],
+    ["serverless-endpoint", "/api/v0/endptjobs/", "results"],
+    ["workergroup", "/api/v0/workergroups/", "results"],
+    ["template", "/api/v0/template/", "templates"],
+    ["ssh-key", "/api/v0/ssh/", "ssh_keys"],
+    ["env-var", "/api/v0/secrets/", "secrets"],
+  ];
+
+  it("throws at the instance cap rather than prune the rest", async () => {
+    route("GET", "/api/v1/instances/", (c: Call) => ({
+      instances: [{ ...INSTANCE, id: calls.indexOf(c) }],
+      next_token: "more",
+    }));
+    await expect(client().listResources("instance", "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(400);
+    expect(calls[0]!.url.searchParams.get("limit")).toBe("25");
+  });
+
+  it("reads a full 10,000 instances", async () => {
+    route("GET", "/api/v1/instances/", (c: Call) => {
+      const page = calls.indexOf(c);
+      return {
+        instances: Array.from({ length: 25 }, (_, i) => ({ id: page * 25 + i })),
+        next_token: page < 399 ? "more" : null,
+      };
+    });
+    await expect(client().listResources("instance", "acct")).resolves.toHaveLength(10_000);
+  });
+
+  it("throws at the charge cap, asking for Vast's largest page", async () => {
+    route("GET", "/api/v0/charges/", { results: [{ source: "instance-1" }], next_token: "more" });
+    await expect(
+      client().fetchCostData("acct", { fromDate: "2026-09-01", toDate: "2026-09-30" }),
+    ).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls).toHaveLength(400);
+    expect(calls[0]!.url.searchParams.get("limit")).toBe("500");
+  });
+
+  it("follows a token past an empty page, since only a null token ends the list", async () => {
+    route("GET", "/api/v1/instances/", (c: Call) => {
+      const page = calls.indexOf(c);
+      if (page === 0) return { instances: [], next_token: "more" };
+      return { instances: [INSTANCE], next_token: null };
+    });
+    const list = await client().listResources("instance", "acct");
+    expect(list.map((i) => i.externalId)).toEqual(["312"]);
+  });
+
+  it.each(LISTS)("%s: a renamed list rejects instead of reading as empty", async (type, path) => {
+    route("GET", "/api/v0/users/current/", { id: 42 });
+    route("GET", path, { success: true, renamed: [] });
+    await expect(client().listResources(type, "acct")).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["instance", "/api/v1/instances/", "instances"],
+    ["cost", "/api/v0/charges/", "results"],
+  ])("%s: a renamed list on a later page rejects too", async (type, path, key) => {
+    route("GET", path, (c: Call) =>
+      calls.indexOf(c) === 0 ? { [key]: [], next_token: "more" } : { renamed: [] },
+    );
+    const read =
+      type === "cost"
+        ? client().fetchCostData("acct", { fromDate: "2026-09-01", toDate: "2026-09-30" })
+        : client().listResources(type, "acct");
+    await expect(read).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("does not name a secret's value when the secrets are not an object", async () => {
+    route("GET", "/api/v0/secrets/", { secrets: "s3cr3t-value" });
+    const err = await client()
+      .listResources("env-var", "acct")
+      .catch((e: Error) => e.message);
+    expect(err).toContain("is not a list");
+    expect(err).not.toContain("s3cr3t-value");
+  });
+
+  it("reads a null list as empty, the way a nil slice is written", async () => {
+    route("GET", "/api/v0/volumes/", { volumes: null });
+    route("GET", "/api/v0/secrets/", { secrets: null });
+    await expect(client().listResources("volume", "acct")).resolves.toEqual([]);
+    await expect(client().listResources("env-var", "acct")).resolves.toEqual([]);
+  });
+
+  it("still reads ssh keys as a bare list and as a wrapped one", async () => {
+    const key = { id: 3, key: "ssh-ed25519 AAAA" };
+    route("GET", "/api/v0/ssh/", [key]);
+    await expect(client().listResources("ssh-key", "acct")).resolves.toHaveLength(1);
+    route("GET", "/api/v0/ssh/", { ssh_keys: [key] });
+    await expect(client().listResources("ssh-key", "acct")).resolves.toHaveLength(1);
+  });
+
+  it("rejects rather than list no templates when the account has no id", async () => {
+    route("GET", "/api/v0/users/current/", { balance: 1 });
+    route("GET", "/api/v0/template/", { success: true, templates: [{ id: 9 }] });
+    await expect(client().listResources("template", "acct")).rejects.toThrow(/no id/);
+  });
+});
+
 describe("cost data", () => {
   const range = { fromDate: "2026-09-01", toDate: "2026-09-30" };
   const day = (d: string) => Date.parse(`${d}T00:00:00Z`) / 1000;
@@ -432,6 +537,41 @@ describe("cost data", () => {
       ["2026-09-01", 5],
       ["2026-09-02", 5],
     ]);
+  });
+
+  it("keeps the range's share of an item that began long before it", () => {
+    const rows = mapCharges(
+      [
+        {
+          source: "instance-1",
+          items: [
+            {
+              type: "gpu",
+              start: day("2026-09-02") - 1200 * 86_400,
+              end: day("2026-09-02"),
+              amount: 1200,
+            },
+          ],
+        },
+      ],
+      range,
+    );
+    expect(rows).toEqual([
+      { date: "2026-09-01", service: "GPU", resourceId: "1", currency: "USD", amount: 1 },
+    ]);
+  });
+
+  it("does not walk the days of an item with a far-future end", () => {
+    const rows = mapCharges(
+      [
+        {
+          source: "instance-1",
+          items: [{ type: "gpu", start: day("2026-09-01"), end: 9_999_999_999, amount: 1_000_000 }],
+        },
+      ],
+      { fromDate: "2026-09-01", toDate: "2026-09-02" },
+    );
+    expect(rows.map((r) => r.date)).toEqual(["2026-09-01", "2026-09-02"]);
   });
 
   it("maps charge items to services, resources and tags, clipped to the range", () => {

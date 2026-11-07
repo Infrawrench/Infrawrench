@@ -1,5 +1,6 @@
 import {
   createApiClient,
+  withCursorPagination,
   type HostServices,
   type HttpHostServices,
   type ParamValue,
@@ -17,6 +18,7 @@ import type { paths } from "./api-types.gen.js";
  */
 
 export const API_ORIGIN = "https://console.vast.ai";
+export const VENDOR = "Vast.ai";
 
 export class VastApiError extends Error {
   readonly status: number;
@@ -98,43 +100,34 @@ function vastTransport(services: HostServices | undefined): HttpHostServices {
   };
 }
 
+/** 10,000 instances at Vast's limit of 25 a page; the charge pages hold 500. */
+const MAX_PAGES = 400;
+
 /** A client over `/api/v0` and `/api/v1`; each path includes its version prefix. */
 export function createVastApi(apiKey: string, caCert: string, services: HostServices | undefined) {
-  return createApiClient<Slashed<paths>>({
-    vendor: "Vast.ai",
-    baseUrl: API_ORIGIN,
-    headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
-    http: vastTransport(services),
-    caCert,
-    contentType: "with-body",
-    serializeQuery: writeQuery,
-    httpError: ({ status, path, body }) => new VastApiError(status, path, body),
-  });
+  return withCursorPagination(
+    createApiClient<Slashed<paths>>({
+      vendor: VENDOR,
+      baseUrl: API_ORIGIN,
+      headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+      http: vastTransport(services),
+      caCert,
+      contentType: "with-body",
+      serializeQuery: writeQuery,
+      httpError: ({ status, path, body }) => new VastApiError(status, path, body),
+    }),
+    {
+      cursorParam: "after_token",
+      next: "next_token",
+      sizeParam: "limit",
+      maxPages: MAX_PAGES,
+      // The document ends both paged lists on a null `next_token`, not on an empty page.
+      continueOnEmptyPage: true,
+    },
+  );
 }
 
 export type VastApi = ReturnType<typeof createVastApi>;
-
-const MAX_PAGES = 200;
-
-/**
- * Keyset pagination: `after_token` in, `next_token` out. A hand loop rather than
- * `getAll`, which reads a list that is not an array as empty: here that throws, so a
- * malformed answer fails the sync instead of pruning what it no longer lists.
- */
-export async function collectPages<Page extends { next_token?: string | null }, Item>(
-  fetchPage: (after: { after_token?: string }) => Promise<Page>,
-  list: (page: Page | undefined) => Iterable<Item> | undefined,
-): Promise<Item[]> {
-  const out: Item[] = [];
-  let after_token: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const res: Page | undefined = await fetchPage(after_token ? { after_token } : {});
-    out.push(...(list(res) ?? []));
-    after_token = res?.next_token || undefined;
-    if (!after_token) break;
-  }
-  return out;
-}
 
 export function isStatus(err: unknown, ...statuses: number[]): boolean {
   return err instanceof VastApiError && statuses.includes(err.status);
