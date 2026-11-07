@@ -311,6 +311,146 @@ describe("lists that stop early", () => {
   });
 });
 
+describe("a token refused a list", () => {
+  const refused = () => new Response('{"errors":[{"message":"forbidden"}]}', { status: 403 });
+  const OWN_ROUTES: Array<[string, string]> = [
+    [T.accessEntry, "GET /v2/access-lists"],
+    [T.privateEndpoint, "GET /v2/organizations/private-link"],
+    [T.pcuGroup, "POST /v2/pcus/actions/get"],
+    [T.tenant, "GET /v2/streaming/tenants"],
+    [T.role, "GET /v2/organizations/roles"],
+    [T.user, "GET /v2/organizations/users"],
+    [T.token, "GET /v2/clientIdSecrets"],
+  ];
+
+  it.each(OWN_ROUTES)("keeps every stored %s row, without an error", async (type, route) => {
+    mockFetch({ "GET /v2/databases": [], [route]: refused });
+    const unread = trackUnread();
+    try {
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      await expect(client.listResources(type, "acc")).resolves.toEqual([]);
+      expect(unread.parts).toEqual([{ idPrefixes: [""] }]);
+    } finally {
+      unread.stop();
+    }
+  });
+
+  it.each(OWN_ROUTES)(
+    "shows the refusal of %s where a host keeps no track",
+    async (type, route) => {
+      mockFetch({ "GET /v2/databases": [], [route]: refused });
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      const err = await client.listResources(type, "acc").catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(AstraApiError);
+      expect((err as AstraApiError).status).toBe(403);
+    },
+  );
+
+  it("still fails the type on a throttle", async () => {
+    mockFetch({ "GET /v2/organizations/users": new Response("slow down", { status: 429 }) });
+    const unread = trackUnread();
+    try {
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      await expect(client.listResources(T.user, "acc")).rejects.toBeInstanceOf(AstraApiError);
+      expect(unread.parts).toEqual([]);
+    } finally {
+      unread.stop();
+    }
+  });
+
+  it("reads a feature that is off as none, and says nothing went unread", async () => {
+    mockFetch({
+      "POST /v2/pcus/actions/get": new Response("{}", { status: 404 }),
+      "GET /v2/databases": [],
+    });
+    const unread = trackUnread();
+    try {
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      await expect(client.listResources(T.pcuGroup, "acc")).resolves.toEqual([]);
+      expect(unread.parts).toEqual([]);
+    } finally {
+      unread.stop();
+    }
+  });
+
+  it("does not hold back a type that only looks things up in the refused list", async () => {
+    mockFetch({
+      "GET /v2/databases": [DB],
+      "GET /v2/access-lists": refused,
+      "GET /v2/organizations/private-link": refused,
+      "GET /v2/organizations/roles": refused,
+      "GET /v2/clientIdSecrets": { clients: [{ clientId: "c1", roles: ["r1"] }] },
+    });
+    const unread = trackUnread();
+    try {
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      await expect(client.listResources(T.database, "acc")).resolves.toHaveLength(1);
+      await expect(client.listResources(T.region, "acc")).resolves.toHaveLength(1);
+      await expect(client.listResources(T.token, "acc")).resolves.toHaveLength(1);
+      expect(unread.parts).toEqual([]);
+    } finally {
+      unread.stop();
+    }
+  });
+
+  it("names just the database it was refused, and lists the rest", async () => {
+    const other = { ...DB, id: "other" };
+    mockFetch({
+      "GET /v2/databases": [DB, other],
+      [`GET /v2/databases/${DB.id}/snapshots`]: refused,
+      "GET /v2/databases/other/snapshots": { snapshots: [{ id: "s" }] },
+    });
+    const unread = trackUnread();
+    try {
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      const rows = await client.listResources(T.snapshot, "acc");
+      expect(rows.map((r) => r.externalId)).toEqual(["other/s"]);
+      expect(unread.parts).toEqual([{ parentResourceIds: [`acc:${T.database}:${DB.id}`] }]);
+    } finally {
+      unread.stop();
+    }
+  });
+
+  it("keeps the CDC rows of a database it was refused", async () => {
+    mockFetch({ "GET /v2/databases": [DB], [`GET /v3/databases/${DB.id}/cdc`]: refused });
+    const unread = trackUnread();
+    try {
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      await expect(client.listResources(T.cdc, "acc")).resolves.toEqual([]);
+      expect(unread.parts).toEqual([{ parentResourceIds: [`acc:${T.database}:${DB.id}`] }]);
+    } finally {
+      unread.stop();
+    }
+  });
+
+  it("with no host tracking, shows a refusal of every database but not of some", async () => {
+    const other = { ...DB, id: "other" };
+    mockFetch({
+      "GET /v2/databases": [DB, other],
+      [`GET /v2/databases/${DB.id}/snapshots`]: refused,
+      "GET /v2/databases/other/snapshots": { snapshots: [{ id: "s" }] },
+    });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.snapshot, "acc"),
+    ).resolves.toHaveLength(1);
+    mockFetch({
+      "GET /v2/databases": [DB, other],
+      [`GET /v2/databases/${DB.id}/snapshots`]: refused,
+      "GET /v2/databases/other/snapshots": refused,
+    });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.snapshot, "acc"),
+    ).rejects.toBeInstanceOf(AstraApiError);
+  });
+
+  it("still offers the create forms when the roles are refused", async () => {
+    mockFetch({ "GET /v2/organizations/roles": refused });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    await expect(client.getCreateConfig(T.user)).resolves.toBeDefined();
+    await expect(client.getCreateConfig(T.token)).resolves.toBeDefined();
+  });
+});
+
 describe("status feed", () => {
   it("maps AWS and Azure components onto regions and Astra products onto types", () => {
     expect(mapComponent("AWS us-east-1")).toMatchObject({ regions: ["us-east-1"] });

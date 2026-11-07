@@ -28,6 +28,7 @@ import {
   astraRequest,
   devops,
   fetchText,
+  isFeatureOff,
   isUnavailable,
   statusOf,
   unwrapBody,
@@ -171,6 +172,33 @@ export class AstraPluginClient implements PluginClient {
     }
   }
 
+  /**
+   * A listing behind the shared cache. A 403 goes on to the caller, because it means
+   * something different to the type that owns the list and to one that only looks
+   * things up in it.
+   */
+  private async ifOffered<V>(load: () => Promise<V>, none: V): Promise<V> {
+    try {
+      return await load();
+    } catch (err) {
+      if (isFeatureOff(err)) return none;
+      throw err;
+    }
+  }
+
+  /** The list a whole type is read from, for a token that may be refused all of it. */
+  private async ownList<V>(load: () => Promise<V>, none: V): Promise<V> {
+    try {
+      return await load();
+    } catch (err) {
+      if (statusOf(err) !== 403) throw err;
+      // This type's stored rows stay. A host that keeps no track (the desktop) answers
+      // false, and there the refusal should still show.
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      return none;
+    }
+  }
+
   /** One Data API command against a database's endpoint. */
   private dataApi<V>(endpoint: string, path: string, command: Record<string, unknown>): Promise<V> {
     return astraRequest<V>(this.ctx, "POST", `${endpoint.replace(/\/$/, "")}/api/json/v1/${path}`, {
@@ -214,7 +242,7 @@ export class AstraPluginClient implements PluginClient {
   /**
    * Run each parent's read, up to what one poll can spend. Past that the rest are named,
    * so their rows go stale rather than being deleted, and the start moves each hour so
-   * everything is read over time.
+   * everything is read over time. A parent the token is refused keeps its rows the same way.
    */
   private async readChildren(parents: ChildRead[]): Promise<void> {
     const start =
@@ -224,7 +252,23 @@ export class AstraPluginClient implements PluginClient {
     const rotated = [...parents.slice(start), ...parents.slice(0, start)];
     const past = rotated.slice(FAN_OUT_REQUESTS);
     if (past.length) reportUnreadListPart({ parentResourceIds: past.map((p) => p.parentId) });
-    for (const parent of rotated.slice(0, FAN_OUT_REQUESTS)) await parent.read();
+    const reading = rotated.slice(0, FAN_OUT_REQUESTS);
+    const refused: string[] = [];
+    let refusal: unknown;
+    for (const parent of reading) {
+      try {
+        await parent.read();
+      } catch (err) {
+        if (statusOf(err) !== 403) throw err;
+        refusal ??= err;
+        refused.push(parent.parentId);
+      }
+    }
+    if (!refused.length) return;
+    // A host that keeps no track (the desktop) answers false, and there a refusal of
+    // everything should still show.
+    if (!reportUnreadListPart({ parentResourceIds: refused }) && refused.length === reading.length)
+      throw refusal;
   }
 
   private async database(id: string): Promise<AstraDatabase> {
@@ -235,7 +279,7 @@ export class AstraPluginClient implements PluginClient {
 
   private accessLists(): Promise<AstraAccessList[]> {
     return this.cached("access-lists", () =>
-      this.optional(
+      this.ifOffered(
         async () => (await this.api<AstraAccessList[]>("GET", "/v2/access-lists")) ?? [],
         [],
       ),
@@ -244,7 +288,7 @@ export class AstraPluginClient implements PluginClient {
 
   private privateLinks(): Promise<AstraPrivateLinkOrg> {
     return this.cached("private-links", () =>
-      this.optional(
+      this.ifOffered(
         async () =>
           (await this.api<AstraPrivateLinkOrg>("GET", "/v2/organizations/private-link")) ?? {},
         {},
@@ -254,7 +298,7 @@ export class AstraPluginClient implements PluginClient {
 
   pcuGroups(): Promise<AstraPcuGroup[]> {
     return this.cached("pcu-groups", () =>
-      this.optional(
+      this.ifOffered(
         async () =>
           (await this.api<AstraPcuGroup[]>("POST", "/v2/pcus/actions/get", { body: {} })) ?? [],
         [],
@@ -277,7 +321,7 @@ export class AstraPluginClient implements PluginClient {
 
   tenants(): Promise<AstraTenant[]> {
     return this.cached("tenants", () =>
-      this.optional(
+      this.ifOffered(
         async () => unwrapBody<AstraTenant[]>(await this.api("GET", "/v2/streaming/tenants")) ?? [],
         [],
       ),
@@ -286,7 +330,7 @@ export class AstraPluginClient implements PluginClient {
 
   private roles(): Promise<AstraRole[]> {
     return this.cached("roles", () =>
-      this.optional(
+      this.ifOffered(
         async () => (await this.api<AstraRole[]>("GET", "/v2/organizations/roles")) ?? [],
         [],
       ),
@@ -295,7 +339,7 @@ export class AstraPluginClient implements PluginClient {
 
   private users(): Promise<AstraUser[]> {
     return this.cached("users", () =>
-      this.optional(
+      this.ifOffered(
         async () =>
           (await this.api<{ users?: AstraUser[] }>("GET", "/v2/organizations/users"))?.users ?? [],
         [],
@@ -305,7 +349,7 @@ export class AstraPluginClient implements PluginClient {
 
   private clients(): Promise<AstraClient[]> {
     return this.cached("clients", () =>
-      this.optional(
+      this.ifOffered(
         async () =>
           (await this.api<{ clients?: AstraClient[] }>("GET", "/v2/clientIdSecrets"))?.clients ??
           [],
@@ -331,7 +375,10 @@ export class AstraPluginClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case T.database: {
-          const [dbs, lists] = await Promise.all([this.databases(), this.accessLists()]);
+          const [dbs, lists] = await Promise.all([
+            this.databases(),
+            this.optional(() => this.accessLists(), [] as AstraAccessList[]),
+          ]);
           return dbs.map((db) => {
             const list = lists.find((l) => l.databaseId === db.id);
             return mapDatabase(accountId, db, {
@@ -345,7 +392,10 @@ export class AstraPluginClient implements PluginClient {
           });
         }
         case T.region: {
-          const [dbs, links] = await Promise.all([this.databases(), this.privateLinks()]);
+          const [dbs, links] = await Promise.all([
+            this.databases(),
+            this.optional(() => this.privateLinks(), {} as AstraPrivateLinkOrg),
+          ]);
           const linkByDc = new Map<
             string,
             { serviceName?: string; allowedPrincipals?: string[] }
@@ -388,7 +438,7 @@ export class AstraPluginClient implements PluginClient {
           return out;
         }
         case T.accessEntry: {
-          const lists = await this.accessLists();
+          const lists = await this.ownList(() => this.accessLists(), [] as AstraAccessList[]);
           return lists.flatMap((l) =>
             (l.addresses ?? [])
               .filter((a) => a.address && l.databaseId)
@@ -416,7 +466,7 @@ export class AstraPluginClient implements PluginClient {
             (await this.databases()).map((db) => ({
               parentId: `${accountId}:${T.database}:${db.id}`,
               read: async () => {
-                const cdc = await this.optional(
+                const cdc = await this.ifOffered(
                   () => this.api<AstraCdc>("GET", `/v3/databases/${encodeURIComponent(db.id)}/cdc`),
                   undefined as AstraCdc | undefined,
                 );
@@ -447,7 +497,7 @@ export class AstraPluginClient implements PluginClient {
           return out;
         }
         case T.privateEndpoint: {
-          const links = await this.privateLinks();
+          const links = await this.ownList(() => this.privateLinks(), {} as AstraPrivateLinkOrg);
           const out: ResourceInstance[] = [];
           for (const c of links.clusters ?? []) {
             for (const d of c.datacenters ?? []) {
@@ -483,7 +533,9 @@ export class AstraPluginClient implements PluginClient {
               parentId: `${accountId}:${T.database}:${db.id}`,
               read: async () => {
                 const path = `/v2/databases/${encodeURIComponent(db.id)}/snapshots`;
-                const res = await this.optional(
+                const res = await this.ifOffered<{
+                  snapshots?: Array<{ id?: string; time?: string }>;
+                }>(
                   () =>
                     this.api<{ snapshots?: Array<{ id?: string; time?: string }> }>("GET", path),
                   {},
@@ -513,7 +565,10 @@ export class AstraPluginClient implements PluginClient {
           return out;
         }
         case T.pcuGroup: {
-          const [groups, dbs] = await Promise.all([this.pcuGroups(), this.databases()]);
+          const [groups, dbs] = await Promise.all([
+            this.ownList(() => this.pcuGroups(), [] as AstraPcuGroup[]),
+            this.databases(),
+          ]);
           const dcName = new Map<string, string>();
           for (const db of dbs) {
             for (const dc of db.info?.datacenters ?? []) {
@@ -531,17 +586,22 @@ export class AstraPluginClient implements PluginClient {
           );
         }
         case T.tenant:
-          return (await this.tenants())
+          return (await this.ownList(() => this.tenants(), [] as AstraTenant[]))
             .filter((t) => t.tenantName && t.clusterName)
             .map((t) => mapTenant(accountId, t));
         case T.role:
-          return (await this.roles())
+          return (await this.ownList(() => this.roles(), [] as AstraRole[]))
             .filter((r) => r.id || r.name)
             .map((r) => mapRole(accountId, r));
         case T.user:
-          return (await this.users()).map((u) => mapUser(accountId, u));
+          return (await this.ownList(() => this.users(), [] as AstraUser[])).map((u) =>
+            mapUser(accountId, u),
+          );
         case T.token: {
-          const [clients, roles] = await Promise.all([this.clients(), this.roles()]);
+          const [clients, roles] = await Promise.all([
+            this.ownList(() => this.clients(), [] as AstraClient[]),
+            this.optional(() => this.roles(), [] as AstraRole[]),
+          ]);
           const roleName = new Map(roles.map((r) => [r.id ?? "", r.name ?? r.id ?? ""]));
           return clients
             .filter((c) => c.clientId)
@@ -578,7 +638,7 @@ export class AstraPluginClient implements PluginClient {
       if (typeId === T.database) {
         const [db, lists] = await Promise.all([
           this.api<AstraDatabase>("GET", `/v2/databases/${encodeURIComponent(ext)}`),
-          this.accessLists(),
+          this.optional(() => this.accessLists(), [] as AstraAccessList[]),
         ]);
         const list = lists.find((l) => l.databaseId === ext);
         return mapDatabase(accountId, db, {
@@ -648,7 +708,7 @@ export class AstraPluginClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async roleOptions() {
-    return (await this.roles())
+    return (await this.optional(() => this.roles(), [] as AstraRole[]))
       .filter((r) => r.id)
       .map((r) => ({
         id: r.id!,
@@ -1348,7 +1408,7 @@ export class AstraPluginClient implements PluginClient {
           const dbId = this.parentDb(fields, parentResourceId);
           const db = await this.database(dbId);
           const [cluster, tenantName] = splitFirst(fields["tenant"] ?? "");
-          const tenant = (await this.tenants()).find(
+          const tenant = (await this.optional(() => this.tenants(), [] as AstraTenant[])).find(
             (t) => t.clusterName === cluster && t.tenantName === tenantName,
           );
           const dcs = db.info?.datacenters ?? [];

@@ -43,6 +43,12 @@ export function isUnavailable(err: unknown): boolean {
   return s === 403 || s === 404 || s === 501;
 }
 
+/** A 404 or 501 on a listing: the organization does not have the feature, so there is nothing in it. */
+export function isFeatureOff(err: unknown): boolean {
+  const s = statusOf(err);
+  return s === 404 || s === 501;
+}
+
 function friendly(status: number, raw: string): string {
   if (status === 401) {
     return "Astra API error 401: the application token was rejected. Generate a new one under Settings, Tokens in the Astra Portal.";
