@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import {
+  isRegionRefusal,
   mapWithConcurrency,
   readEachParent,
   readEachRegion,
@@ -305,20 +306,50 @@ export async function listDataflowJobs(
   });
 }
 
+/** The regions read before the list came from `locations.list`, for when that is refused. */
+const VERTEX_FALLBACK_REGIONS = [
+  "us-central1",
+  "us-east1",
+  "us-west1",
+  "europe-west1",
+  "europe-west4",
+  "asia-east1",
+  "asia-northeast1",
+];
+
+/**
+ * A region such as `us-central1` or `northamerica-northeast1`, which has its own
+ * `{region}-aiplatform` host. Endpoints are regional, and `global` or a multi-region
+ * has no such host: reading one would fail on the name lookup and take the type with it.
+ */
+const VERTEX_REGION = /^[a-z]+-[a-z]+\d+$/;
+
+/** Every region Vertex AI serves this project, read from the API rather than a fixed list. */
+async function listVertexAiRegions(ctx: ListerContext, p: string): Promise<string[]> {
+  try {
+    const locations = await ctx.paginate<{ locationId?: string; name?: string }>(
+      `https://aiplatform.googleapis.com/v1/projects/${p}/locations`,
+      "locations",
+    );
+    const ids = locations.map((l) => l.locationId ?? l.name?.split("/").pop() ?? "");
+    const regions = [...new Set(ids.filter((id) => VERTEX_REGION.test(id)))];
+    // No region at all can't be right for a service in dozens of them, and reading none
+    // would prune every stored endpoint.
+    return regions.length > 0 ? regions : VERTEX_FALLBACK_REGIONS;
+  } catch (err) {
+    // A throttle, a 5xx or an expired credential fails the type. A refused location
+    // list falls back to the regions this always read, whose own answers then decide.
+    if (!isRegionRefusal(err)) throw err;
+    return VERTEX_FALLBACK_REGIONS;
+  }
+}
+
 export async function listVertexAiEndpoints(
   ctx: ListerContext,
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const regions = [
-    "us-central1",
-    "us-east1",
-    "us-west1",
-    "europe-west1",
-    "europe-west4",
-    "asia-east1",
-    "asia-northeast1",
-  ];
+  const regions = await listVertexAiRegions(ctx, p);
   return readEachRegion(
     regions,
     async (region) => {

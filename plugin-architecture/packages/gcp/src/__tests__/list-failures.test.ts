@@ -198,6 +198,15 @@ const LOCATIONS = [
   { name: `projects/${PROJ}/locations/us-b`, locationId: "us-b" },
 ];
 
+/** What Vertex AI's `locations.list` names, `global` and a multi-region among them. */
+const VERTEX_LOCATIONS = [
+  { name: `projects/${PROJ}/locations/us-central1`, locationId: "us-central1" },
+  { name: `projects/${PROJ}/locations/us-east1`, locationId: "us-east1" },
+  { name: `projects/${PROJ}/locations/me-central2`, locationId: "me-central2" },
+  { name: `projects/${PROJ}/locations/global`, locationId: "global" },
+  { name: `projects/${PROJ}/locations/us`, locationId: "us" },
+];
+
 /** Each list that fans out over regions or locations. */
 const REGION_LISTS: Array<{
   name: string;
@@ -211,10 +220,13 @@ const REGION_LISTS: Array<{
   {
     name: "Vertex AI endpoints",
     run: (ctx) => listers.listVertexAiEndpoints(ctx, ACCT, PROJ),
-    ctx: (read) => makeCtx(read),
+    ctx: (read) =>
+      makeCtx((url) =>
+        url.endsWith(`/projects/${PROJ}/locations`) ? VERTEX_LOCATIONS : read(url),
+      ),
     refusing: "/locations/us-east1/",
     child: { name: "projects/123/locations/x/endpoints/e" },
-    survivors: 6,
+    survivors: 2,
     // Google writes a project number into these names, so no region prefix can match.
     unreadPrefix: `${ACCT}:vertex-ai-endpoint:`,
   },
@@ -467,5 +479,57 @@ describe("BigQuery hydration when a dataset's or table's GET fails", () => {
       Array.from({ length: 40 }, (_, i) => `${PROJ}:d/t${i}`),
     );
     expect(most).toBeLessThanOrEqual(8);
+  });
+});
+
+describe("Vertex AI endpoints, per location", () => {
+  const endpointsIn = (url: string) => {
+    const region = url.split("/locations/")[1]!.split("/")[0]!;
+    return [{ name: `projects/123/locations/${region}/endpoints/e` }];
+  };
+
+  it("reads every regional location Vertex AI names, at that region's host", async () => {
+    const ctx = makeCtx((url) =>
+      url.endsWith(`/projects/${PROJ}/locations`) ? VERTEX_LOCATIONS : endpointsIn(url),
+    );
+    const rows = await listers.listVertexAiEndpoints(ctx, ACCT, PROJ);
+    expect(rows.map((r) => r.fields["region"])).toEqual(["us-central1", "us-east1", "me-central2"]);
+    const urls = vi.mocked(ctx.paginate).mock.calls.map(([url]) => url);
+    expect(urls).toEqual([
+      `https://aiplatform.googleapis.com/v1/projects/${PROJ}/locations`,
+      `https://us-central1-aiplatform.googleapis.com/v1/projects/${PROJ}/locations/us-central1/endpoints`,
+      `https://us-east1-aiplatform.googleapis.com/v1/projects/${PROJ}/locations/us-east1/endpoints`,
+      `https://me-central2-aiplatform.googleapis.com/v1/projects/${PROJ}/locations/me-central2/endpoints`,
+    ]);
+  });
+
+  it.each([
+    ["a 503", apiError(503)],
+    ["a 429", apiError(429)],
+    ["a 401", apiError(401)],
+    ["a throttle sent as a 403", apiError(403, THROTTLED_403)],
+  ])("fails on %s from the location list instead of listing none", async (_, err) => {
+    const ctx = makeCtx((url) => {
+      if (url.endsWith(`/projects/${PROJ}/locations`)) throw err;
+      return endpointsIn(url);
+    });
+    await expect(listers.listVertexAiEndpoints(ctx, ACCT, PROJ)).rejects.toBe(err);
+  });
+
+  it("reads the regions it always read when the location list names none", async () => {
+    const ctx = makeCtx((url) =>
+      url.endsWith(`/projects/${PROJ}/locations`) ? [] : endpointsIn(url),
+    );
+    await expect(listers.listVertexAiEndpoints(ctx, ACCT, PROJ)).resolves.toHaveLength(7);
+  });
+
+  it("reads the regions it always read when the location list is refused", async () => {
+    const ctx = makeCtx((url) => {
+      if (url.endsWith(`/projects/${PROJ}/locations`)) throw apiError(403, "PERMISSION_DENIED");
+      return endpointsIn(url);
+    });
+    const rows = await listers.listVertexAiEndpoints(ctx, ACCT, PROJ);
+    expect(rows).toHaveLength(7);
+    expect(rows.map((r) => r.fields["region"])).toContain("asia-northeast1");
   });
 });
