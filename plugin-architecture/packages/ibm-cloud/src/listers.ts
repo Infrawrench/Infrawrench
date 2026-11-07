@@ -47,7 +47,7 @@ const MAX_LIST_PAGES = 500;
 
 /** Accounts plus the regions to scan, shared by every lister. */
 export class Inventory {
-  private regionsPromise: Promise<string[]> | null = null;
+  private listedPromise: Promise<Array<{ name: string; status?: string }>> | null = null;
 
   constructor(
     readonly api: IbmApi,
@@ -55,31 +55,46 @@ export class Inventory {
     private readonly configured: string[],
   ) {}
 
-  regions(): Promise<string[]> {
-    if (this.configured.length) return Promise.resolve(this.configured);
-    if (!this.regionsPromise) {
-      this.regionsPromise = this.api
+  private listed(): Promise<Array<{ name: string; status?: string }>> {
+    if (!this.listedPromise) {
+      this.listedPromise = this.api
         .vpc(this.homeRegion)
         .get("/regions", { query: VPC_QUERY })
         .then((r) => {
-          const names = requireListPage(r.regions, {
+          const regions = requireListPage(r.regions, {
             vendor: VENDOR,
             path: "/regions",
             key: "regions",
             page: r,
-          })
-            .filter((x) => x.status !== "unavailable")
-            .map((x) => x.name);
+          });
           // Scanning the home region alone would read every other region as emptied.
-          return names.length ? names : IBM_REGIONS.map((x) => x.id);
+          return regions.length ? regions : IBM_REGIONS.map((x) => ({ name: x.id }));
         })
         .catch((err: unknown) => {
-          this.regionsPromise = null;
-          if (isPermissionGap(err)) return IBM_REGIONS.map((r) => r.id);
+          this.listedPromise = null;
+          if (isPermissionGap(err)) return IBM_REGIONS.map((r) => ({ name: r.id }));
           throw err;
         });
     }
-    return this.regionsPromise;
+    return this.listedPromise;
+  }
+
+  /**
+   * What a list scans. A region marked unavailable stays in: left out, everything in
+   * it would read as deleted, whereas one that cannot answer fails the list and leaves
+   * the stored rows alone.
+   */
+  async regions(): Promise<string[]> {
+    if (this.configured.length) return this.configured;
+    return (await this.listed()).map((r) => r.name);
+  }
+
+  /** What a create form offers, which is no place for a region marked unavailable. */
+  async usableRegions(): Promise<string[]> {
+    if (this.configured.length) return this.configured;
+    const listed = await this.listed();
+    const usable = listed.filter((r) => r.status !== "unavailable");
+    return (usable.length ? usable : listed).map((r) => r.name);
   }
 }
 

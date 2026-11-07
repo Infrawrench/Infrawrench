@@ -414,3 +414,47 @@ describe("host HTTP", () => {
     expect(fetchStub).not.toHaveBeenCalled();
   });
 });
+
+describe("a region marked unavailable", () => {
+  const regions = {
+    regions: [
+      { name: "us-south", status: "available" },
+      { name: "eu-de", status: "unavailable" },
+    ],
+  };
+
+  it("is still scanned, so its resources do not read as deleted", async () => {
+    const { client } = makeClient(
+      (req) =>
+        req.url.pathname === "/v1/regions"
+          ? { body: regions }
+          : { body: { vpcs: [{ id: "v", name: "n" }] } },
+      { regions: "" },
+    );
+    const vpcs = await client.listResources("vpc", "a");
+    expect(vpcs.map((v) => v.externalId).sort()).toEqual(["eu-de/v", "us-south/v"]);
+  });
+
+  it("fails the list if it cannot be read, which leaves the stored rows alone", async () => {
+    const { client } = makeClient(
+      (req) => {
+        if (req.url.pathname === "/v1/regions") return { body: regions };
+        return req.url.host.startsWith("eu-de.")
+          ? { status: 500, body: { message: "region down" } }
+          : { body: { vpcs: [] } };
+      },
+      { regions: "" },
+    );
+    await expect(client.listResources("vpc", "a")).rejects.toThrow("region down");
+  });
+
+  it("is not offered to create in", async () => {
+    const { client } = makeClient(
+      (req) => (req.url.pathname === "/v1/regions" ? { body: regions } : { body: { zones: [] } }),
+      { regions: "" },
+    );
+    const config = await client.getCreateConfig!("vpc");
+    const field = config.fields.find((f) => f.key === "region");
+    expect(field?.regions?.map((r) => r.id)).toEqual(["us-south"]);
+  });
+});

@@ -62,9 +62,9 @@ async function regionField(
   ctx: ListContext,
   filter: (r: string) => boolean = () => true,
 ): Promise<CreateFieldConfig> {
-  const regions = (await ctx.inventory.regions().catch(() => [ctx.inventory.homeRegion])).filter(
-    filter,
-  );
+  const regions = (
+    await ctx.inventory.usableRegions().catch(() => [ctx.inventory.homeRegion])
+  ).filter(filter);
   const home = regions.includes(ctx.inventory.homeRegion) ? ctx.inventory.homeRegion : regions[0];
   return {
     key: "region",
@@ -77,7 +77,7 @@ async function regionField(
 }
 
 async function zoneField(ctx: ListContext): Promise<CreateFieldConfig> {
-  const regions = await ctx.inventory.regions().catch(() => [ctx.inventory.homeRegion]);
+  const regions = await ctx.inventory.usableRegions().catch(() => [ctx.inventory.homeRegion]);
   const zones = await mapLimit(
     regions,
     6,
