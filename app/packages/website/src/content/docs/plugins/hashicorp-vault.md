@@ -17,16 +17,16 @@ Connect a Vault cluster, self-hosted or HCP Vault Dedicated, to browse and manag
 - **Auth methods**: path, type, token TTLs and token type. Enable one (AppRole, OIDC, JWT, Kubernetes, userpass, LDAP, GitHub, cloud IAM, TLS certificates and more), tune it, or disable it.
 - **Policies**: every ACL policy with its HCL. **Edit policy** opens it in a code editor. Create policies from a starter template or delete them (root and default are built in).
 - **PKI roles**: allowed domains and name rules, key type and TTLs. Create, edit or delete. A role that can issue certificates for any name is flagged.
-- **PKI certificates**: the certificates each PKI engine stored (up to 200 per engine), with common name, issuer and validity. They show on the expiry radar. **Revoke** a certificate.
-- **Leases**: up to 300 leases on dynamic secrets, with issue and expiry times. **Renew** or revoke.
-- **Tokens**: up to 200 tokens by accessor, with policies, the auth path that issued them and expiry. **Renew** or revoke. Root tokens are flagged as a critical posture finding.
+- **PKI certificates**: every certificate each PKI engine stored, with common name, issuer and validity. They show on the expiry radar. **Revoke** a certificate.
+- **Leases**: every lease on dynamic secrets, with issue and expiry times. **Renew** or revoke.
+- **Tokens**: every token by accessor, with policies, the auth path that issued them and expiry. **Renew** or revoke. Root tokens are flagged as a critical posture finding.
 - **Audit devices**: file, syslog and socket devices. Enable or disable.
 
 ## Connect your cluster
 
 1. Enter the **Vault address** with its port, for example `https://vault.example.com:8200`. For HCP Vault Dedicated, copy the public (or private) cluster address from the cluster's Overview page in the HCP portal.
 2. On Vault Enterprise or HCP Vault, enter the **Namespace** (`admin` on HCP Vault).
-3. Paste a **Token**. Or fill in **AppRole Role ID** and **AppRole Secret ID** instead, and Infrawrench logs in and renews the login for you. A periodic token (`vault token create -policy=<policy> -period=768h`) works well for a long-lived connection. Listing tokens, leases and audit devices needs a policy with `sudo` on those paths.
+3. Paste a **Token**. Or fill in **AppRole Role ID** and **AppRole Secret ID** instead, and Infrawrench logs in and renews the login for you. A periodic token (`vault token create -policy=<policy> -period=768h`) works well for a long-lived connection. Listing tokens, leases and audit devices needs a policy with `sudo` on those paths. Without it, those tabs keep what they last showed instead of failing on every refresh on the web, and show the refusal in the desktop app.
 4. If Vault's certificate is signed by a private CA, paste the CA certificate under **Advanced options**.
 
 <insert [HashiCorp Vault Add-account form with the address, namespace and token filled in] here>
@@ -40,7 +40,9 @@ Connect a Vault cluster, self-hosted or HCP Vault Dedicated, to browse and manag
 ## Tips and limits
 
 - KV version 1 engines are listed, but you can only browse secrets in KV version 2 engines, since version 1 keeps no versions or metadata.
-- Up to 500 secrets per KV engine are listed, with metadata for the first 200. Open a secret to load the rest.
+- Every secret in a KV engine is listed, with metadata for the first 200. Open a secret to load the rest.
+- Vault has no paged listing, so each folder costs a request. A poll lists up to 1,000 folders and up to 100,000 secrets, leases, certificates or tokens. Past 100,000 the list fails with an error rather than showing part of it. Folders a poll doesn't reach, and folders the token may not list, keep what was last read.
+- Certificates, leases and tokens each take a read to fill in, so a poll reads up to 2,000 of each. On a cluster with more, the rest keep their last values and are read on a later poll, starting from a different place each time.
 - The full Metrics tab needs a token allowed to read `sys/metrics` (or unauthenticated metrics access). Without it, you only see seal and standby state and client counts.
 - Client counts need Vault 1.6 or later. On Vault Community, they're tracked once client counting is enabled.
 - Provider status comes from HashiCorp's status page and only covers HCP Vault. A self-hosted cluster is never affected by those incidents.

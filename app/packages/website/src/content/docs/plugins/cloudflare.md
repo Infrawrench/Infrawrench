@@ -34,7 +34,7 @@ Prefer an API token? Here's how to create one with the right scopes:
 2. Cloudflare's token creator opens with the scopes Infrawrench uses already selected. Review them and create the token.
 3. Copy the token and paste it into the field. Cloudflare only shows the token once.
 
-To scope a token by hand, go to the Cloudflare dashboard, open **My Profile > API Tokens > Create Token**, and grant the permissions for the resources you plan to manage. If the token can't read a resource type, that tab tells you the exact permission to add (for example **Account · Hyperdrive:Read**) instead of showing an empty list. Spectrum has no permission of its own; the **Zone** permission covers it.
+To scope a token by hand, go to the Cloudflare dashboard, open **My Profile > API Tokens > Create Token**, and grant the permissions for the resources you plan to manage. If the token can't read a resource type, the desktop app's tab tells you the exact permission to add (for example **Account · Hyperdrive:Read**). On the web, a restricted token is treated as normal: the tab keeps whatever it last listed (or stays empty) without an error on every refresh, and **Check credentials** on the account page shows which permissions are missing. Spectrum has no permission of its own; the **Zone** permission covers it.
 
 ![Cloudflare Add-account form with the API token field and the "Create a token with these scopes" link highlighted](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cloudflare/add-account.png)
 
@@ -42,7 +42,7 @@ To scope a token by hand, go to the Cloudflare dashboard, open **My Profile > AP
 
 The add-account form, and **Check credentials** on the account page, verify your token and show what it can reach for each capability. See [Credential preflight](../core-concepts/credential-preflight.md).
 
-- **Resource inventory**: **Zone Read** (needed for every zone-scoped resource) and **Account Settings Read** (for account-scoped resources such as Workers, R2, KV and D1). Some resource types need more scopes; the resource tab tells you which when one is missing.
+- **Resource inventory**: **Zone Read** (needed for every zone-scoped resource) and **Account Settings Read** (for account-scoped resources such as Workers, R2, KV and D1). Some resource types need more scopes. The desktop app's resource tab names the missing one; on the web, **Check credentials** does.
 - **Metrics and dashboards**: **Analytics Read** and **Account Analytics Read**.
 - **Cost reporting**: **Billing Read**. An account connected with OAuth shows this as missing until it switches to an API token.
 

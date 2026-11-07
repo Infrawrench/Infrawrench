@@ -81,7 +81,7 @@ GitLab.com accounts report their subscription seats to Seats, which flags member
 
 - Pipelines, variables, environments and the other per-project items are listed for the 100 most recently active, non-archived projects. A project past that keeps what was last read, which refreshes once it is active again. Up to 10,000 projects are listed in total.
 - GitLab only shows the compute minutes quota to instance administrators, so the [quota radar](../features/quota-radar.md) only shows compute minutes when the token belongs to one. Namespace storage appears when GitLab enforces a storage limit on the group.
-- Changing who may push or merge to a protected branch removes and re-adds the protection with the new levels. Rules for specific users, groups or deploy keys are Premium and Ultimate features.
+- Changing who may push or merge to a protected branch keeps its other settings. A rule that names specific users or groups, or lets someone other than Maintainers unprotect it, is changed in place, since those are Premium and Ultimate features and only those tiers can edit them. Infrawrench checks that GitLab took the change and tells you if it didn't. Any other rule is removed and re-added with the new levels, keeping any deploy keys allowed to push, which every tier has had since GitLab 18.10.
 - A CI/CD variable that is masked and hidden can never be read back. To change its other settings, type the value again under **Edit**.
 - GitLab shows deploy tokens and runner tokens once. Only tokens created (or reset) from Infrawrench are kept as outputs.
 - Instance runners are not listed for a group account. On GitLab.com they are GitLab's own fleet.

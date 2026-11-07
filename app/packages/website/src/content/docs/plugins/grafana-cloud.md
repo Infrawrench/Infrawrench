@@ -44,7 +44,7 @@ Run **Check credentials** on the add-account form or the account page. It tests 
 | Connect stacks automatically | `stack-service-accounts:write`                                        |
 | Usage metrics (unconnected)  | `billing-metrics:read`                                                |
 
-Anything the token cannot read just shows as empty. The rest of the account still works.
+If the token is missing a scope, that list keeps what it last showed (or stays empty if it was never read) instead of failing on every refresh, and the rest of the account still works. The desktop app shows the refusal on that list instead. The same goes for a connected stack whose token stops working: its rows stay until you reconnect it.
 
 ## Connect a stack
 

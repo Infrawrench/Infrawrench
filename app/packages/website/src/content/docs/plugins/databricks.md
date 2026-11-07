@@ -81,7 +81,8 @@ A Databricks workspace can be the destination of a [scheduled cost export](../fe
 ## Tips & limits
 
 - A SQL warehouse must be running before queries work. Starting one can take a minute.
-- Browsing catalogs, volumes, functions and registered models needs Unity Catalog permissions. Catalogs or schemas your token can't browse are skipped.
+- Browsing catalogs, volumes, functions and registered models needs Unity Catalog permissions. A catalog or schema your token can't browse keeps what was last read from it, and the rest are still read. So does a foreign catalog whose connection is broken, until someone repairs it.
+- Tables, volumes, functions, model versions, vector search indexes and Lakebase branches are read one parent at a time. On a very large metastore a poll stops after 1,000 reads or about three minutes, and the parents it didn't reach keep their last values. Each poll starts somewhere different, so a large metastore is read in full over several polls.
 - The Playground only works with chat completion style serving endpoints. Classic ML model endpoints that expect a different request shape won't respond.
 - The workspace view covers the main workspace folders rather than every nested folder, so large workspaces stay fast.
 - Cluster settings other than the worker count (Spark version, node type, auto-termination) need a full edit and a restart. Change those in the Databricks UI.

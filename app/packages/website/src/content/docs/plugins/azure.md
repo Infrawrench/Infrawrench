@@ -121,6 +121,8 @@ The fixes offered are `az network lb delete`, `az network nat gateway delete`, a
 
 - One account connects to one subscription. For tenants with several subscriptions, add one Infrawrench account per subscription.
 - To use Key Vault, the service principal needs an access policy or RBAC role on the vault itself. The subscription role isn't enough.
+- Some details take an extra read per resource: a VM's network addresses, an app registration's service principal, and the databases and deployments under Managed Redis and AI services. Each list makes at most 1,000 requests a poll, so on a very large subscription every resource is listed but only some get those details each time. Infrawrench starts from a different resource each poll, so the rest fill in over the next few, and a detail it could not read keeps its last value. If Azure starts throttling, the filling stops for that poll.
+- SQL databases are the exception, since they can only be found by reading each server. A subscription with more SQL servers than fit in one poll fails that list with an error rather than showing part of it.
 
 ## Cost graphs
 

@@ -9,7 +9,7 @@ Connect fal to see which models you call and what they cost, keep an eye on your
 ## What you can manage
 
 - **Models**: every Model API endpoint your workspace called in the last 30 days. You see its catalogue name and category, unit price, units used and cost over those 30 days, the queue URL, and the 20 most recent requests. The **Metrics** tab charts request counts, successes, user and server errors, cold boots, execution time p50/p90/p99 and queue time p50/p90.
-- **Serverless Apps**: your deployed apps with machine type, regions, routes, concurrency, keep-alive and timeouts, the current queue size, revision history (and which one is serving), recent requests, a **Logs** tab and the same **Metrics** as models. **Flush queue** drops every pending request.
+- **Serverless Apps**: your deployed apps in the main environment, and in any other environment that billed usage in the last 90 days, with machine type, regions, routes, concurrency, keep-alive and timeouts, the current queue size, revision history (and which one is serving), recent requests, a **Logs** tab and the same **Metrics** as models. **Flush queue** drops every pending request.
 - **Compute Instances**: dedicated H100 machines with region, status and IP. Delete an instance when you're done with it.
 - **API Keys**: every key with its alias, access (a preset, custom permissions or a legacy scope), permissions and creator. To rotate a key, use **Get credentials > Create a replacement key**. It creates a new key with the same alias, description and permissions (shown once), and a legacy ADMIN key's replacement gets the FULL preset. Switch your apps over, then delete the old one.
 - **Workflows**: your workflows and the endpoints they chain.
@@ -41,6 +41,7 @@ Incidents and in-progress maintenance from status.fal.ai show as provider-wide, 
 ## Tips and limits
 
 - Only endpoints your workspace used in the last 30 days are listed. Call a model once and it appears on the next refresh.
+- fal has no way to list environments, so Infrawrench finds them in the last 90 days of Serverless usage. An app in an environment other than main shows up once that environment has billed usage, and its address ends in `--<environment>`. An environment with no usage in 90 days keeps whatever was listed for it before.
 - Usage is fal's running estimate until the month is invoiced, so the last few days can change.
 - Change app scaling and deployments with `fal deploy` and `fal apps scale`. In Infrawrench they're read-only.
 - Creating Compute instances needs an SSH key and capacity confirmation, so do that in the fal dashboard.
