@@ -33,6 +33,7 @@ import {
   joinSubtitle,
   externalIdOf,
   formatBytes,
+  hostFetch,
   pathEncode,
   withMetricsCapability,
   withAiCostTags,
@@ -2356,11 +2357,6 @@ export class TogetherClient implements PluginClient {
    * variant is SSE with base64 frames; we use the non-streaming path).
    * mp3 is requested explicitly so a browser `<audio>` element can play it.
    * https://docs.together.ai/reference/audio-speech
-   *
-   * NOTE: this goes through the global `fetch` rather than `jsonRestFetch`,
-   * because that helper JSON-parses every response. Consequently it bypasses
-   * bastion egress routing and the custom CA credential; every control-plane
-   * call in this plugin still goes through the host and keeps both.
    */
   synthesizeSpeech(
     typeId: string,
@@ -2382,7 +2378,7 @@ export class TogetherClient implements PluginClient {
       const voice = payload.voiceId || DEFAULT_TTS_VOICE;
 
       const started = Date.now();
-      const response = await fetch(`${API_BASE}/audio/speech`, {
+      const response = await hostFetch(this.connection, `${API_BASE}/audio/speech`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
@@ -2427,10 +2423,6 @@ export class TogetherClient implements PluginClient {
    * `verbose_json` with word granularity and `diarize=true` so the transcript
    * comes back with per-word timings *and* speaker labels.
    * https://docs.together.ai/reference/audio-transcriptions
-   *
-   * Uses a real `FormData` against the global `fetch`: `jsonRestFetch` would
-   * stringify it (`bodyForHostHttp` has no FormData branch). Same bastion/CA
-   * caveat as the synthesis path above.
    */
   transcribeAudio(
     typeId: string,
@@ -2461,9 +2453,9 @@ export class TogetherClient implements PluginClient {
       );
 
       const started = Date.now();
-      const response = await fetch(`${API_BASE}/audio/transcriptions`, {
+      const response = await hostFetch(this.connection, `${API_BASE}/audio/transcriptions`, {
         method: "POST",
-        // No Content-Type: `fetch` sets it along with the multipart boundary.
+        // No Content-Type: it is set along with the multipart boundary.
         headers: { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json" },
         body: form,
       });

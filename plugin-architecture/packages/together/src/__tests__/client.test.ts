@@ -331,6 +331,63 @@ describe("speech", () => {
   });
 });
 
+describe("host HTTP", () => {
+  function hostClientWith(answer: {
+    status: number;
+    headers: Record<string, string>;
+    body: string;
+    rawBody?: Uint8Array;
+  }) {
+    const request = vi.fn(async (_input: { url: string; caCert?: string }) => answer);
+    const stray = installFetch((url) => {
+      throw new Error(`global fetch reached: ${url}`);
+    });
+    const together = hostClient(new TogetherClient({ apiKey: "tk_test" }, { http: { request } }));
+    return { request, stray, together };
+  }
+
+  it("sends speech through the host, so a bastion and a custom CA apply", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const { request, stray, together } = hostClientWith({
+      status: 200,
+      headers: { "content-type": "audio/mpeg" },
+      body: "",
+      rawBody: bytes,
+    });
+    const result = await together.synthesizeSpeech!(
+      "model",
+      `${ACCOUNT}:model:hexgrad/Kokoro-82M`,
+      ACCOUNT,
+      { text: "hello", voiceId: "af_heart", modelId: "hexgrad/Kokoro-82M" },
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0]?.[0].url).toBe("https://api.together.ai/v1/audio/speech");
+    expect(request.mock.calls[0]?.[0]).not.toHaveProperty("caCert");
+    expect(stray).not.toHaveBeenCalled();
+    expect(result.audioBase64).toBe("AQID");
+  });
+
+  it("sends a transcription through the host as multipart", async () => {
+    const { request, stray, together } = hostClientWith({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi" }),
+    });
+    const result = await together.transcribeAudio!(
+      "model",
+      `${ACCOUNT}:model:openai/whisper-large-v3`,
+      ACCOUNT,
+      { audioBase64: "AQID", mimeType: "audio/webm" },
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+    const sent = request.mock.calls[0]?.[0];
+    expect(sent?.url).toBe("https://api.together.ai/v1/audio/transcriptions");
+    expect(JSON.stringify(sent)).toContain("multipart/form-data");
+    expect(stray).not.toHaveBeenCalled();
+    expect(result.text).toBe("hi");
+  });
+});
+
 describe("evaluations", () => {
   it("keys evaluations on workflow_id and hits the singular path", async () => {
     installFetch(() =>
