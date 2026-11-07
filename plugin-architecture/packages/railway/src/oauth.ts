@@ -30,6 +30,7 @@ import {
   type OAuthCompletionResult,
   type OAuthDeclaration,
   type OAuthTokenSet,
+  requireListPage,
 } from "@infrawrench/plugin-base";
 import { GRAPHQL_URL, type RailwayApi } from "./api.js";
 import { Q_ME_WORKSPACES, Q_TOKEN_WORKSPACES } from "./queries.js";
@@ -79,10 +80,20 @@ export async function credentialWorkspaces(
 ): Promise<RwWorkspaceRef[]> {
   if (oauth) {
     const res = await api.gql<MeWorkspaces>(Q_ME_WORKSPACES);
-    return res.me?.workspaces ?? [];
+    return requireListPage(res.me?.workspaces, {
+      vendor: "Railway",
+      path: "me.workspaces",
+      key: "workspaces",
+      page: res,
+    });
   }
   const res = await api.gql<{ apiToken: { workspaces: RwWorkspaceRef[] } }>(Q_TOKEN_WORKSPACES);
-  return res.apiToken?.workspaces ?? [];
+  return requireListPage(res.apiToken?.workspaces, {
+    vendor: "Railway",
+    path: "apiToken.workspaces",
+    key: "workspaces",
+    page: res,
+  });
 }
 
 const nonEmpty = (v: unknown): string | undefined =>

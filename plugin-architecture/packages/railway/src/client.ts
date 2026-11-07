@@ -20,7 +20,9 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   CreditAccessError,
+  ListPageError,
   QuotaAccessError,
+  requireListPage,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { RailwayApi, allNodes, asConn, nodes } from "./api.js";
@@ -104,6 +106,18 @@ export function splitId(external: string, n: number): string[] {
     });
   }
   return [...parts.slice(0, n - 1), parts.slice(n - 1).join("/")];
+}
+
+/**
+ * The names in a `variables` answer, a JSON map of name to value. Null is none; a
+ * missing or non-object answer throws rather than reading as none, which would prune.
+ */
+function variableNames(v: unknown, path: string): string[] {
+  if (v === null) return [];
+  if (typeof v !== "object" || Array.isArray(v)) {
+    throw new ListPageError({ vendor: "Railway", path, key: "variables", found: v });
+  }
+  return Object.keys(v);
 }
 
 function notFound(what: string): Error {
@@ -362,7 +376,7 @@ export class RailwayClient implements PluginClient {
               environmentId: l.env.id,
               serviceId: l.si.serviceId,
             });
-            return Object.keys(res.variables ?? {}).map((k) =>
+            return variableNames(res.variables, "variables").map((k) =>
               mapVariable(k, this.ctxOf(l), accountId),
             );
           });
@@ -377,7 +391,7 @@ export class RailwayClient implements PluginClient {
                 environmentId: env.id,
                 serviceId: null,
               });
-              return Object.keys(res.variables ?? {}).map((k) =>
+              return variableNames(res.variables, "variables").map((k) =>
                 mapSharedVariable(
                   k,
                   { environmentId: env.id, environmentName: env.name, projectId: project.id },
@@ -429,7 +443,12 @@ export class RailwayClient implements PluginClient {
               environmentId: l.env.id,
               serviceId: l.si.serviceId,
             });
-            return (res.tcpProxies ?? []).map((t) => mapTcpProxy(t, l.project.id, accountId));
+            return requireListPage(res.tcpProxies, {
+              vendor: "Railway",
+              path: "tcpProxies",
+              key: "tcpProxies",
+              page: res,
+            }).map((t) => mapTcpProxy(t, l.project.id, accountId));
           });
         default:
           throw new Error(`Railway plugin: unknown resource type "${typeId}"`);
