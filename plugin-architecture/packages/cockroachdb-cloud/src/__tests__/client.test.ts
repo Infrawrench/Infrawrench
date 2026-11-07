@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { CC_VERSION, CrdbApiError, statusOf } from "../api.js";
 import type { CCluster, CInvoice } from "../api.js";
@@ -24,7 +24,7 @@ interface Call {
   headers: Record<string, string>;
   body?: string | Uint8Array;
 }
-type Route = (call: Call) => { status: number; body: unknown } | undefined;
+type Route = (call: Call) => { status: number; body: unknown; raw?: string } | undefined;
 
 function fake(routes: Route[], secrets: Record<string, string> = {}) {
   const calls: Call[] = [];
@@ -40,7 +40,9 @@ function fake(routes: Route[], secrets: Record<string, string> = {}) {
         calls.push(call);
         for (const r of routes) {
           const res = r(call);
-          if (res) return { status: res.status, headers: {}, body: JSON.stringify(res.body) };
+          if (res) {
+            return { status: res.status, headers: {}, body: res.raw ?? JSON.stringify(res.body) };
+          }
         }
         return {
           status: 404,
@@ -366,6 +368,80 @@ describe("CockroachClient", () => {
       expect([...query.keys()]).toEqual(["start_time"]);
       expect(query.get("start_time")).toMatch(/^\d{4}-\d{2}-01T00:00:00Z$/);
     });
+  });
+
+  describe("pages that are not lists", () => {
+    const raw =
+      (path: string, text: string, status = 200): Route =>
+      (call) =>
+        new URL(call.url).pathname === path ? { status, body: null, raw: text } : undefined;
+
+    it.each([
+      ["a renamed key", '{"cluster_list":[]}'],
+      ["a key left out", "{}"],
+      ["a null key", '{"clusters":null}'],
+    ])("fails on %s", async (_name, text) => {
+      const { client } = fake([raw("/api/v1/clusters", text)]);
+      await expect(client.listResources("crdb-cluster", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("fails on a later page too", async () => {
+      const { client } = fake([
+        (call) => {
+          const u = new URL(call.url);
+          if (u.pathname !== "/api/v1/folders") return undefined;
+          return u.searchParams.get("pagination.page") === "p2"
+            ? { status: 200, body: { renamed: [] } }
+            : { status: 200, body: { folders: [], pagination: { next_page: "p2" } } };
+        },
+      ]);
+      await expect(client.listResources("crdb-folder", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("fails on an empty body", async () => {
+      const { client } = fake([raw("/api/v1/folders", "")]);
+      await expect(client.listResources("crdb-folder", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("fails on a body that is not JSON, even where a left out key reads as none", async () => {
+      const folders = fake([raw("/api/v1/folders", "<html>upstream</html>")]);
+      await expect(folders.client.listResources("crdb-folder", ACCOUNT)).rejects.toThrow(
+        "not JSON",
+      );
+      const rules = fake([
+        on("GET", "/api/v1/clusters", { clusters: [cluster] }),
+        raw("/api/v1/clusters/c1/networking/egress-rules", "<html>upstream</html>"),
+      ]);
+      await expect(rules.client.listResources("crdb-egress-rule", ACCOUNT)).rejects.toThrow(
+        "not JSON",
+      );
+    });
+
+    it("still takes a write answered with something that is not JSON", async () => {
+      const { client } = fake([raw("/api/v1/clusters/c1/metricexport/prometheus", "accepted")]);
+      await expect(
+        client.invokeAction(
+          "crdb-cluster",
+          `${ACCOUNT}:crdb-cluster:c1`,
+          "enable-prometheus",
+          ACCOUNT,
+        ),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  it("keeps walking past an empty page that names another", async () => {
+    const { client } = fake([
+      (call) => {
+        const u = new URL(call.url);
+        if (u.pathname !== "/api/v1/folders") return undefined;
+        return u.searchParams.get("pagination.page") === "p2"
+          ? { status: 200, body: { folders: [{ resource_id: "f", name: "f", parent_id: "root" }] } }
+          : { status: 200, body: { folders: [], pagination: { next_page: "p2" } } };
+      },
+    ]);
+    const rows = await client.listResources("crdb-folder", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["f"]);
   });
 });
 

@@ -77,9 +77,11 @@ function isJson(text: string): boolean {
 }
 
 /**
- * The host's HTTP service where there is one and `fetch` where there is not. A 2xx
- * that is not JSON has always been read as its text and a body on a 204 kept, where
- * `restRequest` would throw and drop them, so a body reaches it as JSON and as a 200.
+ * The host's HTTP service where there is one and `fetch` where there is not. A write
+ * answered with a 2xx that is not JSON has always been read as its text and a body on
+ * a 204 kept, where `restRequest` would throw and report a change that happened as a
+ * failure, so such a body reaches it as JSON and as a 200. A read gets no such help: a
+ * list that cannot say what it holds must fail, or a sync prunes on it.
  */
 function crdbTransport(http: HttpHostServices | undefined): HttpHostServices {
   const send: HttpHostServices["request"] = async (req) => {
@@ -97,6 +99,13 @@ function crdbTransport(http: HttpHostServices | undefined): HttpHostServices {
     request: async (req) => {
       const res = await send(req);
       if (res.status < 200 || res.status >= 300 || !res.body) return res;
+      if (req.method === "GET") {
+        if (isJson(res.body)) return res;
+        throw new CrdbApiError(
+          res.status,
+          `CockroachDB Cloud answered ${new URL(req.url).pathname} with a body that is not JSON.`,
+        );
+      }
       return { ...res, status: 200, body: isJson(res.body) ? res.body : JSON.stringify(res.body) };
     },
   };
@@ -135,8 +144,9 @@ export function createCrdbApi(ctx: CrdbContext): CrdbApi {
     pageSize: 200,
     maxPages: 100,
     next: "pagination.next_page",
+    // The document's only end to a list is `next_page` going away. Walking on past an
+    // empty page can only fail closed, at `maxPages`; stopping there could read short.
     continueOnEmptyPage: true,
-    emptyBodyEndsList: true,
   } as const;
   const api = withCursorPagination(client, paging);
   // The document requires the list key on every list response but blackout windows
