@@ -350,6 +350,14 @@ export async function generateBillingReport(
 // Usage fallback
 // ---------------------------------------------------------------------------
 
+/**
+ * `GetUsage` is marked `deprecated` in temporalio/cloud-api with no successor named
+ * (checked at v0.26.0), and it is the only source of usage history a key without
+ * billing access has. These are what its removal would answer. Failing the pass keeps
+ * the stored rows; an empty estimate would zero them.
+ */
+const USAGE_ROUTE_GONE = new Set([404, 410, 501]);
+
 export function fetchUsageSummaries(
   ctx: TemporalContext,
   startDay: string,
@@ -566,6 +574,12 @@ export class TemporalCostCollector {
         } catch (err) {
           // Neither source answered: say why in the account's cost status.
           if (isPermissionError(err) && daily.permission) throw daily;
+          if (USAGE_ROUTE_GONE.has(statusOf(err))) {
+            throw new BillingReportUnavailable(
+              `${daily.message} Nothing can stand in for it: Temporal Cloud no longer answers GET /cloud/usage.`,
+              daily.permission,
+            );
+          }
           throw err;
         }
       } else {

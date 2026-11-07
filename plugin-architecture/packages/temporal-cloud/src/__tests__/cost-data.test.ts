@@ -382,6 +382,16 @@ describe("the usage fallback", () => {
     await expect(fetch()).resolves.toEqual([]);
   });
 
+  it.each([404, 410, 501])(
+    "says why there is no cost at all when the deprecated route answers %i",
+    async (status) => {
+      const { fetch } = collect(() => ({ status, body: {} }));
+      const failure = fetch();
+      await expect(failure).rejects.toThrow(/cannot create billing reports/);
+      await expect(failure).rejects.toThrow(/no longer answers GET \/cloud\/usage/);
+    },
+  );
+
   it("still fails with what went wrong on any other answer", async () => {
     const { fetch } = collect(() => ({ status: 500, body: {} }));
     await expect(fetch()).rejects.toThrow(/Temporal Cloud API error 500/);
