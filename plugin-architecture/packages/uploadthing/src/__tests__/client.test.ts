@@ -177,7 +177,7 @@ describe("listResources", () => {
     expect(calls.filter((call) => call.url.endsWith("/v7/getAppInfo"))).toHaveLength(1);
   });
 
-  it("pages past 2,000 files — the listing is not capped", async () => {
+  it("pages past 2,000 files", async () => {
     // 12 pages of 500. A cap would silently stop at four and the app would
     // look like it holds 2,000 files.
     const TOTAL_PAGES = 12;
@@ -197,12 +197,74 @@ describe("listResources", () => {
     expect(files).toHaveLength(6000);
   });
 
-  it("stops when a server claims hasMore but returns nothing", async () => {
-    installReadFetch((url) =>
-      url.endsWith("/v6/listFiles") ? jsonResponse({ hasMore: true, files: [] }) : undefined,
+  it("throws when a server claims hasMore but returns nothing", async () => {
+    let page = 0;
+    installReadFetch((url) => {
+      if (!url.endsWith("/v6/listFiles")) return undefined;
+      page += 1;
+      return page === 1
+        ? jsonResponse({ hasMore: true, files: FILES })
+        : jsonResponse({ hasMore: true, files: [] });
+    });
+    // Stopping here would prune every file past the rows read so far.
+    await expect(client().listResources("ut-file", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
     );
-    // `hasMore` is the server's word; without the empty-page break this spins.
-    await expect(client().listResources("ut-file", ACCOUNT)).resolves.toHaveLength(0);
+    expect(page).toBe(2);
+  });
+
+  it("throws on a page with its key renamed, first or later", async () => {
+    installReadFetch((url) =>
+      url.endsWith("/v6/listFiles") ? jsonResponse({ hasMore: false, items: FILES }) : undefined,
+    );
+    await expect(client().listResources("ut-file", ACCOUNT)).rejects.toThrow("is not a list");
+
+    let page = 0;
+    vi.restoreAllMocks();
+    installReadFetch((url) => {
+      if (!url.endsWith("/v6/listFiles")) return undefined;
+      page += 1;
+      return page === 1
+        ? jsonResponse({ hasMore: true, files: FILES })
+        : jsonResponse({ hasMore: false, items: FILES });
+    });
+    await expect(client().listResources("ut-file", ACCOUNT)).rejects.toThrow("is not a list");
+    expect(page).toBe(2);
+  });
+
+  it("throws on a page that does not say whether there is more", async () => {
+    installReadFetch((url) =>
+      url.endsWith("/v6/listFiles") ? jsonResponse({ files: FILES }) : undefined,
+    );
+    await expect(client().listResources("ut-file", ACCOUNT)).rejects.toThrow('no "hasMore"');
+  });
+
+  it("throws at the page cap on a list that never ends", async () => {
+    let pages = 0;
+    installReadFetch((url) => {
+      if (!url.endsWith("/v6/listFiles")) return undefined;
+      pages += 1;
+      return jsonResponse({ hasMore: true, files: [FILES[0]] });
+    });
+    await expect(client().listResources("ut-file", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(pages).toBe(2000);
+  });
+
+  it("reads an empty app as empty", async () => {
+    installReadFetch((url) =>
+      url.endsWith("/v6/listFiles") ? jsonResponse({ hasMore: false, files: [] }) : undefined,
+    );
+    await expect(client().listResources("ut-file", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("deletes nothing in a folder when the listing cannot be trusted", async () => {
+    installReadFetch((url) =>
+      url.endsWith("/v6/listFiles") ? jsonResponse({ hasMore: false, items: FILES }) : undefined,
+    );
+    await expect(client().deleteStorageObject(APP_ID, "photos/")).rejects.toThrow("is not a list");
+    expect(calls.filter((call) => call.url.endsWith("/v6/deleteFiles"))).toHaveLength(0);
   });
 
   it("walks the listing once per client, not once per call site", async () => {

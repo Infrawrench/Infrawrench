@@ -21,8 +21,11 @@ import {
   formatBytes,
   externalIdOf,
   buildMultipartBody,
+  ListPageError,
+  ListTruncatedError,
   normalizeQuotaUsage,
   pathEncode,
+  requireListPage,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import {
@@ -59,14 +62,16 @@ import { UtAppResourceType } from "./resources/ut-app.js";
 /**
  * Page size for `listFiles`, which accepts up to 100,000 per page.
  *
- * Listing is **not** capped: the loop pages until UploadThing says there is
- * nothing more. That makes a poll cycle's cost proportional to the app's file
- * count (a six-figure app is six figures of rows every cycle) which is the
- * accepted trade for a listing that is actually complete. `fetchFiles` is
- * memoised per client instance so the several call sites in one request share
- * a single walk rather than repeating it.
+ * The loop pages until UploadThing says there is nothing more. That makes a poll
+ * cycle's cost proportional to the app's file count (a six-figure app is six
+ * figures of rows every cycle) which is the accepted trade for a listing that is
+ * actually complete. `fetchFiles` is memoised per client instance so the several
+ * call sites in one request share a single walk rather than repeating it.
  */
 const FILE_PAGE_SIZE = 500;
+
+/** A million rows, above any real app, so a list that never ends fails rather than fills the heap. */
+const MAX_FILE_PAGES = 2_000;
 
 /**
  * UploadThing has no time-series API (`getUsageInfo` is a point-in-time total),
@@ -413,9 +418,9 @@ export class UploadThingClient implements PluginClient {
    * Every file in the app.
    *
    * `POST /v6/listFiles` is offset-paginated and reports `hasMore`, so the walk
-   * ends when the data does. An empty page also breaks the loop: `hasMore`
-   * comes from the server, and a server that kept asserting it while returning
-   * nothing would otherwise spin forever.
+   * ends when the data does. A sync reads whatever this returns as every file, so
+   * an answer that cannot say that throws: no `files`, no `hasMore`, or an empty
+   * page while `hasMore` still claims more.
    *
    * Memoised for the life of this client: one request may list resources,
    * open the file browser, and resolve a folder delete, and there is no reason
@@ -423,21 +428,26 @@ export class UploadThingClient implements PluginClient {
    * so the memo cannot outlive the data by long; mutations clear it explicitly.
    */
   private fetchFiles(): Promise<UtFile[]> {
-    this.filesPromise ??= (async () => {
-      const files: UtFile[] = [];
-      let offset = 0;
-      for (;;) {
-        const page = await this.api.post("/v6/listFiles", {
-          body: { limit: FILE_PAGE_SIZE, offset },
-        });
-        const batch = page.files ?? [];
-        files.push(...batch);
-        if (!page.hasMore || batch.length === 0) break;
-        offset += batch.length;
-      }
-      return files;
-    })();
+    this.filesPromise ??= this.walkFiles();
     return this.filesPromise;
+  }
+
+  private async walkFiles(): Promise<UtFile[]> {
+    const place = { vendor: "UploadThing", path: "/v6/listFiles" };
+    const files: UtFile[] = [];
+    for (let page = 0; page < MAX_FILE_PAGES; page++) {
+      const answer = await this.api.post("/v6/listFiles", {
+        body: { limit: FILE_PAGE_SIZE, offset: files.length },
+      });
+      const batch = requireListPage(answer.files, { ...place, key: "files", page: answer });
+      if (typeof answer.hasMore !== "boolean") {
+        throw new ListPageError({ ...place, key: "hasMore", found: answer.hasMore, page: answer });
+      }
+      files.push(...batch);
+      if (!answer.hasMore) return files;
+      if (batch.length === 0) throw new ListTruncatedError({ ...place, items: files.length });
+    }
+    throw new ListTruncatedError({ ...place, items: files.length, maxPages: MAX_FILE_PAGES });
   }
 
   /** Drop the memoised listing after anything that changes it. */
