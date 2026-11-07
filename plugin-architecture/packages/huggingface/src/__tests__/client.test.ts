@@ -2,7 +2,6 @@ import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { HuggingFaceClient, jobSpecFrom } from "../client.js";
-import { parseNextLink } from "../http.js";
 import { endpointMetricSeries } from "../metrics.js";
 import { inferenceUsageRows, jobsUsageRows } from "../cost.js";
 import { parseStatusFeed } from "../status-feed.js";
@@ -78,15 +77,6 @@ const VENDORS = {
   ],
 };
 
-describe("http", () => {
-  it("parses the next link out of an RFC 8288 header", () => {
-    expect(
-      parseNextLink('<https://huggingface.co/api/models?cursor=abc>; rel="next", <x>; rel="prev"'),
-    ).toBe("https://huggingface.co/api/models?cursor=abc");
-    expect(parseNextLink(undefined)).toBeUndefined();
-  });
-});
-
 describe("listing", () => {
   it("follows Link pagination for models and sends the bearer token", async () => {
     const { http, calls } = host((req) => {
@@ -111,6 +101,28 @@ describe("listing", () => {
     expect(items[1]?.fields["pipelineTag"]).toBe("text-generation");
     expect(calls[0]?.headers["Authorization"]).toBe("Bearer hf_x");
     expect(calls[0]?.url).toContain("expand[]=usedStorage");
+  });
+
+  it("follows a next link holding a comma, rather than end the list on it", async () => {
+    const { http } = host((req) => {
+      if (req.url.includes("/api/models?author=acme")) {
+        return {
+          body: [{ id: "acme/a" }],
+          headers: {
+            Link: '<https://huggingface.co/api/models?filter=a,b&page=2>; rel="next", <https://huggingface.co/api/models?filter=a,b&page=9>; rel="last"',
+          },
+        };
+      }
+      if (req.url === "https://huggingface.co/api/models?filter=a,b&page=2") {
+        return { body: [{ id: "acme/b" }] };
+      }
+      throw new Error(`unrouted ${req.url}`);
+    });
+    const client = hostClient(
+      new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }),
+    );
+    const items = await client.listResources("hf-model", ACCOUNT);
+    expect(items.map((i) => i.externalId)).toEqual(["acme/a", "acme/b"]);
   });
 
   it("pages endpoints by cursor and prices them from the provider catalogue", async () => {

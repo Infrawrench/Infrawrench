@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import {
   commaSeparated,
   createApiClient,
+  findNextLink,
   nextLinkHeader,
   parseLinkHeader,
   pathEncode,
@@ -2009,6 +2010,26 @@ describe("nextLinkHeader", () => {
 
   it("takes another rel", () => {
     expect(read('<https://a/1>; rel="prev"', { rel: "PREV" })).toBe("https://a/1");
+  });
+});
+
+describe("findNextLink", () => {
+  it("reads a URL holding a comma, which splitting the header would break", () => {
+    expect(
+      findNextLink('<https://a/x?ids=1,2&after=3>; rel="next", <https://a/x?ids=1,2>; rel="prev"'),
+    ).toBe("https://a/x?ids=1,2&after=3");
+  });
+
+  it("is undefined with no header, or none for the relation", () => {
+    expect(findNextLink(undefined)).toBeUndefined();
+    expect(findNextLink('<https://a/x>; rel="prev"')).toBeUndefined();
+  });
+
+  it("takes another rel, and a condition on the parameters", () => {
+    expect(findNextLink('<https://a/x>; rel="prev"', { rel: "prev" })).toBe("https://a/x");
+    const link = '<https://a/x>; rel="next"; results="false"';
+    expect(findNextLink(link, { when: (p) => p["results"] === "true" })).toBeUndefined();
+    expect(findNextLink(link, { when: (p) => p["results"] === "false" })).toBe("https://a/x");
   });
 });
 

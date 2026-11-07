@@ -1,4 +1,4 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { findNextLink, type HttpHostServices } from "@infrawrench/plugin-base";
 
 /**
  * Buildkite REST API v2 (https://buildkite.com/docs/apis/rest-api, verified
@@ -191,12 +191,7 @@ export async function bkFetch<T>(
 
 /** The `rel="next"` URL of a `Link` header, if any. */
 export function nextLink(linkHeader: string | undefined): string | undefined {
-  if (!linkHeader) return undefined;
-  for (const part of linkHeader.split(",")) {
-    const m = /<([^>]+)>\s*;\s*rel="?next"?/.exec(part.trim());
-    if (m) return m[1];
-  }
-  return undefined;
+  return findNextLink(linkHeader);
 }
 
 /**

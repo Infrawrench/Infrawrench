@@ -137,16 +137,6 @@ export async function hfJson<T>(
   return answer.body;
 }
 
-/** Extract the `rel="next"` target from an RFC 8288 Link header. */
-export function parseNextLink(header: string | undefined): string | undefined {
-  if (!header) return undefined;
-  for (const part of header.split(",")) {
-    const match = /<([^>]+)>\s*;(.*)$/.exec(part.trim());
-    if (match && /rel="?next"?/.test(match[2] ?? "")) return match[1];
-  }
-  return undefined;
-}
-
 /** What an error names: the path alone, or a next link that is not a URL as it came. */
 export function labelFor(url: string): string {
   try {

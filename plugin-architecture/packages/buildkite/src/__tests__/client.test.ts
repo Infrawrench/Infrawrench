@@ -90,6 +90,7 @@ describe("api", () => {
   it("parses Link headers", () => {
     expect(nextLink(`<${API}/a?page=2>; rel="next"`)).toBe(`${API}/a?page=2`);
     expect(nextLink(`<${API}/a?page=1>; rel="prev"`)).toBeUndefined();
+    expect(nextLink(`<${API}/a?state=a,b&page=2>; rel="next"`)).toBe(`${API}/a?state=a,b&page=2`);
   });
 
   it("strips ANSI codes and timestamp markers from logs", () => {

@@ -977,19 +977,32 @@ export function parseLinkHeader(header: string | undefined): WebLink[] {
   return links;
 }
 
+export interface NextLinkOptions {
+  /** The relation to look for; `next` by default, in any case, among several. */
+  rel?: string;
+  /** Looks at the link's parameters, for a provider that always sends the link. */
+  when?: (params: Record<string, string>) => boolean;
+}
+
 /**
- * Read the next page from a `Link` header: the first link whose `rel` holds `rel`
- * (`next` by default, any case, among several). `when` looks at its parameters, for
- * a provider that always sends the link and says elsewhere whether it leads anywhere.
+ * The next page's URL from a `Link` header, for a hand-written loop: the first link
+ * whose `rel` holds `rel`. Never split this header on commas, which a URL can hold.
+ *
+ *   const next = findNextLink(headers["link"]);
+ *   const next = findNextLink(headers["link"], { when: (p) => p["results"] === "true" });
  */
-export function nextLinkHeader(
-  options: { rel?: string; when?: (params: Record<string, string>) => boolean } = {},
-): NextPage {
+export function findNextLink(
+  header: string | undefined,
+  options: NextLinkOptions = {},
+): string | undefined {
   const rel = (options.rel ?? "next").toLowerCase();
-  return ({ headers }) => {
-    const link = parseLinkHeader(headers["link"]).find(({ params }) =>
-      (params["rel"] ?? "").toLowerCase().split(/\s+/).includes(rel),
-    );
-    return link && (!options.when || options.when(link.params)) ? link.url : undefined;
-  };
+  const link = parseLinkHeader(header).find(({ params }) =>
+    (params["rel"] ?? "").toLowerCase().split(/\s+/).includes(rel),
+  );
+  return link && (!options.when || options.when(link.params)) ? link.url : undefined;
+}
+
+/** {@link findNextLink} as what `withLinkPagination` and `withCursorPagination` read a page with. */
+export function nextLinkHeader(options: NextLinkOptions = {}): NextPage {
+  return ({ headers }) => findNextLink(headers["link"], options);
 }

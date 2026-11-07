@@ -75,6 +75,12 @@ describe("pagination", () => {
     expect(nextPageUrl(link.replace('results="true"', 'results="false"'))).toBeUndefined();
   });
 
+  it("does not end a list early on a next link holding a comma", () => {
+    const link =
+      '<https://sentry.io/api/0/x/?query=a,b&cursor=0:0:1>; rel="previous"; results="false", <https://sentry.io/api/0/x/?query=a,b&cursor=0:100:0>; rel="next"; results="true"';
+    expect(nextPageUrl(link)).toBe("https://sentry.io/api/0/x/?query=a,b&cursor=0:100:0");
+  });
+
   it("lists every page of cron monitors", async () => {
     const { c, calls } = client((call) => {
       const cursor = call.url.searchParams.get("cursor");

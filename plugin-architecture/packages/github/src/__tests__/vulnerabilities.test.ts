@@ -177,6 +177,19 @@ describe("fetchDependabotFindings", () => {
     expect(findings[0]!.aliases).toEqual(["GHSA-RF4J-J272-FJ86"]);
   });
 
+  it("follows a next link holding a comma, rather than stop at the first page", async () => {
+    const { http, calls } = linkedHttp({
+      "": {
+        body: [ALERT],
+        link: '<https://api.github.com/x?package=a,b&after=next>; rel="next", <https://api.github.com/x?package=a,b>; rel="prev"',
+      },
+      next: { body: [NO_PATCH] },
+    });
+    const findings = await fetchDependabotFindings(ctxWith(http));
+    expect(calls).toHaveLength(2);
+    expect(findings).toHaveLength(2);
+  });
+
   it("uses the enterprise route for an enterprise account", async () => {
     const { http, calls } = linkedHttp({ "": { body: [] } });
     await fetchDependabotFindings(ctxWith(http, "enterprise:octo-ent"));

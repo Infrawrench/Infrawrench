@@ -5,6 +5,7 @@
  */
 import {
   createApiClient,
+  nextLinkHeader,
   unencodedSegment,
   withLinkPagination,
   type NoSlashString,
@@ -19,7 +20,6 @@ import {
   hfError,
   hfRequestOptions,
   labelFor,
-  parseNextLink,
   type HfContext,
 } from "./http.js";
 
@@ -64,7 +64,7 @@ export function createHfApis(ctx: HfContext) {
   // The Hub's listings: `Link: <…>; rel="next"`, followed as written until it stops
   // coming, whatever the page held.
   const links = {
-    next: ({ headers }: { headers: Record<string, string> }) => parseNextLink(headers["link"]),
+    next: nextLinkHeader(),
     resolveLink: (link: string) => link,
     foreignLinks: "follow" as const,
     continueOnEmptyPage: true,

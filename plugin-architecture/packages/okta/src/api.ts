@@ -5,6 +5,7 @@ import {
   type ApiClient,
   type HostServices,
   type HttpHostServices,
+  findNextLink,
 } from "@infrawrench/plugin-base";
 import type { components, paths } from "./api-types.gen.js";
 import { apiError, sendRaw } from "./http.js";
@@ -432,7 +433,7 @@ export class OktaApi {
    * types the rest. This is by hand rather than `withLinkPagination` because `getAll`
    * reads a body that is not an array as an empty page, and the host prunes whatever a
    * sync stops seeing; spreading it throws. Links go wherever they say, token included
-   * (#386), and are read by {@link nextLink}, which splits on commas (#387).
+   * (#386).
    */
   private async walk<Item>(
     first: Promise<ApiAnswer<readonly Item[]>>,
@@ -486,12 +487,7 @@ export class OktaApi {
 }
 
 export function nextLink(header: string | undefined): string | null {
-  if (!header) return null;
-  for (const part of header.split(",")) {
-    const match = part.match(/<([^>]+)>\s*;\s*rel="?next"?/i);
-    if (match?.[1]) return match[1];
-  }
-  return null;
+  return findNextLink(header) ?? null;
 }
 
 /** Okta rate limits are per endpoint family; collapse ids so readings group sensibly. */

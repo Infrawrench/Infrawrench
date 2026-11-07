@@ -1,5 +1,5 @@
 import type { HttpHostServices, NextPage } from "@infrawrench/plugin-base";
-import { createApiClient, withLinkPagination } from "@infrawrench/plugin-base";
+import { createApiClient, findNextLink, withLinkPagination } from "@infrawrench/plugin-base";
 import type { paths } from "./api-types.gen.js";
 import type { SentryInstance } from "./regions.js";
 
@@ -95,15 +95,7 @@ function client(ctx: SentryContext) {
  * link's presence) is what ends the loop.
  */
 export function nextPageUrl(link: string | undefined): string | undefined {
-  if (!link) return undefined;
-  for (const part of link.split(",")) {
-    const url = /<([^>]+)>/.exec(part)?.[1];
-    if (!url) continue;
-    if (!/rel="next"/.test(part)) continue;
-    if (!/results="true"/.test(part)) return undefined;
-    return url;
-  }
-  return undefined;
+  return findNextLink(link, { when: (params) => params["results"] === "true" });
 }
 
 const nextPage: NextPage = ({ headers }) => nextPageUrl(headers["link"]);

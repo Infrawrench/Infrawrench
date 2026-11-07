@@ -539,6 +539,7 @@ export type { ListPageProblem, ListPlace, ListTruncation } from "./list-errors.j
 export {
   commaSeparated,
   createApiClient,
+  findNextLink,
   nextLinkHeader,
   parseLinkHeader,
   pathEncode,
@@ -561,6 +562,7 @@ export type {
   CursorPagination,
   ForeignLinks,
   LinkPagination,
+  NextLinkOptions,
   NextPage,
   NoSlashString,
   PageAnswer,

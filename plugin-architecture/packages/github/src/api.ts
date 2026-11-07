@@ -6,6 +6,7 @@ import {
   type ApiClientOptions,
   type HttpHostServices,
   type NoSlashString,
+  findNextLink,
 } from "@infrawrench/plugin-base";
 import type { paths as DotcomPaths } from "./api-types.dotcom.gen.js";
 import type { paths as GhecPaths } from "./api-types.ghec.gen.js";
@@ -273,18 +274,13 @@ export function dependabotAlertsPage(ctx: GitHubContext, query: { after?: string
 
 /** The `rel="next"` URL of a `Link` header, if there is one. */
 export function nextLink(link: string | undefined): URL | undefined {
-  if (!link) return undefined;
-  for (const part of link.split(",")) {
-    const m = /<([^>]+)>\s*;\s*rel="?next"?/i.exec(part.trim());
-    if (m) {
-      try {
-        return new URL(m[1]!);
-      } catch {
-        return undefined;
-      }
-    }
+  const next = findNextLink(link);
+  if (!next) return undefined;
+  try {
+    return new URL(next);
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
 /** POST a GraphQL query. Returns `data` and any field errors; never throws on partial data. */

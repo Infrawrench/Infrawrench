@@ -267,6 +267,9 @@ describe("helpers", () => {
   it("parses Link headers and groups rate-limit buckets", () => {
     expect(nextLink('<https://a/x?after=1>; rel="next"')).toBe("https://a/x?after=1");
     expect(nextLink('<https://a/x>; rel="self"')).toBeNull();
+    expect(nextLink('<https://a/x?ids=1,2&after=3>; rel="next", <https://a/x>; rel="self"')).toBe(
+      "https://a/x?ids=1,2&after=3",
+    );
     expect(rateLimitBucket("/api/v1/users")).toBe("/api/v1/users");
     expect(rateLimitBucket("/api/v1/users/00u1")).toBe("/api/v1/users/{id}");
     expect(rateLimitBucket("/api/v1/users/00u1/groups")).toBe("/api/v1/users/{id}/*");
