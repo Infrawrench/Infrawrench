@@ -67,6 +67,8 @@ const MAX_JOB_PAGES = 100;
  * 10,000 jobs from the last 30 days, and a throw past that.
  */
 const MAX_INSIGHT_JOB_PAGES = 100;
+/** `GET /vocabularies` takes `limit` up to 1000 and has no cursor. */
+const MAX_VOCABULARIES = 1000;
 /** The metrics walk uses the full page. */
 const METRICS_PAGE_SIZE = JOB_PAGE_SIZE;
 /** Bounds the metrics walk at 5,000 jobs. */
@@ -963,11 +965,25 @@ export class RevAiClient implements PluginClient {
     return this.fetch<RevAiAccount>("/account");
   }
 
-  /** GET /vocabularies: most recent custom vocabularies. US deployment only. */
+  /**
+   * GET /vocabularies: the most recent custom vocabularies, US deployment only.
+   * The route has no cursor and `limit` tops out at 1000, so a full answer may
+   * have more behind it and throws rather than prune the rest.
+   */
   private async fetchVocabularies(): Promise<RevAiVocabulary[]> {
-    const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
-    const list = await this.fetch<RevAiVocabulary[]>(`/vocabularies?${query.toString()}`);
-    return Array.isArray(list) ? list : [];
+    const path = "/vocabularies";
+    const query = new URLSearchParams({ limit: String(MAX_VOCABULARIES) });
+    const list = await this.fetch<RevAiVocabulary[] | null>(`${path}?${query.toString()}`);
+    const rows = requireListPage(list, { vendor: "Rev AI", path, key: null });
+    if (rows.length >= MAX_VOCABULARIES) {
+      throw new ListTruncatedError({
+        vendor: "Rev AI",
+        path,
+        items: rows.length,
+        maxItems: MAX_VOCABULARIES,
+      });
+    }
+    return rows;
   }
 
   /** GET /vocabularies/{id}. */

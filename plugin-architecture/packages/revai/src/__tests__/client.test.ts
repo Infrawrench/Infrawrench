@@ -150,6 +150,25 @@ describe("listResources", () => {
     await expect(client().listResources("job", ACCOUNT)).rejects.toThrow("is not a list");
   });
 
+  it("asks for the documented 1,000 vocabularies and throws when a full 1,000 come back", async () => {
+    installFetch(() =>
+      jsonResponse(Array.from({ length: 1000 }, (_, i) => ({ id: `v${i}`, status: "complete" }))),
+    );
+    await expect(client().listResources("vocabulary", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls[0]!.url).toBe(`${US}/vocabularies?limit=1000`);
+  });
+
+  it("lists vocabularies under the cap and refuses an answer that is not an array", async () => {
+    installFetch(() => jsonResponse([{ id: "v1", status: "complete" }]));
+    expect(await client().listResources("vocabulary", ACCOUNT)).toHaveLength(1);
+
+    vi.restoreAllMocks();
+    installFetch(() => jsonResponse({ vocabularies: [] }));
+    await expect(client().listResources("vocabulary", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
   it("wires the USD balances into the account resource", async () => {
     installFetch((url) => {
       if (url === `${US}/account`) {
