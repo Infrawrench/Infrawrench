@@ -18,7 +18,12 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf, withinListCap } from "@infrawrench/plugin-base";
+import {
+  decodePromptArgs,
+  externalIdOf,
+  reportUnreadListPart,
+  withinListCap,
+} from "@infrawrench/plugin-base";
 import type { PagedOptions, RabbitContext } from "./api.js";
 import {
   buildContext,
@@ -133,6 +138,21 @@ async function gated<T>(p: Promise<T[]>): Promise<T[]> {
   } catch (err) {
     if (isTagRefusal(err)) return [];
     throw err;
+  }
+}
+
+/**
+ * A type's own list. A missing tag keeps the type's stored rows instead of
+ * reading as none, which would prune them all.
+ */
+async function ownList<T>(p: Promise<T[]>): Promise<T[]> {
+  try {
+    return await p;
+  } catch (err) {
+    if (!isTagRefusal(err)) throw err;
+    // A host that keeps no track (the desktop) answers false, and there the refusal should still show.
+    if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+    return [];
   }
 }
 
@@ -256,7 +276,7 @@ export class RabbitClient implements PluginClient {
 
   private async userRows(accountId: string): Promise<ResourceInstance[]> {
     const [users, perms, limits, me] = await Promise.all([
-      gated(this.list<User>("/users")),
+      ownList(this.list<User>("/users")),
       gated(this.list<Permission>("/permissions")),
       gated(this.list<{ user?: string; value?: Record<string, number> }>("/user-limits")),
       this.whoami(),
@@ -274,7 +294,7 @@ export class RabbitClient implements PluginClient {
 
   private async shovelRows(accountId: string): Promise<ResourceInstance[]> {
     const [defs, statuses] = await Promise.all([
-      gated(rmqOptionalList<RuntimeParameter>(this.ctx, "/parameters/shovel")),
+      ownList(rmqOptionalList<RuntimeParameter>(this.ctx, "/parameters/shovel")),
       rmqOptionalList<ShovelStatus>(this.ctx, "/shovels"),
     ]);
     const key = (v: string | undefined, n: string | undefined) => `${v ?? "/"}\u0000${n ?? ""}`;
@@ -296,7 +316,7 @@ export class RabbitClient implements PluginClient {
         case "rabbitmq-cluster":
           return [await this.cluster(accountId)];
         case "rabbitmq-node":
-          return (await gated(this.list<RabbitNode>("/nodes"))).map((n) => mapNode(accountId, n));
+          return (await ownList(this.list<RabbitNode>("/nodes"))).map((n) => mapNode(accountId, n));
         case "rabbitmq-vhost": {
           const [vhosts, limits] = await Promise.all([this.vhosts(), this.vhostLimits()]);
           return vhosts.map((v) => mapVhost(accountId, v, limits.get(v.name ?? "/")));
@@ -310,21 +330,21 @@ export class RabbitClient implements PluginClient {
         case "rabbitmq-binding":
           return (await this.bindings()).map((b) => mapBinding(accountId, b));
         case "rabbitmq-policy":
-          return (await gated(this.list<Policy>("/policies"))).map((p) =>
+          return (await ownList(this.list<Policy>("/policies"))).map((p) =>
             mapPolicy(accountId, "rabbitmq-policy", p),
           );
         case "rabbitmq-operator-policy":
-          return (await gated(this.list<Policy>("/operator-policies"))).map((p) =>
+          return (await ownList(this.list<Policy>("/operator-policies"))).map((p) =>
             mapPolicy(accountId, "rabbitmq-operator-policy", p),
           );
         case "rabbitmq-user":
           return this.userRows(accountId);
         case "rabbitmq-permission":
-          return (await gated(this.list<Permission>("/permissions"))).map((p) =>
+          return (await ownList(this.list<Permission>("/permissions"))).map((p) =>
             mapPermission(accountId, p),
           );
         case "rabbitmq-topic-permission":
-          return (await gated(this.list<Permission>("/topic-permissions"))).map((p) =>
+          return (await ownList(this.list<Permission>("/topic-permissions"))).map((p) =>
             mapTopicPermission(accountId, p),
           );
         case "rabbitmq-connection":
@@ -339,7 +359,7 @@ export class RabbitClient implements PluginClient {
           return this.shovelRows(accountId);
         case "rabbitmq-federation-upstream": {
           const [ups, links] = await Promise.all([
-            gated(rmqOptionalList<RuntimeParameter>(this.ctx, "/parameters/federation-upstream")),
+            ownList(rmqOptionalList<RuntimeParameter>(this.ctx, "/parameters/federation-upstream")),
             rmqOptionalList<FederationLink>(this.ctx, "/federation-links"),
           ]);
           return ups.map((u) => mapFederationUpstream(accountId, u, links));

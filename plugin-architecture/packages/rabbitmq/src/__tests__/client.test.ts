@@ -107,7 +107,7 @@ describe("requests", () => {
     expect(calls).toHaveLength(3);
   });
 
-  it("reads a missing tag as an empty list but keeps real failures", async () => {
+  it("keeps a type's rows for a missing tag but keeps real failures", async () => {
     const { c } = client((call) =>
       call.url.pathname === "/api/users"
         ? { status: 401, body: { error: "not_authorised", reason: "Not administrator user" } }
@@ -120,7 +120,13 @@ describe("requests", () => {
       status: 401,
       body: { error: "not_authorised", reason: "Not administrator user" },
     }));
-    expect(await c2.listResources("rabbitmq-permission", ACCOUNT)).toEqual([]);
+    const hook = Symbol.for("infrawrench.unreadListPart");
+    Reflect.set(globalThis, hook, () => undefined);
+    try {
+      expect(await c2.listResources("rabbitmq-permission", ACCOUNT)).toEqual([]);
+    } finally {
+      Reflect.deleteProperty(globalThis, hook);
+    }
   });
 
   it("keeps the password hash when only the tags change", async () => {

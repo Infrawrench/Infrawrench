@@ -199,3 +199,34 @@ describe("answers that are not lists", () => {
     expect(calls.map((x) => x.method)).toEqual(["GET"]);
   });
 });
+
+describe("a user missing a tag", () => {
+  const refuse = () => ({
+    status: 401,
+    body: { error: "not_authorised", reason: "Not monitor user" },
+  });
+
+  it("keeps the stored rows of the type instead of reading it as empty", async () => {
+    const note = vi.fn();
+    Reflect.set(globalThis, HOOK, note);
+    const { c } = client(refuse);
+    expect(await c.listResources("rabbitmq-node", ACCOUNT)).toEqual([]);
+    expect(note).toHaveBeenCalledWith({ idPrefixes: [""] });
+  });
+
+  it("shows the refusal where the host keeps no track", async () => {
+    const { c } = client(refuse);
+    await expect(c.listResources("rabbitmq-node", ACCOUNT)).rejects.toThrow("Not monitor user");
+  });
+
+  it("keeps users when only the limits are refused", async () => {
+    const note = vi.fn();
+    Reflect.set(globalThis, HOOK, note);
+    const { c } = client((call) =>
+      call.url.pathname === "/api/users" ? [{ name: "app", tags: [] }] : refuse(),
+    );
+    const users = await c.listResources("rabbitmq-user", ACCOUNT);
+    expect(users.map((u) => u.displayName)).toEqual(["app"]);
+    expect(note).not.toHaveBeenCalled();
+  });
+});
