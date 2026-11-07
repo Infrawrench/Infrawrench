@@ -25,8 +25,11 @@ import { BILLING, crnService } from "./regions.js";
 
 const ACCESS_DOCS = "https://cloud.ibm.com/iam/users";
 
-/** 50,000 usage records a month at 200 a page, the most the document allows. */
-const MAX_USAGE_PAGES = 250;
+/**
+ * 100,000 usage records a month at 200 a page, the most the document allows. Cost rows
+ * go to ClickHouse, so the 50,000 limit from the resource sync's prune does not apply.
+ */
+const MAX_USAGE_PAGES = 500;
 
 type Schemas = components["schemas"];
 

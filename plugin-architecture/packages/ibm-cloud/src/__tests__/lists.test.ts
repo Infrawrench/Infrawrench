@@ -241,14 +241,14 @@ describe("Kubernetes Service lists", () => {
 });
 
 describe("usage reports", () => {
-  it("stops at 250 pages of 200 with an error", async () => {
+  it("stops at 500 pages of 200 with an error", async () => {
     const { client, calls } = makeClient(() => ({
       body: { resources: [], next: { offset: "more" } },
     }));
     await expect(client.fetchCostData("a", RANGE)).rejects.toThrow(
       "has more than Infrawrench reads",
     );
-    expect(calls).toHaveLength(250);
+    expect(calls).toHaveLength(500);
     expect(calls[0]!.url.searchParams.get("_limit")).toBe("200");
   });
 
