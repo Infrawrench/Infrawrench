@@ -74,6 +74,13 @@ const FILE_PAGE_SIZE = 500;
 const MAX_FILE_PAGES = 2_000;
 
 /**
+ * How long a finished listing is reused. Long enough for one request's call sites
+ * to share a walk, short enough that a desktop client, which lives as long as its
+ * page, still sees a file uploaded or deleted elsewhere when the browser refreshes.
+ */
+const FILE_LISTING_REUSE_MS = 30_000;
+
+/**
  * UploadThing has no time-series API (`getUsageInfo` is a point-in-time total),
  * so the app's Metrics tab is built from the `listFiles` walk the listing
  * already does: every file carries `uploadedAt` and `size`. Files deleted since
@@ -334,13 +341,13 @@ export class UploadThingClient implements PluginClient {
   /**
    * Per-client cache of `getAppInfo`. Every file listed needs the app id (to
    * build its URL) and the ACL policy (to decide whether the ACL actions are
-   * offered), and clients are constructed per request: without this a page of
-   * 500 files would ask for the same three fields 500 times.
+   * offered): without this a page of 500 files would ask for the same three
+   * fields 500 times.
    */
   private appInfoPromise: Promise<UtAppInfo> | undefined;
 
   /** Memoised full file listing: see {@link fetchFiles}. */
-  private filesPromise: Promise<UtFile[]> | undefined;
+  private filesMemo: { promise: Promise<UtFile[]>; finishedAt?: number } | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const raw = credentials["apiKey"];
@@ -359,7 +366,10 @@ export class UploadThingClient implements PluginClient {
   }
 
   private appInfo(): Promise<UtAppInfo> {
-    this.appInfoPromise ??= this.api.post("/v7/getAppInfo", { body: {} });
+    this.appInfoPromise ??= this.api.post("/v7/getAppInfo", { body: {} }).catch((err: unknown) => {
+      this.appInfoPromise = undefined;
+      throw err;
+    });
     return this.appInfoPromise;
   }
 
@@ -422,14 +432,31 @@ export class UploadThingClient implements PluginClient {
    * an answer that cannot say that throws: no `files`, no `hasMore`, or an empty
    * page while `hasMore` still claims more.
    *
-   * Memoised for the life of this client: one request may list resources,
-   * open the file browser, and resolve a folder delete, and there is no reason
-   * for those to each walk the whole app. Clients are constructed per request,
-   * so the memo cannot outlive the data by long; mutations clear it explicitly.
+   * Memoised briefly: one request may list resources, open the file browser, and
+   * resolve a folder delete, and there is no reason for those to each walk the
+   * whole app. A walk in progress is always shared, a failed one is never kept, and
+   * mutations clear it explicitly.
    */
   private fetchFiles(): Promise<UtFile[]> {
-    this.filesPromise ??= this.walkFiles();
-    return this.filesPromise;
+    const held = this.filesMemo;
+    if (held) {
+      const age = held.finishedAt === undefined ? 0 : Date.now() - held.finishedAt;
+      if (age < FILE_LISTING_REUSE_MS) return held.promise;
+    }
+    const memo: NonNullable<typeof this.filesMemo> = {
+      promise: this.walkFiles().then(
+        (files) => {
+          memo.finishedAt = Date.now();
+          return files;
+        },
+        (err: unknown) => {
+          if (this.filesMemo === memo) this.filesMemo = undefined;
+          throw err;
+        },
+      ),
+    };
+    this.filesMemo = memo;
+    return memo.promise;
   }
 
   private async walkFiles(): Promise<UtFile[]> {
@@ -452,7 +479,7 @@ export class UploadThingClient implements PluginClient {
 
   /** Drop the memoised listing after anything that changes it. */
   private invalidateFiles(): void {
-    this.filesPromise = undefined;
+    this.filesMemo = undefined;
   }
 
   private async listFiles(accountId: string): Promise<ResourceInstance[]> {

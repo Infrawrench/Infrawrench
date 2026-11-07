@@ -275,6 +275,65 @@ describe("listResources", () => {
     expect(calls.filter((call) => call.url.endsWith("/v6/listFiles"))).toHaveLength(1);
   });
 
+  it("reads again after a failed read, on the same client", async () => {
+    let failing = true;
+    installReadFetch((url) =>
+      failing && (url.endsWith("/v6/listFiles") || url.endsWith("/v7/getAppInfo"))
+        ? jsonResponse({ error: "try later" }, 503)
+        : undefined,
+    );
+    const c = client();
+    await expect(c.listStorageObjects(APP_ID, "")).rejects.toThrow(/503/);
+    await expect(
+      c.resolveOutput("ut-app", `${ACCOUNT}:ut-app:x`, "appId", ACCOUNT),
+    ).rejects.toThrow(/503/);
+    failing = false;
+    await expect(c.listStorageObjects(APP_ID, "")).resolves.toHaveLength(2);
+    await expect(c.resolveOutput("ut-app", `${ACCOUNT}:ut-app:x`, "appId", ACCOUNT)).resolves.toBe(
+      APP_ID,
+    );
+  });
+
+  it("walks again once the listing is old, for a client that lives as long as its page", async () => {
+    installReadFetch();
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const c = client();
+    const walks = () => calls.filter((call) => call.url.endsWith("/v6/listFiles")).length;
+
+    await c.listStorageObjects(APP_ID, "");
+    now.mockReturnValue(1_000_000 + 29_000);
+    await c.listStorageObjects(APP_ID, "");
+    expect(walks()).toBe(1);
+
+    now.mockReturnValue(1_000_000 + 31_000);
+    await c.listStorageObjects(APP_ID, "");
+    expect(walks()).toBe(2);
+  });
+
+  it("shares a walk still running, however long it takes", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    installReadFetch();
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const fetchStub = vi.mocked(globalThis.fetch);
+    const answered = fetchStub.getMockImplementation()!;
+    fetchStub.mockImplementation(async (url, init) => {
+      await gate;
+      return answered(url, init);
+    });
+    const c = client();
+
+    const first = c.listStorageObjects(APP_ID, "");
+    now.mockReturnValue(1_000_000 + 600_000);
+    const second = c.listStorageObjects(APP_ID, "");
+    release();
+    await Promise.all([first, second]);
+
+    expect(calls.filter((call) => call.url.endsWith("/v6/listFiles"))).toHaveLength(1);
+  });
+
   it("re-walks after a delete so the browser does not show a deleted row", async () => {
     installReadFetch((url) =>
       url.endsWith("/v6/deleteFiles")
