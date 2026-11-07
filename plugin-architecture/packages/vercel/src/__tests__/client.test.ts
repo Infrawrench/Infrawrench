@@ -553,6 +553,32 @@ describe("getResource", () => {
     expect(calls[0]!.url).toContain("/v9/projects/p1");
   });
 
+  it("reads a project's region from resourceConfig when the route has no top-level one", async () => {
+    installFetch(() =>
+      jsonResponse({
+        id: "p1",
+        name: "n",
+        createdAt: 1,
+        resourceConfig: { functionDefaultRegions: ["fra1", "iad1"] },
+      }),
+    );
+    const id = "acct-1:vercel-project:p1";
+    const r = await client().getResource("vercel-project", id, ACCOUNT);
+    expect(r.fields["serverlessFunctionRegion"]).toBe("fra1");
+
+    installFetch(() =>
+      jsonResponse({
+        id: "p1",
+        name: "n",
+        createdAt: 1,
+        serverlessFunctionRegion: "sfo1",
+        resourceConfig: { functionDefaultRegions: ["fra1"] },
+      }),
+    );
+    const both = await client().getResource("vercel-project", id, ACCOUNT);
+    expect(both.fields["serverlessFunctionRegion"]).toBe("sfo1");
+  });
+
   it("dates a deployment fetched on its own from `createdAt`", async () => {
     installFetch(() =>
       jsonResponse({ id: "dpl_1", url: "x.vercel.app", createdAt: 1700000000000 }),

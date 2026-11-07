@@ -1286,7 +1286,9 @@ export class VercelClient implements PluginClient {
         name: p.name,
         framework: p.framework,
         nodeVersion: p.nodeVersion,
-        serverlessFunctionRegion: p.serverlessFunctionRegion,
+        // The single-project route documents only the regions under `resourceConfig`.
+        serverlessFunctionRegion:
+          p.serverlessFunctionRegion ?? p.resourceConfig?.functionDefaultRegions?.[0],
         rootDirectory: p.rootDirectory,
         buildCommand: p.buildCommand,
         outputDirectory: p.outputDirectory,
