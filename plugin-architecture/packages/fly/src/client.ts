@@ -989,8 +989,14 @@ export class FlyClient implements PluginClient {
         if (existingMounts.some((m) => String(m.volume ?? "") === volumeParts.volumeId)) {
           return; // already mounted
         }
+        // `fly.MachineConfig.mounts`: at most one volume, and an update cannot change it.
+        const mounted = existingMounts[0];
+        if (mounted) {
+          throw new Error(
+            `Machine ${machineParts.machineId} already mounts ${String(mounted.volume ?? mounted.name ?? "a volume")}. A Fly Machine can mount at most one volume, and updating it cannot change which.`,
+          );
+        }
         const newMounts = [
-          ...existingMounts,
           { volume: volumeParts.volumeId, path: `/mnt/${String(volume.fields["name"] ?? "data")}` },
         ];
         await this.api.post(machinePath, { body: { config: { ...config, mounts: newMounts } } });

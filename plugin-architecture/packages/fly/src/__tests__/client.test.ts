@@ -695,6 +695,21 @@ describe("attachResource (volume → machine)", () => {
     expect(post).toBeUndefined();
   });
 
+  it("says a Machine can mount one volume, and sends nothing, when it holds another", async () => {
+    setup("iad", "iad", [{ volume: "v9", path: "/mnt/other" }]);
+    await expect(
+      client().attachResource(
+        "volume",
+        "acct-1:volume:app-one/v1",
+        "machine",
+        "acct-1:machine:app-one/m1",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/mounts v9.*at most one volume/);
+    const post = calls.find((c) => method(c.init) === "POST" && c.url.includes("/machines/m1"));
+    expect(post).toBeUndefined();
+  });
+
   it("throws on region mismatch", async () => {
     setup("iad", "lhr");
     await expect(
