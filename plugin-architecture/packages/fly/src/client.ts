@@ -1833,7 +1833,8 @@ export class FlyClient implements PluginClient {
       resolvedOutputs: { appName: app.name },
       secretStates: [],
       externalId: app.name,
-      createdAt: app.created_at ?? new Date().toISOString(),
+      // Not in the document for either route: no date beats the time it was read.
+      createdAt: app.created_at ?? "",
       updatedAt: app.created_at ?? new Date().toISOString(),
     };
   }
@@ -1918,6 +1919,14 @@ export class FlyClient implements PluginClient {
     const expiries = [active?.expires_at, ...issued.map((i) => i.expires_at)].filter(
       (x): x is string => Boolean(x),
     );
+    // Only the list shape has its own date; the detail shape dates its entries.
+    const created =
+      cert.created_at ??
+      entries
+        .map((e) => e.created_at ?? "")
+        .filter(Boolean)
+        .sort()[0] ??
+      "";
     const fields: Record<string, string | number | boolean> = {
       hostname,
       appName,
@@ -1955,8 +1964,8 @@ export class FlyClient implements PluginClient {
       secretStates: [],
       externalId: `${appName}/${hostname}`,
       parentResourceId: `${accountId}:app:${appName}`,
-      createdAt: cert.created_at ?? new Date().toISOString(),
-      updatedAt: cert.updated_at ?? cert.created_at ?? new Date().toISOString(),
+      createdAt: created,
+      updatedAt: cert.updated_at || created || new Date().toISOString(),
     };
   }
 

@@ -313,6 +313,23 @@ describe("getResource", () => {
     expect(r.fields["status"]).toBe("deployed");
   });
 
+  it("gives an app no created date when the answer has none, not the time it was read", async () => {
+    router([[(u) => u.includes("/v1/apps?"), APP_LIST]]);
+    const [listed] = await client().listResources("app", ACCOUNT);
+    expect(listed!.createdAt).toBe("");
+
+    vi.restoreAllMocks();
+    router([[(u) => u.includes("/v1/apps/x"), { id: "a", name: "x" }]]);
+    const fetched = await client().getResource("app", "acct-1:app:x", ACCOUNT);
+    expect(fetched.createdAt).toBe("");
+  });
+
+  it("keeps an app's created date should the answer carry one", async () => {
+    router([[(u) => u.includes("/v1/apps/x"), { name: "x", created_at: "2024-05-01T00:00:00Z" }]]);
+    const r = await client().getResource("app", "acct-1:app:x", ACCOUNT);
+    expect(r.createdAt).toBe("2024-05-01T00:00:00Z");
+  });
+
   it("app maps defaults when fields missing", async () => {
     router([[(u) => u.includes("/v1/apps/x"), { id: "a", name: "x", status: undefined }]]);
     const r = await client().getResource("app", "acct-1:app:x", ACCOUNT);
@@ -1375,6 +1392,58 @@ describe("certificates (Machines API shapes)", () => {
     expect(res.fields["acmeDnsConfigured"]).toBe(true);
     expect(res.fields["acmeAlpnConfigured"]).toBe(false);
     expect(res.fields["validationErrors"]).toBe("CNAME missing");
+  });
+
+  it("dates a fetched certificate from its entries, whose shape has no date of its own", async () => {
+    router([
+      [
+        (u) => u.includes("/certificates/www.example.com"),
+        {
+          hostname: "www.example.com",
+          certificates: [
+            { source: "fly", status: "active", created_at: "2025-03-01T00:00:00Z" },
+            { source: "custom", status: "pending_validation", created_at: "2024-02-01T00:00:00Z" },
+          ],
+        },
+      ],
+    ]);
+    const res = await client().getResource(
+      "certificate",
+      "acct-1:certificate:app-one/www.example.com",
+      ACCOUNT,
+    );
+    expect(res.createdAt).toBe("2024-02-01T00:00:00Z");
+  });
+
+  it("gives a fetched certificate no created date when no entry has one", async () => {
+    router([[(u) => u.includes("/certificates/h.example.com"), { hostname: "h.example.com" }]]);
+    const res = await client().getResource(
+      "certificate",
+      "acct-1:certificate:app-one/h.example.com",
+      ACCOUNT,
+    );
+    expect(res.createdAt).toBe("");
+  });
+
+  it("keeps a listed certificate's own created date", async () => {
+    router([
+      [(u) => u.includes("/v1/apps?"), { apps: [{ name: "app-one" }] }],
+      [
+        (u) => u.includes("/certificates"),
+        {
+          certificates: [
+            {
+              hostname: "h.example.com",
+              created_at: "2023-01-01T00:00:00Z",
+              updated_at: "2023-06-01T00:00:00Z",
+            },
+          ],
+        },
+      ],
+    ]);
+    const [cert] = await client().listResources("certificate", ACCOUNT);
+    expect(cert!.createdAt).toBe("2023-01-01T00:00:00Z");
+    expect(cert!.updatedAt).toBe("2023-06-01T00:00:00Z");
   });
 
   it("follows next_cursor when listing", async () => {
