@@ -24,6 +24,7 @@ import type { TaggedUsageItem } from "./usage.js";
 import {
   billedCostCenters,
   fetchCostCenters,
+  fetchDeletedCostCenters,
   fetchMonthItems,
   isoDay,
   monthsBetween,
@@ -153,13 +154,14 @@ export async function fetchGitHubCostData(
   try {
     const centers =
       ctx.owner.kind === "enterprise" ? await billedCostCenters(fetchCostCenters(ctx)) : [];
+    const deletedCenters = await fetchDeletedCostCenters(ctx);
     const rows: CostRow[] = [];
     const months = monthsBetween(range.fromDate, range.toDate);
     // Newest first, so a refusal is judged on the month that must exist.
     for (const [index, ym] of [...months].reverse().entries()) {
       let items: TaggedUsageItem[];
       try {
-        items = await fetchMonthItems(ctx, ym, centers);
+        items = await fetchMonthItems(ctx, ym, centers, deletedCenters);
       } catch (err) {
         // A backfill reaching past the start of the account's enhanced
         // billing history is refused with a 400/404 for those months; skip

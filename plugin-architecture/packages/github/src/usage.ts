@@ -7,7 +7,8 @@
  *   `grossAmount`, `discountAmount`, `netAmount`, `organizationName`,
  *   `repositoryName`). For an enterprise it returns usage **without** a cost
  *   centre by default and one cost centre's usage with `cost_center_id`, so
- *   the default call plus one call per cost centre partitions the bill.
+ *   the default call plus one call per cost centre partitions the bill. A
+ *   deleted centre is the exception, see `deletedCentreItems`.
  * - `GET {billing}/usage/summary`: one month's totals by product and SKU, with
  *   gross, discount and net quantities and amounts. For an enterprise the
  *   default covers every cost centre.
@@ -25,6 +26,7 @@ import type { operations as DotcomOps } from "./api-types.dotcom.gen.js";
 import type { operations as GhecOps } from "./api-types.ghec.gen.js";
 import type { GitHubContext, Sparse } from "./api.js";
 import { billingBase, byOwner, ghecApi, listOrNothing, statusOf } from "./api.js";
+import { normalizeId } from "./products.js";
 
 type Row<Answer> = Answer extends { usageItems?: readonly (infer Item)[] } ? Item : never;
 
@@ -139,17 +141,41 @@ export async function fetchModelUsage(
   return res.usageItems ?? [];
 }
 
-/** Enterprise cost centres (active only). Organizations have none. */
-export async function fetchCostCenters(ctx: GitHubContext): Promise<CostCenter[]> {
+async function listCostCenters(
+  ctx: GitHubContext,
+  state: "active" | "deleted",
+): Promise<CostCenter[]> {
   if (ctx.owner.kind !== "enterprise") return [];
   const enterprise = pathEncode(ctx.owner.slug);
   const res = await ghecApi(ctx).get(`/enterprises/${enterprise}/settings/billing/cost-centers`, {
-    query: { state: "active" },
+    query: { state },
   });
   const path = `/enterprises/${enterprise}/settings/billing/cost-centers`;
+  const other = state === "active" ? "deleted" : "active";
   return listOrNothing<CostCenter>(res, res.costCenters, { path, key: "costCenters" }).filter(
-    (c) => c.id && c.state !== "deleted",
+    (c) => c.id && c.state !== other,
   );
+}
+
+/** Enterprise cost centres (active only). Organizations have none. */
+export function fetchCostCenters(ctx: GitHubContext): Promise<CostCenter[]> {
+  return listCostCenters(ctx, "active");
+}
+
+/** GitHub refused the question rather than failing to answer it. */
+function isRefused(err: unknown): boolean {
+  const status = statusOf(err);
+  return status === 400 || status === 404 || status === 422;
+}
+
+/** Cost centres deleted from the enterprise, which GitHub keeps under its "Deleted" tab. */
+export async function fetchDeletedCostCenters(ctx: GitHubContext): Promise<CostCenter[]> {
+  try {
+    return await listCostCenters(ctx, "deleted");
+  } catch (err) {
+    if (isRefused(err)) return [];
+    throw err;
+  }
 }
 
 /**
@@ -244,27 +270,119 @@ export type TaggedUsageItem = UsageItem & {
   costCenterId?: string;
 };
 
+function tagged(items: UsageItem[], center: CostCenter): TaggedUsageItem[] {
+  return items.map((item) => ({
+    ...item,
+    ...(center.name ? { costCenter: center.name } : {}),
+    costCenterId: center.id!,
+  }));
+}
+
 /**
  * A month's line items across the whole bill. For an organization that is a
  * single call; for an enterprise it is the default call (usage outside any
- * cost centre) plus one per cost centre, which together partition the bill.
+ * cost centre) plus one per cost centre, which together partition the bill,
+ * and whatever deleted centres can be shown to hold on top of that.
  */
 export async function fetchMonthItems(
   ctx: GitHubContext,
   ym: YearMonth,
   costCenters?: CostCenter[],
+  deletedCostCenters?: CostCenter[],
 ): Promise<TaggedUsageItem[]> {
   const base = await fetchUsageItems(ctx, ym);
   if (ctx.owner.kind !== "enterprise") return base;
   const centers = costCenters ?? (await billedCostCenters(fetchCostCenters(ctx)));
   const out: TaggedUsageItem[] = [...base];
   for (const c of centers) {
-    const items = await fetchUsageItems(ctx, ym, c.id);
-    for (const item of items) {
-      out.push({ ...item, ...(c.name ? { costCenter: c.name } : {}), costCenterId: c.id! });
-    }
+    out.push(...tagged(await fetchUsageItems(ctx, ym, c.id), c));
+  }
+  const deleted = deletedCostCenters ?? (await fetchDeletedCostCenters(ctx));
+  out.push(...(await deletedCentreItems(ctx, ym, out, deleted)));
+  return out;
+}
+
+interface SkuAmounts {
+  gross: number;
+  net: number;
+}
+
+function amountsBySku(items: Array<SummaryItem | TaggedUsageItem>): Map<string, SkuAmounts> {
+  const out = new Map<string, SkuAmounts>();
+  for (const item of items) {
+    // The summary and the usage report may spell a product differently, see `normalizeId`.
+    const key = JSON.stringify([normalizeId(item.product), normalizeId(item.sku)]);
+    const cur = out.get(key) ?? { gross: 0, net: 0 };
+    const net = item.netAmount ?? 0;
+    // As `toCostRows` reads it: older payloads omit gross on zero-priced lines.
+    cur.gross += item.grossAmount ?? net + (item.discountAmount ?? 0);
+    cur.net += net;
+    out.set(key, cur);
   }
   return out;
+}
+
+/** Room for rounding between the two reports, so the sum may miss by this much. */
+function roundingRoom(adding: number): number {
+  return Math.max(0.01, adding * 0.001);
+}
+
+/**
+ * Usage charged to a cost centre before it was deleted. GitHub says it stays with
+ * that centre, but not whether `cost_center_id` still reaches it or the default call
+ * starts returning it, and if it is the second then adding the first counts it twice.
+ *
+ * So this only adds what the whole bill proves is missing. The summary's default covers
+ * every cost centre, so each SKU in the deleted centres' usage has to bring what was
+ * already read to the summary's figure, in both gross and net, or none of it is added
+ * and the month reads as if they did not exist. Adding can therefore never take a SKU
+ * past GitHub's own total for the month. A month in progress can move between the reads,
+ * which at worst leaves the usage out until a later read agrees.
+ */
+async function deletedCentreItems(
+  ctx: GitHubContext,
+  ym: YearMonth,
+  read: TaggedUsageItem[],
+  deleted: CostCenter[],
+): Promise<TaggedUsageItem[]> {
+  if (deleted.length === 0) return [];
+  let summary: SummaryItem[];
+  try {
+    summary = await fetchUsageSummary(ctx, ym);
+  } catch (err) {
+    if (isRefused(err)) return [];
+    throw err;
+  }
+  const bill = amountsBySku(summary);
+  const have = amountsBySku(read);
+  const isShort = [...bill].some(([sku, whole]) => {
+    const held = have.get(sku) ?? { gross: 0, net: 0 };
+    return whole.gross - held.gross > 0.01 || whole.net - held.net > 0.01;
+  });
+  // One request per deleted centre per month adds up, and nothing can be missing here.
+  if (!isShort) return [];
+
+  const extra: TaggedUsageItem[] = [];
+  for (const c of deleted) {
+    try {
+      extra.push(...tagged(await fetchUsageItems(ctx, ym, c.id), c));
+    } catch (err) {
+      if (!isRefused(err)) throw err;
+    }
+  }
+
+  let proven = false;
+  for (const [sku, adding] of amountsBySku(extra)) {
+    const whole = bill.get(sku) ?? { gross: 0, net: 0 };
+    const held = have.get(sku) ?? { gross: 0, net: 0 };
+    for (const part of ["gross", "net"] as const) {
+      const room = roundingRoom(adding[part]);
+      if (Math.abs(held[part] + adding[part] - whole[part]) > room) return [];
+      // A line inside the rounding room fits whether or not it is already in the read.
+      if (adding[part] > room) proven = true;
+    }
+  }
+  return proven ? extra : [];
 }
 
 export interface SummaryTotals {

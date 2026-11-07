@@ -166,11 +166,208 @@ describe("fetchGitHubCostData", () => {
       };
     });
     const rows = await fetchGitHubCostData(ctxWith(http, "enterprise:big"), range);
-    expect(calls.map((c) => c.url.searchParams.get("cost_center_id"))).toEqual([null, null, "cc1"]);
+    expect(calls.map((c) => c.url.searchParams.get("cost_center_id"))).toEqual([
+      null,
+      null,
+      null,
+      "cc1",
+    ]);
     expect(rows.map((r) => [r.amount, r.tags?.["costCenter"]])).toEqual([
       [1, undefined],
       [2, "Platform"],
     ]);
+  });
+
+  describe("a deleted cost centre", () => {
+    const line = (sku: string, amount: number, net = amount) => ({
+      date: "2026-09-10",
+      product: "actions",
+      sku,
+      quantity: 1,
+      grossAmount: amount,
+      discountAmount: amount - net,
+      netAmount: net,
+      organizationName: "o",
+    });
+    const total = (sku: string, amount: number, net = amount) => ({
+      product: "Actions",
+      sku,
+      grossAmount: amount,
+      netAmount: net,
+    });
+
+    /** `outside` is the default read, `dead` the deleted centre's and `bill` the whole month's. */
+    const bill = (reply: {
+      outside: unknown[];
+      dead?: unknown[];
+      deadStatus?: number;
+      summary?: unknown[];
+      summaryStatus?: number;
+      deletedListStatus?: number;
+    }) =>
+      makeHttp((url) => {
+        if (url.pathname.endsWith("/cost-centers")) {
+          if (url.searchParams.get("state") !== "deleted") return { body: { costCenters: [] } };
+          if (reply.deletedListStatus) {
+            return { status: reply.deletedListStatus, body: { message: "no" } };
+          }
+          return {
+            body: { costCenters: [{ id: "dead", name: "Old", state: "deleted", resources: [] }] },
+          };
+        }
+        if (url.pathname.endsWith("/usage/summary")) {
+          if (reply.summaryStatus) return { status: reply.summaryStatus, body: { message: "no" } };
+          return { body: { usageItems: reply.summary ?? [] } };
+        }
+        if (url.searchParams.get("cost_center_id") === "dead") {
+          if (reply.deadStatus) return { status: reply.deadStatus, body: { message: "no" } };
+          return { body: { usageItems: reply.dead ?? [] } };
+        }
+        return { body: { usageItems: reply.outside } };
+      });
+    const read = (http: ReturnType<typeof bill>["http"]) =>
+      fetchGitHubCostData(ctxWith(http, "enterprise:big"), range);
+    const usageAmounts = (rows: Awaited<ReturnType<typeof read>>) =>
+      rows.filter((r) => r.chargeType === "usage").map((r) => [r.amount, r.tags?.["costCenter"]]);
+
+    it("adds its usage when the whole bill shows the read is short by exactly that", async () => {
+      const { http, calls } = bill({
+        outside: [line("actions_linux", 1)],
+        dead: [line("actions_linux", 2)],
+        // The summary spells its identifiers its own way, and the two still have to meet.
+        summary: [total("Actions Linux", 3)],
+      });
+      expect(usageAmounts(await read(http))).toEqual([
+        [1, undefined],
+        [2, "Old"],
+      ]);
+      expect(calls.find((c) => c.url.searchParams.get("state") === "deleted")?.url.pathname).toBe(
+        "/enterprises/big/settings/billing/cost-centers",
+      );
+    });
+
+    it("does not ask for it when the read already matches the whole bill", async () => {
+      const { http, calls } = bill({
+        outside: [line("actions_linux", 3)],
+        dead: [line("actions_linux", 3)],
+        summary: [total("actions_linux", 3)],
+      });
+      expect(usageAmounts(await read(http))).toEqual([[3, undefined]]);
+      expect(calls.some((c) => c.url.searchParams.get("cost_center_id") === "dead")).toBe(false);
+    });
+
+    it("does not add usage the default read already holds, whatever else the bill is short of", async () => {
+      const { http } = bill({
+        outside: [line("actions_linux", 2), line("actions_macos", 5)],
+        dead: [line("actions_linux", 2)],
+        // Short on macOS for some other reason. Linux is already whole.
+        summary: [total("actions_linux", 2), total("actions_macos", 9)],
+      });
+      expect(usageAmounts(await read(http))).toEqual([
+        [2, undefined],
+        [5, undefined],
+      ]);
+    });
+
+    it("compares per SKU, so a gap elsewhere cannot excuse a SKU that is already whole", async () => {
+      const { http } = bill({
+        outside: [line("actions_linux", 1)],
+        dead: [line("actions_linux", 2)],
+        summary: [total("actions_linux", 1), total("actions_macos", 2)],
+      });
+      expect(usageAmounts(await read(http))).toEqual([[1, undefined]]);
+    });
+
+    it("adds nothing when only part of its usage reconciles", async () => {
+      const { http } = bill({
+        outside: [line("actions_linux", 1), line("actions_macos", 2)],
+        dead: [line("actions_linux", 4), line("actions_macos", 4)],
+        summary: [total("actions_linux", 5), total("actions_macos", 2)],
+      });
+      expect(usageAmounts(await read(http))).toEqual([
+        [1, undefined],
+        [2, undefined],
+      ]);
+    });
+
+    it("needs the net to reconcile as well as the gross", async () => {
+      const { http } = bill({
+        outside: [line("actions_linux", 1)],
+        dead: [line("actions_linux", 2, 0)],
+        summary: [total("actions_linux", 3, 3)],
+      });
+      expect(usageAmounts(await read(http))).toEqual([[1, undefined]]);
+    });
+
+    it("adds nothing when only a rounding error could tell the two apart", async () => {
+      const { http } = bill({
+        outside: [line("actions_linux", 1), line("actions_macos", 5)],
+        dead: [line("actions_linux", 0.004)],
+        summary: [total("actions_linux", 1), total("actions_macos", 9)],
+      });
+      expect(usageAmounts(await read(http))).toEqual([
+        [1, undefined],
+        [5, undefined],
+      ]);
+    });
+
+    it("lets a line too small to prove anything through beside one that proves it", async () => {
+      const { http } = bill({
+        outside: [line("actions_linux", 1)],
+        dead: [line("actions_linux", 2), line("actions_storage", 0.004)],
+        summary: [total("actions_linux", 3)],
+      });
+      expect(usageAmounts(await read(http))).toEqual([
+        [1, undefined],
+        [2, "Old"],
+        [0.004, "Old"],
+      ]);
+    });
+
+    it("keeps the read as it was when GitHub will not give the whole bill", async () => {
+      const { http } = bill({
+        outside: [line("actions_linux", 1)],
+        dead: [line("actions_linux", 2)],
+        summaryStatus: 400,
+      });
+      expect(usageAmounts(await read(http))).toEqual([[1, undefined]]);
+    });
+
+    it("keeps the read as it was when the deleted centre's usage is refused", async () => {
+      const { http } = bill({
+        outside: [line("actions_linux", 1)],
+        deadStatus: 400,
+        summary: [total("actions_linux", 3)],
+      });
+      expect(usageAmounts(await read(http))).toEqual([[1, undefined]]);
+    });
+
+    it("keeps the read as it was when deleted centres cannot be listed that way", async () => {
+      const { http } = bill({ outside: [line("actions_linux", 1)], deletedListStatus: 400 });
+      expect(usageAmounts(await read(http))).toEqual([[1, undefined]]);
+    });
+
+    it.each([
+      ["the whole bill", { summaryStatus: 500 }],
+      ["the deleted centre's usage", { deadStatus: 500, summary: [total("actions_linux", 3)] }],
+      ["the deleted centres", { deletedListStatus: 500 }],
+    ])("throws when %s fails, so the stored rows stay", async (_what, failure) => {
+      const { http } = bill({ outside: [line("actions_linux", 1)], ...failure });
+      await expect(read(http)).rejects.toThrow("500");
+    });
+
+    it("never treats an active centre the deleted list hands back as deleted", async () => {
+      const { http, calls } = makeHttp((url) => {
+        if (url.pathname.endsWith("/cost-centers")) {
+          return { body: { costCenters: [{ id: "cc1", name: "Live", state: "active" }] } };
+        }
+        return { body: { usageItems: [line("actions_linux", 1)] } };
+      });
+      await read(http);
+      expect(calls.filter((c) => c.url.searchParams.get("cost_center_id") === "cc1")).toHaveLength(
+        1,
+      );
+    });
   });
 
   describe("when the cost centres cannot be read", () => {
