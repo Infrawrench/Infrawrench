@@ -156,6 +156,11 @@ export function clusterProvider(c: AtlasCluster): string {
   return rc.providerName ?? "";
 }
 
+/** Sharded clusters keep their snapshots on routes of their own. */
+export function isShardedCluster(c: AtlasCluster): boolean {
+  return c.clusterType === "SHARDED" || c.clusterType === "GEOSHARDED";
+}
+
 /** True for clusters `/clusters` returns that are listed under their own type. */
 export function isListedElsewhere(c: AtlasCluster): boolean {
   const name = primaryRegionConfigs(c)[0]?.providerName ?? "";

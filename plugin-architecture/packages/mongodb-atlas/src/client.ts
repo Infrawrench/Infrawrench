@@ -31,6 +31,7 @@ import {
   contextFromCredentials,
   isPermissionError,
   listOrgs,
+  listShardedSnapshots,
   statusOf,
 } from "./api.js";
 import { fetchAtlasCostData, fetchInvoices, instanceRates, summarizeInvoice } from "./cost-data.js";
@@ -43,6 +44,7 @@ import type {
 } from "./mappers.js";
 import {
   isListedElsewhere,
+  isShardedCluster,
   mapAccessEntry,
   mapAlert,
   mapAlertConfig,
@@ -364,12 +366,13 @@ export class MongoDBAtlasClient implements PluginClient {
         case "backup-snapshot":
           return this.perCluster(
             (c) => dedicated(c) && c.backupEnabled === true,
-            async (p, name) =>
-              (
-                await this.api.getAll(
-                  `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/backup/snapshots`,
-                  "results",
-                )
+            async (p, name, cluster) =>
+              (isShardedCluster(cluster)
+                ? await listShardedSnapshots(this.ctx, p.groupId, name)
+                : await this.api.getAll(
+                    `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/backup/snapshots`,
+                    "results",
+                  )
               ).map((s) => mapSnapshot(accountId, s, p, name)),
           );
         case "backup-policy":
@@ -429,6 +432,21 @@ export class MongoDBAtlasClient implements PluginClient {
     return this.api.get(`/groups/${pathEncode(groupId)}/clusters/${pathEncode(name)}`, {
       headers: atlasVersion(CLUSTER_VERSION),
     });
+  }
+
+  /**
+   * Whether a stored snapshot belongs on the sharded routes. Its id does not say. A
+   * cluster that is gone or hidden from this credential stays on the replica set
+   * route, as every snapshot did before there was a choice; any other failure stops
+   * here rather than send a delete down a guessed route.
+   */
+  private async hasShardedSnapshots(groupId: string, name: string): Promise<boolean> {
+    try {
+      return isShardedCluster(await this.getCluster(groupId, name));
+    } catch (err) {
+      if (statusOf(err) === 404 || isPermissionError(err)) return false;
+      throw err;
+    }
   }
 
   /** Tiers offered in the cluster's cloud region, from Atlas itself. */
@@ -512,9 +530,13 @@ export class MongoDBAtlasClient implements PluginClient {
         }
         case "backup-snapshot": {
           const [groupId, cluster, snap] = splitId(id, 2);
-          const s = await this.api.get(
-            `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/snapshots/${pathEncode(snap)}`,
-          );
+          const s = (await this.hasShardedSnapshots(groupId, cluster))
+            ? await this.api.get(
+                `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/snapshots/shardedCluster/${pathEncode(snap)}`,
+              )
+            : await this.api.get(
+                `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/snapshots/${pathEncode(snap)}`,
+              );
           return mapSnapshot(accountId, s, await this.projectRef(groupId), cluster);
         }
         case "backup-policy": {
@@ -1230,9 +1252,18 @@ export class MongoDBAtlasClient implements PluginClient {
         }
         case "backup-snapshot": {
           const [groupId, cluster, snap] = splitId(id, 2);
-          await this.api.delete(
-            `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/snapshots/${pathEncode(snap)}`,
-          );
+          if (!groupId || !cluster || !snap) {
+            throw new Error("MongoDB Atlas plugin: this snapshot has no ID to delete");
+          }
+          if (await this.hasShardedSnapshots(groupId, cluster)) {
+            await this.api.delete(
+              `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/snapshots/shardedCluster/${pathEncode(snap)}`,
+            );
+          } else {
+            await this.api.delete(
+              `/groups/${pathEncode(groupId)}/clusters/${pathEncode(cluster)}/backup/snapshots/${pathEncode(snap)}`,
+            );
+          }
           return;
         }
         case "alert-configuration": {

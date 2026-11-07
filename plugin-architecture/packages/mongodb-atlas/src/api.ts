@@ -1,8 +1,12 @@
 import {
+  ListTruncatedError,
   createApiClient,
+  pathEncode,
+  withLinkPagination,
   withPagination,
   type ApiClient,
   type HttpHostServices,
+  type NextPage,
 } from "@infrawrench/plugin-base";
 import type { paths } from "./api-types.gen.js";
 import { md5Hex } from "./md5.js";
@@ -404,6 +408,44 @@ export function atlasApi(ctx: AtlasContext) {
       maxPages: MAX_PAGES,
       total: (page) => page.totalCount,
     },
+  );
+}
+
+function fieldOf(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+}
+
+/**
+ * The document gives this route no paging parameters, yet its answer carries `links`
+ * and `totalCount`. So the next page is whatever the answer names, and a first page
+ * that counts more rows than it holds with nothing leading to them is cut short.
+ */
+const nextShardedSnapshots: NextPage = ({ body, cursor, items }) => {
+  const links = fieldOf(body, "links");
+  const next = Array.isArray(links)
+    ? links.find((link: unknown) => fieldOf(link, "rel") === "next")
+    : undefined;
+  const href = fieldOf(next, "href");
+  if (typeof href === "string") return href;
+  const total = fieldOf(body, "totalCount");
+  if (cursor === undefined && typeof total === "number" && total > items.length) {
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path: "/groups/{groupId}/clusters/{clusterName}/backup/snapshots/shardedClusters",
+      items: items.length,
+    });
+  }
+  return undefined;
+};
+
+/** Every snapshot of one sharded cluster. */
+export function listShardedSnapshots(ctx: AtlasContext, groupId: string, clusterName: string) {
+  return withLinkPagination(atlasClient(ctx), {
+    maxPages: MAX_PAGES,
+    next: nextShardedSnapshots,
+  }).getAll(
+    `/groups/${pathEncode(groupId)}/clusters/${pathEncode(clusterName)}/backup/snapshots/shardedClusters`,
+    "results",
   );
 }
 

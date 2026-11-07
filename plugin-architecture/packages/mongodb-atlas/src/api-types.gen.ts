@@ -194,6 +194,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/groups/{groupId}/clusters/{clusterName}/backup/snapshots/shardedCluster/{snapshotId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getGroupClusterBackupSnapshotShardedCluster"];
+        put?: never;
+        post?: never;
+        delete: operations["deleteGroupClusterBackupSnapshotShardedCluster"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/groups/{groupId}/clusters/{clusterName}/backup/snapshots/shardedClusters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listGroupClusterBackupSnapshotShardedClusters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/groups/{groupId}/clusters/{clusterName}/onlineArchives": {
         parameters: {
             query?: never;
@@ -4251,6 +4283,12 @@ export interface components {
             /** Format: int32 */
             readonly totalCount?: number;
         };
+        PaginatedCloudBackupShardedClusterSnapshotView: {
+            readonly links?: components["schemas"]["Link"][];
+            readonly results: components["schemas"]["DiskBackupShardedClusterSnapshot"][];
+            /** Format: int32 */
+            readonly totalCount?: number;
+        };
         PaginatedClusterDescription20240805: {
             readonly links?: components["schemas"]["Link"][];
             readonly results: components["schemas"]["ClusterDescription20240805"][];
@@ -6039,7 +6077,8 @@ export interface operations {
             };
         };
     };
-    deleteGroupClusterBackupSnapshot: {
+    deleteGroupClusterBackupSnapshot: deleteGroupClusterBackupSnapshot_6ba7cc3b;
+    getGroupClusterBackupSnapshotShardedCluster: {
         parameters: {
             query?: {
                 envelope?: components["parameters"]["envelope"];
@@ -6054,7 +6093,46 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: responses_78de8446;
+        responses: {
+            200: {
+                headers: {
+                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["DiskBackupShardedClusterSnapshot"];
+                };
+            };
+        };
+    };
+    deleteGroupClusterBackupSnapshotShardedCluster: deleteGroupClusterBackupSnapshot_6ba7cc3b;
+    listGroupClusterBackupSnapshotShardedClusters: {
+        parameters: {
+            query?: {
+                envelope?: components["parameters"]["envelope"];
+                pretty?: components["parameters"]["pretty"];
+            };
+            header?: never;
+            path: {
+                clusterName: string;
+                groupId: components["parameters"]["groupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedCloudBackupShardedClusterSnapshotView"];
+                };
+            };
+        };
     };
     listGroupClusterOnlineArchives: {
         parameters: {
@@ -6696,6 +6774,23 @@ export interface operations {
     };
 }
 type analyzer_f12f57c6 = "lucene.standard" | "lucene.simple" | "lucene.whitespace" | "lucene.keyword" | "lucene.arabic" | "lucene.armenian" | "lucene.basque" | "lucene.bengali" | "lucene.brazilian" | "lucene.bulgarian" | "lucene.catalan" | "lucene.chinese" | "lucene.cjk" | "lucene.czech" | "lucene.danish" | "lucene.dutch" | "lucene.english" | "lucene.finnish" | "lucene.french" | "lucene.galician" | "lucene.german" | "lucene.greek" | "lucene.hindi" | "lucene.hungarian" | "lucene.indonesian" | "lucene.irish" | "lucene.italian" | "lucene.japanese" | "lucene.korean" | "lucene.kuromoji" | "lucene.latvian" | "lucene.lithuanian" | "lucene.morfologik" | "lucene.nori" | "lucene.norwegian" | "lucene.persian" | "lucene.portuguese" | "lucene.romanian" | "lucene.russian" | "lucene.smartcn" | "lucene.sorani" | "lucene.spanish" | "lucene.swedish" | "lucene.thai" | "lucene.turkish" | "lucene.ukrainian";
+type deleteGroupClusterBackupSnapshot_6ba7cc3b = {
+    parameters: {
+        query?: {
+            envelope?: components["parameters"]["envelope"];
+            pretty?: components["parameters"]["pretty"];
+        };
+        header?: never;
+        path: {
+            clusterName: string;
+            groupId: components["parameters"]["groupId"];
+            snapshotId: string;
+        };
+        cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_78de8446;
+};
 type parameters_98d36cfa = {
     query?: {
         envelope?: components["parameters"]["envelope"];

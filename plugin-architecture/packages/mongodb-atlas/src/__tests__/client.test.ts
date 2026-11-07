@@ -239,6 +239,150 @@ describe("a list that cannot be read whole", () => {
   });
 });
 
+describe("snapshots of sharded clusters", () => {
+  const CLUSTERS = "/api/atlas/v2/groups/g1/clusters";
+  const REPLICA = `${CLUSTERS}/main/backup/snapshots`;
+  const SHARDED_LIST = `${REPLICA}/shardedClusters`;
+  const SHARDED_ONE = `${REPLICA}/shardedCluster/s1`;
+  const snapshot = { id: "s1", type: "shardedCluster", status: "completed" };
+
+  /** Atlas with `main` as this type of cluster, answering `extra` before anything else. */
+  function shardedAtlas(extra: (call: Call) => unknown, clusterType = "SHARDED") {
+    return atlas((call) => {
+      const custom = extra(call);
+      if (custom !== undefined) return custom;
+      const p = call.path.split("?")[0]!;
+      if (p === CLUSTERS) return { results: [{ ...cluster, clusterType }] };
+      if (p === `${CLUSTERS}/main`) return { ...cluster, clusterType };
+      return undefined;
+    });
+  }
+  const clientOf = (http: ReturnType<typeof atlas>["http"]) =>
+    hostClient(new MongoDBAtlasClient(CREDS, { http }));
+
+  it.each(["SHARDED", "GEOSHARDED"])("lists a %s cluster's from its own route", async (type) => {
+    const { http, calls } = shardedAtlas(
+      (call) => (call.path === SHARDED_LIST ? { results: [snapshot] } : undefined),
+      type,
+    );
+    const snaps = await clientOf(http).listResources("backup-snapshot", ACCOUNT);
+    expect(snaps.map((s) => s.id)).toEqual(["acct:backup-snapshot:g1/main/s1"]);
+    expect(calls.some((c) => c.path.startsWith(`${REPLICA}?`))).toBe(false);
+  });
+
+  it("follows the next link the answer names, since the route takes no paging parameters", async () => {
+    const second = `https://cloud.mongodb.com${SHARDED_LIST}?pageNum=2&itemsPerPage=100`;
+    const { http } = shardedAtlas((call) => {
+      if (call.url === second) return { results: [{ ...snapshot, id: "s2" }], links: [] };
+      if (call.path === SHARDED_LIST) {
+        return { results: [snapshot], links: [{ rel: "next", href: second }] };
+      }
+      return undefined;
+    });
+    const snaps = await clientOf(http).listResources("backup-snapshot", ACCOUNT);
+    expect(snaps.map((s) => s.fields["snapshotId"])).toEqual(["s1", "s2"]);
+  });
+
+  it("refuses a next link to another host, past the catch around each cluster", async () => {
+    const { http, calls } = shardedAtlas((call) =>
+      call.path === SHARDED_LIST
+        ? { results: [snapshot], links: [{ rel: "next", href: "https://evil.example/x" }] }
+        : undefined,
+    );
+    await expect(clientOf(http).listResources("backup-snapshot", ACCOUNT)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+    expect(calls.some((c) => c.url.includes("evil.example"))).toBe(false);
+  });
+
+  it("throws when the total says there is more and no link leads to it", async () => {
+    const { http } = shardedAtlas((call) =>
+      call.path === SHARDED_LIST ? { results: [snapshot], totalCount: 2, links: [] } : undefined,
+    );
+    await expect(clientOf(http).listResources("backup-snapshot", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("refuses an answer that is not a list", async () => {
+    const { http } = shardedAtlas((call) =>
+      call.path === SHARDED_LIST ? { snapshots: [] } : undefined,
+    );
+    await expect(clientOf(http).listResources("backup-snapshot", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("reads and deletes one through the sharded routes", async () => {
+    const { http, calls } = shardedAtlas((call) => {
+      if (call.path !== SHARDED_ONE) return undefined;
+      return call.method === "DELETE" ? reply({ status: 204 }) : snapshot;
+    });
+    const client = clientOf(http);
+    const id = "acct:backup-snapshot:g1/main/s1";
+    expect((await client.getResource("backup-snapshot", id, ACCOUNT)).fields["status"]).toBe(
+      "completed",
+    );
+    await client.deleteResource("backup-snapshot", id, ACCOUNT);
+    expect(calls.filter((c) => c.path === SHARDED_ONE).map((c) => c.method)).toEqual([
+      "GET",
+      "DELETE",
+    ]);
+    expect(calls.some((c) => c.path === `${REPLICA}/s1`)).toBe(false);
+  });
+
+  it("keeps a replica set's reads and deletes on the replica set routes", async () => {
+    const { http, calls } = shardedAtlas((call) => {
+      if (call.path !== `${REPLICA}/s1`) return undefined;
+      return call.method === "DELETE" ? reply({ status: 204 }) : snapshot;
+    }, "REPLICASET");
+    const client = clientOf(http);
+    const id = "acct:backup-snapshot:g1/main/s1";
+    await client.getResource("backup-snapshot", id, ACCOUNT);
+    await client.deleteResource("backup-snapshot", id, ACCOUNT);
+    expect(calls.filter((c) => c.path === `${REPLICA}/s1`).map((c) => c.method)).toEqual([
+      "GET",
+      "DELETE",
+    ]);
+    expect(calls.some((c) => c.path.includes("/shardedCluster"))).toBe(false);
+  });
+
+  it.each([404, 403])(
+    "uses the replica set route when reading the cluster answers %i",
+    async (status) => {
+      const { http, calls } = atlas((call) => {
+        const p = call.path.split("?")[0]!;
+        if (p === `${CLUSTERS}/main`) return reply({ status, body: {} });
+        return p === `${REPLICA}/s1` ? reply({ status: 204 }) : undefined;
+      });
+      await clientOf(http).deleteResource(
+        "backup-snapshot",
+        "acct:backup-snapshot:g1/main/s1",
+        ACCOUNT,
+      );
+      expect(calls.some((c) => c.method === "DELETE" && c.path === `${REPLICA}/s1`)).toBe(true);
+    },
+  );
+
+  it("does not pick a delete route when reading the cluster fails for another reason", async () => {
+    const { http, calls } = atlas((call) =>
+      call.path === `${CLUSTERS}/main` ? reply({ status: 500, body: {} }) : undefined,
+    );
+    await expect(
+      clientOf(http).deleteResource("backup-snapshot", "acct:backup-snapshot:g1/main/s1", ACCOUNT),
+    ).rejects.toThrow(/500/);
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  it("refuses to delete with a blank snapshot id", async () => {
+    const { http, calls } = shardedAtlas(() => undefined);
+    await expect(
+      clientOf(http).deleteResource("backup-snapshot", "acct:backup-snapshot:g1/main/", ACCOUNT),
+    ).rejects.toThrow(/snapshot/i);
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+});
+
 describe("cluster detail", () => {
   it("offers only the tiers Atlas sells in the cluster's region", async () => {
     const { http } = atlas();

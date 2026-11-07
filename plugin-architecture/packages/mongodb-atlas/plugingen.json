@@ -372,6 +372,11 @@
     ],
     "/groups/{groupId}/clusters/{clusterName}/backup/snapshots": ["get", "post"],
     "/groups/{groupId}/clusters/{clusterName}/backup/snapshots/{snapshotId}": ["get", "delete"],
+    "/groups/{groupId}/clusters/{clusterName}/backup/snapshots/shardedClusters": ["get"],
+    "/groups/{groupId}/clusters/{clusterName}/backup/snapshots/shardedCluster/{snapshotId}": [
+      "get",
+      "delete"
+    ],
     "/groups/{groupId}/clusters/{clusterName}/backup/schedule": ["get", "patch"],
     "/groups/{groupId}/clusters/{clusterName}/search/indexes": ["get"],
     "/groups/{groupId}/clusters/{clusterName}/search/indexes/{indexId}": ["get", "delete"],
