@@ -475,7 +475,12 @@ export class GitHubClient implements PluginClient {
     return budgets
       .filter((b) => b.id)
       .map((b) =>
-        mapBudget(accountId, b, items ? GitHubClient.budgetSpend(b, items, centers) : undefined),
+        mapBudget(
+          accountId,
+          b,
+          items ? GitHubClient.budgetSpend(b, items, centers) : undefined,
+          centers,
+        ),
       );
   }
 
@@ -909,7 +914,8 @@ export class GitHubClient implements PluginClient {
           kind: "select",
           required: true,
           showWhen: { fieldKey: "scope", fieldValue: "cost_center" },
-          options: centers.map((c) => ({ id: c.name ?? c.id!, label: c.name ?? c.id! })),
+          // GitHub's Enterprise Cloud document: "`cost_center`: The cost center UUID."
+          options: centers.map((c) => ({ id: c.id!, label: c.name ?? c.id! })),
         },
       );
     }
@@ -1033,7 +1039,8 @@ export class GitHubClient implements PluginClient {
               api.post(`/enterprises/${enterprise}/settings/billing/budgets`, { body }),
           });
           const budget = created.budget ?? created;
-          return mapBudget(accountId, budget, undefined);
+          const centers = this.isOrg ? [] : await this.costCenters().catch((): CostCenter[] => []);
+          return mapBudget(accountId, budget, undefined, centers);
         }
         case "cost-center": {
           const created = await createCostCenter(this.ctx, {

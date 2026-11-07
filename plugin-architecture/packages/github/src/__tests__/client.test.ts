@@ -535,6 +535,63 @@ describe("budgets", () => {
     ).toThrow(/AI credits or premium requests/);
   });
 
+  describe("scoped to a cost centre", () => {
+    const CENTER = "2f3a7c10-6d0b-4c11-9a55-0f4f0b8f1e77";
+    const route = (url: URL, method: string) => {
+      if (url.pathname.endsWith("/cost-centers")) {
+        return {
+          body: { costCenters: [{ id: CENTER, name: "Platform", state: "active", resources: [] }] },
+        };
+      }
+      if (url.pathname.endsWith("/budgets")) {
+        const budget = {
+          id: "b1",
+          budget_type: "ProductPricing",
+          budget_product_sku: "actions",
+          budget_scope: "cost_center",
+          budget_entity_name: CENTER,
+          budget_amount: 80,
+        };
+        return { body: method === "POST" ? { budget } : { budgets: [budget] } };
+      }
+      return { body: { usageItems: [] } };
+    };
+
+    it("offers each one by id and sends the UUID GitHub documents", async () => {
+      const { c, calls } = client(route, "enterprise:big");
+      const { fields } = await c.getCreateConfig!("budget");
+      const picker = fields.find((f) => f.key === "costCenter");
+      expect(picker?.options).toEqual([{ id: CENTER, label: "Platform" }]);
+
+      await c.createResource!("budget", "acc", {
+        product: "product:actions",
+        scope: "cost_center",
+        costCenter: picker!.options![0]!.id,
+        budgetAmount: "80",
+      });
+      const post = calls.find((x) => x.method === "POST")!;
+      expect(post.body).toMatchObject({
+        budget_scope: "cost_center",
+        budget_entity_name: CENTER,
+      });
+    });
+
+    it("names the cost centre, not its UUID, when reading a budget back", async () => {
+      const { c } = client(route, "enterprise:big");
+      const [listed] = await c.listResources("budget", "acc");
+      expect(listed!.fields["entity"]).toBe("Platform");
+      expect(listed!.displayName).toContain("Cost centre Platform");
+
+      const created = await c.createResource!("budget", "acc", {
+        product: "product:actions",
+        scope: "cost_center",
+        costCenter: CENTER,
+        budgetAmount: "80",
+      });
+      expect(created.fields["entity"]).toBe("Platform");
+    });
+  });
+
   it("edits only the mutable fields", async () => {
     const { c, calls } = client((url, method) => {
       if (method === "PATCH") return { body: {} };

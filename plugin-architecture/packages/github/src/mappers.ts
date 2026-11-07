@@ -326,11 +326,16 @@ export function mapBudget(
   accountId: string,
   b: GhBudget,
   spentThisMonth: number | undefined,
+  costCenters: readonly CostCenter[] = [],
 ): ResourceInstance {
   const id = b.id ?? "";
   const product = budgetProductLabel(b.budget_type, b.budget_product_sku);
   const scope = budgetScopeLabel(b.budget_scope);
-  const entity = b.budget_scope === "user" ? b.user : b.budget_entity_name;
+  // A cost centre budget holds the centre's UUID, which means nothing to a reader.
+  const center = (b.budget_scope ?? "").endsWith("cost_center")
+    ? costCenters.find((c) => c.id === b.budget_entity_name)?.name
+    : undefined;
+  const entity = b.budget_scope === "user" ? b.user : (center ?? b.budget_entity_name);
   const spent =
     b.budget_scope === "user" && b.consumed_amount !== undefined
       ? b.consumed_amount
