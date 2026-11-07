@@ -183,6 +183,192 @@ describe("listResources", () => {
   });
 });
 
+describe("reading a whole list", () => {
+  // Every route's list key, its cursor in and its cursor out.
+  const LISTS = [
+    {
+      type: "voice",
+      path: "/v2/voices",
+      key: "voices",
+      row: { voice_id: "v", name: "V" },
+      cursorIn: "next_page_token",
+      cursorOut: "next_page_token",
+    },
+    {
+      type: "pronunciation-dictionary",
+      path: "/v1/pronunciation-dictionaries",
+      key: "pronunciation_dictionaries",
+      row: { id: "d", name: "D" },
+      cursorIn: "cursor",
+      cursorOut: "next_cursor",
+    },
+    {
+      type: "agent",
+      path: "/v1/convai/agents",
+      key: "agents",
+      row: { agent_id: "a", name: "A" },
+      cursorIn: "cursor",
+      cursorOut: "next_cursor",
+    },
+    {
+      type: "knowledge-base-document",
+      path: "/v1/convai/knowledge-base",
+      key: "documents",
+      row: { id: "k", name: "K", type: "url" },
+      cursorIn: "cursor",
+      cursorOut: "next_cursor",
+    },
+  ] as const;
+
+  /** Answers every list page with `page`, and an agent's detail route with an empty agent. */
+  function installList(path: string, page: (index: number) => unknown) {
+    let index = 0;
+    return installFetch((url) => {
+      if (new URL(url).pathname === path) return jsonResponse(page(index++));
+      if (url.includes("/v1/convai/agents/")) return jsonResponse({ agent_id: "a", name: "A" });
+      throw new Error(`unrouted: ${url}`);
+    });
+  }
+
+  const pagesOf = (path: string) => calls.filter((c) => new URL(c.url).pathname === path);
+
+  it.each(LISTS)("reads $type past the old cap", async (list) => {
+    // More than the old cap on any of these lists (50 pages of 100), and under the new one.
+    installList(list.path, (index) => ({
+      [list.key]: [list.row],
+      has_more: index < 59,
+      [list.cursorOut]: index < 59 ? `next-${index}` : null,
+    }));
+
+    const rows = await client().listResources(list.type, ACCOUNT);
+
+    expect(rows).toHaveLength(60);
+    expect(pagesOf(list.path)).toHaveLength(60);
+    expect(pagesOf(list.path).at(-1)?.url).toContain(`${list.cursorIn}=next-58`);
+  });
+
+  it.each(LISTS)("throws when $type never ends", async (list) => {
+    installList(list.path, (index) => ({
+      [list.key]: [list.row],
+      has_more: true,
+      [list.cursorOut]: `next-${index}`,
+    }));
+
+    await expect(client().listResources(list.type, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(pagesOf(list.path)).toHaveLength(100);
+  });
+
+  it.each(LISTS)("throws when $type has more and no cursor to reach it", async (list) => {
+    installList(list.path, () => ({
+      [list.key]: [list.row],
+      has_more: true,
+      [list.cursorOut]: null,
+    }));
+
+    await expect(client().listResources(list.type, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it.each(LISTS)("throws when the first page of $type is not a list", async (list) => {
+    installList(list.path, () => ({ detail: "maintenance", has_more: false }));
+
+    await expect(client().listResources(list.type, ACCOUNT)).rejects.toThrow("is not a list");
+    expect(pagesOf(list.path)).toHaveLength(1);
+  });
+
+  it.each(LISTS)("throws when a later page of $type is not a list", async (list) => {
+    installList(list.path, (index) =>
+      index === 0
+        ? { [list.key]: [list.row], has_more: true, [list.cursorOut]: "next" }
+        : { renamed: [list.row], has_more: false },
+    );
+
+    await expect(client().listResources(list.type, ACCOUNT)).rejects.toThrow("is not a list");
+    expect(pagesOf(list.path)).toHaveLength(2);
+  });
+
+  it.each(LISTS)("keeps following $type past an empty page that has more", async (list) => {
+    installList(list.path, (index) =>
+      index === 0
+        ? { [list.key]: [], has_more: true, [list.cursorOut]: "next" }
+        : { [list.key]: [list.row], has_more: false },
+    );
+
+    await expect(client().listResources(list.type, ACCOUNT)).resolves.toHaveLength(1);
+  });
+
+  it("asks history for the documented largest page", async () => {
+    installList("/v1/history", () => ({ history: [], has_more: false }));
+
+    await client().listResources("history-item", ACCOUNT);
+
+    expect(calls[0]?.url).toContain("page_size=1000");
+  });
+
+  it("keeps history as a window of the newest pages, however long it is", async () => {
+    installList("/v1/history", (index) => ({
+      history: [{ history_item_id: `h${index}`, date_unix: 1_700_000_000 }],
+      has_more: true,
+      last_history_item_id: `h${index}`,
+    }));
+
+    const items = await client().listResources("history-item", ACCOUNT);
+
+    expect(items).toHaveLength(5);
+    expect(pagesOf("/v1/history")).toHaveLength(5);
+  });
+
+  it("throws when a page of history is not a list", async () => {
+    installList("/v1/history", () => ({ detail: "maintenance", has_more: false }));
+
+    await expect(client().listResources("history-item", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("fills the create form's voice picker from part of a list too long to read", async () => {
+    installFetch((url) => {
+      if (url.includes("/v2/voices")) {
+        return jsonResponse({
+          voices: [{ voice_id: "v", name: "V" }],
+          has_more: true,
+          next_page_token: "more",
+        });
+      }
+      if (url.includes("/v1/models")) return jsonResponse([]);
+      return jsonResponse({ llms: [] });
+    });
+
+    const config = await client().getCreateConfig("agent");
+
+    const voice = config.fields.find((field) => field.key === "voiceId");
+    expect(voice?.options).toHaveLength(100);
+  });
+
+  it("charts the newest of a conversation list too long to read, rather than failing", async () => {
+    installList("/v1/convai/conversations", (index) => ({
+      conversations: [],
+      has_more: true,
+      next_cursor: `next-${index}`,
+    }));
+
+    await expect(
+      client().fetchMetricSeries("agent", `${ACCOUNT}:agent:a`, ACCOUNT),
+    ).resolves.toHaveLength(4);
+    expect(pagesOf("/v1/convai/conversations")).toHaveLength(20);
+  });
+
+  it.each([
+    ["model", "/v1/models"],
+    ["phone-number", "/v1/convai/phone-numbers"],
+  ])("throws when %s answers with something other than its array", async (type, path) => {
+    installList(path, () => ({ detail: "maintenance" }));
+
+    await expect(client().listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+});
+
 describe("getResource", () => {
   it("stashes the voice, model and quota lists for the synchronous detail view", async () => {
     installFetch((url) => {

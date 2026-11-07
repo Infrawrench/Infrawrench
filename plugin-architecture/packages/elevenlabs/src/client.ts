@@ -32,18 +32,20 @@ import {
   jsonRestFetch,
   externalIdOf,
   pathEncode,
+  requireListPage,
 } from "@infrawrench/plugin-base";
 import {
   API_BASE,
   createElevenLabsApis,
+  LIST_MAX_PAGES,
+  readPagedList,
+  VENDOR,
   type AgentConfigInput,
   type AgentPatchBody,
   type AgentPromptInput,
   type AgentTtsInput,
   type AgentDetailWire,
-  type AgentsPage,
   type AgentSummaryWire,
-  type ConversationsPage,
   type ConversationWire,
   type DictionaryRule,
   type EditVoiceResponse,
@@ -53,14 +55,10 @@ import {
   type ElevenLabsPronunciationDictionary,
   type ElevenLabsSubscription,
   type ElevenLabsVoice,
-  type HistoryPage,
   type KnowledgeBaseDocumentWire,
-  type KnowledgeBasePage,
-  type PronunciationDictionaryPage,
   type ScribeResponse,
   type ScribeWord,
   type SynthesisBody,
-  type VoicesPage,
 } from "./api.js";
 import { fetchElevenLabsCostData } from "./cost-data.js";
 import {
@@ -272,8 +270,9 @@ export class ElevenLabsClient implements PluginClient {
           return summaries.map((summary, index) => mapAgent(summary, details[index], accountId));
         }
         case "phone-number": {
-          const phones = await this.api.get("/v1/convai/phone-numbers");
-          return (Array.isArray(phones) ? phones : []).map((phone) =>
+          const path = "/v1/convai/phone-numbers";
+          const phones = await this.api.get(path);
+          return requireListPage(phones, { vendor: VENDOR, path, key: null }).map((phone) =>
             mapPhoneNumber(phone, accountId),
           );
         }
@@ -292,19 +291,17 @@ export class ElevenLabsClient implements PluginClient {
    * `next_page_token`; `page_size` caps at 100.
    * https://elevenlabs.io/docs/api-reference/voices/search
    */
-  private async fetchVoices(): Promise<ElevenLabsVoice[]> {
-    const voices: ElevenLabsVoice[] = [];
-    let pageToken: string | null = null;
-    // Bounded so a pathological workspace can't spin forever.
-    for (let page = 0; page < 50; page += 1) {
-      const data: VoicesPage = await this.api.get("/v2/voices", {
-        query: { page_size: 100, next_page_token: pageToken },
-      });
-      voices.push(...(data.voices ?? []));
-      if (!data.has_more || !data.next_page_token) break;
-      pageToken = data.next_page_token;
-    }
-    return voices;
+  private fetchVoices(options: { partial?: boolean } = {}): Promise<ElevenLabsVoice[]> {
+    return readPagedList({
+      path: "/v2/voices",
+      key: "voices",
+      maxPages: LIST_MAX_PAGES,
+      ...options,
+      read: (cursor) =>
+        this.api.get("/v2/voices", { query: { page_size: 100, next_page_token: cursor } }),
+      rows: (page) => page.voices,
+      next: (page) => page.next_page_token,
+    });
   }
 
   /**
@@ -312,8 +309,8 @@ export class ElevenLabsClient implements PluginClient {
    * https://elevenlabs.io/docs/api-reference/models/list
    */
   private async fetchModels(): Promise<ElevenLabsModel[]> {
-    const data = await this.api.get("/v1/models");
-    return Array.isArray(data) ? data : [];
+    const path = "/v1/models";
+    return requireListPage(await this.api.get(path), { vendor: VENDOR, path, key: null });
   }
 
   /**
@@ -323,43 +320,41 @@ export class ElevenLabsClient implements PluginClient {
    * deletes a dictionary, so it is turned off explicitly.
    * https://elevenlabs.io/docs/api-reference/pronunciation-dictionaries/list
    */
-  private async fetchPronunciationDictionaries(): Promise<ElevenLabsPronunciationDictionary[]> {
-    const dictionaries: ElevenLabsPronunciationDictionary[] = [];
-    let cursor: string | null = null;
-    for (let page = 0; page < 50; page += 1) {
-      const data: PronunciationDictionaryPage = await this.api.get(
-        "/v1/pronunciation-dictionaries",
-        {
+  private fetchPronunciationDictionaries(): Promise<ElevenLabsPronunciationDictionary[]> {
+    return readPagedList({
+      path: "/v1/pronunciation-dictionaries",
+      key: "pronunciation_dictionaries",
+      maxPages: LIST_MAX_PAGES,
+      read: (cursor) =>
+        this.api.get("/v1/pronunciation-dictionaries", {
           query: { page_size: 100, include_archived: false, cursor },
-        },
-      );
-      dictionaries.push(...(data.pronunciation_dictionaries ?? []));
-      if (!data.has_more || !data.next_cursor) break;
-      cursor = data.next_cursor;
-    }
-    return dictionaries;
+        }),
+      rows: (page) => page.pronunciation_dictionaries,
+      next: (page) => page.next_cursor,
+    });
   }
 
   /**
    * `GET /v1/history`: list field is `history`; the forward cursor is
    * `start_after_history_item_id`, fed from the response's
-   * `last_history_item_id`. `page_size` caps at 1000.
+   * `last_history_item_id`. `page_size` caps at 1000, and with no sort given
+   * the document has it newest first.
    * https://elevenlabs.io/docs/api-reference/history/list
    */
-  private async fetchHistory(): Promise<ElevenLabsHistoryItem[]> {
-    const items: ElevenLabsHistoryItem[] = [];
-    let after: string | null = null;
-    // History is unbounded over an account's lifetime: cap at 5 pages (500
-    // clips), newest first, which is what the sidebar can usefully show.
-    for (let page = 0; page < 5; page += 1) {
-      const data: HistoryPage = await this.api.get("/v1/history", {
-        query: { page_size: 100, start_after_history_item_id: after },
-      });
-      items.push(...(data.history ?? []));
-      if (!data.has_more || !data.last_history_item_id) break;
-      after = data.last_history_item_id;
-    }
-    return items;
+  private fetchHistory(): Promise<ElevenLabsHistoryItem[]> {
+    return readPagedList({
+      path: "/v1/history",
+      key: "history",
+      // Rolling window: the newest 5,000. Older rows falling off is what this type means.
+      maxPages: 5,
+      partial: true,
+      read: (cursor) =>
+        this.api.get("/v1/history", {
+          query: { page_size: 1000, start_after_history_item_id: cursor },
+        }),
+      rows: (page) => page.history,
+      next: (page) => page.last_history_item_id,
+    });
   }
 
   /**
@@ -367,18 +362,15 @@ export class ElevenLabsClient implements PluginClient {
    * at 100. Archived agents are excluded by the API's own default.
    * https://elevenlabs.io/docs/api-reference/agents/list
    */
-  private async fetchAgents(): Promise<AgentSummaryWire[]> {
-    const agents: AgentSummaryWire[] = [];
-    let cursor: string | null = null;
-    for (let page = 0; page < 20; page += 1) {
-      const data: AgentsPage = await this.api.get("/v1/convai/agents", {
-        query: { page_size: 100, cursor },
-      });
-      agents.push(...(data.agents ?? []));
-      if (!data.has_more || !data.next_cursor) break;
-      cursor = data.next_cursor;
-    }
-    return agents;
+  private fetchAgents(): Promise<AgentSummaryWire[]> {
+    return readPagedList({
+      path: "/v1/convai/agents",
+      key: "agents",
+      maxPages: LIST_MAX_PAGES,
+      read: (cursor) => this.api.get("/v1/convai/agents", { query: { page_size: 100, cursor } }),
+      rows: (page) => page.agents,
+      next: (page) => page.next_cursor,
+    });
   }
 
   /** `GET /v1/convai/agents/{agent_id}`: https://elevenlabs.io/docs/api-reference/agents/get */
@@ -389,49 +381,49 @@ export class ElevenLabsClient implements PluginClient {
   /**
    * `GET /v1/convai/conversations` for one agent, newest first, from
    * `afterUnix` onward. Bounded by `maxPages` of 100 so a busy agent's
-   * metrics cost at most that many requests.
+   * metrics cost at most that many requests. Only charts, stats and the detail
+   * view's recent table read this, so part of the list is fine.
    * https://elevenlabs.io/docs/api-reference/conversations/list
    */
-  private async fetchConversations(
+  private fetchConversations(
     agentId: string,
     afterUnix: number | undefined,
     maxPages: number,
     pageSize = 100,
   ): Promise<ConversationWire[]> {
-    const conversations: ConversationWire[] = [];
-    let cursor: string | null = null;
-    for (let page = 0; page < maxPages; page += 1) {
-      const data: ConversationsPage = await this.formQueryApi.get("/v1/convai/conversations", {
-        query: {
-          agent_id: agentId,
-          page_size: pageSize,
-          call_start_after_unix: afterUnix ?? null,
-          cursor,
-        },
-      });
-      conversations.push(...(data.conversations ?? []));
-      if (!data.has_more || !data.next_cursor) break;
-      cursor = data.next_cursor;
-    }
-    return conversations;
+    return readPagedList({
+      path: "/v1/convai/conversations",
+      key: "conversations",
+      maxPages,
+      partial: true,
+      read: (cursor) =>
+        this.formQueryApi.get("/v1/convai/conversations", {
+          query: {
+            agent_id: agentId,
+            page_size: pageSize,
+            call_start_after_unix: afterUnix ?? null,
+            cursor,
+          },
+        }),
+      rows: (page) => page.conversations,
+      next: (page) => page.next_cursor,
+    });
   }
 
   /**
    * `GET /v1/convai/knowledge-base`: cursor pagination, `page_size` caps at
    * 100. https://elevenlabs.io/docs/api-reference/knowledge-base/list
    */
-  private async fetchKnowledgeBase(): Promise<KnowledgeBaseDocumentWire[]> {
-    const documents: KnowledgeBaseDocumentWire[] = [];
-    let cursor: string | null = null;
-    for (let page = 0; page < 20; page += 1) {
-      const data: KnowledgeBasePage = await this.api.get("/v1/convai/knowledge-base", {
-        query: { page_size: 100, cursor },
-      });
-      documents.push(...(data.documents ?? []));
-      if (!data.has_more || !data.next_cursor) break;
-      cursor = data.next_cursor;
-    }
-    return documents;
+  private fetchKnowledgeBase(): Promise<KnowledgeBaseDocumentWire[]> {
+    return readPagedList({
+      path: "/v1/convai/knowledge-base",
+      key: "documents",
+      maxPages: LIST_MAX_PAGES,
+      read: (cursor) =>
+        this.api.get("/v1/convai/knowledge-base", { query: { page_size: 100, cursor } }),
+      rows: (page) => page.documents,
+      next: (page) => page.next_cursor,
+    });
   }
 
   /**
@@ -1021,7 +1013,7 @@ export class ElevenLabsClient implements PluginClient {
 
       if (typeId === "agent") {
         const [voices, models, llms] = await Promise.all([
-          this.fetchVoices().catch((): ElevenLabsVoice[] => []),
+          this.fetchVoices({ partial: true }).catch((): ElevenLabsVoice[] => []),
           this.fetchModels().catch((): ElevenLabsModel[] => []),
           this.fetchAgentLlms().catch((): SelectOption[] => []),
         ]);

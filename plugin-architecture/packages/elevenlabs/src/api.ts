@@ -8,6 +8,8 @@
  */
 import {
   createApiClient,
+  ListTruncatedError,
+  requireListPage,
   type ApiBody,
   type ApiListItem,
   type ApiResponse,
@@ -25,17 +27,6 @@ export type ElevenLabsPronunciationDictionary = ApiListItem<
   "pronunciation_dictionaries"
 >;
 export type ElevenLabsSubscription = ApiResponse<operations["get_user_subscription_info"]>;
-
-// Named because each list loop feeds a page's cursor into the next call, and
-// inference cannot follow that through a variable it is still working out.
-export type VoicesPage = ApiResponse<operations["get_user_voices_v2"]>;
-export type HistoryPage = ApiResponse<operations["get_speech_history"]>;
-export type PronunciationDictionaryPage = ApiResponse<
-  operations["get_pronunciation_dictionaries_metadata"]
->;
-export type AgentsPage = ApiResponse<operations["get_agents_route"]>;
-export type ConversationsPage = ApiResponse<operations["get_conversation_histories_route"]>;
-export type KnowledgeBasePage = ApiResponse<operations["get_knowledge_base_list_route"]>;
 
 export type AgentSummaryWire = ApiListItem<operations["get_agents_route"], "agents">;
 export type AgentDetailWire = ApiResponse<operations["get_agent_route"]>;
@@ -99,3 +90,50 @@ export function createElevenLabsApis(options: {
 }
 
 export type ElevenLabsApi = ReturnType<typeof createElevenLabsApis>["api"];
+
+export const VENDOR = "ElevenLabs";
+
+/**
+ * Pages for an inventory list: every list route but history caps `page_size` at 100,
+ * so this is 10,000 rows.
+ */
+export const LIST_MAX_PAGES = 100;
+
+/** One of ElevenLabs' cursor-paged lists, whichever names it gives its cursor. */
+export interface PagedList<Page, Item> {
+  /** The route as the call writes it, for the error's message. */
+  path: string;
+  /** The field holding the rows. */
+  key: string;
+  maxPages: number;
+  /** Part of the list is fine, so reaching the cap is not an error. */
+  partial?: boolean;
+  read: (cursor: string | null) => Promise<Page>;
+  rows: (page: Page) => readonly Item[] | null | undefined;
+  next: (page: Page) => string | null | undefined;
+}
+
+/**
+ * Walk a list on `has_more`, which the document says to rely on: an empty page is not
+ * the end while it is set, and neither is one with no cursor to follow, which throws
+ * rather than read what it cannot reach as deleted. Not `getAll`, which ends on both.
+ */
+export async function readPagedList<Page extends { has_more: boolean }, Item>(
+  list: PagedList<Page, Item>,
+): Promise<Item[]> {
+  const place = { vendor: VENDOR, path: list.path };
+  const items: Item[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < list.maxPages; page += 1) {
+    const answer: Page = await list.read(cursor);
+    items.push(...requireListPage(list.rows(answer), { ...place, key: list.key }));
+    if (!answer.has_more) return items;
+    cursor = list.next(answer) ?? null;
+    if (!cursor) {
+      if (list.partial) return items;
+      throw new ListTruncatedError({ ...place, items: items.length });
+    }
+  }
+  if (list.partial) return items;
+  throw new ListTruncatedError({ ...place, items: items.length, maxPages: list.maxPages });
+}
