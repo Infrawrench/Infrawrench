@@ -1318,6 +1318,7 @@ describe("fetchMetricSeries", () => {
     expect(series.some((s) => s.label === "Disk IOPS (write)")).toBe(false);
     const url = String(fetchMock.mock.calls[0]![0]);
     expect(url).toContain("/servers/1/metrics");
+    expect(new URL(url).searchParams.getAll("type")).toEqual(["cpu", "disk", "network"]);
   });
 
   it("returns [] when server metrics fetch throws", async () => {
@@ -1909,9 +1910,12 @@ describe("2025-2026 API migrations", () => {
       `${ACCOUNT}:load-balancer:9`,
       ACCOUNT,
     );
-    expect(String(lastCall()[0])).toContain(
-      "type=open_connections,connections_per_second,requests_per_second,bandwidth",
-    );
+    expect(new URL(String(lastCall()[0])).searchParams.getAll("type")).toEqual([
+      "open_connections",
+      "connections_per_second",
+      "requests_per_second",
+      "bandwidth",
+    ]);
     expect(series.map((s) => s.label)).toEqual(["New Connections", "Requests"]);
   });
 });

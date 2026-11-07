@@ -21,7 +21,6 @@ import type {
   PriceCatalogResult,
 } from "@infrawrench/plugin-base";
 import {
-  commaSeparated,
   joinSubtitle,
   labeledFieldItems,
   pathEncode,
@@ -1518,7 +1517,7 @@ export class HetznerClient implements PluginClient {
         try {
           const [metrics, server] = await Promise.all([
             this.cloud.get(`/servers/${id}/metrics`, {
-              query: { type: commaSeparated(["cpu", "disk", "network"]), start, end },
+              query: { type: ["cpu", "disk", "network"], start, end },
             }),
             this.cloud.get(`/servers/${id}`).catch(() => null),
           ]);
@@ -1557,12 +1556,12 @@ export class HetznerClient implements PluginClient {
         try {
           resp = await this.cloud.get(`/load_balancers/${id}/metrics`, {
             query: {
-              type: commaSeparated([
+              type: [
                 "open_connections",
                 "connections_per_second",
                 "requests_per_second",
                 "bandwidth",
-              ]),
+              ],
               start,
               end,
             },
