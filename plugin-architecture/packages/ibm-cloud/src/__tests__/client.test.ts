@@ -4,7 +4,7 @@ import { monthsIn, resourceIdFor, usageToRows } from "../billing.js";
 import { normaliseKey } from "../create.js";
 import { analyseRules, parseBucketList } from "../listers.js";
 import { plugin } from "../plugin.js";
-import { parseLocationConstraint } from "../regions.js";
+import { HOME_REGION_OPTIONS, parseLocationConstraint, regionInfo } from "../regions.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { TEST_TOKEN, makeClient } from "./helpers.js";
 
@@ -334,6 +334,23 @@ describe("billing", () => {
     await expect(
       client.fetchCostData("a", { fromDate: "2026-09-01", toDate: "2026-09-30" } as never),
     ).rejects.toThrow(/Billing/);
+  });
+});
+
+describe("regions", () => {
+  it("scans Mumbai when the live region list is refused, and offers it by name", async () => {
+    const { client, calls } = makeClient(
+      (req) => {
+        if (req.url.pathname === "/v1/regions") return { status: 403, body: {} };
+        return { body: { vpcs: [{ id: "v1", name: "net" }] } };
+      },
+      { regions: "" },
+    );
+    const vpcs = await client.listResources("vpc", "a");
+    expect(vpcs.map((v) => v.externalId)).toContain("in-mum/v1");
+    expect(calls.some((c) => c.url.host === "in-mum.iaas.cloud.ibm.com")).toBe(true);
+    expect(regionInfo("in-mum")?.label).toBe("Mumbai");
+    expect(HOME_REGION_OPTIONS.map((r) => r.id)).toContain("in-mum");
   });
 });
 

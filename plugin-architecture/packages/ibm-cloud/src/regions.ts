@@ -25,6 +25,7 @@ export const IBM_REGIONS: IbmRegion[] = [
   { id: "jp-osa", label: "Osaka", location: "Osaka, Japan", flag: "🇯🇵" },
   { id: "au-syd", label: "Sydney", location: "Sydney, Australia", flag: "🇦🇺" },
   { id: "in-che", label: "Chennai", location: "Chennai, India", flag: "🇮🇳" },
+  { id: "in-mum", label: "Mumbai", location: "Mumbai, India", flag: "🇮🇳" },
 ];
 
 export const DEFAULT_REGION = "us-south";
