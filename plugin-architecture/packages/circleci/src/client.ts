@@ -18,12 +18,13 @@ import type {
 import {
   externalIdOf,
   pathEncode,
+  requireListPage,
   rethrowIncompleteList,
   type NoSlashString,
 } from "@infrawrench/plugin-base";
 import type { ApiBody } from "@infrawrench/plugin-base";
 import type { CircleApi, CircleContext } from "./api.js";
-import { circleApi, slugSegment, statusOf } from "./api.js";
+import { circleApi, slugSegment, statusOf, undefinedIfRefused } from "./api.js";
 import type { operations } from "./api-types.v2.gen.js";
 import { fetchCircleCostData } from "./cost-data.js";
 import type {
@@ -90,6 +91,15 @@ interface ProjectRef {
   slug: string;
   name: string;
   id?: string;
+}
+
+/**
+ * The list of an answer whose document marks `items` optional, so an empty answer is
+ * an empty list. Anything else without one is not an answer to read as no rows.
+ */
+function optionalItems<T>(body: { items?: T[] | null } | undefined, path: string): T[] {
+  if (body && Object.keys(body).length === 0) return [];
+  return requireListPage(body?.items, { vendor: "CircleCI", path, key: "items", page: body });
 }
 
 /** One id for a write's path. A blank one is refused: it would aim the write at another route. */
@@ -251,16 +261,19 @@ export class CircleCIClient implements PluginClient {
     return this.orgCache;
   }
 
-  private async orgSummary(projectNames?: string[]): Promise<OrgSummary | undefined> {
+  private async readOrgSummary(projectNames?: string[]): Promise<OrgSummary> {
     const org = await this.org();
-    return this.api.v2
-      .get(`/insights/${slugSegment(org.slug)}/summary`, {
-        query: {
-          "reporting-window": REPORTING_WINDOW,
-          ...(projectNames ? { "project-names": projectNames } : {}),
-        },
-      })
-      .catch(() => undefined);
+    return this.api.v2.get(`/insights/${slugSegment(org.slug)}/summary`, {
+      query: {
+        "reporting-window": REPORTING_WINDOW,
+        ...(projectNames ? { "project-names": projectNames } : {}),
+      },
+    });
+  }
+
+  /** The summary for its metrics, which a resource can go without for one sync. */
+  private orgSummary(projectNames?: string[]): Promise<OrgSummary | undefined> {
+    return this.readOrgSummary(projectNames).catch(() => undefined);
   }
 
   private recentPipelines(): Promise<CirclePipeline[]> {
@@ -286,6 +299,9 @@ export class CircleCIClient implements PluginClient {
    * plus the name, and for GitHub App and standalone organizations
    * (`circleci/…`) is opaque, so it is taken from recent pipelines and
    * matched by name. Without v3 the Insights summary's project names stand in.
+   *
+   * Everything under a project is pruned with it, so only a source refusing the
+   * token may be left out. A source that failed fails the list.
    */
   private projects(): Promise<ProjectRef[]> {
     this.projectsCache ??= this.loadProjects().catch((err: unknown) => {
@@ -302,16 +318,13 @@ export class CircleCIClient implements PluginClient {
       org.id
         ? this.api.v3Paged
             .getAll("/projects", "data", { query: { "filter[org_id]": org.id, "page[limit]": 50 } })
-            .catch((err: unknown) => {
-              rethrowIncompleteList(err);
-              return undefined;
-            })
+            .catch(undefinedIfRefused)
         : Promise.resolve(undefined),
-      this.recentPipelines().catch((): CirclePipeline[] => []),
+      this.recentPipelines().catch(undefinedIfRefused),
     ]);
     const bySlug = new Map<string, ProjectRef>();
     // Slugs seen on pipelines; their names need a lookup for opaque slugs.
-    const pipelineSlugs = [...new Set(pipelines.map((p) => p.project_slug))];
+    const pipelineSlugs = [...new Set((pipelines ?? []).map((p) => p.project_slug))];
     const named = new Map<string, ProjectRef>();
     for (const slug of pipelineSlugs) {
       if (vcsSlugs) {
@@ -320,7 +333,7 @@ export class CircleCIClient implements PluginClient {
           name: slug.split("/").slice(2).join("/"),
         });
       } else {
-        const p = await this.api.v2.get(`/project/${slugSegment(slug)}`).catch(() => undefined);
+        const p = await this.api.v2.get(`/project/${slugSegment(slug)}`).catch(undefinedIfRefused);
         if (p) named.set(p.name, { slug: p.slug, name: p.name, id: p.id });
       }
     }
@@ -328,7 +341,12 @@ export class CircleCIClient implements PluginClient {
     if (listed) {
       names = listed.map((p) => ({ name: p.attributes?.name ?? p.id, id: p.id }));
     } else {
-      const summary = await this.orgSummary();
+      const summary = await this.readOrgSummary().catch(undefinedIfRefused);
+      if (!summary && !pipelines) {
+        throw new Error(
+          "CircleCI plugin: could not list this organization's projects: API v3, Insights and pipelines all refused the token.",
+        );
+      }
       names = (summary?.all_projects ?? []).map((name) => ({ name }));
     }
     for (const { name, id } of names) {
@@ -444,8 +462,8 @@ export class CircleCIClient implements PluginClient {
   }
 
   private async pipelineDefinitions(projectId: string): Promise<PipelineDefinition[]> {
-    const res = await this.api.v2.get(`/projects/${pathEncode(projectId)}/pipeline-definitions`);
-    return res?.items ?? [];
+    const path = `/projects/${pathEncode(projectId)}/pipeline-definitions` as const;
+    return optionalItems(await this.api.v2.get(path), path);
   }
 
   private async triggersFor(
@@ -454,10 +472,10 @@ export class CircleCIClient implements PluginClient {
   ): Promise<ResourceInstance[]> {
     const out: ResourceInstance[] = [];
     for (const def of await this.pipelineDefinitions(p.id)) {
-      const res = await this.api.v2.get(
-        `/projects/${pathEncode(p.id)}/pipeline-definitions/${pathEncode(def.id)}/triggers`,
-      );
-      out.push(...(res?.items ?? []).map((t) => mapTrigger(accountId, p.slug, p.id, def, t)));
+      const path =
+        `/projects/${pathEncode(p.id)}/pipeline-definitions/${pathEncode(def.id)}/triggers` as const;
+      const triggers = optionalItems(await this.api.v2.get(path), path);
+      out.push(...triggers.map((t) => mapTrigger(accountId, p.slug, p.id, def, t)));
     }
     return out;
   }
@@ -515,8 +533,10 @@ export class CircleCIClient implements PluginClient {
           const out: ResourceInstance[] = [];
           for (const c of await this.contexts()) {
             const vars = await this.contextVariables(c.id).catch((err: unknown) => {
-              rethrowIncompleteList(err);
-              return [];
+              // A context the token may not read, or one just deleted. Anything else
+              // would prune this context's variables.
+              if (statusOf(err) === 403 || statusOf(err) === 404) return [];
+              throw err;
             });
             out.push(...vars.map((v) => mapContextVariable(accountId, c, v)));
           }

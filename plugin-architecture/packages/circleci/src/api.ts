@@ -64,6 +64,21 @@ export function isPermissionError(err: unknown): boolean {
   return status === 401 || status === 403;
 }
 
+/**
+ * True for the answers that mean this token will not get that, as opposed to a
+ * read that failed. Only these can stand for "nothing there" under a list.
+ */
+export function isRefusal(err: unknown): boolean {
+  const status = statusOf(err);
+  return status === 400 || status === 401 || status === 403 || status === 404;
+}
+
+/** For a `.catch` on a read that can be refused: anything else still fails the list. */
+export function undefinedIfRefused(err: unknown): undefined {
+  if (!isRefusal(err)) throw err;
+  return undefined;
+}
+
 /** A field of a body nobody has validated, or `undefined` if it is not an object. */
 const fieldOf = (from: unknown, name: string): unknown =>
   typeof from === "object" && from !== null ? Reflect.get(from, name) : undefined;

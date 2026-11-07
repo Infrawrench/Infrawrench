@@ -748,3 +748,154 @@ describe("list caps and bad pages (#384)", () => {
     ).toHaveLength(10);
   });
 });
+
+describe("failed reads under a list do not read as none", () => {
+  const boom = { status: 500, body: { message: "boom" } };
+  const denied = { status: 403, body: { message: "Forbidden" } };
+  const SUMMARY = "/api/v2/insights/gh/acme/summary";
+  const STANDALONE = { ...GH_ORG, slug: "circleci/org1", "vcs-type": "circleci" };
+
+  /** A client for an organization whose project slugs cannot be built from its name. */
+  function standaloneClient(route: (call: Call) => unknown) {
+    const { http, calls } = makeHttp((call) =>
+      call.url.pathname === "/api/v2/me/collaborations" ? [STANDALONE] : route(call),
+    );
+    const c = hostClient(
+      new CircleCIClient({ apiToken: "TEST_TOKEN", organization: ORG_ID }, { http } as never),
+    );
+    return { c, calls };
+  }
+
+  describe("context variables", () => {
+    const contexts = (variables: unknown) => (call: Call) =>
+      call.url.pathname === "/api/v2/context"
+        ? {
+            items: [
+              { id: "c1", name: "a" },
+              { id: "c2", name: "b" },
+            ],
+            next_page_token: null,
+          }
+        : call.url.pathname === "/api/v2/context/c1/environment-variable"
+          ? variables
+          : { items: [{ variable: "KEPT" }], next_page_token: null };
+
+    it("fails the list when a context's variables cannot be read", async () => {
+      const { c } = client(contexts(boom));
+      await expect(c.listResources("context-variable", ACC)).rejects.toThrow(/boom/);
+    });
+
+    it("skips a context the token may not read", async () => {
+      const { c } = client(contexts(denied));
+      const vars = await c.listResources("context-variable", ACC);
+      expect(vars.map((v) => v.externalId)).toEqual(["c2/KEPT"]);
+    });
+  });
+
+  describe("the project list", () => {
+    const parts = (over: Record<string, unknown>) => (call: Call) => {
+      const { pathname } = call.url;
+      if (pathname in over) return over[pathname];
+      if (pathname === "/api/v3/projects") {
+        return { data: [{ id: "p1", attributes: { name: "api" } }], page: { next: null } };
+      }
+      if (pathname === "/api/v2/pipeline") return { items: [], next_page_token: null };
+      if (pathname === SUMMARY) return { all_projects: ["api"], org_project_data: [] };
+      return { items: [], next_page_token: null };
+    };
+
+    it("fails when API v3 fails, rather than standing in a shorter list", async () => {
+      const { c } = client(parts({ "/api/v3/projects": boom }));
+      await expect(c.listResources("project", ACC)).rejects.toThrow(/boom/);
+      await expect(c.listResources("schedule", ACC)).rejects.toThrow(/boom/);
+    });
+
+    it("still falls back to Insights when API v3 refuses the token", async () => {
+      const { c } = client(parts({ "/api/v3/projects": denied }));
+      const projects = await c.listResources("project", ACC);
+      expect(projects.map((p) => p.externalId)).toEqual(["gh/acme/api"]);
+    });
+
+    it("fails when that fallback fails", async () => {
+      const { c } = client(parts({ "/api/v3/projects": denied, [SUMMARY]: boom }));
+      await expect(c.listResources("schedule", ACC)).rejects.toThrow(/boom/);
+    });
+
+    it("fails when recent pipelines fail", async () => {
+      const { c } = client(parts({ "/api/v2/pipeline": boom }));
+      await expect(c.listResources("schedule", ACC)).rejects.toThrow(/boom/);
+    });
+
+    it("fails when a pipeline's project cannot be looked up", async () => {
+      const { c } = standaloneClient((call) => {
+        if (call.url.pathname === "/api/v3/projects") return denied;
+        if (call.url.pathname === "/api/v2/pipeline") {
+          return {
+            items: [{ id: "x", project_slug: "circleci/org1/p1", number: 1, state: "created" }],
+            next_page_token: null,
+          };
+        }
+        if (call.url.pathname === "/api/v2/project/circleci/org1/p1") return boom;
+        return { all_projects: [], org_project_data: [] };
+      });
+      await expect(c.listResources("schedule", ACC)).rejects.toThrow(/boom/);
+    });
+
+    it("skips a pipeline's project the token may not read", async () => {
+      const { c } = standaloneClient((call) => {
+        if (call.url.pathname === "/api/v3/projects") {
+          return { data: [{ id: "p2", attributes: { name: "web" } }], page: { next: null } };
+        }
+        if (call.url.pathname === "/api/v2/pipeline") {
+          return {
+            items: [{ id: "x", project_slug: "circleci/org1/p1", number: 1, state: "created" }],
+            next_page_token: null,
+          };
+        }
+        if (call.url.pathname === "/api/v2/project/circleci/org1/p1") return denied;
+        return { all_projects: [], org_project_data: [] };
+      });
+      const projects = await c.listResources("project", ACC);
+      expect(projects.map((p) => p.externalId)).toEqual(["circleci/org1/p2"]);
+    });
+
+    it("fails rather than list nothing when every source refuses", async () => {
+      const { c } = client(() => denied);
+      await expect(c.listResources("project", ACC)).rejects.toThrow(/could not list/);
+      await expect(c.listResources("schedule", ACC)).rejects.toThrow(/could not list/);
+    });
+  });
+
+  describe("triggers", () => {
+    const DEFS = "/api/v2/projects/p1/pipeline-definitions";
+    const route = (definitions: unknown, triggers: unknown) => (call: Call) => {
+      const { pathname } = call.url;
+      if (pathname === "/api/v3/projects") {
+        return { data: [{ id: "p1", attributes: { name: "api" } }], page: { next: null } };
+      }
+      if (pathname === DEFS) return definitions;
+      if (pathname === `${DEFS}/d1/triggers`) return triggers;
+      return { items: [], next_page_token: null, all_projects: [] };
+    };
+    const ONE_DEF = { items: [{ id: "d1", name: "main" }] };
+
+    it("throws on a renamed list key instead of reading no triggers", async () => {
+      const a = client(route({ definitions: [] }, {}));
+      await expect(a.c.listResources("trigger", ACC)).rejects.toThrow("is not a list");
+      const b = client(route(ONE_DEF, { triggers: [] }));
+      await expect(b.c.listResources("trigger", ACC)).rejects.toThrow("is not a list");
+    });
+
+    it("throws on a 2xx with no body", async () => {
+      const { c } = client(route(ONE_DEF, { status: 200 }));
+      await expect(c.listResources("trigger", ACC)).rejects.toThrow("is not a list");
+    });
+
+    it("reads the optional list left out, or null, as none", async () => {
+      const a = client(route(ONE_DEF, {}));
+      expect(await a.c.listResources("trigger", ACC)).toEqual([]);
+      const b = client(route({ items: null }, {}));
+      expect(await b.c.listResources("trigger", ACC)).toEqual([]);
+    });
+  });
+});
