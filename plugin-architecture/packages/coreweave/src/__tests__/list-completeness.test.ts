@@ -292,6 +292,18 @@ describe("Node Pools across clusters", () => {
     expect(parts).toEqual([{ parentResourceIds: ["acc:cks-cluster:new"] }]);
   });
 
+  it("fails where the host keeps no track of a cluster it could not read", async () => {
+    twoClusters(() => ({ status: 403, body: "no" }));
+    await expect(listPools()).rejects.toThrow(/403/);
+  });
+
+  it("fails where the host keeps no track of a cluster with no endpoint yet", async () => {
+    stubFetch((url) =>
+      url.pathname === "/v1beta1/cks/clusters" ? { body: { items: [cluster("new")] } } : undefined,
+    );
+    await expect(listPools()).rejects.toThrow("no API server endpoint");
+  });
+
   it("reports nothing when every cluster answered", async () => {
     twoClusters(() => ({ body: { items: [] } }));
     const parts = trackUnread();
@@ -336,6 +348,13 @@ describe("a zone the Cloud API could not query", () => {
     const parts = trackUnread();
     await expect(client().listResources("vpc", "acc")).resolves.toHaveLength(1);
     expect(parts).toEqual([{ idPrefixes: [""] }]);
+  });
+
+  it("fails where the host keeps no track of the zone it missed", async () => {
+    clustersAnswer({ items: [CLUSTER], unreachable: ["US-WEST-01A"] });
+    await expect(client().listResources("cks-cluster", "acc")).rejects.toThrow("not whole");
+    vpcsAnswer({ items: [VPC], warnings: [{ zone: "US-WEST-01A" }] });
+    await expect(client().listResources("vpc", "acc")).rejects.toThrow("not whole");
   });
 
   it("reports nothing when every zone answered", async () => {

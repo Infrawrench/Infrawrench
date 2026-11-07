@@ -140,15 +140,24 @@ interface ZonedList<T> {
   missedZones: boolean;
 }
 
-/** Rows carry no zone in their ids, so a missed zone keeps all of the type's stored rows. */
-function keepRowsThroughMissedZone(list: { missedZones: boolean }): void {
-  if (list.missedZones) reportUnreadListPart({ idPrefixes: [""] });
+/**
+ * Rows carry no zone in their ids, so a missed zone keeps all of the type's stored rows.
+ * A host that keeps no track (the desktop) answers false, and there the list is short.
+ */
+function keepRowsThroughMissedZone(list: { missedZones: boolean }, path: string): void {
+  if (list.missedZones && !reportUnreadListPart({ idPrefixes: [""] })) {
+    throw new Error(
+      `CoreWeave answered ${path} without some zones it could not reach, so the list is not whole.`,
+    );
+  }
 }
 
 interface PoolsByCluster {
   pools: Map<string, CwNodePool[]>;
   /** Clusters whose pools could not be read, so nothing can be said about them. */
   unread: string[];
+  /** Why the first of those could not be read. */
+  failure: unknown;
 }
 
 function bool(raw: string | undefined): boolean {
@@ -268,10 +277,14 @@ export class CoreWeaveClient implements PluginClient {
       const clusters = await this.clusters();
       const pools = new Map<string, CwNodePool[]>();
       const unread: string[] = [];
+      let failure: unknown;
       await mapPooled(clusters, KUBE_CONCURRENCY, async (c) => {
         if (!c.id) return;
         if (!c.apiServerEndpoint) {
           unread.push(c.id);
+          failure ??= new Error(
+            `CoreWeave: the Node Pools of cluster ${c.name ?? c.id} cannot be read yet, as it has no API server endpoint.`,
+          );
           return;
         }
         try {
@@ -279,9 +292,10 @@ export class CoreWeaveClient implements PluginClient {
         } catch (err) {
           rethrowIncompleteList(err);
           unread.push(c.id);
+          failure ??= err;
         }
       });
-      return { pools, unread };
+      return { pools, unread, failure };
     });
     return this.poolsCache.value;
   }
@@ -384,20 +398,23 @@ export class CoreWeaveClient implements PluginClient {
         case "cks-cluster":
           return this.scoped(async () => {
             const list = await this.clusterList();
-            keepRowsThroughMissedZone(list);
+            keepRowsThroughMissedZone(list, "/v1beta1/cks/clusters");
             return this.mapClusters(accountId, list.items);
           });
         case "node-pool":
           return this.scoped(async () => {
-            const [list, { pools, unread }] = await Promise.all([
+            const [list, { pools, unread, failure }] = await Promise.all([
               this.clusterList(),
               this.allPools(),
             ]);
-            keepRowsThroughMissedZone(list);
-            if (unread.length > 0) {
-              reportUnreadListPart({
+            keepRowsThroughMissedZone(list, "/v1beta1/cks/clusters");
+            if (
+              unread.length > 0 &&
+              !reportUnreadListPart({
                 parentResourceIds: unread.map((id) => `${accountId}:cks-cluster:${id}`),
-              });
+              })
+            ) {
+              throw failure;
             }
             return list.items.flatMap((c) =>
               (pools.get(c.id ?? "") ?? []).map((p) =>
@@ -421,7 +438,7 @@ export class CoreWeaveClient implements PluginClient {
         case "vpc":
           return this.scoped(async () => {
             const list = await this.vpcList();
-            keepRowsThroughMissedZone(list);
+            keepRowsThroughMissedZone(list, "/v1beta1/networking/vpcs");
             return list.items.map((v) => mapVpc(accountId, v));
           });
         case "bucket":
