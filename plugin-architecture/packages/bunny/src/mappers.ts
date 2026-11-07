@@ -110,6 +110,10 @@ export function pullZoneInstance(accountId: string, z: PullZone): ResourceInstan
       storageZoneId: z.StorageZoneId ?? 0,
       edgeScriptId: z.EdgeScriptId ?? 0,
       containerAppId: z.MagicContainersAppId ?? "",
+      containerEndpointId: z.MagicContainersEndpointId ?? "",
+      loadBalancerId: z.LoadBalancerId ?? 0,
+      dnsPort: z.DnsOriginPort ?? 0,
+      dnsScheme: z.DnsOriginScheme ?? "",
     }),
   };
   if (typeof z.CacheControlMaxAgeOverride === "number")

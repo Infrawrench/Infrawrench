@@ -316,6 +316,60 @@ describe("ids in paths", () => {
   });
 });
 
+describe("pull zone origins", () => {
+  it.each([
+    [0, "Standard"],
+    [1, "DnsAccelerate"],
+    [2, "Storage"],
+    [3, "LoadBalancer"],
+    [4, "EdgeScript"],
+    [5, "MagicContainer"],
+    [6, "PushZone"],
+  ])("reads OriginType %i as %s", async (OriginType, name) => {
+    const { c } = client(() => ({ body: [{ ...PZ, OriginType }] }));
+    const [pz] = await c.listResources("pull-zone", "a1");
+    expect(pz!.fields["originType"]).toBe(name);
+  });
+
+  it("creates a storage origin with the pull zone number for a storage zone", async () => {
+    const { c, calls } = client(() => ({ status: 201, body: { ...PZ, OriginType: 2 } }));
+    await c.createResource("pull-zone", "a1", {
+      name: "site",
+      originType: "storage",
+      storageZoneId: "12",
+    });
+    expect(JSON.parse(String(calls[0]!.body))).toMatchObject({ OriginType: 2, StorageZoneId: 12 });
+  });
+
+  async function originBlock(zone: Record<string, unknown>) {
+    const { c } = client(() => ({ body: [{ ...PZ, ...zone }] }));
+    const resources = await c.listResources("pull-zone", "a1");
+    return exportResourcesToTerraform(resources, () => bunnyTerraformExport).hcl;
+  }
+
+  it.each([
+    [{ OriginType: 2, StorageZoneId: 12 }, ['type = "StorageZone"', "storagezone = 12"]],
+    [{ OriginType: 3, LoadBalancerId: 8 }, ['type = "LoadBalancer"', "loadbalancer = 8"]],
+    [{ OriginType: 4, EdgeScriptId: 9 }, ['type = "ComputeScript"', "script = 9"]],
+    [
+      { OriginType: 5, MagicContainersAppId: "app", MagicContainersEndpointId: "ep" },
+      ['type = "ComputeContainer"', 'container_app_id = "app"', 'container_endpoint_id = "ep"'],
+    ],
+    [
+      { OriginType: 1, DnsOriginPort: 443, DnsOriginScheme: "https" },
+      ['type = "DnsAccelerate"', "dns_port = 443", 'dns_scheme = "https"'],
+    ],
+    [{ OriginType: 0 }, ['type = "OriginUrl"', 'url = "https://origin.example.com"']],
+  ])("ejects the origin block of %j", async (zone, expected) => {
+    const hcl = await originBlock(zone);
+    for (const line of expected) expect(hcl).toMatch(new RegExp(`${line}\\b|${line}$`, "m"));
+  });
+
+  it.each([6, 99])("does not eject OriginType %i, which the provider cannot express", async (t) => {
+    expect(await originBlock({ OriginType: t })).not.toContain("bunnynet_pullzone");
+  });
+});
+
 describe("storage browser", () => {
   it("lists with the zone password on the zone's storage host", async () => {
     const { c, calls } = client((u) => {

@@ -103,7 +103,16 @@ export const TRIGGER_TYPES = [
 
 export const MATCH_TYPES = ["MatchAny", "MatchAll", "MatchNone"] as const;
 export const PULL_ZONE_TYPES = ["Premium", "Volume"] as const;
-export const ORIGIN_TYPES = ["Standard", "Storage", "EdgeScript", "MagicContainer"] as const;
+/** `PullZoneOriginType`, not the document's `OriginType`, which numbers load balancer origins. */
+export const ORIGIN_TYPES = [
+  "Standard",
+  "DnsAccelerate",
+  "Storage",
+  "LoadBalancer",
+  "EdgeScript",
+  "MagicContainer",
+  "PushZone",
+] as const;
 export const SCRIPT_TYPES = ["DNS", "CDN", "Middleware"] as const;
 export const ZONE_TIERS = ["Standard", "Edge"] as const;
 

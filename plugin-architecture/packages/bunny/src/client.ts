@@ -877,7 +877,8 @@ export class BunnyClient implements PluginClient {
             body: {
               Name: (fields["name"] ?? "").trim(),
               Type: Number(fields["type"] ?? 0),
-              OriginType: storage ? 1 : undefined,
+              // 2 is `Storage` in ORIGIN_TYPES; the document's enum type does not take a lookup.
+              OriginType: storage ? 2 : undefined,
               StorageZoneId: storage ? Number(fields["storageZoneId"]) : undefined,
               OriginUrl: storage ? undefined : fields["originUrl"],
             },

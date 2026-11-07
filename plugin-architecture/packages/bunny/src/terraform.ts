@@ -43,6 +43,10 @@ export const bunnyTerraformExport: TerraformExportCapability = {
           storageZoneId?: number;
           edgeScriptId?: number;
           containerAppId?: string;
+          containerEndpointId?: string;
+          loadBalancerId?: number;
+          dnsPort?: number;
+          dnsScheme?: string;
         } = {};
         try {
           origin = JSON.parse(fieldString(r, "originJson") || "{}");
@@ -62,10 +66,26 @@ export const bunnyTerraformExport: TerraformExportCapability = {
           case "MagicContainer":
             block["type"] = tf.str("ComputeContainer");
             if (origin.containerAppId) block["container_app_id"] = tf.str(origin.containerAppId);
+            if (origin.containerEndpointId)
+              block["container_endpoint_id"] = tf.str(origin.containerEndpointId);
             break;
-          default:
+          case "LoadBalancer":
+            block["type"] = tf.str("LoadBalancer");
+            if (origin.loadBalancerId) block["loadbalancer"] = tf.num(origin.loadBalancerId);
+            break;
+          case "DnsAccelerate":
+            block["type"] = tf.str("DnsAccelerate");
+            if (origin.dnsPort) block["dns_port"] = tf.num(origin.dnsPort);
+            if (origin.dnsScheme) block["dns_scheme"] = tf.str(origin.dnsScheme);
+            break;
+          case "Standard":
+          case undefined:
             block["type"] = tf.str("OriginUrl");
             if (origin.url) block["url"] = tf.str(origin.url);
+            break;
+          // A push zone, or a number newer than this list: the provider has no origin type for it.
+          default:
+            return null;
         }
         return {
           resource: {
