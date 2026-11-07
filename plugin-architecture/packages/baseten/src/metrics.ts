@@ -1,10 +1,9 @@
-import type { MetricSeries } from "@infrawrench/plugin-base";
+import { pathEncode, type MetricSeries } from "@infrawrench/plugin-base";
 import { isStatus, type BasetenApi } from "./api.js";
 import type {
   MetricDescriptor,
   MetricsResponse,
   ModelApiUsageResponse,
-  TrainingJobMetrics,
   TrainingMetricPoint,
 } from "./types.js";
 
@@ -118,7 +117,7 @@ export function parseMetricsResponse(res: MetricsResponse | undefined): MetricSe
       ...(fallbackUnit ? { unit: fallbackUnit } : {}),
     };
     const scale = meta.scale ?? 1;
-    const labelSets = d.label_sets?.length ? d.label_sets : [{}];
+    const labelSets: Array<Record<string, string>> = d.label_sets?.length ? d.label_sets : [{}];
     const pointsFor = (j: number | "sum") =>
       steps
         .map((s) => {
@@ -176,27 +175,30 @@ export function clampWindow(timeRange?: { startMs: number; endMs: number }): {
   return { startMs, endMs };
 }
 
+/** What a series asks for, which either metrics route takes. */
+export interface MetricsQuery {
+  mode: "SERIES";
+  start_epoch_millis: number;
+  end_epoch_millis: number;
+  metrics?: string[];
+}
+
 /** Deployment (`/deployments/{id}/metrics`) or environment (`/environments/{name}/metrics`). */
 export async function fetchModelMetrics(
-  api: BasetenApi,
-  path: string,
+  read: (query: MetricsQuery) => Promise<MetricsResponse>,
   timeRange?: { startMs: number; endMs: number },
 ): Promise<MetricSeries[]> {
   const { startMs, endMs } = clampWindow(timeRange);
-  const base = {
+  const base: MetricsQuery = {
     mode: "SERIES",
     start_epoch_millis: Math.floor(startMs),
     end_epoch_millis: Math.floor(endMs),
   };
   try {
-    const res = await api.request<MetricsResponse>(path, {
-      query: { ...base, metrics: DEPLOYMENT_METRICS },
-    });
-    return parseMetricsResponse(res);
+    return parseMetricsResponse(await read({ ...base, metrics: DEPLOYMENT_METRICS }));
   } catch (e) {
     if (!isStatus(e, 400, 422)) throw e;
-    const res = await api.request<MetricsResponse>(path, { query: base });
-    return parseMetricsResponse(res);
+    return parseMetricsResponse(await read(base));
   }
 }
 
@@ -220,21 +222,18 @@ export async function fetchModelApiMetrics(
   };
   let cursor: string | undefined;
   for (let page = 0; page < 10; page++) {
-    const res: ModelApiUsageResponse | undefined = await api.request<ModelApiUsageResponse>(
-      "/v1/model_apis/usage",
-      {
-        query: cursor
-          ? { cursor }
-          : {
-              start_time: new Date(startMs).toISOString(),
-              end_time: new Date(endMs).toISOString(),
-              bucket_width: bucket,
-              group_by: ["model"],
-              models: [model],
-              limit,
-            },
-      },
-    );
+    const res: ModelApiUsageResponse | undefined = await api.get("/v1/model_apis/usage", {
+      query: cursor
+        ? { cursor }
+        : {
+            start_time: new Date(startMs).toISOString(),
+            end_time: new Date(endMs).toISOString(),
+            bucket_width: bucket,
+            group_by: ["model"],
+            models: [model],
+            limit,
+          },
+    });
     for (const b of res?.items ?? []) {
       const ts = Date.parse(b.start_time);
       if (!Number.isFinite(ts)) continue;
@@ -262,8 +261,8 @@ export async function fetchTrainingJobMetrics(
   jobId: string,
   timeRange?: { startMs: number; endMs: number },
 ): Promise<MetricSeries[]> {
-  const res = await api.request<TrainingJobMetrics>(
-    `/v1/training_projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/metrics`,
+  const res = await api.get(
+    `/v1/training_projects/${pathEncode(projectId)}/jobs/${pathEncode(jobId)}/metrics`,
     {
       query: timeRange
         ? {

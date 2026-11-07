@@ -1,7 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BasetenApi } from "../api.js";
-import { clampWindow, fetchModelMetrics, parseMetricsResponse } from "../metrics.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import { createBasetenApi } from "../api.js";
+import {
+  clampWindow,
+  fetchModelMetrics,
+  parseMetricsResponse,
+  type MetricsQuery,
+} from "../metrics.js";
 import { installFetch, route, state } from "./helpers.js";
+
+const read = (query: MetricsQuery) =>
+  createBasetenApi("k", "", undefined).get(
+    `/v1/models/${pathEncode("m")}/deployments/${pathEncode("d")}/metrics`,
+    { query },
+  );
 
 beforeEach(() => installFetch());
 afterEach(() => vi.unstubAllGlobals());
@@ -49,14 +61,7 @@ describe("fetchModelMetrics", () => {
   it("requests a series with repeated metric names and caps the window at 7 days", async () => {
     route("GET", "/v1/models/m/deployments/d/metrics", response);
     const end = 30 * 86_400_000;
-    await fetchModelMetrics(
-      new BasetenApi("k", "", undefined),
-      "/v1/models/m/deployments/d/metrics",
-      {
-        startMs: 0,
-        endMs: end,
-      },
-    );
+    await fetchModelMetrics(read, { startMs: 0, endMs: end });
     const q = state.calls[0]!.query;
     expect(q.get("mode")).toBe("SERIES");
     expect(q.getAll("metrics")).toContain("baseten_gpu_utilization");
@@ -71,10 +76,7 @@ describe("fetchModelMetrics", () => {
         ? new Response(JSON.stringify({ detail: "unknown metric" }), { status: 400 })
         : response,
     );
-    const series = await fetchModelMetrics(
-      new BasetenApi("k", "", undefined),
-      "/v1/models/m/deployments/d/metrics",
-    );
+    const series = await fetchModelMetrics(read);
     expect(state.calls[1]!.query.getAll("metrics")).toEqual([]);
     expect(series.length).toBeGreaterThan(0);
   });

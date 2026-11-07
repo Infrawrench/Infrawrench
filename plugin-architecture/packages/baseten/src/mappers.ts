@@ -3,12 +3,13 @@ import type {
   BasetenAutoscaling,
   BasetenChain,
   BasetenDeployment,
-  BasetenEnvironment,
+  BasetenEnvironmentLike,
   BasetenInstanceType,
   BasetenInstanceTypePrice,
   BasetenModel,
   BasetenModelApi,
-  BasetenSecret,
+  BasetenModelRef,
+  BasetenSecretLike,
   BasetenTrainingJob,
   BasetenTrainingProject,
   Decimal,
@@ -79,7 +80,7 @@ export function round(n: number, places = 2): number {
   return Math.round(n * f) / f;
 }
 
-function setIf(fields: Fields, key: string, v: unknown): void {
+function setIf(fields: Fields, key: string, v: string | number | boolean | null | undefined): void {
   if (v === undefined || v === null || v === "") return;
   if (typeof v === "number" || typeof v === "boolean" || typeof v === "string") fields[key] = v;
 }
@@ -194,7 +195,7 @@ export interface DeploymentUsage {
 
 export function mapDeployment(
   d: BasetenDeployment,
-  model: Pick<BasetenModel, "id" | "name">,
+  model: BasetenModelRef,
   accountId: string,
   index: InstanceTypeIndex,
   usage: Map<string, DeploymentUsage> | null,
@@ -246,8 +247,8 @@ export function mapDeployment(
 }
 
 export function mapEnvironment(
-  e: BasetenEnvironment,
-  model: Pick<BasetenModel, "id" | "name">,
+  e: BasetenEnvironmentLike,
+  model: BasetenModelRef,
   accountId: string,
   index: InstanceTypeIndex,
 ): ResourceInstance {
@@ -315,11 +316,11 @@ export function mapChain(c: BasetenChain, accountId: string): ResourceInstance {
 }
 
 /** Secrets are addressed by name within a team, hence `<team>/<name>`. */
-export function secretExternalId(s: Pick<BasetenSecret, "name" | "team_name">): string {
+export function secretExternalId(s: BasetenSecretLike): string {
   return `${s.team_name || "default"}/${s.name}`;
 }
 
-export function mapSecret(s: BasetenSecret, accountId: string): ResourceInstance {
+export function mapSecret(s: BasetenSecretLike, accountId: string): ResourceInstance {
   const fields: Fields = { name: s.name };
   setIf(fields, "teamName", s.team_name);
   setIf(fields, "createdAt", s.created_at);

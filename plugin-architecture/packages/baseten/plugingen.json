@@ -1,0 +1,64 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.baseten.co/v1/spec",
+  "patches": [
+    {
+      "pointer": "/components/schemas/UpdateModelPromotionSettingsV1/properties/promotion_cleanup_strategy",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Baseten validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/UpdateRequestBackpressureSettingsV1/properties/policy",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Baseten validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    }
+  ],
+  "paths": {
+    "/v1/billing/usage_summary": ["get"],
+    "/v1/chains": ["get"],
+    "/v1/chains/{chain_id}": ["delete"],
+    "/v1/instance_type_prices": ["get"],
+    "/v1/instance_types": ["get"],
+    "/v1/model_apis": ["get"],
+    "/v1/model_apis/usage": ["get"],
+    "/v1/models": ["get"],
+    "/v1/models/{model_id}": ["get", "patch", "delete"],
+    "/v1/models/{model_id}/deployments": ["get"],
+    "/v1/models/{model_id}/deployments/development/promote": ["post"],
+    "/v1/models/{model_id}/deployments/{deployment_id}": ["get", "delete"],
+    "/v1/models/{model_id}/deployments/{deployment_id}/activate": ["post"],
+    "/v1/models/{model_id}/deployments/{deployment_id}/autoscaling_settings": ["patch"],
+    "/v1/models/{model_id}/deployments/{deployment_id}/deactivate": ["post"],
+    "/v1/models/{model_id}/deployments/{deployment_id}/logs": ["get"],
+    "/v1/models/{model_id}/deployments/{deployment_id}/metrics": ["get"],
+    "/v1/models/{model_id}/deployments/{deployment_id}/promote": ["post"],
+    "/v1/models/{model_id}/deployments/{deployment_id}/retry": ["post"],
+    "/v1/models/{model_id}/environments": ["get", "post"],
+    "/v1/models/{model_id}/environments/{env_name}": ["get", "patch", "delete"],
+    "/v1/models/{model_id}/environments/{env_name}/activate": ["post"],
+    "/v1/models/{model_id}/environments/{env_name}/cancel_promotion": ["post"],
+    "/v1/models/{model_id}/environments/{env_name}/deactivate": ["post"],
+    "/v1/models/{model_id}/environments/{env_name}/logs": ["get"],
+    "/v1/models/{model_id}/environments/{env_name}/metrics": ["get"],
+    "/v1/models/{model_id}/environments/{env_name}/pause_promotion": ["post"],
+    "/v1/models/{model_id}/environments/{env_name}/promote": ["post"],
+    "/v1/models/{model_id}/environments/{env_name}/resume_promotion": ["post"],
+    "/v1/secrets": ["get", "post"],
+    "/v1/secrets/{secret_name}": ["delete"],
+    "/v1/teams": ["get"],
+    "/v1/teams/{team_id}/secrets": ["post"],
+    "/v1/teams/{team_id}/secrets/{secret_name}": ["delete"],
+    "/v1/training/capacity": ["get"],
+    "/v1/training_jobs/search": ["post"],
+    "/v1/training_projects": ["get"],
+    "/v1/training_projects/{training_project_id}": ["delete"],
+    "/v1/training_projects/{training_project_id}/jobs/{training_job_id}": ["delete"],
+    "/v1/training_projects/{training_project_id}/jobs/{training_job_id}/logs": ["get"],
+    "/v1/training_projects/{training_project_id}/jobs/{training_job_id}/metrics": ["get"],
+    "/v1/training_projects/{training_project_id}/jobs/{training_job_id}/stop": ["post"]
+  }
+}

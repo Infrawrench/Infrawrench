@@ -12,6 +12,17 @@ export const AUTOSCALING_KEYS: Record<keyof typeof AUTOSCALING_BOUNDS, keyof Bas
   targetInFlightTokens: "target_in_flight_tokens",
 };
 
+/** The order they go in a body. */
+const AUTOSCALING_ORDER = [
+  "minReplica",
+  "maxReplica",
+  "concurrencyTarget",
+  "targetUtilization",
+  "autoscalingWindow",
+  "scaleDownDelay",
+  "targetInFlightTokens",
+] as const;
+
 const LABELS: Record<keyof typeof AUTOSCALING_BOUNDS, string> = {
   minReplica: "Min replicas",
   maxReplica: "Max replicas",
@@ -37,7 +48,7 @@ export function buildAutoscalingPatch(
 ): Partial<Record<keyof BasetenAutoscaling, number>> | null {
   const body: Partial<Record<keyof BasetenAutoscaling, number>> = {};
   const errors: string[] = [];
-  for (const key of Object.keys(AUTOSCALING_KEYS) as Array<keyof typeof AUTOSCALING_KEYS>) {
+  for (const key of AUTOSCALING_ORDER) {
     const raw = changed[key];
     if (raw === undefined || String(raw).trim() === "") continue;
     const n = Number(raw);

@@ -58,7 +58,7 @@ export async function fetchUsageSummary(
   to: string,
 ): Promise<UsageSummary> {
   return (
-    (await api.request<UsageSummary>("/v1/billing/usage_summary", {
+    (await api.get("/v1/billing/usage_summary", {
       query: {
         start_date: `${from}T00:00:00Z`,
         // The end is exclusive midnight after the last requested day.

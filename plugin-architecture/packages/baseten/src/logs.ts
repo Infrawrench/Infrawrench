@@ -1,5 +1,5 @@
 import type { LogsFetchResult } from "@infrawrench/plugin-base";
-import type { BasetenApi } from "./api.js";
+import type { LogLevel, LogLine } from "./types.js";
 
 /**
  * Log tails from the management API's logs endpoints (deployment,
@@ -11,18 +11,19 @@ import type { BasetenApi } from "./api.js";
 
 const WINDOW_MS = 24 * 3_600_000;
 export const LOG_FILTERS = ["All levels", "Warnings and errors", "Errors only"];
-const MIN_LEVEL: Record<string, string | undefined> = {
+const MIN_LEVEL: Record<string, LogLevel | undefined> = {
   "All levels": undefined,
   "Warnings and errors": "WARNING",
   "Errors only": "ERROR",
 };
 
-interface LogLine {
-  timestamp?: string;
-  message?: string;
-  replica?: string | null;
-  request_id?: string | null;
-  level?: string | null;
+/** What a tail asks for, which any of the logs routes takes. */
+export interface LogsQuery {
+  start_epoch_millis: number;
+  end_epoch_millis: number;
+  direction: "desc";
+  limit: number;
+  min_level?: LogLevel;
 }
 
 /** Baseten log timestamps are epoch nanoseconds, as a string. */
@@ -34,21 +35,19 @@ export function formatLogLine(l: LogLine): string {
 }
 
 export async function fetchLogs(
-  api: BasetenApi,
-  path: string,
+  read: (query: LogsQuery) => Promise<{ logs?: LogLine[] }>,
   tailLines: number | undefined,
   filter: string | undefined,
 ): Promise<LogsFetchResult> {
   const active = filter && LOG_FILTERS.includes(filter) ? filter : LOG_FILTERS[0]!;
   const end = Date.now();
-  const res = await api.request<{ logs?: LogLine[] }>(path, {
-    query: {
-      start_epoch_millis: end - WINDOW_MS,
-      end_epoch_millis: end,
-      direction: "desc",
-      limit: Math.min(1000, Math.max(1, tailLines ?? 200)),
-      min_level: MIN_LEVEL[active],
-    },
+  const minLevel = MIN_LEVEL[active];
+  const res = await read({
+    start_epoch_millis: end - WINDOW_MS,
+    end_epoch_millis: end,
+    direction: "desc",
+    limit: Math.min(1000, Math.max(1, tailLines ?? 200)),
+    ...(minLevel ? { min_level: minLevel } : {}),
   });
   const lines = (res?.logs ?? []).map(formatLogLine).reverse();
   return {
