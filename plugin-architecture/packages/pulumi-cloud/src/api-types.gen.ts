@@ -66,6 +66,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/esc/environments/{orgName}/{projectName}/{envName}/referrers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ListEnvironmentReferrers_esc_environments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/esc/environments/{orgName}/{projectName}/{envName}/versions": {
         parameters: {
             query?: never;
@@ -1219,18 +1235,30 @@ export interface components {
         EnvironmentDiagnosticsResponse: {
             diagnostics?: components["schemas"]["EnvironmentDiagnostic"][];
         };
+        EnvironmentImportReferrer: {
+            name: string;
+            project: string;
+            /** Format: int64 */
+            revision: number;
+        };
+        EnvironmentInsightsAccountReferrer: {
+            accountName: string;
+        };
         EnvironmentLinks: {
             self?: string;
+        };
+        EnvironmentReferrer: {
+            environment?: components["schemas"]["EnvironmentImportReferrer"];
+            insightsAccount?: components["schemas"]["EnvironmentInsightsAccountReferrer"];
+            stack?: components["schemas"]["EnvironmentStackReferrer"];
         };
         EnvironmentReferrerMetadata: {
             /** Format: int64 */
             environmentReferrerCount: number;
-            environmentReferrers?: number;
             /** Format: int64 */
             insightsAccountReferrerCount: number;
             /** Format: int64 */
             stackReferrerCount: number;
-            stackReferrers?: number;
         };
         EnvironmentRevision: {
             /** Format: date-time */
@@ -1258,6 +1286,12 @@ export interface components {
         };
         EnvironmentSettings: {
             deletionProtected: boolean;
+        };
+        EnvironmentStackReferrer: {
+            project: string;
+            stack: string;
+            /** Format: int64 */
+            version: number;
         };
         EnvironmentVariable: {
             name: string;
@@ -1363,6 +1397,12 @@ export interface components {
         ListDeploymentSnapshotAgentPool: {
             id: string;
             name: string;
+        };
+        ListEnvironmentReferrersResponse: {
+            continuationToken?: string;
+            referrers: {
+                [key: string]: components["schemas"]["EnvironmentReferrer"][];
+            };
         };
         ListEnvironmentsResponse: {
             environments: components["schemas"]["OrgEnvironment"][];
@@ -2121,6 +2161,34 @@ export interface operations {
                             [key: string]: unknown;
                         };
                     };
+                };
+            };
+        };
+    };
+    ListEnvironmentReferrers_esc_environments: {
+        parameters: {
+            query?: {
+                allRevisions?: boolean;
+                continuationToken?: string;
+                count?: number;
+                latestStackVersionOnly?: boolean;
+            };
+            header?: never;
+            path: {
+                envName: string;
+                orgName: string;
+                projectName: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListEnvironmentReferrersResponse"];
                 };
             };
         };

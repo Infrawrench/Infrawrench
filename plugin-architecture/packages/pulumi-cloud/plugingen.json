@@ -134,20 +134,6 @@
         "type": "string"
       },
       "why": "The mode is form text that goes through as typed, so the provider's own validation error reaches the user."
-    },
-    {
-      "pointer": "/components/schemas/EnvironmentReferrerMetadata/properties/stackReferrers",
-      "value": {
-        "type": "integer"
-      },
-      "why": "The document has no such field, and the plugin has always read it: see #444. Remove this with that fix."
-    },
-    {
-      "pointer": "/components/schemas/EnvironmentReferrerMetadata/properties/environmentReferrers",
-      "value": {
-        "type": "integer"
-      },
-      "why": "The document has no such field, and the plugin has always read it: see #444. Remove this with that fix."
     }
   ],
   "paths": {
@@ -198,6 +184,7 @@
     "/api/esc/environments/{orgName}/{projectName}/{envName}": ["get", "patch", "delete"],
     "/api/esc/environments/{orgName}/{projectName}/{envName}/open": ["post"],
     "/api/esc/environments/{orgName}/{projectName}/{envName}/open/{openSessionID}": ["get"],
+    "/api/esc/environments/{orgName}/{projectName}/{envName}/referrers": ["get"],
     "/api/esc/environments/{orgName}/{projectName}/{envName}/versions": ["get"],
     "/api/esc/environments/{orgName}/{projectName}/{envName}/versions/{version}": ["get"],
     "/api/esc/environments/{orgName}/{projectName}/{envName}/versions/tags": ["post"],

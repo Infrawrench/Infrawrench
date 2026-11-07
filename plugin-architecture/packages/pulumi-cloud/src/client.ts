@@ -32,7 +32,13 @@ import {
   statusOf,
 } from "./api.js";
 import type { operations } from "./api-types.gen.js";
-import type { PuDeployment, PuEnvironment, PuStackSummary, PuUpdate } from "./mappers.js";
+import type {
+  EnvironmentReferrers,
+  PuDeployment,
+  PuEnvironment,
+  PuStackSummary,
+  PuUpdate,
+} from "./mappers.js";
 import {
   flattenUpdate,
   mapDeployment,
@@ -60,6 +66,9 @@ import { fetchSummary, fetchUsageCost, ratesFor, usageSeries } from "./usage.js"
 const DEPLOYMENT_LIMIT = 50;
 const YAML_ACCEPT = { Accept: "application/x-yaml" };
 const MAX_LOG_PAGES = 40;
+/** The referrers route's largest page. */
+const REFERRER_PAGE_SIZE = 500;
+const MAX_REFERRER_PAGES = 20;
 const bool = (v: string | undefined) => v === "true" || v === "1";
 
 function stash(r: ResourceInstance, data: Record<string, unknown>): ResourceInstance {
@@ -305,6 +314,39 @@ export class PulumiCloudClient implements PluginClient {
     return `${consoleUrl(this.ctx.apiUrl)}/${enc(this.org)}/esc/${enc(project)}/${enc(name)}`;
   }
 
+  /**
+   * How many stacks and environments use an environment, each counted once however
+   * many revisions they use. A list row has none of this: `referrerMetadata` is
+   * documented as no longer populated, and this is a request per environment.
+   * Undefined when the count cannot be whole, which reads better than a low number.
+   */
+  private async environmentReferrers(
+    project: string,
+    name: string,
+  ): Promise<EnvironmentReferrers | undefined> {
+    const stacks = new Set<string>();
+    const environments = new Set<string>();
+    let token: string | undefined;
+    for (let page = 0; page < MAX_REFERRER_PAGES; page++) {
+      const res = await this.api.get(`${this.ep(project, name)}/referrers`, {
+        query: {
+          count: REFERRER_PAGE_SIZE,
+          allRevisions: true,
+          latestStackVersionOnly: true,
+          ...(token ? { continuationToken: token } : {}),
+        },
+      });
+      if (!res?.referrers) return undefined;
+      for (const r of Object.values(res.referrers).flat()) {
+        if (r.stack) stacks.add(`${r.stack.project}/${r.stack.stack}`);
+        if (r.environment) environments.add(`${r.environment.project}/${r.environment.name}`);
+      }
+      if (!res.continuationToken) return { stacks: stacks.size, environments: environments.size };
+      token = res.continuationToken;
+    }
+    return undefined;
+  }
+
   private async organizationResource(
     accountId: string,
     detail: boolean,
@@ -408,11 +450,14 @@ export class PulumiCloudClient implements PluginClient {
           const envs = await this.envList();
           const e = envs.find((x) => (x.project || "default") === a && x.name === b);
           if (!e) throw new PulumiApiError(404, `Pulumi Cloud plugin: environment ${id} not found`);
-          const revs = await this.api
-            .get(`${this.ep(a!, b!)}/versions`, {
-              query: { count: 20 },
-            })
-            .catch(() => undefined);
+          const [revs, referrers] = await Promise.all([
+            this.api
+              .get(`${this.ep(a!, b!)}/versions`, {
+                query: { count: 20 },
+              })
+              .catch(() => undefined),
+            this.environmentReferrers(a!, b!).catch(() => undefined),
+          ]);
           const rows: RevisionRow[] = (revs ?? []).map((v) => ({
             number: v.number,
             created: v.created,
@@ -420,7 +465,7 @@ export class PulumiCloudClient implements PluginClient {
             ...(v.tags ? { tags: v.tags } : {}),
             ...(v.retracted ? { retracted: true } : {}),
           }));
-          return stash(mapEnvironment(accountId, this.org, e, this.envUrl(a!, b!)), {
+          return stash(mapEnvironment(accountId, this.org, e, this.envUrl(a!, b!), referrers), {
             [DETAIL_KEYS.revisions]: rows,
           });
         }

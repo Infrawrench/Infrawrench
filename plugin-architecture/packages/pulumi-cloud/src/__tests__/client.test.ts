@@ -464,3 +464,67 @@ describe("deployment settings (#443)", () => {
     expect(Object.keys(manifest.sourceContext.git)).not.toContain("repoURL");
   });
 });
+
+describe("environment referrers (#444)", () => {
+  const env = {
+    id: "e1",
+    name: "aws",
+    project: "default",
+    // Documented as no longer populated: always zero, whoever uses the environment.
+    referrerMetadata: { stackReferrerCount: 0, environmentReferrerCount: 0 },
+  };
+
+  it("counts each stack and environment once, from the referrers route", async () => {
+    const { c, calls } = client((call) => {
+      const path = call.url.pathname;
+      if (path === "/api/esc/environments/acme") return { environments: [env] };
+      if (path.endsWith("/versions")) return [];
+      expect(path).toBe("/api/esc/environments/acme/default/aws/referrers");
+      if (call.url.searchParams.get("continuationToken")) {
+        return {
+          referrers: { "1": [{ stack: { project: "app", stack: "dev", version: 2 } }] },
+        };
+      }
+      return {
+        continuationToken: "more",
+        referrers: {
+          "2": [
+            { stack: { project: "app", stack: "prod", version: 9 } },
+            { environment: { project: "default", name: "base", revision: 2 } },
+          ],
+          "1": [
+            { stack: { project: "app", stack: "prod", version: 8 } },
+            { insightsAccount: { accountName: "aws" } },
+          ],
+        },
+      };
+    });
+    const r = await c.getResource("environment", `${ACC}:environment:default/aws`, ACC);
+    expect(r.fields["stackReferrers"]).toBe(2);
+    expect(r.fields["environmentReferrers"]).toBe(1);
+    const first = calls.find((x) => x.url.pathname.endsWith("/referrers"))!.url.searchParams;
+    expect(first.get("allRevisions")).toBe("true");
+    expect(first.get("latestStackVersionOnly")).toBe("true");
+    expect(first.get("count")).toBe("500");
+  });
+
+  it("does not report the deprecated zero counts on a list row", async () => {
+    const { c, calls } = client(() => ({ environments: [env] }));
+    const [row] = await c.listResources("environment", ACC);
+    expect(row!.fields["stackReferrers"]).toBeUndefined();
+    expect(row!.fields["environmentReferrers"]).toBeUndefined();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("leaves the counts empty rather than wrong when they cannot be read", async () => {
+    const { c } = client((call) => {
+      const path = call.url.pathname;
+      if (path === "/api/esc/environments/acme") return { environments: [env] };
+      if (path.endsWith("/versions")) return [];
+      return { status: 500, body: { message: "boom" } };
+    });
+    const r = await c.getResource("environment", `${ACC}:environment:default/aws`, ACC);
+    expect(r.fields["stackReferrers"]).toBeUndefined();
+    expect(r.fields["environmentReferrers"]).toBeUndefined();
+  });
+});

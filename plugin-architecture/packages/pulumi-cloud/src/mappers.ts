@@ -300,14 +300,19 @@ export function mapDeployment(accountId: string, d: PuDeployment, url: string): 
   );
 }
 
+export interface EnvironmentReferrers {
+  stacks: number;
+  environments: number;
+}
+
 export function mapEnvironment(
   accountId: string,
   org: string,
   e: PuEnvironment,
   url: string,
+  referrers?: EnvironmentReferrers,
 ): ResourceInstance {
   const project = e.project || "default";
-  const refs = e.referrerMetadata;
   return instance(
     accountId,
     "environment",
@@ -317,8 +322,8 @@ export function mapEnvironment(
       name: e.name,
       project,
       owner: e.ownedBy?.name || e.ownedBy?.githubLogin,
-      stackReferrers: refs?.stackReferrers,
-      environmentReferrers: refs?.environmentReferrers,
+      stackReferrers: referrers?.stacks,
+      environmentReferrers: referrers?.environments,
       deletionProtected: e.settings?.deletionProtected,
       tags: Object.entries(e.tags ?? {})
         .map(([k, v]) => `${k}=${v}`)
