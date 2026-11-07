@@ -72,6 +72,17 @@ export function dataApiError(
   );
 }
 
+/**
+ * The Data API will not serve this keyspace, as a database without it or a keyspace it
+ * refuses answers, rather than having failed to. A 403 is a refusal of the token, and a
+ * rejected token, a throttle or a 5xx are failures. 200 is a {@link dataApiError}.
+ */
+export function isKeyspaceNotServed(err: unknown): boolean {
+  const s = statusOf(err);
+  if (s === 200 || s === 501) return true;
+  return s >= 400 && s < 500 && ![401, 403, 408, 429].includes(s);
+}
+
 function friendly(status: number, raw: string): string {
   if (status === 401) {
     return "Astra API error 401: the application token was rejected. Generate a new one under Settings, Tokens in the Astra Portal.";

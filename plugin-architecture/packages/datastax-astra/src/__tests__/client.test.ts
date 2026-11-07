@@ -518,6 +518,97 @@ describe("Data API errors in a 200 answer", () => {
   });
 });
 
+describe("reading collections", () => {
+  const endpoint = `${DB.id}-us-east-2.apps.astra.datastax.com/api/json/v1`;
+  const keyspaceId = (ks: string) => `acc:${T.keyspace}:${DB.id}/${ks}`;
+  const answering = (answer: () => unknown) => ({
+    "GET /v2/databases": [DB],
+    [`POST ${endpoint}/default_keyspace`]: answer,
+    [`POST ${endpoint}/analytics`]: { status: { collections: [{ name: "kept" }] } },
+  });
+
+  it.each([429, 500, 503])("fails the type on a %i, so stored rows stay", async (status) => {
+    mockFetch(answering(() => new Response("{}", { status })));
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    const err = await client.listResources(T.collection, "acc").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AstraApiError);
+    expect((err as AstraApiError).status).toBe(status);
+  });
+
+  it("fails the type when the endpoint cannot be reached", async () => {
+    const { fn } = mockFetch(answering(() => null));
+    const answer = fn.getMockImplementation()!;
+    fn.mockImplementation(async (input, init) => {
+      if (String(input).includes("default_keyspace")) throw new TypeError("fetch failed");
+      return answer(input, init);
+    });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    await expect(client.listResources(T.collection, "acc")).rejects.toThrow("fetch failed");
+  });
+
+  it.each([400, 404, 501])("keeps the rows of a keyspace answered with a %i", async (status) => {
+    mockFetch(answering(() => new Response("{}", { status })));
+    const unread = trackUnread();
+    try {
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      const rows = await client.listResources(T.collection, "acc");
+      expect(rows.map((r) => r.displayName)).toEqual(["kept"]);
+      expect(unread.parts).toEqual([{ parentResourceIds: [keyspaceId("default_keyspace")] }]);
+    } finally {
+      unread.stop();
+    }
+  });
+
+  it("keeps the rows of a keyspace the Data API reports an error for", async () => {
+    mockFetch(answering(() => ({ errors: [{ errorCode: "UNKNOWN_KEYSPACE", message: "no" }] })));
+    const unread = trackUnread();
+    try {
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      await expect(client.listResources(T.collection, "acc")).resolves.toHaveLength(1);
+      expect(unread.parts).toEqual([{ parentResourceIds: [keyspaceId("default_keyspace")] }]);
+    } finally {
+      unread.stop();
+    }
+  });
+
+  it("keeps the rows of a keyspace refused with a 403", async () => {
+    mockFetch(answering(() => new Response("{}", { status: 403 })));
+    const unread = trackUnread();
+    try {
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      await expect(client.listResources(T.collection, "acc")).resolves.toHaveLength(1);
+      expect(unread.parts).toEqual([{ parentResourceIds: [keyspaceId("default_keyspace")] }]);
+    } finally {
+      unread.stop();
+    }
+  });
+
+  it("does not raise an error on a database with no Data API, where no host tracks rows", async () => {
+    mockFetch({
+      "GET /v2/databases": [DB],
+      [`POST ${endpoint}/default_keyspace`]: () => new Response("{}", { status: 404 }),
+      [`POST ${endpoint}/analytics`]: () => new Response("{}", { status: 404 }),
+    });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    await expect(client.listResources(T.collection, "acc")).resolves.toEqual([]);
+  });
+
+  it("makes no request for a database with no endpoint, and keeps its rows", async () => {
+    const { dataEndpointUrl: _none, ...rest } = DB;
+    const bare = { ...rest, id: "bare", info: { keyspace: "ks" } };
+    const { calls } = mockFetch({ "GET /v2/databases": [bare] });
+    const unread = trackUnread();
+    try {
+      const client = hostClient(new AstraPluginClient({ token: "t" }));
+      await expect(client.listResources(T.collection, "acc")).resolves.toEqual([]);
+      expect(calls).toHaveLength(1);
+      expect(unread.parts).toEqual([{ parentResourceIds: [`acc:${T.keyspace}:bare/ks`] }]);
+    } finally {
+      unread.stop();
+    }
+  });
+});
+
 describe("status feed", () => {
   it("maps AWS and Azure components onto regions and Astra products onto types", () => {
     expect(mapComponent("AWS us-east-1")).toMatchObject({ regions: ["us-east-1"] });

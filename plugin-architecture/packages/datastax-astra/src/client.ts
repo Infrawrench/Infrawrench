@@ -30,6 +30,7 @@ import {
   devops,
   fetchText,
   isFeatureOff,
+  isKeyspaceNotServed,
   isUnavailable,
   statusOf,
   unwrapBody,
@@ -426,25 +427,34 @@ export class AstraPluginClient implements PluginClient {
           );
         case T.collection: {
           const out: ResourceInstance[] = [];
+          const notServed: string[] = [];
           const active = (await this.databases()).filter(
             (db) => (db.status ?? "").toUpperCase() === ACTIVE,
           );
           await this.readChildren(
             active.flatMap((db) =>
-              keyspacesOf(db).map((ks) => ({
-                parentId: `${accountId}:${T.keyspace}:${db.id}/${ks}`,
-                read: async () => {
-                  try {
-                    for (const c of await this.collections(db, ks))
-                      out.push(mapCollection(accountId, db.id, ks, c));
-                  } catch (err) {
-                    if (statusOf(err) === 401) throw err;
-                    // A non-vector database without the Data API, or a keyspace it refuses: no collections.
-                  }
-                },
-              })),
+              keyspacesOf(db).map((ks) => {
+                const parentId = `${accountId}:${T.keyspace}:${db.id}/${ks}`;
+                return {
+                  parentId,
+                  read: async () => {
+                    if (!apiEndpointOf(db)) {
+                      notServed.push(parentId);
+                      return;
+                    }
+                    try {
+                      for (const c of await this.collections(db, ks))
+                        out.push(mapCollection(accountId, db.id, ks, c));
+                    } catch (err) {
+                      if (!isKeyspaceNotServed(err)) throw err;
+                      notServed.push(parentId);
+                    }
+                  },
+                };
+              }),
             ),
           );
+          if (notServed.length) reportUnreadListPart({ parentResourceIds: notServed });
           return out;
         }
         case T.accessEntry: {
