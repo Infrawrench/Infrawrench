@@ -74,6 +74,7 @@ export type EditVoiceResponse = ApiResponse<operations["edit_voice"]>;
 export type UsageQueryBody = ApiBody<operations["usage_by_product_over_time"]>;
 export type UsageQueryResponse = ApiResponse<operations["usage_by_product_over_time"]>;
 export type UsageCell = UsageQueryResponse["rows"][number][number];
+export type Currency = components["schemas"]["Currency"];
 
 export type CharacterStatsResponse = ApiResponse<operations["usage_characters"]>;
 

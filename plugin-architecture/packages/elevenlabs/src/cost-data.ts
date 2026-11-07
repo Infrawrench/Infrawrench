@@ -55,6 +55,7 @@ import { CostSetupError, createApiClient, restRequest } from "@infrawrench/plugi
 import {
   API_BASE,
   type CharacterStatsResponse,
+  type Currency,
   type ElevenLabsSubscription,
   type UsageCell,
   type UsageQueryBody,
@@ -99,11 +100,18 @@ export interface ElevenLabsCostContext {
 
 /**
  * The `ColumnUnit` values that denote money rather than a quantity. This is
- * exactly the `Currency` enum from the same spec document (usd, eur, inr, pln),
- * which is how we know a currency-valued unit is a billing currency and not,
- * say, a duration.
+ * exactly the `Currency` enum from the same spec document, which is how we know
+ * a currency-valued unit is a billing currency and not, say, a duration. A record
+ * so that a currency added to the document fails the type check here.
  */
-const CURRENCY_UNITS = new Set(["usd", "eur", "inr", "pln"]);
+const CURRENCY_UNIT_NAMES: Record<Currency, true> = {
+  usd: true,
+  eur: true,
+  inr: true,
+  pln: true,
+  gbp: true,
+};
+const CURRENCY_UNITS = new Set(Object.keys(CURRENCY_UNIT_NAMES));
 
 /**
  * Last-resort billing currency.
@@ -115,14 +123,13 @@ const CURRENCY_UNITS = new Set(["usd", "eur", "inr", "pln"]);
  *
  *   1. the successor's per-row `fiat_currency` group-by column;
  *   2. the successor's `column_units` entry for the money column;
- *   3. `GET /v1/user/subscription` → `currency`, whose enum is the same four
- *      values (usd, eur, inr, pln);
+ *   3. `GET /v1/user/subscription` → `currency`, whose enum is the same values;
  *   4. this constant.
  *
  * USD is the defensible default only because it is the currency ElevenLabs
  * publishes all of its pricing in and the only one a workspace gets without
  * explicitly being billed in a regional currency. It is a *fallback*, not a
- * belief: steps 1-3 mean a EUR/INR/PLN workspace is reported correctly, and
+ * belief: steps 1-3 mean a EUR/INR/PLN/GBP workspace is reported correctly, and
  * this line is reached only when the subscription lookup also fails.
  *
  * Note also that `fiat_units_spent` is read as **major units** (dollars, not
@@ -392,7 +399,7 @@ interface ColumnPlan {
  *
  * The successor has no `metric` parameter and the spec does not enumerate the
  * column names it returns, so the money column is found by **unit** first:
- * `column_units[i]` being one of the four currency values is a positive
+ * `column_units[i]` being one of the currency values is a positive
  * statement from the API that column `i` holds money in that currency, and
  * only then by name. Returns `null` when there is no usable money column,
  * which the caller treats as schema drift and falls back on.

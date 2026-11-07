@@ -277,6 +277,24 @@ describe("fetchElevenLabsCostData — currency", () => {
     expect(pathsHit()).toEqual([ANALYTICS]);
   });
 
+  it("recognises a gbp money column by its unit, whatever the column is called", async () => {
+    installFetch({
+      [ANALYTICS]: {
+        body: {
+          columns: ["time", "product_type", "total_charged"],
+          column_types: ["DateTime", "String", "Float"],
+          column_units: [null, null, "gbp"],
+          rows: [["2026-08-01T00:00:00Z", "tts", 3.5]],
+        },
+      },
+    });
+
+    const rows = await fetchElevenLabsCostData(ctx(), range);
+
+    expect(pathsHit()).toEqual([ANALYTICS]);
+    expect(rows).toEqual([{ date: "2026-08-01", service: "tts", currency: "GBP", amount: 3.5 }]);
+  });
+
   it("reads the subscription currency when neither the row nor the unit states one", async () => {
     installFetch({
       [ANALYTICS]: {
