@@ -1,4 +1,11 @@
-import { findNextLink, type HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  findNextLink,
+  followableLink,
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
 
 /**
  * Buildkite REST API v2 (https://buildkite.com/docs/apis/rest-api, verified
@@ -43,6 +50,19 @@ export function statusOf(err: unknown): number {
 export function isPermissionError(err: unknown): boolean {
   const s = statusOf(err);
   return s === 401 || s === 403;
+}
+
+/**
+ * A 404 meaning the thing asked for is not there. Buildkite documents
+ * `{"message":"No organization found"}` as the answer to every organization route once
+ * the organization loses its active plan, and that says nothing about what it holds.
+ */
+export function isAbsent(err: unknown): boolean {
+  return statusOf(err) === 404 && !/no organization found/i.test(errorMessage(err));
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : "";
 }
 
 export type Query = Record<string, string | number | boolean | undefined | Array<string | number>>;
@@ -97,6 +117,8 @@ export interface RequestOptions {
   body?: unknown;
   /** Extra headers (Accept, Range, Buildkite-Version). */
   headers?: Record<string, string>;
+  /** The longest to wait on a 429 before the one retry. */
+  maxRateLimitWaitMs?: number;
 }
 
 export interface RawResponse {
@@ -106,6 +128,11 @@ export interface RawResponse {
 }
 
 const MAX_RATE_LIMIT_WAIT_MS = 30_000;
+/**
+ * Both limits are per minute, so a list past 50 pages meets one that only a wait of up
+ * to the whole minute gets through: a shorter wait spends the retry inside the window.
+ */
+const LIST_RATE_LIMIT_WAIT_MS = 60_000;
 
 function header(headers: Record<string, string>, name: string): string | undefined {
   const lower = name.toLowerCase();
@@ -165,7 +192,10 @@ export async function bkRequest(
       Number(header(res.headers, "RateLimit-User-Reset") ?? 0),
       Number(header(res.headers, "RateLimit-Reset") ?? 0),
     );
-    const waitMs = Math.min(MAX_RATE_LIMIT_WAIT_MS, Math.max(1, reset || 5) * 1000);
+    const waitMs = Math.min(
+      opts.maxRateLimitWaitMs ?? MAX_RATE_LIMIT_WAIT_MS,
+      Math.max(1, reset || 5) * 1000,
+    );
     await (ctx.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms))))(waitMs);
     res = await once(ctx, url, method, headers, body);
   }
@@ -194,38 +224,62 @@ export function nextLink(linkHeader: string | undefined): string | undefined {
   return findNextLink(linkHeader);
 }
 
+export interface PagedOptions {
+  query?: Query;
+  headers?: Record<string, string>;
+  maxPages?: number;
+  /** Return what was read at the cap, for a read where part of the list is fine. */
+  partial?: boolean;
+}
+
+/** 10,000 rows, and two minutes at the per-user limit: inside one poll. */
+const DEFAULT_MAX_PAGES = 100;
+/** A picker's 2,000 options; it is fine with part of the list. */
+export const PICKER_MAX_PAGES = 20;
+
+type ListBody<T> = T[] | { items?: T[] | null } | null | undefined;
+
+function pageRows<T>(text: string, path: string): T[] {
+  const place = { vendor: "Buildkite", path };
+  let body: ListBody<T>;
+  try {
+    body = text ? JSON.parse(text) : undefined;
+  } catch {
+    throw new ListPageError({ ...place, key: null, found: text });
+  }
+  if (Array.isArray(body) || body === null || body === undefined) {
+    return requireListPage(body, { ...place, key: null });
+  }
+  return requireListPage(body.items, { ...place, key: "items" });
+}
+
 /**
- * Every page of a `Link`-paginated list, up to `maxPages` (so a bad header
- * cannot loop forever). Only `api.buildkite.com` next links are followed,
- * so the token never goes anywhere else.
+ * Every page of a `Link`-paginated list. Past `maxPages` it throws, unless `partial`, and
+ * a next link off the API host throws too, so the token never goes anywhere else.
  */
 export async function bkPaged<T>(
   ctx: BkContext,
   path: string,
-  query: Query = {},
-  maxPages = 20,
-  headers?: Record<string, string>,
+  options: PagedOptions = {},
 ): Promise<T[]> {
+  const { query, headers, partial, maxPages = DEFAULT_MAX_PAGES } = options;
   const out: T[] = [];
-  let next: string | undefined = path;
-  let first = true;
-  for (let page = 0; page < maxPages && next; page++) {
+  let next = path;
+  let pageUrl = `${API_BASE}${path}`;
+  for (let page = 0; page < maxPages; page++) {
     const res: RawResponse = await bkRequest(ctx, next, {
-      ...(first ? { query: { per_page: 100, ...query } } : {}),
+      ...(page === 0 ? { query: { per_page: 100, ...query } } : {}),
       ...(headers ? { headers } : {}),
+      ...(partial ? {} : { maxRateLimitWaitMs: LIST_RATE_LIMIT_WAIT_MS }),
     });
-    first = false;
-    const parsed = res.text ? (JSON.parse(res.text) as unknown) : [];
-    const items = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray((parsed as { items?: unknown }).items)
-        ? ((parsed as { items: unknown[] }).items as unknown[])
-        : [];
-    out.push(...(items as T[]));
+    out.push(...pageRows<T>(res.text, path));
     const link = nextLink(header(res.headers, "Link"));
-    next = link && link.startsWith(`${API_BASE}/`) ? link : undefined;
+    if (!link) return out;
+    next = followableLink(link, pageUrl, { vendor: "Buildkite", path });
+    pageUrl = next;
   }
-  return out;
+  if (partial) return out;
+  throw new ListTruncatedError({ vendor: "Buildkite", path, items: out.length, maxPages });
 }
 
 export const enc = encodeURIComponent;

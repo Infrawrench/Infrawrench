@@ -19,15 +19,21 @@ import type {
   SecretHostServices,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  reportUnreadListPart,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { BkContext } from "./api.js";
 import {
   BuildkiteApiError,
+  PICKER_MAX_PAGES,
   bkFetch,
   bkPaged,
   bkRequest,
   cleanLog,
   enc,
+  isAbsent,
   isPermissionError,
   statusOf,
 } from "./api.js";
@@ -74,11 +80,19 @@ import { INSTANCE_SHAPES } from "./resource-types.js";
 
 /** Builds listed (and whose jobs are listed): the most recent across the organization. */
 const BUILD_LIMIT = 50;
+/**
+ * Parents a type reads children for in one poll. Buildkite allows 50 requests a minute per
+ * user, so a poll's 300 seconds hold 250 requests between all its types.
+ */
+const MAX_FANOUT_PARENTS = 40;
 /** Bytes of log read per requested line, for the Range tail. */
 const BYTES_PER_LINE = 240;
 const MAX_LOG_BYTES = 2_000_000;
 /** Test Engine's metrics come back only when this version (or later) is requested. */
 const TEST_ENGINE_VERSION = { "Buildkite-Version": "2026-08-01" };
+
+/** What a create form reads for its options, where part of a list is fine. */
+const PICKER = { maxPages: PICKER_MAX_PAGES, partial: true };
 
 const DEFAULT_STEPS = `steps:
   - label: ":pipeline: Upload"
@@ -86,6 +100,32 @@ const DEFAULT_STEPS = `steps:
 `;
 
 const bool = (v: string | undefined) => v === "true" || v === "1";
+
+/** For a read that only decorates a row: leave the value off, unless the list was cut short. */
+function noValue(err: unknown): undefined {
+  rethrowIncompleteList(err);
+  return undefined;
+}
+
+/**
+ * For the same read on a single resource's page, where nothing prunes: a failed list only
+ * costs a count, and it must not fail a page or an edit that has already gone through.
+ */
+const anyFailure = (): undefined => undefined;
+
+/**
+ * The parents to read this poll and the ones left for later. Polls share nothing, so past
+ * the budget the start moves with the clock by the golden ratio, which spreads evenly over
+ * the list however long it is.
+ */
+function fanOutWindow<P>(parents: P[], idOf: (p: P) => string): { now: P[]; later: P[] } {
+  if (parents.length <= MAX_FANOUT_PARENTS) return { now: parents, later: [] };
+  const sorted = [...parents].sort((a, b) => (idOf(a) < idOf(b) ? -1 : 1));
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  return { now: rotated.slice(0, MAX_FANOUT_PARENTS), later: rotated.slice(MAX_FANOUT_PARENTS) };
+}
 
 /** Attach detail-only data to a resource for the renderer. */
 function stash(r: ResourceInstance, data: Record<string, unknown>): ResourceInstance {
@@ -264,10 +304,13 @@ export class BuildkiteClient implements PluginClient {
     return this.memo(
       () => this.buildsCache,
       (p) => (this.buildsCache = p),
+      // Rolling window: the newest 50. Older rows falling off is what this type means.
       () =>
-        bkFetch<BkBuild[]>(this.ctx, `${this.base}/builds`, {
+        bkPaged<BkBuild>(this.ctx, `${this.base}/builds`, {
           query: { per_page: BUILD_LIMIT },
-        }).then((b) => b ?? []),
+          maxPages: 1,
+          partial: true,
+        }),
     );
   }
 
@@ -279,14 +322,18 @@ export class BuildkiteClient implements PluginClient {
     );
   }
 
-  private async clusterNames(): Promise<Map<string, BkCluster>> {
-    const list = await this.clusters().catch(() => [] as BkCluster[]);
+  private async clusterNames(
+    onFail: (err: unknown) => undefined = noValue,
+  ): Promise<Map<string, BkCluster>> {
+    const list = (await this.clusters().catch(onFail)) ?? [];
     return new Map(list.map((c) => [c.id, c]));
   }
 
   /** Agents per `clusterId/queueId`, from the agents' web URLs. */
-  private async agentsPerQueue(): Promise<Map<string, number> | undefined> {
-    const agents = await this.agents().catch(() => undefined);
+  private async agentsPerQueue(
+    onFail: (err: unknown) => undefined = noValue,
+  ): Promise<Map<string, number> | undefined> {
+    const agents = await this.agents().catch(onFail);
     if (!agents) return undefined;
     const counts = new Map<string, number>();
     for (const a of agents) {
@@ -299,28 +346,61 @@ export class BuildkiteClient implements PluginClient {
     return counts;
   }
 
-  /** Run `fn` for every cluster, skipping clusters the token may not read. */
-  private async perCluster<T>(fn: (c: BkCluster) => Promise<T[]>): Promise<T[]> {
+  /**
+   * Children of each parent, for as many parents as a poll can read. One the token may not
+   * read, or one past the budget, is named so its stored rows stay. One that is gone has
+   * none. Anything else fails the type.
+   */
+  private async fanOut<P, T>(
+    accountId: string,
+    parentTypeId: string,
+    parents: P[],
+    idOf: (p: P) => string,
+    read: (p: P) => Promise<T[]>,
+  ): Promise<T[]> {
+    const parentId = (p: P) => `${accountId}:${parentTypeId}:${idOf(p)}`;
+    const { now, later } = fanOutWindow(parents, idOf);
+    if (later.length > 0) reportUnreadListPart({ parentResourceIds: later.map(parentId) });
     const out: T[] = [];
-    for (const c of await this.clusters()) {
+    let readOne = false;
+    let refused: unknown;
+    for (const p of now) {
       try {
-        out.push(...(await fn(c)));
+        out.push(...(await read(p)));
+        readOne = true;
       } catch (err) {
-        const s = statusOf(err);
-        if (s !== 403 && s !== 404) throw err;
+        if (isAbsent(err)) {
+          readOne = true;
+          continue;
+        }
+        if (statusOf(err) !== 403) throw err;
+        if (!reportUnreadListPart({ parentResourceIds: [parentId(p)] })) refused = err;
       }
     }
+    // Refused throughout on a host that keeps no track (the desktop): a missing scope to show.
+    if (refused !== undefined && !readOne) throw refused;
     return out;
   }
 
+  private async perCluster<T>(accountId: string, fn: (c: BkCluster) => Promise<T[]>): Promise<T[]> {
+    return this.fanOut(accountId, "cluster", await this.clusters(), (c) => c.id, fn);
+  }
+
+  /** A 404 is an organization with no Test Engine; a refusal fails up to the whole-type rule. */
+  private async suitesOrNone(): Promise<BkSuite[]> {
+    try {
+      return await this.suites();
+    } catch (err) {
+      if (isAbsent(err)) return [];
+      throw err;
+    }
+  }
+
   private async flakyTests(suiteSlug: string): Promise<BkTest[]> {
-    return bkPaged<BkTest>(
-      this.ctx,
-      `${this.analytics}/suites/${enc(suiteSlug)}/tests`,
-      { labels: "flaky", sort_by: "reliability", order: "asc" },
-      3,
-      TEST_ENGINE_VERSION,
-    );
+    return bkPaged<BkTest>(this.ctx, `${this.analytics}/suites/${enc(suiteSlug)}/tests`, {
+      query: { labels: "flaky", sort_by: "reliability", order: "asc" },
+      headers: TEST_ENGINE_VERSION,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -329,155 +409,163 @@ export class BuildkiteClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      switch (typeId) {
-        case "organization":
-          return [await this.organizationResource(accountId)];
-        case "pipeline": {
-          this.pipelinesCache = undefined;
-          const [pipelines, clusters] = await Promise.all([this.pipelines(), this.clusterNames()]);
-          return pipelines.map((p) => {
-            const c = p.cluster_id ? clusters.get(p.cluster_id) : undefined;
-            return mapPipeline(accountId, p, c?.name, c?.graphql_id);
-          });
-        }
-        case "build":
-          this.buildsCache = undefined;
-          return (await this.recentBuilds()).map((b) =>
-            mapBuild(accountId, b.pipeline?.slug ?? "", b),
-          );
-        case "job": {
-          const out: ResourceInstance[] = [];
-          for (const b of await this.recentBuilds()) {
-            const slug = b.pipeline?.slug ?? "";
-            for (const j of b.jobs ?? []) {
-              if (j.type === "waiter") continue;
-              out.push(mapJob(accountId, slug, b.number, j));
-            }
-          }
-          return out;
-        }
-        case "agent":
-          this.agentsCache = undefined;
-          return (await this.agents()).map((a) => mapAgent(accountId, a));
-        case "cluster": {
-          this.clustersCache = undefined;
-          const [clusters, counts] = await Promise.all([this.clusters(), this.agentsPerQueue()]);
-          const out: ResourceInstance[] = [];
-          for (const c of clusters) {
-            const queues = await bkPaged<BkQueue>(
-              this.ctx,
-              `${this.base}/clusters/${enc(c.id)}/queues`,
-            ).catch(() => undefined);
-            out.push(
-              mapCluster(accountId, c, {
-                ...(queues ? { queueCount: queues.length } : {}),
-                ...(counts ? { agentCount: counts.get(c.id) ?? 0 } : {}),
-                ...(queues && c.default_queue_id
-                  ? { defaultQueueKey: queues.find((q) => q.id === c.default_queue_id)?.key ?? "" }
-                  : {}),
-              }),
-            );
-          }
-          return out;
-        }
-        case "queue": {
-          const counts = await this.agentsPerQueue();
-          return this.perCluster(async (c) =>
-            (await bkPaged<BkQueue>(this.ctx, `${this.base}/clusters/${enc(c.id)}/queues`)).map(
-              (q) =>
-                mapQueue(accountId, c.id, q, {
-                  clusterName: c.name,
-                  ...(c.graphql_id ? { clusterGraphqlId: c.graphql_id } : {}),
-                  ...(counts ? { agentCount: counts.get(`${c.id}/${q.id}`) ?? 0 } : {}),
-                }),
-            ),
-          );
-        }
-        case "agent-token":
-          return this.perCluster(async (c) =>
-            (
-              await bkPaged<BkAgentToken>(this.ctx, `${this.base}/clusters/${enc(c.id)}/tokens`)
-            ).map((t) => mapAgentToken(accountId, c.id, t, c.name)),
-          );
-        case "cluster-secret":
-          return this.perCluster(async (c) =>
-            (await bkPaged<BkSecret>(this.ctx, `${this.base}/clusters/${enc(c.id)}/secrets`)).map(
-              (s) => mapSecret(accountId, c.id, s, c.name),
-            ),
-          );
-        case "schedule": {
-          const out: ResourceInstance[] = [];
-          for (const p of await this.pipelines()) {
-            if (p.archived_at) continue;
-            try {
-              const list = await bkPaged<BkSchedule>(
-                this.ctx,
-                `${this.base}/pipelines/${enc(p.slug)}/schedules`,
-              );
-              out.push(...list.map((s) => mapSchedule(accountId, p.slug, s, p.graphql_id)));
-            } catch (err) {
-              const s = statusOf(err);
-              if (s !== 403 && s !== 404) throw err;
-            }
-          }
-          return out;
-        }
-        case "pipeline-template":
-          try {
-            return (await bkPaged<BkTemplate>(this.ctx, `${this.base}/pipeline-templates`)).map(
-              (t) => mapTemplate(accountId, t),
-            );
-          } catch (err) {
-            // Not an Enterprise organization, or the token lacks the scope.
-            if (statusOf(err) === 403 || statusOf(err) === 404) return [];
-            throw err;
-          }
-        case "test-suite": {
-          this.suitesCache = undefined;
-          let suites: BkSuite[];
-          try {
-            suites = await this.suites();
-          } catch (err) {
-            if (statusOf(err) === 403 || statusOf(err) === 404) return [];
-            throw err;
-          }
-          const out: ResourceInstance[] = [];
-          for (const s of suites) {
-            const flaky = await this.flakyTests(s.slug).catch(() => undefined);
-            out.push(mapSuite(accountId, s, flaky ? { flakyCount: flaky.length } : {}));
-          }
-          return out;
-        }
-        case "test": {
-          let suites: BkSuite[];
-          try {
-            suites = await this.suites();
-          } catch (err) {
-            if (statusOf(err) === 403 || statusOf(err) === 404) return [];
-            throw err;
-          }
-          const out: ResourceInstance[] = [];
-          for (const s of suites) {
-            const tests = await this.flakyTests(s.slug).catch(() => [] as BkTest[]);
-            out.push(...tests.map((t) => mapTest(accountId, s.slug, t)));
-          }
-          return out;
-        }
-        default:
-          throw new Error(`Buildkite plugin: unknown resource type "${typeId}"`);
+      try {
+        return await this.listType(typeId, accountId);
+      } catch (err) {
+        if (statusOf(err) !== 403) throw err;
+        // A token without this type's scope: its stored rows stay. A host that keeps no
+        // track (the desktop) answers false, and there the refusal should still show.
+        if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+        return [];
       }
     });
   }
 
-  private async organizationResource(accountId: string): Promise<ResourceInstance> {
+  private async listType(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "organization":
+        return [await this.organizationResource(accountId)];
+      case "pipeline": {
+        this.pipelinesCache = undefined;
+        const [pipelines, clusters] = await Promise.all([this.pipelines(), this.clusterNames()]);
+        return pipelines.map((p) => {
+          const c = p.cluster_id ? clusters.get(p.cluster_id) : undefined;
+          return mapPipeline(accountId, p, c?.name, c?.graphql_id);
+        });
+      }
+      case "build":
+        this.buildsCache = undefined;
+        return (await this.recentBuilds()).map((b) =>
+          mapBuild(accountId, b.pipeline?.slug ?? "", b),
+        );
+      case "job": {
+        const out: ResourceInstance[] = [];
+        for (const b of await this.recentBuilds()) {
+          const slug = b.pipeline?.slug ?? "";
+          for (const j of b.jobs ?? []) {
+            if (j.type === "waiter") continue;
+            out.push(mapJob(accountId, slug, b.number, j));
+          }
+        }
+        return out;
+      }
+      case "agent":
+        this.agentsCache = undefined;
+        return (await this.agents()).map((a) => mapAgent(accountId, a));
+      case "cluster": {
+        this.clustersCache = undefined;
+        const [clusters, counts] = await Promise.all([this.clusters(), this.agentsPerQueue()]);
+        // Past the budget the same clusters are counted each poll, so a count does not come
+        // and go and read as a change.
+        const counted = new Set(clusters.slice(0, MAX_FANOUT_PARENTS).map((c) => c.id));
+        const out: ResourceInstance[] = [];
+        for (const c of clusters) {
+          const queues = counted.has(c.id)
+            ? await bkPaged<BkQueue>(this.ctx, `${this.base}/clusters/${enc(c.id)}/queues`).catch(
+                noValue,
+              )
+            : undefined;
+          out.push(
+            mapCluster(accountId, c, {
+              ...(queues ? { queueCount: queues.length } : {}),
+              ...(counts ? { agentCount: counts.get(c.id) ?? 0 } : {}),
+              ...(queues && c.default_queue_id
+                ? { defaultQueueKey: queues.find((q) => q.id === c.default_queue_id)?.key ?? "" }
+                : {}),
+            }),
+          );
+        }
+        return out;
+      }
+      case "queue": {
+        const counts = await this.agentsPerQueue();
+        return this.perCluster(accountId, async (c) =>
+          (await bkPaged<BkQueue>(this.ctx, `${this.base}/clusters/${enc(c.id)}/queues`)).map((q) =>
+            mapQueue(accountId, c.id, q, {
+              clusterName: c.name,
+              ...(c.graphql_id ? { clusterGraphqlId: c.graphql_id } : {}),
+              ...(counts ? { agentCount: counts.get(`${c.id}/${q.id}`) ?? 0 } : {}),
+            }),
+          ),
+        );
+      }
+      case "agent-token":
+        return this.perCluster(accountId, async (c) =>
+          (await bkPaged<BkAgentToken>(this.ctx, `${this.base}/clusters/${enc(c.id)}/tokens`)).map(
+            (t) => mapAgentToken(accountId, c.id, t, c.name),
+          ),
+        );
+      case "cluster-secret":
+        return this.perCluster(accountId, async (c) =>
+          (await bkPaged<BkSecret>(this.ctx, `${this.base}/clusters/${enc(c.id)}/secrets`)).map(
+            (s) => mapSecret(accountId, c.id, s, c.name),
+          ),
+        );
+      case "schedule": {
+        const live = (await this.pipelines()).filter((p) => !p.archived_at);
+        return this.fanOut(
+          accountId,
+          "pipeline",
+          live,
+          (p) => p.slug,
+          async (p) =>
+            (
+              await bkPaged<BkSchedule>(this.ctx, `${this.base}/pipelines/${enc(p.slug)}/schedules`)
+            ).map((s) => mapSchedule(accountId, p.slug, s, p.graphql_id)),
+        );
+      }
+      case "pipeline-template":
+        try {
+          return (await bkPaged<BkTemplate>(this.ctx, `${this.base}/pipeline-templates`)).map((t) =>
+            mapTemplate(accountId, t),
+          );
+        } catch (err) {
+          if (isAbsent(err)) return [];
+          if (statusOf(err) !== 403) throw err;
+          // A token without the scope, or a plan without templates (Enterprise only), and
+          // nothing tells them apart. Stored rows stay. Not shown where a host keeps no
+          // track, as for other types, because most organizations are on such a plan.
+          reportUnreadListPart({ idPrefixes: [""] });
+          return [];
+        }
+      case "test-suite": {
+        this.suitesCache = undefined;
+        const suites = await this.suitesOrNone();
+        const counted = new Set(suites.slice(0, MAX_FANOUT_PARENTS).map((s) => s.slug));
+        const out: ResourceInstance[] = [];
+        for (const s of suites) {
+          const flaky = counted.has(s.slug)
+            ? await this.flakyTests(s.slug).catch(noValue)
+            : undefined;
+          out.push(mapSuite(accountId, s, flaky ? { flakyCount: flaky.length } : {}));
+        }
+        return out;
+      }
+      case "test":
+        return this.fanOut(
+          accountId,
+          "test-suite",
+          await this.suitesOrNone(),
+          (s) => s.slug,
+          async (s) => (await this.flakyTests(s.slug)).map((t) => mapTest(accountId, s.slug, t)),
+        );
+      default:
+        throw new Error(`Buildkite plugin: unknown resource type "${typeId}"`);
+    }
+  }
+
+  private async organizationResource(
+    accountId: string,
+    onFail: (err: unknown) => undefined = noValue,
+  ): Promise<ResourceInstance> {
     const [org, usage, pipelines, agents, clusters, rate] = await Promise.all([
       this.organization(),
       bkFetch<{ active_users_count?: number }>(this.ctx, `${this.base}/usage`).catch(
         () => undefined,
       ),
-      this.pipelines().catch(() => undefined),
-      this.agents().catch(() => undefined),
-      this.clusters().catch(() => undefined),
+      this.pipelines().catch(onFail),
+      this.agents().catch(onFail),
+      this.clusters().catch(onFail),
       bkFetch<{ scopes?: { rest?: { limit?: number; current?: number } } }>(
         this.ctx,
         `${this.base}/rate_limit`,
@@ -541,7 +629,7 @@ export class BuildkiteClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "organization":
-          return this.organizationResource(accountId);
+          return this.organizationResource(accountId, anyFailure);
         case "pipeline": {
           const [p, clusters] = await Promise.all([
             bkFetch<BkPipeline>(this.ctx, `${this.base}/pipelines/${enc(id)}`),
@@ -569,7 +657,10 @@ export class BuildkiteClient implements PluginClient {
           const b = await bkFetch<BkBuild>(this.ctx, path);
           const [annotations, artifacts] = await Promise.all([
             bkFetch<BkAnnotation[]>(this.ctx, `${path}/annotations`).catch(() => undefined),
-            bkPaged<BkArtifact>(this.ctx, `${path}/artifacts`, {}, 2).catch(() => undefined),
+            bkPaged<BkArtifact>(this.ctx, `${path}/artifacts`, {
+              maxPages: 2,
+              partial: true,
+            }).catch(() => undefined),
           ]);
           return stash(mapBuild(accountId, slug, b), {
             [DETAIL_KEYS.jobs]: b.jobs ?? [],
@@ -594,7 +685,7 @@ export class BuildkiteClient implements PluginClient {
             bkPaged<BkQueue>(this.ctx, `${this.base}/clusters/${enc(id)}/queues`).catch(
               () => undefined,
             ),
-            this.agentsPerQueue(),
+            this.agentsPerQueue(anyFailure),
           ]);
           return stash(
             mapCluster(accountId, c, {
@@ -614,8 +705,8 @@ export class BuildkiteClient implements PluginClient {
               this.ctx,
               `${this.base}/clusters/${enc(clusterId)}/queues/${enc(queueId)}`,
             ),
-            this.clusterNames(),
-            this.agentsPerQueue(),
+            this.clusterNames(anyFailure),
+            this.agentsPerQueue(anyFailure),
           ]);
           const c = clusters.get(clusterId);
           return mapQueue(accountId, clusterId, q, {
@@ -631,7 +722,7 @@ export class BuildkiteClient implements PluginClient {
               this.ctx,
               `${this.base}/clusters/${enc(clusterId)}/tokens/${enc(tokenId)}`,
             ),
-            this.clusterNames(),
+            this.clusterNames(anyFailure),
           ]);
           return mapAgentToken(accountId, clusterId, t, clusters.get(clusterId)?.name);
         }
@@ -642,7 +733,7 @@ export class BuildkiteClient implements PluginClient {
               this.ctx,
               `${this.base}/clusters/${enc(clusterId)}/secrets/${enc(secretId)}`,
             ),
-            this.clusterNames(),
+            this.clusterNames(anyFailure),
           ]);
           return mapSecret(accountId, clusterId, s, clusters.get(clusterId)?.name);
         }
@@ -873,9 +964,11 @@ export class BuildkiteClient implements PluginClient {
 
   private async pipelineField(parentResourceId?: string): Promise<CreateFieldConfig[]> {
     if (parentResourceId) return [];
-    const pipelines = (await this.pipelines().catch(() => [] as BkPipeline[])).filter(
-      (p) => !p.archived_at,
-    );
+    const pipelines = (
+      await bkPaged<BkPipeline>(this.ctx, `${this.base}/pipelines`, PICKER).catch(
+        () => [] as BkPipeline[],
+      )
+    ).filter((p) => !p.archived_at);
     return [
       {
         key: "pipeline",
@@ -890,7 +983,9 @@ export class BuildkiteClient implements PluginClient {
 
   private async clusterField(parentResourceId?: string): Promise<CreateFieldConfig[]> {
     if (parentResourceId) return [];
-    const clusters = await this.clusters().catch(() => [] as BkCluster[]);
+    const clusters = await bkPaged<BkCluster>(this.ctx, `${this.base}/clusters`, PICKER).catch(
+      () => [] as BkCluster[],
+    );
     return [
       {
         key: "cluster",
@@ -908,7 +1003,7 @@ export class BuildkiteClient implements PluginClient {
   }
 
   private async teamOptions(): Promise<BkTeam[]> {
-    return bkPaged<BkTeam>(this.ctx, `${this.base}/teams`).catch(() => [] as BkTeam[]);
+    return bkPaged<BkTeam>(this.ctx, `${this.base}/teams`, PICKER).catch(() => [] as BkTeam[]);
   }
 
   getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
@@ -917,7 +1012,7 @@ export class BuildkiteClient implements PluginClient {
         case "pipeline": {
           const [teams, templates] = await Promise.all([
             this.teamOptions(),
-            bkPaged<BkTemplate>(this.ctx, `${this.base}/pipeline-templates`).catch(
+            bkPaged<BkTemplate>(this.ctx, `${this.base}/pipeline-templates`, PICKER).catch(
               () => [] as BkTemplate[],
             ),
           ]);

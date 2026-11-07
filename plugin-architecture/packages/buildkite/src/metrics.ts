@@ -102,7 +102,11 @@ export async function buildMetrics(
     created_to: new Date(endMs).toISOString(),
     exclude_pipeline: true,
   };
-  const builds = await bkPaged<BkBuild>(ctx, path, query, MAX_BUILD_PAGES);
+  const builds = await bkPaged<BkBuild>(ctx, path, {
+    query,
+    maxPages: MAX_BUILD_PAGES,
+    partial: true,
+  });
   const bucketMs = endMs - range.startMs <= 2 * DAY_MS ? HOUR_MS : DAY_MS;
   return buildSeries(builds, bucketMs);
 }

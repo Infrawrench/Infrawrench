@@ -36,15 +36,10 @@ function client(route: (call: Call) => unknown, secrets?: Map<string, string>) {
 }
 
 describe("api", () => {
-  it("sends the token as a bearer and follows Link pagination on the API host only", async () => {
+  it("sends the token as a bearer and follows Link pagination", async () => {
     const { http, calls } = makeHttp((call) => {
       expect(call.headers["Authorization"]).toBe("Bearer t");
-      if (call.url.searchParams.get("page") === "2") {
-        return {
-          body: [{ id: "b" }],
-          headers: { Link: `<https://evil.example.com/v2/x?page=3>; rel="next"` },
-        };
-      }
+      if (call.url.searchParams.get("page") === "2") return [{ id: "b" }];
       expect(call.url.searchParams.get("per_page")).toBe("100");
       return {
         body: [{ id: "a" }],

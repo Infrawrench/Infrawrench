@@ -7,7 +7,7 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import type { BkContext } from "./api.js";
-import { bkPaged, isPermissionError } from "./api.js";
+import { bkPaged, isPermissionError, PICKER_MAX_PAGES } from "./api.js";
 import { BuildkiteClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import type { BkOrganization } from "./mappers.js";
@@ -72,7 +72,10 @@ async function listCredentialOptions(
   if (!token) throw new Error("Enter an API access token first.");
   const ctx: BkContext = { token, ...(services?.http ? { http: services.http } : {}) };
   try {
-    const orgs = await bkPaged<BkOrganization>(ctx, "/organizations");
+    const orgs = await bkPaged<BkOrganization>(ctx, "/organizations", {
+      maxPages: PICKER_MAX_PAGES,
+      partial: true,
+    });
     if (orgs.length === 0) {
       throw new Error(
         "The token can access no Buildkite organizations. Check the organization access on the token, and that the organization has an active plan.",
