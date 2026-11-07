@@ -357,6 +357,19 @@ export class CursorClient implements PluginClient {
 
   // ---- Listing -------------------------------------------------------------
 
+  /** A 403 for a whole type, such as a plan without billing groups, is not a failed poll. */
+  private async keepRowsIfRefused<T>(load: () => Promise<T[]>): Promise<T[]> {
+    try {
+      return await load();
+    } catch (err) {
+      if (!(err instanceof CursorApiError && err.status === 403)) throw err;
+      // This type's stored rows stay. A host that keeps no track (the desktop) answers false,
+      // and there the refusal should still show.
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      return [];
+    }
+  }
+
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
       switch (typeId) {
@@ -373,24 +386,30 @@ export class CursorClient implements PluginClient {
           return modelUsage(events).map((m) => this.mapModel(accountId, m, truncated));
         }
         case "billing-group": {
-          const { groups } = await getBillingGroups(this.ctx);
-          return groups.map((g) => this.mapBillingGroup(accountId, g));
+          return this.keepRowsIfRefused(async () => {
+            const { groups } = await getBillingGroups(this.ctx);
+            return groups.map((g) => this.mapBillingGroup(accountId, g));
+          });
         }
         case "directory-group": {
-          const groups = await getDirectoryGroups(this.ctx);
-          const withMembers = groups.length <= LIST_MEMBERS_FOR_GROUPS;
-          return Promise.all(
-            groups.map(async (g) =>
-              this.mapDirectoryGroup(
-                accountId,
-                g,
-                withMembers ? await getDirectoryGroupMembers(this.ctx, g.id) : undefined,
+          return this.keepRowsIfRefused(async () => {
+            const groups = await getDirectoryGroups(this.ctx);
+            const withMembers = groups.length <= LIST_MEMBERS_FOR_GROUPS;
+            return Promise.all(
+              groups.map(async (g) =>
+                this.mapDirectoryGroup(
+                  accountId,
+                  g,
+                  withMembers ? await getDirectoryGroupMembers(this.ctx, g.id) : undefined,
+                ),
               ),
-            ),
-          );
+            );
+          });
         }
         case "repo-blocklist":
-          return (await getRepoBlocklists(this.ctx)).map((r) => this.mapBlocklist(accountId, r));
+          return this.keepRowsIfRefused(async () =>
+            (await getRepoBlocklists(this.ctx)).map((r) => this.mapBlocklist(accountId, r)),
+          );
         default:
           throw new Error(`Cursor plugin: unknown resource type "${typeId}"`);
       }

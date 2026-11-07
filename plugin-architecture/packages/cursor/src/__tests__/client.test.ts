@@ -573,3 +573,37 @@ describe("audit log tail", () => {
     expect(emails(logs.text)[0]).toBe("u950@acme.com");
   });
 });
+
+describe("a type the key is refused", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
+  const ROUTES = [
+    ["billing-group", "/teams/groups"],
+    ["directory-group", "/teams/directory-groups"],
+    ["repo-blocklist", "/settings/repo-blocklists/repos"],
+  ] as const;
+
+  it.each(ROUTES)("keeps stored %s rows on a 403", async (type, path) => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    const { c } = client((url) => (url.pathname === path ? { status: 403, body: {} } : undefined));
+    await expect(c.listResources(type, "acc")).resolves.toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+  });
+
+  it.each(ROUTES)("shows the %s refusal where the host keeps no track", async (type, path) => {
+    const { c } = client((url) => (url.pathname === path ? { status: 403, body: {} } : undefined));
+    await expect(c.listResources(type, "acc")).rejects.toThrow(/403/);
+  });
+
+  it.each([401, 429, 500])("still fails the type on a %i", async (status) => {
+    Reflect.set(globalThis, UNREAD_HOOK, vi.fn());
+    const { c } = client((url) =>
+      url.pathname === "/teams/groups" ? { status, body: {} } : undefined,
+    );
+    await expect(c.listResources("billing-group", "acc")).rejects.toThrow(String(status));
+  });
+});
