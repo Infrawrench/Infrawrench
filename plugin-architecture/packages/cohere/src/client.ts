@@ -18,6 +18,7 @@ import type {
 import {
   base64ToBytes,
   jsonRestFetch,
+  hostTransport,
   externalIdOf,
   formatBytes,
   buildMultipartBody,
@@ -172,6 +173,7 @@ const RECORDING_DISABLED_REASON =
 export class CohereClient implements PluginClient {
   private readonly apiKey: string;
   private readonly services: HostServices | undefined;
+  private readonly caCert: string | undefined;
   private readonly api: CohereApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -179,7 +181,8 @@ export class CohereClient implements PluginClient {
     if (!apiKey) throw new Error("Cohere plugin: missing apiKey credential");
     this.apiKey = apiKey;
     this.services = services;
-    this.api = createCohereApi(apiKey, services?.http);
+    this.caCert = credentials["caCert"];
+    this.api = createCohereApi(apiKey, services?.http, this.caCert);
   }
 
   // ---------------------------------------------------------------------------
@@ -1675,7 +1678,7 @@ export class CohereClient implements PluginClient {
           // through.
           body,
         },
-        ...(this.services?.http ? { http: this.services.http } : {}),
+        ...hostTransport(this.services?.http, this.caCert),
       });
 
       return {

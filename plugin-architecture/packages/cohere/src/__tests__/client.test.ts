@@ -66,6 +66,51 @@ describe("auth and base URL", () => {
   });
 });
 
+describe("host transport and the CA certificate", () => {
+  const clip = {
+    audioBase64: Buffer.from([1, 2, 3]).toString("base64"),
+    mimeType: "audio/wav",
+    fileName: "clip.wav",
+    language: "en",
+  };
+
+  function hostedRequest() {
+    return vi.fn(async (_req: { url: string; caCert?: string }) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ models: [], text: "hi" }),
+    }));
+  }
+
+  it("hands the certificate to the host on JSON and multipart calls", async () => {
+    const request = hostedRequest();
+    const fetchSpy = installFetch(() => jsonResponse({}));
+    const hosted = hostClient(
+      new CohereClient({ apiKey: "k", caCert: "PEM" }, { http: { request } }),
+    );
+
+    await hosted.listResources("model", ACCOUNT);
+    await hosted.transcribeAudio("model", `${ACCOUNT}:model:m`, ACCOUNT, clip);
+
+    expect(request.mock.calls.map(([req]) => req.caCert)).toEqual(["PEM", "PEM"]);
+    expect(request.mock.calls[1]![0].url).toContain("/v2/audio/transcriptions");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("sends no caCert when none is set, and never falls back to fetch", async () => {
+    const request = hostedRequest();
+    const fetchSpy = installFetch(() => jsonResponse({}));
+    const hosted = hostClient(new CohereClient({ apiKey: "k" }, { http: { request } }));
+
+    await hosted.listResources("model", ACCOUNT);
+    await hosted.transcribeAudio("model", `${ACCOUNT}:model:m`, ACCOUNT, clip);
+
+    expect(request).toHaveBeenCalledTimes(2);
+    for (const [req] of request.mock.calls) expect(req).not.toHaveProperty("caCert");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("check-api-key", () => {
   it("POSTs to the v1 path with no body", async () => {
     installFetch(() => jsonResponse({ valid: true, organization_id: "org-1", owner_id: "own-1" }));

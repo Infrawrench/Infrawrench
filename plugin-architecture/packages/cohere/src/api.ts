@@ -39,12 +39,16 @@ export function cohereHeaders(apiKey: string): Record<string, string> {
   };
 }
 
-export function createCohereApi(apiKey: string, http: HttpHostServices | undefined): CohereApi {
+export function createCohereApi(
+  apiKey: string,
+  http: HttpHostServices | undefined,
+  caCert: string | undefined,
+): CohereApi {
   return createApiClient<paths>({
     vendor: "Cohere",
     baseUrl: BASE_URL,
     headers: cohereHeaders(apiKey),
-    // No `caCert`: the plugin offers the credential and has never read it (#543).
     http,
+    caCert,
   });
 }
