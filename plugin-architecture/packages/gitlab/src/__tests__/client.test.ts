@@ -44,6 +44,36 @@ describe("base URL", () => {
   });
 });
 
+describe("a list answered with something else", () => {
+  it.each([
+    ["an object", { message: "maintenance" }, "it was an object with message"],
+    ["no body", { status: 204 }, "it was nothing"],
+  ])("refuses %s rather than end the list", async (_name, reply, said) => {
+    const { c } = client(() => reply);
+    await expect(c.listResources("project", ACC)).rejects.toThrow(said);
+  });
+
+  it("refuses it on a later page too, rather than return the first", async () => {
+    const { c } = client((call) =>
+      call.url.searchParams.get("page") === "1"
+        ? { body: [{ id: 1, path_with_namespace: "a/b" }], headers: { "x-next-page": "2" } }
+        : { message: "maintenance" },
+    );
+    await expect(c.listResources("project", ACC)).rejects.toThrow("is not a list");
+  });
+
+  it("does not let a bad page of subgroups shrink the group list", async () => {
+    const { c } = client(
+      (call) =>
+        call.url.pathname.endsWith("/descendant_groups")
+          ? { message: "maintenance" }
+          : { id: 1, full_path: "g" },
+      { group: "g" },
+    );
+    await expect(c.listResources("group", ACC)).rejects.toThrow("is not a list");
+  });
+});
+
 describe("transport", () => {
   it("sends PRIVATE-TOKEN and follows X-Next-Page", async () => {
     const { http, calls } = makeHttp((call) => {

@@ -158,11 +158,9 @@ const followingPage = (cursor: string | undefined) => String(Number(cursor) + 1)
 
 /**
  * `X-Next-Page` where GitLab sends it. A proxy can strip the header, so without it
- * a full page means there may be another. A body that is not a list ends the walk,
- * and one that is empty defers to the header.
+ * a full page means there may be another. An empty page defers to the header.
  */
-const nextPage: NextPage = ({ headers, body, items, cursor, pageSize }) => {
-  if (body !== undefined && !Array.isArray(body)) return null;
+const nextPage: NextPage = ({ headers, items, cursor, pageSize }) => {
   const next = headers["x-next-page"];
   if (next === undefined) {
     return items.length < (pageSize ?? PAGES.pageSize) ? null : followingPage(cursor);

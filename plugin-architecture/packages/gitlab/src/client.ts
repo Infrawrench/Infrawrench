@@ -28,7 +28,12 @@ import type {
   SidebarItemSchema,
   VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, unencodedSegment } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  pathEncode,
+  rethrowIncompleteList,
+  unencodedSegment,
+} from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
 import { listSecretDetectionFindings, resolveSecretDetectionFinding } from "./secret-detection.js";
 import {
@@ -221,7 +226,10 @@ export class GitLabClient implements PluginClient {
           }),
           this.api
             .getAll(`/groups/${this.groupRef}/descendant_groups`, null, { maxPages: 5 })
-            .catch((): GlGroup[] => []),
+            .catch((err: unknown): GlGroup[] => {
+              rethrowIncompleteList(err);
+              return [];
+            }),
         ]);
         return [root, ...descendants];
       }

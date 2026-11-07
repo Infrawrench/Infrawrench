@@ -32,6 +32,7 @@
  * ways and a sync that dies on an undocumented enum value helps nobody.
  */
 import { restRequest, type RestResponse } from "./http.js";
+import { ListPageError } from "./list-errors.js";
 import type { HttpHostServices } from "./manifest.js";
 
 /** A path segment known to contain no slashes. Made by {@link pathEncode}. */
@@ -164,6 +165,8 @@ export interface ApiAnswer<Body> extends RestResponse<Body> {
 }
 
 export type ApiClient<P> = { [M in HttpMethod]: Caller<P, M> } & {
+  /** The provider's name, which a list walk's errors start with. */
+  readonly vendor: string;
   /** `get`, answering with the status and headers too: `X-Total`, a rate limit. */
   getResponse: <const Path extends keyof PathsFor<P, "get"> & string>(
     path: Path,
@@ -379,6 +382,7 @@ export function createApiClient<P>(options: ApiClientOptions): ApiClient<P> {
   // The generic surface above is the point of this file; the implementation is
   // one function per verb and cannot express it.
   return {
+    vendor,
     get: call("get"),
     put: call("put"),
     post: call("post"),
@@ -436,13 +440,24 @@ type ListOptions<Op, Paging extends string> = ListQuery<Op, Paging> & CallOption
 
 type ListArgs<Options> = object extends Options ? [options?: Options] : [options: Options];
 
+/** What one `getAll` call can change about a walk. */
+interface WalkOptions<Item> {
+  pageSize?: number;
+  maxPages?: number;
+  /** End after a page this says is enough, such as one reaching past a time window. */
+  stopWhen?: (batch: Item[]) => boolean;
+}
+
 type GetAll<P, Paging extends string> = <
   const Path extends keyof PathsFor<P, "get"> & string,
   Key extends ListKey<ApiResponse<PathsFor<P, "get">[Path]>>,
 >(
   path: Path,
   key: Key,
-  ...args: ListArgs<ListOptions<PathsFor<P, "get">[Path], Paging>>
+  ...args: ListArgs<
+    ListOptions<PathsFor<P, "get">[Path], Paging> &
+      WalkOptions<ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>>
+  >
 ) => Promise<ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>[]>;
 
 /** A client that can also walk a page-numbered list to its end. */
@@ -451,7 +466,29 @@ export type PaginatedApiClient<P, Paging extends string> = ApiClient<P> & {
   getAll: GetAll<P, Paging>;
 };
 
-export interface PageNumberPagination<PageParam extends string, SizeParam extends string, Page> {
+/** What every dialect can say about a page that holds no list. Off means it throws. */
+interface ListPageTolerance {
+  /**
+   * Read a 2xx with no body as the end of the list, for a provider documented to
+   * answer an empty list that way. Off by default, so it throws a `ListPageError`:
+   * the host prunes resources a sync stops seeing, and "no answer" is not "none".
+   */
+  emptyBodyEndsList?: boolean;
+  /**
+   * Read a body whose list key is absent or null as an empty page, for a provider
+   * documented to leave the key out of an empty answer, as proto3 JSON does. Say so
+   * in a comment. Off by default, so it throws a `ListPageError`: that is also what a
+   * renamed key or an error wrapped in a 200 looks like. A value that is there but
+   * is not an array throws either way.
+   */
+  missingListIsEmpty?: boolean;
+}
+
+export interface PageNumberPagination<
+  PageParam extends string,
+  SizeParam extends string,
+  Page,
+> extends ListPageTolerance {
   /** The query parameter holding the 1-based page number. */
   pageParam: PageParam;
   /** The query parameter holding the page size. */
@@ -461,12 +498,18 @@ export interface PageNumberPagination<PageParam extends string, SizeParam extend
   total?: (page: Page) => number | null | undefined;
   /** Send the paging parameters before the caller's query, rather than after it. */
   pagingFirst?: boolean;
+  /** Send the page size before the page number, rather than after it. */
+  sizeFirst?: boolean;
+  /** The most pages one list may take, so a provider ignoring the page number cannot loop forever. 1,000 by default. */
+  maxPages?: number;
 }
 
+const DEFAULT_PAGE_NUMBER_MAX_PAGES = 1000;
+
 /**
- * Add `getAll` for a provider that pages by number. A list ends on an empty or
- * missing batch, a batch shorter than `pageSize`, or on reaching `total`. Cursors
- * are {@link withCursorPagination}, next links {@link withLinkPagination}.
+ * Add `getAll` for a provider that pages by number. A list ends on an empty batch,
+ * a batch shorter than `pageSize`, or on reaching `total`, and a page with no list
+ * throws. Cursors are {@link withCursorPagination}, next links {@link withLinkPagination}.
  */
 export function withPagination<
   P,
@@ -477,28 +520,29 @@ export function withPagination<
   client: ApiClient<P>,
   pagination: PageNumberPagination<PageParam, SizeParam, Page>,
 ): PaginatedApiClient<P, PageParam | SizeParam> {
-  const { pageParam, sizeParam, pageSize, total, pagingFirst } = pagination;
-  // As in `createApiClient`: `getAll` is what the generic surface promises, and its
-  // implementation walks pages of any path, which that surface cannot express.
-  const get = client.get as unknown as (
-    path: string,
-    request: RequestOptions,
-  ) => Promise<(Page & Record<string, unknown>) | undefined>;
-  const getAll = async (path: string, key: string | null, request: RequestOptions = {}) => {
-    const items: unknown[] = [];
-    for (let page = 1; ; page++) {
-      const paging = { [pageParam]: page, [sizeParam]: pageSize };
-      const query = pagingFirst ? { ...paging, ...request.query } : { ...request.query, ...paging };
-      const body = await get(path, { ...request, query });
-      const batch = key === null ? body : body?.[key];
-      if (!Array.isArray(batch) || batch.length === 0) return items;
-      items.push(...batch);
-      const reported = body && total?.(body);
-      if (reported != null && items.length >= reported) return items;
-      if (batch.length < pageSize) return items;
-    }
+  const {
+    pageParam,
+    total,
+    sizeFirst,
+    maxPages = DEFAULT_PAGE_NUMBER_MAX_PAGES,
+    ...rest
+  } = pagination;
+  const config: WalkConfig = {
+    ...rest,
+    cursorParam: pageParam,
+    firstCursor: 1,
+    cursorFirst: !sizeFirst,
+    maxPages,
+    stopOnShortPage: true,
+    next: ({ cursor }) => Number(cursor) + 1,
+    // Only called with a page the provider answered, which is what `Page` describes.
+    ...(total ? { total: ({ body }) => total(body as Page) } : {}),
   };
-  return { ...client, getAll } as unknown as PaginatedApiClient<P, PageParam | SizeParam>;
+  // The generic surface is what `getAll` promises; the walk takes any path.
+  return { ...client, getAll: walkPages(client, config) } as unknown as PaginatedApiClient<
+    P,
+    PageParam | SizeParam
+  >;
 }
 
 /** The value at a dotted path, through whichever union members have it. */
@@ -519,7 +563,7 @@ export interface PageAnswer {
   /** Lower-cased names. */
   headers: Record<string, string>;
   body: unknown;
-  /** The page's list, empty if the body held none. */
+  /** The page's list. */
   items: readonly unknown[];
   /** The cursor that fetched this page, as a string, or the link it came from. */
   cursor: string | undefined;
@@ -541,7 +585,7 @@ export interface CursorPagination<
   SizeParam extends string = string,
   Next extends CursorSource = CursorSource,
   HasMore extends string = string,
-> {
+> extends ListPageTolerance {
   /** The query parameter the cursor is sent back in. */
   cursorParam: CursorParam;
   /** Sent on the first request, for a provider that numbers pages and expects `page=1`. */
@@ -569,10 +613,11 @@ export interface CursorPagination<
   /** Keep following the cursor past an empty page, as gRPC-backed lists require. */
   continueOnEmptyPage?: boolean;
   /**
-   * Read a 2xx with no body as the end of the list. Off by default, so it throws:
-   * the host prunes resources a sync stops seeing, and "no answer" is not "none".
+   * End once this many rows have been read, for a provider that reports its total:
+   * a field of the response by dotted path, or a function over the page. Saves the
+   * last request on an offset list, and is not checked against the document.
    */
-  emptyBodyEndsList?: boolean;
+  total?: string | ((page: PageAnswer) => number | string | null | undefined);
   /** Told when a list stops at `maxPages` with a cursor still in hand. */
   onTruncated?: (info: { path: string; items: number; maxPages: number }) => void;
 }
@@ -648,12 +693,8 @@ type CursorGetAll<P, D extends CursorDialect> = <
   path: Path,
   key: Key,
   ...args: ListArgs<
-    ListOptions<PathsFor<P, "get">[Path], D["cursorParam"] | D["sizeParam"]> & {
-      pageSize?: number;
-      maxPages?: number;
-      /** End after a page this says is enough, such as one reaching past a time window. */
-      stopWhen?: (batch: ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>[]) => boolean;
-    }
+    ListOptions<PathsFor<P, "get">[Path], D["cursorParam"] | D["sizeParam"]> &
+      WalkOptions<ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>>
   >
 ) => Promise<ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>[]>;
 
@@ -667,11 +708,7 @@ export type CursorApiClient<P, D extends CursorDialect> = ApiClient<P> & {
   getAll: CursorGetAll<P, D>;
 };
 
-interface CursorRequest extends RequestOptions {
-  pageSize?: number;
-  maxPages?: number;
-  stopWhen?: (batch: unknown[]) => boolean;
-}
+type CursorRequest = RequestOptions & WalkOptions<unknown>;
 
 /** Walk a dotted path through a body that has not been validated. */
 function readField(from: unknown, path: string): unknown {
@@ -693,8 +730,9 @@ function readField(from: unknown, path: string): unknown {
  *   next: "links.next", readCursor: (link) => ...               // a cursor inside a URL
  *   next: ({ headers }) => headers["x-next-page"]               // anything else on the page
  *
- * A list ends on a missing or empty batch, a falsy cursor, a falsy `hasMore`, or at
- * `maxPages`. A cursor is sent back after the caller's query and the page size.
+ * A list ends on an empty batch, a falsy cursor, a falsy `hasMore`, on reaching
+ * `total`, or at `maxPages`, and a page with no list throws. A cursor is sent back
+ * after the caller's query and the page size.
  */
 export function withCursorPagination<
   P,
@@ -724,18 +762,33 @@ export function withCursorPagination<
 /** What a list walk reads from its configuration, whichever way it follows a page. */
 type WalkConfig = Omit<CursorPagination, "cursorParam"> & {
   cursorParam?: string;
+  /** Send the cursor before the page size, as a page number conventionally goes. */
+  cursorFirst?: boolean;
   foreignLinks?: ForeignLinks;
   resolveLink?: ResolveLink;
 };
 
+/** What a page holds under `key`, reading nothing out of a body that is not an object. */
+function listAt(body: unknown, key: string | null): unknown {
+  if (key === null) return body;
+  return typeof body === "object" && body !== null ? Reflect.get(body, key) : undefined;
+}
+
+function reportedTotal(total: WalkConfig["total"], page: PageAnswer): number | undefined {
+  const value = typeof total === "function" ? total(page) : total && readField(page.body, total);
+  if (value === null || value === undefined || value === "") return undefined;
+  const count = Number(value);
+  return Number.isFinite(count) ? count : undefined;
+}
+
 function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
   const { cursorParam, sizeParam, next, hasMore, readCursor, onTruncated, foreignLinks } = config;
-  const { resolveLink, pagingFirst } = config;
-  // As in `withPagination`: the implementation walks any path.
+  const { resolveLink, pagingFirst, total, cursorFirst } = config;
+  // As in `createApiClient`: the implementation walks any path.
   const getResponse = client.getResponse as unknown as (
     path: string,
     request: RequestOptions,
-  ) => Promise<ApiAnswer<Record<string, unknown>>>;
+  ) => Promise<ApiAnswer<unknown>>;
   return async (path: string, key: string | null, request: CursorRequest = {}) => {
     const { pageSize = config.pageSize, maxPages = config.maxPages, query } = request;
     const { signal, headers: callHeaders } = request;
@@ -746,9 +799,12 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
     for (let page = 0; page < maxPages; page++) {
       // A link already holds every parameter the list needs.
       const link = cursorParam === undefined ? cursor : undefined;
+      const sizing =
+        sizeParam !== undefined && pageSize !== undefined ? { [sizeParam]: pageSize } : {};
       const paging = {
-        ...(sizeParam !== undefined && pageSize !== undefined ? { [sizeParam]: pageSize } : {}),
+        ...(cursorFirst ? {} : sizing),
         ...(cursorParam !== undefined && cursor !== undefined ? { [cursorParam]: cursor } : {}),
+        ...(cursorFirst ? sizing : {}),
       };
       const { body, headers, url } = await getResponse(link ?? path, {
         ...(link === undefined
@@ -758,9 +814,13 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
         ...(callHeaders ? { headers: callHeaders } : {}),
       });
       origin ??= new URL(url).origin;
-      if (config.emptyBodyEndsList && (body === null || body === undefined)) return items;
-      // Not `body?.[key]`: see `emptyBodyEndsList`.
-      const batch: unknown = key === null ? body : body[key];
+      const noBody = body === null || body === undefined;
+      if (noBody && config.emptyBodyEndsList) return items;
+      const batch = listAt(body, key);
+      const absent = !noBody && (batch === null || batch === undefined);
+      if (!Array.isArray(batch) && !(absent && config.missingListIsEmpty)) {
+        throw new ListPageError({ vendor: client.vendor, path, key, found: batch, page: body });
+      }
       const list: unknown[] = Array.isArray(batch) ? batch : [];
       if (list.length === 0 && !config.continueOnEmptyPage) return items;
       items.push(...list);
@@ -768,10 +828,13 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
       if (request.stopWhen?.(list)) return items;
       if (hasMore !== undefined && !readField(body, hasMore)) return items;
       if (config.stopOnShortPage && pageSize !== undefined && list.length < pageSize) return items;
+      const answer: PageAnswer = { headers, body, items: list, cursor, pageSize };
+      const reported = reportedTotal(total, answer);
+      if (reported !== undefined && items.length >= reported) return items;
 
       const found =
         typeof next === "function"
-          ? next({ headers, body, items: list, cursor, pageSize })
+          ? next(answer)
           : typeof next === "string"
             ? readField(body, next)
             : readField(list[list.length - 1], next.lastItem);

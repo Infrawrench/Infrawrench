@@ -20,6 +20,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   dnsContentField,
+  rethrowIncompleteList,
   joinSubtitle,
   pathEncode,
   renderDnsRecordDetail,
@@ -1194,7 +1195,12 @@ export class VercelClient implements PluginClient {
     // answer with an error, which just means "no records to show".
     const domains = await this.api.getAll("/v5/domains", "domains");
     const batches = await Promise.all(
-      domains.map((d) => this.listDnsRecordsForDomain(d.name, accountId).catch(() => [])),
+      domains.map((d) =>
+        this.listDnsRecordsForDomain(d.name, accountId).catch((err: unknown) => {
+          rethrowIncompleteList(err);
+          return [];
+        }),
+      ),
     );
     return batches.flat();
   }

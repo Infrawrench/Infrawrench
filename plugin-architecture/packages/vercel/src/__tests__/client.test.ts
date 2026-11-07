@@ -128,7 +128,7 @@ describe("wire format", () => {
   it("throws on a list with no body rather than reading it as empty", async () => {
     installFetch(() => jsonResponse(undefined, 204));
     await expect(client().listResources("vercel-domain", ACCOUNT)).rejects.toThrow(
-      "Cannot read properties of undefined (reading 'domains')",
+      "Vercel answered /v5/domains with a page that is not a list",
     );
   });
 
@@ -404,10 +404,29 @@ describe("listResources dispatch + mappers", () => {
     await expect(client().listResources("nope", ACCOUNT)).rejects.toThrow(/unknown resource type/);
   });
 
-  it("paginate stops when dataKey is not an array", async () => {
+  it("refuses a page whose list is not an array, rather than prune every project", async () => {
     installFetch(() => jsonResponse({ projects: "notarray" }));
-    const res = await client().listResources("vercel-project", ACCOUNT);
-    expect(res).toEqual([]);
+    await expect(client().listResources("vercel-project", ACCOUNT)).rejects.toThrow(
+      'its "projects" was a string',
+    );
+  });
+
+  it("refuses a page with a renamed list key", async () => {
+    installFetch(() => jsonResponse({ items: [], pagination: { next: null } }));
+    await expect(client().listResources("vercel-deployment", ACCOUNT)).rejects.toThrow(
+      'it has no "deployments", only an object with items, pagination',
+    );
+  });
+
+  it("lets a domain with no records be empty, but not a domain with a bad page", async () => {
+    installFetch((url) => {
+      if (url.includes("/v5/domains/a.com/records")) return jsonResponse({ error: "nope" }, 400);
+      if (url.includes("/v5/domains/b.com/records")) return jsonResponse({ oops: true });
+      return jsonResponse({ domains: [{ name: "a.com" }, { name: "b.com" }] });
+    });
+    await expect(client().listResources("vercel-dns-record", ACCOUNT)).rejects.toThrow(
+      'it has no "records"',
+    );
   });
 });
 

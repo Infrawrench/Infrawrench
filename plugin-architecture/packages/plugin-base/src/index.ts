@@ -526,6 +526,15 @@ export type {
 export { isSingleSqlStatement, assertSingleSqlStatement } from "./sql-statements.js";
 
 export {
+  IncompleteListError,
+  ListPageError,
+  isIncompleteListError,
+  requireListPage,
+  rethrowIncompleteList,
+} from "./list-errors.js";
+export type { ListPageProblem, ListPlace } from "./list-errors.js";
+
+export {
   commaSeparated,
   createApiClient,
   nextLinkHeader,

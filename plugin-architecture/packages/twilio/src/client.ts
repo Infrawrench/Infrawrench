@@ -15,7 +15,12 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CreditAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  CreditAccessError,
+  externalIdOf,
+  pathEncode,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { ApiForm } from "@infrawrench/plugin-base";
 import type { TwilioContext } from "./api.js";
 import { accountPath, isAccessDenied, messaging, pricing, v2010, verify } from "./api.js";
@@ -258,7 +263,10 @@ export class TwilioClient implements PluginClient {
         if (!s.sid) return;
         const numbers = await messaging(this.ctx)
           .getAll(`/v1/Services/${pathEncode(s.sid)}/PhoneNumbers`, "phone_numbers")
-          .catch(() => []);
+          .catch((err: unknown) => {
+            rethrowIncompleteList(err);
+            return [];
+          });
         out.set(`service:${s.sid}`, {
           sid: s.sid,
           name: s.friendly_name ?? s.sid,

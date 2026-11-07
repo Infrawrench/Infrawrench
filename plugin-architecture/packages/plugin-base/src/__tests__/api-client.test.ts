@@ -16,6 +16,12 @@ import {
   type ApiResponse,
   type PageAnswer,
 } from "../api-client.js";
+import {
+  isIncompleteListError,
+  ListPageError,
+  requireListPage,
+  rethrowIncompleteList,
+} from "../list-errors.js";
 import type { HttpHostServices } from "../manifest.js";
 
 /** The shape `openapi-typescript` emits, reduced to what the client reads. */
@@ -703,9 +709,60 @@ describe("withPagination", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("treats a missing root key as the end of the list", async () => {
+  it("refuses a page with no list, rather than read it as the end of the list", async () => {
     fetchMock.mockResolvedValueOnce(response({ meta: {} }));
-    await expect(paged().getAll("/items", "items")).resolves.toEqual([]);
+    await expect(paged().getAll("/items", "items")).rejects.toThrow(ListPageError);
+  });
+
+  it("refuses a bad second page too, instead of returning the first", async () => {
+    fetchMock
+      .mockResolvedValueOnce(response({ items: items(2) }))
+      .mockResolvedValueOnce(response({ error: "try again" }));
+    await expect(paged().getAll("/items", "items")).rejects.toThrow(
+      'Example answered /items with a page that is not a list: it has no "items", only an object with error.',
+    );
+  });
+
+  it("reads a missing key as empty only when told to", async () => {
+    fetchMock.mockResolvedValueOnce(response({ meta: {} }));
+    const api = withPagination(client(), {
+      pageParam: "page",
+      sizeParam: "per_page",
+      pageSize: 2,
+      missingListIsEmpty: true,
+    });
+    await expect(api.getAll("/items", "items")).resolves.toEqual([]);
+  });
+
+  it("reads no body as the end only when told to", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await expect(paged().getAll("/items", "items")).rejects.toThrow(ListPageError);
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const api = withPagination(client(), {
+      pageParam: "page",
+      sizeParam: "per_page",
+      pageSize: 2,
+      emptyBodyEndsList: true,
+    });
+    await expect(api.getAll("/items", "items")).resolves.toEqual([]);
+  });
+
+  it("sends the size before the page number when told to", async () => {
+    fetchMock.mockResolvedValueOnce(response({ items: [] }));
+    const api = withPagination(client(), {
+      pageParam: "page",
+      sizeParam: "per_page",
+      pageSize: 2,
+      sizeFirst: true,
+    });
+    await api.getAll("/items", "items");
+    expect(urls()).toEqual(["/items?per_page=2&page=1"]);
+  });
+
+  it("takes pageSize and stopWhen per call", async () => {
+    fetchMock.mockImplementation(async () => response({ items: items(9) }));
+    await paged().getAll("/items", "items", { pageSize: 9, stopWhen: () => true });
+    expect(urls()).toEqual(["/items?page=1&per_page=9"]);
   });
 
   it("sends the page params first when told to", async () => {
@@ -843,13 +900,71 @@ describe("withCursorPagination", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it.each([
-      ["empty", { things: [], pagination: { next: 5 } }],
-      ["missing", { pagination: { next: 5 } }],
-      ["not an array", { things: "nope", pagination: { next: 5 } }],
-    ])("ends when the batch is %s, even with a cursor", async (_name, body) => {
-      answer(body);
+    it("ends when the batch is empty, even with a cursor", async () => {
+      answer({ things: [], pagination: { next: 5 } });
       await expect(nested().getAll("/nested", "things")).resolves.toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      [
+        "missing",
+        { pagination: { next: 5 } },
+        'it has no "things", only an object with pagination',
+      ],
+      ["null", { things: null, pagination: { next: 5 } }, 'its "things" was null'],
+      ["not an array", { things: "nope", pagination: { next: 5 } }, 'its "things" was a string'],
+      ["an object", { things: {}, pagination: { next: 5 } }, 'its "things" was an empty object'],
+    ])("refuses a batch that is %s", async (_name, body, said) => {
+      answer(body);
+      const failure = nested().getAll("/nested", "things");
+      await expect(failure).rejects.toBeInstanceOf(ListPageError);
+      await expect(failure).rejects.toThrow(said);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("loses what a good first page read when the next one is bad", async () => {
+      answer({ things: [item(1)], pagination: { next: 5 } }, { error: "nope" });
+      await expect(nested().getAll("/nested", "things")).rejects.toThrow(
+        'it has no "things", only an object with error',
+      );
+    });
+
+    it("refuses a root list answered with an object", async () => {
+      answer({ message: "maintenance" });
+      const api = withCursorPagination(client(), {
+        cursorParam: "cursor",
+        sizeParam: "limit",
+        pageSize: 2,
+        maxPages: 2,
+        next: { lastItem: "cursor" },
+      });
+      await expect(api.getAll("/root-array", null)).rejects.toThrow(
+        "it was an object with message",
+      );
+    });
+
+    it("still refuses something that is there and not a list, whatever it is told", async () => {
+      answer({ things: "nope", pagination: { next: 5 } });
+      const api = withCursorPagination(client(), {
+        cursorParam: "until",
+        maxPages: 2,
+        next: "pagination.next",
+        missingListIsEmpty: true,
+        emptyBodyEndsList: true,
+      });
+      await expect(api.getAll("/no-size", "things")).rejects.toThrow(ListPageError);
+    });
+
+    it("ends on a total it is told about, without asking for another page", async () => {
+      answer({ things: [item(1)], pagination: { next: 5 }, count: 1 });
+      const api = withCursorPagination(client(), {
+        cursorParam: "until",
+        maxPages: 5,
+        next: "pagination.next",
+        total: "count",
+      });
+      await expect(api.getAll("/no-size", "things")).resolves.toHaveLength(1);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
@@ -928,9 +1043,7 @@ describe("withCursorPagination", () => {
 
     it("throws on a 2xx with no body rather than reading it as an empty list", async () => {
       fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
-      await expect(nested().getAll("/nested", "things")).rejects.toThrow(
-        "Cannot read properties of undefined (reading 'things')",
-      );
+      await expect(nested().getAll("/nested", "things")).rejects.toThrow("it was empty");
     });
 
     it("reads a 2xx with no body as the end of the list when told to", async () => {
@@ -1005,7 +1118,7 @@ describe("withCursorPagination", () => {
   });
 
   describe("a token that may come back with an empty page", () => {
-    const tokens = (continueOnEmptyPage: boolean) =>
+    const tokens = (continueOnEmptyPage: boolean, missingListIsEmpty = true) =>
       withCursorPagination(client(), {
         cursorParam: "pageToken",
         sizeParam: "pageSize",
@@ -1013,6 +1126,7 @@ describe("withCursorPagination", () => {
         maxPages: 10,
         next: "nextPageToken",
         continueOnEmptyPage,
+        missingListIsEmpty,
       });
 
     it("keeps following it when told to", async () => {
@@ -1024,6 +1138,11 @@ describe("withCursorPagination", () => {
     it("stops by default", async () => {
       answer({ nextPageToken: "a" });
       await expect(tokens(false).getAll("/token", "things")).resolves.toEqual([]);
+    });
+
+    it("refuses an omitted list unless told a proto3 provider leaves it out", async () => {
+      answer({ nextPageToken: "a" });
+      await expect(tokens(true, false).getAll("/token", "things")).rejects.toThrow(ListPageError);
     });
   });
 
@@ -2257,3 +2376,37 @@ export function compileTimeChecks(api: ApiClient<paths>, raw: string) {
 
 /** Named response types come from the same place the verbs get them. */
 export type ItemResponse = ApiResponse<paths["/items/{id}"]["get"]>["item"];
+
+describe("requireListPage", () => {
+  const where = { vendor: "Test", path: "/x", key: "items" };
+
+  it("hands back an array, empty or not", () => {
+    expect(requireListPage([1, 2], where)).toEqual([1, 2]);
+    expect(requireListPage([], where)).toEqual([]);
+  });
+
+  it.each([[undefined], [null]])("refuses %s", (value) => {
+    expect(() => requireListPage<number>(value, where)).toThrow(ListPageError);
+  });
+});
+
+describe("an incomplete list inside a catch", () => {
+  const failure = new ListPageError({ vendor: "Test", path: "/x", key: "items", found: null });
+
+  it("is recognised by its marker, directly or as a cause, across bundled copies", () => {
+    expect(isIncompleteListError(failure)).toBe(true);
+    expect(isIncompleteListError(new Error("wrapped", { cause: failure }))).toBe(true);
+    // What another bundled copy of this class looks like from here.
+    expect(isIncompleteListError(Object.assign(new Error("x"), { incompleteList: true }))).toBe(
+      true,
+    );
+    expect(isIncompleteListError(new Error("x"))).toBe(false);
+    expect(isIncompleteListError("x")).toBe(false);
+    expect(isIncompleteListError(null)).toBe(false);
+  });
+
+  it("is rethrown, and anything else left to the catch", () => {
+    expect(() => rethrowIncompleteList(failure)).toThrow(failure);
+    expect(() => rethrowIncompleteList(new Error("404"))).not.toThrow();
+  });
+});

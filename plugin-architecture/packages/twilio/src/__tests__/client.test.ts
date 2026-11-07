@@ -40,6 +40,35 @@ describe("credentials", () => {
   });
 });
 
+describe("a list answered with something else", () => {
+  it("refuses a page with no list, rather than prune every trigger", async () => {
+    const { c } = client(() => ({ body: { message: "maintenance" } }));
+    await expect(c.listResources("usage-trigger", ACCOUNT)).rejects.toThrow(
+      'it has no "usage_triggers", only an object with message',
+    );
+  });
+
+  it("refuses it on a later page too", async () => {
+    const { c } = client((url) =>
+      url.searchParams.get("Page") === "1"
+        ? { body: { message: "maintenance" } }
+        : { body: { usage_triggers: [{ sid: "UT1" }], next_page_uri: "/next?Page=1" } },
+    );
+    await expect(c.listResources("usage-trigger", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("does not read a bad page of a service's numbers as a service with none", async () => {
+    const { c } = client((url) =>
+      url.pathname.endsWith("/PhoneNumbers")
+        ? { body: { oops: true } }
+        : { body: { services: [{ sid: "MG1" }], meta: {} } },
+    );
+    await expect(c.listResources("messaging-service", ACCOUNT)).rejects.toThrow(
+      'it has no "phone_numbers"',
+    );
+  });
+});
+
 describe("phone numbers", () => {
   const numbersRoute = (url: URL): Reply => {
     if (url.pathname === "/2010-04-01/Accounts.json") {

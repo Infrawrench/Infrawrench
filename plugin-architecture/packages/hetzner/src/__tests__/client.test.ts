@@ -39,6 +39,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("a list answered with something else", () => {
+  it("refuses a page with no list, rather than prune every server", async () => {
+    fetchMock.mockResolvedValue(okJson({ error: { code: "maintenance" } }));
+    await expect(makeClient().listResources("server", ACCOUNT)).rejects.toThrow(
+      'it has no "servers", only an object with error',
+    );
+  });
+
+  it("refuses it on a later page too, rather than return the first", async () => {
+    const full = Array.from({ length: 50 }, (_, i) => ({ id: i }));
+    fetchMock
+      .mockResolvedValueOnce(okJson({ ssh_keys: full }))
+      .mockResolvedValueOnce(okJson({ error: { code: "maintenance" } }));
+    await expect(makeClient().listResources("ssh-key", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+});
+
 function lastCall(): [url: string | URL | Request, init: RequestInit] {
   const call = fetchMock.mock.calls[fetchMock.mock.calls.length - 1] as unknown as [
     string | URL | Request,
