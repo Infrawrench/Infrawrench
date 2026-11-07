@@ -133,6 +133,39 @@ describe("seatRows", () => {
 });
 
 describe("fetchCursorCostData", () => {
+  const route = (events: unknown) => (url: URL) => {
+    switch (url.pathname) {
+      case "/teams/members":
+        return { body: { teamMembers: [] } };
+      case "/teams/spend":
+        return { body: { teamMemberSpend: [], totalPages: 1 } };
+      case "/teams/filtered-usage-events":
+        return { body: events };
+      default:
+        return { status: 404, body: {} };
+    }
+  };
+  const collect = (http: Parameters<typeof fetchCursorCostData>[0]["http"]) =>
+    fetchCursorCostData(
+      { apiKey: "crsr_test", ...(http ? { http } : {}) },
+      parseSeatPricing({}),
+      range,
+      Date.parse("2026-10-03T12:00:00Z"),
+    );
+
+  it("throws rather than come up short when usage events pass the page cap", async () => {
+    const { http, calls } = makeHttp(route({ usageEvents: [], pagination: { hasNextPage: true } }));
+    await expect(collect(http)).rejects.toThrow(/has more than Infrawrench reads/);
+    expect(calls.filter((c) => c.url.pathname === "/teams/filtered-usage-events")).toHaveLength(
+      2000,
+    );
+  });
+
+  it("throws on a usage-event page that is not a list", async () => {
+    const { http } = makeHttp(route({ events: [], pagination: { hasNextPage: false } }));
+    await expect(collect(http)).rejects.toThrow(/is not a list/);
+  });
+
   it("reads members, spend and every usage-event page", async () => {
     const { http, calls } = makeHttp((url, _method, body) => {
       const b = body as Record<string, number> | undefined;

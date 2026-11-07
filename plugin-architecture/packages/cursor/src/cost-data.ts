@@ -32,7 +32,7 @@ import { DAY_MS, getTeamMembers, getTeamSpend, getUsageEvents, isoDay, splitRang
 export const DEFAULT_STANDARD_SEAT_PRICE = 40;
 export const DEFAULT_PREMIUM_SEAT_PRICE = 120;
 
-/** Usage-event pages the collector will walk per window before giving up (1,000 events each). */
+/** Usage-event pages the collector walks per window before it throws (1,000 events each). */
 const COLLECTOR_MAX_PAGES = 2000;
 
 export interface SeatPricing {

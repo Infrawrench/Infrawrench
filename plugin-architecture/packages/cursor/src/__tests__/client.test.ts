@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CursorClient, parseDollarLimit, validateRepoUrl } from "../client.js";
 import { TeamMemberResourceType } from "../resource-types.js";
 import type { Reply } from "./helpers.js";
@@ -358,5 +358,171 @@ describe("audit log", () => {
     expect(logs.text).toBe(
       "2026-10-01T00:00:00Z login b@acme.com from 1.2.3.4\n2026-10-02T00:00:00Z add_user a@acme.com\n",
     );
+  });
+});
+
+describe("a list that cannot be read whole", () => {
+  const CAP = /has more than Infrawrench reads/;
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
+  const count = (calls: Array<{ url: URL }>, path: string) =>
+    calls.filter((call) => call.url.pathname === path).length;
+
+  it("fails the member list when spend has more pages than it reads", async () => {
+    const { c, calls } = client((url) =>
+      url.pathname === "/teams/spend"
+        ? { body: { teamMemberSpend: [{ email: "dev@acme.com" }], totalPages: 5000 } }
+        : undefined,
+    );
+    await expect(c.listResources("team-member", "acc")).rejects.toThrow(CAP);
+    expect(count(calls, "/teams/spend")).toBe(100);
+  });
+
+  it("reads 10,000 members of spend before giving up", async () => {
+    const { c, calls } = client((url, _method, body) => {
+      if (url.pathname !== "/teams/spend") return undefined;
+      const { page } = body as { page: number };
+      return {
+        body: { teamMemberSpend: [{ email: `m${page}@acme.com` }], totalPages: 100 },
+      };
+    });
+    await c.listResources("team-member", "acc");
+    expect(count(calls, "/teams/spend")).toBe(100);
+  });
+
+  it("fails seats and members when daily usage has more pages than it reads", async () => {
+    const endless = (url: URL) =>
+      url.pathname === "/teams/daily-usage-data"
+        ? {
+            body: {
+              data: [{ email: "dev@acme.com", day: today }],
+              pagination: { hasNextPage: true },
+            },
+          }
+        : undefined;
+    const seats = client(endless);
+    await expect(seats.c.fetchSeats("acc", { lookbackDays: 30 })).rejects.toThrow(CAP);
+    expect(count(seats.calls, "/teams/daily-usage-data")).toBe(100);
+
+    const members = client(endless);
+    await expect(members.c.listResources("team-member", "acc")).rejects.toThrow(CAP);
+  });
+
+  it("still draws a team chart from what it read past the daily usage cap", async () => {
+    const { c } = client((url) =>
+      url.pathname === "/teams/daily-usage-data"
+        ? {
+            body: {
+              data: [{ email: "dev@acme.com", day: today, agentRequests: 1 }],
+              pagination: { hasNextPage: true },
+            },
+          }
+        : undefined,
+    );
+    const series = await c.fetchMetricSeries("team", "acc:team:team", "acc");
+    expect(series.length).toBeGreaterThan(0);
+  });
+
+  it("fails directory groups and their members past the cap", async () => {
+    const groups = client((url) =>
+      url.pathname === "/teams/directory-groups"
+        ? { body: { groups: [{ id: "g1" }], pagination: { hasNextPage: true } } }
+        : undefined,
+    );
+    await expect(groups.c.listResources("directory-group", "acc")).rejects.toThrow(CAP);
+    expect(count(groups.calls, "/teams/directory-groups")).toBe(50);
+
+    const members = client((url) => {
+      if (url.pathname === "/teams/directory-groups") {
+        return { body: { groups: [{ id: "g1" }], pagination: { hasNextPage: false } } };
+      }
+      return url.pathname === "/teams/directory-groups/g1/members"
+        ? { body: { members: [{ userId: "user_1" }], pagination: { hasNextPage: true } } }
+        : undefined;
+    });
+    await expect(members.c.listResources("directory-group", "acc")).rejects.toThrow(CAP);
+    expect(count(members.calls, "/teams/directory-groups/g1/members")).toBe(50);
+  });
+
+  it("keeps stored models when the newest events do not cover the window", async () => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    const { c, calls } = client((url) =>
+      url.pathname === "/teams/filtered-usage-events"
+        ? {
+            body: {
+              usageEvents: [{ timestamp: String(Date.now()), model: "gpt-5", kind: "Usage-based" }],
+              pagination: { hasNextPage: true },
+            },
+          }
+        : undefined,
+    );
+    const models = await c.listResources("model", "acc");
+    expect(models.map((m) => [m.externalId, m.fields["sampled"]])).toEqual([["gpt-5", true]]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    expect(count(calls, "/teams/filtered-usage-events")).toBe(20);
+  });
+
+  it("does not hold stored models back when every event was read", async () => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    const { c } = client();
+    await c.listResources("model", "acc");
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("does not let the cost read pass as whole past its cap", async () => {
+    const { c, calls } = client((url) =>
+      url.pathname === "/teams/filtered-usage-events"
+        ? { body: { usageEvents: [], pagination: { hasNextPage: true } } }
+        : undefined,
+    );
+    await expect(
+      c.fetchCostData("acc", { fromDate: "2026-10-01", toDate: "2026-10-03" }),
+    ).rejects.toThrow(CAP);
+    expect(count(calls, "/teams/filtered-usage-events")).toBe(2000);
+  });
+});
+
+describe("a page that is not a list", () => {
+  const NOT_A_LIST = /is not a list/;
+
+  it.each([
+    ["team-member", "/teams/members", { people: [] }],
+    ["team-member", "/teams/spend", { spend: [], totalPages: 1 }],
+    ["team-member", "/teams/daily-usage-data", { rows: [], pagination: { hasNextPage: false } }],
+    ["model", "/teams/filtered-usage-events", { events: [], pagination: { hasNextPage: false } }],
+    ["billing-group", "/teams/groups", { billingGroups: [] }],
+    [
+      "directory-group",
+      "/teams/directory-groups",
+      { items: [], pagination: { hasNextPage: false } },
+    ],
+    ["repo-blocklist", "/settings/repo-blocklists/repos", { blocklists: [] }],
+  ])("%s rejects a renamed key on %s", async (type, path, reply) => {
+    const { c } = client((url) => (url.pathname === path ? { body: reply } : undefined));
+    await expect(c.listResources(type, "acc")).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("rejects a renamed key on a later page", async () => {
+    const page = (url: URL) => Number(url.searchParams.get("page"));
+    const groups = client((url) => {
+      if (url.pathname !== "/teams/directory-groups") return undefined;
+      return page(url) === 1
+        ? { body: { groups: [{ id: "g1" }], pagination: { hasNextPage: true } } }
+        : { body: { items: [], pagination: { hasNextPage: false } } };
+    });
+    await expect(groups.c.listResources("directory-group", "acc")).rejects.toThrow(NOT_A_LIST);
+
+    const spend = client((url, _method, body) => {
+      if (url.pathname !== "/teams/spend") return undefined;
+      return (body as { page: number }).page === 1
+        ? { body: { teamMemberSpend: [{ email: "dev@acme.com" }], totalPages: 2 } }
+        : { body: { spend: [], totalPages: 2 } };
+    });
+    await expect(spend.c.listResources("team-member", "acc")).rejects.toThrow(NOT_A_LIST);
   });
 });

@@ -21,7 +21,12 @@ import type {
   SeatRemovalResult,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, externalIdOf, withMetricsCapability } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  externalIdOf,
+  reportUnreadListPart,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
 import type {
   CursorBillingGroup,
   CursorContext,
@@ -250,8 +255,10 @@ export class CursorClient implements PluginClient {
   private recentEvents(): Promise<{ events: CursorUsageEvent[]; truncated: boolean }> {
     return this.cached("events30d", () => {
       const end = Date.now();
+      // Rolling window: the newest N. Older rows falling off is what this type means.
       return getUsageEvents(this.ctx, end - ACTIVITY_WINDOW_MS, end, {
         maxPages: INTERACTIVE_EVENT_PAGES,
+        partial: true,
       });
     });
   }
@@ -361,6 +368,8 @@ export class CursorClient implements PluginClient {
         }
         case "model": {
           const { events, truncated } = await this.recentEvents();
+          // A model only the unread older events used is still in use, so its row stays.
+          if (truncated) reportUnreadListPart({ idPrefixes: [""] });
           return modelUsage(events).map((m) => this.mapModel(accountId, m, truncated));
         }
         case "billing-group": {
@@ -942,7 +951,7 @@ export class CursorClient implements PluginClient {
 
       switch (resourceTypeId) {
         case "team": {
-          const usage = await getDailyUsageRange(this.ctx, startMs, endMs);
+          const usage = await getDailyUsageRange(this.ctx, startMs, endMs, { partial: true });
           return [...dailyUsageSeries(usage), ...(await this.enterpriseTeamSeries(startMs, endMs))];
         }
         case "team-member": {
@@ -952,14 +961,14 @@ export class CursorClient implements PluginClient {
           const email = str(resource.fields["email"]).toLowerCase();
           if (!email) return [];
           const [usage, events] = await Promise.all([
-            getDailyUsageRange(this.ctx, startMs, endMs),
-            getUsageEvents(this.ctx, startMs, endMs, { email, maxPages: 5 }),
+            getDailyUsageRange(this.ctx, startMs, endMs, { partial: true }),
+            getUsageEvents(this.ctx, startMs, endMs, { email, maxPages: 5, partial: true }),
           ]);
           const own = usage.filter((r) => str(r.email).toLowerCase() === email);
           return [...eventSeries(events.events), ...dailyUsageSeries(own, { perMember: true })];
         }
         case "model": {
-          const { events } = await getUsageEvents(this.ctx, startMs, endMs);
+          const { events } = await getUsageEvents(this.ctx, startMs, endMs, { partial: true });
           const own = events.filter((e) => e.model === externalId);
           return [
             ...eventSeries(own),

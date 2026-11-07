@@ -18,6 +18,7 @@
  * surfaces.
  */
 import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 
 export const CURSOR_API_BASE = "https://api.cursor.com";
 
@@ -30,6 +31,15 @@ export const DASHBOARD_URL = "https://cursor.com/dashboard";
 export const MAX_RANGE_DAYS = 30;
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
+
+const VENDOR = "Cursor";
+
+/** 10,000 members at the 100 a page this plugin asks for. The docs give no maximum page size. */
+const SPEND_MAX_PAGES = 100;
+/** 50,000 member-days a window at 500 a page, about 1,600 members over 30 days. */
+const DAILY_USAGE_MAX_PAGES = 100;
+/** 10,000 rows at the documented 200-a-page maximum. */
+const DIRECTORY_MAX_PAGES = 50;
 
 export interface CursorContext {
   apiKey: string;
@@ -348,8 +358,9 @@ interface AiCommitsResponse {
 
 /** GET /teams/members */
 export async function getTeamMembers(ctx: CursorContext): Promise<CursorTeamMember[]> {
-  const body = await cursorRequest<{ teamMembers?: CursorTeamMember[] }>(ctx, "/teams/members");
-  return body?.teamMembers ?? [];
+  const path = "/teams/members";
+  const body = await cursorRequest<{ teamMembers?: CursorTeamMember[] }>(ctx, path);
+  return requireListPage(body?.teamMembers, { vendor: VENDOR, path, key: "teamMembers" });
 }
 
 /**
@@ -359,41 +370,61 @@ export async function getTeamMembers(ctx: CursorContext): Promise<CursorTeamMemb
 export async function getTeamSpend(
   ctx: CursorContext,
 ): Promise<{ members: CursorMemberSpend[]; cycleStartMs: number | undefined }> {
+  const path = "/teams/spend";
   const members: CursorMemberSpend[] = [];
   let cycleStartMs: number | undefined;
-  for (let page = 1; page <= 50; page++) {
-    const body = await cursorRequest<CursorSpendResponse>(ctx, "/teams/spend", {
+  for (let page = 1; page <= SPEND_MAX_PAGES; page++) {
+    const body = await cursorRequest<CursorSpendResponse>(ctx, path, {
       method: "POST",
       body: { page, pageSize: 100, sortBy: "amount", sortDirection: "desc" },
     });
-    members.push(...(body?.teamMemberSpend ?? []));
+    const rows = requireListPage(body?.teamMemberSpend, {
+      vendor: VENDOR,
+      path,
+      key: "teamMemberSpend",
+    });
+    members.push(...rows);
     cycleStartMs ??= body?.subscriptionCycleStart;
-    const totalPages = body?.totalPages ?? 1;
-    if (page >= totalPages || (body?.teamMemberSpend ?? []).length === 0) break;
+    if (page >= (body?.totalPages ?? 1) || rows.length === 0) return { members, cycleStartMs };
   }
-  return { members, cycleStartMs };
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path,
+    items: members.length,
+    maxPages: SPEND_MAX_PAGES,
+  });
 }
 
 /**
  * POST /teams/daily-usage-data for one window of at most 30 days, every page.
  * Paginated, so every member comes back with a row per day of membership and
- * `isActive` set (unpaginated calls return active users only).
+ * `isActive` set (unpaginated calls return active users only). Throws past its
+ * cap, because a member whose rows were not reached would read as idle. A chart
+ * passes `partial` to draw what it read.
  */
 export async function getDailyUsage(
   ctx: CursorContext,
   startMs: number,
   endMs: number,
+  opts: { partial?: boolean } = {},
 ): Promise<CursorDailyUsage[]> {
+  const path = "/teams/daily-usage-data";
   const out: CursorDailyUsage[] = [];
-  for (let page = 1; page <= 100; page++) {
-    const body = await cursorRequest<DailyUsageResponse>(ctx, "/teams/daily-usage-data", {
+  for (let page = 1; page <= DAILY_USAGE_MAX_PAGES; page++) {
+    const body = await cursorRequest<DailyUsageResponse>(ctx, path, {
       method: "POST",
       body: { startDate: startMs, endDate: endMs, page, pageSize: 500 },
     });
-    out.push(...(body?.data ?? []));
-    if (!body?.pagination?.hasNextPage) break;
+    out.push(...requireListPage(body?.data, { vendor: VENDOR, path, key: "data" }));
+    if (!body?.pagination?.hasNextPage) return out;
   }
-  return out;
+  if (opts.partial) return out;
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path,
+    items: out.length,
+    maxPages: DAILY_USAGE_MAX_PAGES,
+  });
 }
 
 /** Daily usage over any range, split into the API's 30-day windows. */
@@ -401,32 +432,34 @@ export async function getDailyUsageRange(
   ctx: CursorContext,
   startMs: number,
   endMs: number,
+  opts: { partial?: boolean } = {},
 ): Promise<CursorDailyUsage[]> {
   const out: CursorDailyUsage[] = [];
   for (const [from, to] of splitRange(startMs, endMs, MAX_RANGE_DAYS)) {
-    out.push(...(await getDailyUsage(ctx, from, to)));
+    out.push(...(await getDailyUsage(ctx, from, to, opts)));
   }
   return out;
 }
 
-/** Default cap on usage-event pages (1,000 events each) for interactive views. */
+/** Default cap on usage-event pages (1,000 events each). */
 export const INTERACTIVE_EVENT_PAGES = 20;
 
 /**
  * POST /teams/filtered-usage-events, paginated at the 1,000-event maximum.
- * `maxPages` bounds interactive views; the cost collector passes a large cap.
- * Returns whether the cap cut the listing short.
+ * Throws at `maxPages` with more to read. A read that can use part of the list
+ * passes `partial`, and `truncated` says whether the cap cut it short.
  */
 export async function getUsageEvents(
   ctx: CursorContext,
   startMs: number,
   endMs: number,
-  opts: { email?: string; maxPages?: number } = {},
+  opts: { email?: string; maxPages?: number; partial?: boolean } = {},
 ): Promise<{ events: CursorUsageEvent[]; truncated: boolean }> {
+  const path = "/teams/filtered-usage-events";
   const events: CursorUsageEvent[] = [];
   const maxPages = opts.maxPages ?? INTERACTIVE_EVENT_PAGES;
   for (let page = 1; page <= maxPages; page++) {
-    const body = await cursorRequest<UsageEventsResponse>(ctx, "/teams/filtered-usage-events", {
+    const body = await cursorRequest<UsageEventsResponse>(ctx, path, {
       method: "POST",
       body: {
         startDate: startMs,
@@ -436,10 +469,13 @@ export async function getUsageEvents(
         ...(opts.email ? { email: opts.email } : {}),
       },
     });
-    events.push(...(body?.usageEvents ?? []));
+    events.push(
+      ...requireListPage(body?.usageEvents, { vendor: VENDOR, path, key: "usageEvents" }),
+    );
     if (!body?.pagination?.hasNextPage) return { events, truncated: false };
   }
-  return { events, truncated: true };
+  if (opts.partial) return { events, truncated: true };
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: events.length, maxPages });
 }
 
 /** GET /teams/audit-logs, newest first, up to `limit` events within a 30-day window. */
@@ -512,8 +548,12 @@ export async function getBillingGroups(ctx: CursorContext): Promise<{
   groups: CursorBillingGroup[];
   billingCycle: CursorBillingCycle | undefined;
 }> {
-  const body = await cursorRequest<BillingGroupsResponse>(ctx, "/teams/groups");
-  return { groups: body?.groups ?? [], billingCycle: body?.billingCycle };
+  const path = "/teams/groups";
+  const body = await cursorRequest<BillingGroupsResponse>(ctx, path);
+  return {
+    groups: requireListPage(body?.groups, { vendor: VENDOR, path, key: "groups" }),
+    billingCycle: body?.billingCycle,
+  };
 }
 
 /** GET /teams/groups/:groupId */
@@ -573,29 +613,34 @@ export async function changeBillingGroupMembers(
   });
 }
 
-async function listPaged<T>(
+async function listPaged<T, K extends string>(
   ctx: CursorContext,
   path: string,
-  key: string,
+  key: K,
   pageSize = 200,
 ): Promise<T[]> {
   const out: T[] = [];
-  for (let page = 1; page <= 50; page++) {
+  for (let page = 1; page <= DIRECTORY_MAX_PAGES; page++) {
     const sep = path.includes("?") ? "&" : "?";
-    const body = await cursorRequest<Paginated & Record<string, unknown>>(
+    const body = await cursorRequest<Paginated & { [P in K]?: T[] }>(
       ctx,
       `${path}${sep}page=${page}&pageSize=${pageSize}`,
     );
-    const items = (body?.[key] as T[] | undefined) ?? [];
+    const items = requireListPage<T>(body?.[key], { vendor: VENDOR, path, key });
     out.push(...items);
-    if (!body?.pagination?.hasNextPage || items.length === 0) break;
+    if (!body?.pagination?.hasNextPage || items.length === 0) return out;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path,
+    items: out.length,
+    maxPages: DIRECTORY_MAX_PAGES,
+  });
 }
 
 /** GET /teams/directory-groups, every page. */
 export function getDirectoryGroups(ctx: CursorContext): Promise<CursorDirectoryGroup[]> {
-  return listPaged<CursorDirectoryGroup>(ctx, "/teams/directory-groups", "groups");
+  return listPaged<CursorDirectoryGroup, "groups">(ctx, "/teams/directory-groups", "groups");
 }
 
 /** GET /teams/directory-groups/:groupId */
@@ -615,7 +660,7 @@ export function getDirectoryGroupMembers(
   ctx: CursorContext,
   groupId: string,
 ): Promise<CursorGroupMember[]> {
-  return listPaged<CursorGroupMember>(
+  return listPaged<CursorGroupMember, "members">(
     ctx,
     `/teams/directory-groups/${encodeURIComponent(groupId)}/members`,
     "members",
@@ -679,11 +724,9 @@ export async function changeDirectoryGroupMembers(
 
 /** GET /settings/repo-blocklists/repos */
 export async function getRepoBlocklists(ctx: CursorContext): Promise<CursorRepoBlocklist[]> {
-  const body = await cursorRequest<{ repos?: CursorRepoBlocklist[] }>(
-    ctx,
-    "/settings/repo-blocklists/repos",
-  );
-  return body?.repos ?? [];
+  const path = "/settings/repo-blocklists/repos";
+  const body = await cursorRequest<{ repos?: CursorRepoBlocklist[] }>(ctx, path);
+  return requireListPage(body?.repos, { vendor: VENDOR, path, key: "repos" });
 }
 
 /** POST /settings/repo-blocklists/repos/upsert, keyed by repository URL. */
