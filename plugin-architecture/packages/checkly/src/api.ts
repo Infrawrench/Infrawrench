@@ -1,6 +1,7 @@
 import {
   createApiClient,
-  type ApiClient,
+  withCursorPagination,
+  withPagination,
   type HttpHostServices,
   type ParamValue,
 } from "@infrawrench/plugin-base";
@@ -14,6 +15,12 @@ import type { paths } from "./api-types.gen.js";
  * several accounts. Lists paginate with `limit` (at most 100) and `page`.
  */
 export const API_URL = "https://api.checklyhq.com";
+export const VENDOR = "Checkly";
+
+/** The most the document allows on every list. */
+const PAGE_SIZE = 100;
+/** 10,000 rows. A list longer than that throws, because a sync prunes what it stops seeing. */
+const MAX_PAGES = 100;
 
 export interface ChecklyContext {
   apiKey: string;
@@ -22,8 +29,6 @@ export interface ChecklyContext {
   caCert?: string;
   http?: HttpHostServices;
 }
-
-export type ChecklyApi = ApiClient<paths>;
 
 export class ChecklyApiError extends Error {
   readonly status: number;
@@ -53,9 +58,9 @@ function serializeQuery(query: Record<string, ParamValue>): string {
   return params.toString();
 }
 
-export function createChecklyApi(ctx: ChecklyContext): ChecklyApi {
-  return createApiClient<paths>({
-    vendor: "Checkly",
+export function createChecklyApi(ctx: ChecklyContext) {
+  const api = createApiClient<paths>({
+    vendor: VENDOR,
     baseUrl: API_URL,
     headers: {
       Accept: "application/json",
@@ -68,45 +73,32 @@ export function createChecklyApi(ctx: ChecklyContext): ChecklyApi {
         status,
         `Checkly API error ${status} for ${path}: ${checklyMessage(body)}`,
       ),
-    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    ...(ctx.http ? { http: ctx.http } : {}),
+    caCert: ctx.caCert,
+    http: ctx.http,
+  });
+  return withPagination(api, {
+    pageParam: "page",
+    sizeParam: "limit",
+    pageSize: PAGE_SIZE,
+    maxPages: MAX_PAGES,
   });
 }
 
-const PAGE_SIZE = 100;
-const MAX_PAGES = 50;
+export type ChecklyApi = ReturnType<typeof createChecklyApi>;
 
 /**
- * Page through a `limit`/`page` list until a short page. A hand loop because
- * `getAll` reads a 200 that is not an array as the end of the list; this throws,
- * and the host prunes what a sync stops seeing.
+ * The `{ entries, nextId }` lists. The document's one end signal is `nextId` set to
+ * null, so an empty page that still names a next one is not the end.
  */
-export async function ckPaged<T>(
-  loadPage: (query: { limit: number; page: number }) => Promise<T[] | null | undefined>,
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const batch = (await loadPage({ limit: PAGE_SIZE, page })) ?? [];
-    out.push(...batch);
-    if (batch.length < PAGE_SIZE) break;
-  }
-  return out;
-}
-
-/** Follow `nextId` through `{ entries, nextId }` pages, past an empty page, up to `maxPages`. */
-export async function ckEntries<T>(
-  loadPage: (cursor: { nextId?: string }) => Promise<{ entries?: T[]; nextId?: string | null }>,
-  maxPages: number,
-): Promise<T[]> {
-  const out: T[] = [];
-  let nextId: string | undefined;
-  for (let i = 0; i < maxPages; i++) {
-    const res = await loadPage(nextId ? { nextId } : {});
-    out.push(...(res.entries ?? []));
-    nextId = res.nextId ?? undefined;
-    if (!nextId) break;
-  }
-  return out;
+export function checklyCursorApi(api: ChecklyApi) {
+  return withCursorPagination(api, {
+    cursorParam: "nextId",
+    sizeParam: "limit",
+    pageSize: PAGE_SIZE,
+    next: "nextId",
+    maxPages: MAX_PAGES,
+    continueOnEmptyPage: true,
+  });
 }
 
 export function statusOf(err: unknown): number {

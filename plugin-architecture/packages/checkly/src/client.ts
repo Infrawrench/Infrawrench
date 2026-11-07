@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { ApiBody, ApiResponse, NoSlashString, PluginEffect } from "@infrawrench/plugin-base";
+import type { ApiBody, ApiListItem, NoSlashString, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DashboardStat,
@@ -14,9 +14,15 @@ import type {
   SecretHostServices,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  QuotaAccessError,
+  externalIdOf,
+  pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { ChecklyApi } from "./api.js";
-import { ckEntries, ckPaged, createChecklyApi, statusOf } from "./api.js";
+import { VENDOR, checklyCursorApi, createChecklyApi, statusOf } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import type { Check, CheckStatus } from "./mappers.js";
 import {
@@ -274,6 +280,7 @@ export function channelConfig(
 
 export class ChecklyClient implements PluginClient {
   private readonly api: ChecklyApi;
+  private readonly cursors: ReturnType<typeof checklyCursorApi>;
   private readonly secrets: SecretHostServices | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -288,6 +295,7 @@ export class ChecklyClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     });
+    this.cursors = checklyCursorApi(this.api);
     this.secrets = services?.secrets;
   }
 
@@ -301,10 +309,18 @@ export class ChecklyClient implements PluginClient {
     }
   }
 
+  /** Failing to read these leaves a check's status unknown. A bad answer is not "no statuses". */
   private async statuses(): Promise<Map<string, CheckStatus>> {
-    const list = await this.api.get("/v1/check-statuses").catch((): CheckStatus[] => []);
+    const path = "/v1/check-statuses";
+    const list = await this.api
+      .get(path)
+      .then((rows) => requireListPage(rows, { vendor: VENDOR, path, key: null }))
+      .catch((err): CheckStatus[] => {
+        rethrowIncompleteList(err);
+        return [];
+      });
     return new Map(
-      (list ?? [])
+      list
         .filter((s): s is CheckStatus & { checkId: string } => Boolean(s.checkId))
         .map((s): [string, CheckStatus] => [s.checkId, s]),
     );
@@ -325,42 +341,48 @@ export class ChecklyClient implements PluginClient {
           case "check-group": {
             const [groups, checks] = await Promise.all([
               this.groups(),
-              this.checks().catch(() => []),
+              this.checks().catch((err): Check[] | null => {
+                rethrowIncompleteList(err);
+                return null;
+              }),
             ]);
             const counts = new Map<string, number>();
-            for (const c of checks) {
+            for (const c of checks ?? []) {
               if (c.groupId !== undefined && c.groupId !== null) {
                 const g = String(c.groupId);
                 counts.set(g, (counts.get(g) ?? 0) + 1);
               }
             }
-            return groups.map((g) => mapGroup(accountId, g, counts.get(String(g.id)) ?? 0));
+            return groups.map((g) =>
+              mapGroup(accountId, g, checks ? (counts.get(String(g.id)) ?? 0) : undefined),
+            );
           }
           case "alert-channel":
-            return (await ckPaged((query) => this.api.get("/v1/alert-channels", { query }))).map(
-              (c) => mapChannel(accountId, c),
+            return (await this.api.getAll("/v1/alert-channels", null)).map((c) =>
+              mapChannel(accountId, c),
             );
           case "maintenance-window":
-            return (
-              await ckPaged((query) => this.api.get("/v1/maintenance-windows", { query }))
-            ).map((w) => mapWindow(accountId, w));
-          case "private-location":
-            return ((await this.api.get("/v1/private-locations")) ?? []).map((p) =>
-              mapPrivateLocation(accountId, p),
+            return (await this.api.getAll("/v1/maintenance-windows", null)).map((w) =>
+              mapWindow(accountId, w),
             );
+          case "private-location": {
+            const path = "/v1/private-locations";
+            return requireListPage(await this.api.get(path), {
+              vendor: VENDOR,
+              path,
+              key: null,
+            }).map((p) => mapPrivateLocation(accountId, p));
+          }
           case "dashboard":
-            return (await ckPaged((query) => this.api.get("/v1/dashboards", { query }))).map((d) =>
+            return (await this.api.getAll("/v1/dashboards", null)).map((d) =>
               mapDashboard(accountId, d),
             );
-          case "status-page": {
-            const out = await ckEntries(
-              (cursor) => this.api.get("/v3/status-pages", { query: { limit: 100, ...cursor } }),
-              20,
+          case "status-page":
+            return (await this.cursors.getAll("/v3/status-pages", "entries")).map((p) =>
+              mapStatusPage(accountId, p),
             );
-            return out.map((p) => mapStatusPage(accountId, p));
-          }
           case "variable":
-            return (await ckPaged((query) => this.api.get("/v1/variables", { query }))).map((v) =>
+            return (await this.api.getAll("/v1/variables", null)).map((v) =>
               mapVariable(accountId, v),
             );
           default:
@@ -371,11 +393,11 @@ export class ChecklyClient implements PluginClient {
   }
 
   private checks(): Promise<Check[]> {
-    return ckPaged((query) => this.api.get("/v1/checks", { query }));
+    return this.api.getAll("/v1/checks", null);
   }
 
-  private groups() {
-    return ckPaged((query) => this.api.get("/v1/check-groups", { query }));
+  private groups(options: { partial?: boolean } = {}) {
+    return this.api.getAll("/v1/check-groups", null, options);
   }
 
   private rawCheck(id: string) {
@@ -528,10 +550,12 @@ export class ChecklyClient implements PluginClient {
   fetchQuotas(): PluginEffect<QuotaUsage[]> {
     return attempt(async () => {
       const today = new Date().toISOString().slice(0, 10);
-      let terms: ApiResponse<operations["getV2UsageTerms"]>["data"];
+      let terms: ApiListItem<operations["getV2UsageTerms"], "data">[];
       try {
-        terms =
-          (await this.api.get("/v2/usage/terms", { query: { from: today, to: today } })).data ?? [];
+        terms = await this.cursors.getAll("/v2/usage/terms", "data", {
+          query: { from: today, to: today },
+          pageSize: 500,
+        });
       } catch (err) {
         const status = statusOf(err);
         if (status === 401 || status === 403)
@@ -588,7 +612,7 @@ export class ChecklyClient implements PluginClient {
   }
 
   private async groupOptions() {
-    const groups = await this.groups().catch(() => []);
+    const groups = await this.groups({ partial: true }).catch(() => []);
     return [opt("", "None"), ...groups.map((g) => opt(String(g.id), String(g.name ?? g.id)))];
   }
 

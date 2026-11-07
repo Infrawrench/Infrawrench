@@ -13,9 +13,8 @@ import type {
   MetricSeriesPoint,
   NoSlashString,
 } from "@infrawrench/plugin-base";
-import { pathEncode } from "@infrawrench/plugin-base";
+import { pathEncode, withCursorPagination } from "@infrawrench/plugin-base";
 import type { ChecklyApi } from "./api.js";
-import { ckEntries } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -84,19 +83,24 @@ export async function checkResultSeries(
   range: TimeRange,
 ): Promise<MetricSeries[]> {
   const from = Math.max(range.startMs, Date.now() - RESULTS_RETENTION_MS);
-  const results = await ckEntries(
-    (cursor) =>
-      api.get(`/v2/check-results/${pathEncode(checkId)}`, {
-        query: {
-          from: Math.floor(from / 1000),
-          to: Math.floor(range.endMs / 1000),
-          limit: 100,
-          resultType: "FINAL",
-          ...cursor,
-        },
-      }),
-    MAX_PAGES,
-  );
+  const results = await withCursorPagination(api, {
+    cursorParam: "nextId",
+    sizeParam: "limit",
+    pageSize: 100,
+    next: "nextId",
+    maxPages: MAX_PAGES,
+    // Metric samples, and 60 requests a minute: a chart of part of a window is fine.
+    partial: true,
+    // The document's only end signal is a null `nextId`, and it does not require `entries`.
+    continueOnEmptyPage: true,
+    missingListIsEmpty: true,
+  }).getAll(`/v2/check-results/${pathEncode(checkId)}`, "entries", {
+    query: {
+      from: Math.floor(from / 1000),
+      to: Math.floor(range.endMs / 1000),
+      resultType: "FINAL",
+    },
+  });
   return resultsToSeries(results, { startMs: from, endMs: range.endMs });
 }
 

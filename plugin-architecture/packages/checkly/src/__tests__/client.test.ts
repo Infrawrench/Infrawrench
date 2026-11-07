@@ -269,6 +269,180 @@ describe("editing keeps what the user did not change", () => {
   });
 });
 
+describe("reading every row, or throwing", () => {
+  const fullPage = (prefix: string) =>
+    Array.from({ length: 100 }, (_, i) => ({ id: `${prefix}${i}`, name: `N${i}` }));
+
+  const PAGED: Array<[string, string, string]> = [
+    ["check", "/v1/checks", "id"],
+    ["check-group", "/v1/check-groups", "id"],
+    ["alert-channel", "/v1/alert-channels", "id"],
+    ["maintenance-window", "/v1/maintenance-windows", "id"],
+    ["dashboard", "/v1/dashboards", "dashboardId"],
+    ["variable", "/v1/variables", "key"],
+  ];
+
+  it.each(PAGED)("%s: a list that never ends throws after 100 pages", async (type, path) => {
+    const { c, calls } = client((url) =>
+      url.pathname === path ? { body: fullPage("r") } : { body: [] },
+    );
+    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls.filter((x) => x.url.pathname === path)).toHaveLength(100);
+  });
+
+  it.each(PAGED)("%s: a page that is not a list throws, first or later", async (type, path) => {
+    const first = client((url) =>
+      url.pathname === path ? { body: { message: "nope" } } : { body: [] },
+    );
+    await expect(first.c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    const later = client((url) =>
+      url.pathname === path
+        ? { body: url.searchParams.get("page") === "1" ? fullPage("r") : { items: [] } }
+        : { body: [] },
+    );
+    await expect(later.c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("does not read a null page as the end of a list", async () => {
+    const { c } = client((url) =>
+      url.pathname === "/v1/dashboards"
+        ? { body: url.searchParams.get("page") === "1" ? fullPage("d") : null }
+        : { body: [] },
+    );
+    await expect(c.listResources("dashboard", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("asks for the largest page the document allows", async () => {
+    const { c, calls } = client(() => ({ body: [] }));
+    await c.listResources("variable", ACCOUNT);
+    expect(calls[0]?.url.searchParams.get("limit")).toBe("100");
+    expect(calls[0]?.url.searchParams.get("page")).toBe("1");
+  });
+
+  it("does not read a private location answer that is not a list as none", async () => {
+    for (const body of [null, { message: "nope" }]) {
+      const { c } = client(() => ({ body }));
+      await expect(c.listResources("private-location", ACCOUNT)).rejects.toThrow("is not a list");
+    }
+  });
+
+  describe("status pages", () => {
+    it("follow nextId, past an empty page, until it is null", async () => {
+      const answers = [
+        { length: 1, entries: [{ id: "a", name: "A", url: "a" }], nextId: "n1" },
+        { length: 0, entries: [], nextId: "n2" },
+        { length: 1, entries: [{ id: "b", name: "B", url: "b" }], nextId: null },
+      ];
+      const { c, calls } = client(() => ({ body: answers.shift() }));
+      const pages = await c.listResources("status-page", ACCOUNT);
+      expect(pages.map((p) => p.externalId)).toEqual(["a", "b"]);
+      expect(calls.map((x) => x.url.searchParams.get("nextId"))).toEqual([null, "n1", "n2"]);
+      expect(calls[0]?.url.searchParams.get("limit")).toBe("100");
+    });
+
+    it("throw after 100 pages rather than prune the rest", async () => {
+      const { c, calls } = client(() => ({
+        body: { length: 1, entries: [{ id: "a" }], nextId: "more" },
+      }));
+      await expect(c.listResources("status-page", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(100);
+    });
+
+    it("throw on a page with its list renamed, first or later", async () => {
+      const first = client(() => ({ body: { length: 0, items: [] } }));
+      await expect(first.c.listResources("status-page", ACCOUNT)).rejects.toThrow("is not a list");
+      const answers = [
+        { length: 1, entries: [{ id: "a" }], nextId: "n1" },
+        { length: 0, items: [], nextId: null },
+      ];
+      const later = client(() => ({ body: answers.shift() }));
+      await expect(later.c.listResources("status-page", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+  });
+
+  describe("catches around a list read", () => {
+    it("a group listing fails when its check counts stopped at the cap", async () => {
+      const { c } = client((url) =>
+        url.pathname === "/v1/checks" ? { body: fullPage("c") } : { body: [{ id: 1, name: "G" }] },
+      );
+      await expect(c.listResources("check-group", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+
+    it("a check listing fails when the statuses are not a list", async () => {
+      const { c } = client((url) =>
+        url.pathname === "/v1/check-statuses" ? { body: { message: "nope" } } : { body: [] },
+      );
+      await expect(c.listResources("check", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("a group listing with unreadable checks leaves the count unknown, not zero", async () => {
+      const { c } = client((url) =>
+        url.pathname === "/v1/checks"
+          ? { status: 500, body: { message: "boom" } }
+          : { body: [{ id: 1, name: "G" }] },
+      );
+      const [group] = await c.listResources("check-group", ACCOUNT);
+      expect(group?.fields["checkCount"]).toBeUndefined();
+    });
+
+    it("the create form's group picker stays usable at the cap", async () => {
+      const { c } = client((url) =>
+        url.pathname === "/v1/check-groups" ? { body: fullPage("g") } : { body: [] },
+      );
+      const config = await c.getCreateConfig("check");
+      const options = config.fields.find((f) => f.key === "groupId")?.options;
+      expect(options).toHaveLength(10_001);
+    });
+  });
+
+  describe("check results for the charts", () => {
+    const results = { length: 1, entries: [{ startedAt: "2026-10-01T00:00:10Z" }] };
+    const range = {
+      startMs: Date.parse("2026-10-01T00:00:00Z"),
+      endMs: Date.parse("2026-10-01T01:00:00Z"),
+    };
+
+    it("stop at 10 pages and chart what they have", async () => {
+      const { c, calls } = client(() => ({ body: { ...results, nextId: "more" } }));
+      const series = await c.fetchMetricSeries("check", "acc:check:c1", ACCOUNT, range);
+      expect(calls).toHaveLength(10);
+      expect(series.map((s) => s.label)).toEqual(["Failed runs"]);
+    });
+
+    it("chart nothing for an answer the document allows to have no entries", async () => {
+      const { c } = client(() => ({ body: { length: 0, nextId: null } }));
+      expect(await c.fetchMetricSeries("check", "acc:check:c1", ACCOUNT, range)).toEqual([]);
+    });
+  });
+
+  it("reads every usage term of a quota", async () => {
+    const term = (id: string) => ({
+      id,
+      name: id,
+      packageModel: "credits",
+      creditBudget: 10,
+      usageStartDate: "2026-01-01",
+    });
+    const { c } = client((url) => {
+      if (url.pathname === "/v2/usage/summary") return { body: { totals: { creditsUsed: 1 } } };
+      return url.searchParams.get("nextId")
+        ? { body: { data: [term("b")], nextId: null } }
+        : { body: { data: [term("a")], nextId: "n1" } };
+    });
+    const quotas = await c.fetchQuotas();
+    expect(quotas.map((q) => q.id)).toEqual(["credits/a", "credits/b"]);
+  });
+
+  it("does not report no quotas for a usage answer with its list renamed", async () => {
+    const { c } = client(() => ({ body: { terms: [], nextId: null } }));
+    await expect(c.fetchQuotas()).rejects.toThrow("is not a list");
+  });
+});
+
 describe("creating", () => {
   it("creates an API check with a status assertion", async () => {
     const { c, calls } = client(() => ({
