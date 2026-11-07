@@ -77,6 +77,12 @@ interface ServerEntry {
   token: string;
 }
 
+interface DomainEntry {
+  domain: PmDomain;
+  /** Why the domain's details, which carry its DNS records, could not be read. */
+  detailError?: unknown;
+}
+
 async function mapLimit<T, R>(
   items: T[],
   limit: number,
@@ -129,7 +135,7 @@ export class PostmarkClient implements PluginClient {
   private readonly accountToken: string;
   private readonly serverToken: string;
   private serverCache: Cached<ServerEntry[]> | undefined;
-  private domainCache: Cached<PmDomain[]> | undefined;
+  private domainCache: Cached<DomainEntry[]> | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     this.accountToken = (credentials["accountToken"] ?? "").trim();
@@ -236,17 +242,28 @@ export class PostmarkClient implements PluginClient {
     return results.flat();
   }
 
-  /** Every domain with its DNS details (the list endpoint carries no records). */
-  private domains(): Promise<PmDomain[]> {
+  /**
+   * Every domain with its DNS details (the list endpoint carries no records). A
+   * detail that failed keeps the list row and the error, so the domain still lists
+   * while its records, which only the detail carries, fail rather than read as none.
+   */
+  private domains(): Promise<DomainEntry[]> {
     if (!this.accountToken) return Promise.resolve([]);
     if (this.domainCache && Date.now() - this.domainCache.at < CACHE_MS) {
       return this.domainCache.value;
     }
     const value = (async () => {
       const list = await this.paged<PmDomain>("account", this.accountToken, "/domains", "Domains");
-      return mapLimit(list, CONCURRENCY, async (d) =>
-        d.ID === undefined ? d : this.account<PmDomain>(`/domains/${d.ID}`).catch(() => d),
-      );
+      return mapLimit(list, CONCURRENCY, async (d): Promise<DomainEntry> => {
+        if (d.ID === undefined) return { domain: d };
+        try {
+          return { domain: await this.account<PmDomain>(`/domains/${d.ID}`) };
+        } catch (err) {
+          // Deleted between the list and this read: it has no records to keep.
+          if (statusOf(err) === 404) return { domain: d };
+          return { domain: d, detailError: err };
+        }
+      });
     })();
     value.catch(() => {
       if (this.domainCache?.value === value) this.domainCache = undefined;
@@ -303,9 +320,12 @@ export class PostmarkClient implements PluginClient {
             ).map((r) => mapInboundRule(accountId, e.ref, r)),
           );
         case "postmark-domain":
-          return (await this.domains()).map((d) => mapDomain(accountId, d));
+          return (await this.domains()).map((d) => mapDomain(accountId, d.domain));
         case "postmark-dns-record":
-          return (await this.domains()).flatMap((d) => mapDnsRecords(accountId, d));
+          return (await this.domains()).flatMap((d) => {
+            if (d.detailError !== undefined) throw d.detailError;
+            return mapDnsRecords(accountId, d.domain);
+          });
         case "postmark-sender-signature":
           if (!this.accountToken) return [];
           return (
