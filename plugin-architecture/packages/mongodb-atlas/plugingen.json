@@ -1,0 +1,387 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/mongodb/openapi/main/openapi/v2.json",
+  "pathPrefix": "/api/atlas/v2",
+  "patches": [
+    {
+      "pointer": "/paths/~1groups~1{groupId}~1clusters/get/responses/200/content",
+      "value": {
+        "application/vnd.atlas.2024-08-05+json": {
+          "schema": {
+            "$ref": "#/components/schemas/PaginatedClusterDescription20240805"
+          }
+        }
+      },
+      "why": "The plugin asks for version 2024-08-05; the document lists every version this operation has ever had, which would make the answer a union of all of them."
+    },
+    {
+      "pointer": "/paths/~1groups~1{groupId}~1clusters~1{clusterName}/get/responses/200/content",
+      "value": {
+        "application/vnd.atlas.2024-08-05+json": {
+          "schema": {
+            "$ref": "#/components/schemas/ClusterDescription20240805"
+          }
+        }
+      },
+      "why": "The plugin asks for version 2024-08-05; the document lists every version this operation has ever had, which would make the answer a union of all of them."
+    },
+    {
+      "pointer": "/paths/~1groups~1{groupId}~1clusters~1{clusterName}/patch/responses/200/content",
+      "value": {
+        "application/vnd.atlas.2024-08-05+json": {
+          "schema": {
+            "$ref": "#/components/schemas/ClusterDescription20240805"
+          }
+        }
+      },
+      "why": "The plugin asks for version 2024-08-05; the document lists every version this operation has ever had, which would make the answer a union of all of them."
+    },
+    {
+      "pointer": "/paths/~1groups~1{groupId}~1clusters~1{clusterName}/patch/requestBody/content",
+      "value": {
+        "application/vnd.atlas.2024-08-05+json": {
+          "schema": {
+            "$ref": "#/components/schemas/ClusterDescription20240805"
+          }
+        }
+      },
+      "why": "The plugin sends version 2024-08-05; the document lists every version this operation has ever had, which would make the body a union of all of them."
+    },
+    {
+      "pointer": "/paths/~1groups~1{groupId}~1clusters~1{clusterName}~1backup~1schedule/get/responses/200/content",
+      "value": {
+        "application/vnd.atlas.2024-08-05+json": {
+          "schema": {
+            "$ref": "#/components/schemas/DiskBackupSnapshotSchedule20240805"
+          }
+        }
+      },
+      "why": "The plugin asks for version 2024-08-05; the document lists every version this operation has ever had, which would make the answer a union of all of them."
+    },
+    {
+      "pointer": "/paths/~1groups~1{groupId}~1clusters~1{clusterName}~1backup~1schedule/patch/responses/200/content",
+      "value": {
+        "application/vnd.atlas.2024-08-05+json": {
+          "schema": {
+            "$ref": "#/components/schemas/DiskBackupSnapshotSchedule20240805"
+          }
+        }
+      },
+      "why": "The plugin asks for version 2024-08-05; the document lists every version this operation has ever had, which would make the answer a union of all of them."
+    },
+    {
+      "pointer": "/paths/~1groups~1{groupId}~1clusters~1{clusterName}~1backup~1schedule/patch/requestBody/content",
+      "value": {
+        "application/vnd.atlas.2024-08-05+json": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "referenceHourOfDay": {
+                "type": "integer"
+              },
+              "referenceMinuteOfHour": {
+                "type": "integer"
+              },
+              "restoreWindowDays": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "why": "The plugin sends version 2024-08-05. The document shares one schema with the answer here, which requires policies, while saying to send only the fields being updated."
+    },
+    {
+      "pointer": "/paths/~1groups~1{groupId}~1alerts~1{alertId}/patch/responses/200/content",
+      "value": {
+        "application/vnd.atlas.2024-05-30+json": {
+          "schema": {
+            "$ref": "#/components/schemas/AlertViewForNdsGroup"
+          }
+        }
+      },
+      "why": "The plugin asks for version 2024-05-30; the document lists every version this operation has ever had, which would make the answer a union of all of them."
+    },
+    {
+      "pointer": "/paths/~1groups~1{groupId}~1alerts~1{alertId}/patch/requestBody/content",
+      "value": {
+        "application/vnd.atlas.2024-05-30+json": {
+          "schema": {
+            "$ref": "#/components/schemas/AcknowledgeAlert"
+          }
+        }
+      },
+      "why": "The plugin sends version 2024-05-30; the document lists every version this operation has ever had, which would make the body a union of all of them."
+    },
+    {
+      "pointer": "/components/schemas/CloudRegionConfig20240805",
+      "value": {
+        "type": "object",
+        "properties": {
+          "electableSpecs": {
+            "$ref": "#/components/schemas/HardwareSpec20240805"
+          },
+          "priority": {
+            "description": "Precedence is given to this region when a primary election occurs. If your `regionConfigs` has only `readOnlySpecs`, `analyticsSpecs`, or both, set this value to `0`. If you have multiple `regionConfigs` objects (your cluster is multi-region or multi-cloud), they must have priorities in descending order. The highest priority is `7`.\n\n**Example:** If you have three regions, their priorities would be `7`, `6`, and `5` respectively. If you added two more regions for supporting electable nodes, the priorities of those regions would be `4` and `3` respectively.",
+            "example": 7,
+            "format": "int32",
+            "maximum": 7,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "providerName": {
+            "type": "string"
+          },
+          "regionName": {
+            "type": "string"
+          },
+          "analyticsAutoScaling": {
+            "$ref": "#/components/schemas/AdvancedAutoScalingSettings"
+          },
+          "analyticsSpecs": {
+            "$ref": "#/components/schemas/DedicatedHardwareSpec20240805"
+          },
+          "autoScaling": {
+            "$ref": "#/components/schemas/AdvancedAutoScalingSettings"
+          },
+          "effectiveAnalyticsSpecs": {
+            "$ref": "#/components/schemas/DedicatedHardwareSpec20240805"
+          },
+          "effectiveElectableSpecs": {
+            "$ref": "#/components/schemas/DedicatedHardwareSpec20240805"
+          },
+          "effectiveReadOnlySpecs": {
+            "$ref": "#/components/schemas/DedicatedHardwareSpec20240805"
+          },
+          "readOnlySpecs": {
+            "$ref": "#/components/schemas/DedicatedHardwareSpec20240805"
+          },
+          "backingProviderName": {
+            "description": "Cloud service provider on which MongoDB Cloud provisioned the multi-tenant cluster. The resource returns this parameter when `providerName` is `TENANT` and `electableSpecs.instanceSize` is `M0`, `M2` or `M5`. \n\nPlease note that  using an `instanceSize` of `M2` or `M5` will create a Flex cluster instead. Support for the `instanceSize` of `M2` or `M5` will be discontinued in January 2026. We recommend using the Create Flex Cluster API for such configurations moving forward.",
+            "enum": ["AWS", "GCP", "AZURE"],
+            "externalDocs": {
+              "description": "Create Flex Cluster API",
+              "url": "https://www.mongodb.com/docs/atlas/reference/api-resources-spec/v2/#tag/Flex-Clusters/operation/createFlexCluster"
+            },
+            "type": "string"
+          }
+        }
+      },
+      "why": "A parent with oneOf children that each allOf it back is a type that refers to itself (TS2502). Flattened to one object with every variant's fields, which is how the plugin reads and sends it. providerName and regionName are strings because the plugin only compares them and sends back what it read, and providerName has values the enum lacks: the plugin filters FLEX and SERVERLESS out of the cluster list."
+    },
+    {
+      "pointer": "/components/schemas/HardwareSpec20240805",
+      "value": {
+        "type": "object",
+        "properties": {
+          "diskIOPS": {
+            "type": "integer"
+          },
+          "diskSizeGB": {
+            "type": "number"
+          },
+          "diskThroughput": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "ebsVolumeType": {
+            "default": "STANDARD",
+            "description": "Type of storage you want to attach to your AWS-provisioned cluster.\n\n- `STANDARD` volume types can't exceed the default input/output operations per second (IOPS) rate for the selected volume size. \n\n- `PROVISIONED` volume types must fall within the allowable IOPS range for the selected volume size.\n\n- `HIGH_PERFORMANCE` volume types use IO2 EBS volumes and must fall within the allowable IOPS range for the selected volume size.\n\nNVMe clusters require either `PROVISIONED` or `HIGH_PERFORMANCE`.",
+            "enum": ["STANDARD", "PROVISIONED", "HIGH_PERFORMANCE"],
+            "type": "string"
+          },
+          "instanceSize": {
+            "type": "string"
+          },
+          "nodeCount": {
+            "type": "integer"
+          },
+          "effectiveInstanceSize": {
+            "type": "string",
+            "readOnly": true
+          }
+        }
+      },
+      "why": "One object rather than a union per provider: the plugin reads these across providers and sends them back, with the tier it validated itself against its own table."
+    },
+    {
+      "pointer": "/components/schemas/DedicatedHardwareSpec20240805",
+      "value": {
+        "type": "object",
+        "properties": {
+          "diskIOPS": {
+            "type": "integer"
+          },
+          "diskSizeGB": {
+            "type": "number"
+          },
+          "diskThroughput": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "ebsVolumeType": {
+            "default": "STANDARD",
+            "description": "Type of storage you want to attach to your AWS-provisioned cluster.\n\n- `STANDARD` volume types can't exceed the default input/output operations per second (IOPS) rate for the selected volume size. \n\n- `PROVISIONED` volume types must fall within the allowable IOPS range for the selected volume size.\n\n- `HIGH_PERFORMANCE` volume types use IO2 EBS volumes and must fall within the allowable IOPS range for the selected volume size.\n\nNVMe clusters require either `PROVISIONED` or `HIGH_PERFORMANCE`.",
+            "enum": ["STANDARD", "PROVISIONED", "HIGH_PERFORMANCE"],
+            "type": "string"
+          },
+          "instanceSize": {
+            "type": "string"
+          },
+          "nodeCount": {
+            "type": "integer"
+          }
+        }
+      },
+      "why": "One object rather than a union per provider: the plugin reads these across providers and sends them back, with the tier it validated itself against its own table."
+    },
+    {
+      "pointer": "/components/schemas/BaseCloudProviderInstanceSize",
+      "value": {
+        "type": "string"
+      },
+      "why": "The auto-scaling bounds come from the plugin's own tier table or from what Atlas sent, and go back as they are."
+    },
+    {
+      "pointer": "/components/schemas/DatabaseUserRole/properties/roleName",
+      "value": {
+        "type": "string"
+      },
+      "why": "The role comes from a form or the editable roles string and goes through as typed, custom roles included, so a value outside this enum stays Atlas's error."
+    },
+    {
+      "pointer": "/components/schemas/OnlineArchiveSchedule",
+      "value": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "Type of schedule.",
+            "enum": ["DEFAULT", "DAILY", "WEEKLY", "MONTHLY"],
+            "type": "string"
+          }
+        },
+        "required": ["type"]
+      },
+      "why": "A parent with oneOf children that each allOf it back is a type that refers to itself (TS2502). The plugin only reads the schedule's type."
+    },
+    {
+      "pointer": "/components/schemas/DiskBackupCopyPolicyItem",
+      "value": {
+        "type": "object",
+        "properties": {
+          "frequencyType": {
+            "description": "Human-readable label that identifies the frequency type associated with the copy policy.",
+            "enum": ["daily", "hourly", "weekly", "monthly", "yearly", "ondemand"],
+            "type": "string"
+          },
+          "id": {
+            "description": "Unique 24-hexadecimal digit string that identifies this copy policy item.",
+            "example": "32b6e34b3d91647abb20e7b8",
+            "pattern": "^([a-f0-9]{24})$",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": ["frequencyType"]
+      },
+      "why": "A parent with oneOf children that each allOf it back is a type that refers to itself (TS2502). The plugin never reads a copy policy's frequencies."
+    },
+    {
+      "pointer": "/paths/~1groups~1{groupId}~1databaseUsers~1{databaseName}~1{username}/patch/requestBody/content/application~1vnd.atlas.2023-01-01+json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "description": "Description of this database user.",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "roles": {
+            "description": "List that provides the pairings of one role with one applicable database.",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseUserRole"
+            },
+            "type": "array"
+          }
+        }
+      },
+      "why": "The document reuses the create schema here, whose required fields are all in the path. The plugin sends only what changed."
+    },
+    {
+      "pointer": "/components/schemas/BackupOnlineArchive/properties/criteria",
+      "value": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/DateCriteriaView"
+          },
+          {
+            "$ref": "#/components/schemas/CustomCriteriaView"
+          }
+        ]
+      },
+      "why": "CriteriaView only has the discriminator; its fields are on the variants its mapping names, so this says which it is."
+    },
+    {
+      "pointer": "/components/schemas/InvoiceLineItem/properties/tags/additionalProperties",
+      "value": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "why": "The document says a list of strings. The plugin has always read a bare string or number as well, and this keeps those branches checked."
+    }
+  ],
+  "paths": {
+    "/orgs": ["get"],
+    "/orgs/{orgId}": ["get"],
+    "/orgs/{orgId}/groups": ["get"],
+    "/orgs/{orgId}/invoices": ["get"],
+    "/orgs/{orgId}/invoices/pending": ["get"],
+    "/orgs/{orgId}/invoices/{invoiceId}": ["get"],
+    "/groups/{groupId}": ["get", "patch"],
+    "/groups/{groupId}/clusters": ["get"],
+    "/groups/{groupId}/clusters/{clusterName}": ["get", "patch"],
+    "/groups/{groupId}/clusters/provider/regions": ["get"],
+    "/groups/{groupId}/flexClusters": ["get"],
+    "/groups/{groupId}/flexClusters/{name}": ["get", "patch"],
+    "/groups/{groupId}/serverless": ["get"],
+    "/groups/{groupId}/serverless/{name}": ["get"],
+    "/groups/{groupId}/databaseUsers": ["get", "post"],
+    "/groups/{groupId}/databaseUsers/{databaseName}/{username}": ["get", "patch", "delete"],
+    "/groups/{groupId}/accessList": ["get", "post"],
+    "/groups/{groupId}/accessList/{entryValue}": ["get", "delete"],
+    "/groups/{groupId}/alerts": ["get"],
+    "/groups/{groupId}/alerts/{alertId}": ["get", "patch"],
+    "/groups/{groupId}/alertConfigs": ["get"],
+    "/groups/{groupId}/alertConfigs/{alertConfigId}": ["get", "patch", "delete"],
+    "/groups/{groupId}/privateEndpoint/{cloudProvider}/endpointService": ["get"],
+    "/groups/{groupId}/privateEndpoint/{cloudProvider}/endpointService/{endpointServiceId}": [
+      "get",
+      "delete"
+    ],
+    "/groups/{groupId}/clusters/{clusterName}/backup/snapshots": ["get", "post"],
+    "/groups/{groupId}/clusters/{clusterName}/backup/snapshots/{snapshotId}": ["get", "delete"],
+    "/groups/{groupId}/clusters/{clusterName}/backup/schedule": ["get", "patch"],
+    "/groups/{groupId}/clusters/{clusterName}/search/indexes": ["get"],
+    "/groups/{groupId}/clusters/{clusterName}/search/indexes/{indexId}": ["get", "delete"],
+    "/groups/{groupId}/clusters/{clusterName}/onlineArchives": ["get"],
+    "/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}": [
+      "get",
+      "patch",
+      "delete"
+    ],
+    "/groups/{groupId}/processes": ["get"],
+    "/groups/{groupId}/processes/{processId}/measurements": ["get"]
+  }
+}

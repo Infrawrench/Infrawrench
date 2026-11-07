@@ -1,213 +1,43 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ApiListItem, ApiResponse, ResourceInstance } from "@infrawrench/plugin-base";
+import type { components, operations } from "./api-types.gen.js";
 import { isDedicatedTier, tierSpec } from "./tiers.js";
 
-/** Raw API shapes, narrowed to what the mappers read. */
-
-export interface AtlasGroup {
-  id?: string;
-  name?: string;
-  orgId?: string;
-  clusterCount?: number;
-  created?: string;
-  tags?: Array<{ key?: string; value?: string }>;
-}
-
-interface HardwareSpec {
-  instanceSize?: string;
-  effectiveInstanceSize?: string;
-  nodeCount?: number;
-  diskSizeGB?: number;
-  diskIOPS?: number;
-}
-
-interface RegionConfig {
-  providerName?: string;
-  backingProviderName?: string;
-  regionName?: string;
-  priority?: number;
-  electableSpecs?: HardwareSpec;
-  effectiveElectableSpecs?: HardwareSpec;
-  readOnlySpecs?: HardwareSpec;
-  analyticsSpecs?: HardwareSpec;
-  autoScaling?: {
-    compute?: {
-      enabled?: boolean;
-      scaleDownEnabled?: boolean;
-      minInstanceSize?: string;
-      maxInstanceSize?: string;
-    };
-    diskGB?: { enabled?: boolean };
-  };
-}
-
-export interface AtlasCluster {
-  id?: string;
-  name?: string;
-  groupId?: string;
-  clusterType?: string;
-  stateName?: string;
-  paused?: boolean;
-  mongoDBVersion?: string;
-  backupEnabled?: boolean;
-  pitEnabled?: boolean;
-  terminationProtectionEnabled?: boolean;
-  createDate?: string;
-  connectionStrings?: { standard?: string; standardSrv?: string };
-  replicationSpecs?: Array<{ id?: string; zoneName?: string; regionConfigs?: RegionConfig[] }>;
-  tags?: Array<{ key?: string; value?: string }>;
-}
-
-export interface AtlasFlexCluster {
-  id?: string;
-  name?: string;
-  groupId?: string;
-  stateName?: string;
-  mongoDBVersion?: string;
-  terminationProtectionEnabled?: boolean;
-  createDate?: string;
-  backupSettings?: { enabled?: boolean };
-  connectionStrings?: { standard?: string; standardSrv?: string };
-  providerSettings?: { backingProviderName?: string; regionName?: string; diskSizeGB?: number };
-  tags?: Array<{ key?: string; value?: string }>;
-}
-
-export interface AtlasServerless {
-  id?: string;
-  name?: string;
-  groupId?: string;
-  stateName?: string;
-  mongoDBVersion?: string;
-  terminationProtectionEnabled?: boolean;
-  createDate?: string;
-  connectionStrings?: { standardSrv?: string };
-  providerSettings?: { backingProviderName?: string; regionName?: string };
-}
-
-export interface AtlasDatabaseUser {
-  username?: string;
-  databaseName?: string;
-  groupId?: string;
-  description?: string;
-  deleteAfterDate?: string;
-  awsIAMType?: string;
-  ldapAuthType?: string;
-  oidcAuthType?: string;
-  x509Type?: string;
-  roles?: Array<{ roleName?: string; databaseName?: string; collectionName?: string }>;
-  scopes?: Array<{ name?: string; type?: string }>;
-}
-
-export interface AtlasAccessEntry {
-  groupId?: string;
-  ipAddress?: string;
-  cidrBlock?: string;
-  awsSecurityGroup?: string;
-  comment?: string;
-  deleteAfterDate?: string;
-}
-
-export interface AtlasSnapshot {
-  id?: string;
-  description?: string;
-  snapshotType?: string;
-  frequencyType?: string;
-  status?: string;
-  createdAt?: string;
-  expiresAt?: string;
-  storageSizeBytes?: number;
-  mongodVersion?: string;
-}
-
-export interface AtlasBackupSchedule {
+export type AtlasGroup = ApiListItem<operations["getOrgGroups"], "results">;
+export type AtlasCluster = ApiListItem<operations["listGroupClusters"], "results">;
+export type AtlasFlexCluster = ApiListItem<operations["listGroupFlexClusters"], "results">;
+export type AtlasServerless = ApiListItem<operations["listGroupServerlessInstances"], "results">;
+export type AtlasDatabaseUser = ApiListItem<operations["listGroupDatabaseUsers"], "results">;
+export type AtlasAccessEntry = ApiListItem<operations["listGroupAccessListEntries"], "results">;
+export type AtlasSnapshot = ApiListItem<operations["listGroupClusterBackupSnapshots"], "results">;
+export type AtlasBackupSchedule = ApiResponse<operations["getGroupClusterBackupSchedule"]>;
+/** A union of one type per kind of event; these are the fields that only some of them have. */
+export type AtlasAlert = ApiListItem<operations["listGroupAlerts"], "results"> & {
   clusterName?: string;
-  referenceHourOfDay?: number;
-  referenceMinuteOfHour?: number;
-  restoreWindowDays?: number;
-  nextSnapshot?: string;
-  autoExportEnabled?: boolean;
-  copySettings?: Array<{ cloudProvider?: string; regionName?: string }>;
-  policies?: Array<{
-    id?: string;
-    policyItems?: Array<{
-      frequencyType?: string;
-      frequencyInterval?: number;
-      retentionUnit?: string;
-      retentionValue?: number;
-    }>;
-  }>;
-}
-
-export interface AtlasAlert {
-  id?: string;
-  groupId?: string;
-  alertConfigId?: string;
-  eventTypeName?: string;
-  status?: string;
-  severity?: string;
-  metricName?: string;
   currentValue?: { number?: number; units?: string };
   hostnameAndPort?: string;
+  metricName?: string;
   replicaSetName?: string;
-  clusterName?: string;
-  created?: string;
-  resolved?: string;
-  acknowledgedUntil?: string;
-  acknowledgingUsername?: string;
-}
-
-export interface AtlasAlertConfig {
-  id?: string;
-  groupId?: string;
-  eventTypeName?: string;
-  enabled?: boolean;
-  updated?: string;
-  metricThreshold?: {
-    metricName?: string;
-    operator?: string;
-    threshold?: number;
-    units?: string;
-    mode?: string;
-  };
+};
+/** As {@link AtlasAlert}. */
+export type AtlasAlertConfig = ApiListItem<operations["listGroupAlertConfigs"], "results"> & {
+  metricThreshold?: { metricName?: string; operator?: string; threshold?: number; units?: string };
   threshold?: { operator?: string; threshold?: number; units?: string };
-  matchers?: Array<{ fieldName?: string; operator?: string; value?: string }>;
-  notifications?: Array<{ typeName?: string; intervalMin?: number; delayMin?: number }>;
-}
+};
+export type AtlasSearchIndex = ApiListItem<operations["listGroupClusterSearchIndexes"], null>;
+export type AtlasOnlineArchive = ApiListItem<
+  operations["listGroupClusterOnlineArchives"],
+  "results"
+>;
+/** The document's list names only what the clouds share; each cloud adds its own fields. */
+export type AtlasEndpointService = ApiListItem<
+  operations["listGroupPrivateEndpointEndpointService"],
+  null
+> &
+  Partial<components["schemas"]["AWSPrivateLinkConnection"]> &
+  Partial<components["schemas"]["AzurePrivateLinkConnection"]> &
+  Partial<components["schemas"]["GCPEndpointService"]>;
 
-export interface AtlasSearchIndex {
-  indexID?: string;
-  name?: string;
-  type?: string;
-  database?: string;
-  collectionName?: string;
-  status?: string;
-  queryable?: boolean;
-}
-
-export interface AtlasOnlineArchive {
-  _id?: string;
-  clusterName?: string;
-  dbName?: string;
-  collName?: string;
-  state?: string;
-  paused?: boolean;
-  criteria?: { type?: string; dateField?: string; expireAfterDays?: number; query?: string };
-  dataExpirationRule?: { expireAfterDays?: number };
-  schedule?: { type?: string };
-}
-
-export interface AtlasEndpointService {
-  id?: string;
-  cloudProvider?: string;
-  regionName?: string;
-  status?: string;
-  errorMessage?: string;
-  endpointServiceName?: string;
-  serviceAttachmentNames?: string[];
-  privateLinkServiceName?: string;
-  interfaceEndpoints?: string[];
-  privateEndpoints?: string[];
-  endpointGroupNames?: string[];
-}
+type RegionConfig = components["schemas"]["CloudRegionConfig20240805"];
 
 // ---------------------------------------------------------------------------
 
@@ -265,6 +95,8 @@ const clusterParent = (accountId: string, groupId: string, cluster: string) =>
   resourceId(accountId, "cluster", `${groupId}/${cluster}`);
 
 /** Split a path-shaped external id into its fixed leading parts and the rest. */
+export function splitId(externalId: string, fixed: 1): [string, string];
+export function splitId(externalId: string, fixed: 2): [string, string, string];
 export function splitId(externalId: string, fixed: number): string[] {
   const parts = externalId.split("/");
   if (parts.length <= fixed) return parts;

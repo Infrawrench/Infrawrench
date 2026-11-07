@@ -1,8 +1,10 @@
+import { pathEncode } from "@infrawrench/plugin-base";
 import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   AtlasApiError,
-  atlasRequest,
+  atlasApi,
+  atlasVersion,
   authFromCredentials,
   digestAuthorization,
   listAll,
@@ -56,7 +58,7 @@ describe("auth", () => {
 
   it("sends a bearer token and the endpoint's versioned media type", async () => {
     const { http, calls } = makeHttp(() => ({ ok: true }));
-    await atlasRequest(ctxWith(http), "GET", "/api/atlas/v2/orgs", { version: "2024-08-05" });
+    await atlasApi(ctxWith(http)).get(`/orgs`, { headers: atlasVersion("2024-08-05") });
     expect(calls[0]!.headers["Authorization"]).toBe("Bearer tok");
     expect(calls[0]!.headers["Accept"]).toBe("application/vnd.atlas.2024-08-05+json");
   });
@@ -82,21 +84,21 @@ describe("auth", () => {
       baseUrl: "https://cloud.mongodb.com",
       http,
     };
-    await atlasRequest(ctx, "GET", "/api/atlas/v2/orgs");
-    await atlasRequest(ctx, "GET", "/api/atlas/v2/groups");
+    await atlasApi(ctx).get(`/orgs`);
+    await atlasApi(ctx).get(`/groups/${pathEncode("g1")}`);
     expect(calls).toHaveLength(3);
     expect(calls[1]!.headers["Authorization"]).toContain("nc=00000001");
     expect(calls[2]!.headers["Authorization"]).toContain("nc=00000002");
-    expect(calls[2]!.headers["Authorization"]).toContain('uri="/api/atlas/v2/groups"');
+    expect(calls[2]!.headers["Authorization"]).toContain('uri="/api/atlas/v2/groups/g1"');
   });
 
   it("throws AtlasApiError with the status and errorCode", async () => {
     const { http } = makeHttp(() =>
       reply({ status: 403, body: { errorCode: "USER_UNAUTHORIZED", detail: "nope" } }),
     );
-    const err = (await atlasRequest(ctxWith(http), "GET", "/api/atlas/v2/orgs").catch(
-      (e: unknown) => e,
-    )) as AtlasApiError;
+    const err = (await atlasApi(ctxWith(http))
+      .get(`/orgs`)
+      .catch((e: unknown) => e)) as AtlasApiError;
     expect(err).toBeInstanceOf(AtlasApiError);
     expect(err.status).toBe(403);
     expect(err.errorCode).toBe("USER_UNAUTHORIZED");
@@ -107,7 +109,10 @@ describe("auth", () => {
       const page = Number(new URL(call.url).searchParams.get("pageNum"));
       return { results: page === 1 ? Array.from({ length: 500 }, (_, i) => i) : [1, 2] };
     });
-    const all = await listAll<number>(ctxWith(http), "/api/atlas/v2/orgs/o/groups");
+    const api = atlasApi(ctxWith(http));
+    const all = await listAll((paging) =>
+      api.get(`/orgs/${pathEncode("o")}/groups`, { query: paging }),
+    );
     expect(all).toHaveLength(502);
     expect(calls).toHaveLength(2);
   });

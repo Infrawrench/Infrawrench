@@ -1,4 +1,5 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { createApiClient, type ApiClient, type HttpHostServices } from "@infrawrench/plugin-base";
+import type { paths } from "./api-types.gen.js";
 import { md5Hex } from "./md5.js";
 
 /**
@@ -28,6 +29,9 @@ import { md5Hex } from "./md5.js";
 
 export const DEFAULT_BASE_URL = "https://cloud.mongodb.com";
 export const DEFAULT_API_VERSION = "2023-01-01";
+
+/** Every operation in `plugingen.json` lives under this. */
+const API_PREFIX = "/api/atlas/v2";
 
 export type AtlasAuth =
   | { kind: "service-account"; clientId: string; clientSecret: string }
@@ -192,7 +196,7 @@ async function serviceAccountToken(
         "SERVICE_ACCOUNT_TOKEN",
       );
     }
-    const parsed = JSON.parse(res.body) as { access_token?: string; expires_in?: number };
+    const parsed: { access_token?: string; expires_in?: number } = JSON.parse(res.body);
     if (!parsed.access_token) throw new AtlasApiError(0, "MongoDB Atlas returned no access token");
     tokenCache.set(key, {
       token: parsed.access_token,
@@ -285,12 +289,12 @@ export function digestAuthorization(
 
 function describeError(body: string): string {
   try {
-    const parsed = JSON.parse(body) as {
+    const parsed: {
       detail?: string;
       reason?: string;
       errorCode?: string;
       error_description?: string;
-    };
+    } = JSON.parse(body);
     return (
       parsed.detail ??
       parsed.error_description ??
@@ -305,117 +309,108 @@ function describeError(body: string): string {
 
 function errorCodeOf(body: string): string {
   try {
-    return String((JSON.parse(body) as { errorCode?: string }).errorCode ?? "");
+    const parsed: { errorCode?: string } = JSON.parse(body);
+    return String(parsed.errorCode ?? "");
   } catch {
     return "";
   }
 }
 
-export interface AtlasRequestOptions {
-  /** Media-type version of the endpoint, e.g. "2024-08-05". */
-  version?: string;
-  query?: Record<string, string | number | boolean | undefined>;
-  body?: unknown;
-}
-
-function buildPath(path: string, query?: AtlasRequestOptions["query"]): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) {
-    if (v !== undefined) params.set(k, String(v));
-  }
-  const qs = params.toString();
-  return qs ? `${path}${path.includes("?") ? "&" : "?"}${qs}` : path;
+/** The `Accept` that picks an endpoint's media-type version, e.g. "2024-08-05". */
+export function atlasVersion(version: string): { Accept: string } {
+  return { Accept: `application/vnd.atlas.${version}+json` };
 }
 
 /**
- * Call one Admin API endpoint. `path` starts with `/api/atlas/v2/`. Returns
- * the parsed JSON body (undefined for an empty 2xx), throws
- * {@link AtlasApiError} otherwise.
+ * The one exchange behind every typed call, signing it for the credential's kind
+ * and retrying once on a 401. A request body has the media type of its `Accept`.
+ * Digest signs what was asked for, so the URI is cut out of the URL as written:
+ * parsing it would resolve a `..` in an id.
  */
-export async function atlasRequest<T>(
+async function authorizedSend(
   ctx: AtlasContext,
-  method: string,
-  path: string,
-  opts: AtlasRequestOptions = {},
-): Promise<T> {
-  const uri = buildPath(path, opts.query);
-  const url = `${ctx.baseUrl}${uri}`;
-  const mediaType = `application/vnd.atlas.${opts.version ?? DEFAULT_API_VERSION}+json`;
-  const headers: Record<string, string> = { Accept: mediaType };
-  const body = opts.body !== undefined ? JSON.stringify(opts.body) : undefined;
-  if (body !== undefined) headers["Content-Type"] = mediaType;
+  { url, method, headers: asked, body }: Parameters<HttpHostServices["request"]>[0],
+): Promise<RawResponse> {
+  const headers: Record<string, string> =
+    body === undefined ? { ...asked } : { ...asked, "Content-Type": asked["Accept"] ?? "" };
+  // Always text: the client only ever sends JSON.
+  const text = typeof body === "object" ? new TextDecoder().decode(body) : body;
+  const exchange = () =>
+    send(ctx, { url, method, headers, ...(text !== undefined ? { body: text } : {}) });
 
-  let res: RawResponse;
   if (ctx.auth.kind === "service-account") {
     const auth = ctx.auth;
     headers["Authorization"] = `Bearer ${await serviceAccountToken(ctx, auth)}`;
-    res = await send(ctx, { url, method, headers, ...(body !== undefined ? { body } : {}) });
-    if (res.status === 401) {
-      // A revoked or rotated token: mint one fresh token and try once more.
-      headers["Authorization"] = `Bearer ${await serviceAccountToken(ctx, auth, true)}`;
-      res = await send(ctx, { url, method, headers, ...(body !== undefined ? { body } : {}) });
-    }
-  } else {
-    const { publicKey, privateKey } = ctx.auth;
-    const cacheKey = `${ctx.baseUrl}|${publicKey}`;
-    const cached = digestCache.get(cacheKey);
-    if (cached)
-      headers["Authorization"] = digestAuthorization(cached, publicKey, privateKey, method, uri);
-    res = await send(ctx, { url, method, headers, ...(body !== undefined ? { body } : {}) });
-    if (res.status === 401) {
-      const challenge = parseDigestChallenge(header(res.headers, "www-authenticate"));
-      if (challenge) {
-        digestCache.set(cacheKey, challenge);
-        headers["Authorization"] = digestAuthorization(
-          challenge,
-          publicKey,
-          privateKey,
-          method,
-          uri,
-        );
-        res = await send(ctx, { url, method, headers, ...(body !== undefined ? { body } : {}) });
-      }
-    }
+    const res = await exchange();
+    if (res.status !== 401) return res;
+    // A revoked or rotated token: mint one fresh token and try once more.
+    headers["Authorization"] = `Bearer ${await serviceAccountToken(ctx, auth, true)}`;
+    return exchange();
   }
+  const { publicKey, privateKey } = ctx.auth;
+  const uri = url.slice(ctx.baseUrl.length);
+  const cacheKey = `${ctx.baseUrl}|${publicKey}`;
+  const cached = digestCache.get(cacheKey);
+  if (cached)
+    headers["Authorization"] = digestAuthorization(cached, publicKey, privateKey, method, uri);
+  const res = await exchange();
+  if (res.status !== 401) return res;
+  const challenge = parseDigestChallenge(header(res.headers, "www-authenticate"));
+  if (!challenge) return res;
+  digestCache.set(cacheKey, challenge);
+  headers["Authorization"] = digestAuthorization(challenge, publicKey, privateKey, method, uri);
+  return exchange();
+}
 
-  if (res.status < 200 || res.status >= 300) {
-    throw new AtlasApiError(
-      res.status,
-      `MongoDB Atlas API error ${res.status} for ${method} ${path}: ${describeError(res.body)}`,
-      errorCodeOf(res.body),
-    );
-  }
-  if (!res.body) return undefined as T;
-  return JSON.parse(res.body) as T;
+/**
+ * A typed client for the Admin API. Paths are written without `/api/atlas/v2`. A call
+ * on anything but {@link DEFAULT_API_VERSION} names its version with
+ * `headers: atlasVersion(...)`, and `plugingen.json` keeps that version's types.
+ */
+export function atlasApi(ctx: AtlasContext): ApiClient<paths> {
+  return createApiClient<paths>({
+    vendor: "MongoDB Atlas",
+    baseUrl: `${ctx.baseUrl}${API_PREFIX}`,
+    headers: atlasVersion(DEFAULT_API_VERSION),
+    contentType: "with-body",
+    http: { request: (req) => authorizedSend(ctx, req) },
+    httpError: ({ status, method, path, body }) =>
+      new AtlasApiError(
+        status,
+        `MongoDB Atlas API error ${status} for ${method} ${API_PREFIX}${path}: ${describeError(body)}`,
+        errorCodeOf(body),
+      ),
+  });
 }
 
 const PAGE_SIZE = 500;
 const MAX_PAGES = 40;
 
+/** What {@link listAll} puts in each page's query, after the call's own parameters. */
+export interface AtlasPaging {
+  itemsPerPage: number;
+  pageNum: number;
+}
+
 /**
- * Walk a paginated list (`{ results, totalCount }`, `pageNum` from 1). Stops
- * on a short page, at `totalCount`, or after {@link MAX_PAGES} pages.
+ * Walk a paginated list (`{ results, totalCount }`, `pageNum` from 1). Stops on a
+ * short page, at `totalCount`, or after {@link MAX_PAGES} pages. A loop rather than
+ * the client's `getAll`, which reads a `results` that is not a list as the end of
+ * one, where this has always failed.
  */
 export async function listAll<T>(
-  ctx: AtlasContext,
-  path: string,
-  opts: Omit<AtlasRequestOptions, "body"> = {},
+  fetchPage: (paging: AtlasPaging) => Promise<{ results?: T[]; totalCount?: number } | undefined>,
 ): Promise<T[]> {
   const out: T[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const res = await atlasRequest<{ results?: T[]; totalCount?: number }>(ctx, "GET", path, {
-      ...opts,
-      query: { ...opts.query, itemsPerPage: PAGE_SIZE, pageNum: page },
-    });
+    const res = await fetchPage({ itemsPerPage: PAGE_SIZE, pageNum: page });
     const results = res?.results ?? [];
     out.push(...results);
     if (results.length < PAGE_SIZE) break;
-    if (typeof res.totalCount === "number" && out.length >= res.totalCount) break;
+    if (typeof res?.totalCount === "number" && out.length >= res.totalCount) break;
   }
   return out;
 }
-
-export const enc = encodeURIComponent;
 
 export interface AtlasOrg {
   id: string;
@@ -424,12 +419,10 @@ export interface AtlasOrg {
 
 /** Every organization the credential can see (a service account sees its own). */
 export async function listOrgs(ctx: AtlasContext): Promise<AtlasOrg[]> {
-  const orgs = await listAll<{ id?: string; name?: string; isDeleted?: boolean }>(
-    ctx,
-    "/api/atlas/v2/orgs",
-  );
+  const api = atlasApi(ctx);
+  const orgs = await listAll((paging) => api.get(`/orgs`, { query: paging }));
   return orgs
-    .filter((o): o is { id: string; name?: string } => typeof o.id === "string" && !o.isDeleted)
+    .filter((o): o is typeof o & { id: string } => typeof o.id === "string" && !o.isDeleted)
     .map((o) => ({ id: o.id, name: o.name ?? o.id }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

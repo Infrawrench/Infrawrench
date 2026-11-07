@@ -1,6 +1,14 @@
-import type { CostRow, MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
+import {
+  pathEncode,
+  type ApiListItem,
+  type ApiResponse,
+  type CostRow,
+  type MetricSeries,
+  type MetricSeriesPoint,
+} from "@infrawrench/plugin-base";
 import type { AtlasContext } from "./api.js";
-import { atlasRequest, enc, listAll, statusOf } from "./api.js";
+import { atlasApi, listAll, statusOf } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 
 /**
  * Cluster charts from process measurements
@@ -32,14 +40,7 @@ export function rangeOrDefault(range: TimeRange | undefined, windowMs: number): 
   return { startMs: endMs - windowMs, endMs };
 }
 
-export interface AtlasProcess {
-  id?: string;
-  hostname?: string;
-  userAlias?: string;
-  port?: number;
-  typeName?: string;
-  replicaSetName?: string;
-}
+export type AtlasProcess = ApiListItem<operations["listGroupProcesses"], "results">;
 
 /**
  * Processes of one cluster. Atlas host names are
@@ -72,13 +73,15 @@ export function granularityFor(range: TimeRange): string {
   return "P1D";
 }
 
-interface Measurement {
-  name?: string;
-  units?: string;
-  dataPoints?: Array<{ timestamp?: string; value?: number | null }>;
-}
+type Measurement = NonNullable<
+  ApiResponse<operations["getGroupProcessMeasurements"]>["measurements"]
+>[number];
 
-const FULL_SET = [
+type MeasurementName = NonNullable<
+  NonNullable<operations["getGroupProcessMeasurements"]["parameters"]["query"]>["m"]
+>[number];
+
+const FULL_SET: MeasurementName[] = [
   "CONNECTIONS",
   "OPCOUNTER_QUERY",
   "OPCOUNTER_INSERT",
@@ -98,7 +101,7 @@ const FULL_SET = [
 ];
 
 /** What every dedicated cluster reports; the fallback when Atlas rejects a name. */
-const CORE_SET = [
+const CORE_SET: MeasurementName[] = [
   "CONNECTIONS",
   "OPCOUNTER_QUERY",
   "OPCOUNTER_INSERT",
@@ -115,23 +118,22 @@ async function measurementsFor(
   processId: string,
   range: TimeRange,
 ): Promise<Measurement[]> {
-  const path = `/api/atlas/v2/groups/${enc(groupId)}/processes/${enc(processId)}/measurements`;
-  const query = (names: string[]) => `${path}?${names.map((m) => `m=${m}`).join("&")}`;
-  const params = {
-    granularity: granularityFor(range),
-    start: new Date(range.startMs).toISOString().replace(/\.\d{3}Z$/, "Z"),
-    end: new Date(range.endMs).toISOString().replace(/\.\d{3}Z$/, "Z"),
-  };
-  try {
-    const res = await atlasRequest<{ measurements?: Measurement[] }>(ctx, "GET", query(FULL_SET), {
-      query: params,
+  const api = atlasApi(ctx);
+  const fetchNamed = (m: MeasurementName[]) =>
+    api.get(`/groups/${pathEncode(groupId)}/processes/${pathEncode(processId)}/measurements`, {
+      query: {
+        m,
+        granularity: granularityFor(range),
+        start: new Date(range.startMs).toISOString().replace(/\.\d{3}Z$/, "Z"),
+        end: new Date(range.endMs).toISOString().replace(/\.\d{3}Z$/, "Z"),
+      },
     });
+  try {
+    const res = await fetchNamed(FULL_SET);
     return res?.measurements ?? [];
   } catch (err) {
     if (statusOf(err) !== 400) throw err;
-    const res = await atlasRequest<{ measurements?: Measurement[] }>(ctx, "GET", query(CORE_SET), {
-      query: params,
-    });
+    const res = await fetchNamed(CORE_SET);
     return res?.measurements ?? [];
   }
 }
@@ -188,11 +190,14 @@ export async function clusterSeries(
   range: TimeRange,
 ): Promise<MetricSeries[]> {
   if (!standardSrv) return [];
-  const all = await listAll<AtlasProcess>(ctx, `/api/atlas/v2/groups/${enc(groupId)}/processes`);
+  const api = atlasApi(ctx);
+  const all = await listAll((paging) =>
+    api.get(`/groups/${pathEncode(groupId)}/processes`, { query: paging }),
+  );
   const procs = processesForCluster(all, standardSrv).filter((p) => p.id);
   if (procs.length === 0) return [];
   const perProcess = await Promise.all(
-    procs.map((p) => measurementsFor(ctx, groupId, p.id!, range).catch(() => [] as Measurement[])),
+    procs.map((p) => measurementsFor(ctx, groupId, p.id!, range).catch((): Measurement[] => [])),
   );
   const secondaries = perProcess.filter((_, i) => /SECONDARY/.test(procs[i]?.typeName ?? ""));
   const defs: Array<{
