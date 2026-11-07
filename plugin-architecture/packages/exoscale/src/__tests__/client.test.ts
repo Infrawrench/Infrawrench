@@ -1,6 +1,10 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostServices } from "@infrawrench/plugin-base";
-import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
+import {
+  evaluateOrphanRule,
+  evaluatePostureRule,
+  exportResourcesToTerraform,
+} from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authorization, createExoscaleApi, rawId, type Schemas, statusOf } from "../api.js";
 import { ExoscaleClient } from "../client.js";
@@ -9,6 +13,7 @@ import { recordBody } from "../create.js";
 import { mapInstance, mapRecord, mapSecurityGroup, openToWorld } from "../listers.js";
 import { plugin } from "../plugin.js";
 import { quotasFrom } from "../quotas.js";
+import { ElasticIpResourceType, InstanceResourceType } from "../resources.js";
 import { parseStatusFeed, zonesIn } from "../status-feed.js";
 
 type Call = { url: string; method: string; headers: Record<string, string>; body?: string };
@@ -290,6 +295,134 @@ describe("costs", () => {
   it("refuses Parquet and walks months", () => {
     expect(() => parseFocusBody("PAR1....")).toThrow(/Parquet/);
     expect(monthsBetween("2026-08-15", "2026-10-02")).toEqual(["2026-08", "2026-09", "2026-10"]);
+  });
+});
+
+describe("instance details (#405)", () => {
+  blockFetch();
+
+  // A row as `GET /instance` documents it: no disk size, elastic IPs, snapshots or encryption.
+  const row = (id: string) => ({
+    id,
+    name: id,
+    state: "running",
+    "security-groups": [{ id: "sg" }],
+  });
+  const detail = (id: string, extra: object) => ({ ...row(id), ...extra });
+  const unencrypted = InstanceResourceType.postureChecks?.find(
+    (c) => c.id === "exoscale-instance-disk-unencrypted",
+  );
+
+  function zone(routes: Record<string, () => { status?: number; body: unknown }>) {
+    return host((c) => {
+      const path = new URL(c.url).pathname.replace(/^\/v2/, "");
+      if (path === "/zone") return { body: { zones: [{ name: "ch-gva-2" }] } };
+      if (path === "/instance-type") return { body: { "instance-types": [] } };
+      const route = routes[path];
+      if (!route) throw new Error(`unexpected request ${path}`);
+      return route();
+    });
+  }
+
+  it("reads each instance in full, because the list rows leave these fields out", async () => {
+    const { services } = zone({
+      "/instance": () => ({ body: { instances: [row("i1")] } }),
+      "/instance/i1": () => ({
+        body: detail("i1", {
+          "disk-size": 50,
+          "elastic-ips": [{ id: "e1" }],
+          snapshots: [{ id: "s1" }, { id: "s2" }],
+          "disk-encrypted": true,
+        }),
+      }),
+    });
+    const [r] = await clientOver(services).listResources("instance", "acct");
+    expect(r?.fields).toMatchObject({
+      diskGb: 50,
+      elasticIpIds: "e1",
+      snapshotCount: 2,
+      diskEncrypted: true,
+      securityGroupIds: "sg",
+    });
+    expect(evaluatePostureRule(unencrypted, r?.fields)).toBeNull();
+  });
+
+  it("still reports a disk the single instance says is unencrypted", async () => {
+    const { services } = zone({
+      "/instance": () => ({ body: { instances: [row("i1")] } }),
+      "/instance/i1": () => ({ body: detail("i1", { "disk-size": 50 }) }),
+    });
+    const [r] = await clientOver(services).listResources("instance", "acct");
+    expect(evaluatePostureRule(unencrypted, r?.fields)).toBe(unencrypted?.reason);
+  });
+
+  it("drops an instance deleted since the list", async () => {
+    const { services } = zone({
+      "/instance": () => ({ body: { instances: [row("i1"), row("i2")] } }),
+      "/instance/i1": () => ({ status: 404, body: { message: "gone" } }),
+      "/instance/i2": () => ({ body: detail("i2", { "disk-size": 20 }) }),
+    });
+    const rows = await clientOver(services).listResources("instance", "acct");
+    expect(rows.map((r) => r.externalId)).toEqual(["ch-gva-2/i2"]);
+  });
+
+  it("keeps an instance whose read fails, without claiming what it could not read", async () => {
+    const { services } = zone({
+      "/instance": () => ({ body: { instances: [row("i1")] } }),
+      "/instance/i1": () => ({ status: 503, body: "busy" }),
+    });
+    const [r] = await clientOver(services).listResources("instance", "acct");
+    expect(r?.fields["name"]).toBe("i1");
+    for (const key of ["diskGb", "elasticIpIds", "snapshotCount", "diskEncrypted"])
+      expect(r?.fields).not.toHaveProperty(key);
+    expect(evaluatePostureRule(unencrypted, r?.fields)).toBeNull();
+  });
+
+  const eips = {
+    "elastic-ips": [
+      { id: "e1", ip: "1.1.1.1" },
+      { id: "e2", ip: "2.2.2.2" },
+    ],
+  };
+  const orphaned = (rows: { fields: Record<string, string | number | boolean> }[]) =>
+    rows.map((r) => evaluateOrphanRule(ElasticIpResourceType.orphanRule, r.fields) !== null);
+
+  it("finds an elastic IP's holders on the single instances", async () => {
+    const { services } = zone({
+      "/elastic-ip": () => ({ body: eips }),
+      "/instance": () => ({ body: { instances: [row("i1")] } }),
+      "/instance/i1": () => ({ body: detail("i1", { "elastic-ips": [{ id: "e1" }] }) }),
+    });
+    const rows = await clientOver(services).listResources("elastic-ip", "acct");
+    expect(rows.map((r) => r.fields["instanceIds"])).toEqual(["i1", ""]);
+    expect(orphaned(rows)).toEqual([false, true]);
+  });
+
+  it("reads no instances in a zone with no elastic IPs", async () => {
+    const { services, calls } = zone({ "/elastic-ip": () => ({ body: { "elastic-ips": [] } }) });
+    expect(await clientOver(services).listResources("elastic-ip", "acct")).toEqual([]);
+    expect(calls.some((c) => c.url.includes("/instance"))).toBe(false);
+  });
+
+  it("does not call an elastic IP orphaned when an instance could not be read", async () => {
+    const { services } = zone({
+      "/elastic-ip": () => ({ body: eips }),
+      "/instance": () => ({ body: { instances: [row("i1"), row("i2")] } }),
+      "/instance/i1": () => ({ body: detail("i1", { "elastic-ips": [{ id: "e1" }] }) }),
+      "/instance/i2": () => ({ status: 500, body: "boom" }),
+    });
+    const rows = await clientOver(services).listResources("elastic-ip", "acct");
+    expect(rows.map((r) => r.fields["instanceIds"])).toEqual(["i1", undefined]);
+    expect(orphaned(rows)).toEqual([false, false]);
+  });
+
+  it("does not call an elastic IP orphaned when the instance list fails", async () => {
+    const { services } = zone({
+      "/elastic-ip": () => ({ body: eips }),
+      "/instance": () => ({ status: 500, body: "boom" }),
+    });
+    const rows = await clientOver(services).listResources("elastic-ip", "acct");
+    expect(orphaned(rows)).toEqual([false, false]);
   });
 });
 

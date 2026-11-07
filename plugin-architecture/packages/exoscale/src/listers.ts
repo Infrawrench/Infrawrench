@@ -4,11 +4,13 @@
  * fails; account-wide ones (security groups, anti-affinity groups, SSH keys,
  * DNS, DBaaS) are read once from the default zone's endpoint.
  *
- * Fields an orphan/posture rule reads are always written.
+ * Fields an orphan/posture rule reads are written whenever they were read, and left
+ * unset when they could not be, so a failed read raises no finding.
  */
 
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { ApiResponse } from "@infrawrench/plugin-base";
+import { rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { operations } from "./api-types.gen.js";
 import {
   type AnyVariant,
@@ -19,6 +21,7 @@ import {
   rawId,
   type Schemas,
   type Sketch,
+  statusOf,
 } from "./api.js";
 
 export const PLUGIN_ID = "exoscale";
@@ -157,14 +160,58 @@ export function mapInstance(
   );
 }
 
-export async function listInstances(api: ExoscaleApi, accountId: string, types?: TypeIndex) {
-  const rows = await perZone(api, (zone) =>
-    api
-      .at(zone)
-      .get("/instance")
-      .then((r) => arr(r.instances)),
+type InstanceRow = NonNullable<ApiResponse<operations["list-instances"]>["instances"]>[number];
+
+/** An instance from the list, and in full unless reading it failed. */
+type InstanceRead = { row: InstanceRow; full?: Schemas["instance"] };
+
+/** What `mapInstance` takes from fields only `GET /instance/{id}` answers. */
+const DETAIL_ONLY_FIELDS = new Set(["diskGb", "elasticIpIds", "snapshotCount", "diskEncrypted"]);
+
+/**
+ * The list rows have no disk size, elastic IPs, snapshots or encryption, so each instance
+ * is read in full (six at a time). One answering 404 went away after the list and is
+ * dropped. Any other failure keeps its row, so a passing error cannot prune the instance.
+ */
+async function readInstances(api: ExoscaleApi, zone: string): Promise<InstanceRead[]> {
+  const res = await api.at(zone).get("/instance");
+  const reads = await mapPooled(
+    arr(res.instances),
+    6,
+    async (row): Promise<InstanceRead | null> => {
+      if (!row.id) return { row };
+      try {
+        return { row, full: await api.at(zone).get(`/instance/${rawId(row.id)}`) };
+      } catch (err) {
+        return statusOf(err) === 404 ? null : { row };
+      }
+    },
   );
-  return rows.map(({ zone, item }) => mapInstance(item, zone, accountId, types));
+  return reads.filter((r) => r !== null);
+}
+
+/**
+ * A false `diskEncrypted` or an empty `elasticIpIds` from a row would be a claim nobody
+ * read, so they stay unset: posture and orphan rules do not match an absent field.
+ */
+function mapUnreadInstance(
+  row: InstanceRow,
+  zone: string,
+  accountId: string,
+  types?: TypeIndex,
+): ResourceInstance {
+  const mapped = mapInstance(row, zone, accountId, types);
+  const fields = Object.entries(mapped.fields).filter(([key]) => !DETAIL_ONLY_FIELDS.has(key));
+  return { ...mapped, fields: Object.fromEntries(fields) };
+}
+
+export async function listInstances(api: ExoscaleApi, accountId: string, types?: TypeIndex) {
+  const rows = await perZone(api, (zone) => readInstances(api, zone));
+  return rows.map(({ zone, item: { row, full } }) =>
+    full
+      ? mapInstance({ ...row, ...full }, zone, accountId, types)
+      : mapUnreadInstance(row, zone, accountId, types),
+  );
 }
 
 // --- Block storage and snapshots ------------------------------------------------------
@@ -409,7 +456,8 @@ export function mapElasticIp(
   e: Sketch<Schemas["elastic-ip"]>,
   zone: string,
   accountId: string,
-  attached: string[],
+  /** Unset when the holders could not all be read, which is not the same as having none. */
+  attached: string[] | undefined,
 ): ResourceInstance {
   const hc = e["healthcheck"];
   return instance(
@@ -424,40 +472,29 @@ export function mapElasticIp(
       family: str(e["addressfamily"]),
       managed: Boolean(hc?.["mode"]),
       healthcheck: healthcheckText(hc),
-      instanceIds: attached.join(", "),
+      ...(attached ? { instanceIds: attached.join(", ") } : {}),
       labels: labelsText(e["labels"]),
     },
     { outputs: { ip: str(e["ip"]) } },
   );
 }
 
-/**
- * An instance as this plugin reads it from the list. The document and Exoscale's Go
- * client only put `elastic-ips` on the single instance (#405).
- */
-type InstanceRow = NonNullable<ApiResponse<operations["list-instances"]>["instances"]>[number] & {
-  "elastic-ips"?: Schemas["elastic-ip-ref"][];
-};
-
 export async function listElasticIps(api: ExoscaleApi, accountId: string) {
   const rows = await perZone(api, async (zone) => {
-    const [eips, instances] = await Promise.all([
-      api
-        .at(zone)
-        .get("/elastic-ip")
-        .then((r) => arr(r["elastic-ips"])),
-      api
-        .at(zone)
-        .get("/instance")
-        .then((r): InstanceRow[] => arr(r.instances))
-        .catch((): InstanceRow[] => []),
-    ]);
-    // Elastic IPs do not list their instances; instances list their EIPs.
+    const res = await api.at(zone).get("/elastic-ip");
+    const eips = arr(res["elastic-ips"]);
+    if (!eips.length) return [];
+    // Elastic IPs do not list their instances, and only a single instance lists its EIPs.
+    const instances = await readInstances(api, zone).catch((err): null => {
+      rethrowIncompleteList(err);
+      return null;
+    });
+    const allRead = instances?.every((i) => i.full) === true;
     return eips.map((e) => {
-      const holders = instances
-        .filter((i) => arr(i["elastic-ips"]).some((x) => x["id"] === e["id"]))
-        .map((i) => str(i["id"]));
-      return { e, holders };
+      const holders = (instances ?? [])
+        .filter((i) => arr(i.full?.["elastic-ips"]).some((x) => x["id"] === e["id"]))
+        .map((i) => str(i.row.id));
+      return { e, holders: holders.length || allRead ? holders : undefined };
     });
   });
   return rows.map(({ zone, item }) => mapElasticIp(item.e, zone, accountId, item.holders));
