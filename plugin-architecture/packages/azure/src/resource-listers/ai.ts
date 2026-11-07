@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { isArmRefusal, readOrAbsent } from "../arm-list.js";
+import { isArmRefusal, mapBounded, ReadBudget, startingRow } from "../arm-list.js";
 import {
   ARM,
   extractResourceGroup,
@@ -40,21 +40,24 @@ export async function listAIServicesAccounts(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
+  const budget = new ReadBudget();
+  const reader = budget.reader(ctx);
   const accounts = await listAllPages(
-    ctx,
+    reader,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.CognitiveServices/accounts?api-version=${COGNITIVE_API_VERSION}`,
   );
-  return Promise.all(
-    accounts.map(async (account) => {
+  return mapBounded(
+    accounts,
+    async (account) => {
       const name = String(account["name"] ?? "");
       const azureId = String(account["id"] ?? "");
       const rg = extractResourceGroup(azureId);
       const props = account["properties"] as Bag | undefined;
       const sku = account["sku"] as Bag | undefined;
 
-      const deployments = await readOrAbsent(() =>
+      const deployments = await budget.hydrate(() =>
         listAllPages(
-          ctx,
+          reader,
           `${ARM}${azureId}/deployments?api-version=${COGNITIVE_API_VERSION}`,
         ).catch((err: unknown): Bag[] => {
           if (isArmRefusal(err)) return [];
@@ -95,6 +98,7 @@ export async function listAIServicesAccounts(
         createdAt: String(props?.["dateCreated"] ?? ctx.now()),
         updatedAt: ctx.now(),
       };
-    }),
+    },
+    { from: startingRow(accounts) },
   );
 }

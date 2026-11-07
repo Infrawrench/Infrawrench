@@ -2,7 +2,7 @@
  * App registration listing: uses Microsoft Graph rather than ARM.
  *
  * Graph doesn't support an `IN`-style filter on `appId`, so service principal
- * lookups are made one at a time. The client-credentials flow has no `/me`,
+ * lookups are made one per app. The client-credentials flow has no `/me`,
  * so we list all apps the SP can see and rely on the SP's permissions to gate
  * the result set.
  */
@@ -13,7 +13,7 @@ import {
   requireListPage,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
-import { readOrAbsent } from "./arm-list.js";
+import { mapBounded, ReadBudget, startingRow } from "./arm-list.js";
 
 const APPLICATIONS_URL = "https://graph.microsoft.com/v1.0/applications";
 /** "The default and maximum page sizes are 100 and 999" (application-list). */
@@ -50,33 +50,40 @@ export async function listAppRegistrations(
     .top(APPLICATIONS_PAGE_SIZE)
     .select("id,appId,displayName,signInAudience,createdDateTime")
     .get()) as ApplicationsPage;
-  for (let read = 1; ; read++) {
+  let pagesRead = 1;
+  for (; ; pagesRead++) {
     apps.push(...requireListPage(page.value, { ...place, key: "value", page }));
     const nextLink = page["@odata.nextLink"];
     if (!nextLink) break;
-    if (read >= MAX_APPLICATION_PAGES) {
-      throw new ListTruncatedError({ ...place, items: apps.length, maxPages: read });
+    if (pagesRead >= MAX_APPLICATION_PAGES) {
+      throw new ListTruncatedError({ ...place, items: apps.length, maxPages: pagesRead });
     }
     pageUrl = followableLink(nextLink, pageUrl, place);
     page = (await ctx.graphClient.api(pageUrl).get()) as ApplicationsPage;
   }
 
-  // Look up service principals one at a time: Graph doesn't support IN filters on appId,
-  // and the batch endpoint adds complexity. Owned-by scopes are typically small.
-  for (const app of apps) {
-    const appId = String(app["appId"] ?? "");
-    if (!appId) continue;
-    const spId = await readOrAbsent(async () => {
-      const spList = (await ctx.graphClient
-        .api("/servicePrincipals")
-        .filter(`appId eq '${appId}'`)
-        .select("id")
-        .get()) as { value: Array<Record<string, unknown>> };
-      const id = spList.value[0]?.["id"];
-      return typeof id === "string" ? id : "";
-    });
-    if (spId !== undefined) servicePrincipals.set(appId, spId);
-  }
+  // Graph doesn't support IN filters on appId, and the batch endpoint adds complexity,
+  // so these are one request per app.
+  const budget = new ReadBudget(pagesRead);
+  await mapBounded(
+    apps,
+    async (app) => {
+      const appId = String(app["appId"] ?? "");
+      if (!appId) return;
+      const spId = await budget.hydrate(async () => {
+        budget.spend();
+        const spList = (await ctx.graphClient
+          .api("/servicePrincipals")
+          .filter(`appId eq '${appId}'`)
+          .select("id")
+          .get()) as { value: Array<Record<string, unknown>> };
+        const id = spList.value[0]?.["id"];
+        return typeof id === "string" ? id : "";
+      });
+      if (spId !== undefined) servicePrincipals.set(appId, spId);
+    },
+    { from: startingRow(apps) },
+  );
 
   const now = ctx.now();
   return apps.map((a) => {

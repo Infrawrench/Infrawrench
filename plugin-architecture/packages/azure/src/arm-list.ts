@@ -10,6 +10,7 @@ import {
   ListTruncatedError,
   requireListPage,
   rethrowIncompleteList,
+  type ListPlace,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -18,6 +19,10 @@ import {
  */
 export const MAX_ARM_LIST_PAGES = 1000;
 export const MAX_ARM_LIST_ROWS = 100_000;
+
+interface ArmReader {
+  get<R>(url: string): Promise<R>;
+}
 
 interface ArmListPage<T> {
   value?: T[] | null;
@@ -31,7 +36,7 @@ interface ArmListPage<T> {
  * host's HTTP path an empty body arrives looking just like that.
  */
 export async function listAllPages<T = Record<string, unknown>>(
-  ctx: { get<R>(url: string): Promise<R> },
+  ctx: ArmReader,
   url: string,
 ): Promise<T[]> {
   const place = { vendor: "Azure", path: new URL(url).pathname };
@@ -74,16 +79,110 @@ export function isArmRefusal(err: unknown): boolean {
 }
 
 /**
- * A read that only adds fields to a row the list already has. `undefined` when it
- * failed, so the caller leaves those fields out: the sync merges a row's fields over
- * what is stored and a missing key keeps its value, where a blank would overwrite it
- * and record a change that never happened.
+ * How many per-row reads run at once. ARM refills 25 reads a second per subscription
+ * and service principal from a bucket of 250, and Microsoft.Network allows 10,000 GETs
+ * in 5 minutes, about 33 a second. At about 200 ms a request, 5 at a time is the refill
+ * rate. Microsoft Graph's smallest tenant allows 350 such lookups a second.
+ * https://learn.microsoft.com/azure/azure-resource-manager/management/request-limits-and-throttling
+ * https://learn.microsoft.com/graph/throttling-limits
  */
-export async function readOrAbsent<R>(read: () => Promise<R>): Promise<R | undefined> {
-  try {
-    return await read();
-  } catch (err) {
-    rethrowIncompleteList(err);
-    return undefined;
+export const PER_ROW_READS_AT_ONCE = 5;
+
+/** Each item through `read`, a few at a time, with the answers in the items' order. */
+export async function mapBounded<T, R>(
+  items: readonly T[],
+  read: (item: T) => Promise<R>,
+  { from = 0 }: { from?: number } = {},
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let started = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && started < items.length) {
+      const index = (from + started++) % items.length;
+      try {
+        results[index] = await read(items[index]!);
+      } catch (err) {
+        failed = true;
+        throw err;
+      }
+    }
+  };
+  // Settled, not `all`: no read may still be running when this answers or throws.
+  const workers = Array.from({ length: Math.min(PER_ROW_READS_AT_ONCE, items.length) }, worker);
+  for (const settled of await Promise.allSettled(workers)) {
+    if (settled.status === "rejected") throw settled.reason;
+  }
+  return results;
+}
+
+/**
+ * Where to start filling rows in. A subscription too big to fill in one poll gets a
+ * different stretch each time, and the sync keeps what earlier polls read for the rest.
+ */
+export function startingRow(rows: readonly unknown[]): number {
+  return Math.floor(Math.random() * rows.length);
+}
+
+class BudgetSpent extends Error {}
+
+function isThrottled(err: unknown): boolean {
+  if (armStatus(err) === 429) return true;
+  return typeof err === "object" && err !== null && "statusCode" in err && err.statusCode === 429;
+}
+
+/**
+ * The requests one list may make, its own pages and its per-row reads together. A poll
+ * past 300 seconds is killed with no message, so a list has to stop first: by refusing
+ * where the reads supply rows, and by leaving fields out where they only add to a row.
+ */
+export class ReadBudget {
+  private left: number;
+
+  constructor(alreadyMade = 0) {
+    this.left = MAX_ARM_LIST_PAGES - alreadyMade;
+  }
+
+  /** Count one request, before making it. */
+  spend(): void {
+    if (this.left <= 0) throw new BudgetSpent();
+    this.left -= 1;
+  }
+
+  /** `ctx`, with every GET counted. */
+  reader(ctx: ArmReader): ArmReader {
+    return {
+      get: <R>(url: string) => {
+        this.spend();
+        return ctx.get<R>(url);
+      },
+    };
+  }
+
+  /**
+   * A read that only adds fields to a row the list already has. `undefined` when it
+   * failed or the budget ran out, so the caller leaves those fields out: the sync
+   * merges a row's fields over what is stored and a missing key keeps its value, where
+   * a blank would overwrite it and record a change that never happened. A throttle ends
+   * the rest, since ARM documents not processing requests sent before Retry-After.
+   */
+  async hydrate<R>(read: () => Promise<R>): Promise<R | undefined> {
+    try {
+      return await read();
+    } catch (err) {
+      rethrowIncompleteList(err);
+      if (isThrottled(err)) this.left = 0;
+      return undefined;
+    }
+  }
+
+  /** A read whose answers are rows: past the budget the list cannot be whole. */
+  async rows<R>(read: () => Promise<R>, place: ListPlace, items: number): Promise<R> {
+    try {
+      return await read();
+    } catch (err) {
+      if (!(err instanceof BudgetSpent)) throw err;
+      throw new ListTruncatedError({ ...place, items, maxPages: MAX_ARM_LIST_PAGES });
+    }
   }
 }

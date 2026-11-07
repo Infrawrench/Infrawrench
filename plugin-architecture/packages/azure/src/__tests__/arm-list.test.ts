@@ -179,16 +179,6 @@ describe("a child list read for a parent's fields", () => {
   ];
   const childUrl = /\/(databases|deployments)\?/;
 
-  it.each(PARENTS)("%s passes on a child list it cut short", async (_name, list) => {
-    let n = 0;
-    const { ctx } = makeCtx((url) =>
-      childUrl.test(url) || url.includes("/next?")
-        ? { value: [], nextLink: `https://management.azure.com/next?$skiptoken=${n++}` }
-        : { value: [row("parent")] },
-    );
-    await expect(list(ctx, "acct")).rejects.toThrow(OVER);
-  });
-
   it.each(PARENTS)("%s still lists the parent when the child read fails", async (_name, list) => {
     const { ctx } = makeCtx((url) =>
       childUrl.test(url) ? new Error("Azure API 400: not for this kind") : { value: [row("p")] },

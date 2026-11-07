@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { isArmDeniedOrGone, readOrAbsent } from "../arm-list.js";
+import { isArmDeniedOrGone, mapBounded, ReadBudget, startingRow } from "../arm-list.js";
 import { flexibleSkuVCores } from "../extended-support.js";
 import {
   ARM,
@@ -16,23 +16,29 @@ export async function listSQLDatabases(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   // First list SQL servers, then databases within each
-  const servers = await listAllPages(
-    ctx,
-    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Sql/servers?api-version=2023-05-01-preview`,
-  );
-  const results: ResourceInstance[] = [];
+  const url = `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Sql/servers?api-version=2023-05-01-preview`;
+  const budget = new ReadBudget();
+  const reader = budget.reader(ctx);
+  const servers = await listAllPages(reader, url);
+  const place = { vendor: "Azure", path: new URL(url).pathname };
 
-  for (const server of servers) {
+  const perServer = await mapBounded(servers, async (server): Promise<ResourceInstance[]> => {
     const serverName = String(server["name"] ?? "");
     const serverRg = extractResourceGroup(String(server["id"] ?? ""));
     const serverProps = server["properties"] as Record<string, unknown> | undefined;
     const serverFqdn = String(serverProps?.["fullyQualifiedDomainName"] ?? "");
 
     try {
-      const dbs = await listAllPages(
-        ctx,
-        `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${serverRg}/providers/Microsoft.Sql/servers/${serverName}/databases?api-version=2023-05-01-preview`,
+      const dbs = await budget.rows(
+        () =>
+          listAllPages(
+            reader,
+            `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${serverRg}/providers/Microsoft.Sql/servers/${serverName}/databases?api-version=2023-05-01-preview`,
+          ),
+        place,
+        servers.length,
       );
+      const results: ResourceInstance[] = [];
 
       for (const db of dbs) {
         const dbName = String(db["name"] ?? "");
@@ -70,14 +76,16 @@ export async function listSQLDatabases(
           updatedAt: ctx.now(),
         });
       }
+      return results;
     } catch (err) {
       // A server this principal can't read, or one deleted since the list above. Any
       // other failure says nothing about its databases, and reading it as none would
       // delete them all from the inventory.
       if (!isArmDeniedOrGone(err)) throw err;
+      return [];
     }
-  }
-  return results;
+  });
+  return perServer.flat();
 }
 
 export async function listCosmosDBAccounts(
@@ -188,20 +196,23 @@ export async function listManagedRedis(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
+  const budget = new ReadBudget();
+  const reader = budget.reader(ctx);
   const clusters = await listAllPages(
-    ctx,
+    reader,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Cache/redisEnterprise?api-version=${MANAGED_REDIS_API_VERSION}`,
   );
-  return Promise.all(
-    clusters.map(async (cluster) => {
+  return mapBounded(
+    clusters,
+    async (cluster) => {
       const name = String(cluster["name"] ?? "");
       const azureId = String(cluster["id"] ?? "");
       const rg = extractResourceGroup(azureId);
       const props = cluster["properties"] as Record<string, unknown> | undefined;
       const sku = cluster["sku"] as Record<string, unknown> | undefined;
 
-      const dbs = await readOrAbsent(() =>
-        listAllPages(ctx, `${ARM}${azureId}/databases?api-version=${MANAGED_REDIS_API_VERSION}`),
+      const dbs = await budget.hydrate(() =>
+        listAllPages(reader, `${ARM}${azureId}/databases?api-version=${MANAGED_REDIS_API_VERSION}`),
       );
       const db = dbs?.[0]?.["properties"] as Record<string, unknown> | undefined;
       const persistence = db?.["persistence"] as Record<string, unknown> | undefined;
@@ -256,7 +267,8 @@ export async function listManagedRedis(
         createdAt: ctx.now(),
         updatedAt: ctx.now(),
       };
-    }),
+    },
+    { from: startingRow(clusters) },
   );
 }
 

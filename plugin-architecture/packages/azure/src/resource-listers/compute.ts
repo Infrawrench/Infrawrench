@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { readOrAbsent } from "../arm-list.js";
+import { mapBounded, ReadBudget, startingRow } from "../arm-list.js";
 import {
   ARM,
   listAllPages,
@@ -27,6 +27,7 @@ interface VmNetwork {
  */
 async function readVmNetwork(
   ctx: ListerContext,
+  budget: ReadBudget,
   vmProps: Record<string, unknown> | undefined,
 ): Promise<VmNetwork> {
   const networkProfile = vmProps?.["networkProfile"] as Record<string, unknown> | undefined;
@@ -45,8 +46,9 @@ async function readVmNetwork(
     };
   }
 
-  const nic = await readOrAbsent(() =>
-    ctx.get<Record<string, unknown>>(`${ARM}${nicId}?api-version=2023-09-01`),
+  const reader = budget.reader(ctx);
+  const nic = await budget.hydrate(() =>
+    reader.get<Record<string, unknown>>(`${ARM}${nicId}?api-version=2023-09-01`),
   );
   if (!nic) return { fields: {}, outputs: {} };
 
@@ -65,8 +67,8 @@ async function readVmNetwork(
   const privateIp = String(ipConfigProps?.["privateIPAddress"] ?? "");
   if (!publicIpId) return { fields, outputs: { privateIp, publicIp: "", fqdn: "" } };
 
-  const pip = await readOrAbsent(() =>
-    ctx.get<Record<string, unknown>>(`${ARM}${publicIpId}?api-version=2023-09-01`),
+  const pip = await budget.hydrate(() =>
+    reader.get<Record<string, unknown>>(`${ARM}${publicIpId}?api-version=2023-09-01`),
   );
   if (!pip) return { fields, outputs: { privateIp } };
   const pipProps = propsOf(pip);
@@ -83,9 +85,17 @@ async function readVmNetwork(
 
 export async function listVMs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   // Fetch VMs with instance view (includes power state)
+  const budget = new ReadBudget();
   const items = await listAllPages(
-    ctx,
+    budget.reader(ctx),
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Compute/virtualMachines?api-version=2024-03-01&$expand=instanceView`,
+  );
+  const networks = new Map(
+    await mapBounded(
+      items,
+      async (vm) => [vm, await readVmNetwork(ctx, budget, propsOf(vm))] as const,
+      { from: startingRow(items) },
+    ),
   );
   const results: ResourceInstance[] = [];
 
@@ -117,7 +127,7 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
       (dataDisks ?? []).map((disk) => extractName(refId(disk, "managedDisk"))),
     );
 
-    const network = await readVmNetwork(ctx, props);
+    const network = networks.get(vm)!;
 
     results.push({
       id: ctx.id(accountId, "azure-vm", `${rg}/${name}`),
