@@ -81,7 +81,7 @@ import { AWS_JIT_ACCESS } from "./jit-access.js";
 
 export const manifest = {
   id: "aws",
-  egressHosts: ["*.amazonaws.com", "*.aws.amazon.com"],
+  egressHosts: ["*.amazonaws.com", "*.amazonaws.com.cn", "*.aws.amazon.com"],
   displayName: "Amazon Web Services",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#232F3E"/>

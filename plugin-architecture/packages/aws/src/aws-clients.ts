@@ -3,7 +3,8 @@
  *
  * Memoizes one client per (accessKeyId, region) tuple so listers don't
  * reconstruct on every call. Clients are constructed on first access
- * for the service they're needed for.
+ * for the service they're needed for. When the host supplies an HTTP service
+ * every client sends through it; with none, the SDK's own handler is untouched.
  *
  * Each `@aws-sdk/client-*` is imported and exposed here. The endpoint
  * resolution, retry policy, and SigV4 region/service-name selection are
@@ -55,6 +56,9 @@ import { SQSClient } from "@aws-sdk/client-sqs";
 import { SSMClient } from "@aws-sdk/client-ssm";
 import { WAFV2Client } from "@aws-sdk/client-wafv2";
 
+import { hostFetch, type HttpHostServices } from "@infrawrench/plugin-base";
+import { HttpResponse, type HttpHandler, type HttpRequest } from "@smithy/protocol-http";
+
 import type { AwsCredentials } from "./auth.js";
 
 export interface AwsClients {
@@ -105,6 +109,106 @@ export interface AwsClients {
 }
 
 const cache = new Map<string, AwsClients>();
+/**
+ * Clients with a host's handler belong to that host service, which is per account: a
+ * bastion-bound account and an unbound one can hold the same key.
+ */
+const hostCaches = new WeakMap<HttpHostServices, Map<string, AwsClients>>();
+
+function cacheFor(http: HttpHostServices | undefined): Map<string, AwsClients> {
+  if (!http) return cache;
+  let hostCache = hostCaches.get(http);
+  if (!hostCache) {
+    hostCache = new Map();
+    hostCaches.set(http, hostCache);
+  }
+  return hostCache;
+}
+
+/** Hop-by-hop headers for a connection the host owns. SigV4 never signs them, and `fetch` refuses them. */
+const CONNECTION_HEADERS = new Set(["connection", "expect", "transfer-encoding"]);
+
+function escapeQueryPart(part: string): string {
+  return encodeURIComponent(part).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+}
+
+/** The URL the SDK signed, built the way its own fetch handler builds it. */
+function requestUrl(request: HttpRequest): string {
+  const query = Object.keys(request.query ?? {})
+    .sort()
+    .flatMap((key) => {
+      const value = request.query[key];
+      const name = escapeQueryPart(key);
+      if (value === null || value === undefined) return [name];
+      return (Array.isArray(value) ? value : [value]).map((v) => `${name}=${escapeQueryPart(v)}`);
+    })
+    .join("&");
+  const port = request.port ? `:${request.port}` : "";
+  return `${request.protocol}//${request.hostname}${port}${request.path}${query ? `?${query}` : ""}`;
+}
+
+/** A request body as the host takes one. The SDK's can be a stream, which the host cannot carry. */
+async function requestBody(body: unknown): Promise<string | Uint8Array<ArrayBuffer> | undefined> {
+  if (body === undefined || body === null) return undefined;
+  if (typeof body === "string") return body;
+  if (body instanceof Uint8Array) return body.slice();
+  if (body instanceof ArrayBuffer) return new Uint8Array(body);
+  if (body instanceof Blob) return new Uint8Array(await body.arrayBuffer());
+  if (typeof body === "object" && Symbol.asyncIterator in body) {
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of body as AsyncIterable<Uint8Array | string>) {
+      chunks.push(typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk);
+    }
+    const bytes = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return bytes;
+  }
+  throw new Error("AWS SDK handed the host a request body it cannot send");
+}
+
+/**
+ * Hands each SDK request to the host, which is the only path with bastion routing.
+ * The host buffers, so a stream the SDK sends is read whole first, and the answer goes
+ * back as a stream because that is what every SDK deserializer accepts, S3's `Body`
+ * included. Signing has already happened, so the headers go through as they are.
+ */
+function hostRequestHandler(http: HttpHostServices): HttpHandler {
+  return {
+    metadata: { handlerProtocol: "http/1.1" },
+    updateHttpClientConfig: () => {},
+    httpHandlerConfigs: () => ({}),
+    handle: async (request, options) => {
+      const body =
+        request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : await requestBody(request.body);
+      const res = await hostFetch({ http }, requestUrl(request), {
+        method: request.method,
+        headers: Object.fromEntries(
+          Object.entries(request.headers).filter(
+            ([name]) => !CONNECTION_HEADERS.has(name.toLowerCase()),
+          ),
+        ),
+        ...(body !== undefined ? { body } : {}),
+        ...(options?.abortSignal instanceof AbortSignal ? { signal: options.abortSignal } : {}),
+      });
+      return {
+        response: new HttpResponse({
+          statusCode: res.status,
+          headers: Object.fromEntries(res.headers.entries()),
+          body: res.body ?? new Blob().stream(),
+        }),
+      };
+    },
+  };
+}
 
 function cacheKey(creds: AwsCredentials): string {
   return `${creds.accessKeyId}:${creds.region}:${creds.sessionToken ?? ""}`;
@@ -116,8 +220,9 @@ function cacheKey(creds: AwsCredentials): string {
  * cold paths don't pay the cost of every service's middleware stack.
  */
 export function getAwsClients(creds: AwsCredentials): AwsClients {
+  const clientCache = cacheFor(creds.http);
   const key = cacheKey(creds);
-  const existing = cache.get(key);
+  const existing = clientCache.get(key);
   if (existing) return existing;
 
   const credentials = {
@@ -125,7 +230,11 @@ export function getAwsClients(creds: AwsCredentials): AwsClients {
     secretAccessKey: creds.secretAccessKey,
     ...(creds.sessionToken ? { sessionToken: creds.sessionToken } : {}),
   };
-  const baseConfig = { region: creds.region, credentials };
+  const baseConfig = {
+    region: creds.region,
+    credentials,
+    ...(creds.http ? { requestHandler: hostRequestHandler(creds.http) } : {}),
+  };
 
   // We use a Proxy-style lazy-getter object so individual clients are only
   // instantiated when first accessed. This matters because every SDK client
@@ -195,6 +304,6 @@ export function getAwsClients(creds: AwsCredentials): AwsClients {
     });
   }
 
-  cache.set(key, bundle);
+  clientCache.set(key, bundle);
   return bundle;
 }
