@@ -220,6 +220,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/project/{project}/integration_types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["ServiceIntegrationTypes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/project/{project}/integration/{integration_id}": {
         parameters: {
             query?: never;
@@ -1471,6 +1487,23 @@ export interface components {
             }[];
             message?: string;
         };
+        ServiceIntegrationTypesResponse: {
+            errors?: {
+                message: string;
+                more_info?: string;
+                status: number;
+            }[];
+            integration_types: {
+                dest_description: string;
+                dest_service_type: string;
+                dest_service_types: string[];
+                integration_type: string;
+                source_description: string;
+                source_service_types: string[];
+                user_config_schema: Record<string, never>;
+            }[];
+            message?: string;
+        };
         ServiceKafkaAclAddRequestBody: {
             permission: string;
             topic: string;
@@ -2569,6 +2602,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ServiceIntegrationCreateResponse"];
+                };
+            };
+        };
+    };
+    ServiceIntegrationTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: components["parameters"]["project"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceIntegrationTypesResponse"];
                 };
             };
         };

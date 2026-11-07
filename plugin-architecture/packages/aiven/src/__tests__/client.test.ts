@@ -271,6 +271,56 @@ describe("VPC peering count", () => {
   });
 });
 
+describe("integration type picker", () => {
+  const options = async () => {
+    const config = await hostClient(new AivenClient({ apiToken: "x" })).getCreateConfig(
+      "aiven-integration",
+      `${ACC}:aiven-project:acme`,
+    );
+    const field = config.fields.find((f) => f.key === "integrationType");
+    return field?.options ?? [];
+  };
+
+  const project = {
+    "GET /project": { projects: [{ project_name: "acme" }] },
+    "GET /project/acme/service": { services: [] },
+  };
+
+  it("offers what the project's integration types say connect two services", async () => {
+    const calls = mockFetch({
+      ...project,
+      "GET /project/acme/integration_types": {
+        integration_types: [
+          {
+            integration_type: "opensearch_cross_cluster_search",
+            source_description: "Source OpenSearch",
+            dest_description: "Remote OpenSearch",
+            source_service_types: ["opensearch"],
+            dest_service_types: ["opensearch"],
+          },
+          // Goes to an external endpoint, which this form has no field for.
+          {
+            integration_type: "external_google_cloud_logging",
+            source_service_types: ["pg"],
+            dest_service_types: [],
+          },
+        ],
+      },
+    });
+    const offered = await options();
+    expect(offered.map((o) => o.id)).toEqual(["opensearch_cross_cluster_search"]);
+    expect(offered[0]!.description).toBe("Source OpenSearch to Remote OpenSearch");
+    expect(calls.some((c) => c.url.pathname === "/v1/project/acme/integration_types")).toBe(true);
+  });
+
+  it("falls back to a fixed list without the type the API does not accept", async () => {
+    mockFetch(project);
+    const ids = (await options()).map((o) => o.id);
+    expect(ids).toContain("metrics");
+    expect(ids).not.toContain("m3aggregator");
+  });
+});
+
 describe("Kafka connection string", () => {
   it("uses the SASL endpoint and inlines the CA", () => {
     const uri = serviceConnectionString(

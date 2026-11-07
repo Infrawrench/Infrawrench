@@ -374,6 +374,7 @@
     "/project/{project}/events": ["get"],
     "/project/{project}/integration": ["post"],
     "/project/{project}/integration/{integration_id}": ["delete"],
+    "/project/{project}/integration_types": ["get"],
     "/project/{project}/kms/ca": ["get"],
     "/project/{project}/service": ["get", "post"],
     "/project/{project}/service-types": ["get"],

@@ -86,6 +86,27 @@ function list(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
+const integrationLabel = (type: string) => type.replace(/_/g, " ");
+
+/** For when a project's own list cannot be read. Typed so a type the document drops stops compiling. */
+const FALLBACK_INTEGRATION_TYPES = [
+  "metrics",
+  "dashboard",
+  "logs",
+  "datasource",
+  "read_replica",
+  "kafka_connect",
+  "kafka_logs",
+  "kafka_mirrormaker",
+  "clickhouse_kafka",
+  "clickhouse_postgresql",
+  "flink",
+  "prometheus",
+  "schema_registry_proxy",
+] satisfies NonNullable<
+  AivenBody<"ServiceCreate">["service_integrations"]
+>[number]["integration_type"][];
+
 export function parseTags(raw: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   for (const t of list(raw)) {
@@ -281,6 +302,25 @@ export class AivenClient implements PluginClient {
             .join(" · "),
         };
       });
+  }
+
+  /** Only types that join two services: the form has no field for an external endpoint. */
+  private async integrationTypeOptions(project: string | undefined): Promise<SelectOption[]> {
+    const res = project
+      ? await this.api.get(`/project/${enc(project)}/integration_types`).catch(() => undefined)
+      : undefined;
+    const offered = (res?.integration_types ?? []).filter(
+      (t) => t.source_service_types?.length && t.dest_service_types?.length,
+    );
+    if (!offered.length)
+      return FALLBACK_INTEGRATION_TYPES.map((id) => ({ id, label: integrationLabel(id) }));
+    return offered.map((t) => ({
+      id: t.integration_type,
+      label: integrationLabel(t.integration_type),
+      ...(t.source_description && t.dest_description
+        ? { description: `${t.source_description} to ${t.dest_description}` }
+        : {}),
+    }));
   }
 
   private projectCa(project: string): Promise<string> {
@@ -1106,22 +1146,9 @@ export class AivenClient implements PluginClient {
         case T.integration: {
           const projectField = await this.projectField(parentResourceId);
           const services = await this.services();
-          const types = [
-            "metrics",
-            "dashboard",
-            "logs",
-            "datasource",
-            "read_replica",
-            "kafka_connect",
-            "kafka_logs",
-            "kafka_mirrormaker",
-            "clickhouse_kafka",
-            "clickhouse_postgresql",
-            "flink",
-            "m3aggregator",
-            "prometheus",
-            "schema_registry_proxy",
-          ];
+          const project = parentResourceId
+            ? externalIdOf(parentResourceId)
+            : (await this.projects())[0]?.project_name;
           const svcOptions = services
             .filter((s) => !parentResourceId || s.project === externalIdOf(parentResourceId))
             .map((s) => ({
@@ -1137,7 +1164,7 @@ export class AivenClient implements PluginClient {
                 label: "Type",
                 kind: "select",
                 required: true,
-                options: types.map((t) => ({ id: t, label: t.replace(/_/g, " ") })),
+                options: await this.integrationTypeOptions(project),
               },
               {
                 key: "source",
