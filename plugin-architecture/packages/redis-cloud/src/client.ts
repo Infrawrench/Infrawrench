@@ -23,7 +23,7 @@ import {
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { RcTask, RedisCloudContext } from "./api.js";
-import { rcFetch, readViaTask, statusOf, submitTask } from "./api.js";
+import { TaskFailedError, rcFetch, readViaTask, statusOf, submitTask } from "./api.js";
 import { fetchRedisCloudCostData } from "./cost-data.js";
 import type { DatabaseContext, PlanKind } from "./mappers.js";
 import {
@@ -115,6 +115,23 @@ function finishedMessage(finished: boolean, what: string): { ok: true; message: 
       ? `${what} complete.`
       : `${what} submitted; Redis Cloud is still processing it. Refresh in a few minutes.`,
   };
+}
+
+/**
+ * Whether a failed networking read is Redis Cloud saying this subscription has none
+ * (a 400 or 404, or a task that finished with a client-side error), rather than a
+ * failure that says nothing about it. Anything else fails the type, so stored rows stay.
+ */
+function saysSubscriptionHasNone(err: unknown): boolean {
+  if (err instanceof TaskFailedError) {
+    const detail = err.task.response?.error;
+    const status = Number(
+      /^\s*(\d{3})/.exec(typeof detail === "object" ? (detail.status ?? "") : "")?.[1] ?? 0,
+    );
+    return status !== 429 && status < 500;
+  }
+  const status = statusOf(err);
+  return status === 400 || status === 404;
 }
 
 export class RedisCloudClient implements PluginClient {
@@ -326,8 +343,7 @@ export class RedisCloudClient implements PluginClient {
           }
         }
       } catch (err) {
-        if (statusOf(err) === 401) throw err;
-        // A subscription in a state the API will not describe lists empty.
+        if (!saysSubscriptionHasNone(err)) throw err;
       }
     }
     return out;
@@ -345,7 +361,7 @@ export class RedisCloudClient implements PluginClient {
         );
         for (const t of res?.tgws ?? []) out.push(mapTransitGateway(accountId, String(sub.id), t));
       } catch (err) {
-        if (statusOf(err) === 401) throw err;
+        if (!saysSubscriptionHasNone(err)) throw err;
       }
     }
     return out;
@@ -358,7 +374,7 @@ export class RedisCloudClient implements PluginClient {
         `/subscriptions/${subscriptionId}/private-service-connect`,
       );
     } catch (err) {
-      if (statusOf(err) === 401) throw err;
+      if (!saysSubscriptionHasNone(err)) throw err;
       return undefined;
     }
   }
@@ -379,7 +395,7 @@ export class RedisCloudClient implements PluginClient {
           out.push(mapPscEndpoint(accountId, String(sub.id), service, e));
         }
       } catch (err) {
-        if (statusOf(err) === 401) throw err;
+        if (!saysSubscriptionHasNone(err)) throw err;
       }
     }
     return out;

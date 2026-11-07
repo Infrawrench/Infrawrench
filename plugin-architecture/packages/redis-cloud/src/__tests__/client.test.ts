@@ -351,3 +351,56 @@ describe("database pages (#746)", () => {
     ).toHaveLength(9_999);
   });
 });
+
+describe("per-subscription networking reads (#872)", () => {
+  const GCP_SUB = {
+    ...PRO_SUB,
+    id: 1300,
+    cloudDetails: [{ provider: "GCP", regions: [{ region: "us-central1" }] }],
+  };
+  const gcpRoutes = () => ({
+    ...baseRoutes(),
+    "GET /subscriptions": { subscriptions: [GCP_SUB] },
+  });
+  const failed = (status: string) => ({
+    taskId: "t-9",
+    status: "processing-error",
+    response: { error: { type: "X", status, description: "refused" } },
+  });
+
+  it("fails the type when a subscription's peerings answer 503 or 429", async () => {
+    for (const status of [503, 429]) {
+      mockFetch({
+        ...baseRoutes(),
+        "GET /subscriptions/1206/peerings": new Response("{}", { status }),
+      });
+      await expect(client().listResources("rc-vpc-peering", "acc")).rejects.toThrow(String(status));
+    }
+  });
+
+  it("fails the type when a transit gateway task fails on the server side", async () => {
+    mockFetch({
+      ...baseRoutes(),
+      "GET /subscriptions/1206/transitGateways": failed("500 INTERNAL_SERVER_ERROR"),
+    });
+    await expect(client().listResources("rc-transit-gateway", "acc")).rejects.toThrow(/refused/);
+  });
+
+  it("fails the type when the PSC service read answers 502", async () => {
+    mockFetch({
+      ...gcpRoutes(),
+      "GET /subscriptions/1300/private-service-connect": new Response("{}", { status: 502 }),
+    });
+    await expect(client().listResources("rc-psc-endpoint", "acc")).rejects.toThrow(/502/);
+  });
+
+  it("still reads a subscription the API says has none as none", async () => {
+    mockFetch({
+      ...gcpRoutes(),
+      "GET /subscriptions/1300/peerings": failed("404 NOT_FOUND"),
+      "GET /subscriptions/1300/private-service-connect": new Response("{}", { status: 404 }),
+    });
+    expect(await client().listResources("rc-vpc-peering", "acc")).toEqual([]);
+    expect(await client().listResources("rc-psc-endpoint", "acc")).toEqual([]);
+  });
+});
