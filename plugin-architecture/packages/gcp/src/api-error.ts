@@ -25,7 +25,28 @@ interface GcpErrorBody {
       reason?: string;
       metadata?: { service?: string; consumer?: string };
     }>;
+    /** The older error format, still answered by some APIs. */
+    errors?: Array<{ reason?: string }>;
   };
+}
+
+/**
+ * Whether a response says the API is switched off in the project: the current
+ * `SERVICE_DISABLED`, or the older `accessNotConfigured` with no `details` to read.
+ */
+export function isDisabledApiAnswer(status: number, body: string): boolean {
+  if (status !== 403) return false;
+  let parsed: GcpErrorBody | undefined;
+  try {
+    parsed = JSON.parse(body) as GcpErrorBody;
+  } catch {
+    return false;
+  }
+  const err = parsed?.error;
+  return (
+    Boolean(err?.details?.some((d) => d.reason === "SERVICE_DISABLED")) ||
+    Boolean(err?.errors?.some((e) => e.reason === "accessNotConfigured"))
+  );
 }
 
 /**
@@ -88,5 +109,5 @@ export function describeDisabledApi(status: number, body: string, project?: stri
 export function gcpApiError(status: number, url: string, body: string, project: string): Error {
   const disabled = describeDisabledApi(status, body, project);
   const err = disabled ? new Error(disabled) : new Error(`GCP API ${status} for ${url}: ${body}`);
-  return Object.assign(err, { status });
+  return Object.assign(err, { status, apiDisabled: isDisabledApiAnswer(status, body) });
 }

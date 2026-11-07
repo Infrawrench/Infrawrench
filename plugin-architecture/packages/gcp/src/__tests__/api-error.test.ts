@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeDisabledApi, gcpApiError } from "../api-error.js";
+import { describeDisabledApi, gcpApiError, isDisabledApiAnswer } from "../api-error.js";
 import { formatGcpError } from "../utils.js";
 
 /**
@@ -89,5 +89,22 @@ describe("formatGcpError", () => {
     expect(await formatGcpError("Create instance", res)).toBe(
       "Create instance failed (429): Quota exceeded",
     );
+  });
+});
+
+describe("isDisabledApiAnswer", () => {
+  it("reads SERVICE_DISABLED on a 403", () => {
+    expect(isDisabledApiAnswer(403, SERVICE_DISABLED_BODY)).toBe(true);
+  });
+  it("reads the older accessNotConfigured", () => {
+    const body = JSON.stringify({ error: { errors: [{ reason: "accessNotConfigured" }] } });
+    expect(isDisabledApiAnswer(403, body)).toBe(true);
+  });
+  it("is false for another status, another reason, or a body that is not JSON", () => {
+    expect(isDisabledApiAnswer(400, SERVICE_DISABLED_BODY)).toBe(false);
+    expect(
+      isDisabledApiAnswer(403, JSON.stringify({ error: { status: "PERMISSION_DENIED" } })),
+    ).toBe(false);
+    expect(isDisabledApiAnswer(403, "<html>SERVICE_DISABLED</html>")).toBe(false);
   });
 });

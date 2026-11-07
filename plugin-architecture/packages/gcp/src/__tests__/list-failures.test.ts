@@ -275,7 +275,7 @@ describe.each(REGION_LISTS)("$name when one region's read fails", (list) => {
   });
 
   it("says so when every region refuses, rather than listing nothing", async () => {
-    const err = apiError(403, "SERVICE_DISABLED");
+    const err = apiError(403, "PERMISSION_DENIED");
     const ctx = list.ctx(() => {
       throw err;
     });
@@ -313,7 +313,7 @@ describe.each([
   it.each([
     ["a 503", apiError(503)],
     ["a 429", apiError(429)],
-    ["a disabled API's 403", apiError(403, "SERVICE_DISABLED")],
+    ["a permission 403", apiError(403, "PERMISSION_DENIED")],
     ["a list refused at its cap", new ListTruncatedError({ vendor: "x", path: "/x", items: 1 })],
   ])("fails on %s instead of listing none", async (_status, err) => {
     const ctx = makeCtx(() => {

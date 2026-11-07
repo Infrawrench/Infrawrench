@@ -151,6 +151,16 @@ function statusOf(err: unknown): number | undefined {
  */
 const THROTTLED_403 = /limit.?exceeded|quota.?exceeded|RESOURCE_EXHAUSTED/i;
 
+/**
+ * The transport's mark on an API switched off in the project, which is normal on Google
+ * Cloud: every API starts off. See `gcpApiError`.
+ */
+export function isApiDisabled(err: unknown): boolean {
+  return (
+    typeof err === "object" && err !== null && "apiDisabled" in err && err.apiDisabled === true
+  );
+}
+
 function isPermissionRefusal(err: unknown): boolean {
   return statusOf(err) === 403 && !(err instanceof Error && THROTTLED_403.test(err.message));
 }
@@ -192,7 +202,7 @@ async function readFanOut<P, T>(
       const answer = answerOf(err);
       if (answer === "failed") throw err;
       if (answer === "refused") {
-        refusal ??= { err };
+        if (!isApiDisabled(err)) refusal ??= { err };
         reportUnreadListPart(options.unread(parent));
       }
       return [];
@@ -204,8 +214,9 @@ async function readFanOut<P, T>(
   } else {
     perParent.push(...(await Promise.all(parents.map(readOne))));
   }
-  // Every parent refusing is the credential or a disabled API, not the parents, and
-  // an empty list would read as "all of it is gone".
+  // Every parent refusing is the credential, not the parents, and an empty list would
+  // read as "all of it is gone". An API that is off is not that: it reads as none, and
+  // what `unread` named above keeps any stored rows while it stays off.
   if (refusal && !answered) throw refusal.err;
   return perParent.flat();
 }

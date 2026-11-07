@@ -1,5 +1,5 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { readEachParent, readEachRegion, type ListerContext } from "./shared.js";
+import { reportUnreadListPart, type ResourceInstance } from "@infrawrench/plugin-base";
+import { isApiDisabled, readEachParent, readEachRegion, type ListerContext } from "./shared.js";
 
 export async function listServiceAccounts(
   ctx: ListerContext,
@@ -104,11 +104,22 @@ export async function listSecretManagerSecrets(
   });
 }
 
-function listKmsLocations(
+/** No locations while the KMS API is off, whose stored rows `idPrefix` keeps meanwhile. */
+async function listKmsLocations(
   ctx: ListerContext,
   p: string,
+  idPrefix: string,
 ): Promise<Array<{ name: string; locationId: string }>> {
-  return ctx.paginate(`https://cloudkms.googleapis.com/v1/projects/${p}/locations`, "locations");
+  try {
+    return await ctx.paginate(
+      `https://cloudkms.googleapis.com/v1/projects/${p}/locations`,
+      "locations",
+    );
+  } catch (err) {
+    if (!isApiDisabled(err)) throw err;
+    reportUnreadListPart({ idPrefixes: [idPrefix] });
+    return [];
+  }
 }
 
 export async function listKmsKeyRings(
@@ -116,7 +127,7 @@ export async function listKmsKeyRings(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const locations = await listKmsLocations(ctx, p);
+  const locations = await listKmsLocations(ctx, p, ctx.id(accountId, "kms-key-ring", ""));
   return readEachRegion(
     locations,
     async (loc) => {
@@ -157,7 +168,7 @@ export async function listKmsKeys(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const locations = await listKmsLocations(ctx, p);
+  const locations = await listKmsLocations(ctx, p, ctx.id(accountId, "kms-key", ""));
   return readEachRegion(
     locations,
     async (loc) => {

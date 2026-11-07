@@ -18,6 +18,14 @@ function answer(status: number, value: unknown) {
   };
 }
 
+/** A non-2xx answer, for a route to return. */
+class Refusal {
+  constructor(
+    readonly status: number,
+    readonly body: unknown,
+  ) {}
+}
+
 let privateKeyPem: string;
 let keySerial = 0;
 
@@ -45,7 +53,8 @@ function clientFor(route: (url: URL) => unknown) {
     if (url.hostname === TOKEN_HOST) {
       return answer(200, { access_token: "tok", expires_in: 3600 });
     }
-    return answer(200, route(url));
+    const routed = route(url);
+    return routed instanceof Refusal ? answer(routed.status, routed.body) : answer(200, routed);
   });
   const credentials = {
     project: "proj",
@@ -251,5 +260,94 @@ describe("an answer that says part of the list did not come back", () => {
     const { client } = clientFor(() => page);
     await expect(client.listResources(typeId, ACCT)).resolves.toHaveLength(1);
     expect(unread).not.toHaveBeenCalled();
+  });
+});
+
+describe("an API switched off in the project", () => {
+  // The two shapes Google answers with: the current ErrorInfo, and the older `errors[]`.
+  const disabled = new Refusal(403, {
+    error: {
+      code: 403,
+      message: "Cloud Key Management Service (KMS) API has not been used in project 1 before.",
+      status: "PERMISSION_DENIED",
+      details: [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          reason: "SERVICE_DISABLED",
+          metadata: { service: "cloudkms.googleapis.com", consumer: "projects/1" },
+        },
+      ],
+    },
+  });
+  const disabledOlderShape = new Refusal(403, {
+    error: {
+      code: 403,
+      message:
+        "Access Not Configured. API has not been used in project 1 before or it is disabled.",
+      errors: [{ reason: "accessNotConfigured", domain: "usageLimits" }],
+    },
+  });
+  const TYPES = ["kms-key-ring", "kms-key", "vertex-ai-endpoint", "cloud-build-trigger"];
+
+  describe.each(TYPES)("%s", (typeId) => {
+    it.each([
+      ["SERVICE_DISABLED", disabled],
+      ["accessNotConfigured", disabledOlderShape],
+    ])("reads %s as none, with no error", async (_, refusal) => {
+      const { client } = clientFor(() => refusal);
+      await expect(client.listResources(typeId, ACCT)).resolves.toEqual([]);
+    });
+
+    it("leaves stored rows out of the prune while it is off", async () => {
+      const { client } = clientFor(() => disabled);
+      await client.listResources(typeId, ACCT);
+      const prefixes = unread.mock.calls.flatMap(([part]) => part.idPrefixes ?? []);
+      expect(prefixes.length).toBeGreaterThan(0);
+      for (const prefix of prefixes) expect(prefix).toContain(`${ACCT}:${typeId}:`);
+    });
+
+    it.each([
+      ["any other 403", new Refusal(403, { error: { code: 403, status: "PERMISSION_DENIED" } })],
+      [
+        "a billing 403",
+        new Refusal(403, {
+          error: {
+            code: 403,
+            details: [{ reason: "BILLING_DISABLED", metadata: { service: "x" } }],
+          },
+        }),
+      ],
+      [
+        "a throttle sent as a 403",
+        new Refusal(403, { error: { code: 403, errors: [{ reason: "rateLimitExceeded" }] } }),
+      ],
+      ["a 429", new Refusal(429, { error: { code: 429, status: "RESOURCE_EXHAUSTED" } })],
+      ["a 503", new Refusal(503, { error: { code: 503, status: "UNAVAILABLE" } })],
+      ["a 401", new Refusal(401, { error: { code: 401, status: "UNAUTHENTICATED" } })],
+      [
+        "SERVICE_DISABLED on anything but a 403",
+        new Refusal(400, { error: { code: 400, details: [{ reason: "SERVICE_DISABLED" }] } }),
+      ],
+    ])("still fails on %s", async (_, refusal) => {
+      const { client } = clientFor(() => refusal);
+      await expect(client.listResources(typeId, ACCT)).rejects.toThrow();
+    });
+  });
+
+  it.each(["vertex-ai-endpoint", "cloud-build-trigger"])(
+    "%s fails when one region refuses for another reason and the rest are off",
+    async (typeId) => {
+      const { client } = clientFor((url) =>
+        url.href.includes("us-east1")
+          ? new Refusal(403, { error: { code: 403, status: "PERMISSION_DENIED" } })
+          : disabled,
+      );
+      await expect(client.listResources(typeId, ACCT)).rejects.toThrow("403");
+    },
+  );
+
+  it("still names the API to turn on for a type that is not one of these", async () => {
+    const { client } = clientFor(() => disabled);
+    await expect(client.listResources("pubsub-topic", ACCT)).rejects.toThrow("is not enabled");
   });
 });
