@@ -1,6 +1,7 @@
 import type { StorageObject } from "@infrawrench/plugin-base";
 import type { SupabaseContext } from "./api.js";
-import { enc, parseResponse, projectUrl, rawRequest } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import { supabaseStorageApi, uploadStorageBytes } from "./api.js";
 import type { SbStorageBucket, SbStorageObject } from "./types.js";
 
 /**
@@ -8,41 +9,13 @@ import type { SbStorageBucket, SbStorageObject } from "./types.js";
  * project-level service behind buckets and objects. The Management API only
  * lists buckets, so creating, editing, emptying and browsing go here, signed
  * with one of the project's secret API keys.
- *
- * New `sb_secret_…` keys go in the `apikey` header only (the gateway mints the
- * service-role JWT itself; they are not JWTs and must not be sent as a Bearer
- * token). A legacy `service_role` key is a JWT and is sent in both headers.
  */
-function storageHeaders(key: string, contentType?: string): Record<string, string> {
-  const headers: Record<string, string> = { apikey: key, Accept: "application/json" };
-  if (key.startsWith("eyJ")) headers["Authorization"] = `Bearer ${key}`;
-  if (contentType) headers["Content-Type"] = contentType;
-  return headers;
-}
-
-async function storageFetch<T>(
-  ctx: SupabaseContext,
-  ref: string,
-  key: string,
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
-  const res = await rawRequest(ctx, {
-    method,
-    url: `${projectUrl(ref)}/storage/v1${path}`,
-    headers: storageHeaders(key, body !== undefined ? "application/json" : undefined),
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  return parseResponse<T>(res, `storage${path}`);
-}
-
 export async function listStorageBuckets(
   ctx: SupabaseContext,
   ref: string,
   key: string,
 ): Promise<SbStorageBucket[]> {
-  return (await storageFetch<SbStorageBucket[]>(ctx, ref, key, "GET", "/bucket")) ?? [];
+  return (await supabaseStorageApi(ctx, ref, key).get("/bucket")) ?? [];
 }
 
 export interface BucketInput {
@@ -58,12 +31,14 @@ export async function createBucket(
   name: string,
   input: BucketInput,
 ): Promise<void> {
-  await storageFetch(ctx, ref, key, "POST", "/bucket", {
-    id: name,
-    name,
-    public: input.public ?? false,
-    ...(input.fileSizeLimit != null ? { file_size_limit: input.fileSizeLimit } : {}),
-    ...(input.allowedMimeTypes?.length ? { allowed_mime_types: input.allowedMimeTypes } : {}),
+  await supabaseStorageApi(ctx, ref, key).post("/bucket", {
+    body: {
+      id: name,
+      name,
+      public: input.public ?? false,
+      ...(input.fileSizeLimit != null ? { file_size_limit: input.fileSizeLimit } : {}),
+      ...(input.allowedMimeTypes?.length ? { allowed_mime_types: input.allowedMimeTypes } : {}),
+    },
   });
 }
 
@@ -73,7 +48,7 @@ export async function getBucket(
   key: string,
   id: string,
 ): Promise<SbStorageBucket> {
-  return storageFetch<SbStorageBucket>(ctx, ref, key, "GET", `/bucket/${enc(id)}`);
+  return supabaseStorageApi(ctx, ref, key).get(`/bucket/${pathEncode(id)}`);
 }
 
 export async function updateBucket(
@@ -85,16 +60,18 @@ export async function updateBucket(
 ): Promise<void> {
   // PUT replaces the bucket's options, so unchanged values are carried over.
   const current = await getBucket(ctx, ref, key, id);
-  await storageFetch(ctx, ref, key, "PUT", `/bucket/${enc(id)}`, {
-    id,
-    name: current.name,
-    public: input.public ?? current.public,
-    file_size_limit:
-      input.fileSizeLimit !== undefined ? input.fileSizeLimit : (current.file_size_limit ?? null),
-    allowed_mime_types:
-      input.allowedMimeTypes !== undefined
-        ? input.allowedMimeTypes
-        : (current.allowed_mime_types ?? null),
+  await supabaseStorageApi(ctx, ref, key).put(`/bucket/${pathEncode(id)}`, {
+    body: {
+      id,
+      name: current.name,
+      public: input.public ?? current.public,
+      file_size_limit:
+        input.fileSizeLimit !== undefined ? input.fileSizeLimit : (current.file_size_limit ?? null),
+      allowed_mime_types:
+        input.allowedMimeTypes !== undefined
+          ? input.allowedMimeTypes
+          : (current.allowed_mime_types ?? null),
+    },
   });
 }
 
@@ -105,8 +82,9 @@ export async function deleteBucket(
   key: string,
   id: string,
 ): Promise<void> {
-  await storageFetch(ctx, ref, key, "POST", `/bucket/${enc(id)}/empty`, {});
-  await storageFetch(ctx, ref, key, "DELETE", `/bucket/${enc(id)}`);
+  const storage = supabaseStorageApi(ctx, ref, key);
+  await storage.post(`/bucket/${pathEncode(id)}/empty`, { body: {} });
+  await storage.delete(`/bucket/${pathEncode(id)}`);
 }
 
 export async function emptyBucket(
@@ -115,7 +93,7 @@ export async function emptyBucket(
   key: string,
   id: string,
 ): Promise<void> {
-  await storageFetch(ctx, ref, key, "POST", `/bucket/${enc(id)}/empty`, {});
+  await supabaseStorageApi(ctx, ref, key).post(`/bucket/${pathEncode(id)}/empty`, { body: {} });
 }
 
 const PAGE = 1000;
@@ -129,11 +107,13 @@ async function listObjectsPage(
   offset: number,
 ): Promise<SbStorageObject[]> {
   return (
-    (await storageFetch<SbStorageObject[]>(ctx, ref, key, "POST", `/object/list/${enc(bucket)}`, {
-      prefix,
-      limit: PAGE,
-      offset,
-      sortBy: { column: "name", order: "asc" },
+    (await supabaseStorageApi(ctx, ref, key).post(`/object/list/${pathEncode(bucket)}`, {
+      body: {
+        prefix,
+        limit: PAGE,
+        offset,
+        sortBy: { column: "name", order: "asc" },
+      },
     })) ?? []
   );
 }
@@ -199,9 +179,10 @@ export async function deleteObject(
   const keys = objectKey.endsWith("/")
     ? await listKeysRecursive(ctx, ref, key, bucket, objectKey.replace(/\/+$/, ""))
     : [objectKey];
+  const storage = supabaseStorageApi(ctx, ref, key);
   for (let i = 0; i < keys.length; i += PAGE) {
-    await storageFetch(ctx, ref, key, "DELETE", `/object/${enc(bucket)}`, {
-      prefixes: keys.slice(i, i + PAGE),
+    await storage.delete(`/object/${pathEncode(bucket)}`, {
+      body: { prefixes: keys.slice(i, i + PAGE) },
     });
   }
 }
@@ -215,17 +196,18 @@ export async function uploadObject(
   data: Uint8Array,
   contentType: string,
 ): Promise<void> {
-  const path = objectKey.split("/").map(enc).join("/");
-  const res = await rawRequest(ctx, {
-    method: "POST",
-    url: `${projectUrl(ref)}/storage/v1/object/${enc(bucket)}/${path}`,
-    headers: {
-      ...storageHeaders(key, contentType || "application/octet-stream"),
-      "x-upsert": "true",
-    },
+  const path = objectKey
+    .split("/")
+    .map((segment) => pathEncode(segment))
+    .join("/");
+  await uploadStorageBytes(ctx, {
+    ref,
+    key,
+    path: `/object/${pathEncode(bucket)}/${path}`,
+    errorPath: `storage/object/${bucket}`,
+    contentType: contentType || "application/octet-stream",
     body: data,
   });
-  parseResponse(res, `storage/object/${bucket}`);
 }
 
 /** `{ref}/{bucket}`, the name the storage browser is handed. */

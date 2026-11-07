@@ -1,0 +1,524 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "management",
+      "specUrl": "https://api.supabase.com/api/v1-json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/JsonValue_Output",
+          "value": {},
+          "why": "A recursive union, which is TS2502 once it is a property of `components`. Nothing here reads into it."
+        },
+        {
+          "pointer": "/components/schemas/AnalyticsResponse_Output/properties/result/items",
+          "value": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "why": "The document leaves a row untyped. Each row is an object keyed by the query's columns."
+        },
+        {
+          "pointer": "/paths/~1v1~1projects~1{ref}~1database~1query/post/responses/201/content",
+          "value": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "why": "The document describes no body here. A query answers with its rows, keyed by column."
+        },
+        {
+          "pointer": "/components/schemas/DiskRequestBody/properties/attributes",
+          "value": {
+            "type": "object",
+            "properties": {
+              "iops": {
+                "type": "integer"
+              },
+              "size_gb": {
+                "type": "integer"
+              },
+              "throughput_mibps": {
+                "type": "integer"
+              },
+              "type": {
+                "type": "string"
+              }
+            }
+          },
+          "why": "The plugin merges the fields a user changed over what the server reports, so it cannot promise one union member, and Supabase validates the combination."
+        },
+        {
+          "pointer": "/components/schemas/ApplyProjectAddonBody/properties/addon_variant",
+          "value": {
+            "type": "string"
+          },
+          "why": "Built from a form value (`ci_${size}`, `pitr_${days}`) that goes through as typed, and Supabase validates it."
+        },
+        {
+          "pointer": "/components/schemas/V1CreateProjectBody/properties/desired_instance_size",
+          "value": {
+            "type": "string"
+          },
+          "why": "The value comes from a form and goes through as typed, and Supabase validates it, so one outside this list stays Supabase's error."
+        },
+        {
+          "pointer": "/components/schemas/V1CreateProjectBody/properties/region_selection/oneOf/0/properties/code",
+          "value": {
+            "type": "string"
+          },
+          "why": "Filled from `available-regions`, whose codes the document itself calls not a stable API."
+        },
+        {
+          "pointer": "/components/schemas/CreateBranchBody/properties/desired_instance_size",
+          "value": {
+            "type": "string"
+          },
+          "why": "The value comes from a form and goes through as typed, and Supabase validates it, so one outside this list stays Supabase's error."
+        },
+        {
+          "pointer": "/components/schemas/SetUpReadReplicaBody/properties/read_replica_region",
+          "value": {
+            "type": "string"
+          },
+          "why": "Filled from `available-regions`, whose codes the document itself calls not a stable API."
+        },
+        {
+          "pointer": "/components/schemas/CreateSigningKeyBody/properties/algorithm",
+          "value": {
+            "type": "string"
+          },
+          "why": "The value comes from a form and goes through as typed, and Supabase validates it, so one outside this list stays Supabase's error."
+        },
+        {
+          "pointer": "/components/schemas/CreateSigningKeyBody/properties/status",
+          "value": {
+            "type": "string"
+          },
+          "why": "The value comes from a form and goes through as typed, and Supabase validates it, so one outside this list stays Supabase's error."
+        },
+        {
+          "pointer": "/components/schemas/UpdateSigningKeyBody/properties/status",
+          "value": {
+            "type": "string"
+          },
+          "why": "The value comes from a form and goes through as typed, and Supabase validates it, so one outside this list stays Supabase's error."
+        },
+        {
+          "pointer": "/components/schemas/CreateProviderBody/properties/name_id_format",
+          "value": {
+            "type": "string"
+          },
+          "why": "The value comes from a form and goes through as typed, and Supabase validates it, so one outside this list stays Supabase's error."
+        },
+        {
+          "pointer": "/components/schemas/UpdateProviderBody/properties/name_id_format",
+          "value": {
+            "type": "string"
+          },
+          "why": "The value comes from a form and goes through as typed, and Supabase validates it, so one outside this list stays Supabase's error."
+        },
+        {
+          "pointer": "/components/schemas/UpdateSupavisorConfigBody/properties/pool_mode",
+          "value": {
+            "type": "string"
+          },
+          "why": "The value comes from a form and goes through as typed, and Supabase validates it, so one outside this list stays Supabase's error."
+        }
+      ],
+      "paths": {
+        "/v1/branches/{branch_id_or_ref}": ["get", "patch", "delete"],
+        "/v1/branches/{branch_id_or_ref}/merge": ["post"],
+        "/v1/branches/{branch_id_or_ref}/push": ["post"],
+        "/v1/branches/{branch_id_or_ref}/reset": ["post"],
+        "/v1/branches/{branch_id_or_ref}/restore": ["post"],
+        "/v1/organizations": ["get"],
+        "/v1/organizations/{slug}": ["get"],
+        "/v1/organizations/{slug}/members": ["get"],
+        "/v1/organizations/{slug}/projects": ["get"],
+        "/v1/projects": ["get", "post"],
+        "/v1/projects/available-regions": ["get"],
+        "/v1/projects/{ref}": ["get", "patch", "delete"],
+        "/v1/projects/{ref}/advisors/performance": ["get"],
+        "/v1/projects/{ref}/advisors/security": ["get"],
+        "/v1/projects/{ref}/analytics/endpoints/functions.combined-stats": ["get"],
+        "/v1/projects/{ref}/analytics/endpoints/logs": ["get"],
+        "/v1/projects/{ref}/analytics/endpoints/metrics": ["get"],
+        "/v1/projects/{ref}/analytics/endpoints/usage.api-counts": ["get"],
+        "/v1/projects/{ref}/analytics/endpoints/usage.api-requests-count": ["get"],
+        "/v1/projects/{ref}/api-keys": ["get", "post"],
+        "/v1/projects/{ref}/api-keys/legacy": ["get", "put"],
+        "/v1/projects/{ref}/api-keys/{id}": ["get", "patch", "delete"],
+        "/v1/projects/{ref}/billing/addons": ["get", "patch"],
+        "/v1/projects/{ref}/billing/addons/{addon_variant}": ["delete"],
+        "/v1/projects/{ref}/branches": ["get", "post"],
+        "/v1/projects/{ref}/config/auth": ["get", "patch"],
+        "/v1/projects/{ref}/config/auth/signing-keys": ["get", "post"],
+        "/v1/projects/{ref}/config/auth/signing-keys/{id}": ["get", "patch", "delete"],
+        "/v1/projects/{ref}/config/auth/sso/providers": ["get", "post"],
+        "/v1/projects/{ref}/config/auth/sso/providers/{provider_id}": ["put", "delete"],
+        "/v1/projects/{ref}/config/auth/third-party-auth": ["get", "post"],
+        "/v1/projects/{ref}/config/auth/third-party-auth/{tpa_id}": ["delete"],
+        "/v1/projects/{ref}/config/database/pooler": ["get", "patch"],
+        "/v1/projects/{ref}/config/database/postgres": ["get", "put"],
+        "/v1/projects/{ref}/config/disk": ["get", "post"],
+        "/v1/projects/{ref}/config/disk/autoscale": ["get"],
+        "/v1/projects/{ref}/config/disk/util": ["get"],
+        "/v1/projects/{ref}/config/realtime": ["get", "patch"],
+        "/v1/projects/{ref}/config/storage": ["get", "patch"],
+        "/v1/projects/{ref}/custom-hostname": ["get"],
+        "/v1/projects/{ref}/custom-hostname/activate": ["post"],
+        "/v1/projects/{ref}/custom-hostname/reverify": ["post"],
+        "/v1/projects/{ref}/database/backups": ["get"],
+        "/v1/projects/{ref}/database/password": ["patch"],
+        "/v1/projects/{ref}/database/query": ["post"],
+        "/v1/projects/{ref}/functions": ["get"],
+        "/v1/projects/{ref}/functions/deploy": ["post"],
+        "/v1/projects/{ref}/functions/{function_slug}": ["get", "patch", "delete"],
+        "/v1/projects/{ref}/health": ["get"],
+        "/v1/projects/{ref}/network-bans": ["delete"],
+        "/v1/projects/{ref}/network-bans/retrieve": ["post"],
+        "/v1/projects/{ref}/network-restrictions": ["get"],
+        "/v1/projects/{ref}/network-restrictions/apply": ["post"],
+        "/v1/projects/{ref}/pause": ["post"],
+        "/v1/projects/{ref}/postgrest": ["get", "patch"],
+        "/v1/projects/{ref}/read-replicas/remove": ["post"],
+        "/v1/projects/{ref}/read-replicas/setup": ["post"],
+        "/v1/projects/{ref}/readonly": ["get"],
+        "/v1/projects/{ref}/readonly/temporary-disable": ["post"],
+        "/v1/projects/{ref}/restart": ["post"],
+        "/v1/projects/{ref}/restore": ["post"],
+        "/v1/projects/{ref}/secrets": ["get", "post", "delete"],
+        "/v1/projects/{ref}/ssl-enforcement": ["get", "put"],
+        "/v1/projects/{ref}/storage/buckets": ["get"],
+        "/v1/projects/{ref}/upgrade": ["post"],
+        "/v1/projects/{ref}/upgrade/eligibility": ["get"],
+        "/v1/projects/{ref}/vanity-subdomain": ["get"]
+      }
+    },
+    {
+      "name": "storage",
+      "specUrl": "https://supabase.github.io/storage/api.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1bucket",
+          "value": {
+            "post": {
+              "summary": "Create a bucket",
+              "tags": ["bucket"],
+              "requestBody": {
+                "required": true,
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "example": "avatars"
+                        },
+                        "id": {
+                          "type": "string",
+                          "example": "avatars"
+                        },
+                        "public": {
+                          "type": "boolean",
+                          "example": false
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": ["STANDARD", "ANALYTICS"]
+                        },
+                        "versioning_status": {
+                          "type": "string",
+                          "enum": ["DISABLED", "ENABLED"],
+                          "example": "ENABLED"
+                        },
+                        "file_size_limit": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "examples": [1000],
+                              "nullable": true,
+                              "minimum": 0
+                            },
+                            {
+                              "type": "string",
+                              "pattern": "^[0-9]+(?:\\.[0-9]+)?(?:[gG][bB]|[mM][bB]|[kK][bB]|[bB])$",
+                              "examples": ["100MB"],
+                              "nullable": true
+                            }
+                          ]
+                        },
+                        "allowed_mime_types": {
+                          "type": "array",
+                          "nullable": true,
+                          "items": {
+                            "type": "string"
+                          },
+                          "example": ["image/png", "image/jpg"]
+                        }
+                      },
+                      "required": ["name"],
+                      "not": {
+                        "required": ["lifecycle_configuration"]
+                      }
+                    }
+                  }
+                }
+              },
+              "security": [
+                {
+                  "bearerAuth": []
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "Successful response",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "description": "Successful response",
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "example": "avatars"
+                          }
+                        },
+                        "required": ["name"]
+                      }
+                    }
+                  }
+                },
+                "4XX": {
+                  "description": "Error response",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/def-1"
+                      }
+                    }
+                  }
+                },
+                "5XX": {
+                  "description": "Error response",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/def-1"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "get": {
+              "summary": "Gets all buckets",
+              "tags": ["bucket"],
+              "parameters": [
+                {
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "example": 10,
+                  "in": "query",
+                  "name": "limit",
+                  "required": false
+                },
+                {
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "example": 0,
+                  "in": "query",
+                  "name": "offset",
+                  "required": false
+                },
+                {
+                  "schema": {
+                    "type": "string",
+                    "enum": ["id", "name", "created_at", "updated_at"]
+                  },
+                  "in": "query",
+                  "name": "sortColumn",
+                  "required": false
+                },
+                {
+                  "schema": {
+                    "type": "string",
+                    "enum": ["asc", "desc"]
+                  },
+                  "in": "query",
+                  "name": "sortOrder",
+                  "required": false
+                },
+                {
+                  "schema": {
+                    "type": "string"
+                  },
+                  "example": "my-bucket",
+                  "in": "query",
+                  "name": "search",
+                  "required": false
+                }
+              ],
+              "security": [
+                {
+                  "bearerAuth": []
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "Successful response",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "description": "Successful response",
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "owner": {
+                              "type": "string"
+                            },
+                            "owner_id": {
+                              "type": "string"
+                            },
+                            "public": {
+                              "type": "boolean"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": ["STANDARD", "ANALYTICS"]
+                            },
+                            "versioning_status": {
+                              "type": "string",
+                              "enum": ["DISABLED", "ENABLED", "SUSPENDED"]
+                            },
+                            "file_size_limit": {
+                              "type": "integer",
+                              "nullable": true
+                            },
+                            "allowed_mime_types": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              },
+                              "nullable": true
+                            },
+                            "created_at": {
+                              "type": "string"
+                            },
+                            "updated_at": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["id", "name"],
+                          "additionalProperties": false,
+                          "title": "bucketSchema",
+                          "example": {
+                            "id": "bucket2",
+                            "name": "bucket2",
+                            "public": false,
+                            "file_size_limit": 1000000,
+                            "allowed_mime_types": ["image/png", "image/jpeg"],
+                            "owner": "4d56e902-f0a0-4662-8448-a4d9e643c142",
+                            "created_at": "2021-02-17T04:43:32.770206+00:00",
+                            "updated_at": "2021-02-17T04:43:32.770206+00:00"
+                          }
+                        }
+                      },
+                      "example": [
+                        {
+                          "id": "avatars",
+                          "type": "STANDARD",
+                          "name": "avatars",
+                          "owner": "4d56e902-f0a0-4662-8448-a4d9e643c142",
+                          "public": false,
+                          "file_size_limit": 1000000,
+                          "allowed_mime_types": ["image/png", "image/jpeg"],
+                          "created_at": "2021-02-17T04:43:32.770206+00:00",
+                          "updated_at": "2021-02-17T04:43:32.770206+00:00"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "4XX": {
+                  "description": "Error response",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/def-1"
+                      }
+                    }
+                  }
+                },
+                "5XX": {
+                  "description": "Error response",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "$ref": "#/components/schemas/def-1"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The document only has `/bucket/`. The plugin calls `/bucket`, which the service serves too."
+        },
+        {
+          "pointer": "/paths/~1bucket~1{bucketId}~1empty/post/requestBody",
+          "value": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "why": "The document describes no body. The plugin sends an empty object."
+        },
+        {
+          "pointer": "/paths/~1bucket~1{bucketId}/put/requestBody/content/application~1json/schema/properties/id",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin repeats the bucket's id, which the document leaves out."
+        },
+        {
+          "pointer": "/paths/~1bucket~1{bucketId}/put/requestBody/content/application~1json/schema/properties/name",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin repeats the bucket's name, which the document leaves out."
+        }
+      ],
+      "paths": {
+        "/bucket": ["get", "post"],
+        "/bucket/{bucketId}": ["get", "put", "delete"],
+        "/bucket/{bucketId}/empty": ["post"],
+        "/object/list/{bucketName}": ["post"],
+        "/object/{bucketName}": ["delete"]
+      }
+    }
+  ]
+}

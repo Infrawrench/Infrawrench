@@ -20,9 +20,22 @@ import type {
   SqlTableMeta,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { buildMultipartBody, externalIdOf, QuotaAccessError } from "@infrawrench/plugin-base";
-import type { SupabaseContext } from "./api.js";
-import { enc, projectUrl, sbFetch, sbFetchRaw, statusOf, SupabaseApiError } from "./api.js";
+import {
+  buildMultipartBody,
+  externalIdOf,
+  pathEncode,
+  QuotaAccessError,
+  type ApiBody,
+} from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.management.gen.js";
+import type { SupabaseApi, SupabaseContext } from "./api.js";
+import {
+  deployFunctionBundle,
+  projectUrl,
+  statusOf,
+  supabaseApi,
+  SupabaseApiError,
+} from "./api.js";
 import { fetchSupabaseCostData } from "./cost-data.js";
 import { getCreateConfig, targetProjectRef } from "./create-config.js";
 import {
@@ -80,19 +93,7 @@ import {
   updateBucket,
   uploadObject,
 } from "./storage.js";
-import type {
-  SbAddons,
-  SbApiKey,
-  SbBranch,
-  SbBranchConfig,
-  SbFunction,
-  SbMember,
-  SbPooler,
-  SbProject,
-  SbSigningKey,
-  SbSsoProvider,
-  SbUpgradeEligibility,
-} from "./types.js";
+import type { SbApiKey, SbDiskAttributes, SbFunction, SbPooler, SbProject } from "./types.js";
 
 /** Secret-state key the project's postgres password is stored under. */
 export const DB_PASSWORD_FIELD = "dbPassword";
@@ -119,6 +120,7 @@ function uriPassword(password: string): string {
 
 export class SupabaseClient implements PluginClient {
   private readonly ctx: SupabaseContext;
+  private readonly api: SupabaseApi;
   private readonly services: HostServices | undefined;
   private readonly secretKeys = new Map<string, Promise<string>>();
 
@@ -131,6 +133,7 @@ export class SupabaseClient implements PluginClient {
       ...(services?.http ? { http: services.http } : {}),
       ...(caCert ? { caCert } : {}),
     };
+    this.api = supabaseApi(this.ctx);
     this.services = services;
   }
 
@@ -261,7 +264,7 @@ export class SupabaseClient implements PluginClient {
         if (outputKey === "branchRef") return rest;
         if (outputKey === "apiUrl") return projectUrl(rest);
         if (outputKey === "connectionString") {
-          const cfg = await sbFetch<SbBranchConfig>(this.ctx, "GET", `/v1/branches/${enc(rest)}`);
+          const cfg = await this.api.get(`/v1/branches/${pathEncode(rest)}`);
           if (!cfg?.db_pass) {
             throw new Error(
               "Supabase plugin: Supabase did not return this branch's database password (the token needs the environment:read scope).",
@@ -283,12 +286,9 @@ export class SupabaseClient implements PluginClient {
           if (!key) throw new Error("Supabase plugin: the legacy key could not be read.");
           return key;
         }
-        const key = await sbFetch<SbApiKey>(
-          this.ctx,
-          "GET",
-          `/v1/projects/${enc(ref)}/api-keys/${enc(rest)}`,
-          undefined,
-          { reveal: true },
+        const key = await this.api.get(
+          `/v1/projects/${pathEncode(ref)}/api-keys/${pathEncode(rest)}`,
+          { query: { reveal: "true" } },
         );
         if (!key?.api_key) throw new Error("Supabase plugin: the key could not be revealed.");
         return key.api_key;
@@ -311,19 +311,13 @@ export class SupabaseClient implements PluginClient {
       }
 
       if (typeId === "supabase-auth" && outputKey === "siteUrl") {
-        const cfg = await sbFetch<Record<string, unknown>>(
-          this.ctx,
-          "GET",
-          `/v1/projects/${enc(ref)}/config/auth`,
-        );
+        const cfg = await this.api.get(`/v1/projects/${pathEncode(ref)}/config/auth`);
         return typeof cfg?.["site_url"] === "string" ? cfg["site_url"] : "";
       }
 
       if (typeId === "supabase-signing-key" && outputKey === "publicJwk") {
-        const key = await sbFetch<SbSigningKey>(
-          this.ctx,
-          "GET",
-          `/v1/projects/${enc(ref)}/config/auth/signing-keys/${enc(rest)}`,
+        const key = await this.api.get(
+          `/v1/projects/${pathEncode(ref)}/config/auth/signing-keys/${pathEncode(rest)}`,
         );
         return key?.public_jwk ? JSON.stringify(key.public_jwk) : "";
       }
@@ -354,13 +348,7 @@ export class SupabaseClient implements PluginClient {
   }
 
   private async poolers(ref: string): Promise<SbPooler[]> {
-    return (
-      (await sbFetch<SbPooler[]>(
-        this.ctx,
-        "GET",
-        `/v1/projects/${enc(ref)}/config/database/pooler`,
-      )) ?? []
-    );
+    return (await this.api.get(`/v1/projects/${pathEncode(ref)}/config/database/pooler`)) ?? [];
   }
 
   /** The stored postgres password, which Supabase itself never returns. */
@@ -375,7 +363,9 @@ export class SupabaseClient implements PluginClient {
   private async resetDbPassword(projectResourceId: string, chosen?: string): Promise<void> {
     const ref = splitScoped(externalIdOf(projectResourceId)).ref;
     const password = chosen || randomPassword();
-    await sbFetch(this.ctx, "PATCH", `/v1/projects/${enc(ref)}/database/password`, { password });
+    await this.api.patch(`/v1/projects/${pathEncode(ref)}/database/password`, {
+      body: { password },
+    });
     if (!this.services?.secrets?.setPlaintext) {
       throw new Error(
         `The password was changed but this host cannot store it. The new postgres password is: ${password}`,
@@ -385,9 +375,9 @@ export class SupabaseClient implements PluginClient {
   }
 
   private revealedKeys(ref: string): Promise<SbApiKey[]> {
-    return sbFetch<SbApiKey[]>(this.ctx, "GET", `/v1/projects/${enc(ref)}/api-keys`, undefined, {
-      reveal: true,
-    }).then((keys) => keys ?? []);
+    return this.api
+      .get(`/v1/projects/${pathEncode(ref)}/api-keys`, { query: { reveal: "true" } })
+      .then((keys) => keys ?? []);
   }
 
   private async projectKey(
@@ -444,7 +434,7 @@ export class SupabaseClient implements PluginClient {
 
       if (resource.resourceTypeId === "supabase-project") {
         const ref = String(resource.fields["ref"] ?? resource.externalId ?? "");
-        const base = `/v1/projects/${enc(ref)}`;
+        const base = `/v1/projects/${pathEncode(ref)}` as const;
         const running = String(resource.fields["status"] ?? "").startsWith("ACTIVE");
         const [
           health,
@@ -461,25 +451,21 @@ export class SupabaseClient implements PluginClient {
         ] = await Promise.all([
           running
             ? quiet(
-                sbFetch(this.ctx, "GET", `${base}/health`, undefined, {
-                  services: "auth,db,pooler,realtime,rest,storage",
+                this.api.get(`${base}/health`, {
+                  query: { services: "auth,db,pooler,realtime,rest,storage" },
                 }),
               )
             : undefined,
-          running
-            ? quiet(sbFetch<{ lints: unknown[] }>(this.ctx, "GET", `${base}/advisors/security`))
-            : undefined,
-          running
-            ? quiet(sbFetch<{ lints: unknown[] }>(this.ctx, "GET", `${base}/advisors/performance`))
-            : undefined,
-          quiet(sbFetch(this.ctx, "GET", `${base}/config/disk`)),
-          running ? quiet(sbFetch(this.ctx, "GET", `${base}/config/disk/util`)) : undefined,
-          quiet(sbFetch(this.ctx, "GET", `${base}/config/disk/autoscale`)),
-          quiet(sbFetch(this.ctx, "GET", `${base}/billing/addons`)),
-          running ? quiet(sbFetch(this.ctx, "GET", `${base}/upgrade/eligibility`)) : undefined,
-          quiet(sbFetch(this.ctx, "GET", `${base}/custom-hostname`)),
-          quiet(sbFetch(this.ctx, "GET", `${base}/vanity-subdomain`)),
-          running ? quiet(sbFetch(this.ctx, "GET", `${base}/readonly`)) : undefined,
+          running ? quiet(this.api.get(`${base}/advisors/security`)) : undefined,
+          running ? quiet(this.api.get(`${base}/advisors/performance`)) : undefined,
+          quiet(this.api.get(`${base}/config/disk`)),
+          running ? quiet(this.api.get(`${base}/config/disk/util`)) : undefined,
+          quiet(this.api.get(`${base}/config/disk/autoscale`)),
+          quiet(this.api.get(`${base}/billing/addons`)),
+          running ? quiet(this.api.get(`${base}/upgrade/eligibility`)) : undefined,
+          quiet(this.api.get(`${base}/custom-hostname`)),
+          quiet(this.api.get(`${base}/vanity-subdomain`)),
+          running ? quiet(this.api.get(`${base}/readonly`)) : undefined,
         ]);
         put(ENRICH.health, health);
         if (security || performance) {
@@ -502,9 +488,7 @@ export class SupabaseClient implements PluginClient {
         const slug = String(resource.fields["slug"] ?? resource.externalId ?? "");
         put(
           ENRICH.members,
-          await quiet(
-            sbFetch<SbMember[]>(this.ctx, "GET", `/v1/organizations/${enc(slug)}/members`),
-          ),
+          await quiet(this.api.get(`/v1/organizations/${pathEncode(slug)}/members`)),
         );
       }
       return { ...resource, fields };
@@ -562,18 +546,18 @@ export class SupabaseClient implements PluginClient {
     return attempt(async () => {
       const typeId = resourceId.split(":")[1];
       const ref = splitScoped(externalIdOf(resourceId)).ref;
-      const base = `/v1/projects/${enc(ref)}`;
+      const base = `/v1/projects/${pathEncode(ref)}` as const;
       if (typeId === "supabase-auth") {
-        const cfg = await sbFetch<Record<string, unknown>>(this.ctx, "GET", `${base}/config/auth`);
+        const cfg = await this.api.get(`${base}/config/auth`);
         return JSON.stringify({ settings: descriptors(AUTH_SETTINGS, cfg ?? {}, "") });
       }
       if (typeId === "supabase-project") {
         const [postgres, poolers, postgrest, storage, realtime] = await Promise.all([
-          sbFetch(this.ctx, "GET", `${base}/config/database/postgres`).catch(() => undefined),
-          this.poolers(ref).catch(() => [] as SbPooler[]),
-          sbFetch(this.ctx, "GET", `${base}/postgrest`).catch(() => undefined),
-          sbFetch(this.ctx, "GET", `${base}/config/storage`).catch(() => undefined),
-          sbFetch(this.ctx, "GET", `${base}/config/realtime`).catch(() => undefined),
+          this.api.get(`${base}/config/database/postgres`).catch(() => undefined),
+          this.poolers(ref).catch((): SbPooler[] => []),
+          this.api.get(`${base}/postgrest`).catch(() => undefined),
+          this.api.get(`${base}/config/storage`).catch(() => undefined),
+          this.api.get(`${base}/config/realtime`).catch(() => undefined),
         ]);
         const settings = [
           ...(postgres ? descriptors(PROJECT_SECTIONS["postgres"]!, postgres, "postgres.") : []),
@@ -596,26 +580,34 @@ export class SupabaseClient implements PluginClient {
     return attempt(async () => {
       const typeId = resourceId.split(":")[1];
       const ref = splitScoped(externalIdOf(resourceId)).ref;
-      const base = `/v1/projects/${enc(ref)}`;
-      const changes = JSON.parse(manifest) as Array<{ id: string; value: string }>;
+      const base = `/v1/projects/${pathEncode(ref)}` as const;
+      const changes: Array<{ id: string; value: string }> = JSON.parse(manifest);
       if (!Array.isArray(changes)) throw new Error("Settings must be a list of {id, value} pairs.");
       if (typeId === "supabase-auth") {
-        await sbFetch(this.ctx, "PATCH", `${base}/config/auth`, authChangesBody(changes));
+        await this.api.patch(`${base}/config/auth`, { body: authChangesBody(changes) });
         return;
       }
       if (typeId !== "supabase-project")
         throw new Error(`Supabase plugin: no settings for "${typeId}".`);
       const bodies = groupProjectChanges(changes);
-      const routes: Record<string, [string, string]> = {
-        postgres: ["PUT", `${base}/config/database/postgres`],
-        pooler: ["PATCH", `${base}/config/database/pooler`],
-        postgrest: ["PATCH", `${base}/postgrest`],
-        storage: ["PATCH", `${base}/config/storage`],
-        realtime: ["PATCH", `${base}/config/realtime`],
-      };
       for (const [sectionId, body] of bodies) {
-        const [method, path] = routes[sectionId]!;
-        await sbFetch(this.ctx, method, path, body);
+        switch (sectionId) {
+          case "postgres":
+            await this.api.put(`${base}/config/database/postgres`, { body });
+            break;
+          case "pooler":
+            await this.api.patch(`${base}/config/database/pooler`, { body });
+            break;
+          case "postgrest":
+            await this.api.patch(`${base}/postgrest`, { body });
+            break;
+          case "storage":
+            await this.api.patch(`${base}/config/storage`, { body });
+            break;
+          case "realtime":
+            await this.api.patch(`${base}/config/realtime`, { body });
+            break;
+        }
       }
     });
   }
@@ -630,12 +622,9 @@ export class SupabaseClient implements PluginClient {
     return attempt(async () => {
       const ref = splitScoped(externalIdOf(resourceId)).ref;
       const start = Date.now();
-      const rows = await sbFetch<Record<string, unknown>[] | null>(
-        this.ctx,
-        "POST",
-        `/v1/projects/${enc(ref)}/database/query`,
-        { query: sql },
-      );
+      const rows = await this.api.post(`/v1/projects/${pathEncode(ref)}/database/query`, {
+        body: { query: sql },
+      });
       return { rows: Array.isArray(rows) ? rows : [], durationMs: Date.now() - start };
     });
   }
@@ -680,7 +669,7 @@ export class SupabaseClient implements PluginClient {
       if (typeId === "supabase-project" && command === "reset-db-password") {
         let chosen = "";
         try {
-          const parsed = JSON.parse(String(args[0] ?? "{}")) as { password?: string };
+          const parsed: { password?: string } = JSON.parse(String(args[0] ?? "{}"));
           chosen = parsed.password ?? "";
         } catch {
           chosen = "";
@@ -709,20 +698,22 @@ export class SupabaseClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "supabase-project") return this.createProject(accountId, fields);
       const ref = targetProjectRef(fields, parentResourceId);
-      const base = `/v1/projects/${enc(ref)}`;
+      const base = `/v1/projects/${pathEncode(ref)}` as const;
 
       switch (typeId) {
         case "supabase-branch": {
-          const branch = await sbFetch<SbBranch>(this.ctx, "POST", `${base}/branches`, {
-            branch_name: required(fields["name"], "a branch name"),
-            ...(fields["gitBranch"] ? { git_branch: fields["gitBranch"] } : {}),
-            ...(bool(fields["persistent"]) !== undefined
-              ? { persistent: bool(fields["persistent"]) }
-              : {}),
-            ...(bool(fields["withData"]) !== undefined
-              ? { with_data: bool(fields["withData"]) }
-              : {}),
-            ...(fields["computeSize"] ? { desired_instance_size: fields["computeSize"] } : {}),
+          const branch = await this.api.post(`${base}/branches`, {
+            body: {
+              branch_name: required(fields["name"], "a branch name"),
+              ...(fields["gitBranch"] ? { git_branch: fields["gitBranch"] } : {}),
+              ...(bool(fields["persistent"]) !== undefined
+                ? { persistent: bool(fields["persistent"]) }
+                : {}),
+              ...(bool(fields["withData"]) !== undefined
+                ? { with_data: bool(fields["withData"]) }
+                : {}),
+              ...(fields["computeSize"] ? { desired_instance_size: fields["computeSize"] } : {}),
+            },
           });
           return toBranch(branch, accountId);
         }
@@ -741,25 +732,22 @@ export class SupabaseClient implements PluginClient {
               "Secret names cannot start with SUPABASE_; those are set by the platform.",
             );
           }
-          await sbFetch(this.ctx, "POST", `${base}/secrets`, [
-            { name, value: required(fields["value"], "a value") },
-          ]);
+          await this.api.post(`${base}/secrets`, {
+            body: [{ name, value: required(fields["value"], "a value") }],
+          });
           return runPluginEffect(
             this.getResource(typeId, `${accountId}:${typeId}:${ref}/${name}`, accountId),
           );
         }
         case "supabase-api-key": {
-          const key = await sbFetch<SbApiKey>(
-            this.ctx,
-            "POST",
-            `${base}/api-keys`,
-            {
+          const key = await this.api.post(`${base}/api-keys`, {
+            body: {
               type: fields["type"] === "publishable" ? "publishable" : "secret",
               name: required(fields["name"], "a name"),
               ...(fields["description"] ? { description: fields["description"] } : {}),
             },
-            { reveal: true },
-          );
+            query: { reveal: "true" },
+          });
           const resource = toApiKey(key, ref, accountId);
           if (key.api_key) resource.resolvedOutputs["apiKey"] = key.api_key;
           return resource;
@@ -776,8 +764,8 @@ export class SupabaseClient implements PluginClient {
           );
         }
         case "supabase-read-replica": {
-          await sbFetch(this.ctx, "POST", `${base}/read-replicas/setup`, {
-            read_replica_region: required(fields["region"], "a region"),
+          await this.api.post(`${base}/read-replicas/setup`, {
+            body: { read_replica_region: required(fields["region"], "a region") },
           });
           // The replica appears in the organization's project listing once
           // provisioning starts; return the newest one in that region.
@@ -789,28 +777,22 @@ export class SupabaseClient implements PluginClient {
           throw new Error("The read replica is being set up; refresh in a minute to see it.");
         }
         case "supabase-sso-provider": {
-          const provider = await sbFetch<SbSsoProvider>(
-            this.ctx,
-            "POST",
-            `${base}/config/auth/sso/providers`,
-            {
+          const provider = await this.api.post(`${base}/config/auth/sso/providers`, {
+            body: {
               type: "saml",
               ...(fields["metadataUrl"] ? { metadata_url: fields["metadataUrl"] } : {}),
               ...(fields["metadataXml"] ? { metadata_xml: fields["metadataXml"] } : {}),
               domains: splitList(fields["domains"]),
               ...(fields["nameIdFormat"] ? { name_id_format: fields["nameIdFormat"] } : {}),
             },
-          );
+          });
           return toSsoProvider(provider, ref, accountId);
         }
         case "supabase-third-party-auth": {
           const url = required(fields["url"], "a URL");
-          await sbFetch(
-            this.ctx,
-            "POST",
-            `${base}/config/auth/third-party-auth`,
-            fields["source"] === "jwks" ? { jwks_url: url } : { oidc_issuer_url: url },
-          );
+          await this.api.post(`${base}/config/auth/third-party-auth`, {
+            body: fields["source"] === "jwks" ? { jwks_url: url } : { oidc_issuer_url: url },
+          });
           const all = await listThirdPartyAuth(this.ctx, accountId, [
             await fetchProject(this.ctx, ref),
           ]);
@@ -824,15 +806,12 @@ export class SupabaseClient implements PluginClient {
           return match;
         }
         case "supabase-signing-key": {
-          const key = await sbFetch<SbSigningKey>(
-            this.ctx,
-            "POST",
-            `${base}/config/auth/signing-keys`,
-            {
+          const key = await this.api.post(`${base}/config/auth/signing-keys`, {
+            body: {
               algorithm: fields["algorithm"] || "ES256",
               ...(fields["status"] ? { status: fields["status"] } : {}),
             },
-          );
+          });
           return toSigningKey(key, ref, accountId);
         }
         default:
@@ -846,12 +825,14 @@ export class SupabaseClient implements PluginClient {
     fields: Record<string, string>,
   ): Promise<ResourceCreateReturn> {
     const password = fields["dbPassword"] || randomPassword();
-    const project = await sbFetch<SbProject>(this.ctx, "POST", "/v1/projects", {
-      name: required(fields["name"], "a project name"),
-      organization_slug: required(fields["organizationSlug"], "an organization"),
-      db_pass: password,
-      region_selection: { type: "specific", code: required(fields["region"], "a region") },
-      ...(fields["computeSize"] ? { desired_instance_size: fields["computeSize"] } : {}),
+    const project = await this.api.post("/v1/projects", {
+      body: {
+        name: required(fields["name"], "a project name"),
+        organization_slug: required(fields["organizationSlug"], "an organization"),
+        db_pass: password,
+        region_selection: { type: "specific", code: required(fields["region"], "a region") },
+        ...(fields["computeSize"] ? { desired_instance_size: fields["computeSize"] } : {}),
+      },
     });
     const resource = await toProjectResource(this.ctx, project, accountId, undefined);
     const warnings = [];
@@ -891,13 +872,12 @@ export class SupabaseClient implements PluginClient {
         data: new TextEncoder().encode(code),
       },
     ]);
-    return sbFetchRaw<SbFunction>(
+    return deployFunctionBundle(
       this.ctx,
-      "POST",
-      `/v1/projects/${enc(ref)}/functions/deploy`,
+      `/v1/projects/${pathEncode(ref)}/functions/deploy`,
+      slug,
       contentType,
       body,
-      { slug },
     );
   }
 
@@ -909,42 +889,42 @@ export class SupabaseClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const { ref, rest } = splitScoped(externalIdOf(resourceId));
-      const base = `/v1/projects/${enc(ref)}`;
+      const base = `/v1/projects/${pathEncode(ref)}` as const;
 
       switch (typeId) {
         case "supabase-project":
           await this.updateProject(ref, fields);
           break;
         case "supabase-branch": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["v1-update-a-branch-config"]> = {};
           if (fields["name"]) body["branch_name"] = fields["name"];
           if (fields["gitBranch"] !== undefined) body["git_branch"] = fields["gitBranch"];
           if (bool(fields["persistent"]) !== undefined)
             body["persistent"] = bool(fields["persistent"]);
           if (fields["notifyUrl"] !== undefined) body["notify_url"] = fields["notifyUrl"];
-          await sbFetch(this.ctx, "PATCH", `/v1/branches/${enc(rest)}`, body);
+          await this.api.patch(`/v1/branches/${pathEncode(rest)}`, { body });
           break;
         }
         case "supabase-function": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["v1-update-a-function"]> = {};
           if (fields["name"]) body["name"] = fields["name"];
           if (bool(fields["verifyJwt"]) !== undefined)
             body["verify_jwt"] = bool(fields["verifyJwt"]);
-          await sbFetch(this.ctx, "PATCH", `${base}/functions/${enc(rest)}`, body);
+          await this.api.patch(`${base}/functions/${pathEncode(rest)}`, { body });
           break;
         }
         case "supabase-secret":
           if (fields["value"]) {
             // Bulk create upserts: the same call replaces an existing value.
-            await sbFetch(this.ctx, "POST", `${base}/secrets`, [
-              { name: rest, value: fields["value"] },
-            ]);
+            await this.api.post(`${base}/secrets`, {
+              body: [{ name: rest, value: fields["value"] }],
+            });
           }
           break;
         case "supabase-api-key":
           if (rest.startsWith("legacy-")) throw new Error("Legacy keys cannot be edited.");
-          await sbFetch(this.ctx, "PATCH", `${base}/api-keys/${enc(rest)}`, {
-            description: fields["description"] ?? "",
+          await this.api.patch(`${base}/api-keys/${pathEncode(rest)}`, {
+            body: { description: fields["description"] ?? "" },
           });
           break;
         case "supabase-bucket":
@@ -959,17 +939,17 @@ export class SupabaseClient implements PluginClient {
           });
           break;
         case "supabase-sso-provider": {
-          const body: Record<string, unknown> = {};
+          const body: ApiBody<operations["v1-update-a-sso-provider"]> = {};
           if (fields["metadataUrl"]) body["metadata_url"] = fields["metadataUrl"];
           if (fields["domains"] !== undefined) body["domains"] = splitList(fields["domains"]);
           if (fields["nameIdFormat"]) body["name_id_format"] = fields["nameIdFormat"];
-          await sbFetch(this.ctx, "PUT", `${base}/config/auth/sso/providers/${enc(rest)}`, body);
+          await this.api.put(`${base}/config/auth/sso/providers/${pathEncode(rest)}`, { body });
           break;
         }
         case "supabase-signing-key":
           if (fields["status"]) {
-            await sbFetch(this.ctx, "PATCH", `${base}/config/auth/signing-keys/${enc(rest)}`, {
-              status: fields["status"],
+            await this.api.patch(`${base}/config/auth/signing-keys/${pathEncode(rest)}`, {
+              body: { status: fields["status"] },
             });
           }
           break;
@@ -981,130 +961,123 @@ export class SupabaseClient implements PluginClient {
   }
 
   private async updateProject(ref: string, fields: Record<string, string>): Promise<void> {
-    const base = `/v1/projects/${enc(ref)}`;
-    if (fields["name"]) await sbFetch(this.ctx, "PATCH", base, { name: fields["name"] });
+    const base = `/v1/projects/${pathEncode(ref)}` as const;
+    if (fields["name"]) await this.api.patch(base, { body: { name: fields["name"] } });
 
     if (fields["computeSize"]) {
-      await sbFetch(this.ctx, "PATCH", `${base}/billing/addons`, {
-        addon_type: "compute_instance",
-        addon_variant: `ci_${fields["computeSize"]}`,
+      await this.api.patch(`${base}/billing/addons`, {
+        body: { addon_type: "compute_instance", addon_variant: `ci_${fields["computeSize"]}` },
       });
     }
 
     if (fields["pitrDays"] !== undefined && fields["pitrDays"] !== "") {
       if (fields["pitrDays"] === "0") {
-        const addons = await sbFetch<SbAddons>(this.ctx, "GET", `${base}/billing/addons`);
+        const addons = await this.api.get(`${base}/billing/addons`);
         const current = addons?.selected_addons.find((a) => a.type === "pitr")?.variant.id;
-        if (current) await sbFetch(this.ctx, "DELETE", `${base}/billing/addons/${enc(current)}`);
+        if (current) await this.api.delete(`${base}/billing/addons/${pathEncode(current)}`);
       } else {
-        await sbFetch(this.ctx, "PATCH", `${base}/billing/addons`, {
-          addon_type: "pitr",
-          addon_variant: `pitr_${fields["pitrDays"]}`,
+        await this.api.patch(`${base}/billing/addons`, {
+          body: { addon_type: "pitr", addon_variant: `pitr_${fields["pitrDays"]}` },
         });
       }
     }
 
     const ipv4 = bool(fields["ipv4"]);
     if (ipv4 === true) {
-      await sbFetch(this.ctx, "PATCH", `${base}/billing/addons`, {
-        addon_type: "ipv4",
-        addon_variant: "ipv4_default",
+      await this.api.patch(`${base}/billing/addons`, {
+        body: { addon_type: "ipv4", addon_variant: "ipv4_default" },
       });
     } else if (ipv4 === false) {
-      await sbFetch(this.ctx, "DELETE", `${base}/billing/addons/ipv4_default`);
+      await this.api.delete(`${base}/billing/addons/${pathEncode("ipv4_default")}`);
     }
 
     if (["diskSizeGb", "diskType", "diskIops", "diskThroughputMbps"].some((k) => fields[k])) {
-      const current = await sbFetch<{ attributes: Record<string, unknown> }>(
-        this.ctx,
-        "GET",
-        `${base}/config/disk`,
-      );
-      const attrs: Record<string, unknown> = { ...(current?.attributes ?? {}) };
+      const current = await this.api.get(`${base}/config/disk`);
+      const attrs: SbDiskAttributes = { ...(current?.attributes ?? {}) };
       if (fields["diskSizeGb"]) attrs["size_gb"] = Number(fields["diskSizeGb"]);
       if (fields["diskType"]) attrs["type"] = fields["diskType"];
       if (fields["diskIops"]) attrs["iops"] = Number(fields["diskIops"]);
       if (fields["diskThroughputMbps"])
         attrs["throughput_mibps"] = Number(fields["diskThroughputMbps"]);
       if (attrs["type"] === "io2") delete attrs["throughput_mibps"];
-      await sbFetch(this.ctx, "POST", `${base}/config/disk`, { attributes: attrs });
+      await this.api.post(`${base}/config/disk`, { body: { attributes: attrs } });
     }
 
     const ssl = bool(fields["sslEnforced"]);
     if (ssl !== undefined) {
-      await sbFetch(this.ctx, "PUT", `${base}/ssl-enforcement`, {
-        requestedConfig: { database: ssl },
+      await this.api.put(`${base}/ssl-enforcement`, {
+        body: { requestedConfig: { database: ssl } },
       });
     }
 
     if (fields["allowedCidrs"] !== undefined || fields["allowedCidrsV6"] !== undefined) {
-      const current = await sbFetch<{
-        config: { dbAllowedCidrs?: string[]; dbAllowedCidrsV6?: string[] };
-      }>(this.ctx, "GET", `${base}/network-restrictions`);
-      await sbFetch(this.ctx, "POST", `${base}/network-restrictions/apply`, {
-        dbAllowedCidrs:
-          fields["allowedCidrs"] !== undefined
-            ? splitList(fields["allowedCidrs"])
-            : (current?.config.dbAllowedCidrs ?? []),
-        dbAllowedCidrsV6:
-          fields["allowedCidrsV6"] !== undefined
-            ? splitList(fields["allowedCidrsV6"])
-            : (current?.config.dbAllowedCidrsV6 ?? []),
+      const current = await this.api.get(`${base}/network-restrictions`);
+      await this.api.post(`${base}/network-restrictions/apply`, {
+        body: {
+          dbAllowedCidrs:
+            fields["allowedCidrs"] !== undefined
+              ? splitList(fields["allowedCidrs"])
+              : (current?.config.dbAllowedCidrs ?? []),
+          dbAllowedCidrsV6:
+            fields["allowedCidrsV6"] !== undefined
+              ? splitList(fields["allowedCidrsV6"])
+              : (current?.config.dbAllowedCidrsV6 ?? []),
+        },
       });
     }
 
-    const pooler: Record<string, unknown> = {};
+    const pooler: ApiBody<operations["v1-update-pooler-config"]> = {};
     if (fields["poolMode"]) pooler["pool_mode"] = fields["poolMode"];
     if (fields["poolSize"]) pooler["default_pool_size"] = Number(fields["poolSize"]);
     if (Object.keys(pooler).length > 0) {
-      await sbFetch(this.ctx, "PATCH", `${base}/config/database/pooler`, pooler);
+      await this.api.patch(`${base}/config/database/pooler`, { body: pooler });
     }
 
     const legacy = bool(fields["legacyApiKeysEnabled"]);
     if (legacy !== undefined) {
-      await sbFetch(this.ctx, "PUT", `${base}/api-keys/legacy`, undefined, { enabled: legacy });
+      await this.api.put(`${base}/api-keys/legacy`, { query: { enabled: String(legacy) } });
     }
   }
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const { ref, rest } = splitScoped(externalIdOf(resourceId));
-      const base = `/v1/projects/${enc(ref)}`;
+      const base = `/v1/projects/${pathEncode(ref)}` as const;
       switch (typeId) {
         case "supabase-project":
-          await sbFetch(this.ctx, "DELETE", base);
+          await this.api.delete(base);
           return;
         case "supabase-branch":
-          await sbFetch(this.ctx, "DELETE", `/v1/branches/${enc(rest)}`);
+          await this.api.delete(`/v1/branches/${pathEncode(rest)}`);
           return;
         case "supabase-function":
-          await sbFetch(this.ctx, "DELETE", `${base}/functions/${enc(rest)}`);
+          await this.api.delete(`${base}/functions/${pathEncode(rest)}`);
           return;
         case "supabase-secret":
-          await sbFetch(this.ctx, "DELETE", `${base}/secrets`, [rest]);
+          await this.api.delete(`${base}/secrets`, { body: [rest] });
           return;
         case "supabase-api-key":
           if (rest.startsWith("legacy-")) {
             throw new Error("Legacy keys cannot be deleted; turn them off on the project instead.");
           }
-          await sbFetch(this.ctx, "DELETE", `${base}/api-keys/${enc(rest)}`);
+          await this.api.delete(`${base}/api-keys/${pathEncode(rest)}`);
           return;
         case "supabase-bucket":
           await deleteBucket(this.ctx, ref, await this.secretKey(ref), rest);
           return;
         case "supabase-read-replica":
-          await sbFetch(this.ctx, "POST", `${base}/read-replicas/remove`, {
-            database_identifier: rest,
+          await this.api.post(`${base}/read-replicas/remove`, {
+            body: { database_identifier: rest },
           });
           return;
         case "supabase-sso-provider":
-          await sbFetch(this.ctx, "DELETE", `${base}/config/auth/sso/providers/${enc(rest)}`);
+          await this.api.delete(`${base}/config/auth/sso/providers/${pathEncode(rest)}`);
           return;
         case "supabase-third-party-auth":
-          await sbFetch(this.ctx, "DELETE", `${base}/config/auth/third-party-auth/${enc(rest)}`);
+          await this.api.delete(`${base}/config/auth/third-party-auth/${pathEncode(rest)}`);
           return;
         case "supabase-signing-key":
-          await sbFetch(this.ctx, "DELETE", `${base}/config/auth/signing-keys/${enc(rest)}`);
+          await this.api.delete(`${base}/config/auth/signing-keys/${pathEncode(rest)}`);
           return;
         default:
           throw new Error(`Supabase plugin: "${typeId}" cannot be deleted.`);
@@ -1122,58 +1095,52 @@ export class SupabaseClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const { ref, rest } = splitScoped(externalIdOf(resourceId));
-      const base = `/v1/projects/${enc(ref)}`;
+      const base = `/v1/projects/${pathEncode(ref)}` as const;
 
       if (typeId === "supabase-project") {
         switch (actionId) {
           case "pause":
-            await sbFetch(this.ctx, "POST", `${base}/pause`);
+            await this.api.post(`${base}/pause`);
             return;
           case "restore":
-            await sbFetch(this.ctx, "POST", `${base}/restore`);
+            await this.api.post(`${base}/restore`);
             return;
           case "restart":
-            await sbFetch(this.ctx, "POST", `${base}/restart`);
+            await this.api.post(`${base}/restart`);
             return;
           case "reset-db-password":
             await this.resetDbPassword(resourceId);
             return;
           case "disable-readonly":
-            await sbFetch(this.ctx, "POST", `${base}/readonly/temporary-disable`);
+            await this.api.post(`${base}/readonly/temporary-disable`);
             return;
           case "reverify-custom-hostname":
-            await sbFetch(this.ctx, "POST", `${base}/custom-hostname/reverify`);
+            await this.api.post(`${base}/custom-hostname/reverify`);
             return;
           case "activate-custom-hostname":
-            await sbFetch(this.ctx, "POST", `${base}/custom-hostname/activate`);
+            await this.api.post(`${base}/custom-hostname/activate`);
             return;
           case "unban-all": {
-            const bans = await sbFetch<{ banned_ipv4_addresses?: string[] }>(
-              this.ctx,
-              "POST",
-              `${base}/network-bans/retrieve`,
-            );
+            const bans = await this.api.post(`${base}/network-bans/retrieve`);
             const ips = bans?.banned_ipv4_addresses ?? [];
             if (ips.length > 0) {
-              await sbFetch(this.ctx, "DELETE", `${base}/network-bans`, { ipv4_addresses: ips });
+              await this.api.delete(`${base}/network-bans`, { body: { ipv4_addresses: ips } });
             }
             return;
           }
           case "upgrade-postgres": {
-            const eligibility = await sbFetch<SbUpgradeEligibility>(
-              this.ctx,
-              "GET",
-              `${base}/upgrade/eligibility`,
-            );
+            const eligibility = await this.api.get(`${base}/upgrade/eligibility`);
             const target = eligibility?.target_upgrade_versions.at(-1);
             if (!eligibility?.eligible || !target) {
               throw new Error(
                 "Supabase reports this project is not eligible for an upgrade right now.",
               );
             }
-            await sbFetch(this.ctx, "POST", `${base}/upgrade`, {
-              target_version: target.postgres_version,
-              release_channel: target.release_channel,
+            await this.api.post(`${base}/upgrade`, {
+              body: {
+                target_version: target.postgres_version,
+                release_channel: target.release_channel,
+              },
             });
             return;
           }
@@ -1181,15 +1148,19 @@ export class SupabaseClient implements PluginClient {
       }
 
       if (typeId === "supabase-branch") {
-        const path = `/v1/branches/${enc(rest)}`;
+        const path = `/v1/branches/${pathEncode(rest)}` as const;
         switch (actionId) {
           case "push":
+            await this.api.post(`${path}/push`, { body: {} });
+            return;
           case "merge":
+            await this.api.post(`${path}/merge`, { body: {} });
+            return;
           case "reset":
-            await sbFetch(this.ctx, "POST", `${path}/${actionId}`, {});
+            await this.api.post(`${path}/reset`, { body: {} });
             return;
           case "restore-branch":
-            await sbFetch(this.ctx, "POST", `${path}/restore`);
+            await this.api.post(`${path}/restore`);
             return;
         }
       }
@@ -1203,8 +1174,8 @@ export class SupabaseClient implements PluginClient {
         typeId === "supabase-signing-key" &&
         (actionId === "rotate-in" || actionId === "revoke")
       ) {
-        await sbFetch(this.ctx, "PATCH", `${base}/config/auth/signing-keys/${enc(rest)}`, {
-          status: actionId === "rotate-in" ? "in_use" : "revoked",
+        await this.api.patch(`${base}/config/auth/signing-keys/${pathEncode(rest)}`, {
+          body: { status: actionId === "rotate-in" ? "in_use" : "revoked" },
         });
         return;
       }
@@ -1272,10 +1243,8 @@ export class SupabaseClient implements PluginClient {
       if (resourceTypeId === "supabase-project")
         return fetchProjectMetrics(this.ctx, ref, timeRange);
       if (resourceTypeId === "supabase-function") {
-        const fn = await sbFetch<SbFunction>(
-          this.ctx,
-          "GET",
-          `/v1/projects/${enc(ref)}/functions/${enc(rest)}`,
+        const fn = await this.api.get(
+          `/v1/projects/${pathEncode(ref)}/functions/${pathEncode(rest)}`,
         );
         return fn?.id ? fetchFunctionMetrics(this.ctx, ref, fn.id, timeRange) : [];
       }
@@ -1293,10 +1262,8 @@ export class SupabaseClient implements PluginClient {
       const { ref, rest } = splitScoped(externalIdOf(resourceId));
       if (typeId === "supabase-project") return fetchProjectLogs(this.ctx, ref, params);
       if (typeId === "supabase-function") {
-        const fn = await sbFetch<SbFunction>(
-          this.ctx,
-          "GET",
-          `/v1/projects/${enc(ref)}/functions/${enc(rest)}`,
+        const fn = await this.api.get(
+          `/v1/projects/${pathEncode(ref)}/functions/${pathEncode(rest)}`,
         );
         return fetchFunctionLogs(this.ctx, ref, fn.id, params);
       }

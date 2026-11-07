@@ -76,7 +76,7 @@ const project = {
   name: "Prod",
   region: "eu-west-1",
   created_at: "2026-01-01T00:00:00Z",
-  status: "ACTIVE_HEALTHY",
+  status: "ACTIVE_HEALTHY" as const,
   database: {
     host: `db.${REF}.supabase.co`,
     version: "17.4",

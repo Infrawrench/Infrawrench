@@ -22,7 +22,7 @@ interface Spec {
 }
 
 /** Postgres GUCs `PUT /config/database/postgres` accepts. */
-const POSTGRES: Spec[] = [
+const POSTGRES_ROWS: Array<[string, string, Kind, string?]> = [
   ["max_connections", "Max connections", "number", "Changing this restarts Postgres."],
   ["statement_timeout", "Statement timeout", "text", "e.g. 8s or 120000 (ms)."],
   ["max_locks_per_transaction", "Max locks per transaction", "number"],
@@ -38,10 +38,12 @@ const POSTGRES: Spec[] = [
   ["checkpoint_timeout", "Checkpoint timeout", "text", "Default unit: s."],
   ["log_autovacuum_min_duration", "Log autovacuum min duration", "text", "Default unit: ms."],
   ["log_startup_progress_interval", "Log startup progress interval", "text"],
-].map(([key, label, kind, description]) => ({
-  key: key!,
-  label: label!,
-  kind: kind as Kind,
+];
+
+const POSTGRES: Spec[] = POSTGRES_ROWS.map(([key, label, kind, description]) => ({
+  key,
+  label,
+  kind,
   group: "Postgres",
   ...(description ? { description } : {}),
 }));
@@ -126,7 +128,7 @@ const STORAGE: Spec[] = [
   { key: "features.s3Protocol.enabled", label: "S3 protocol", kind: "toggle", group: "Storage" },
 ];
 
-const REALTIME: Spec[] = [
+const REALTIME_ROWS: Array<[string, string, Kind]> = [
   ["suspend", "Realtime suspended", "toggle"],
   ["private_only", "Private channels only", "toggle"],
   ["presence_enabled", "Presence", "toggle"],
@@ -139,10 +141,12 @@ const REALTIME: Spec[] = [
   ["max_payload_size_in_kb", "Max payload size (KB)", "number"],
   ["connection_pool", "Authorization pool size", "number"],
   ["postgres_changes_pool", "Postgres Changes pool size", "number"],
-].map(([key, label, kind]) => ({
-  key: key!,
-  label: label!,
-  kind: kind as Kind,
+];
+
+const REALTIME: Spec[] = REALTIME_ROWS.map(([key, label, kind]) => ({
+  key,
+  label,
+  kind,
   group: "Realtime",
 }));
 
@@ -404,9 +408,13 @@ export function readPath(obj: unknown, path: string): unknown {
   let cur: unknown = obj;
   for (const part of path.split(".")) {
     if (typeof cur !== "object" || cur === null) return undefined;
-    cur = (cur as Record<string, unknown>)[part];
+    cur = Reflect.get(cur, part);
   }
   return cur;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 /** Write a dotted path into a (possibly nested) body object. */
@@ -415,8 +423,13 @@ export function writePath(obj: Record<string, unknown>, path: string, value: unk
   let cur = obj;
   for (const part of parts.slice(0, -1)) {
     const next = cur[part];
-    if (typeof next !== "object" || next === null) cur[part] = {};
-    cur = cur[part] as Record<string, unknown>;
+    if (isRecord(next)) {
+      cur = next;
+    } else {
+      const created: Record<string, unknown> = {};
+      cur[part] = created;
+      cur = created;
+    }
   }
   cur[parts[parts.length - 1]!] = value;
 }

@@ -13,7 +13,8 @@ import type {
   PreflightResult,
 } from "@infrawrench/plugin-base";
 import type { SupabaseContext } from "./api.js";
-import { enc, sbFetch, statusOf } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import { statusOf, supabaseApi } from "./api.js";
 import { fetchProjects, isRunning } from "./listers.js";
 import type { SbProject } from "./types.js";
 
@@ -92,9 +93,10 @@ async function probe(
 }
 
 export async function verifySupabaseCredentials(ctx: SupabaseContext): Promise<PreflightResult> {
+  const api = supabaseApi(ctx);
   let projects: SbProject[] = [];
   const inventory = await probe("inventory", [P.orgs, P.projects], async () => {
-    await sbFetch(ctx, "GET", "/v1/organizations");
+    await api.get("/v1/organizations");
     projects = await fetchProjects(ctx);
   });
   const target = projects.find(isRunning);
@@ -108,13 +110,13 @@ export async function verifySupabaseCredentials(ctx: SupabaseContext): Promise<P
       checks: [inventory, skip("keys"), skip("functions"), skip("database"), skip("observability")],
     };
   }
-  const base = `/v1/projects/${enc(target.ref)}`;
+  const base = `/v1/projects/${pathEncode(target.ref)}` as const;
   const checks = await Promise.all([
-    probe("keys", [P.secrets], () => sbFetch(ctx, "GET", `${base}/api-keys`)),
-    probe("functions", [P.functions], () => sbFetch(ctx, "GET", `${base}/functions`)),
-    probe("database", [P.database], () => sbFetch(ctx, "GET", `${base}/config/database/pooler`)),
+    probe("keys", [P.secrets], () => api.get(`${base}/api-keys`)),
+    probe("functions", [P.functions], () => api.get(`${base}/functions`)),
+    probe("database", [P.database], () => api.get(`${base}/config/database/pooler`)),
     probe("observability", [P.analytics], () =>
-      sbFetch(ctx, "GET", `${base}/analytics/endpoints/usage.api-requests-count`),
+      api.get(`${base}/analytics/endpoints/usage.api-requests-count`),
     ),
   ]);
   return { checks: [inventory, ...checks], identity: `${projects.length} project(s)` };
