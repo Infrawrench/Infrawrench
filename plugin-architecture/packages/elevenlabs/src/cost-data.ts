@@ -51,7 +51,13 @@
  */
 
 import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
-import { CostSetupError, createApiClient, restRequest } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  createApiClient,
+  ListPageError,
+  requireListPage,
+  restRequest,
+} from "@infrawrench/plugin-base";
 import {
   API_BASE,
   type CharacterStatsResponse,
@@ -497,7 +503,12 @@ async function fetchViaAnalytics(
   const plan = planColumns(body);
   if (!plan) return null;
 
-  const rows = body.rows ?? [];
+  // A missing `rows` is not an empty window: the host would read it as no spend.
+  const rows = requireListPage(body.rows, {
+    vendor: "ElevenLabs",
+    path: USAGE_BY_PRODUCT_PATH,
+    key: "rows",
+  });
   // An empty window is a real answer (no spend in the range) not drift.
   if (rows.length === 0) return [];
 
@@ -505,10 +516,12 @@ async function fetchViaAnalytics(
   if (!defaultCurrency) defaultCurrency = await workspaceCurrency(ctx);
 
   const buckets = new Map<string, Bucket>();
+  let dated = 0;
   for (const row of rows) {
     if (!Array.isArray(row)) continue;
     const date = toIsoDate(row[plan.timeIdx]);
     if (!date) continue;
+    dated += 1;
     // Bucket alignment can spill a partial bucket past the requested window.
     if (date < range.fromDate || date > range.toDate) continue;
 
@@ -524,6 +537,8 @@ async function fetchViaAnalytics(
     accumulate(buckets, date, service, region, currency, amount, credits);
   }
 
+  // Rows and not one readable time: a shape we cannot read, not a window with no spend.
+  if (dated === 0) return null;
   return toRows(buckets);
 }
 
@@ -580,16 +595,24 @@ async function fetchViaCharacterStats(
   if (res.status < 200 || res.status >= 300) throw apiError(res, CHARACTER_STATS_PATH);
 
   const body = parseJson<CharacterStatsResponse>(res, CHARACTER_STATS_PATH);
-  const time = body.time ?? [];
-  const usage = body.usage ?? {};
+  // Both are required by the document, and neither missing means no spend: the host
+  // would drop what it has stored for the window.
+  const place = { vendor: "ElevenLabs", path: CHARACTER_STATS_PATH };
+  const time = requireListPage(body.time, { ...place, key: "time", page: body });
   if (time.length === 0) return [];
+  if (!body.usage) {
+    throw new ListPageError({ ...place, key: "usage", found: body.usage, page: body });
+  }
+  if (!time.some((stamp) => toIsoDate(stamp))) {
+    throw new Error(`ElevenLabs answered ${CHARACTER_STATS_PATH} with no time it could read`);
+  }
 
   // No currency anywhere in this response: step 3 of the ladder.
   const currency = await workspaceCurrency(ctx);
 
   const buckets = new Map<string, Bucket>();
-  for (const [service, series] of Object.entries(usage)) {
-    if (!Array.isArray(series)) continue;
+  for (const [service, values] of Object.entries(body.usage)) {
+    const series = requireListPage(values, { ...place, key: service });
     for (let i = 0; i < time.length; i += 1) {
       const date = toIsoDate(time[i]);
       if (!date) continue;

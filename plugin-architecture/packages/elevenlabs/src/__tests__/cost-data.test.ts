@@ -470,3 +470,51 @@ describe("fetchElevenLabsCostData — fallback to the deprecated endpoint", () =
     expect(await fetchElevenLabsCostData(ctx(), range)).toEqual([]);
   });
 });
+
+describe("fetchElevenLabsCostData — an answer that cannot say what was spent", () => {
+  const noRows = {
+    columns: ["time", "fiat_units_spent"],
+    column_types: ["DateTime", "Float"],
+    column_units: [null, "usd"],
+  };
+
+  it("throws when the analytics table has no rows field", async () => {
+    installFetch({ [ANALYTICS]: { body: noRows } });
+
+    await expect(fetchElevenLabsCostData(ctx(), range)).rejects.toThrow("is not a list");
+  });
+
+  it("falls back when no row of the analytics table has a time it can read", async () => {
+    installFetch({
+      [ANALYTICS]: { body: { ...noRows, rows: [["soon", 5]] } },
+      [CHARACTER_STATS]: { body: { time: [1785542400], usage: { tts: [2] } } },
+      [SUBSCRIPTION]: { body: { currency: "usd" } },
+    });
+
+    const rows = await fetchElevenLabsCostData(ctx(), range);
+
+    expect(pathsHit()).toEqual([ANALYTICS, CHARACTER_STATS, SUBSCRIPTION]);
+    expect(rows.map((row) => row.amount)).toEqual([2]);
+  });
+
+  it("throws on an empty answer from both endpoints", async () => {
+    installFetch({ [ANALYTICS]: { body: "" }, [CHARACTER_STATS]: { body: "" } });
+
+    await expect(fetchElevenLabsCostData(ctx(), range)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["no time axis", { usage: { tts: [1] } }],
+    ["no usage", { time: [1785542400] }],
+    ["a series that is not a list", { time: [1785542400], usage: { tts: "1" } }],
+    ["no time it can read", { time: ["soon"], usage: { tts: [1] } }],
+  ])("throws when the deprecated endpoint has %s", async (_name, body) => {
+    installFetch({
+      [ANALYTICS]: { status: 404, body: {} },
+      [CHARACTER_STATS]: { body },
+      [SUBSCRIPTION]: { body: { currency: "usd" } },
+    });
+
+    await expect(fetchElevenLabsCostData(ctx(), range)).rejects.toThrow(/character-stats/);
+  });
+});
