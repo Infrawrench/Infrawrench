@@ -22822,5 +22822,22 @@
   "059ee4996cb68ced": "aucune valeur",
   "52d6d920a1ce3546": "Ouvrir la page complète de cette instance",
   "428973eab7417ad7": "Tarifs et caractéristiques de l'instance",
-  "8e151e8d76ecbf2c": "Filtrer par nom ou famille"
+  "8e151e8d76ecbf2c": "Filtrer par nom ou famille",
+  "8da580101c0d158c": "Un pod verrouillé ne peut pas être arrêté tant qu'il n'est pas déverrouillé",
+  "526876ed0ba0fd58": "Une clé publique SSH que Runpod installe sur les nouveaux pods créés avec un accès SSH",
+  "2187027fab8a7ae3": "Au moins 10 GB. Runpod ne peut pas retirer le volume d'un modèle une fois défini",
+  "5039d5712e827c78": "URL de base d'un endpoint avec répartition de charge, pour les chemins définis par vos workers",
+  "369dd85cbb1c13b4": "Configurations CPU",
+  "6f3f228981c2119f": "Variante de CPU et vCPUs par worker",
+  "cc5e14a6b4eb13a4": "Ne s'applique pas à un endpoint de file d'attente qui s'adapte au nombre de requêtes",
+  "1fe40b69e40e72ff": "Modifié dans la console Runpod ; l'API actuelle de Runpod ne peut pas l'écrire",
+  "e2fc2640b06eb1d5": "Tous les types de GPU de ces pools, moins ceux exclus",
+  "8c0dd4250b811f3f": "Démarrages à froid plus rapides ; PRIORITY_FLASHBOOT obtient aussi une capacité prioritaire",
+  "23d2feb7eb8204c8": "Pools de GPU",
+  "5d9b0720c0940a5d": "URL de l'équilibreur de charge",
+  "f7338b02ae3219cc": "Plus de volumes réseau",
+  "54c718e7f5770611": "Conservé après les redémarrages ; facturé tant que le pod est arrêté. Au moins 10 GB. Peut seulement augmenter",
+  "180b01e1b5665c79": "Runpod ne conserve aucun lien pour les pods créés via son API actuelle",
+  "d4d54cda75e8b219": "Secondes en file d'attente (QUEUE_DELAY, 0.5 ou plus) ou requêtes par worker (REQUEST_COUNT, 1 ou plus)",
+  "ae214436dd2f33af": "Via la file de tâches de Runpod, ou directement vers les chemins définis par vos workers"
 }

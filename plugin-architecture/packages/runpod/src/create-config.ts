@@ -5,7 +5,7 @@ import type {
   SelectOption,
 } from "@infrawrench/plugin-base";
 import type { RunpodClient } from "./client.js";
-import type { RpDataCenter, RpGpuType, RpTemplate } from "./types.js";
+import type { RpCpuType, RpDataCenter, RpGpuType, RpTemplate } from "./types.js";
 
 /**
  * Live create forms. Every id a user would otherwise have to know (GPU type,
@@ -16,7 +16,7 @@ import type { RpDataCenter, RpGpuType, RpTemplate } from "./types.js";
 const NONE = "none";
 const ANY = "any";
 
-/** Runpod's CPU flavors, from the REST spec's `cpuFlavorIds` enum (2026-10). */
+/** Runpod's CPU flavors, for when the catalog cannot be read. */
 export const CPU_FLAVORS: SelectOption[] = [
   { id: "cpu3c", label: "Compute-optimized (3rd gen)", description: "cpu3c, 2 GB RAM per vCPU" },
   { id: "cpu3g", label: "General purpose (3rd gen)", description: "cpu3g, 4 GB RAM per vCPU" },
@@ -32,44 +32,92 @@ function money(v: number | null | undefined): string | undefined {
 
 export function gpuOption(g: RpGpuType): SelectOption {
   const parts = [
-    g.memoryInGb ? `${g.memoryInGb} GB VRAM` : undefined,
-    money(g.securePrice) ? `Secure ${money(g.securePrice)}` : undefined,
-    money(g.communityPrice) ? `Community ${money(g.communityPrice)}` : undefined,
-    money(g.communitySpotPrice ?? g.secureSpotPrice)
-      ? `Spot from ${money(g.communitySpotPrice ?? g.secureSpotPrice)}`
-      : undefined,
-    g.lowestPrice?.stockStatus ? `Stock: ${g.lowestPrice.stockStatus}` : undefined,
+    g.memory ? `${g.memory} GB VRAM` : undefined,
+    money(g.price?.secure) ? `Secure ${money(g.price?.secure)}` : undefined,
+    money(g.price?.community) ? `Community ${money(g.price?.community)}` : undefined,
+    g.availability ? `Stock: ${g.availability}` : undefined,
   ].filter(Boolean);
   return {
     id: g.id,
-    label: g.displayName && g.displayName !== g.id ? `${g.displayName} (${g.id})` : g.id,
+    label: g.name && g.name !== g.id ? `${g.name} (${g.id})` : g.id,
     ...(parts.length ? { description: parts.join(" · ") } : {}),
   };
 }
 
+function stockRank(availability: string | undefined): number {
+  const stock = (availability ?? "").toLowerCase();
+  return stock === "high" ? 0 : stock === "medium" ? 1 : stock === "low" ? 2 : 3;
+}
+
 /** Sort GPU types: in stock first, then by secure price. */
 export function sortGpuTypes(types: RpGpuType[]): RpGpuType[] {
-  const rank = (g: RpGpuType) => {
-    const s = (g.lowestPrice?.stockStatus ?? "").toLowerCase();
-    return s === "high" ? 0 : s === "medium" ? 1 : s === "low" ? 2 : 3;
-  };
   return [...types].sort(
     (a, b) =>
-      rank(a) - rank(b) ||
-      (a.securePrice ?? a.communityPrice ?? 999) - (b.securePrice ?? b.communityPrice ?? 999),
+      stockRank(a.availability) - stockRank(b.availability) ||
+      (a.price?.secure ?? a.price?.community ?? 999) -
+        (b.price?.secure ?? b.price?.community ?? 999),
   );
 }
 
-export function regionOption(dc: RpDataCenter): RegionOption {
+/**
+ * Serverless workers are placed by pool rather than by GPU type, so each pool is one
+ * option naming the cards in it. Best stock first, then cheapest.
+ */
+export function poolOptions(types: RpGpuType[]): SelectOption[] {
+  const pools = new Map<string, RpGpuType[]>();
+  for (const g of types) {
+    if (!g.pool) continue;
+    pools.set(g.pool, [...(pools.get(g.pool) ?? []), g]);
+  }
+  const rank = (cards: RpGpuType[]) => Math.min(...cards.map((g) => stockRank(g.availability)));
+  const price = (cards: RpGpuType[]) => cards[0]?.price?.serverless ?? 999;
+  return [...pools.entries()]
+    .sort(([, a], [, b]) => rank(a) - rank(b) || price(a) - price(b))
+    .map(([pool, cards]) => {
+      const best = [...cards].sort(
+        (a, b) => stockRank(a.availability) - stockRank(b.availability),
+      )[0];
+      const parts = [
+        cards[0]?.memory ? `${cards[0].memory} GB VRAM` : undefined,
+        money(cards[0]?.price?.serverless)
+          ? `${money(cards[0]?.price?.serverless)} per GPU`
+          : undefined,
+        best?.availability ? `Stock: ${best.availability}` : undefined,
+      ].filter(Boolean);
+      return {
+        id: pool,
+        label: `${cards.map((g) => g.name || g.id).join(", ")} (${pool})`,
+        ...(parts.length ? { description: parts.join(" · ") } : {}),
+      };
+    });
+}
+
+export function cpuOption(c: RpCpuType): SelectOption {
+  return {
+    id: c.id,
+    label: c.group ? `${c.name} (${c.group})` : c.name,
+    description: `${c.id}, ${c.ramGbPerVcpu} GB RAM per vCPU`,
+  };
+}
+
+/**
+ * `toOption` turns a GPU type id into what the form's filter field holds: the id
+ * itself on a pod, the type's pool on an endpoint.
+ */
+export function regionOption(
+  dc: RpDataCenter,
+  toOption: (gpuTypeId: string) => string | null | undefined = (id) => id,
+): RegionOption {
   const available = (dc.gpuAvailability ?? [])
-    .filter((g) => g.available && g.gpuTypeId)
-    .map((g) => g.gpuTypeId!);
+    .filter((g) => g.availability !== "NONE")
+    .map((g) => toOption(g.id))
+    .filter((id): id is string => !!id);
   return {
     id: dc.id,
     label: dc.id,
-    ...(dc.location ? { location: dc.location } : {}),
+    ...(dc.name ? { location: dc.name } : {}),
     // Only narrow when Runpod reported availability; an empty list would hide the DC.
-    ...(available.length ? { availableFor: available } : {}),
+    ...(available.length ? { availableFor: [...new Set(available)] } : {}),
   };
 }
 
@@ -127,17 +175,22 @@ const ENV_FIELD: CreateFieldConfig = {
 
 const PORTS_DEFAULT = "8888/http,22/tcp";
 
-function templateOptions(templates: RpTemplate[], serverless: boolean): SelectOption[] {
+function templateOptions(
+  templates: Array<RpTemplate & { official?: boolean }>,
+  serverless: boolean,
+): SelectOption[] {
   return templates
-    .filter((t) => (t.isServerless ?? false) === serverless)
+    .filter((t) => (t.serverless ?? false) === serverless)
     .map((t) => ({
       id: t.id,
       label: t.name || t.id,
-      description: [t.isRunpod ? "Runpod official" : undefined, t.imageName]
+      description: [t.official ? "Runpod official" : undefined, t.image]
         .filter(Boolean)
         .join(" · "),
     }));
 }
+
+const VCPU_DESCRIPTION = "A power of two, and valid for the flavor";
 
 export async function buildCreateConfig(
   client: RunpodClient,
@@ -145,8 +198,9 @@ export async function buildCreateConfig(
 ): Promise<CreateResourceConfig> {
   switch (typeId) {
     case "pod": {
-      const [gpus, dcs, templates, volumes, auths] = await Promise.all([
+      const [gpus, cpus, dcs, templates, volumes, auths] = await Promise.all([
         client.gpuTypes().catch(() => []),
+        client.cpuTypes().catch(() => []),
         client.dataCenters().catch(() => []),
         client.templatesForPicker().catch(() => []),
         client.listRaw.networkVolumes().catch(() => []),
@@ -169,11 +223,12 @@ export async function buildCreateConfig(
             maxValue: 8,
             showWhen: { fieldKey: "computeType", fieldValue: "GPU" },
           }),
-          select("cpuFlavorId", "CPU Flavor", CPU_FLAVORS, {
+          select("cpuFlavorId", "CPU Flavor", cpus.length ? cpus.map(cpuOption) : CPU_FLAVORS, {
             showWhen: { fieldKey: "computeType", fieldValue: "CPU" },
           }),
           num("vcpuCount", "vCPUs", 2, {
             minValue: 2,
+            description: VCPU_DESCRIPTION,
             showWhen: { fieldKey: "computeType", fieldValue: "CPU" },
           }),
           select("cloudType", "Cloud", [
@@ -184,14 +239,6 @@ export async function buildCreateConfig(
             },
             { id: "COMMUNITY", label: "Community Cloud", description: "Vetted hosts, lower price" },
           ]),
-          select("pricing", "Pricing", [
-            { id: "on-demand", label: "On-demand" },
-            {
-              id: "spot",
-              label: "Spot (interruptible)",
-              description: "Cheaper, but Runpod can stop the pod at any time",
-            },
-          ]),
           {
             key: "dataCenterId",
             label: "Data Center",
@@ -200,7 +247,7 @@ export async function buildCreateConfig(
             description: "Leave on Any to let Runpod place the pod wherever the GPU is free",
             regions: [
               { id: ANY, label: "Any", location: "Wherever capacity is available" },
-              ...dcs.filter((d) => d.listed !== false).map(regionOption),
+              ...dcs.map((d) => regionOption(d)),
             ],
             defaultValue: ANY,
             filterByFieldKey: "gpuTypeId",
@@ -218,13 +265,19 @@ export async function buildCreateConfig(
           }),
           num("containerDiskInGb", "Container Disk (GB)", 50, { minValue: 1 }),
           num("volumeInGb", "Pod Volume (GB)", 20, {
-            description: "Persistent across restarts. Set 0 when mounting a network volume",
+            description:
+              "Persistent across restarts. At least 10 GB, or 0 for none, in which case nothing survives a restart. Not used with a network volume",
+            showWhen: { fieldKey: "computeType", fieldValue: "GPU" },
           }),
-          text("volumeMountPath", "Volume Mount Path", { defaultValue: "/workspace" }),
+          text("volumeMountPath", "Volume Mount Path", {
+            defaultValue: "/workspace",
+            description: "Where the pod volume or network volume is mounted",
+          }),
           text("ports", "Exposed Ports", {
             required: false,
             defaultValue: PORTS_DEFAULT,
-            description: "Comma-separated port/protocol pairs; 22/tcp enables direct SSH",
+            description:
+              "Comma-separated port/protocol pairs. Runpod exposes nothing by default; 22/tcp enables direct SSH",
           }),
           select(
             "networkVolumeId",
@@ -234,7 +287,7 @@ export async function buildCreateConfig(
               ...volumes.map((v) => ({
                 id: v.id,
                 label: v.name || v.id,
-                description: `${v.size ?? 0} GB in ${v.dataCenterId ?? "?"} (the pod is placed there)`,
+                description: `${v.size ?? 0} GB in ${v.dataCenter ?? "?"} (the pod is placed there)`,
               })),
             ],
             { required: false },
@@ -253,31 +306,55 @@ export async function buildCreateConfig(
             label: "SSH Public Key",
             kind: "ssh-key-picker",
             required: false,
-            description: "Added as PUBLIC_KEY on top of the keys in your Runpod account settings",
+            description:
+              "Used as PUBLIC_KEY instead of the keys in your Runpod account settings. Leave empty to use those",
           },
           ENV_FIELD,
         ],
       };
     }
     case "serverless-endpoint": {
-      const [gpus, dcs, templates, volumes] = await Promise.all([
-        client.gpuTypes().catch(() => []),
+      const [gpus, cpus, dcs, templates, volumes] = await Promise.all([
+        client.serverlessGpuTypes().catch(() => []),
+        client.cpuTypes().catch(() => []),
         client.dataCenters().catch(() => []),
         client.listRaw.templates().catch(() => []),
         client.listRaw.networkVolumes().catch(() => []),
       ]);
+      const poolOf = new Map(gpus.map((g) => [g.id, g.pool]));
+      const serverlessCpus = cpus.filter((c) => (c.price?.serverlessPerVcpu ?? 0) > 0);
       return {
         fields: [
           text("name", "Name"),
-          select("templateId", "Serverless Template", templateOptions(templates, true), {
-            description: "Create a Serverless template first if this list is empty",
+          select(
+            "templateId",
+            "Serverless Template",
+            [{ id: NONE, label: "No template" }, ...templateOptions(templates, true)],
+            {
+              required: false,
+              description: "Copied when the endpoint is created; later edits to it do not apply",
+            },
+          ),
+          text("imageName", "Container Image", {
+            required: false,
+            placeholder: "ghcr.io/acme/worker:latest",
+            description: "Required unless a template is chosen",
           }),
+          select("endpointType", "Routing", [
+            { id: "QUEUE", label: "Queue", description: "Submit jobs through Runpod's queue" },
+            {
+              id: "LOAD_BALANCER",
+              label: "Load balancer",
+              description: "Send requests straight to paths your workers define",
+            },
+          ]),
           select("computeType", "Compute", [
             { id: "GPU", label: "GPU workers" },
             { id: "CPU", label: "CPU workers" },
           ]),
-          select("gpuTypeId", "GPU Type", sortGpuTypes(gpus).map(gpuOption), {
+          select("gpuPool", "GPU Pool", poolOptions(sortGpuTypes(gpus)), {
             showWhen: { fieldKey: "computeType", fieldValue: "GPU" },
+            description: "Workers run on whichever card in the pool has capacity",
           }),
           num("gpuCount", "GPUs per Worker", 1, {
             minValue: 1,
@@ -287,23 +364,55 @@ export async function buildCreateConfig(
           select(
             "cpuFlavorId",
             "CPU Flavor",
-            CPU_FLAVORS.filter((c) => !c.id.endsWith("m")),
+            serverlessCpus.length
+              ? serverlessCpus.map(cpuOption)
+              : CPU_FLAVORS.filter((c) => !c.id.endsWith("m")),
             {
               showWhen: { fieldKey: "computeType", fieldValue: "CPU" },
             },
           ),
           num("vcpuCount", "vCPUs per Worker", 2, {
-            minValue: 1,
+            minValue: 2,
+            description: VCPU_DESCRIPTION,
             showWhen: { fieldKey: "computeType", fieldValue: "CPU" },
           }),
           num("workersMin", "Active Workers (min)", 0, {
             description: "Always-on workers bill continuously; 0 scales to zero",
           }),
           num("workersMax", "Max Workers", 3, { minValue: 1 }),
-          num("idleTimeout", "Idle Timeout (s)", 5, { minValue: 1 }),
+          select("scalerType", "Scaling", [
+            {
+              id: "QUEUE_DELAY",
+              label: "Queue delay",
+              description: "Add workers when jobs wait too long. Queue routing only",
+            },
+            {
+              id: "REQUEST_COUNT",
+              label: "Request count",
+              description: "Add workers by requests per worker. Required for a load balancer",
+            },
+          ]),
+          num("scalerValue", "Scaling Threshold", 4, {
+            minValue: 0.5,
+            description: "Seconds in queue, or requests per worker",
+          }),
+          num("idleTimeout", "Idle Timeout (s)", 5, {
+            minValue: 1,
+            maxValue: 3600,
+            description: "Not used by a queue endpoint scaling on request count",
+          }),
+          num("executionTimeoutMs", "Execution Timeout (ms)", 300000, {
+            minValue: 1,
+            description: "How long one request may run before it fails",
+          }),
           select("flashboot", "FlashBoot", [
-            { id: "true", label: "On", description: "Faster cold starts" },
-            { id: "false", label: "Off" },
+            { id: "FLASHBOOT", label: "On", description: "Faster cold starts" },
+            {
+              id: "PRIORITY_FLASHBOOT",
+              label: "On, with priority capacity",
+              description: "Faster cold starts on priority capacity",
+            },
+            { id: "OFF", label: "Off" },
           ]),
           {
             key: "dataCenterId",
@@ -312,10 +421,10 @@ export async function buildCreateConfig(
             required: false,
             regions: [
               { id: ANY, label: "Any", location: "Every data center with capacity" },
-              ...dcs.filter((d) => d.listed !== false).map(regionOption),
+              ...dcs.map((d) => regionOption(d, (id) => poolOf.get(id))),
             ],
             defaultValue: ANY,
-            filterByFieldKey: "gpuTypeId",
+            filterByFieldKey: "gpuPool",
           },
           select(
             "networkVolumeId",
@@ -325,7 +434,7 @@ export async function buildCreateConfig(
               ...volumes.map((v) => ({
                 id: v.id,
                 label: v.name || v.id,
-                description: `${v.size ?? 0} GB in ${v.dataCenterId ?? "?"}`,
+                description: `${v.size ?? 0} GB in ${v.dataCenter ?? "?"}`,
               })),
             ],
             { required: false },
@@ -349,8 +458,14 @@ export async function buildCreateConfig(
             { id: "CPU", label: "CPU" },
           ]),
           num("containerDiskInGb", "Container Disk (GB)", 50, { minValue: 1 }),
-          num("volumeInGb", "Volume (GB)", 20),
-          text("volumeMountPath", "Volume Mount Path", { defaultValue: "/workspace" }),
+          num("volumeInGb", "Volume (GB)", 20, {
+            description: "At least 10 GB, or 0 for none",
+            showWhen: { fieldKey: "isServerless", fieldValue: "false" },
+          }),
+          text("volumeMountPath", "Volume Mount Path", {
+            defaultValue: "/workspace",
+            showWhen: { fieldKey: "isServerless", fieldValue: "false" },
+          }),
           text("ports", "Exposed Ports", { required: false, defaultValue: PORTS_DEFAULT }),
           text("startCommand", "Start Command", {
             required: false,
@@ -366,7 +481,6 @@ export async function buildCreateConfig(
             { required: false },
           ),
           ENV_FIELD,
-          text("readme", "Readme", { required: false, multiline: true }),
         ],
       };
     }
@@ -382,18 +496,23 @@ export async function buildCreateConfig(
             required: true,
             description: "Only data centers that support network storage are listed",
             regions: dcs
-              .filter((d) => d.storageSupport && d.listed !== false)
+              .filter((d) => (d.networkVolumeTypes ?? []).length > 0)
               .map((d) => ({
                 id: d.id,
                 label: d.id,
-                ...(d.location ? { location: d.location } : {}),
+                ...(d.name ? { location: d.name } : {}),
               })),
           },
           num("size", "Size (GB)", 50, {
-            minValue: 1,
-            maxValue: 4000,
+            minValue: 10,
+            maxValue: 4096,
             description: "Can be grown later, never shrunk",
           }),
+          select("storageType", "Storage Tier", [
+            { id: "default", label: "Data center default" },
+            { id: "STANDARD", label: "Standard" },
+            { id: "HIGH_PERFORMANCE", label: "High performance" },
+          ]),
         ],
       };
     }

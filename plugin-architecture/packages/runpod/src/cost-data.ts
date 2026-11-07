@@ -1,21 +1,27 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { isStatus, type RunpodApi } from "./api.js";
-import type { RpBillingRecord, RpVolumeBillingRecord } from "./types.js";
+import type {
+  RpPodBillingRecord,
+  RpServerlessBillingRecord,
+  RpVolumeBillingRecord,
+} from "./types.js";
 
 /**
  * Billed spend from Runpod's REST billing history (verified in the OpenAPI
- * document, 2026-10). Three endpoints, each bucketed by day:
+ * document, 2026-11). Three endpoints, each bucketed by day, one record per
+ * object per bucket:
  *
- * - `GET /billing/pods?grouping=podId`: per-pod charges (GPU or CPU time
- *   plus the pod's disk), with `timeBilledMs`.
- * - `GET /billing/endpoints?grouping=endpointId`: per-endpoint Serverless
- *   charges.
- * - `GET /billing/networkvolumes`: account-wide network storage, split into
- *   standard and high-performance storage.
+ * - `GET /v2/billing/pods`: per-pod charges (GPU or CPU time plus the pod's disk).
+ * - `GET /v2/billing/serverless`: per-endpoint Serverless charges. `/billing/endpoints`
+ *   answers too, but it is Public Endpoint billing, so reading it for this would give
+ *   wrong costs with no error.
+ * - `GET /v2/billing/network-volumes`: per-volume storage, split into standard and
+ *   high-performance. `totalAmount` is the two together.
  *
- * `amount` is USD. `time` is the bucket start (UTC). Runpod documents no
- * retention limit; a year is requested at most.
+ * Amounts are USD. `startTime` is the bucket start (UTC). No route pages. Runpod
+ * documents no retention limit; a year is requested at most. REST v2 reports no
+ * hours or GB billed per object, so these rows carry no usage amount.
  */
 
 export const BILLING_URL = "https://console.runpod.io/user/billing";
@@ -40,25 +46,26 @@ function round(n: number): number {
 }
 
 export interface CostContext {
-  /** Data center of each pod or endpoint still in inventory. */
+  /** Data center of each pod, endpoint or network volume still in inventory. */
   regions: Map<string, string>;
-  /** Display name of each pod or endpoint still in inventory. */
+  /** Display name of each pod, endpoint or network volume still in inventory. */
   names: Map<string, string>;
 }
 
-export function mapComputeRecords(
-  records: RpBillingRecord[] | undefined,
+export function mapComputeRecords<Record extends { startTime?: string; totalAmount?: number }>(
+  records: Record[] | undefined,
   service: "Pods" | "Serverless",
-  key: "podId" | "endpointId",
+  idOf: (record: Record) => string | undefined,
   range: CostFetchRange,
   ctx: CostContext,
 ): CostRow[] {
   const rows: CostRow[] = [];
   for (const r of records ?? []) {
-    const date = dayOf(r.time);
+    const date = dayOf(r.startTime);
     if (!date || !inRange(date, range)) continue;
-    if (typeof r.amount !== "number" || !Number.isFinite(r.amount) || r.amount === 0) continue;
-    const id = r[key] ?? "";
+    const amount = r.totalAmount;
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount === 0) continue;
+    const id = idOf(r) ?? "";
     const region = id ? ctx.regions.get(id) : undefined;
     const name = id ? ctx.names.get(id) : undefined;
     rows.push({
@@ -68,47 +75,44 @@ export function mapComputeRecords(
       ...(id ? { resourceId: id } : {}),
       ...(name ? { tags: { resource_name: name } } : {}),
       currency: "USD",
-      amount: round(r.amount),
-      ...(typeof r.timeBilledMs === "number" && r.timeBilledMs > 0
-        ? { usageAmount: round(r.timeBilledMs / 3_600_000), usageUnit: "hours" }
-        : {}),
+      amount: round(amount),
     });
   }
   return rows;
 }
 
+function finite(n: number | undefined): number {
+  return typeof n === "number" && Number.isFinite(n) ? n : 0;
+}
+
 export function mapVolumeRecords(
   records: RpVolumeBillingRecord[] | undefined,
   range: CostFetchRange,
+  ctx: CostContext,
 ): CostRow[] {
   const rows: CostRow[] = [];
   for (const r of records ?? []) {
-    const date = dayOf(r.time);
+    const date = dayOf(r.startTime);
     if (!date || !inRange(date, range)) continue;
-    const hp =
-      typeof r.highPerformanceStorageAmount === "number" ? r.highPerformanceStorageAmount : 0;
-    const total = typeof r.amount === "number" && Number.isFinite(r.amount) ? r.amount : 0;
-    // `amount` is the standard-storage charge; high-performance storage is a
-    // separate figure next to it.
-    if (total > 0) {
-      rows.push({
-        date,
-        service: "Network Volumes",
-        currency: "USD",
-        amount: round(total),
-        ...(r.diskSpaceBilledGb ? { usageAmount: r.diskSpaceBilledGb, usageUnit: "GB" } : {}),
-      });
-    }
-    if (hp > 0) {
-      rows.push({
-        date,
-        service: "High Performance Storage",
-        currency: "USD",
-        amount: round(hp),
-        ...(r.highPerformanceStorageDiskSpaceBilledGb
-          ? { usageAmount: r.highPerformanceStorageDiskSpaceBilledGb, usageUnit: "GB" }
-          : {}),
-      });
+    const id = r.networkVolumeId ?? "";
+    const region = id ? ctx.regions.get(id) : undefined;
+    const name = id ? ctx.names.get(id) : undefined;
+    const row = {
+      date,
+      ...(region ? { region } : {}),
+      ...(id ? { resourceId: id } : {}),
+      ...(name ? { tags: { resource_name: name } } : {}),
+      currency: "USD",
+    };
+    const highPerformance = finite(r.highPerformanceAmount);
+    // Never `totalAmount` beside it: that already includes high-performance storage.
+    const standard =
+      typeof r.standardAmount === "number"
+        ? finite(r.standardAmount)
+        : finite(r.totalAmount) - highPerformance;
+    if (standard > 0) rows.push({ ...row, service: "Network Volumes", amount: round(standard) });
+    if (highPerformance > 0) {
+      rows.push({ ...row, service: "High Performance Storage", amount: round(highPerformance) });
     }
   }
   return rows;
@@ -138,6 +142,15 @@ export function aggregateRows(rows: CostRow[]): CostRow[] {
   return [...byKey.values()];
 }
 
+/** A 200 with no list is not a day with no spend, and restated days replace what is stored. */
+function recordsOf<Record>(path: string, answer: { records: Record[] }): Record[] {
+  const records = answer?.records;
+  if (!Array.isArray(records)) {
+    throw new Error(`Runpod answered ${path} with no list of billing records`);
+  }
+  return records;
+}
+
 export async function fetchRunpodCostData(
   api: RunpodApi,
   range: CostFetchRange,
@@ -148,9 +161,9 @@ export async function fetchRunpodCostData(
     startTime: `${range.fromDate}T00:00:00Z`,
     endTime: `${nextDay(range.toDate)}T00:00:00Z`,
   };
-  let pods: RpBillingRecord[];
+  let pods: RpPodBillingRecord[];
   try {
-    pods = await api.rest.get("/billing/pods", { query: { ...window, grouping: "podId" } });
+    pods = recordsOf("/v2/billing/pods", await api.rest.get("/v2/billing/pods", { query: window }));
   } catch (e) {
     if (isStatus(e, 401, 403)) {
       throw new CostSetupError(
@@ -160,13 +173,14 @@ export async function fetchRunpodCostData(
     }
     throw e;
   }
-  const [endpoints, volumes] = await Promise.all([
-    api.rest.get("/billing/endpoints", { query: { ...window, grouping: "endpointId" } }),
-    api.rest.get("/billing/networkvolumes", { query: window }),
+  const [serverless, volumes] = await Promise.all([
+    api.rest.get("/v2/billing/serverless", { query: window }),
+    api.rest.get("/v2/billing/network-volumes", { query: window }),
   ]);
+  const endpoints: RpServerlessBillingRecord[] = recordsOf("/v2/billing/serverless", serverless);
   return aggregateRows([
-    ...mapComputeRecords(pods, "Pods", "podId", range, ctx),
-    ...mapComputeRecords(endpoints, "Serverless", "endpointId", range, ctx),
-    ...mapVolumeRecords(volumes, range),
+    ...mapComputeRecords(pods, "Pods", (r) => r.podId, range, ctx),
+    ...mapComputeRecords(endpoints, "Serverless", (r) => r.serverlessId, range, ctx),
+    ...mapVolumeRecords(recordsOf("/v2/billing/network-volumes", volumes), range, ctx),
   ]);
 }

@@ -1,11 +1,10 @@
 import { base64ToBytes, bytesToBase64 } from "@infrawrench/plugin-base";
 
 /**
- * Runpod keeps an account's SSH public keys as one newline-separated string
- * (`myself.pubKey`, the console's Settings, SSH Public Keys box), written back
- * whole with `updateUserSettings(input: {pubKey})`. That is exactly what
- * `runpodctl ssh add-key` does (runpodctl `api/user.go`, 2026-10). Each line
- * is an authorized_keys entry; Runpod injects all of them into every new pod.
+ * Runpod keeps an account's SSH public keys as a list of authorized_keys lines
+ * (`GET /v2/account/ssh-keys`), replaced whole by `PUT` on the same path. They
+ * reach pods created with `startSsh`, which this plugin always sets, and running
+ * pods keep what they started with.
  *
  * A key's identity here is its OpenSSH SHA256 fingerprint, which is stable no
  * matter how the line is commented or reordered.
@@ -22,9 +21,10 @@ export interface ParsedSshKey {
 
 const KEY_LINE = /^(?:\S+\s+)?((?:ssh|ecdsa|sk)-[A-Za-z0-9@.-]+)\s+([A-Za-z0-9+/=]+)(?:\s+(.*))?$/;
 
-export function parseSshKeys(pubKey: string | null | undefined): ParsedSshKey[] {
+export function parseSshKeys(lines: string | readonly string[] | null | undefined): ParsedSshKey[] {
   const out: ParsedSshKey[] = [];
-  for (const raw of (pubKey ?? "").split(/\r?\n/)) {
+  const entries = typeof lines === "string" ? lines.split(/\r?\n/) : (lines ?? []);
+  for (const raw of entries) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
     const m = KEY_LINE.exec(line);
@@ -57,10 +57,7 @@ export function fingerprintId(fingerprint: string): string {
     .replace(/\//g, "_");
 }
 
-/** Join keys back into the stored form (blank line between, as runpodctl writes it). */
-export function joinSshKeys(lines: string[]): string {
-  return lines
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .join("\n\n");
+/** A key as the API takes it: `<type> <base64-key> [comment]`, with nothing in front. */
+export function sshKeyLine(key: Pick<ParsedSshKey, "type" | "blob" | "comment">): string {
+  return [key.type, key.blob, key.comment].filter(Boolean).join(" ");
 }

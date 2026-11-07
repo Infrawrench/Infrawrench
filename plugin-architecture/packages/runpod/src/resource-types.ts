@@ -11,7 +11,14 @@ import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
  * data center components with exactly those ids.
  */
 
-export const POD_STATES = ["running", "starting", "stopped", "terminated", "unknown"] as const;
+export const POD_STATES = [
+  "running",
+  "starting",
+  "stopped",
+  "error",
+  "terminated",
+  "unknown",
+] as const;
 
 export const PodResourceType = rt({
   name: "Pod",
@@ -39,11 +46,6 @@ export const PodResourceType = rt({
     f("cpuFlavorId", "CPU Flavor", { required: false, editable: false }),
     f("vcpus", "vCPUs", { showcase: true, kind: "number", required: false, editable: false }),
     f("memoryGb", "Memory (GB)", { kind: "number", required: false, editable: false }),
-    f("interruptible", "Spot (Interruptible)", {
-      kind: "boolean",
-      required: false,
-      editable: false,
-    }),
     f("imageName", "Container Image", {
       required: false,
       description: "Changing the image resets the pod: anything outside the volume is lost",
@@ -56,7 +58,8 @@ export const PodResourceType = rt({
     f("volumeGb", "Pod Volume (GB)", {
       kind: "number",
       required: false,
-      description: "Persistent across restarts; billed while the pod is stopped. Can only grow",
+      description:
+        "Persistent across restarts; billed while the pod is stopped. At least 10 GB. Can only grow",
     }),
     f("volumeMountPath", "Volume Mount Path", { required: false }),
     f("ports", "Exposed Ports", {
@@ -66,7 +69,7 @@ export const PodResourceType = rt({
     f("locked", "Locked", {
       kind: "boolean",
       required: false,
-      description: "A locked pod cannot be stopped or reset until it is unlocked",
+      description: "A locked pod cannot be stopped until it is unlocked",
     }),
     f("envKeys", "Environment Variables", {
       required: false,
@@ -80,14 +83,14 @@ export const PodResourceType = rt({
       editable: false,
       description: "After active savings plans",
     }),
-    f("templateId", "Template", { required: false, editable: false }),
-    f("networkVolumeId", "Network Volume", { required: false, editable: false }),
-    f("containerRegistryAuthId", "Registry Credentials", { required: false, editable: false }),
-    f("endpointId", "Serverless Endpoint", {
+    f("templateId", "Template", {
       required: false,
       editable: false,
-      description: "Set when the pod is a Serverless worker",
+      description: "Runpod keeps no link for pods created through its current API",
     }),
+    f("networkVolumeId", "Network Volume", { required: false, editable: false }),
+    f("additionalNetworkVolumes", "More Network Volumes", { required: false, editable: false }),
+    f("containerRegistryAuthId", "Registry Credentials", { required: false, editable: false }),
     f("gpuUtilPercent", "GPU Utilization (%)", {
       kind: "number",
       required: false,
@@ -106,7 +109,6 @@ export const PodResourceType = rt({
     }),
     f("uptimeSeconds", "Uptime (s)", { kind: "number", required: false, editable: false }),
     f("sshUser", "SSH Proxy User", { required: false, editable: false }),
-    f("machineId", "Machine", { required: false, editable: false }),
     f("maintenance", "Host Maintenance", { required: false, editable: false }),
     f("lastStatusChange", "Last Status Change", { required: false, editable: false }),
     f("lastStartedAt", "Last Started", { required: false, editable: false }),
@@ -127,7 +129,6 @@ export const PodResourceType = rt({
   dependsOn: [
     { fieldKey: "networkVolumeId", targetTypeId: "network-volume", label: "mounts" },
     { fieldKey: "templateId", targetTypeId: "template", label: "from template" },
-    { fieldKey: "endpointId", targetTypeId: "serverless-endpoint", label: "worker of" },
     {
       fieldKey: "containerRegistryAuthId",
       targetTypeId: "container-registry-auth",
@@ -164,12 +165,21 @@ export const ServerlessEndpointResourceType = rt({
   description: "A Runpod Serverless endpoint and its autoscaling worker pool",
   fields: [
     f("name", "Name"),
+    f("endpointType", "Routing", {
+      showcase: true,
+      kind: "enum",
+      enumValues: ["QUEUE", "LOAD_BALANCER"],
+      required: false,
+      editable: false,
+      description: "Through Runpod's job queue, or straight to paths your workers define",
+    }),
     f("computeType", "Compute", { required: false, editable: false }),
-    f("templateId", "Template", { required: false, editable: false }),
+    f("imageName", "Container Image", { required: false }),
+    f("gpuPools", "GPU Pools", { required: false, editable: false }),
     f("gpuTypeIds", "GPU Types", {
       required: false,
       editable: false,
-      description: "In order of preference",
+      description: "Every GPU type in those pools, less any excluded",
     }),
     f("gpuCount", "GPUs per Worker", {
       showcase: true,
@@ -177,13 +187,22 @@ export const ServerlessEndpointResourceType = rt({
       required: false,
       editable: false,
     }),
+    f("cpuConfigs", "CPU Configurations", {
+      required: false,
+      editable: false,
+      description: "CPU flavor and vCPUs per worker",
+    }),
     f("workersMin", "Active Workers (min)", {
       kind: "number",
       required: false,
       description: "Always-on workers. They bill continuously, even with an empty queue",
     }),
     f("workersMax", "Max Workers", { kind: "number", required: false }),
-    f("idleTimeout", "Idle Timeout (s)", { kind: "number", required: false }),
+    f("idleTimeout", "Idle Timeout (s)", {
+      kind: "number",
+      required: false,
+      description: "Does not apply to a queue endpoint that scales on request count",
+    }),
     f("scalerType", "Scaling", {
       kind: "enum",
       enumValues: ["QUEUE_DELAY", "REQUEST_COUNT"],
@@ -192,14 +211,19 @@ export const ServerlessEndpointResourceType = rt({
     f("scalerValue", "Scaling Threshold", {
       kind: "number",
       required: false,
-      description: "Seconds in queue (QUEUE_DELAY) or requests per worker (REQUEST_COUNT)",
+      description:
+        "Seconds in queue (QUEUE_DELAY, 0.5 or more) or requests per worker (REQUEST_COUNT, 1 or more)",
     }),
     f("executionTimeoutMs", "Execution Timeout (ms)", { kind: "number", required: false }),
-    f("flashboot", "FlashBoot", { kind: "boolean", required: false }),
+    f("flashboot", "FlashBoot", {
+      kind: "enum",
+      enumValues: ["OFF", "FLASHBOOT", "PRIORITY_FLASHBOOT"],
+      required: false,
+      description: "Faster cold starts; PRIORITY_FLASHBOOT also gets priority capacity",
+    }),
     f("dataCenters", "Data Centers", { required: false, editable: false }),
     f("region", "Primary Data Center", { showcase: true, required: false, editable: false }),
     f("networkVolumeId", "Network Volume", { required: false, editable: false }),
-    f("version", "Version", { showcase: true, kind: "number", required: false, editable: false }),
     f("jobsInQueue", "Jobs in Queue", { kind: "number", required: false, editable: false }),
     f("jobsInProgress", "Jobs in Progress", { kind: "number", required: false, editable: false }),
     f("jobsCompleted", "Jobs Completed", { kind: "number", required: false, editable: false }),
@@ -221,15 +245,15 @@ export const ServerlessEndpointResourceType = rt({
   outputs: [
     o("runUrl", "Async Run URL"),
     o("runSyncUrl", "Sync Run URL"),
+    o("loadBalancerUrl", "Load Balancer URL", {
+      description: "Base URL of a load balancing endpoint, for the paths your workers define",
+    }),
     o("openAiBaseUrl", "OpenAI-compatible Base URL", {
       description: "For vLLM workers that serve the OpenAI API",
     }),
     o("endpointId", "Endpoint ID"),
   ],
-  dependsOn: [
-    { fieldKey: "templateId", targetTypeId: "template", label: "runs" },
-    { fieldKey: "networkVolumeId", targetTypeId: "network-volume", label: "mounts" },
-  ],
+  dependsOn: [{ fieldKey: "networkVolumeId", targetTypeId: "network-volume", label: "mounts" }],
   showInSidebar: true,
   iconKey: "function",
   supportsCreate: true,
@@ -257,7 +281,11 @@ export const TemplateResourceType = rt({
     f("isServerless", "Serverless", { kind: "boolean", required: false, editable: false }),
     f("category", "Category", { showcase: true, required: false, editable: false }),
     f("containerDiskGb", "Container Disk (GB)", { kind: "number", required: false }),
-    f("volumeGb", "Volume (GB)", { kind: "number", required: false }),
+    f("volumeGb", "Volume (GB)", {
+      kind: "number",
+      required: false,
+      description: "At least 10 GB. Runpod cannot remove a template's volume once set",
+    }),
     f("volumeMountPath", "Volume Mount Path", { required: false }),
     f("ports", "Exposed Ports", {
       required: false,
@@ -278,7 +306,11 @@ export const TemplateResourceType = rt({
       required: false,
       description: "Visible to every Runpod user (pod templates only)",
     }),
-    f("readme", "Readme", { required: false }),
+    f("readme", "Readme", {
+      required: false,
+      editable: false,
+      description: "Edited in the Runpod console; Runpod's current API cannot write it",
+    }),
     f("earned", "Credits Earned", { kind: "number", required: false, editable: false }),
   ],
   dependsOn: [
@@ -306,6 +338,12 @@ export const NetworkVolumeResourceType = rt({
       description: "Runpod can only grow a network volume, never shrink it",
     }),
     f("region", "Data Center", { showcase: true, editable: false }),
+    f("storageType", "Storage Tier", {
+      kind: "enum",
+      enumValues: ["STANDARD", "HIGH_PERFORMANCE"],
+      required: false,
+      editable: false,
+    }),
     f("attachedTo", "Used By", {
       required: false,
       editable: false,
@@ -316,7 +354,7 @@ export const NetworkVolumeResourceType = rt({
   iconKey: "volume",
   supportsCreate: true,
   supportsUpdate: true,
-  // The lister always writes attachedTo ("" when unused).
+  // The lister writes attachedTo whenever the mounts could be read ("" when unused).
   orphanRule: {
     conditions: [{ fieldKey: "attachedTo", when: "equals", value: "" }],
     reason:
@@ -336,7 +374,7 @@ export const ContainerRegistryAuthResourceType = rt({
 export const SshKeyResourceType = rt({
   name: "SSH Key",
   id: "ssh-key",
-  description: "An SSH public key Runpod installs on every new pod",
+  description: "An SSH public key Runpod installs on new pods created with SSH access",
   fields: [
     f("name", "Name"),
     f("keyType", "Type", { required: false }),
