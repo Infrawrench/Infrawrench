@@ -7,7 +7,7 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
-import { RenderApi } from "./api.js";
+import { createRenderApi, listOwners } from "./api.js";
 import { RenderClient } from "./client.js";
 import { isStatus } from "./kit.js";
 import { LOGO_SVG } from "./logo.js";
@@ -15,7 +15,6 @@ import { renderRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { renderTerraformExport } from "./terraform.js";
-import type { RenderOwner } from "./types.js";
 import { renderDeployEvents } from "./deploy-events.js";
 
 export const manifest = {
@@ -64,9 +63,9 @@ async function listCredentialOptions(
   if (fieldKey !== "workspaceId") return [];
   const apiKey = (credentials["apiKey"] ?? "").trim();
   if (!apiKey) throw new Error("Enter a Render API key first.");
-  const api = new RenderApi(apiKey, credentials["caCert"] ?? "", services);
+  const api = createRenderApi(apiKey, credentials["caCert"] ?? "", services);
   try {
-    const owners = await api.listAll<RenderOwner>("/owners", "owner");
+    const owners = await listOwners(api);
     return owners.map((o) => ({
       id: o.id,
       label: o.name || o.email || o.id,

@@ -6,7 +6,6 @@ import { plugin } from "../plugin.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { renderTerraformExport } from "../terraform.js";
 import { installFetch, route, state } from "./helpers.js";
-import type { RenderService } from "../types.js";
 
 const ACCOUNT = "acct";
 
@@ -14,7 +13,7 @@ function client(creds: Record<string, string> = { apiKey: "rnd_key" }) {
   return hostClient(new RenderClient(creds, RESOURCE_TYPES));
 }
 
-const WEB: RenderService = {
+const WEB = {
   id: "srv-web",
   name: "api",
   type: "web_service",

@@ -1,9 +1,18 @@
-import type { HostServices } from "@infrawrench/plugin-base";
-import { RenderApiError, buildQuery, sendRequest, type QueryValue } from "./kit.js";
+import {
+  createApiClient,
+  pathEncode,
+  withCursorPagination,
+  type HostServices,
+  type HttpHostServices,
+  type PageAnswer,
+} from "@infrawrench/plugin-base";
+import type { components, paths } from "./api-types.gen.js";
+import { RenderApiError, buildQuery, sendRequest } from "./kit.js";
 
 /**
  * Transport for the Render public REST API (`https://api.render.com/v1`,
- * OpenAPI spec at https://api-docs.render.com, verified 2026-10).
+ * OpenAPI spec at https://api-docs.render.com, verified 2026-10). Requests are
+ * typed from that document (`plugingen.json`).
  *
  * Auth is `Authorization: Bearer <api key>`. A key belongs to a user and sees
  * every workspace that user belongs to.
@@ -23,74 +32,125 @@ const PAGE_SIZE = 100;
 const MAX_PAGES = 50;
 const MAX_RETRY_S = 5;
 
-export interface RequestOptions {
-  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-}
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export class RenderApi {
-  constructor(
-    private readonly apiKey: string,
-    private readonly caCert: string,
-    private readonly services: HostServices | undefined,
-  ) {}
-
-  async request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    const method = opts.method ?? "GET";
-    const query = buildQuery(opts.query);
-    const url = `${API_BASE}${path}${query ? `?${query}` : ""}`;
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      Authorization: `Bearer ${this.apiKey}`,
-    };
-    const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-    const req = { url, method, headers, ...(body !== undefined ? { body } : {}) };
-
-    let res = await sendRequest(this.services, this.caCert, req);
-    if (res.status === 429) {
-      const reset = Number(res.headers["ratelimit-reset"]);
-      if (Number.isFinite(reset) && reset >= 0 && reset <= MAX_RETRY_S) {
-        await sleep(reset * 1000);
-        res = await sendRequest(this.services, this.caCert, req);
+/** The host's HTTP service or the global fetch, either way retrying a short 429 once. */
+function retryingTransport(services: HostServices | undefined): HttpHostServices {
+  return {
+    async request(req) {
+      let res = await sendRequest(services, req);
+      if (res.status === 429) {
+        const reset = Number(res.headers["ratelimit-reset"]);
+        if (Number.isFinite(reset) && reset >= 0 && reset <= MAX_RETRY_S) {
+          await sleep(reset * 1000);
+          res = await sendRequest(services, req);
+        }
       }
-    }
-    if (res.status < 200 || res.status >= 300) {
-      throw new RenderApiError(res.status, method, path, res.body);
-    }
-    if (!res.body) return undefined as unknown as T;
-    return JSON.parse(res.body) as T;
-  }
-
-  /**
-   * Every page of a cursor-paginated list. `key` names the wrapper property
-   * (`service`, `postgres`, …); rows without it are taken as-is, since a few
-   * lists (environment groups, maintenance runs) are not wrapped.
-   */
-  async listAll<T>(
-    path: string,
-    key: string,
-    query: Record<string, QueryValue> = {},
-    maxPages = MAX_PAGES,
-  ): Promise<T[]> {
-    const out: T[] = [];
-    let cursor: string | undefined;
-    for (let page = 0; page < maxPages; page++) {
-      const rows = await this.request<Array<Record<string, unknown>>>(path, {
-        query: { ...query, limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) },
-      });
-      const list = Array.isArray(rows) ? rows : [];
-      for (const row of list) {
-        out.push((key in row ? row[key] : row) as T);
-      }
-      const last = list[list.length - 1];
-      const nextCursor = last && typeof last["cursor"] === "string" ? last["cursor"] : undefined;
-      if (list.length < PAGE_SIZE || !nextCursor || nextCursor === cursor) break;
-      cursor = nextCursor;
-    }
-    return out;
-  }
+      return res;
+    },
+  };
 }
+
+/** The last row's cursor, when it is text. */
+function nextCursor({ items }: PageAnswer): string | undefined {
+  // A row that is not an object fails where it is unwrapped, so nothing more is asked for.
+  if (items.some((row) => typeof row !== "object" || row === null)) return undefined;
+  const last = items.at(-1);
+  if (typeof last !== "object" || last === null || !("cursor" in last)) return undefined;
+  return typeof last.cursor === "string" ? last.cursor : undefined;
+}
+
+export function createRenderApi(
+  apiKey: string,
+  caCert: string,
+  services: HostServices | undefined,
+) {
+  const api = createApiClient<paths>({
+    vendor: "Render",
+    baseUrl: API_BASE,
+    headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+    http: retryingTransport(services),
+    caCert,
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    serializeQuery: buildQuery,
+    httpError: ({ status, method, path, body }) => new RenderApiError(status, method, path, body),
+  });
+  return withCursorPagination(api, {
+    cursorParam: "cursor",
+    sizeParam: "limit",
+    pageSize: PAGE_SIZE,
+    maxPages: MAX_PAGES,
+    next: nextCursor,
+    stopOnShortPage: true,
+    stopOnRepeatedCursor: true,
+    emptyBodyEndsList: true,
+  });
+}
+
+export type RenderApi = ReturnType<typeof createRenderApi>;
+
+/** Narrows a list to one workspace. */
+export interface OwnerQuery {
+  ownerId?: string[];
+}
+
+type EnvGroupRow =
+  components["schemas"]["envGroupMeta"] | { envGroup: components["schemas"]["envGroupMeta"] };
+
+// Each list keeps a row with no wrapper as it is, and a few lists (environment
+// groups) document no wrapper at all.
+
+export const listOwners = async (api: RenderApi) =>
+  (await api.getAll("/owners", null)).map((row) => ("owner" in row ? row.owner : row));
+
+export const listServices = async (api: RenderApi, query: OwnerQuery) =>
+  (await api.getAll("/services", null, { query })).map((row) =>
+    "service" in row ? row.service : row,
+  );
+
+export const listProjects = async (api: RenderApi, query: OwnerQuery) =>
+  (await api.getAll("/projects", null, { query })).map((row) =>
+    "project" in row ? row.project : row,
+  );
+
+export const listEnvironments = async (api: RenderApi, projectId: string) =>
+  (await api.getAll("/environments", null, { query: { projectId: [projectId] } })).map((row) =>
+    "environment" in row ? row.environment : row,
+  );
+
+export const listDisks = async (api: RenderApi, query: OwnerQuery) =>
+  (await api.getAll("/disks", null, { query })).map((row) => ("disk" in row ? row.disk : row));
+
+export const listPostgres = async (
+  api: RenderApi,
+  query: OwnerQuery & { includeReplicas?: boolean },
+) =>
+  (await api.getAll("/postgres", null, { query })).map((row) =>
+    "postgres" in row ? row.postgres : row,
+  );
+
+export const listKeyValues = async (api: RenderApi, query: OwnerQuery) =>
+  (await api.getAll("/key-value", null, { query })).map((row) =>
+    "keyValue" in row ? row.keyValue : row,
+  );
+
+export const listBlueprints = async (api: RenderApi, query: OwnerQuery) =>
+  (await api.getAll("/blueprints", null, { query })).map((row) =>
+    "blueprint" in row ? row.blueprint : row,
+  );
+
+export const listEnvVars = async (api: RenderApi, serviceId: string) =>
+  (await api.getAll(`/services/${pathEncode(serviceId)}/env-vars`, null)).map((row) =>
+    "envVar" in row ? row.envVar : row,
+  );
+
+export const listCustomDomains = async (api: RenderApi, serviceId: string) =>
+  (await api.getAll(`/services/${pathEncode(serviceId)}/custom-domains`, null)).map((row) =>
+    "customDomain" in row ? row.customDomain : row,
+  );
+
+export const listEnvGroups = async (api: RenderApi, query: OwnerQuery) =>
+  (await api.getAll("/env-groups", null, { query })).map((row: EnvGroupRow) =>
+    "envGroup" in row ? row.envGroup : row,
+  );

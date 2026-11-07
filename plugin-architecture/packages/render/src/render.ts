@@ -15,6 +15,16 @@ import {
   resourceTypeDisplayName,
 } from "@infrawrench/plugin-base";
 import { fieldItems, parseJson, pluginAction } from "./kit.js";
+import type {
+  RenderBlueprintSync,
+  RenderDiskSnapshot,
+  RenderInstance,
+  RenderPostgresExport,
+  RenderPostgresRecovery,
+  RenderPostgresUser,
+  RenderServiceEvent,
+  RenderTeamMember,
+} from "./types.js";
 import { LOG_FILTERS } from "./logs.js";
 
 /**
@@ -466,9 +476,9 @@ function headerActions(resource: ResourceInstance): ActionNode[] {
       );
       break;
     case "disk": {
-      const snaps = parseJson<
-        Array<{ snapshotKey?: string; createdAt?: string; instanceId?: string }>
-      >(f[ENRICH.snapshots], []).filter((s) => s.snapshotKey);
+      const snaps = parseJson<RenderDiskSnapshot[]>(f[ENRICH.snapshots], []).filter(
+        (s) => s.snapshotKey,
+      );
       if (snaps.length > 0) {
         actions.push(
           prompt(
@@ -589,7 +599,7 @@ function table(
 function enrichedSections(resource: ResourceInstance): SectionNode[] {
   const f = resource.fields;
   const out: Array<SectionNode | null> = [];
-  const events = parseJson<Array<{ timestamp?: string; type?: string }>>(f[ENRICH.events], []);
+  const events = parseJson<RenderServiceEvent[]>(f[ENRICH.events], []);
   out.push(
     table(
       "Recent Events",
@@ -600,7 +610,7 @@ function enrichedSections(resource: ResourceInstance): SectionNode[] {
       events.map((e) => ({ time: e.timestamp ?? "", type: (e.type ?? "").replace(/_/g, " ") })),
     ),
   );
-  const instances = parseJson<Array<{ id: string; createdAt?: string }>>(f[ENRICH.instances], []);
+  const instances = parseJson<RenderInstance[]>(f[ENRICH.instances], []);
   out.push(
     table(
       "Instances",
@@ -611,9 +621,7 @@ function enrichedSections(resource: ResourceInstance): SectionNode[] {
       instances.map((i) => ({ id: i.id, created: i.createdAt ?? "" })),
     ),
   );
-  const users = parseJson<
-    Array<{ username?: string; default?: boolean; openConnections?: number; createdAt?: string }>
-  >(f[ENRICH.users], []);
+  const users = parseJson<RenderPostgresUser[]>(f[ENRICH.users], []);
   out.push(
     table(
       "Database Users",
@@ -631,10 +639,7 @@ function enrichedSections(resource: ResourceInstance): SectionNode[] {
       })),
     ),
   );
-  const recovery = parseJson<{ recoveryStatus?: string; startsAt?: string } | null>(
-    f[ENRICH.recovery],
-    null,
-  );
+  const recovery = parseJson<RenderPostgresRecovery | null>(f[ENRICH.recovery], null);
   if (recovery?.recoveryStatus) {
     out.push({
       kind: "section",
@@ -652,10 +657,7 @@ function enrichedSections(resource: ResourceInstance): SectionNode[] {
       ],
     });
   }
-  const exports = parseJson<Array<{ id: string; createdAt?: string; url?: string }>>(
-    f[ENRICH.exports],
-    [],
-  );
+  const exports = parseJson<RenderPostgresExport[]>(f[ENRICH.exports], []);
   if (exports.length > 0) {
     out.push({
       kind: "section",
@@ -675,10 +677,7 @@ function enrichedSections(resource: ResourceInstance): SectionNode[] {
       ),
     });
   }
-  const snapshots = parseJson<Array<{ createdAt?: string; instanceId?: string }>>(
-    f[ENRICH.snapshots],
-    [],
-  );
+  const snapshots = parseJson<RenderDiskSnapshot[]>(f[ENRICH.snapshots], []);
   out.push(
     table(
       "Snapshots",
@@ -697,15 +696,7 @@ function enrichedSections(resource: ResourceInstance): SectionNode[] {
       secretFiles.map((name) => ({ name })),
     ),
   );
-  const syncs = parseJson<
-    Array<{
-      id: string;
-      state?: string;
-      startedAt?: string;
-      completedAt?: string;
-      commit?: { id?: string };
-    }>
-  >(f[ENRICH.syncs], []);
+  const syncs = parseJson<RenderBlueprintSync[]>(f[ENRICH.syncs], []);
   out.push(
     table(
       "Recent Syncs",
@@ -723,9 +714,7 @@ function enrichedSections(resource: ResourceInstance): SectionNode[] {
       })),
     ),
   );
-  const members = parseJson<
-    Array<{ name?: string; email?: string; role?: string; status?: string; mfaEnabled?: boolean }>
-  >(f[ENRICH.members], []);
+  const members = parseJson<RenderTeamMember[]>(f[ENRICH.members], []);
   out.push(
     table(
       "Members",
