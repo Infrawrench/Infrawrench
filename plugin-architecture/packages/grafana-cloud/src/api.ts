@@ -1,5 +1,14 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  restRequest,
+  type ApiClient,
+  type ApiClientOptions,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { paths as CloudPaths } from "./api-types.cloud.gen.js";
+import type { paths as SmPaths } from "./api-types.sm.gen.js";
+import type { paths as StackPaths } from "./api-types.stack.gen.js";
 
 /** The Grafana Cloud API. Every account-level call goes here. */
 export const CLOUD_API_URL = "https://grafana.com/api";
@@ -25,103 +34,98 @@ export class GrafanaApiError extends Error {
   }
 }
 
-const STATUS_IN_MESSAGE =
-  /Grafana (?:Cloud|stack|Synthetic Monitoring|usage metrics) API error (\d{3})/;
+/** The error every Grafana API answers a non-2xx with, naming the path but never its query. */
+export function grafanaError(
+  vendor: string,
+  status: number,
+  path: string,
+  body: string,
+): GrafanaApiError {
+  return new GrafanaApiError(status, `${vendor} API error ${status} for ${path}: ${body}`);
+}
 
-type Query = Record<string, string | number | boolean | undefined>;
-
-function withQuery(url: string, query: Query | undefined): string {
+/** An empty query value is left out, as with a region missing from a resource id. */
+function serializeQuery(query: Record<string, ParamValue>): string {
   const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) {
+  for (const [k, v] of Object.entries(query)) {
     if (v !== undefined && v !== "") params.set(k, String(v));
   }
-  const qs = params.toString();
-  return qs ? `${url}${url.includes("?") ? "&" : "?"}${qs}` : url;
+  return params.toString();
 }
 
 /**
- * JSON request against an absolute URL with a Bearer token. Routed through
- * the host HTTP service whenever there is one: that is the only path that
- * honours bastion egress and a custom CA.
+ * Routed through the host HTTP service whenever there is one: that is the only
+ * path that honours bastion egress and a custom CA. `errorPrefix` is the part
+ * of a path the base URL holds, which error text still names.
  */
-export async function bearerFetch<T>(
-  vendor: string,
-  token: string,
-  url: string,
-  init: (RequestInit & { query?: Query }) | undefined,
-  ctx: { caCert?: string; http?: HttpHostServices },
-  errorPath: string,
-): Promise<T> {
-  const { query, ...rest } = init ?? {};
-  try {
-    return await jsonRestFetch<T>({
-      vendor,
-      url: withQuery(url, query),
-      errorPath,
-      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-      ...(Object.keys(rest).length > 0 ? { init: rest } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
-    if (status) throw new GrafanaApiError(status, message);
-    throw err;
-  }
-}
-
-/** A call against the Grafana Cloud API (`https://grafana.com/api/...`). */
-export function cloudFetch<T>(
+function clientOptions(
   ctx: GrafanaContext,
-  path: string,
-  init?: RequestInit & { query?: Query },
-): Promise<T> {
-  return bearerFetch<T>("Grafana Cloud", ctx.token, `${CLOUD_API_URL}${path}`, init, ctx, path);
+  vendor: string,
+  baseUrl: string,
+  token: string,
+  errorPrefix = "",
+): ApiClientOptions {
+  return {
+    vendor,
+    baseUrl,
+    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    serializeQuery,
+    httpError: ({ status, path, body }) =>
+      grafanaError(vendor, status, `${errorPrefix}${path}`, body),
+    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+    ...(ctx.http ? { http: ctx.http } : {}),
+  };
+}
+
+/** The Grafana Cloud API (`https://grafana.com/api/...`). */
+export function cloudApi(ctx: GrafanaContext): ApiClient<CloudPaths> {
+  return createApiClient<CloudPaths>(clientOptions(ctx, "Grafana Cloud", CLOUD_API_URL, ctx.token));
 }
 
 /**
- * A call against a stack's own Grafana HTTP API with a stack service account
- * token (`glsa_…`). `baseUrl` is the stack's `url`, which may be a custom
- * domain rather than `<slug>.grafana.net`.
+ * A stack's own Grafana HTTP API with a stack service account token
+ * (`glsa_…`). `baseUrl` is the stack's `url`, which may be a custom domain
+ * rather than `<slug>.grafana.net`.
  */
-export function stackFetch<T>(
+export function stackApi(
   ctx: GrafanaContext,
   baseUrl: string,
   saToken: string,
-  path: string,
-  init?: RequestInit & { query?: Query },
-): Promise<T> {
-  return bearerFetch<T>(
-    "Grafana stack",
-    saToken,
-    `${baseUrl.replace(/\/+$/, "")}${path}`,
-    init,
-    ctx,
-    path,
+): ApiClient<StackPaths> {
+  return createApiClient<StackPaths>(
+    clientOptions(ctx, "Grafana stack", `${baseUrl.replace(/\/+$/, "")}/api`, saToken, "/api"),
   );
 }
 
 /**
- * A call against the Synthetic Monitoring API of the stack's region, with a
- * Synthetic Monitoring access token (a tenant token, not an access policy
- * token).
+ * The Synthetic Monitoring API of the stack's region, with a Synthetic
+ * Monitoring access token (a tenant token, not an access policy token).
  */
-export function smFetch<T>(
-  ctx: GrafanaContext,
-  apiUrl: string,
-  smToken: string,
-  path: string,
-  init?: RequestInit & { query?: Query },
-): Promise<T> {
-  return bearerFetch<T>(
-    "Grafana Synthetic Monitoring",
-    smToken,
-    `${apiUrl.replace(/\/+$/, "")}${path}`,
-    init,
-    ctx,
-    path,
+export function smApi(ctx: GrafanaContext, apiUrl: string, smToken: string): ApiClient<SmPaths> {
+  return createApiClient<SmPaths>(
+    clientOptions(ctx, "Grafana Synthetic Monitoring", apiUrl.replace(/\/+$/, ""), smToken),
   );
+}
+
+/**
+ * A Prometheus range query, which no Grafana document describes: the stack's
+ * data source proxy takes any route, and the billing endpoint is undocumented.
+ */
+export async function promGet<T>(
+  ctx: GrafanaContext,
+  options: { vendor: string; url: string; errorPath: string; authorization: string },
+): Promise<T> {
+  const { vendor, url, errorPath, authorization } = options;
+  const { body } = await restRequest<T>({
+    vendor,
+    url,
+    errorPath,
+    headers: { Accept: "application/json", Authorization: authorization },
+    httpError: (failure) => grafanaError(vendor, failure.status, errorPath, failure.body),
+    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+    ...(ctx.http ? { http: ctx.http } : {}),
+  });
+  return body;
 }
 
 /** Mutating Cloud API routes require an `x-request-id` header. */

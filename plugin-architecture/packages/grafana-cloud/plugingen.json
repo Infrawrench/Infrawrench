@@ -1,0 +1,322 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "cloud",
+      "specUrl": "https://grafana.com/api/openapi.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1instances~1{instanceId}~1restart",
+          "value": {
+            "post": {
+              "operationId": "postInstanceRestart",
+              "parameters": [
+                {
+                  "in": "path",
+                  "name": "instanceId",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "OK"
+                }
+              }
+            }
+          },
+          "why": "Grafana documents this route in its prose Cloud API reference but not in the OpenAPI document. The plugin ignores the answer."
+        },
+        {
+          "pointer": "/paths/~1v1~1accesspolicies/get/responses/200/content/application~1json/schema",
+          "value": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AuthAccessPolicy"
+                }
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/AccessPolicyListResponse/properties/metadata"
+              }
+            }
+          },
+          "why": "The shared list response types its items as an empty object, here and for tokens."
+        },
+        {
+          "pointer": "/paths/~1v1~1tokens/get/responses/200/content/application~1json/schema",
+          "value": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AuthToken"
+                }
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/AccessPolicyListResponse/properties/metadata"
+              }
+            }
+          },
+          "why": "The shared list response types its items as an empty object, here and for access policies."
+        },
+        {
+          "pointer": "/components/schemas/FormattedApiInstance/properties/labels",
+          "value": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "why": "Typed as an empty object. Stack labels are string pairs: the create and update bodies in this same document say so."
+        },
+        {
+          "pointer": "/components/schemas/FormattedApiOrgPublic/properties/subscriptions",
+          "value": {
+            "type": "object",
+            "properties": {
+              "current": {
+                "type": "object",
+                "properties": {
+                  "product": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "plan": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "publicName": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "isTrial": {
+                    "type": "boolean"
+                  },
+                  "startDate": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "endDate": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          },
+          "why": "A union of two variants whose names and dates have no type at all, which generate as `{}`. These are the fields the plugin reads."
+        },
+        {
+          "pointer": "/components/schemas/BilledUsage/properties/dimensionId",
+          "value": {
+            "type": "string"
+          },
+          "why": "A closed list of billed products that grows with Grafana's catalogue. The plugin only shows it, and a new product must not read as drift."
+        },
+        {
+          "pointer": "/paths/~1v1~1accesspolicies~1{id}/post/requestBody/content/application~1json/schema/properties/realms/items",
+          "value": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "identifier": {
+                "type": "string"
+              },
+              "labelPolicies": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "selector": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The update sends back the realms the read returned, untouched. The body's item is narrower than the response's: it has no `system` type and requires what the response leaves optional."
+        }
+      ],
+      "paths": {
+        "/orgs/{slugOrId}": ["get"],
+        "/orgs/{orgSlug}/instances": ["get"],
+        "/orgs/{orgSlugOrId}/billed-usage": ["get"],
+        "/orgs/{slugOrId}/members": ["get"],
+        "/orgs/{slugOrId}/members/{usernameOrId}": ["post", "delete"],
+        "/instances": ["post"],
+        "/instances/{instanceId}": ["get", "post", "delete"],
+        "/instances/{instanceId}/restart": ["post"],
+        "/instances/{instanceId}/plugins": ["get"],
+        "/instances/{instanceId}/plugins/{pluginSlugOrId}": ["post", "delete"],
+        "/instances/{instanceId}/api/serviceaccounts": ["post"],
+        "/instances/{instanceId}/api/serviceaccounts/search": ["get"],
+        "/instances/{instanceId}/api/serviceaccounts/{serviceAccountId}/tokens": ["post"],
+        "/stack-regions": ["get"],
+        "/v1/accesspolicies": ["get"],
+        "/v1/accesspolicies/{id}": ["get", "post", "delete"],
+        "/v1/tokens": ["get"],
+        "/v1/tokens/{id}": ["post", "delete"]
+      }
+    },
+    {
+      "name": "stack",
+      "specUrl": "https://raw.githubusercontent.com/grafana/grafana/main/public/openapi3.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1datasources~1uid~1{uid}~1health/get/responses/200",
+          "value": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The document answers with the generic message body, without the `status` a health check reports and the plugin branches on."
+        }
+      ],
+      "paths": {
+        "/search": ["get"],
+        "/folders": ["get"],
+        "/datasources": ["get"],
+        "/datasources/uid/{uid}": ["delete"],
+        "/datasources/uid/{uid}/health": ["get"],
+        "/dashboards/uid/{uid}": ["delete"],
+        "/v1/provisioning/alert-rules": ["get"],
+        "/v1/provisioning/alert-rules/{UID}": ["get", "put", "delete"],
+        "/v1/provisioning/contact-points": ["get"],
+        "/v1/provisioning/contact-points/{UID}": ["delete"]
+      }
+    },
+    {
+      "name": "sm",
+      "specUrl": "https://synthetic-monitoring-api.grafana.net/api/v1/openapi",
+      "patches": [
+        {
+          "pointer": "/paths/~1api~1v1~1check~1list",
+          "value": {
+            "get": {
+              "operationId": "GET_/api/v1/check/list",
+              "responses": {
+                "200": {
+                  "description": "OK",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/CheckWithAlerts"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The route older deployments answer, which the plugin falls back to on a 404 or 405. The current document no longer lists it."
+        },
+        {
+          "pointer": "/paths/~1api~1v1~1probe~1list",
+          "value": {
+            "get": {
+              "operationId": "GET_/api/v1/probe/list",
+              "responses": {
+                "200": {
+                  "description": "OK",
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/Probe"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "why": "The route older deployments answer, which the plugin falls back to on a 404 or 405. The current document no longer lists it."
+        },
+        {
+          "pointer": "/paths/~1api~1v1~1check~1delete~1{id}",
+          "value": {
+            "delete": {
+              "operationId": "DELETE_/api/v1/check/delete/:id",
+              "parameters": [
+                {
+                  "in": "path",
+                  "name": "id",
+                  "required": true,
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "OK"
+                }
+              }
+            }
+          },
+          "why": "The route older deployments answer, which the plugin falls back to on a 404 or 405. The current document no longer lists it."
+        },
+        {
+          "pointer": "/paths/~1api~1v1~1check~1update",
+          "value": {
+            "post": {
+              "operationId": "POST_/api/v1/check/update",
+              "requestBody": {
+                "required": true,
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/UpdateCheckRequest"
+                    }
+                  }
+                }
+              },
+              "responses": {
+                "200": {
+                  "description": "OK"
+                }
+              }
+            }
+          },
+          "why": "The route older deployments answer, which the plugin falls back to on a 404 or 405. The current document no longer lists it."
+        }
+      ],
+      "paths": {
+        "/api/v1/check": ["get"],
+        "/api/v1/check/list": ["get"],
+        "/api/v1/check/{id}": ["get", "post", "delete"],
+        "/api/v1/check/delete/{id}": ["delete"],
+        "/api/v1/check/update": ["post"],
+        "/api/v1/probe": ["get"],
+        "/api/v1/probe/list": ["get"]
+      }
+    }
+  ]
+}

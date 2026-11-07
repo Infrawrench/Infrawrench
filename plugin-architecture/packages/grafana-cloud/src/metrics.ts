@@ -13,9 +13,8 @@
  */
 
 import type { MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
 import type { GrafanaContext } from "./api.js";
-import { GrafanaApiError, stackFetch } from "./api.js";
+import { promGet, stackApi } from "./api.js";
 import { fetchBilledUsage, monthStartsInRange } from "./cost-data.js";
 import type { GfDatasource } from "./types.js";
 
@@ -95,12 +94,9 @@ export async function resolveUsageSource(
   stack: { url: string; saToken?: string | null; orgId?: string },
 ): Promise<UsageSource | null> {
   if (stack.saToken && stack.url) {
-    const sources = await stackFetch<GfDatasource[]>(
-      ctx,
-      stack.url,
-      stack.saToken,
-      "/api/datasources",
-    ).catch(() => [] as GfDatasource[]);
+    const sources = await stackApi(ctx, stack.url, stack.saToken)
+      .get("/datasources")
+      .catch((): GfDatasource[] => []);
     const usage = sources.find((d) => d.name === "grafanacloud-usage" && d.uid);
     if (usage?.uid) {
       return {
@@ -132,28 +128,20 @@ async function queryRange(
     step: String(stepFor(range)),
   });
   if (source.kind === "proxy") {
-    return stackFetch<PromRangeResponse>(
-      ctx,
-      source.stackUrl,
-      source.saToken,
-      `/api/datasources/proxy/uid/${encodeURIComponent(source.datasourceUid)}/api/v1/query_range?${params.toString()}`,
-    );
-  }
-  const basic = btoaUtf8(`${source.orgId}:${ctx.token}`);
-  try {
-    return await jsonRestFetch<PromRangeResponse>({
-      vendor: "Grafana usage metrics",
-      url: `${USAGE_PROM_URL}/api/v1/query_range?${params.toString()}`,
-      errorPath: "/api/prom/api/v1/query_range",
-      headers: { Accept: "application/json", Authorization: `Basic ${basic}` },
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
+    const path = `/api/datasources/proxy/uid/${encodeURIComponent(source.datasourceUid)}/api/v1/query_range?${params.toString()}`;
+    return promGet<PromRangeResponse>(ctx, {
+      vendor: "Grafana stack",
+      url: `${source.stackUrl.replace(/\/+$/, "")}${path}`,
+      errorPath: path,
+      authorization: `Bearer ${source.saToken}`,
     });
-  } catch (err) {
-    const status = Number(/API error (\d{3})/.exec(String(err))?.[1] ?? 0);
-    if (status) throw new GrafanaApiError(status, err instanceof Error ? err.message : String(err));
-    throw err;
   }
+  return promGet<PromRangeResponse>(ctx, {
+    vendor: "Grafana usage metrics",
+    url: `${USAGE_PROM_URL}/api/v1/query_range?${params.toString()}`,
+    errorPath: "/api/prom/api/v1/query_range",
+    authorization: `Basic ${btoaUtf8(`${source.orgId}:${ctx.token}`)}`,
+  });
 }
 
 function btoaUtf8(value: string): string {
@@ -258,8 +246,7 @@ export async function stackUsageSeries(
       out.push(...toSeries(r.value, q.label, q.unit, q.scale ?? 1));
   });
   if (out.length === 0) {
-    const firstError = settled.find((r) => r.status === "rejected") as
-      PromiseRejectedResult | undefined;
+    const firstError = settled.find((r): r is PromiseRejectedResult => r.status === "rejected");
     if (firstError) throw firstError.reason;
   }
   return out;

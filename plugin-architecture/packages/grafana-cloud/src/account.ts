@@ -1,6 +1,6 @@
-import { CostSetupError } from "@infrawrench/plugin-base";
+import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
 import type { GrafanaContext } from "./api.js";
-import { cloudFetch, decodeCloudToken, statusOf } from "./api.js";
+import { cloudApi, decodeCloudToken, statusOf } from "./api.js";
 import type { GcOrg, GcStack } from "./types.js";
 
 /**
@@ -70,7 +70,7 @@ export function resolveOrg(ctx: GrafanaContext, orgSlug: string): Promise<GcOrg>
   }
   return cached(orgCache, `${ctx.token}|${key}`, ORG_TTL_MS, async () => {
     try {
-      return await cloudFetch<GcOrg>(ctx, `/orgs/${encodeURIComponent(key)}`);
+      return await cloudApi(ctx).get(`/orgs/${pathEncode(key)}`);
     } catch (err) {
       // Without `orgs:read` the slug still works for every other route.
       if (statusOf(err) === 403 && orgSlug.trim()) return { slug: orgSlug.trim() };
@@ -90,10 +90,7 @@ export async function orgSlugOf(ctx: GrafanaContext, orgSlug: string): Promise<s
 export function listStacks(ctx: GrafanaContext, orgSlug: string): Promise<GcStack[]> {
   return cached(stackCache, ctx.token, STACKS_TTL_MS, async () => {
     const slug = await orgSlugOf(ctx, orgSlug);
-    const res = await cloudFetch<{ items?: GcStack[] }>(
-      ctx,
-      `/orgs/${encodeURIComponent(slug)}/instances`,
-    );
+    const res = await cloudApi(ctx).get(`/orgs/${pathEncode(slug)}/instances`);
     return res.items ?? [];
   });
 }
@@ -108,7 +105,7 @@ export async function policyRegions(ctx: GrafanaContext, orgSlug: string): Promi
   const out = new Set<string>();
   const own = decodeCloudToken(ctx.token).region;
   if (own) out.add(own);
-  const stacks = await listStacks(ctx, orgSlug).catch(() => [] as GcStack[]);
+  const stacks = await listStacks(ctx, orgSlug).catch((): GcStack[] => []);
   for (const s of stacks) if (s.regionSlug) out.add(s.regionSlug);
   return [...out].sort();
 }
