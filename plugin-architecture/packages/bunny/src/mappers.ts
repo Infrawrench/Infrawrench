@@ -112,8 +112,6 @@ export function pullZoneInstance(accountId: string, z: PullZone): ResourceInstan
       containerAppId: z.MagicContainersAppId ?? "",
       containerEndpointId: z.MagicContainersEndpointId ?? "",
       loadBalancerId: z.LoadBalancerId ?? 0,
-      dnsPort: z.DnsOriginPort ?? 0,
-      dnsScheme: z.DnsOriginScheme ?? "",
     }),
   };
   if (typeof z.CacheControlMaxAgeOverride === "number")

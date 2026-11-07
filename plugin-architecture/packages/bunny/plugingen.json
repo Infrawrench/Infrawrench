@@ -162,23 +162,6 @@
           "why": "The document marks nothing required. A billing record always has its amount and date, and cost rows are built from them."
         },
         {
-          "pointer": "/components/schemas/PullZoneModel/properties/DnsOriginPort",
-          "value": {
-            "type": "integer",
-            "format": "int32",
-            "nullable": true
-          },
-          "why": "The Terraform eject writes `dns_port` and `dns_scheme` for a DNS Accelerate origin. The document lists these on the write models only, and bunny.net's own Terraform provider reads them from this answer."
-        },
-        {
-          "pointer": "/components/schemas/PullZoneModel/properties/DnsOriginScheme",
-          "value": {
-            "type": "string",
-            "nullable": true
-          },
-          "why": "The Terraform eject writes `dns_port` and `dns_scheme` for a DNS Accelerate origin. The document lists these on the write models only, and bunny.net's own Terraform provider reads them from this answer."
-        },
-        {
           "pointer": "/components/schemas/StorageRegionModel/properties/Id",
           "value": {
             "type": "string"

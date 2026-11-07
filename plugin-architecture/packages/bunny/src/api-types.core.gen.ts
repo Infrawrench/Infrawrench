@@ -1115,9 +1115,6 @@ export interface components {
             CookieVaryParameters?: string[] | null;
             DisableCookies?: boolean;
             DisableLetsEncrypt?: boolean;
-            /** Format: int32 */
-            DnsOriginPort?: number | null;
-            DnsOriginScheme?: string | null;
             /** Format: int64 */
             DnsRecordId?: number;
             DnsRecordValue?: string | null;

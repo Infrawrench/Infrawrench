@@ -8,6 +8,15 @@ import type { EdgeRule } from "./types.js";
 import { EDGE_ACTIONS, MATCH_TYPES, TRIGGER_TYPES, enumName } from "./types.js";
 import { splitChild, splitList } from "./mappers.js";
 
+/** A pull zone answer has no port or scheme of its own; both are in its origin URL. */
+function dnsAccelerateOrigin(url: string | undefined): Record<string, TerraformValue> {
+  if (!url || !URL.canParse(url)) return {};
+  const { port, protocol } = new URL(url);
+  const scheme = protocol.slice(0, -1);
+  const dnsPort = port ? Number(port) : scheme === "https" ? 443 : scheme === "http" ? 80 : 0;
+  return { ...(dnsPort ? { dns_port: tf.num(dnsPort) } : {}), dns_scheme: tf.str(scheme) };
+}
+
 /**
  * Terraform mapping for the official `BunnyWay/bunnynet` provider (0.19.1,
  * 2026-09-24; schemas from docs/resources/*.md). Import ids are the
@@ -45,8 +54,6 @@ export const bunnyTerraformExport: TerraformExportCapability = {
           containerAppId?: string;
           containerEndpointId?: string;
           loadBalancerId?: number;
-          dnsPort?: number;
-          dnsScheme?: string;
         } = {};
         try {
           origin = JSON.parse(fieldString(r, "originJson") || "{}");
@@ -75,8 +82,7 @@ export const bunnyTerraformExport: TerraformExportCapability = {
             break;
           case "DnsAccelerate":
             block["type"] = tf.str("DnsAccelerate");
-            if (origin.dnsPort) block["dns_port"] = tf.num(origin.dnsPort);
-            if (origin.dnsScheme) block["dns_scheme"] = tf.str(origin.dnsScheme);
+            Object.assign(block, dnsAccelerateOrigin(origin.url));
             break;
           case "Standard":
           case undefined:

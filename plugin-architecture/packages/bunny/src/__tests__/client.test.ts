@@ -356,8 +356,12 @@ describe("pull zone origins", () => {
       ['type = "ComputeContainer"', 'container_app_id = "app"', 'container_endpoint_id = "ep"'],
     ],
     [
-      { OriginType: 1, DnsOriginPort: 443, DnsOriginScheme: "https" },
-      ['type = "DnsAccelerate"', "dns_port = 443", 'dns_scheme = "https"'],
+      { OriginType: 1, OriginUrl: "https://origin.example.com:8443" },
+      ['type = "DnsAccelerate"', "dns_port = 8443", 'dns_scheme = "https"'],
+    ],
+    [
+      { OriginType: 1, OriginUrl: "http://origin.example.com" },
+      ['type = "DnsAccelerate"', "dns_port = 80", 'dns_scheme = "http"'],
     ],
     [{ OriginType: 0 }, ['type = "OriginUrl"', 'url = "https://origin.example.com"']],
   ])("ejects the origin block of %j", async (zone, expected) => {
