@@ -15,7 +15,7 @@ import type {
   CreateResourceConfig,
   DashboardStat,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, reportUnreadListPart } from "@infrawrench/plugin-base";
 import { ProxmoxApi, ProxmoxApiError, type FormValue } from "./api.js";
 import {
   backupExternalId,
@@ -495,9 +495,40 @@ export class ProxmoxClient implements PluginClient {
   }
 
   private async listBackups(accountId: string): Promise<ResourceInstance[]> {
-    const stores = await this.storagesWithContent("backup");
+    const [all, stores] = await Promise.all([
+      this.clusterResources(),
+      this.storagesWithContent("backup"),
+    ]);
+    const storageId = (node: string, storage: string) =>
+      `${accountId}:${STORAGE}:${node}/${storage}`;
+    const readShared = new Set(stores.filter((s) => s.shared).map((s) => s.storage));
+    // A store that is down (its node offline, the storage inactive or disabled) still holds
+    // its backups: they stay as they were rather than reading as deleted.
+    const unread = new Set<string>();
+    for (const r of all) {
+      if (r.type !== "storage" || !r.storage || !r.node) continue;
+      if (!r.status || r.status === "available") continue;
+      if (
+        !String(r.content ?? "")
+          .split(",")
+          .includes("backup")
+      )
+        continue;
+      if (truthy(r.shared) && readShared.has(r.storage)) continue;
+      unread.add(storageId(r.node, r.storage));
+    }
+    const refusals: unknown[] = [];
     const lists = await mapLimit(stores, 4, async (s) => {
-      const items = await this.storageContent(s.node, s.storage, "backup").catch(() => []);
+      let items: Awaited<ReturnType<ProxmoxClient["storageContent"]>>;
+      try {
+        items = await this.storageContent(s.node, s.storage, "backup");
+      } catch (err) {
+        // Datastore.Audit missing on this one store. Anything else fails the type.
+        if (!(err instanceof ProxmoxApiError) || err.status !== 403) throw err;
+        refusals.push(err);
+        unread.add(storageId(s.node, s.storage));
+        return [];
+      }
       return items.map((b) => {
         const guest = backupGuest(b.volid, b.vmid);
         const vmid = guest.vmid;
@@ -520,11 +551,16 @@ export class ProxmoxClient implements PluginClient {
         const when = epochIso(b.ctime).slice(0, 16).replace("T", " ");
         const label = `${vmid ? `${vmid} ` : ""}${when || b.volid}`;
         return this.instance(accountId, BACKUP, backupExternalId(s.node, b.volid), label, fields, {
-          parentResourceId: `${accountId}:${STORAGE}:${s.node}/${s.storage}`,
+          parentResourceId: storageId(s.node, s.storage),
           resolvedOutputs: { volid: b.volid },
         });
       });
     });
+    if (unread.size > 0) {
+      const tracked = reportUnreadListPart({ parentResourceIds: [...unread].sort() });
+      // A host that keeps no track (the desktop) prunes nothing, and there the refusal shows.
+      if (!tracked && refusals.length > 0) throw refusals[0];
+    }
     return lists.flat();
   }
 

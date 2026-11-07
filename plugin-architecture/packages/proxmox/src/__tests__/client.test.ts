@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { ProxmoxClient } from "../client.js";
 import { ProxmoxApi, encodeForm, normalizeBaseUrl, nodeOfUpid } from "../api.js";
@@ -350,6 +350,92 @@ describe("client", () => {
     });
     expect(vmBackup.parentResourceId).toBe("acct:pve-storage:pve1/local");
     expect(backups.find((b) => b.fields["vmid"] === "101")!.fields["ctId"]).toBe("101");
+  });
+
+  describe("a backup store that cannot be read", () => {
+    const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    });
+
+    it.each([401, 500, 595])(
+      "fails the type on a %i, so that store's stored backups stay",
+      async (status) => {
+        const unread = vi.fn();
+        Reflect.set(globalThis, UNREAD_HOOK, unread);
+        const { http } = mockHttp({
+          ...routes,
+          "GET /nodes/pve1/storage/nfs/content": () => ({
+            status,
+            body: { data: null, message: "storage 'nfs' is not online" },
+          }),
+        });
+        const client = hostClient(new ProxmoxClient(CREDS, { http }));
+        await expect(client.listResources("pve-backup", "acct")).rejects.toThrow(`Proxmox VE`);
+        expect(unread).not.toHaveBeenCalled();
+      },
+    );
+
+    it("keeps a store's backups quietly when the token may not read that store", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const { http } = mockHttp({
+        ...routes,
+        "GET /nodes/pve1/storage/nfs/content": () => ({ status: 403, body: { data: null } }),
+      });
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      const backups = await client.listResources("pve-backup", "acct");
+      expect(backups.map((b) => b.fields["storage"])).toEqual(["local"]);
+      expect(unread).toHaveBeenCalledWith({ parentResourceIds: ["acct:pve-storage:pve1/nfs"] });
+    });
+
+    it("shows the refusal where a host keeps no track", async () => {
+      const { http } = mockHttp({
+        ...routes,
+        "GET /nodes/pve1/storage/nfs/content": () => ({ status: 403, body: { data: null } }),
+      });
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      await expect(client.listResources("pve-backup", "acct")).rejects.toThrow("(403)");
+    });
+
+    it("keeps the backups of a store that is down instead of reading it as empty", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const resources = RESOURCES.map((r) =>
+        r.id === "storage/pve1/local" ? { ...r, status: "unknown" } : r,
+      ).concat([
+        // Down on one node and readable on another: read there, nothing left unread.
+        {
+          id: "storage/pve2/local",
+          type: "storage",
+          node: "pve2",
+          storage: "local",
+          content: "backup",
+          status: "unknown",
+          shared: 0,
+        },
+      ]);
+      const { http, calls } = mockHttp({ ...routes, "GET /cluster/resources": resources });
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      const backups = await client.listResources("pve-backup", "acct");
+      expect(backups.map((b) => b.fields["storage"])).toEqual(["nfs"]);
+      expect(calls.filter((c) => c.url.includes("/storage/local/content"))).toHaveLength(0);
+      expect(unread).toHaveBeenCalledWith({
+        parentResourceIds: ["acct:pve-storage:pve1/local", "acct:pve-storage:pve2/local"],
+      });
+    });
+
+    it("names nothing unread for a shared store that is down on one node only", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const resources = RESOURCES.map((r) =>
+        r.id === "storage/pve2/nfs" ? { ...r, status: "unknown" } : r,
+      );
+      const { http } = mockHttp({ ...routes, "GET /cluster/resources": resources });
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      await expect(client.listResources("pve-backup", "acct")).resolves.toHaveLength(2);
+      expect(unread).not.toHaveBeenCalled();
+    });
   });
 
   it("resolves a VM's IPv4 from the guest agent", async () => {
