@@ -1,5 +1,7 @@
 import {
   createApiClient,
+  requireListPage,
+  withCursorPagination,
   type ApiClient,
   type ApiClientOptions,
   type HttpHostServices,
@@ -35,6 +37,13 @@ import type { paths as quotaPaths } from "./api-types.quota.gen.js";
  */
 
 export const API_HOST = "https://api.cloud.qdrant.io";
+
+export const VENDOR = "Qdrant Cloud";
+
+/** The document gives no largest page size, so this stays what the plugin has always sent. */
+const PAGE_SIZE = 100;
+/** 50,000 rows, the ceiling for a list that goes through the resource sync. */
+const MAX_PAGES = 500;
 
 export class QdrantApiError extends Error {
   readonly status: number;
@@ -89,7 +98,7 @@ function clientOptions({
   http,
 }: QdrantConnection): Omit<ApiClientOptions, "baseUrl" | "headers"> {
   return {
-    vendor: "Qdrant Cloud",
+    vendor: VENDOR,
     caCert,
     http,
     contentType: "with-body",
@@ -100,28 +109,52 @@ function clientOptions({
 }
 
 /** The Management API, which is one host across the services it has a document each for. */
-export type QdrantCloudApi = ApiClient<
-  accountPaths &
-    billingPaths &
-    bookingPaths &
-    clusterAuthPaths &
-    clusterBackupPaths &
-    clusterPaths &
-    hybridPaths &
-    meteringPaths &
-    monitoringPaths &
-    platformPaths &
-    quotaPaths
->;
+type CloudPaths = accountPaths &
+  billingPaths &
+  bookingPaths &
+  clusterAuthPaths &
+  clusterBackupPaths &
+  clusterPaths &
+  hybridPaths &
+  meteringPaths &
+  monitoringPaths &
+  platformPaths &
+  quotaPaths;
+
+export type QdrantCloudApi = ReturnType<typeof createCloudApi>;
 
 /** One cluster's own database REST API. */
 export type QdrantDatabaseApi = ApiClient<databasePaths>;
 
-export function createCloudApi(apiKey: string, connection: QdrantConnection): QdrantCloudApi {
-  return createApiClient({
+export function createCloudApi(apiKey: string, connection: QdrantConnection) {
+  const api = createApiClient<CloudPaths>({
     ...clientOptions(connection),
     baseUrl: API_HOST,
     headers: { Accept: "application/json", Authorization: `apikey ${apiKey}` },
+  });
+  return withCursorPagination(api, {
+    cursorParam: "pageToken",
+    sizeParam: "pageSize",
+    next: "nextPageToken",
+    pageSize: PAGE_SIZE,
+    maxPages: MAX_PAGES,
+    // The document on nextPageToken: "If this field is omitted, there are no subsequent pages."
+    continueOnEmptyPage: true,
+    // A gRPC gateway answering in proto3 JSON, which leaves an empty repeated field out.
+    missingListIsEmpty: true,
+  });
+}
+
+/**
+ * The rows of a list answer the document does not page. An absent `items` is empty, as
+ * proto3 JSON writes it, but no answer at all and anything that is not an array throw.
+ */
+export function listItems<T>(page: { items?: T[] } | undefined, path: string): T[] {
+  return requireListPage(page ? (page.items ?? null) : undefined, {
+    vendor: VENDOR,
+    path,
+    key: "items",
+    page,
   });
 }
 
@@ -143,25 +176,6 @@ export function isStatus(err: unknown, ...statuses: number[]): boolean {
 
 export function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
-}
-
-/** Follow `nextPageToken` (sent back as `pageToken`) up to a page cap. */
-export async function collectPages<T>(
-  fetchPage: (
-    token: string | undefined,
-  ) => Promise<{ items?: T[]; nextPageToken?: string } | undefined>,
-  maxPages = 50,
-): Promise<T[]> {
-  const out: T[] = [];
-  let token: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
-    const res = await fetchPage(token);
-    out.push(...(res?.items ?? []));
-    const next = res?.nextPageToken;
-    if (!next || next === token) break;
-    token = next;
-  }
-  return out;
 }
 
 /** Protobuf JSON `Duration` (`"604800s"`) to whole days, rounding down. */

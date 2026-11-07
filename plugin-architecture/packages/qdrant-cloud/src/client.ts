@@ -24,19 +24,22 @@ import {
   CreditAccessError,
   pathEncode,
   QuotaAccessError,
+  requireListPage,
+  withinListCap,
   withMetricsCapability,
   type NoSlashString,
 } from "@infrawrench/plugin-base";
 import {
-  collectPages,
   createCloudApi,
   createDatabaseApi,
   daysToDuration,
   errorText,
   isStatus,
+  listItems,
   QdrantApiError,
   type QdrantCloudApi,
   type QdrantConnection,
+  VENDOR,
 } from "./api.js";
 import { fetchQdrantCostData } from "./cost-data.js";
 import {
@@ -87,7 +90,9 @@ import type {
 const CLUSTER_TTL_MS = 30_000;
 const CATALOG_TTL_MS = 10 * 60_000;
 const FAN_OUT = 6;
-const MAX_COLLECTIONS_PER_CLUSTER = 100;
+/** Qdrant Cloud limits a cluster to 1,000 collections by default, and each one is a read. */
+const MAX_COLLECTIONS_PER_CLUSTER = 1000;
+const DETAIL_VIEW_COLLECTIONS = 100;
 const CLUSTER_NAME_RE = /^[A-Za-z0-9_-]{2,64}$/;
 
 /** Secret-store keys for values Qdrant shows exactly once. */
@@ -143,9 +148,6 @@ export function parseIpRanges(raw: string): string[] {
   if (ranges.length > 40) throw new Error("Qdrant allows at most 40 IP ranges per cluster.");
   return ranges;
 }
-
-/** A page token only goes back once there is one. */
-const pageAfter = (token: string | undefined) => (token ? { pageToken: token } : {});
 
 interface Cached<T> {
   at: number;
@@ -326,11 +328,9 @@ export class QdrantCloudClient implements PluginClient {
 
   clusters(): Promise<QcCluster[]> {
     this.clusterCache = cached(this.clusterCache, CLUSTER_TTL_MS, () =>
-      collectPages((token) =>
-        this.api.get(`/api/cluster/v1/accounts/${this.acct}/clusters`, {
-          query: { pageSize: 100, ...pageAfter(token) },
-        }),
-      ).then((list) => list.filter((c) => !c.deletedAt)),
+      this.api
+        .getAll(`/api/cluster/v1/accounts/${this.acct}/clusters`, "items")
+        .then((list) => list.filter((c) => !c.deletedAt)),
     );
     return this.clusterCache.value;
   }
@@ -404,7 +404,7 @@ export class QdrantCloudClient implements PluginClient {
     const res = await this.api.get(`/api/cluster/auth/v2/accounts/${this.acct}/database-api-keys`, {
       query: clusterId ? { clusterId } : {},
     });
-    return res?.items ?? [];
+    return listItems(res, "/api/cluster/auth/v2/accounts/{accountId}/database-api-keys");
   }
 
   /**
@@ -421,10 +421,9 @@ export class QdrantCloudClient implements PluginClient {
   }
 
   private listBackupSchedules(): Promise<QcBackupSchedule[]> {
-    return collectPages((token) =>
-      this.api.get(`/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules`, {
-        query: { pageSize: 100, ...pageAfter(token) },
-      }),
+    return this.api.getAll(
+      `/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules`,
+      "items",
     );
   }
 
@@ -460,10 +459,9 @@ export class QdrantCloudClient implements PluginClient {
           return keys.map((k) => mapDatabaseKey(k, names.get(k.clusterId ?? "") ?? "", accountId));
         }
         case "backup": {
-          const list = await collectPages((token) =>
-            this.api.get(`/api/cluster/backup/v1/accounts/${this.acct}/backups`, {
-              query: { pageSize: 100, ...pageAfter(token) },
-            }),
+          const list = await this.api.getAll(
+            `/api/cluster/backup/v1/accounts/${this.acct}/backups`,
+            "items",
           );
           return list.filter((b) => !b.deletedAt).map((b) => mapBackup(b, accountId));
         }
@@ -476,10 +474,9 @@ export class QdrantCloudClient implements PluginClient {
         }
         case "backup-restore": {
           const [list, clusters] = await Promise.all([
-            collectPages((token) =>
-              this.api.get(`/api/cluster/backup/v1/accounts/${this.acct}/backup_restores`, {
-                query: { pageSize: 100, ...pageAfter(token) },
-              }),
+            this.api.getAll(
+              `/api/cluster/backup/v1/accounts/${this.acct}/backup_restores`,
+              "items",
             ),
             this.clusters(),
           ]);
@@ -490,12 +487,21 @@ export class QdrantCloudClient implements PluginClient {
           const res = await this.api.get(
             `/api/hybrid/v1/accounts/${this.acct}/hybrid-cloud-environments`,
           );
-          return (res?.items ?? []).map((h) => mapHybridEnvironment(h, accountId));
+          return listItems(
+            res,
+            "/api/hybrid/v1/accounts/{accountId}/hybrid-cloud-environments",
+          ).map((h) => mapHybridEnvironment(h, accountId));
         }
         case "collection": {
-          const clusters = (await this.clusters()).filter((c) => clusterPhase(c) === "HEALTHY");
+          // Collections go with their cluster, so this is the one phase that can skip the read.
+          const clusters = (await this.clusters()).filter((c) => clusterPhase(c) !== "DELETING");
           const lists = await mapLimit(clusters, FAN_OUT, (c) =>
-            this.listCollections(c, accountId).catch((): ResourceInstance[] => []),
+            this.listCollections(c, accountId, (names) =>
+              withinListCap(names, MAX_COLLECTIONS_PER_CLUSTER, {
+                vendor: VENDOR,
+                path: "/collections",
+              }),
+            ),
           );
           return lists.flat();
         }
@@ -505,16 +511,36 @@ export class QdrantCloudClient implements PluginClient {
     });
   }
 
-  /** Collections through the cluster's own REST API; needs a stored database key. */
-  private async listCollections(c: QcCluster, accountId: string): Promise<ResourceInstance[]> {
-    const url = clusterRestUrl(c);
+  /**
+   * Collections through the cluster's own REST API, with `pick` choosing which get a
+   * read each. No stored database key means none were ever listed. With one there may
+   * be stored rows, so a cluster that cannot answer throws: a sync prunes what a list
+   * leaves out, and a suspended cluster has not lost its collections.
+   */
+  private async listCollections(
+    c: QcCluster,
+    accountId: string,
+    pick: (names: string[]) => string[],
+  ): Promise<ResourceInstance[]> {
     const key = await this.dbKey(accountId, c.id);
-    if (!url || !key) return [];
+    if (!key) return [];
+    const url = clusterRestUrl(c);
+    if (!url) throw new Error(`Qdrant Cloud cluster ${c.name} has no endpoint to read from.`);
+    if (clusterPhase(c) === "SUSPENDED") {
+      throw new Error(
+        `Qdrant Cloud cluster ${c.name} is suspended, so its collections cannot be read.`,
+      );
+    }
     const db = this.database(url, key);
     const res = await db.get("/collections");
-    const names = (res?.result?.collections ?? [])
-      .map((x) => x.name)
-      .slice(0, MAX_COLLECTIONS_PER_CLUSTER);
+    const names = pick(
+      requireListPage(res?.result?.collections, {
+        vendor: VENDOR,
+        path: "/collections",
+        key: "result.collections",
+        page: res,
+      }).map((x) => x.name),
+    );
     const infos = await mapLimit(names, FAN_OUT, (name) =>
       db
         .get(`/collections/${pathEncode(name)}`)
@@ -660,7 +686,9 @@ export class QdrantCloudClient implements PluginClient {
           fields[ENRICH_PACKAGES] = JSON.stringify(opts);
         }
         if (key && clusterRestUrl(cluster)) {
-          const cols = await this.listCollections(cluster, resource.accountId).catch(() => []);
+          const cols = await this.listCollections(cluster, resource.accountId, (names) =>
+            names.slice(0, DETAIL_VIEW_COLLECTIONS),
+          ).catch((): ResourceInstance[] => []);
           if (cols.length) {
             fields[ENRICH_COLLECTIONS] = JSON.stringify(
               cols.map((c) => ({
@@ -1567,7 +1595,7 @@ export class QdrantCloudClient implements PluginClient {
         throw e;
       }
       const now = Date.now();
-      return (res?.items ?? [])
+      return listItems(res, "/api/billing/v1/accounts/{accountId}/credit-contracts")
         .filter((c) => !c.activeTo || Date.parse(c.activeTo) > now)
         .filter((c) => !c.activeFrom || Date.parse(c.activeFrom) <= now)
         .map((c) => ({

@@ -1,6 +1,6 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
-import { isStatus, millicents, type QdrantCloudApi } from "./api.js";
+import { isStatus, listItems, millicents, type QdrantCloudApi } from "./api.js";
 import type { QcMeteringItem } from "./types.js";
 
 /**
@@ -117,7 +117,7 @@ export async function fetchQdrantCostData(
       const res = await api.get(
         `/api/metering/v1/accounts/${pathEncode(accountId)}/meterings/${pathEncode(year)}/${pathEncode(month)}`,
       );
-      items = res?.items ?? [];
+      items = listItems(res, "/api/metering/v1/accounts/{accountId}/meterings/{year}/{month}");
     } catch (e) {
       if (isStatus(e, 401, 403)) {
         throw new CostSetupError(

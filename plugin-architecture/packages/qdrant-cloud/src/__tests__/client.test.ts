@@ -255,6 +255,236 @@ describe("calls that name the cluster", () => {
   });
 });
 
+describe("lists that feed the sync", () => {
+  const MGMT = `api.cloud.qdrant.io`;
+  const DB = "abc.us-east-1-0.aws.cloud.qdrant.io:6333";
+  const paged: Array<[string, string]> = [
+    ["cluster", `${BASE}/clusters`],
+    ["backup", `${MGMT}/api/cluster/backup/v1/accounts/${ACC}/backups`],
+    ["backup-schedule", `${MGMT}/api/cluster/backup/v1/accounts/${ACC}/backup_schedules`],
+    ["backup-restore", `${MGMT}/api/cluster/backup/v1/accounts/${ACC}/backup_restores`],
+  ];
+  const whole: Array<[string, string]> = [
+    ["database-api-key", `${MGMT}/api/cluster/auth/v2/accounts/${ACC}/database-api-keys`],
+    ["hybrid-environment", `${MGMT}/api/hybrid/v1/accounts/${ACC}/hybrid-cloud-environments`],
+  ];
+
+  async function connected(http: ReturnType<typeof fakeHttp>) {
+    await http.services.secrets!.setPlaintext!(`${HOST_ACCOUNT}:cluster:c1`, "databaseApiKey", "k");
+  }
+
+  function collections(http: ReturnType<typeof fakeHttp>, count: number) {
+    const names = Array.from({ length: count }, (_, i) => `c${i}`);
+    http.route("GET", `${DB}/collections`, {
+      result: { collections: names.map((name) => ({ name })) },
+    });
+    for (const name of names) {
+      http.route("GET", `${DB}/collections/${name}`, { result: { status: "green" } });
+    }
+  }
+
+  it.each(paged)("%s throws at the page cap rather than prune the rest", async (type, route) => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    http.route("GET", route, (call: { url: URL }) => ({
+      items: [{ ...cluster, id: `r${call.url.searchParams.get("pageToken") ?? ""}` }],
+      nextPageToken: `t${http.calls.length}`,
+    }));
+    await expect(c.listResources(type, HOST_ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(http.calls.filter((x) => `${x.url.host}${x.url.pathname}` === route)).toHaveLength(500);
+  });
+
+  it("reads past the old cap of 50 pages", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, (call: { url: URL }) => {
+      const page = Number(call.url.searchParams.get("pageToken") ?? 0);
+      return {
+        items: [{ ...cluster, id: `c${page}` }],
+        ...(page < 59 ? { nextPageToken: String(page + 1) } : {}),
+      };
+    });
+    expect(await c.listResources("cluster", HOST_ACCOUNT)).toHaveLength(60);
+  });
+
+  it("follows the token past an empty page, since only a missing token ends a list", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, (call: { url: URL }) => {
+      const token = call.url.searchParams.get("pageToken");
+      if (!token) return { nextPageToken: "t2" };
+      return { items: [cluster] };
+    });
+    const list = await c.listResources("cluster", HOST_ACCOUNT);
+    expect(list.map((r) => r.externalId)).toEqual(["c1"]);
+  });
+
+  it.each(paged)("%s rejects a non-list on the first and a later page", async (type, route) => {
+    const first = client();
+    first.http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    first.http.route("GET", route, { items: "oops" });
+    await expect(first.c.listResources(type, HOST_ACCOUNT)).rejects.toThrow("is not a list");
+
+    const later = client();
+    if (route !== `${BASE}/clusters`) {
+      later.http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    }
+    later.http.route("GET", route, (call: { url: URL }) =>
+      call.url.searchParams.get("pageToken")
+        ? { items: { error: "oops" } }
+        : { items: [{ ...cluster }], nextPageToken: "t2" },
+    );
+    await expect(later.c.listResources(type, HOST_ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each([...paged, ...whole])("%s reads an empty proto3 answer as empty", async (type, route) => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, {});
+    http.route("GET", route, {});
+    expect(await c.listResources(type, HOST_ACCOUNT)).toEqual([]);
+  });
+
+  it.each([...paged, ...whole])("%s rejects an answer with no body", async (type, route) => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    http.route("GET", route, undefined);
+    await expect(c.listResources(type, HOST_ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each(whole)("%s rejects a non-list", async (type, route) => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    http.route("GET", route, { items: { error: "oops" } });
+    await expect(c.listResources(type, HOST_ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads every collection of a cluster, past the old cap of 100", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    await connected(http);
+    collections(http, 1000);
+    expect(await c.listResources("collection", HOST_ACCOUNT)).toHaveLength(1000);
+  });
+
+  it("throws past 1,000 collections on a cluster rather than drop the rest", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    await connected(http);
+    collections(http, 1001);
+    await expect(c.listResources("collection", HOST_ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(http.calls.filter((x) => x.url.pathname.startsWith("/collections/"))).toEqual([]);
+  });
+
+  it("keeps a cluster detail view to its first 100 collections", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters/c1`, { cluster });
+    await connected(http);
+    collections(http, 150);
+    const inst = mapCluster(cluster, HOST_ACCOUNT);
+    const out = await c.enrichDetail(inst);
+    expect(JSON.parse(String(out.fields["__collections"]))).toHaveLength(100);
+  });
+
+  it("does not read a failed collection list as none", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    await connected(http);
+    http.route("GET", `${DB}/collections`, respond(500, { status: { error: "down" } }));
+    await expect(c.listResources("collection", HOST_ACCOUNT)).rejects.toThrow("down");
+  });
+
+  it("does not read a rejected database key as no collections", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    await connected(http);
+    http.route("GET", `${DB}/collections`, respond(403, { status: { error: "bad key" } }));
+    await expect(c.listResources("collection", HOST_ACCOUNT)).rejects.toThrow("bad key");
+  });
+
+  it("does not read a page of collections with no list as none", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    await connected(http);
+    http.route("GET", `${DB}/collections`, { status: "ok" });
+    await expect(c.listResources("collection", HOST_ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  const inPhase = (phase: NonNullable<NonNullable<QcCluster["state"]>["phase"]>): QcCluster => ({
+    ...cluster,
+    state: { ...cluster.state, phase },
+  });
+
+  it("does not prune a connected cluster's collections while it is suspended", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [inPhase("CLUSTER_PHASE_SUSPENDED")] });
+    await connected(http);
+    await expect(c.listResources("collection", HOST_ACCOUNT)).rejects.toThrow(/suspended/);
+    expect(http.calls.some((x) => x.url.pathname === "/collections")).toBe(false);
+  });
+
+  it("does not prune a connected cluster's collections when it has no endpoint", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, {
+      items: [{ ...cluster, state: { phase: "CLUSTER_PHASE_NOT_READY" } }],
+    });
+    await connected(http);
+    await expect(c.listResources("collection", HOST_ACCOUNT)).rejects.toThrow(/no endpoint/);
+  });
+
+  it("reads a connected cluster that is mid-update instead of pruning it", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [inPhase("CLUSTER_PHASE_UPDATING")] });
+    await connected(http);
+    collections(http, 2);
+    expect(await c.listResources("collection", HOST_ACCOUNT)).toHaveLength(2);
+  });
+
+  it("lets the collections of a cluster being deleted go", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [inPhase("CLUSTER_PHASE_DELETING")] });
+    await connected(http);
+    expect(await c.listResources("collection", HOST_ACCOUNT)).toEqual([]);
+    expect(http.calls.some((x) => x.url.pathname === "/collections")).toBe(false);
+  });
+
+  it("has nothing to read on a suspended cluster Infrawrench never connected to", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [inPhase("CLUSTER_PHASE_SUSPENDED")] });
+    expect(await c.listResources("collection", HOST_ACCOUNT)).toEqual([]);
+  });
+
+  it("does not read a bad metering answer as no spend", async () => {
+    const { http, c } = client();
+    const route = `${MGMT}/api/metering/v1/accounts/${ACC}/meterings/2026/10`;
+    const range = { fromDate: "2026-10-01", toDate: "2026-10-31" };
+    http.route("GET", route, { items: { error: "oops" } });
+    await expect(c.fetchCostData(HOST_ACCOUNT, range)).rejects.toThrow("is not a list");
+    http.route("GET", route, undefined);
+    await expect(c.fetchCostData(HOST_ACCOUNT, range)).rejects.toThrow("is not a list");
+    http.route("GET", route, {});
+    expect(await c.fetchCostData(HOST_ACCOUNT, range)).toEqual([]);
+  });
+
+  it("does not read a bad credit answer as no credits", async () => {
+    const { http, c } = client();
+    const route = `${MGMT}/api/billing/v1/accounts/${ACC}/credit-contracts`;
+    http.route("GET", route, { items: "oops" });
+    await expect(c.fetchCreditBalance()).rejects.toThrow("is not a list");
+    http.route("GET", route, {});
+    expect(await c.fetchCreditBalance()).toEqual([]);
+  });
+
+  it("finds a schedule to edit through the same complete list", async () => {
+    const { http, c } = client();
+    http.route("GET", paged[2]![1], { items: "oops" });
+    await expect(
+      c.getResource("backup-schedule", `${HOST_ACCOUNT}:backup-schedule:s1`, HOST_ACCOUNT),
+    ).rejects.toThrow("is not a list");
+  });
+});
+
 describe("cluster updates", () => {
   it("applies edits on top of the current cluster and strips state", () => {
     const body = buildClusterUpdate(
