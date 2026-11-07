@@ -264,3 +264,184 @@ describe("documented field names", () => {
     expect(mapCrawler("c1", {}, ACCOUNT).fields["lastReindexStartedAt"]).toBe("");
   });
 });
+
+describe("lists that cannot say they are complete", () => {
+  const CRAWLERS = "crawler.algolia.com/api/1/crawlers";
+  const ABTESTS = "analytics.algolia.com/2/abtests";
+  const INDEXES = `${READ}/1/indexes`;
+  const crawlerCreds = { crawlerUserId: "user", crawlerApiKey: "key" };
+  const on = (http: ReturnType<typeof fakeHttp>, path: string) =>
+    http.calls.filter((call) => `${call.url.host}${call.url.pathname}` === path);
+  const rows = (n: number, from = 0) =>
+    Array.from({ length: n }, (_, i) => ({ id: `c${from + i}` }));
+  const tests = (n: number, from = 0) =>
+    Array.from({ length: n }, (_, i) => ({ abTestID: from + i, name: `t${from + i}` }));
+
+  it("throws at the index page cap with more to read", async () => {
+    const { http, c } = client();
+    http.route("GET", INDEXES, { items: [{ name: "a" }], nbPages: 1000 });
+    await expect(c.listResources("index", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(on(http, INDEXES)).toHaveLength(50);
+  });
+
+  it("refuses an index page with its key renamed, first or later", async () => {
+    const first = client();
+    first.http.route("GET", INDEXES, { indices: [{ name: "a" }], nbPages: 1 });
+    await expect(first.c.listResources("index", ACCOUNT)).rejects.toThrow("is not a list");
+
+    const later = client();
+    later.http.route("GET", INDEXES, (call: { url: URL }) =>
+      call.url.searchParams.get("page") === "1"
+        ? { indices: [{ name: "b" }], nbPages: 2 }
+        : { items: [{ name: "a" }], nbPages: 2 },
+    );
+    await expect(later.c.listResources("index", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("keeps reading indices when a full page does not say how many pages there are", async () => {
+    const { http, c } = client();
+    const full = Array.from({ length: 1000 }, (_, i) => ({ name: `i${i}` }));
+    http.route("GET", INDEXES, (call: { url: URL }) =>
+      call.url.searchParams.get("page") === "1" ? { items: [{ name: "last" }] } : { items: full },
+    );
+    const list = await c.listResources("index", ACCOUNT);
+    expect(list).toHaveLength(1001);
+    expect(on(http, INDEXES)).toHaveLength(2);
+  });
+
+  it("reads an empty application as no indices", async () => {
+    const { http, c } = client();
+    http.route("GET", INDEXES, { items: [], nbPages: 0 });
+    await expect(c.listResources("index", ACCOUNT)).resolves.toEqual([]);
+    expect(on(http, INDEXES)).toHaveLength(1);
+  });
+
+  it("refuses a key list with its key renamed, through the application's catch too", async () => {
+    const { http, c } = client();
+    http.route("GET", INDEXES, { items: [], nbPages: 0 });
+    http.route("GET", `${READ}/1/keys`, { message: "try again" });
+    await expect(c.listResources("api-key", ACCOUNT)).rejects.toThrow("is not a list");
+    await expect(c.listResources("application", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("still counts no keys when the application's key cannot list them", async () => {
+    const { http, c } = client();
+    http.route("GET", INDEXES, { items: [], nbPages: 0 });
+    http.route("GET", `${READ}/1/keys`, respond(403, { message: "Method not allowed" }));
+    const [app] = await c.listResources("application", ACCOUNT);
+    expect(app!.fields["apiKeyCount"]).toBe(0);
+  });
+
+  it("walks A/B tests by offset until the reported total", async () => {
+    const { http, c } = client();
+    http.route("GET", ABTESTS, (call: { url: URL }) => {
+      const offset = Number(call.url.searchParams.get("offset") ?? 0);
+      return { abtests: tests(offset === 0 ? 100 : 20, offset), count: 100, total: 120 };
+    });
+    const list = await c.listResources("ab-test", ACCOUNT);
+    expect(list).toHaveLength(120);
+    expect(list[119]!.externalId).toBe("119");
+    expect(on(http, ABTESTS).map((call) => call.url.searchParams.get("offset"))).toEqual([
+      "0",
+      "100",
+    ]);
+    expect(on(http, ABTESTS)[0]!.url.searchParams.get("limit")).toBe("100");
+  });
+
+  it("reads null A/B tests as none, as the document says", async () => {
+    const { http, c } = client();
+    http.route("GET", ABTESTS, { abtests: null, count: 0, total: 0 });
+    await expect(c.listResources("ab-test", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("throws at the A/B test cap with more to read", async () => {
+    const { http, c } = client();
+    http.route("GET", ABTESTS, () => ({ abtests: tests(100), count: 100, total: 1_000_000 }));
+    await expect(c.listResources("ab-test", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(on(http, ABTESTS)).toHaveLength(100);
+  });
+
+  it("refuses an A/B test page with its key renamed, first or later", async () => {
+    const first = client();
+    first.http.route("GET", ABTESTS, { tests: [], count: 0, total: 0 });
+    await expect(first.c.listResources("ab-test", ACCOUNT)).rejects.toThrow("is not a list");
+
+    const later = client();
+    later.http.route("GET", ABTESTS, (call: { url: URL }) =>
+      call.url.searchParams.get("offset") === "100"
+        ? { tests: [], count: 0, total: 120 }
+        : { abtests: tests(100), count: 100, total: 120 },
+    );
+    await expect(later.c.listResources("ab-test", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads A/B testing being unavailable as none, but only on the first page", async () => {
+    const first = client();
+    first.http.route("GET", ABTESTS, respond(403, { message: "Not on this plan" }));
+    await expect(first.c.listResources("ab-test", ACCOUNT)).resolves.toEqual([]);
+
+    const later = client();
+    later.http.route("GET", ABTESTS, (call: { url: URL }) =>
+      call.url.searchParams.get("offset") === "100"
+        ? respond(403, { message: "Not on this plan" })
+        : { abtests: tests(100), count: 100, total: 120 },
+    );
+    await expect(later.c.listResources("ab-test", ACCOUNT)).rejects.toThrow("Not on this plan");
+  });
+
+  it("walks crawlers by page until the reported total", async () => {
+    const { http, c } = client(crawlerCreds);
+    http.route("GET", CRAWLERS, (call: { url: URL }) =>
+      call.url.searchParams.get("page") === "2"
+        ? { items: rows(5, 100), total: 105, page: 2, itemsPerPage: 100 }
+        : { items: rows(100), total: 105, page: 1, itemsPerPage: 100 },
+    );
+    const list = await c.listResources("crawler", ACCOUNT);
+    expect(list.map((r) => r.externalId)).toContain("c104");
+    expect(list).toHaveLength(105);
+    const reads = on(http, CRAWLERS);
+    expect(reads.map((call) => call.url.searchParams.get("page"))).toEqual(["1", "2"]);
+    expect(reads[0]!.url.searchParams.get("itemsPerPage")).toBe("100");
+    expect(reads[0]!.url.searchParams.get("appID")).toBe("TESTAPP");
+  });
+
+  it("ends crawlers on a short page when no total is reported", async () => {
+    const { http, c } = client(crawlerCreds);
+    http.route("GET", CRAWLERS, { items: rows(3) });
+    await expect(c.listResources("crawler", ACCOUNT)).resolves.toHaveLength(3);
+    expect(on(http, CRAWLERS)).toHaveLength(1);
+  });
+
+  it("reads a crawler answer with no items and a total of 0 as none", async () => {
+    const { http, c } = client(crawlerCreds);
+    http.route("GET", CRAWLERS, { total: 0, page: 1, itemsPerPage: 100 });
+    await expect(c.listResources("crawler", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("throws at the crawler page cap, the document's last page, with more to read", async () => {
+    const { http, c } = client(crawlerCreds);
+    http.route("GET", CRAWLERS, () => ({ items: rows(100), total: 1_000_000 }));
+    await expect(c.listResources("crawler", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(on(http, CRAWLERS)).toHaveLength(100);
+  });
+
+  it("refuses a crawler page with its key renamed, first or later", async () => {
+    const first = client(crawlerCreds);
+    first.http.route("GET", CRAWLERS, { crawlers: rows(1), total: 1 });
+    await expect(first.c.listResources("crawler", ACCOUNT)).rejects.toThrow("is not a list");
+
+    const later = client(crawlerCreds);
+    later.http.route("GET", CRAWLERS, (call: { url: URL }) =>
+      call.url.searchParams.get("page") === "2"
+        ? { crawlers: rows(1), total: 105 }
+        : { items: rows(100), total: 105 },
+    );
+    await expect(later.c.listResources("crawler", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+});

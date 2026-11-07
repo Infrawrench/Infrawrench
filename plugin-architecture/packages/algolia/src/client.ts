@@ -14,7 +14,14 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { pathEncode, unencodedSegment, withMetricsCapability } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
+  unencodedSegment,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
 import { AlgoliaApi, errorText, isStatus, keyFingerprint } from "./api.js";
 import {
   APPLICATION_EXTERNAL_ID,
@@ -37,10 +44,12 @@ import {
 } from "./render.js";
 import { ACL_LABELS, ACLS } from "./resource-types.js";
 import type {
+  AlAbTest,
   AlAcl,
   AlApiKey,
   AlApiKeyBody,
   AlCrawler,
+  AlCrawlerRow,
   AlIndex,
   AlSettings,
   AlSettingsPatch,
@@ -50,6 +59,14 @@ import type {
 const INDEX_TTL_MS = 30_000;
 const FAN_OUT = 6;
 const MAX_SETTINGS_FETCH = 150;
+const VENDOR = "Algolia";
+const INDEX_PAGE_SIZE = 1000;
+const MAX_INDEX_PAGES = 50;
+const AB_TEST_PAGE_SIZE = 100;
+const MAX_AB_TEST_PAGES = 100;
+// The document's largest `itemsPerPage` and last `page`: the route serves no more than this.
+const CRAWLER_PAGE_SIZE = 100;
+const MAX_CRAWLER_PAGES = 100;
 const DAY_MS = 86_400_000;
 
 export const KEY_VALUE_FIELD = "apiKey";
@@ -237,16 +254,25 @@ export class AlgoliaClient implements PluginClient {
     if (this.indexCache && Date.now() - this.indexCache.at < INDEX_TTL_MS)
       return this.indexCache.value;
     const value = (async () => {
+      const path = "/1/indexes";
       const out: AlIndex[] = [];
-      for (let page = 0; page < 50; page++) {
-        // By hand: `getAll` writes the page after the size, and ends on an empty page.
-        const res = await this.api.search.get("/1/indexes", {
-          query: { page, hitsPerPage: 1000 },
+      // By hand: `withPagination` numbers pages from 1, and these start at 0.
+      for (let page = 0; page < MAX_INDEX_PAGES; page++) {
+        const res = await this.api.search.get(path, {
+          query: { page, hitsPerPage: INDEX_PAGE_SIZE },
         });
-        out.push(...(res?.items ?? []));
-        if (!res?.nbPages || page + 1 >= res.nbPages) break;
+        const rows = requireListPage(res?.items, { vendor: VENDOR, path, key: "items", page: res });
+        out.push(...rows);
+        // `nbPages` is optional in the document, so a full page without it may have a next one.
+        const more = res?.nbPages ? page + 1 < res.nbPages : rows.length === INDEX_PAGE_SIZE;
+        if (!more) return out;
       }
-      return out;
+      throw new ListTruncatedError({
+        vendor: VENDOR,
+        path,
+        items: out.length,
+        maxPages: MAX_INDEX_PAGES,
+      });
     })();
     const slot = { at: Date.now(), value };
     value.catch(() => {
@@ -265,8 +291,68 @@ export class AlgoliaClient implements PluginClient {
   }
 
   private async keys(): Promise<AlApiKey[]> {
-    const res = await this.api.search.get("/1/keys");
-    return res?.keys ?? [];
+    const path = "/1/keys";
+    const res = await this.api.search.get(path);
+    return requireListPage(res?.keys, { vendor: VENDOR, path, key: "keys", page: res });
+  }
+
+  /** Every A/B test: `offset` and `limit`, up to the `total` each page reports. */
+  private async abTestRows(): Promise<AlAbTest[]> {
+    const path = "/2/abtests";
+    const out: AlAbTest[] = [];
+    for (let page = 0; page < MAX_AB_TEST_PAGES; page++) {
+      const res = await this.api.abTests
+        .get(path, { query: { offset: out.length, limit: AB_TEST_PAGE_SIZE } })
+        .catch((e: unknown) => {
+          // A/B testing needs a plan that includes it and the analytics ACL. Past the
+          // first page these statuses are a failed read, which must not read as none.
+          if (page === 0 && isStatus(e, 400, 401, 403, 404)) return null;
+          throw e;
+        });
+      if (res === null) return [];
+      const rows = requireListPage(res?.abtests, {
+        vendor: VENDOR,
+        path,
+        key: "abtests",
+        page: res,
+      });
+      out.push(...rows);
+      if (!rows.length || out.length >= res.total) return out;
+    }
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path,
+      items: out.length,
+      maxPages: MAX_AB_TEST_PAGES,
+    });
+  }
+
+  /** Every crawler of this application, by page. */
+  private async crawlerRows(): Promise<AlCrawlerRow[]> {
+    const path = "/1/crawlers";
+    const out: AlCrawlerRow[] = [];
+    for (let page = 1; page <= MAX_CRAWLER_PAGES; page++) {
+      const res = await this.api.crawler.get(path, {
+        query: { appID: this.api.creds.appId, page, itemsPerPage: CRAWLER_PAGE_SIZE },
+      });
+      // The document makes `items` and `total` optional. Only a stated 0 means none here.
+      const rows = requireListPage(res?.items ?? (res?.total === 0 ? [] : undefined), {
+        vendor: VENDOR,
+        path,
+        key: "items",
+        page: res,
+      });
+      out.push(...rows);
+      const done =
+        res?.total !== undefined ? out.length >= res.total : rows.length < CRAWLER_PAGE_SIZE;
+      if (done || !rows.length) return out;
+    }
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path,
+      items: out.length,
+      maxPages: MAX_CRAWLER_PAGES,
+    });
   }
 
   private async keyByFingerprint(fp: string): Promise<AlApiKey> {
@@ -301,24 +387,11 @@ export class AlgoliaClient implements PluginClient {
         }
         case "api-key":
           return (await this.keys()).map((k) => mapApiKey(k, accountId));
-        case "ab-test": {
-          try {
-            const res = await this.api.abTests.get("/2/abtests", {
-              query: { limit: 100 },
-            });
-            return (res?.abtests ?? []).map((t) => mapAbTest(t, accountId));
-          } catch (e) {
-            // A/B testing needs a plan that includes it and the analytics ACL.
-            if (isStatus(e, 400, 401, 403, 404)) return [];
-            throw e;
-          }
-        }
+        case "ab-test":
+          return (await this.abTestRows()).map((t) => mapAbTest(t, accountId));
         case "crawler": {
           if (!this.api.hasCrawler) return [];
-          const res = await this.api.crawler.get("/1/crawlers", {
-            query: { appID: this.api.creds.appId, itemsPerPage: 100 },
-          });
-          const crawlers = await mapLimit(res?.items ?? [], FAN_OUT, async (c) => {
+          const crawlers = await mapLimit(await this.crawlerRows(), FAN_OUT, async (c) => {
             const full = await this.api.crawler
               .get(`/1/crawlers/${pathEncode(c.id)}`, { query: { withConfig: true } })
               .catch((): AlCrawler => (c.name === undefined ? {} : { name: c.name }));
@@ -335,7 +408,10 @@ export class AlgoliaClient implements PluginClient {
   private async application(accountId: string): Promise<ResourceInstance> {
     const [indexes, keys, clusters] = await Promise.all([
       this.indexes(),
-      this.keys().catch((): AlApiKey[] => []),
+      this.keys().catch((err): AlApiKey[] => {
+        rethrowIncompleteList(err);
+        return [];
+      }),
       this.clusters(),
     ]);
     const primaries = indexes.filter((i) => !i.primary);

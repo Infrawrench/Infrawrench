@@ -4,7 +4,7 @@ import type {
   components as AbTesting,
   operations as AbTestingOps,
 } from "./api-types.abtesting.gen.js";
-import type { components as Crawler } from "./api-types.crawler.gen.js";
+import type { components as Crawler, operations as CrawlerOps } from "./api-types.crawler.gen.js";
 import type { components as Search, operations as SearchOps } from "./api-types.search.gen.js";
 
 /**
@@ -49,6 +49,9 @@ export type AlCrawler = Partial<Crawler["schemas"]["BaseResponse"]> & {
   config?: Crawler["schemas"]["Configuration"];
   lastReindexStartedAt?: string | null;
 };
+
+/** A crawler's row in the list, which has little beyond its id. */
+export type AlCrawlerRow = ApiListItem<CrawlerOps["listCrawlers"], "items">;
 
 /** One point of the Usage API, which has no published document. */
 export interface AlUsagePoint {
