@@ -155,12 +155,10 @@ export const manifest = {
   // on 2026-07-31). Reader on the subscription is enough to read them, but
   // the scanner only runs under the paid Defender for Containers or Defender
   // CSPM plan with registry access on, hence `requiresElevatedCredential`.
-  // `partial` because the walk stops at 20 pages of 1000 recommendations.
   vulnerabilities: {
     label: "Microsoft Defender for Cloud",
     consoleUrl: "https://portal.azure.com/#blade/Microsoft_Azure_Security/SecurityMenuBlade/0",
     requiresElevatedCredential: true,
-    partial: true,
   },
   statusFeed,
   priceCatalog,

@@ -55,6 +55,7 @@
  */
 
 import {
+  ListTruncatedError,
   normalizeVulnerabilityFindings,
   normalizeVulnerabilitySeverity,
   VulnerabilityAccessError,
@@ -70,11 +71,10 @@ export const RESOURCE_GRAPH_URL = `${ARM}/providers/Microsoft.ResourceGraph/reso
 export const RESOURCE_GRAPH_PAGE_SIZE = 1000;
 
 /**
- * Pages of assessments read per collection. 20 x 1000 (image, package) records
- * is far beyond a typical subscription; past it the walk stops and the
- * declaration's `partial` flag tells the host the list may be a subset.
+ * Pages of assessments read before refusing: 50 x 1000 (image, package) records,
+ * in line with the most findings the host stores for an account.
  */
-export const MAX_ASSESSMENT_PAGES = 20;
+export const MAX_ASSESSMENT_PAGES = 50;
 
 /** CVE ids per `cvedetails` enrichment query, and how many such queries at most. */
 const CVE_DETAILS_BATCH = 300;
@@ -178,12 +178,16 @@ async function errorText(res: AzureResponse): Promise<string> {
   }
 }
 
-/** One Resource Graph query, every page up to `maxPages`. */
+/**
+ * One Resource Graph query, every page up to `maxPages`. Past that it stops, which
+ * only enrichment may do; `refuseAtCap` is for a read that decides what is open.
+ */
 async function queryResourceGraph(
   ctx: AzureVulnerabilityContext,
   query: string,
   scope: "subscription" | "tenant",
   maxPages: number,
+  refuseAtCap = false,
 ): Promise<Bag[]> {
   const rows: Bag[] = [];
   let skipToken: string | undefined;
@@ -210,7 +214,15 @@ async function queryResourceGraph(
     const json = await res.json<GraphPage>();
     rows.push(...(json.data ?? []));
     skipToken = json.$skipToken || undefined;
-    if (!skipToken) break;
+    if (!skipToken) return rows;
+  }
+  if (refuseAtCap) {
+    throw new ListTruncatedError({
+      vendor: "Azure Resource Graph",
+      path: new URL(RESOURCE_GRAPH_URL).pathname,
+      items: rows.length,
+      maxPages,
+    });
   }
   return rows;
 }
@@ -425,6 +437,7 @@ export async function fetchAzureVulnerabilityFindings(
     ASSESSMENTS_QUERY,
     "subscription",
     MAX_ASSESSMENT_PAGES,
+    true,
   );
   if (assessments.length === 0) return [];
 

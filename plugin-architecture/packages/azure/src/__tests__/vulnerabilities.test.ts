@@ -16,7 +16,7 @@
  *   https://learn.microsoft.com/en-us/rest/api/defenderforcloud/pricings/get
  */
 import { describe, expect, it, vi } from "vitest";
-import { VulnerabilityAccessError } from "@infrawrench/plugin-base";
+import { ListTruncatedError, VulnerabilityAccessError } from "@infrawrench/plugin-base";
 import type { AzureResponse } from "../http.js";
 import {
   ASSESSMENTS_QUERY,
@@ -321,7 +321,7 @@ describe("fetchAzureVulnerabilityFindings", () => {
     expect(finding!.artifact.name).toBe("sharedimages.azurecr.io/base/node");
   });
 
-  it("follows $skipToken and stops at the page bound", async () => {
+  it("follows $skipToken and refuses past the page cap", async () => {
     const page = (n: number) =>
       res(200, {
         data: [
@@ -331,13 +331,24 @@ describe("fetchAzureVulnerabilityFindings", () => {
       });
     const pages = Array.from({ length: MAX_ASSESSMENT_PAGES + 5 }, (_, i) => page(i));
     const { ctx, calls } = makeCtx({ assessmentPages: pages });
-    const findings = await fetchAzureVulnerabilityFindings(ctx);
-    expect(findings).toHaveLength(MAX_ASSESSMENT_PAGES);
+    await expect(fetchAzureVulnerabilityFindings(ctx)).rejects.toBeInstanceOf(ListTruncatedError);
     const assessmentCalls = calls.filter(
       (c) => (c.body as { query?: string } | undefined)?.query === ASSESSMENTS_QUERY,
     );
     expect(assessmentCalls).toHaveLength(MAX_ASSESSMENT_PAGES);
     expect(assessmentCalls[1]!.body).toMatchObject({ options: { $skipToken: "token-0" } });
+  });
+
+  it("does not refuse over registry names, which only name the image", async () => {
+    const { ctx } = makeCtx({
+      assessmentPages: [
+        res(200, {
+          data: [assessment({ key: "k", cves: [{ CveId: "CVE-2024-1", Severity: "Low" }] })],
+        }),
+      ],
+      registries: res(200, { data: [], $skipToken: "more" }),
+    });
+    await expect(fetchAzureVulnerabilityFindings(ctx)).resolves.toHaveLength(1);
   });
 
   it("still returns findings when the CVE detail table is not visible", async () => {
@@ -411,8 +422,8 @@ describe("Azure vulnerability declarations", () => {
     expect(plugin.manifest.vulnerabilities).toMatchObject({
       label: "Microsoft Defender for Cloud",
       requiresElevatedCredential: true,
-      partial: true,
     });
+    expect(plugin.manifest.vulnerabilities?.partial).toBeUndefined();
   });
 
   it("declares runningImages only over fields the type defines", () => {
