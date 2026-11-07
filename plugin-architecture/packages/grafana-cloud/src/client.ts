@@ -62,7 +62,8 @@ import type {
   GcRegion,
   GcStack,
   GcToken,
-  GfFolder,
+  GfAlertRule,
+  GfDashboardHit,
   SmCheck,
   SmProbe,
 } from "./types.js";
@@ -77,6 +78,8 @@ const MAX_CURSOR_PAGES = 100;
 const CURSOR_PAGE_SIZE = 500;
 const STACK_VENDOR = "Grafana stack";
 const SM_VENDOR = "Grafana Synthetic Monitoring";
+/** A folder past this shows its UID, as one the token may not read does. */
+const MAX_FOLDER_LOOKUPS = 100;
 
 /** `a/b/c` → `["a", "b/c"]`: the first segment is the stack slug or the region. */
 function splitScoped(externalId: string): [string, string] {
@@ -379,22 +382,13 @@ export class GrafanaCloudClient implements PluginClient {
         case "alert-rule":
           return this.perStack(accountId, "sa", async (a) => {
             const stack = stackApi(this.ctx, a.url, this.requireSa(a));
-            const [rules, folders] = await Promise.all([
-              stack.get("/v1/provisioning/alert-rules"),
-              stack.get("/folders", { query: { limit: 1000 } }).catch((err): GfFolder[] => {
-                rethrowIncompleteList(err);
-                return [];
-              }),
-            ]);
-            const names = new Map<string, string>();
-            for (const folder of folders ?? []) {
-              if (folder.uid) names.set(folder.uid, folder.title ?? folder.uid);
-            }
-            return requireListPage(rules, {
+            const rules = requireListPage(await stack.get("/v1/provisioning/alert-rules"), {
               vendor: STACK_VENDOR,
               path: "/v1/provisioning/alert-rules",
               key: null,
-            }).map((r) => mapAlertRule(accountId, a, r, names));
+            });
+            const names = await this.folderNames(stack, rules);
+            return rules.map((r) => mapAlertRule(accountId, a, r, names));
           });
         case "contact-point":
           return this.perStack(accountId, "sa", async (a) => {
@@ -436,6 +430,39 @@ export class GrafanaCloudClient implements PluginClient {
           throw new Error(`Grafana Cloud plugin: unknown resource type "${typeId}"`);
       }
     });
+  }
+
+  /**
+   * The titles of the folders these rules are in. `/folders` with no `parentUid` is
+   * only the root's children when nested folders are on, whereas a search by type
+   * lists every level in one request. Grafana's reference does not promise that, so
+   * a folder the search leaves out is read by its UID. These are only display names,
+   * so part of them is fine: the rest show their UID.
+   */
+  private async folderNames(
+    stack: ReturnType<typeof stackApi>,
+    rules: GfAlertRule[],
+  ): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    if (rules.length === 0) return names;
+    const folders = await stack
+      .getAll("/search", null, { query: { type: "dash-folder" }, partial: true })
+      .catch((err): GfDashboardHit[] | undefined => {
+        rethrowIncompleteList(err);
+        return undefined;
+      });
+    if (!folders) return names;
+    for (const folder of folders) {
+      if (folder.uid) names.set(folder.uid, folder.title ?? folder.uid);
+    }
+    const unnamed = new Set(rules.map((r) => r.folderUID).filter((uid) => uid && !names.has(uid)));
+    await Promise.all(
+      [...unnamed].slice(0, MAX_FOLDER_LOOKUPS).map(async (uid) => {
+        const folder = await stack.get(`/folders/${pathEncode(uid)}`).catch(() => undefined);
+        if (folder?.title) names.set(uid, folder.title);
+      }),
+    );
+    return names;
   }
 
   /** `/api/v1/check` in the current spec; older deployments only answer `/check/list`. */

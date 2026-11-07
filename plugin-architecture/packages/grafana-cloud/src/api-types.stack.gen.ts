@@ -67,7 +67,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/folders": {
+    "/folders/{folder_uid}": {
         parameters: {
             query?: never;
             header?: never;
@@ -75,7 +75,7 @@ export interface paths {
             cookie?: never;
         };
         /** @deprecated */
-        get: operations["getFolders"];
+        get: operations["getFolderByUID"];
         put?: never;
         post?: never;
         delete?: never;
@@ -235,13 +235,31 @@ export interface components {
             message: string;
             status?: string;
         };
-        FolderSearchHit: {
+        Folder: {
+            accessControl?: components["schemas"]["Metadata"];
+            canAdmin?: boolean;
+            canDelete?: boolean;
+            canEdit?: boolean;
+            canSave?: boolean;
+            /** Format: date-time */
+            created?: string;
+            createdBy?: string;
+            hasAcl?: boolean;
             /** Format: int64 */
             id?: number;
             managedBy?: components["schemas"]["ManagerKind"];
+            /** Format: int64 */
+            orgId?: number;
+            parents?: components["schemas"]["Folder"][];
             parentUid?: string;
             title?: string;
             uid?: string;
+            /** Format: date-time */
+            updated?: string;
+            updatedBy?: string;
+            url?: string;
+            /** Format: int64 */
+            version?: number;
         };
         ForbiddenError: {
             body?: components["schemas"]["PublicError"];
@@ -276,6 +294,9 @@ export interface components {
         HitType: string;
         Json: Record<string, never>;
         ManagerKind: string;
+        Metadata: {
+            [key: string]: boolean;
+        };
         Provenance: string;
         ProvisionedAlertRule: {
             annotations?: {
@@ -358,6 +379,14 @@ export interface components {
                 };
             };
         };
+        folderResponse: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Folder"];
+            };
+        };
         forbiddenError: {
             headers: {
                 [name: string]: unknown;
@@ -372,14 +401,6 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["DataSourceList"];
-            };
-        };
-        getFoldersResponse: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["FolderSearchHit"][];
             };
         };
         internalServerError: {
@@ -502,21 +523,18 @@ export interface operations {
             };
         };
     };
-    getFolders: {
+    getFolderByUID: {
         parameters: {
-            query?: {
-                limit?: number;
-                page?: number;
-                parentUid?: string;
-                permission?: "Edit" | "View";
-            };
+            query?: never;
             header?: never;
-            path?: never;
+            path: {
+                folder_uid: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["getFoldersResponse"];
+            200: components["responses"]["folderResponse"];
         };
     };
     search: {

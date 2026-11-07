@@ -53,7 +53,7 @@ export type GcBilledUsage = Partial<Omit<BilledUsageItem, "usages">> & {
 // Stack Grafana HTTP API
 // ---------------------------------------------------------------------------
 
-/** `GET /api/search?type=dash-db`. */
+/** `GET /api/search`, a dashboard or a folder by the `type` asked for. */
 export type GfDashboardHit = ApiListItem<StackOperations["search"], null>;
 
 /** `GET /api/v1/provisioning/alert-rules`. */
@@ -64,9 +64,6 @@ export type GfContactPoint = ApiListItem<StackOperations["RouteGetContactpoints"
 
 /** `GET /api/datasources`. */
 export type GfDatasource = ApiListItem<StackOperations["getDataSources"], null>;
-
-/** `GET /api/folders`. */
-export type GfFolder = ApiListItem<StackOperations["getFolders"], null>;
 
 // ---------------------------------------------------------------------------
 // Synthetic Monitoring API

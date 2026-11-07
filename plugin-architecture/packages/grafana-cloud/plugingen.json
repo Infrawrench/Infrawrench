@@ -196,7 +196,7 @@
       ],
       "paths": {
         "/search": ["get"],
-        "/folders": ["get"],
+        "/folders/{folder_uid}": ["get"],
         "/datasources": ["get"],
         "/datasources/uid/{uid}": ["delete"],
         "/datasources/uid/{uid}/health": ["get"],

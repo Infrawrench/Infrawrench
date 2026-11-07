@@ -436,3 +436,104 @@ describe("reading a list to its end", () => {
     await expect(client.listResources("organization", "acct")).rejects.toThrow("is not a list");
   });
 });
+
+describe("alert rule folder names", () => {
+  const rule = (folderUID: string) => ({ uid: `r-${folderUID}`, title: "CPU high", folderUID });
+
+  function connected(route: (url: URL) => Reply | undefined) {
+    const made = makeHttp((url, method) => route(url) ?? baseRoute(url, method) ?? { status: 404 });
+    const { secrets, store } = secretsStore();
+    store.set("acct:stack:acme-prod|serviceAccountToken", "glsa_123");
+    const client = hostClient(
+      new GrafanaCloudClient({ token: fakeToken() }, { http: made.http, secrets }),
+    );
+    return { client, calls: made.calls };
+  }
+
+  it("names a rule in a nested folder from one search of every folder", async () => {
+    const { client, calls } = connected((url) => {
+      if (url.pathname === "/api/v1/provisioning/alert-rules") return { body: [rule("nested")] };
+      if (url.pathname === "/api/search") {
+        return { body: [{ uid: "nested", title: "Payments", folderUid: "root" }] };
+      }
+      return undefined;
+    });
+    const [listed] = await client.listResources("alert-rule", "acct");
+    expect(listed?.fields["folder"]).toBe("Payments");
+    expect(listed?.fields["folderUid"]).toBe("nested");
+    const search = calls.find((c) => c.url.pathname === "/api/search");
+    expect(search?.url.searchParams.get("type")).toBe("dash-folder");
+    expect(calls.filter((c) => c.url.pathname.startsWith("/api/folders"))).toEqual([]);
+  });
+
+  it("reads the next page of folders after a full one", async () => {
+    const full = Array.from({ length: 5000 }, (_, i) => ({ uid: `f${i}`, title: `F${i}` }));
+    const { client } = connected((url) => {
+      if (url.pathname === "/api/v1/provisioning/alert-rules") return { body: [rule("late")] };
+      if (url.pathname === "/api/search") {
+        return url.searchParams.get("page") === "1"
+          ? { body: full }
+          : { body: [{ uid: "late", title: "Last" }] };
+      }
+      return undefined;
+    });
+    const [listed] = await client.listResources("alert-rule", "acct");
+    expect(listed?.fields["folder"]).toBe("Last");
+  });
+
+  it("does not fail the rules when there are more folders than it reads", async () => {
+    const full = Array.from({ length: 5000 }, (_, i) => ({ uid: `f${i}`, title: `F${i}` }));
+    const { client } = connected((url) => {
+      if (url.pathname === "/api/v1/provisioning/alert-rules") return { body: [rule("f1")] };
+      if (url.pathname === "/api/search") return { body: full };
+      return undefined;
+    });
+    const [listed] = await client.listResources("alert-rule", "acct");
+    expect(listed?.fields["folder"]).toBe("F1");
+  });
+
+  it("looks up a folder the search left out by its UID", async () => {
+    const { client, calls } = connected((url) => {
+      if (url.pathname === "/api/v1/provisioning/alert-rules") {
+        return { body: [rule("nested"), { ...rule("nested"), uid: "r2" }, rule("root")] };
+      }
+      if (url.pathname === "/api/search") return { body: [{ uid: "root", title: "Top" }] };
+      if (url.pathname === "/api/folders/nested") return { body: { uid: "nested", title: "Deep" } };
+      return undefined;
+    });
+    const listed = await client.listResources("alert-rule", "acct");
+    expect(listed.map((r) => r.fields["folder"])).toEqual(["Deep", "Deep", "Top"]);
+    expect(calls.filter((c) => c.url.pathname === "/api/folders/nested")).toHaveLength(1);
+  });
+
+  it("keeps the UID for a folder it may not read", async () => {
+    const { client } = connected((url) => {
+      if (url.pathname === "/api/v1/provisioning/alert-rules") return { body: [rule("hidden")] };
+      if (url.pathname === "/api/search") return { body: [] };
+      if (url.pathname === "/api/folders/hidden") return { status: 403 };
+      return undefined;
+    });
+    const [listed] = await client.listResources("alert-rule", "acct");
+    expect(listed?.fields["folder"]).toBe("hidden");
+  });
+
+  it("keeps UIDs, with no lookups, when the search itself fails", async () => {
+    const { client, calls } = connected((url) => {
+      if (url.pathname === "/api/v1/provisioning/alert-rules") return { body: [rule("a")] };
+      if (url.pathname === "/api/search") return { status: 500, body: "down" };
+      return undefined;
+    });
+    const [listed] = await client.listResources("alert-rule", "acct");
+    expect(listed?.fields["folder"]).toBe("a");
+    expect(calls.filter((c) => c.url.pathname.startsWith("/api/folders"))).toEqual([]);
+  });
+
+  it("does not read a bad folder page as no folders", async () => {
+    const { client } = connected((url) => {
+      if (url.pathname === "/api/v1/provisioning/alert-rules") return { body: [rule("a")] };
+      if (url.pathname === "/api/search") return { body: { folders: [] } };
+      return undefined;
+    });
+    await expect(client.listResources("alert-rule", "acct")).rejects.toThrow("is not a list");
+  });
+});
