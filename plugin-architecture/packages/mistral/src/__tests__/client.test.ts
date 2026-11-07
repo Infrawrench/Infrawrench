@@ -312,6 +312,161 @@ describe("admin degradation", () => {
   });
 });
 
+describe("the usage report in the document's shape", () => {
+  const JULY = { fromDate: "2026-07-01", toDate: "2026-07-31" };
+  const LARGE_IN = { billing_metric: "mistral-large", billing_group: "input" };
+  const LARGE_OUT = { billing_metric: "mistral-large", billing_group: "output" };
+  const OCR_PAGES = { billing_metric: "ocr", billing_group: "pages" };
+  const PRICE = { event_type: null, api_zone: "global", service_tier: "standard" };
+
+  function report(fields: Record<string, unknown>): Record<string, unknown> {
+    return {
+      currency: "EUR",
+      currency_symbol: "\u20ac",
+      date: "2026-07-01T00:00:00Z",
+      start_date: "2026-07-01T00:00:00Z",
+      end_date: "2026-08-01T00:00:00Z",
+      previous_month: "2026-06",
+      next_month: null,
+      chat: { models: {} },
+      fine_tuning: { training: {}, storage: {} },
+      vibe_usage: 0,
+      prices: [
+        { ...PRICE, ...LARGE_IN, price: "0.002" },
+        { ...PRICE, ...LARGE_OUT, price: 0.006 },
+        { ...PRICE, ...OCR_PAGES, price: "0.01" },
+      ],
+      ...fields,
+    };
+  }
+
+  function amounts(rows: Array<{ service?: string; amount: number }>): Record<string, number> {
+    return Object.fromEntries(rows.map((row) => [row.service ?? "", row.amount]));
+  }
+
+  async function costs(fields: Record<string, unknown>) {
+    installFetch(() => jsonResponse(report(fields)));
+    return client("admin-key").fetchCostData(ACCOUNT, JULY);
+  }
+
+  it("prices each service's usage from the report's own catalogue", async () => {
+    const rows = await costs({
+      chat: {
+        models: {
+          "mistral-large-latest": {
+            input: [{ ...LARGE_IN, value: 1000 }],
+            output: [{ ...LARGE_OUT, value: 500 }],
+          },
+        },
+      },
+      ocr: { models: { "mistral-ocr": { pages: [{ ...OCR_PAGES, value: 100 }] } } },
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ date: "2026-07-01", service: "chat", currency: "EUR" });
+    expect(amounts(rows)["chat"]).toBeCloseTo(5);
+    expect(amounts(rows)["ocr"]).toBeCloseTo(1);
+  });
+
+  it("reaches the nested services under their own name", async () => {
+    const chatRow = { "mistral-large-latest": { input: [{ ...LARGE_IN, value: 1000 }] } };
+    const rows = await costs({
+      libraries_api: { tokens: { models: chatRow }, pages: { models: {} } },
+      vibe_code: { completion: { models: chatRow }, ocr: { models: {} } },
+      fine_tuning: { training: chatRow, storage: {} },
+    });
+    expect(amounts(rows)["libraries_api"]).toBeCloseTo(2);
+    expect(amounts(rows)["vibe_code"]).toBeCloseTo(2);
+    expect(amounts(rows)["fine_tuning"]).toBeCloseTo(2);
+  });
+
+  it("charges only what was paid for, where a row says", async () => {
+    const rows = await costs({
+      chat: { models: { m: { input: [{ ...LARGE_IN, value: 1000, value_paid: 400 }] } } },
+    });
+    expect(amounts(rows)["chat"]).toBeCloseTo(0.8);
+  });
+
+  it("uses the price of the row's zone and tier, or the standard global one", async () => {
+    const prices = [
+      { ...PRICE, ...LARGE_IN, api_zone: "eu", service_tier: "priority", price: "1" },
+      { ...PRICE, ...LARGE_IN, api_zone: "eu", price: "2" },
+      { ...PRICE, ...LARGE_IN, service_tier: "priority", price: "3" },
+      { ...PRICE, ...LARGE_IN, price: "4" },
+    ];
+    const rows = await costs({
+      prices,
+      chat: {
+        models: { m: { input: [{ ...LARGE_IN, value: 1, api_zone: "eu" }] } },
+      },
+      completion: {
+        models: { m: { input: [{ ...LARGE_IN, value: 1, service_tier: "priority" }] } },
+      },
+      ocr: { models: { m: { input: [{ ...LARGE_IN, value: 1 }] } } },
+      audio: {
+        models: {
+          m: { input: [{ ...LARGE_IN, value: 1, api_zone: "eu", service_tier: "priority" }] },
+        },
+      },
+    });
+    expect(amounts(rows)).toEqual({ chat: 2, completion: 3, ocr: 4, audio: 1 });
+  });
+
+  it("finds the price from the keys a row sits under, when it does not name them", async () => {
+    const rows = await costs({
+      chat: { models: { "mistral-large": { input: [{ value: 1000 }] } } },
+    });
+    expect(amounts(rows)["chat"]).toBeCloseTo(2);
+  });
+
+  it("does not read a quantity or a legacy field as money", async () => {
+    const rows = await costs({
+      vibe_usage: 14,
+      fine_tuning: { training: {}, storage: { "ft:mistral-small:abc": 123456 } },
+    });
+    expect(rows).toEqual([]);
+  });
+
+  it("writes no row for a month with no usage, or usage nobody paid for", async () => {
+    expect(await costs({})).toEqual([]);
+    vi.restoreAllMocks();
+    expect(
+      await costs({
+        chat: { models: { m: { input: [{ ...LARGE_IN, value: 9, value_paid: 0 }] } } },
+      }),
+    ).toEqual([]);
+  });
+
+  it("takes a figure a service states itself over rows it cannot price", async () => {
+    const rows = await costs({
+      prices: null,
+      chat: { cost: 12.5, models: { m: { input: [{ tokens: 9 }] } } },
+    });
+    expect(amounts(rows)).toEqual({ chat: 12.5 });
+  });
+
+  it("keeps what it can price when one model has no price", async () => {
+    const rows = await costs({
+      chat: {
+        models: {
+          priced: { input: [{ ...LARGE_IN, value: 1000 }] },
+          preview: { input: [{ billing_metric: "preview", billing_group: "input", value: 7 }] },
+        },
+      },
+    });
+    expect(amounts(rows)["chat"]).toBeCloseTo(2);
+  });
+
+  it.each([
+    [
+      "no catalogue",
+      { prices: null, chat: { models: { m: { input: [{ ...LARGE_IN, value: 9 }] } } } },
+    ],
+    ["rows it cannot read", { chat: { models: { m: { input: [{ tokens: 9 }] } } } }],
+  ])("fails rather than report nothing for usage with %s", async (_name, fields) => {
+    await expect(costs(fields)).rejects.toThrow("no price");
+  });
+});
+
 describe("period-native cost dating", () => {
   it("keeps an in-progress month on one key as it is re-collected day after day", async () => {
     // `/admin/usage` returns the *running* total of the month, so the same

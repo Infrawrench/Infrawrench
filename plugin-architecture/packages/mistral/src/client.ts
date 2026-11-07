@@ -54,6 +54,7 @@ import {
   type MistralTranscription,
   type MistralVoice,
   type ModelList,
+  type UsagePrice,
   type UsageReport,
   type VoiceUpdate,
 } from "./api.js";
@@ -939,8 +940,9 @@ export class MistralClient implements PluginClient {
    * `GET /v1/admin/usage?month=&year=`.
    *
    * Monthly granularity with a per-service breakdown (chat, completion, ocr,
-   * audio, audio_characters, fine_tuning, connectors, libraries_api), so rows
-   * are period-native and the manifest says so.
+   * audio, audio_characters, audio_agents, fine_tuning, connectors, libraries_api,
+   * vibe_code), so rows are period-native and the manifest says so. The report holds
+   * quantities and a price catalogue rather than amounts: see `pricedUsage`.
    *
    * **Every row is dated to the *first* day of its month, and the chunk only
    * reports months whose first day it contains.** Both halves matter, and the
@@ -994,11 +996,25 @@ export class MistralClient implements PluginClient {
         query: { year: String(year), month: String(month) },
       });
       const currency = typeof body.currency === "string" ? body.currency : "USD";
+      const prices = body.prices ?? [];
 
+      let priced = 0;
+      let unpriced = 0;
       for (const [service, value] of Object.entries(body)) {
-        const amount = costOf(value);
-        if (amount === undefined || amount === 0) continue;
-        rows.push({ date, service, currency, amount });
+        if (USAGE_REPORT_FIELDS.has(service)) continue;
+        const stated = costOf(value);
+        const usage = pricedUsage(value, prices);
+        priced += stated === undefined ? usage.priced : 1;
+        unpriced += stated === undefined ? usage.unpriced : 0;
+        const amount = stated ?? usage.amount;
+        if (amount !== 0) rows.push({ date, service, currency, amount });
+      }
+      // Nothing priced at all means this report is not what this reader understands,
+      // and an empty month would read as no spend. One unpriced model can be a free one.
+      if (unpriced > 0 && priced === 0) {
+        throw new Error(
+          `Mistral plugin: the usage report for ${date.slice(0, 7)} shows usage with no price to apply, so its cost cannot be worked out.`,
+        );
       }
     }
     return rows;
@@ -1724,9 +1740,106 @@ function parseJson<T>(raw: string | undefined): T | undefined {
 }
 
 /**
- * Pull a money figure out of one branch of the usage response. Mistral returns
- * a mix of scalars and per-category objects, so this handles both without
- * assuming a fixed schema for every service key.
+ * What in the usage report is not a service. `vibe_usage` is documented as a legacy
+ * field that is always 0, though the reference's example shows 14: not money either way.
+ */
+const USAGE_REPORT_FIELDS = new Set([
+  "currency",
+  "currency_symbol",
+  "date",
+  "end_date",
+  "next_month",
+  "previous_month",
+  "prices",
+  "start_date",
+  "vibe_usage",
+]);
+
+/** The report's rows are open objects in the document, so they are read as untyped. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function textOf(value: unknown): string | undefined {
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/**
+ * The price of one usage row. Rows sit at `<model>.<group>` and normally name their
+ * `billing_metric` and `billing_group`, the fields `/admin/usage/query` documents and
+ * the catalogue is keyed by. A catalogue can price one metric per zone and tier, so
+ * this takes the row's own, or the standard global price when the row does not say.
+ */
+function priceOf(
+  row: Record<string, unknown>,
+  keys: { model: string | undefined; group: string | undefined },
+  prices: UsagePrice[],
+): number | undefined {
+  const metric = textOf(row["billing_metric"]) ?? keys.model;
+  const group = textOf(row["billing_group"]) ?? keys.group;
+  let matches = prices.filter((p) => p.billing_metric === metric && p.billing_group === group);
+  const prefer = (keep: (price: UsagePrice) => boolean): void => {
+    const kept = matches.filter(keep);
+    if (kept.length > 0) matches = kept;
+  };
+  const eventType = textOf(row["event_type"]);
+  if (eventType) prefer((p) => p.event_type === eventType);
+  const zone = textOf(row["api_zone"]) ?? "global";
+  prefer((p) => p.api_zone === zone);
+  const tier = textOf(row["service_tier"]) ?? "standard";
+  prefer((p) => p.service_tier === tier);
+  return finiteNumber(matches[0]?.price);
+}
+
+/**
+ * One service's spend: each usage row's quantity at its unit price, which is how the
+ * document says the catalogue applies ("Prices used to calculate usage amounts"). The
+ * document leaves the rows themselves open. `value` is what `/admin/usage/query` calls
+ * a row's quantity, and `value_paid` is read first where it comes, as it leaves out
+ * what an allowance covered. Unverified against a live Enterprise report: #515.
+ */
+function pricedUsage(
+  node: unknown,
+  prices: UsagePrice[],
+  path: string[] = [],
+): { amount: number; priced: number; unpriced: number } {
+  const total = { amount: 0, priced: 0, unpriced: 0 };
+  const add = (part: { amount: number; priced: number; unpriced: number }): void => {
+    total.amount += part.amount;
+    total.priced += part.priced;
+    total.unpriced += part.unpriced;
+  };
+  if (Array.isArray(node)) {
+    const keys = { model: path.at(-2), group: path.at(-1) };
+    for (const row of node) {
+      if (!isRecord(row)) continue;
+      const quantity = finiteNumber(row["value_paid"]) ?? finiteNumber(row["value"]);
+      if (quantity === 0) continue;
+      const price = priceOf(row, keys, prices);
+      if (quantity === undefined || price === undefined) total.unpriced += 1;
+      else add({ amount: quantity * price, priced: 1, unpriced: 0 });
+    }
+  } else if (isRecord(node)) {
+    for (const [key, value] of Object.entries(node)) {
+      add(pricedUsage(value, prices, [...path, key]));
+    }
+  }
+  return total;
+}
+
+/**
+ * A money figure a service states itself. The document has none, so this is only for
+ * an answer that does not match it, and it wins over working one out.
  */
 function costOf(value: UsageReport[keyof UsageReport]): number | undefined {
   if (typeof value === "number") return Number.isFinite(value) ? value : undefined;

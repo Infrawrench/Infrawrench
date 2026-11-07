@@ -64,6 +64,7 @@ export type LibraryCreate = ApiBody<operations["libraries_create_v1"]>;
 export type LibraryUpdate = ApiBody<operations["libraries_patch_v1"]>;
 
 export type UsageReport = ApiResponse<operations["users_api_admin_usage_get_usage"]>;
+export type UsagePrice = components["schemas"]["PriceData"];
 
 type Transcription = ApiResponse<operations["audio_api_v1_transcriptions_post"]>;
 /**
