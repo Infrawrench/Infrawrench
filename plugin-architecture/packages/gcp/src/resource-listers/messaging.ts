@@ -80,10 +80,10 @@ export async function listCloudTasksQueues(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const locData = await ctx.get<{ locations?: Array<{ name: string; locationId: string }> }>(
+  const locations = await ctx.paginate<{ name: string; locationId: string }>(
     `https://cloudtasks.googleapis.com/v2/projects/${p}/locations`,
+    "locations",
   );
-  const locations = locData.locations ?? [];
   return readEachRegion(
     locations,
     async (loc) => {
@@ -136,10 +136,10 @@ export async function listCloudSchedulerJobs(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const locData = await ctx.get<{ locations?: Array<{ name: string; locationId: string }> }>(
+  const locations = await ctx.paginate<{ name: string; locationId: string }>(
     `https://cloudscheduler.googleapis.com/v1/projects/${p}/locations`,
+    "locations",
   );
-  const locations = locData.locations ?? [];
   return readEachRegion(
     locations,
     async (loc) => {

@@ -241,10 +241,10 @@ export async function listAppEngineServices(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ services?: Record<string, unknown>[] }>(
+  const items = await ctx.paginate<Record<string, unknown>>(
     `https://appengine.googleapis.com/v1/apps/${p}/services`,
+    "services",
   );
-  const items = data.services ?? [];
   return items.map((svc) => {
     const name = String(svc["id"] ?? svc["name"] ?? "");
     const split = svc["split"] as Record<string, unknown> | undefined;

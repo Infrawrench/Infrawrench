@@ -99,6 +99,22 @@ describe("listCloudArmorTargets", () => {
     fetchSpy.mockResolvedValueOnce(new Response("x", { status: 403 }));
     expect((await listCloudArmorTargets(ctx, res())).error).toContain("GCP Compute API 403");
   });
+
+  it("follows the pages", async () => {
+    const page = (name: string, nextPageToken?: string) =>
+      json({
+        items: {
+          global: {
+            backendServices: [{ name, securityPolicy: "https://x/securityPolicies/pol" }],
+          },
+        },
+        ...(nextPageToken ? { nextPageToken } : {}),
+      });
+    fetchSpy.mockResolvedValueOnce(page("bs1", "two")).mockResolvedValueOnce(page("bs2"));
+    const out = await listCloudArmorTargets(ctx, res());
+    expect(out.targets.map((t) => t.name)).toEqual(["bs1", "bs2"]);
+    expect(new URL(fetchSpy.mock.calls[1]![0]).searchParams.get("pageToken")).toBe("two");
+  });
 });
 
 describe("executeCloudArmorCommand", () => {

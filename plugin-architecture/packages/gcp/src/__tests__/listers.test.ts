@@ -606,12 +606,10 @@ describe("serverless + messaging listers", () => {
 
   it("listAppEngineServices builds url + traffic split", async () => {
     const ctx = makeCtx({
-      get: () => ({
-        services: [
-          { id: "default", servingStatus: "SERVING", split: { allocations: { v1: 1 } } },
-          { id: "api", split: { allocations: { v2: 0.5, v3: 0.5 } } },
-        ],
-      }),
+      paginate: () => [
+        { id: "default", servingStatus: "SERVING", split: { allocations: { v1: 1 } } },
+        { id: "api", split: { allocations: { v2: 0.5, v3: 0.5 } } },
+      ],
     });
     const rs = await listers.listAppEngineServices(ctx, ACCT, PROJ);
     expect(rs[0]!.resolvedOutputs.url).toBe(`https://${PROJ}.appspot.com`);
@@ -636,34 +634,37 @@ describe("serverless + messaging listers", () => {
   });
 
   it("listCloudTasksQueues / SchedulerJobs fan out over locations", async () => {
+    const usCentral1 = [
+      { name: `projects/${PROJ}/locations/us-central1`, locationId: "us-central1" },
+    ];
     const tasks = makeCtx({
-      get: () => ({
-        locations: [{ name: `projects/${PROJ}/locations/us-central1`, locationId: "us-central1" }],
-      }),
-      paginate: () => [
-        {
-          name: `projects/${PROJ}/locations/us-central1/queues/q1`,
-          state: "RUNNING",
-          rateLimits: { maxDispatchesPerSecond: 5 },
-        },
-      ],
+      paginate: (url) =>
+        url.endsWith("/locations")
+          ? usCentral1
+          : [
+              {
+                name: `projects/${PROJ}/locations/us-central1/queues/q1`,
+                state: "RUNNING",
+                rateLimits: { maxDispatchesPerSecond: 5 },
+              },
+            ],
     });
     const rs = await listers.listCloudTasksQueues(tasks, ACCT, PROJ);
     expect(rs[0]!.fields.region).toBe("us-central1");
     expect(rs[0]!.fields.maxDispatchesPerSecond).toBe(5);
 
     const sched = makeCtx({
-      get: () => ({
-        locations: [{ name: `projects/${PROJ}/locations/us-central1`, locationId: "us-central1" }],
-      }),
-      paginate: () => [
-        {
-          name: `projects/${PROJ}/locations/us-central1/jobs/j1`,
-          schedule: "* * * * *",
-          pubsubTarget: { topicName: "projects/p/topics/t1" },
-          state: "ENABLED",
-        },
-      ],
+      paginate: (url) =>
+        url.endsWith("/locations")
+          ? usCentral1
+          : [
+              {
+                name: `projects/${PROJ}/locations/us-central1/jobs/j1`,
+                schedule: "* * * * *",
+                pubsubTarget: { topicName: "projects/p/topics/t1" },
+                state: "ENABLED",
+              },
+            ],
     });
     const sj = await listers.listCloudSchedulerJobs(sched, ACCT, PROJ);
     expect(sj[0]!.fields.targetType).toBe("Pub/Sub");
@@ -881,9 +882,7 @@ describe("devops + observability listers", () => {
 
   it("listLogSinks + listAlertPolicies", async () => {
     const ls = makeCtx({
-      get: () => ({
-        sinks: [{ name: "sink1", destination: "storage.googleapis.com/b", disabled: true }],
-      }),
+      paginate: () => [{ name: "sink1", destination: "storage.googleapis.com/b", disabled: true }],
     });
     const [s] = await listers.listLogSinks(ls, ACCT, PROJ);
     expect(s!.fields.disabled).toBe(true);

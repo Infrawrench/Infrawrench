@@ -106,6 +106,9 @@ export async function fetchCloudArmorPolicyFull(
   return { rules, fingerprint: String(data.fingerprint ?? ""), error: "" };
 }
 
+/** 10,000 backend services, for a detail panel: past that it shows the ones it read. */
+const MAX_BACKEND_SERVICE_PAGES = 20;
+
 export async function listCloudArmorTargets(
   ctx: CloudArmorContext,
   resource: ResourceInstance,
@@ -114,26 +117,34 @@ export async function listCloudArmorTargets(
   // Cloud Armor policies attach to backend services via the backend service's
   // securityPolicy field: there's no reverse-lookup endpoint, so we scan
   // aggregated/backendServices and filter by suffix match.
-  const res = await gcpFetch(
-    ctx,
-    `https://compute.googleapis.com/compute/v1/projects/${ctx.project}/aggregated/backendServices?maxResults=500`,
-  );
-  if (!res.ok) {
-    return { targets: [], error: `GCP Compute API ${res.status}: ${await res.text()}` };
-  }
-  const data = (await res.json()) as {
-    items?: Record<string, { backendServices?: Array<Record<string, unknown>> }>;
-  };
   const targets: CloudArmorTargetSummary[] = [];
   const policySuffix = `/securityPolicies/${name}`;
-  for (const [scope, group] of Object.entries(data.items ?? {})) {
-    for (const bs of group.backendServices ?? []) {
-      const policy = String(bs["securityPolicy"] ?? "");
-      if (!policy || !policy.endsWith(policySuffix)) continue;
-      // scope is e.g. "global" or "regions/us-central1"
-      const region = scope.startsWith("regions/") ? scope.slice("regions/".length) : "";
-      targets.push({ name: String(bs["name"] ?? ""), region });
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_BACKEND_SERVICE_PAGES; page++) {
+    const url = new URL(
+      `https://compute.googleapis.com/compute/v1/projects/${ctx.project}/aggregated/backendServices`,
+    );
+    url.searchParams.set("maxResults", "500");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const res = await gcpFetch(ctx, url.toString());
+    if (!res.ok) {
+      return { targets: [], error: `GCP Compute API ${res.status}: ${await res.text()}` };
     }
+    const data = (await res.json()) as {
+      items?: Record<string, { backendServices?: Array<Record<string, unknown>> }>;
+      nextPageToken?: string;
+    };
+    for (const [scope, group] of Object.entries(data.items ?? {})) {
+      for (const bs of group.backendServices ?? []) {
+        const policy = String(bs["securityPolicy"] ?? "");
+        if (!policy || !policy.endsWith(policySuffix)) continue;
+        // scope is e.g. "global" or "regions/us-central1"
+        const region = scope.startsWith("regions/") ? scope.slice("regions/".length) : "";
+        targets.push({ name: String(bs["name"] ?? ""), region });
+      }
+    }
+    pageToken = data.nextPageToken;
+    if (!pageToken) break;
   }
   return { targets, error: "" };
 }

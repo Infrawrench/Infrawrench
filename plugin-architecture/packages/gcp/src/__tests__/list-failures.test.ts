@@ -241,11 +241,8 @@ const REGION_LISTS: Array<{
   },
 ];
 
-/** A context whose location list answers `LOCATIONS`, whichever way the lister reads it. */
 function withLocations(read: (url: string) => unknown[]): ListerContext {
-  const ctx = makeCtx((url) => (url.endsWith("/locations") ? LOCATIONS : read(url)));
-  ctx.get = vi.fn(async () => ({ locations: LOCATIONS })) as ListerContext["get"];
-  return ctx;
+  return makeCtx((url) => (url.endsWith("/locations") ? LOCATIONS : read(url)));
 }
 
 describe.each(REGION_LISTS)("$name when one region's read fails", (list) => {

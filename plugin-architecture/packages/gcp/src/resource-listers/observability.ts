@@ -6,10 +6,10 @@ export async function listLogSinks(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ sinks?: Record<string, unknown>[] }>(
+  const items = await ctx.paginate<Record<string, unknown>>(
     `https://logging.googleapis.com/v2/projects/${p}/sinks`,
+    "sinks",
   );
-  const items = data.sinks ?? [];
   return items.map((sink) => {
     const name = String(sink["name"]);
     // `destination` is a service-qualified URI: the target's own id is the tail

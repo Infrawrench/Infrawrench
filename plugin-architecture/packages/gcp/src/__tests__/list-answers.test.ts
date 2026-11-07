@@ -144,3 +144,42 @@ describe("a list that does not end", () => {
   });
 });
 
+
+describe("lists that stopped at their first page", () => {
+  const twoPages = (key: string, row: (n: number) => unknown) => (url: URL) =>
+    url.searchParams.get("pageToken")
+      ? { [key]: [row(2)] }
+      : { [key]: [row(1)], nextPageToken: "2" };
+
+  it("reads every log sink", async () => {
+    const { client } = clientFor(twoPages("sinks", (n) => ({ name: `s${n}` })));
+    const rows = await client.listResources("log-sink", ACCT);
+    expect(rows.map((r) => r.fields.name)).toEqual(["s1", "s2"]);
+  });
+
+  it("reads every App Engine service", async () => {
+    const { client } = clientFor(twoPages("services", (n) => ({ id: `svc${n}` })));
+    const rows = await client.listResources("app-engine-service", ACCT);
+    expect(rows.map((r) => r.fields.name)).toEqual(["svc1", "svc2"]);
+  });
+
+  it.each([
+    ["cloud-tasks-queue", "queues", "cloudtasks.googleapis.com"],
+    ["cloud-scheduler-job", "jobs", "cloudscheduler.googleapis.com"],
+  ])("%s reads queues in every location", async (typeId, key) => {
+    const { client } = clientFor((url) => {
+      if (url.pathname.endsWith("/locations")) {
+        return url.searchParams.get("pageToken")
+          ? { locations: [{ name: "projects/proj/locations/two", locationId: "two" }] }
+          : {
+              locations: [{ name: "projects/proj/locations/one", locationId: "one" }],
+              nextPageToken: "2",
+            };
+      }
+      return { [key]: [{ name: `${url.pathname}/x` }] };
+    });
+    const rows = await client.listResources(typeId, ACCT);
+    expect(rows.map((r) => r.fields.region)).toEqual(["one", "two"]);
+  });
+});
+
