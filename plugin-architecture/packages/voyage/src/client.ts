@@ -21,20 +21,15 @@ import { formatBytes, joinSubtitle, pathEncode } from "@infrawrench/plugin-base"
 import {
   API_BASE,
   createVoyageApi,
+  FILE_PAGES,
+  FILE_PICKER_PAGES,
   type Batch,
-  type PageQuery,
   type VoyageApi,
   type VoyageFile,
 } from "./api.js";
 import { BATCH_ENDPOINTS, VOYAGE_MODELS, type VoyageKind } from "./catalog.js";
 
 const DASHBOARD = "https://dashboard.voyageai.com";
-
-interface Page<T> {
-  data?: T[];
-  has_more?: boolean;
-  last_id?: string;
-}
 
 type Scalar = string | number | boolean | null | undefined;
 
@@ -238,28 +233,14 @@ export class VoyageClient implements PluginClient {
     });
   }
 
-  /** `limit≤100` + `after=<last_id>` while `has_more`. */
-  private async paged<T extends { id?: string }>(
-    list: (query: PageQuery) => Promise<Page<T>>,
-  ): Promise<T[]> {
-    const out: T[] = [];
-    let after = "";
-    for (let i = 0; i < 50; i++) {
-      const page = await list({ limit: 100, ...(after ? { after } : {}) });
-      const data = page.data ?? [];
-      out.push(...data);
-      if (!page.has_more || data.length === 0) break;
-      after = s(page.last_id) || s(data[data.length - 1]?.id);
-    }
-    return out.filter((x) => x.id);
+  private async listBatches(): Promise<Batch[]> {
+    const rows = await this.call((api) => api.getAll("/batches", "data"));
+    return rows.filter((b) => b.id);
   }
 
-  private listBatches(): Promise<Batch[]> {
-    return this.paged((query) => this.call((api) => api.get("/batches", { query })));
-  }
-
-  private listFiles(): Promise<VoyageFile[]> {
-    return this.paged((query) => this.call((api) => api.get("/files", { query })));
+  private async listFiles(): Promise<VoyageFile[]> {
+    const rows = await this.call((api) => api.getAll("/files", "data", FILE_PAGES));
+    return rows.filter((f) => f.id);
   }
 
   private mapBatch(accountId: string, b: Batch): ResourceInstance {
@@ -353,9 +334,10 @@ export class VoyageClient implements PluginClient {
   getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
     return attempt(async () => {
       if (typeId !== "voyage-batch") throw new Error(`Voyage plugin: ${typeId} cannot be created`);
-      const files = (await this.listFiles().catch((): VoyageFile[] => [])).filter(
-        (f) => (f.purpose ?? "batch") === "batch",
-      );
+      const newest = await this.call((api) =>
+        api.getAll("/files", "data", FILE_PICKER_PAGES),
+      ).catch((): VoyageFile[] => []);
+      const files = newest.filter((f) => f.id && (f.purpose ?? "batch") === "batch");
       const fileOptions = files.map((f) => ({
         id: s(f.id),
         label: f.filename || s(f.id),

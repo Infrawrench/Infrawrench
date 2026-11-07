@@ -59,6 +59,107 @@ describe("Voyage", () => {
     expect(calls[0]?.headers["Authorization"]).toBe("Bearer k");
   });
 
+  describe("lists that cannot say they have every row", () => {
+    const client = (http: HttpHostServices) =>
+      hostClient(new VoyageClient({ apiKey: "k" }, { http }));
+    const endless = (url: string) => {
+      const at = Number(/after=row-(\d+)/.exec(url)?.[1] ?? 0) + 1;
+      return { body: { data: [{ id: `row-${at}` }], has_more: true, last_id: `row-${at}` } };
+    };
+
+    it("reads batches past the old 50 page stop", async () => {
+      const { http, calls } = host((url) => {
+        const page = endless(url);
+        return calls.length === 51 ? { body: { ...page.body, has_more: false } } : page;
+      });
+      const items = await client(http).listResources("voyage-batch", ACCOUNT);
+      expect(items).toHaveLength(51);
+      expect(calls).toHaveLength(51);
+    });
+
+    it("fails batches that outrun 50,000 rows instead of returning part of them", async () => {
+      const { http, calls } = host(endless);
+      await expect(client(http).listResources("voyage-batch", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(500);
+      expect(calls[0]?.url).toBe("https://api.voyageai.com/v1/batches?limit=100");
+    });
+
+    it("reads files at the documented 10,000 a page and fails past 50,000 rows", async () => {
+      const { http, calls } = host(endless);
+      await expect(client(http).listResources("voyage-file", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(5);
+      expect(calls[0]?.url).toBe("https://api.voyageai.com/v1/files?limit=10000");
+    });
+
+    it.each(["voyage-batch", "voyage-file"])(
+      "fails %s when the first page has no list",
+      async (typeId) => {
+        const { http } = host(() => ({ body: { items: [{ id: "a" }], has_more: false } }));
+        await expect(client(http).listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+      },
+    );
+
+    it("fails when a later page has no list", async () => {
+      const { http, calls } = host((url) =>
+        url.includes("after=")
+          ? { body: { detail: "busy" } }
+          : { body: { data: [{ id: "a" }], has_more: true, last_id: "a" } },
+      );
+      await expect(client(http).listResources("voyage-batch", ACCOUNT)).rejects.toThrow(
+        "is not a list",
+      );
+      expect(calls).toHaveLength(2);
+    });
+
+    it("fails when has_more leaves no cursor to continue from", async () => {
+      const { http, calls } = host(() => ({ body: { data: [], has_more: true } }));
+      await expect(client(http).listResources("voyage-file", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(1);
+    });
+
+    it("takes the cursor from the last row when last_id is missing", async () => {
+      const { http, calls } = host((url) =>
+        url.includes("after=")
+          ? { body: { data: [{ id: "b" }], has_more: false } }
+          : { body: { data: [{ id: "a" }], has_more: true } },
+      );
+      const items = await client(http).listResources("voyage-batch", ACCOUNT);
+      expect(items.map((i) => i.externalId)).toEqual(["a", "b"]);
+      expect(calls[1]?.url).toContain("after=a");
+    });
+
+    it("reads an empty account as empty", async () => {
+      const { http, calls } = host(() => ({
+        body: { object: "list", data: [], first_id: null, last_id: null, has_more: false },
+      }));
+      await expect(client(http).listResources("voyage-file", ACCOUNT)).resolves.toEqual([]);
+      expect(calls).toHaveLength(1);
+    });
+
+    it("offers the newest page of files in the create form, however many there are", async () => {
+      const { http, calls } = host(() => ({
+        body: {
+          data: [
+            { id: "file-2", filename: "new.jsonl", purpose: "batch" },
+            { id: "file-1", filename: "out.jsonl", purpose: "batch-output" },
+          ],
+          has_more: true,
+          last_id: "file-1",
+        },
+      }));
+      const config = await client(http).getCreateConfig("voyage-batch");
+      const input = config.fields.find((f) => f.key === "inputFileId");
+      expect(input?.options?.map((o) => o.id)).toEqual(["file-2"]);
+      expect(calls.map((c) => c.url)).toEqual(["https://api.voyageai.com/v1/files?limit=10000"]);
+    });
+  });
+
   it("creates a batch with the model picked for its endpoint", async () => {
     const { http, calls } = host(() => ({
       body: { id: "batch-9", status: "validating", model: "rerank-3" },
