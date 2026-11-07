@@ -426,3 +426,55 @@ describe("xata-organization", () => {
     expect(o!.fields["marketplace"]).toBe("");
   });
 });
+
+describe("branch Host field", () => {
+  const deprecated = {
+    ...branch,
+    connectionString: "postgresql://xata:secret@b1-deprecated.us-east-1.xata.tech/xata",
+  };
+  const credentials = { hostname: "b1.us-east-1.xata.tech", password: "pw" };
+  const listing = [
+    on("GET", `${API}/organizations`, { organizations: [org] }),
+    on("GET", `${API}/organizations/org1/projects`, { projects: [project] }),
+    on("GET", `${API}/organizations/org1/projects/p1/branches`, { branches: [branch] }),
+  ];
+
+  it("comes from the credentials endpoint, in the listing and on one branch", async () => {
+    const { client } = fake([
+      ...listing,
+      on("GET", `${B}/credentials`, credentials),
+      on("GET", B, deprecated),
+    ]);
+    const [listed] = await client.listResources("xata-branch", ACCOUNT);
+    expect(listed!.fields["host"]).toBe("b1.us-east-1.xata.tech");
+    const one = await client.getResource(
+      "xata-branch",
+      `${ACCOUNT}:xata-branch:org1/p1/b1`,
+      ACCOUNT,
+    );
+    expect(one.fields["host"]).toBe("b1.us-east-1.xata.tech");
+    expect(JSON.stringify(listed!.fields)).not.toContain("pw");
+    expect(JSON.stringify(listed!.fields)).not.toContain("secret");
+  });
+
+  it("stays filled when the connection string is gone", async () => {
+    const { client } = fake([
+      ...listing,
+      on("GET", `${B}/credentials`, credentials),
+      on("GET", B, { ...branch, connectionString: null }),
+    ]);
+    const [listed] = await client.listResources("xata-branch", ACCOUNT);
+    expect(listed!.fields["host"]).toBe("b1.us-east-1.xata.tech");
+  });
+
+  it("falls back to the deprecated string for a key without credentials:read", async () => {
+    const { client } = fake([
+      ...listing,
+      on("GET", `${B}/credentials`, { message: "denied" }, 403),
+      on("GET", B, deprecated),
+    ]);
+    const [listed] = await client.listResources("xata-branch", ACCOUNT);
+    expect(listed!.fields["host"]).toBe("b1-deprecated.us-east-1.xata.tech");
+    expect(listed!.fields["instanceType"]).toBe("xata.small");
+  });
+});

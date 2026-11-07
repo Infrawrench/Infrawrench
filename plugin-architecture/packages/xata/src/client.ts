@@ -340,14 +340,37 @@ export class XataClient implements PluginClient {
     return Promise.all(
       summaries.map(async (s) => {
         try {
-          const b = await this.api.get(this.branchPath(org, project, s.id));
-          return branchResource(org, project, b, accountId, hostOf(b.connectionString));
+          return await this.branchInstance(org, project, s.id, accountId);
         } catch (err) {
           // A branch deleted between the two calls: list what the summary had.
           if (statusOf(err) !== 404) throw err;
           return branchResource(org, project, s, accountId, "");
         }
       }),
+    );
+  }
+
+  /**
+   * The branch answer's `connectionString` is deprecated, and Xata's document says its
+   * hostname carries a `-deprecated` marker, so the Host field is the credentials
+   * endpoint's. A key without `credentials:read` can still list, with what it can see.
+   */
+  private async branchInstance(
+    org: string,
+    project: string | undefined,
+    branch: string | undefined,
+    accountId: string,
+  ): Promise<ResourceInstance> {
+    const [b, creds] = await Promise.all([
+      this.api.get(this.branchPath(org, project, branch)),
+      this.credentials(org, project, branch).catch(() => undefined),
+    ]);
+    return branchResource(
+      org,
+      project,
+      b,
+      accountId,
+      creds?.hostname || hostOf(b.connectionString),
     );
   }
 
@@ -360,8 +383,7 @@ export class XataClient implements PluginClient {
       const p = parts(externalIdOf(resourceId));
       if (typeId === "xata-branch") {
         const [org = "", project, branch] = p;
-        const b = await this.api.get(this.branchPath(org, project, branch));
-        return branchResource(org, project, b, accountId, hostOf(b.connectionString));
+        return this.branchInstance(org, project, branch, accountId);
       }
       if (typeId === "xata-project") {
         const [org = "", project] = p;
