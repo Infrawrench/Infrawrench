@@ -1,5 +1,9 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 
 const VENDOR = "ClickHouse Cloud";
 
@@ -487,6 +491,21 @@ export function postgresToResource(
   };
 }
 
+/** What `PostgresServiceListItem` lacks: the detail read is all that supplies these. */
+const POSTGRES_DETAIL_ONLY_KEYS = new Set(["hostname", "username", "storageSize"]);
+
+/**
+ * The sync merges a row over what is stored, so a key left out keeps its stored value
+ * where a blank would overwrite it, and record a change that did not happen.
+ */
+function withoutDetailOnlyKeys(row: ResourceInstance): ResourceInstance {
+  const keep = <V>(record: Record<string, V>): Record<string, V> =>
+    Object.fromEntries(
+      Object.entries(record).filter(([key]) => !POSTGRES_DETAIL_ONLY_KEYS.has(key)),
+    );
+  return { ...row, fields: keep(row.fields), resolvedOutputs: keep(row.resolvedOutputs) };
+}
+
 /**
  * The list endpoint returns the slim `PostgresServiceListItem` (no hostname
  * or storage size), so each service is read individually for those.
@@ -497,15 +516,17 @@ export async function listPostgres(
 ): Promise<ResourceInstance[]> {
   const base = `/v1/organizations/${ctx.organizationId}/postgres`;
   const items = await listAll<CloudPostgres>(ctx, base);
-  const detailed = await Promise.all(
+  return Promise.all(
     items.map(async (pg) => {
-      try {
-        const full = await ctx.cloudApi<{ result?: CloudPostgres }>("GET", `${base}/${pg.id}`);
-        return { ...pg, ...(full.result ?? {}) };
-      } catch {
-        return pg;
-      }
+      const full = await ctx
+        .cloudApi<{ result?: CloudPostgres }>("GET", `${base}/${pg.id}`)
+        .catch((err: unknown) => {
+          rethrowIncompleteList(err);
+          return undefined;
+        });
+      return full?.result
+        ? postgresToResource(ctx, accountId, { ...pg, ...full.result })
+        : withoutDetailOnlyKeys(postgresToResource(ctx, accountId, pg));
     }),
   );
-  return detailed.map((pg) => postgresToResource(ctx, accountId, pg));
 }

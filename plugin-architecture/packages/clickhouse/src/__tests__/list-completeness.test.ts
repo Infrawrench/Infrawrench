@@ -390,3 +390,36 @@ describe("databases", () => {
     expect(unread).toEqual([{ idPrefixes: [""] }]);
   });
 });
+
+describe("a Postgres service whose details cannot be read", () => {
+  const PG = { id: "pg1", name: "db", state: "running", size: "r8gd.large" };
+  const list = { [`${ORG}/postgres`]: { body: { result: [PG] } } };
+
+  it("leaves out what only the details supply, so the stored values stay", async () => {
+    serve({ ...list, [`${ORG}/postgres/pg1`]: { status: 429, body: "slow" } });
+    const [row] = await client().listResources("ch-postgres", ACCOUNT);
+    expect(row!.fields).toMatchObject({ postgresId: "pg1", state: "running", size: "r8gd.large" });
+    for (const key of ["hostname", "username", "storageSize"]) {
+      expect(row!.fields).not.toHaveProperty(key);
+    }
+    expect(row!.resolvedOutputs).toEqual({ postgresId: "pg1" });
+  });
+
+  it("treats an answer with no service in it the same way", async () => {
+    serve({ ...list, [`${ORG}/postgres/pg1`]: { body: {} } });
+    const [row] = await client().listResources("ch-postgres", ACCOUNT);
+    expect(row!.fields).not.toHaveProperty("hostname");
+  });
+
+  it("writes them when the details are read", async () => {
+    serve({
+      ...list,
+      [`${ORG}/postgres/pg1`]: {
+        body: { result: { ...PG, hostname: "pg.example", username: "u", storageSize: 100 } },
+      },
+    });
+    const [row] = await client().listResources("ch-postgres", ACCOUNT);
+    expect(row!.fields).toMatchObject({ hostname: "pg.example", username: "u", storageSize: 100 });
+    expect(row!.resolvedOutputs).toMatchObject({ hostname: "pg.example", username: "u" });
+  });
+});
