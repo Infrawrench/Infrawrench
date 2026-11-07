@@ -1,5 +1,6 @@
-import type { UnreadListPart } from "@infrawrench/plugin-base";
+import { evaluateOrphanRule, type UnreadListPart } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RESOURCE_TYPES } from "../resource-types.js";
 import { identityRoute, makeClient, TENANCY, type Reply } from "./helpers.js";
 
 const PROD = "ocid1.compartment.oc1..prod";
@@ -327,5 +328,102 @@ describe("Oracle Cloud image lookups", () => {
     expect(first!.fields["sshUsername"]).toBe("opc");
     const [second] = await client.listResources("instance", "acct");
     expect(second!.fields["sshUsername"]).toBe("ubuntu");
+  });
+});
+
+describe("Oracle Cloud volume attachments across compartments", () => {
+  const AD = "Uocm:US-ASHBURN-AD-1";
+  const VOLUME = "ocid1.volume.oc1.iad.data";
+  const BOOT = "ocid1.bootvolume.oc1.iad.boot";
+  const INSTANCE = "ocid1.instance.oc1.iad.app";
+  const ruleOf = (typeId: string) => RESOURCE_TYPES.find((t) => t.id === typeId)!.orphanRule;
+
+  /** The volumes live in the root compartment; `prod` answers for its attachments. */
+  function route(prod: Reply, compartments?: Array<{ id: string; name: string }>) {
+    return (url: URL): Reply | undefined => {
+      const compartment = url.searchParams.get("compartmentId");
+      if (compartments && url.pathname === "/20160918/compartments") {
+        return {
+          body: compartments.map((c) => ({
+            ...c,
+            compartmentId: TENANCY,
+            lifecycleState: "ACTIVE",
+          })),
+        };
+      }
+      if (url.pathname === "/20160918/volumes" || url.pathname === "/20160918/bootVolumes") {
+        if (compartment !== TENANCY) return { body: [] };
+        const id = url.pathname === "/20160918/volumes" ? VOLUME : BOOT;
+        return {
+          body: [
+            {
+              id,
+              displayName: "v",
+              compartmentId: TENANCY,
+              availabilityDomain: AD,
+              lifecycleState: "AVAILABLE",
+            },
+          ],
+        };
+      }
+      if (
+        url.pathname === "/20160918/volumeAttachments" ||
+        url.pathname === "/20160918/bootVolumeAttachments"
+      ) {
+        if (compartment === PROD) return prod;
+        return { body: [] };
+      }
+      return identityRoute(url);
+    };
+  }
+
+  const attachedFromProd: Reply = {
+    body: [
+      { instanceId: INSTANCE, volumeId: VOLUME, bootVolumeId: BOOT, lifecycleState: "ATTACHED" },
+    ],
+  };
+
+  it("finds an attachment made from an instance in another compartment", async () => {
+    const { client } = makeClient(route(attachedFromProd));
+    const [volume] = await client.listResources("block-volume", "acct");
+    expect(volume!.fields["attachedTo"]).toBe(INSTANCE);
+    expect(evaluateOrphanRule(ruleOf("block-volume"), volume!.fields)).toBeNull();
+    const [boot] = await client.listResources("boot-volume", "acct");
+    expect(boot!.fields["attachedInstanceId"]).toBe(INSTANCE);
+    expect(evaluateOrphanRule(ruleOf("boot-volume"), boot!.fields)).toBeNull();
+  });
+
+  it("reports a volume unattached once every compartment was read", async () => {
+    const { client } = makeClient(route({ body: [] }));
+    const [volume] = await client.listResources("block-volume", "acct");
+    expect(volume!.fields["attachedTo"]).toBe("");
+    expect(evaluateOrphanRule(ruleOf("block-volume"), volume!.fields)).not.toBeNull();
+    const [boot] = await client.listResources("boot-volume", "acct");
+    expect(boot!.fields["attachedInstanceId"]).toBe("");
+    expect(evaluateOrphanRule(ruleOf("boot-volume"), boot!.fields)).not.toBeNull();
+  });
+
+  it("leaves attachment unknown when a compartment's attachments were refused", async () => {
+    const { client } = makeClient(route(refused));
+    const [volume] = await client.listResources("block-volume", "acct");
+    expect(volume!.fields).not.toHaveProperty("attachedTo");
+    expect(evaluateOrphanRule(ruleOf("block-volume"), volume!.fields)).toBeNull();
+    const [boot] = await client.listResources("boot-volume", "acct");
+    expect(boot!.fields).not.toHaveProperty("attachedInstanceId");
+    expect(evaluateOrphanRule(ruleOf("boot-volume"), boot!.fields)).toBeNull();
+  });
+
+  it("leaves attachment unknown when the other compartments do not fit the request budget", async () => {
+    const many = Array.from({ length: 400 }, (_, i) => ({
+      id: `ocid1.compartment.oc1..c${i}`,
+      name: `c${i}`,
+    }));
+    const { client } = makeClient((url) =>
+      // Resource Search names only the root compartment, so only it is a scope.
+      url.hostname.startsWith("query.") ? { body: { items: [] } } : route({ body: [] }, many)(url),
+    );
+    const [volume] = await client.listResources("block-volume", "acct");
+    expect(volume!.fields).not.toHaveProperty("attachedTo");
+    expect(evaluateOrphanRule(ruleOf("block-volume"), volume!.fields)).toBeNull();
   });
 });

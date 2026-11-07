@@ -214,7 +214,9 @@ export const BootVolumeResourceType = rt({
   iconKey: "volume",
   supportsUpdate: true,
   orphanRule: {
-    conditions: [{ fieldKey: "attachedInstanceId", when: "empty" }],
+    // Only a present empty value: the lister leaves the field out when the
+    // attachment could not be read from every compartment.
+    conditions: [{ fieldKey: "attachedInstanceId", when: "equals", value: "" }],
     reason:
       "Boot volume is not attached to any instance (usually left behind by a terminated instance) and keeps billing per GB-month",
   },
@@ -262,7 +264,9 @@ export const BlockVolumeResourceType = rt({
     },
   ],
   orphanRule: {
-    conditions: [{ fieldKey: "attachedTo", when: "empty" }],
+    // Only a present empty value: the lister leaves the field out when the
+    // attachment could not be read from every compartment.
+    conditions: [{ fieldKey: "attachedTo", when: "equals", value: "" }],
     reason: "Block volume is not attached to any instance and keeps billing per GB-month",
   },
 });

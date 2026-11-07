@@ -429,46 +429,146 @@ interface OciVolume {
   timeCreated?: string;
 }
 
+interface VolumeAttachmentRow {
+  instanceId: string;
+  volumeId?: string;
+  bootVolumeId?: string;
+  lifecycleState: string;
+}
+
+const isAttached = (a: VolumeAttachmentRow) =>
+  a.lifecycleState === "ATTACHED" || a.lifecycleState === "ATTACHING";
+
+/**
+ * Attachment requests one block or boot volume list may spend reading other
+ * compartments. An attachment belongs to the instance's compartment, which can
+ * be any compartment, so a volume with none in its own is only known to be
+ * unattached once every compartment in its region has been read.
+ */
+export const ATTACHMENT_REQUEST_BUDGET = 300;
+
+/**
+ * Attachments across every compartment of a region, read once per list and
+ * only for a region with a volume its own compartment found no attachment
+ * for. `null` when that cannot be known: a compartment refused, or the
+ * region does not fit what is left of the budget. A volume is then left with
+ * no attachment field at all, which the orphan rule does not read as
+ * unattached.
+ */
+function regionAttachments(ctx: ListContext, path: string, budget = ATTACHMENT_REQUEST_BUDGET) {
+  let left = budget;
+  const cache = new Map<string, Promise<VolumeAttachmentRow[] | null>>();
+  return (region: string): Promise<VolumeAttachmentRow[] | null> => {
+    const cached = cache.get(region);
+    if (cached) return cached;
+    const value = (async () => {
+      const compartments = await ctx.inventory.compartments();
+      const ads =
+        path === "/20160918/bootVolumeAttachments"
+          ? await ctx.inventory.availabilityDomains(region)
+          : [undefined];
+      const queries = compartments.flatMap((c) =>
+        ads.map((ad) => ({
+          compartmentId: c.id,
+          ...(ad ? { availabilityDomain: ad } : {}),
+          limit: 1000,
+        })),
+      );
+      if (queries.length > left) return null;
+      left -= queries.length;
+      const pages = await mapLimit(queries, CONCURRENCY, (query) =>
+        ctx.api
+          .listAll<VolumeAttachmentRow>({ service: "iaas", region, path, query })
+          .catch((err: unknown): null => {
+            rethrowIncompleteList(err);
+            if (isAuthorizationGap(err)) return null;
+            throw err;
+          }),
+      );
+      const rows: VolumeAttachmentRow[] = [];
+      for (const page of pages) {
+        if (!page) return null;
+        rows.push(...page);
+      }
+      return rows;
+    })();
+    cache.set(region, value);
+    return value;
+  };
+}
+
+/**
+ * The instances each volume is attached to, or no entry for a volume whose
+ * attachment state is unknown. Its own compartment's attachments are read
+ * first; only a volume with none there needs the region-wide read.
+ */
+async function attachmentsFor(
+  volumes: OciVolume[],
+  own: VolumeAttachmentRow[],
+  key: (a: VolumeAttachmentRow) => string | undefined,
+  region: () => Promise<VolumeAttachmentRow[] | null>,
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  const add = (rows: VolumeAttachmentRow[], only: Set<string>) => {
+    for (const a of rows) {
+      const id = key(a);
+      if (!id || !only.has(id) || !isAttached(a)) continue;
+      const seen = out.get(id) ?? [];
+      if (!seen.includes(a.instanceId)) out.set(id, [...seen, a.instanceId]);
+    }
+  };
+  add(own, new Set(volumes.map((v) => v.id)));
+  const unmatched = volumes.filter((v) => !out.has(v.id));
+  if (unmatched.length === 0) return out;
+  const rows = await region();
+  if (!rows) return out;
+  for (const v of unmatched) out.set(v.id, []);
+  add(rows, new Set(unmatched.map((v) => v.id)));
+  return out;
+}
+
 export async function listBlockVolumes(ctx: ListContext): Promise<ResourceInstance[]> {
   const names = await compartmentNames(ctx);
+  const path = "/20160918/volumeAttachments";
+  const byRegion = regionAttachments(ctx, path);
   return perScope(ctx, "volume", async (scope) => {
-    const [volumes, attachments] = await Promise.all([
+    const [volumes, own] = await Promise.all([
       ctx.api.listAll<OciVolume>({
         service: "iaas",
         region: scope.region,
         path: "/20160918/volumes",
         query: { compartmentId: scope.compartmentId, limit: 1000 },
       }),
-      // Attachments live in the instance's compartment, which may differ
-      // from the volume's: list them tenancy-wide per region would need
-      // every compartment, so read the scope's own and the volume's.
       ctx.api
-        .listAll<{ instanceId: string; volumeId: string; lifecycleState: string }>({
+        .listAll<VolumeAttachmentRow>({
           service: "iaas",
           region: scope.region,
-          path: "/20160918/volumeAttachments",
+          path,
           query: { compartmentId: scope.compartmentId, limit: 1000 },
         })
-        .catch(noneIfRefused<{ instanceId: string; volumeId: string; lifecycleState: string }>),
+        .catch(noneIfRefused<VolumeAttachmentRow>),
     ]);
-    const attached = new Map<string, string[]>();
-    for (const a of attachments) {
-      if (a.lifecycleState !== "ATTACHED" && a.lifecycleState !== "ATTACHING") continue;
-      attached.set(a.volumeId, [...(attached.get(a.volumeId) ?? []), a.instanceId]);
-    }
-    return volumes
-      .filter((v) => ALIVE(v.lifecycleState))
-      .map((v) => mapVolume(ctx, "block-volume", scope.region, v, names, attached.get(v.id) ?? []));
+    const alive = volumes.filter((v) => ALIVE(v.lifecycleState));
+    const attached = await attachmentsFor(
+      alive,
+      own,
+      (a) => a.volumeId,
+      () => byRegion(scope.region),
+    );
+    return alive.map((v) =>
+      mapVolume(ctx, "block-volume", scope.region, v, names, attached.get(v.id)),
+    );
   });
 }
 
+/** `attachedTo` undefined: not known, so the attachment field is left out. */
 export function mapVolume(
   ctx: ListContext,
   typeId: "block-volume" | "boot-volume",
   region: string,
   v: OciVolume,
   names: Map<string, string>,
-  attachedTo: string[],
+  attachedTo: string[] | undefined,
 ): ResourceInstance {
   const base = {
     name: v.displayName,
@@ -482,8 +582,12 @@ export function mapVolume(
   };
   const fields =
     typeId === "boot-volume"
-      ? { ...base, attachedInstanceId: attachedTo[0] ?? "" }
-      : { ...base, autoTune: v.isAutoTuneEnabled === true, attachedTo: attachedTo.join(", ") };
+      ? { ...base, ...(attachedTo ? { attachedInstanceId: attachedTo[0] ?? "" } : {}) }
+      : {
+          ...base,
+          autoTune: v.isAutoTuneEnabled === true,
+          ...(attachedTo ? { attachedTo: attachedTo.join(", ") } : {}),
+        };
   return makeResource(
     ctx.accountId,
     typeId,
@@ -497,10 +601,12 @@ export function mapVolume(
 
 export async function listBootVolumes(ctx: ListContext): Promise<ResourceInstance[]> {
   const names = await compartmentNames(ctx);
+  const path = "/20160918/bootVolumeAttachments";
+  const byRegion = regionAttachments(ctx, path);
   return perScope(ctx, "bootvolume", async (scope) => {
     const ads = await ctx.inventory.availabilityDomains(scope.region);
     const perAd = await mapLimit(ads, CONCURRENCY, async (ad) => {
-      const [volumes, attachments] = await Promise.all([
+      const [volumes, own] = await Promise.all([
         ctx.api.listAll<OciVolume>({
           service: "iaas",
           region: scope.region,
@@ -508,35 +614,24 @@ export async function listBootVolumes(ctx: ListContext): Promise<ResourceInstanc
           query: { availabilityDomain: ad, compartmentId: scope.compartmentId, limit: 1000 },
         }),
         ctx.api
-          .listAll<{ instanceId: string; bootVolumeId: string; lifecycleState: string }>({
+          .listAll<VolumeAttachmentRow>({
             service: "iaas",
             region: scope.region,
-            path: "/20160918/bootVolumeAttachments",
+            path,
             query: { availabilityDomain: ad, compartmentId: scope.compartmentId, limit: 1000 },
           })
-          .catch(
-            noneIfRefused<{ instanceId: string; bootVolumeId: string; lifecycleState: string }>,
-          ),
+          .catch(noneIfRefused<VolumeAttachmentRow>),
       ]);
-      const attached = new Map<string, string>();
-      for (const a of attachments) {
-        if (a.lifecycleState === "ATTACHED" || a.lifecycleState === "ATTACHING") {
-          attached.set(a.bootVolumeId, a.instanceId);
-        }
-      }
-      return volumes
-        .filter((v) => ALIVE(v.lifecycleState))
-        .map((v) => {
-          const instanceId = attached.get(v.id);
-          return mapVolume(
-            ctx,
-            "boot-volume",
-            scope.region,
-            v,
-            names,
-            instanceId ? [instanceId] : [],
-          );
-        });
+      const alive = volumes.filter((v) => ALIVE(v.lifecycleState));
+      const attached = await attachmentsFor(
+        alive,
+        own,
+        (a) => a.bootVolumeId,
+        () => byRegion(scope.region),
+      );
+      return alive.map((v) =>
+        mapVolume(ctx, "boot-volume", scope.region, v, names, attached.get(v.id)),
+      );
     });
     return perAd.flat();
   });
