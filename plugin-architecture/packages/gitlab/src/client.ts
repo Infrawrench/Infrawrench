@@ -2012,10 +2012,18 @@ export class GitLabClient implements PluginClient {
           const { key, envScope } = splitVariable(rest);
           const path = `/${kind}/${pathEncode(ownerId)}/variables/${pathEncode(key)}` as const;
           const filter = { "filter[environment_scope]": envScope };
+          // GitLab documents that a group PUT whose filter matches nothing updates the key
+          // in some other scope, so the scope is read back before anything is written. A
+          // group on a tier without scopes leaves the field out of its answer.
+          const current = await this.api.get(path, { query: filter });
+          if (current.environment_scope && current.environment_scope !== envScope) {
+            fail(
+              `asked for ${key} in the "${envScope}" scope and GitLab answered with the "${current.environment_scope}" scope, so nothing was changed.`,
+            );
+          }
           // PUT requires the value; keep the current one unless a new one was typed.
           let value = fields["value"] ?? "";
           if (!value) {
-            const current = await this.api.get(path, { query: filter });
             if (current.value === null || current.value === undefined) {
               fail(
                 "this variable is hidden, so GitLab will not return its value. Type the value to change its settings.",
@@ -2023,9 +2031,12 @@ export class GitLabClient implements PluginClient {
             }
             value = current.value;
           }
+          // The document has the filter in the body and the plugin has always sent it in the
+          // query. GitLab's API layer merges the two, so both name the same variable.
           await this.api.put(path, {
             query: filter,
             body: compactKeepEmpty({
+              filter: { environment_scope: envScope },
               value,
               variable_type: text("variableType"),
               environment_scope: text("environmentScope") || undefined,

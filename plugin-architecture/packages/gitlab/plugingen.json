@@ -477,6 +477,20 @@
       "why": "Returned but not documented; the plugin prefers it to created_at for when a deployment happened."
     },
     {
+      "pointer": "/components/schemas/putApiV4GroupsIdVariablesKeyRequest/properties/filter",
+      "value": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "environment_scope": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "why": "docs.gitlab.com/api/group_level_variables lists filter on this PUT and the route reads it; the document has it for projects only."
+    },
+    {
       "pointer": "/paths/~1projects~1{id}~1variables~1{key}/put/parameters",
       "value": [
         {

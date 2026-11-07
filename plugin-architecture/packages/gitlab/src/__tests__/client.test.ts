@@ -275,6 +275,68 @@ describe("listing", () => {
 });
 
 describe("edits", () => {
+  describe("a variable that shares its key across environment scopes", () => {
+    const scoped = (scope: string) => ({ key: "TOKEN", value: "old", environment_scope: scope });
+    const route =
+      (kind: "projects" | "groups", answer: (call: Call) => unknown) => (call: Call) => {
+        if (call.url.pathname === `/api/v4/${kind}/7/variables/TOKEN`) return answer(call);
+        if (call.url.pathname === `/api/v4/${kind}/7`) return { id: 7, full_path: "a/b" };
+        if (call.url.pathname === `/api/v4/${kind}`) return [];
+        throw new Error(`unexpected ${call.method} ${call.url}`);
+      };
+
+    it.each([
+      ["project-variable", "projects"],
+      ["group-variable", "groups"],
+    ] as const)("names the scope in the body of a %s PUT, and in the query", async (type, kind) => {
+      const { c, calls } = client(route(kind, () => scoped("production")));
+      await c.updateResource(type, `acc:${type}:7/TOKEN/production`, ACC, { value: "new" });
+      const put = calls.find((x) => x.method === "PUT")!;
+      expect(put.url.searchParams.get("filter[environment_scope]")).toBe("production");
+      expect(put.body).toMatchObject({
+        filter: { environment_scope: "production" },
+        value: "new",
+      });
+    });
+
+    // GitLab's group variables page: a filter matching nothing "falls back to updating a
+    // variable with the same name but different environment scope".
+    it("does not write when the scope is gone, even with a new value typed", async () => {
+      const { c, calls } = client(
+        route("groups", (call) =>
+          call.method === "GET" ? { status: 404, body: { message: "404 Not found" } } : scoped("*"),
+        ),
+      );
+      await expect(
+        c.updateResource("group-variable", "acc:group-variable:7/TOKEN/production", ACC, {
+          value: "new",
+        }),
+      ).rejects.toThrow("404");
+      expect(calls.filter((x) => x.method === "PUT")).toEqual([]);
+    });
+
+    it("does not write when GitLab answers with another scope", async () => {
+      const { c, calls } = client(route("projects", () => scoped("staging")));
+      await expect(
+        c.updateResource("project-variable", "acc:project-variable:7/TOKEN/production", ACC, {
+          value: "new",
+        }),
+      ).rejects.toThrow('answered with the "staging" scope');
+      expect(calls.filter((x) => x.method === "PUT")).toEqual([]);
+    });
+
+    it("writes a group variable on a tier whose answer leaves the scope out", async () => {
+      const { c, calls } = client(route("groups", () => ({ key: "TOKEN", value: "old" })));
+      await c.updateResource("group-variable", "acc:group-variable:7/TOKEN/*", ACC, {
+        protected: "true",
+      });
+      expect(calls.find((x) => x.method === "PUT")!.body).toMatchObject({
+        value: "old",
+        protected: true,
+      });
+    });
+  });
+
   describe("runner tags", () => {
     const route = (call: Call) => {
       if (call.method === "POST") return { id: 5, token: "glrt-x" };

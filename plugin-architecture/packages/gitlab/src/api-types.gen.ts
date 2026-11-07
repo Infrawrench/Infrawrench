@@ -3710,6 +3710,9 @@ export interface components {
         putApiV4GroupsIdVariablesKeyRequest: {
             description?: string | null;
             environment_scope?: string | null;
+            filter?: {
+                environment_scope?: string | null;
+            } | null;
             masked?: boolean | null;
             protected?: boolean | null;
             raw?: boolean | null;
