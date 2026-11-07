@@ -884,3 +884,51 @@ describe("editing an escalation policy", () => {
     expect(sent(blankTeam.calls)).toBeUndefined();
   });
 });
+
+describe("paging: a status change with a note", () => {
+  it("does not post the note again when the status change is retried as the next user", async () => {
+    const { c, calls } = client(
+      (call) => {
+        if (call.url.endsWith("/notes")) return { status: 201, body: { note: { id: "N1" } } };
+        if (call.method === "PUT") {
+          return call.headers["From"] === "ada@example.com"
+            ? { status: 400, body: { error: { message: "Requester not found" } } }
+            : { status: 200, body: { incident: { id: "I1", status: "resolved" } } };
+        }
+        return { status: 200, body: { incident: { id: "I1", status: "resolved" } } };
+      },
+      { fromEmail: "default@example.com" },
+    );
+    await c.updatePagingIncident("I1", {
+      action: "resolve",
+      actorEmail: "ada@example.com",
+      note: "Fixed",
+    });
+    expect(calls.filter((call) => call.url.endsWith("/notes"))).toHaveLength(1);
+    expect(calls.filter((call) => call.method === "PUT").map((p) => p.headers["From"])).toEqual([
+      "ada@example.com",
+      "default@example.com",
+    ]);
+  });
+
+  it("posts the note as the next user when the first cannot post it", async () => {
+    const { c, calls } = client(
+      (call) => {
+        if (call.url.endsWith("/notes")) {
+          return call.headers["From"] === "ada@example.com"
+            ? { status: 400, body: { error: { message: "Requester not found" } } }
+            : { status: 201, body: { note: { id: "N1" } } };
+        }
+        return { status: 200, body: { incident: { id: "I1", status: "resolved" } } };
+      },
+      { fromEmail: "default@example.com" },
+    );
+    await c.updatePagingIncident("I1", {
+      action: "resolve",
+      actorEmail: "ada@example.com",
+      note: "Fixed",
+    });
+    const notes = calls.filter((call) => call.url.endsWith("/notes"));
+    expect(notes.map((n) => n.headers["From"])).toEqual(["ada@example.com", "default@example.com"]);
+  });
+});

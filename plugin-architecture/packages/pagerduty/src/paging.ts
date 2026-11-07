@@ -389,12 +389,15 @@ export async function updateIncident(
 ): Promise<PagingIncident> {
   const status = update.action === "resolve" ? "resolved" : "acknowledged";
   const id = pathEncode(incidentId);
+  // `withFrom` runs this again as the next user, and by then the note may already be up.
+  let notePosted = false;
   const res = await withFrom(ctx, update.actorEmail, async (from) => {
-    if (update.note) {
+    if (update.note && !notePosted) {
       await ctx.api.post(`/incidents/${id}/notes`, {
         body: { note: { content: update.note } },
         headers: { From: from },
       });
+      notePosted = true;
     }
     return ctx.api.put(`/incidents/${id}`, {
       body: { incident: { type: "incident_reference", status } },
