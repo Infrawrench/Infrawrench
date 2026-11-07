@@ -1,6 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FireworksClient } from "../client.js";
+import { manifest } from "../plugin.js";
 
 const ACCOUNT = "acct-1";
 
@@ -753,6 +754,12 @@ describe("logs", () => {
     expect(signed?.caCert).toBeUndefined();
     expect(Object.keys(signed?.headers ?? {}).map((name) => name.toLowerCase())).not.toContain(
       "authorization",
+    );
+  });
+
+  it("lets a bastion reach Cloud Storage, where the document puts its signed URLs", () => {
+    expect(manifest.egressHosts).toEqual(
+      expect.arrayContaining(["storage.googleapis.com", "*.storage.googleapis.com"]),
     );
   });
 

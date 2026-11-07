@@ -34,7 +34,9 @@ import { UserResourceType } from "./resources/user.js";
 // mark and is deliberately not used here.
 export const manifest = {
   id: "fireworks",
-  egressHosts: ["api.fireworks.ai"],
+  // Signed log URLs: the document says its signed URLs point at GCS, and the
+  // ones for logs do not name a host. Unconfirmed against a real response (#555).
+  egressHosts: ["api.fireworks.ai", "storage.googleapis.com", "*.storage.googleapis.com"],
   displayName: "Fireworks AI",
   description:
     "Manage Fireworks AI deployments, routers, models, datasets, fine-tuning (SFT, DPO, RFT), evaluators and evaluation jobs, batch jobs, users, API keys, secrets and quotas, with usage costs.",
