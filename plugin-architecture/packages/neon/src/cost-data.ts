@@ -29,9 +29,20 @@
 
 import type { Api, Organization } from "@neondatabase/api-client";
 import { ConsumptionHistoryGranularity } from "@neondatabase/api-client";
-import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  requireListPage,
+  type CostFetchRange,
+  type CostRow,
+} from "@infrawrench/plugin-base";
+import { isSettledRefusal, listAllProjects } from "./services/common.js";
 
 const BYTES_PER_GB = 2 ** 30;
+
+const CONSUMPTION_PATH = "/consumption_history/v2/projects";
+/** The document's maximum per page. */
+const CONSUMPTION_PAGE_SIZE = 100;
+const MAX_CONSUMPTION_PAGES = 1_000;
 
 const COMPUTE_USD_PER_CU_HOUR: Record<string, number> = {
   launch: 0.106,
@@ -88,29 +99,23 @@ const METRICS = [
 ];
 
 /**
- * Resolve the organizations this API key can see. Personal keys can list them
- * directly; org-scoped keys can't call /users/me/organizations, so fall back
- * to the org IDs stamped on the visible projects (plan resolved per org).
+ * Resolve the organizations this API key can see. A key refused
+ * /users/me/organizations falls back to the org IDs stamped on the visible projects
+ * (plan resolved per org). Only a refusal does: a throttle or an outage falling back
+ * could miss an organization, and that reads its spend as gone.
  */
 async function resolveOrganizations(api: Api<unknown>): Promise<Organization[]> {
   try {
     const resp = await api.getCurrentUserOrganizations();
     const orgs = resp.data.organizations ?? [];
     if (orgs.length > 0) return orgs;
-  } catch {
-    /* org-scoped key: derive from projects below */
+  } catch (err) {
+    if (!isSettledRefusal(err)) throw err;
   }
 
   const orgIds = new Set<string>();
-  let cursor: string | undefined;
-  for (let i = 0; i < 50; i++) {
-    const resp = await api.listProjects(cursor ? { cursor } : {});
-    for (const p of resp.data.projects) {
-      if (p.org_id) orgIds.add(p.org_id);
-    }
-    const next = resp.data.pagination?.cursor;
-    if (!next || resp.data.projects.length === 0) break;
-    cursor = next;
+  for (const p of await listAllProjects(api)) {
+    if (p.org_id) orgIds.add(p.org_id);
   }
 
   const orgs: Organization[] = [];
@@ -165,7 +170,8 @@ export async function fetchNeonCostData(
     const cuHourRate = COMPUTE_USD_PER_CU_HOUR[org.plan] ?? COMPUTE_USD_PER_CU_HOUR["launch"]!;
 
     let cursor: string | undefined;
-    for (let i = 0; i < 100; i++) {
+    let page = 0;
+    for (; page < MAX_CONSUMPTION_PAGES; page++) {
       const resp = await api.getConsumptionHistoryPerProjectV2({
         org_id: org.id,
         // Neon rounds `to` down to the day and treats it as exclusive, so an
@@ -176,11 +182,16 @@ export async function fetchNeonCostData(
         to: `${dayAfter(range.toDate)}T00:00:00Z`,
         granularity: ConsumptionHistoryGranularity.Daily,
         metrics: METRICS,
-        limit: 100,
+        limit: CONSUMPTION_PAGE_SIZE,
         ...(cursor ? { cursor } : {}),
       });
 
-      for (const project of resp.data.projects ?? []) {
+      const projects = requireListPage(resp.data.projects, {
+        vendor: "Neon",
+        path: CONSUMPTION_PATH,
+        key: "projects",
+      });
+      for (const project of projects) {
         for (const period of project.periods ?? []) {
           for (const timeframe of period.consumption ?? []) {
             const date = (timeframe.timeframe_start ?? "").slice(0, 10);
@@ -208,8 +219,16 @@ export async function fetchNeonCostData(
       }
 
       const next = resp.data.pagination?.cursor;
-      if (!next || (resp.data.projects ?? []).length === 0) break;
+      if (!next || projects.length === 0) break;
       cursor = next;
+    }
+    if (page === MAX_CONSUMPTION_PAGES) {
+      throw new ListTruncatedError({
+        vendor: "Neon",
+        path: CONSUMPTION_PATH,
+        items: page * CONSUMPTION_PAGE_SIZE,
+        maxPages: MAX_CONSUMPTION_PAGES,
+      });
     }
   }
 

@@ -1,22 +1,20 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { Api, NeonFunction, ProjectListItem } from "@neondatabase/api-client";
+import { ListTruncatedError } from "@infrawrench/plugin-base";
 import {
   enumerateBranches,
   hasStringFields,
-  isServiceUnavailable,
+  MAX_CHILD_PAGES,
+  readBranchServices,
+  requireValidRows,
   resourceId,
-  validatedArray,
   type BranchRef,
 } from "./common.js";
 
-/**
- * `@neondatabase/api-client@2.7.3` mistypes the function listing as the
- * single-function `{ function }` response. The published OpenAPI spec documents
- * it as `NeonFunctionsListResponse & CursorPaginationResponse`, so we have to
- * look past the generated type, but we validate at runtime rather than assert,
- * so a drifting SDK or API drops the offending entry instead of throwing a
- * `TypeError` inside `buildFunctionResource`. Revisit when the codegen is fixed.
- */
+/** The document's maximum per page. */
+const FUNCTION_PAGE_SIZE = 1000;
+
+/** The fields the document requires of a function. */
 const FUNCTION_REQUIRED_FIELDS = ["id", "slug", "name", "invocation_url", "created_at"] as const;
 
 function isNeonFunction(value: unknown): value is NeonFunction {
@@ -58,29 +56,45 @@ function buildFunctionResource(
   };
 }
 
+async function listFunctionsOfBranch(api: Api<unknown>, ref: BranchRef): Promise<NeonFunction[]> {
+  const path = `/projects/${ref.projectId}/branches/${ref.branchId}/functions`;
+  const results: NeonFunction[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_CHILD_PAGES; page++) {
+    const resp = await api.listProjectBranchFunctions({
+      projectId: ref.projectId,
+      branchId: ref.branchId,
+      limit: FUNCTION_PAGE_SIZE,
+      ...(cursor ? { cursor } : {}),
+    });
+    const rows = requireValidRows(resp.data.functions, isNeonFunction, {
+      vendor: "Neon",
+      path,
+      key: "functions",
+    });
+    results.push(...rows);
+    const next = resp.data.pagination?.next;
+    if (!next || rows.length === 0) return results;
+    cursor = next;
+  }
+  throw new ListTruncatedError({
+    vendor: "Neon",
+    path,
+    items: results.length,
+    maxPages: MAX_CHILD_PAGES,
+  });
+}
+
 export async function listAllFunctions(
   api: Api<unknown>,
   accountId: string,
   projects: ProjectListItem[],
 ): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, projects);
-  const results: ResourceInstance[] = [];
-
-  for (const ref of branches) {
-    try {
-      const resp = await api.listProjectBranchFunctions({
-        projectId: ref.projectId,
-        branchId: ref.branchId,
-      });
-      for (const fn of validatedArray(resp.data, "functions", isNeonFunction)) {
-        results.push(buildFunctionResource(accountId, ref, fn));
-      }
-    } catch (err) {
-      // Functions are Private Beta: a branch without the entitlement 404s.
-      if (!isServiceUnavailable(err)) throw err;
-    }
-  }
-  return results;
+  const branches = await enumerateBranches(api, accountId, projects);
+  return readBranchServices(accountId, branches, async (ref) => {
+    const functions = await listFunctionsOfBranch(api, ref);
+    return functions.map((fn) => buildFunctionResource(accountId, ref, fn));
+  });
 }
 
 function buildAiGatewayResource(
@@ -114,17 +128,9 @@ export async function listAllAiGateways(
   accountId: string,
   projects: ProjectListItem[],
 ): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, projects);
-  const results: ResourceInstance[] = [];
-
-  for (const ref of branches) {
-    try {
-      const resp = await api.getProjectBranchAiGateway(ref.projectId, ref.branchId);
-      if (!resp.data.enabled) continue;
-      results.push(buildAiGatewayResource(accountId, ref, resp.data.base_url));
-    } catch (err) {
-      if (!isServiceUnavailable(err)) throw err;
-    }
-  }
-  return results;
+  const branches = await enumerateBranches(api, accountId, projects);
+  return readBranchServices(accountId, branches, async (ref) => {
+    const resp = await api.getProjectBranchAiGateway(ref.projectId, ref.branchId);
+    return resp.data.enabled ? [buildAiGatewayResource(accountId, ref, resp.data.base_url)] : [];
+  });
 }

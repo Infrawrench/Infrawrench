@@ -1,7 +1,13 @@
-import { hostFetch } from "@infrawrench/plugin-base";
+import { hostFetch, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { HttpHostServices, ResourceInstance, StorageObject } from "@infrawrench/plugin-base";
 import type { Api, Bucket, CredentialMeta, ProjectListItem } from "@neondatabase/api-client";
-import { enumerateBranches, isServiceUnavailable, resourceId, type BranchRef } from "./common.js";
+import {
+  enumerateBranches,
+  isServiceUnavailable,
+  readBranchServices,
+  resourceId,
+  type BranchRef,
+} from "./common.js";
 
 export interface BranchStorageInfo {
   s3Endpoint: string;
@@ -34,6 +40,9 @@ export class BucketLocator {
     return this.storageInfo.get(`${ref.projectId}/${ref.branchId}`);
   }
 }
+
+/** The document's default and largest page is 1,000 items, so this is a million. */
+const MAX_OBJECT_PAGES = 1_000;
 
 /** Fetch a branch's S3 endpoint/region, or undefined when storage isn't enabled there. */
 export async function fetchBranchStorage(
@@ -89,27 +98,25 @@ export async function listAllBuckets(
   projects: ProjectListItem[],
   locator: BucketLocator,
 ): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, projects);
-  const results: ResourceInstance[] = [];
-
-  for (const ref of branches) {
-    const storage = await fetchBranchStorage(api, ref);
+  const branches = await enumerateBranches(api, accountId, projects);
+  return readBranchServices(accountId, branches, async (ref) => {
     // No storage on this branch means the org lacks the Private Beta entitlement
     // or the branch is outside a supported region, not an error worth surfacing.
-    if (!storage) continue;
+    const storageResp = await api.getProjectBranchStorage(ref.projectId, ref.branchId);
+    const storage = { s3Endpoint: storageResp.data.s3_endpoint, region: storageResp.data.region };
     locator.rememberStorage(`${ref.projectId}/${ref.branchId}`, storage);
 
-    try {
-      const resp = await api.listProjectBranchBuckets(ref.projectId, ref.branchId);
-      for (const bucket of resp.data.buckets) {
-        locator.remember(bucket.name, ref);
-        results.push(buildBucketResource(accountId, ref, bucket, storage));
-      }
-    } catch (err) {
-      if (!isServiceUnavailable(err)) throw err;
-    }
-  }
-  return results;
+    const resp = await api.listProjectBranchBuckets(ref.projectId, ref.branchId);
+    const buckets = requireListPage(resp.data.buckets, {
+      vendor: "Neon",
+      path: `/projects/${ref.projectId}/branches/${ref.branchId}/buckets`,
+      key: "buckets",
+    });
+    return buckets.map((bucket) => {
+      locator.remember(bucket.name, ref);
+      return buildBucketResource(accountId, ref, bucket, storage);
+    });
+  });
 }
 
 /** Resolve which branch a bucket lives on, listing buckets to warm the cache if needed. */
@@ -136,10 +143,11 @@ export async function listBucketObjects(
   bucketName: string,
   prefix: string,
 ): Promise<StorageObject[]> {
+  const path = `/projects/${ref.projectId}/branches/${ref.branchId}/buckets/${bucketName}/objects`;
   const results: StorageObject[] = [];
   let cursor: string | undefined;
 
-  for (let i = 0; i < 50; i++) {
+  for (let page = 0; page < MAX_OBJECT_PAGES; page++) {
     const resp = await api.listProjectBranchBucketObjects({
       projectId: ref.projectId,
       branchId: ref.branchId,
@@ -149,7 +157,8 @@ export async function listBucketObjects(
       ...(cursor ? { cursor } : {}),
     });
 
-    for (const folder of resp.data.folders) {
+    const place = { vendor: "Neon", path };
+    for (const folder of requireListPage(resp.data.folders, { ...place, key: "folders" })) {
       results.push({
         key: folder,
         name: trimPrefix(folder, prefix).replace(/\/$/, ""),
@@ -158,7 +167,7 @@ export async function listBucketObjects(
         isDirectory: true,
       });
     }
-    for (const obj of resp.data.objects) {
+    for (const obj of requireListPage(resp.data.objects, { ...place, key: "objects" })) {
       // Neon returns the folder marker itself in the object list; the folder
       // entry above already represents it.
       if (obj.key === prefix) continue;
@@ -172,10 +181,15 @@ export async function listBucketObjects(
     }
 
     const next = resp.data.next_cursor;
-    if (!next) break;
+    if (!next) return results;
     cursor = next;
   }
-  return results;
+  throw new ListTruncatedError({
+    vendor: "Neon",
+    path,
+    items: results.length,
+    maxPages: MAX_OBJECT_PAGES,
+  });
 }
 
 function trimPrefix(key: string, prefix: string): string {
@@ -273,20 +287,19 @@ export async function listAllCredentials(
   accountId: string,
   projects: ProjectListItem[],
 ): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, projects);
-  const results: ResourceInstance[] = [];
-
-  for (const ref of branches) {
-    try {
-      const resp = await api.listCredentials(ref.projectId, ref.branchId);
-      for (const cred of resp.data.credentials) {
+  const branches = await enumerateBranches(api, accountId, projects);
+  return readBranchServices(accountId, branches, async (ref) => {
+    const resp = await api.listCredentials(ref.projectId, ref.branchId);
+    const credentials = requireListPage(resp.data.credentials, {
+      vendor: "Neon",
+      path: `/projects/${ref.projectId}/branches/${ref.branchId}/credentials`,
+      key: "credentials",
+    });
+    return (
+      credentials
         // Revoked credentials stay in the listing; they aren't live resources.
-        if (cred.revoked_at) continue;
-        results.push(buildCredentialResource(accountId, ref, cred));
-      }
-    } catch (err) {
-      if (!isServiceUnavailable(err)) throw err;
-    }
-  }
-  return results;
+        .filter((cred) => !cred.revoked_at)
+        .map((cred) => buildCredentialResource(accountId, ref, cred))
+    );
+  });
 }

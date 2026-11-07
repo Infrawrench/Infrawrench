@@ -9,8 +9,9 @@ export const NEON_LIST_CONCURRENCY = 8;
 
 /**
  * Map `items` through `fn` with at most `limit` calls in flight, and flatten
- * the per-item arrays in input order. An item whose call throws contributes
- * nothing, matching the listers' existing skip-what-we-can't-read behaviour.
+ * the per-item arrays in input order. The first failure rejects the lot and
+ * starts nothing more: reading a failed parent as having no children would
+ * prune them, so `fn` catches whatever really does mean none.
  */
 export async function flatMapPooled<T, R>(
   items: readonly T[],
@@ -19,13 +20,15 @@ export async function flatMapPooled<T, R>(
 ): Promise<R[]> {
   const out: R[][] = new Array(items.length);
   let next = 0;
+  let failed = false;
   const worker = async (): Promise<void> => {
-    while (next < items.length) {
+    while (next < items.length && !failed) {
       const i = next++;
       try {
         out[i] = await fn(items[i]!);
-      } catch {
-        out[i] = [];
+      } catch (err) {
+        failed = true;
+        throw err;
       }
     }
   };

@@ -27,11 +27,27 @@ describe("flatMapPooled", () => {
     expect(peak).toBe(3);
   });
 
-  it("skips items whose call throws", async () => {
-    const out = await flatMapPooled([1, 2, 3], async (n) => {
-      if (n === 2) throw new Error("404");
-      return [n];
-    });
-    expect(out).toEqual([1, 3]);
+  it("rethrows a failed call, since none of a parent's children would prune them", async () => {
+    await expect(
+      flatMapPooled([1, 2, 3], async (n) => {
+        if (n === 2) throw new Error("boom");
+        return [n];
+      }),
+    ).rejects.toThrow("boom");
+  });
+
+  it("starts nothing more after a call fails", async () => {
+    const started: number[] = [];
+    await expect(
+      flatMapPooled(
+        [1, 2, 3, 4],
+        async (n) => {
+          started.push(n);
+          throw new Error("boom");
+        },
+        1,
+      ),
+    ).rejects.toThrow("boom");
+    expect(started).toEqual([1]);
   });
 });

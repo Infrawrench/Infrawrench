@@ -75,6 +75,7 @@ function makeClient() {
 
 // resp.data helpers
 const wrap = (data: unknown) => ({ data });
+const notFound = () => Object.assign(new Error("not found"), { response: { status: 404 } });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -124,8 +125,8 @@ describe("listResources - projects", () => {
       fields: { name: "Proj 1", region: "aws-us-east-2", pgVersion: "17" },
     });
     // second call passes the cursor
-    expect(api.listProjects).toHaveBeenNthCalledWith(1, {});
-    expect(api.listProjects).toHaveBeenNthCalledWith(2, { cursor: "c1" });
+    expect(api.listProjects).toHaveBeenNthCalledWith(1, { limit: 400 });
+    expect(api.listProjects).toHaveBeenNthCalledWith(2, { limit: 400, cursor: "c1" });
   });
 
   it("stops paginating when no cursor", async () => {
@@ -177,11 +178,13 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     });
   });
 
-  it("skips branches that throw", async () => {
+  it("fails when branches throw, and reads a project that 404s as gone", async () => {
     api.listProjectBranches.mockRejectedValue(new Error("nope"));
     const client = makeClient();
-    const res = await client.listResources("neon-branch", ACCOUNT);
-    expect(res).toEqual([]);
+    await expect(client.listResources("neon-branch", ACCOUNT)).rejects.toThrow("nope");
+
+    api.listProjectBranches.mockRejectedValue(notFound());
+    expect(await client.listResources("neon-branch", ACCOUNT)).toEqual([]);
   });
 
   it("maps endpoints", async () => {
@@ -213,9 +216,12 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     });
   });
 
-  it("skips endpoints that throw", async () => {
+  it("fails when endpoints throw, and reads a project that 404s as gone", async () => {
     api.listProjectEndpoints.mockRejectedValue(new Error("x"));
     const client = makeClient();
+    await expect(client.listResources("neon-endpoint", ACCOUNT)).rejects.toThrow("x");
+
+    api.listProjectEndpoints.mockRejectedValue(notFound());
     expect(await client.listResources("neon-endpoint", ACCOUNT)).toEqual([]);
   });
 
@@ -244,14 +250,14 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     });
   });
 
-  it("skips databases when branch list throws and when db list throws", async () => {
+  it("fails when the branch list or the db list throws", async () => {
     api.listProjectBranches.mockResolvedValue(wrap({ branches: [{ id: "b1", name: "main" }] }));
     api.listProjectBranchDatabases.mockRejectedValue(new Error("x"));
     const client = makeClient();
-    expect(await client.listResources("neon-database", ACCOUNT)).toEqual([]);
+    await expect(client.listResources("neon-database", ACCOUNT)).rejects.toThrow("x");
 
     api.listProjectBranches.mockRejectedValue(new Error("y"));
-    expect(await client.listResources("neon-database", ACCOUNT)).toEqual([]);
+    await expect(client.listResources("neon-database", ACCOUNT)).rejects.toThrow("y");
   });
 
   it("maps roles", async () => {
@@ -270,7 +276,7 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     });
   });
 
-  it("defaults role.protected to false and skips errors", async () => {
+  it("defaults role.protected to false and fails on errors", async () => {
     api.listProjectBranches.mockResolvedValue(wrap({ branches: [{ id: "b1", name: "main" }] }));
     api.listProjectBranchRoles.mockResolvedValue(wrap({ roles: [{ name: "bob" }] }));
     const client = makeClient();
@@ -278,7 +284,7 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     expect(res[0]!.fields.protected).toBe(false);
 
     api.listProjectBranchRoles.mockRejectedValue(new Error("x"));
-    expect(await client.listResources("neon-role", ACCOUNT)).toEqual([]);
+    await expect(client.listResources("neon-role", ACCOUNT)).rejects.toThrow("x");
   });
 
   it("maps enabled Data APIs and skips disabled databases", async () => {
@@ -300,7 +306,7 @@ describe("listResources - branches/endpoints/databases/roles", () => {
           available_schemas: ["public", "auth"],
         }),
       )
-      .mockRejectedValueOnce(new Error("not enabled"));
+      .mockRejectedValueOnce(notFound());
 
     const client = makeClient();
     const res = await client.listResources("neon-data-api", ACCOUNT);

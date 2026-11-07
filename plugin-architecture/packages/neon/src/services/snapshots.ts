@@ -2,21 +2,15 @@ import { formatBytes, type ResourceInstance } from "@infrawrench/plugin-base";
 import type { Api, ProjectListItem, Snapshot } from "@neondatabase/api-client";
 import {
   hasStringFields,
-  isServiceUnavailable,
+  isNotEnabled,
+  readChildren,
+  requireValidRows,
   resourceId,
-  validatedArray,
   validatedObject,
   type BranchRef,
 } from "./common.js";
 
-/**
- * `@neondatabase/api-client@2.7.3` mistypes both snapshot reads as
- * `OperationsResponse`. The published OpenAPI spec documents the real payloads
- * as `{ snapshots }` and `{ snapshot, operations }`, so we have to look past the
- * generated types, but we validate at runtime rather than assert, so a drifting
- * SDK or API surfaces as a missing snapshot instead of a `TypeError` inside
- * `buildSnapshotResource`. Revisit when the SDK codegen is fixed.
- */
+/** The fields the document requires of a snapshot. */
 const SNAPSHOT_REQUIRED_FIELDS = ["id", "name", "created_at"] as const;
 
 function isSnapshot(value: unknown): value is Snapshot {
@@ -68,18 +62,20 @@ export async function listAllSnapshots(
   accountId: string,
   projects: ProjectListItem[],
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const p of projects) {
-    try {
+  return readChildren(
+    projects,
+    async (p) => {
       const resp = await api.listSnapshots(p.id);
-      for (const snap of validatedArray(resp.data, "snapshots", isSnapshot)) {
-        results.push(buildSnapshotResource(accountId, p.id, snap));
-      }
-    } catch (err) {
-      if (!isServiceUnavailable(err)) throw err;
-    }
-  }
-  return results;
+      return requireValidRows(resp.data.snapshots, isSnapshot, {
+        vendor: "Neon",
+        path: `/projects/${p.id}/snapshots`,
+        key: "snapshots",
+      }).map((snap) => buildSnapshotResource(accountId, p.id, snap));
+    },
+    // By id: a snapshot's parent is its source branch, which it can outlive or not have.
+    (p) => ({ idPrefixes: [resourceId(accountId, "neon-snapshot", `${p.id}/`)] }),
+    { limit: 1, isNone: isNotEnabled },
+  );
 }
 
 export async function createSnapshot(

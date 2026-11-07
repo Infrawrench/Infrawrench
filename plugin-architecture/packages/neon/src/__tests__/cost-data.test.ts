@@ -101,3 +101,78 @@ describe("fetchNeonCostData retention clamping", () => {
     ]);
   });
 });
+
+describe("fetchNeonCostData reads every page or fails", () => {
+  const range = { fromDate: "2026-08-03", toDate: "2026-08-06" };
+  const httpError = (status: number) =>
+    Object.assign(new Error(`status ${status}`), { response: { status } });
+
+  it("throws at the page cap instead of dropping the projects past it", async () => {
+    api.getConsumptionHistoryPerProjectV2.mockImplementation(async () => ({
+      data: { projects: [{ project_id: "p", periods: [] }], pagination: { cursor: "again" } },
+    }));
+    await expect(fetchNeonCostData(apiClient, range)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(api.getConsumptionHistoryPerProjectV2).toHaveBeenCalledTimes(1000);
+  });
+
+  it("refuses a page with no project list instead of reading it as no spend", async () => {
+    api.getConsumptionHistoryPerProjectV2.mockResolvedValue({ data: { items: [] } });
+    await expect(fetchNeonCostData(apiClient, range)).rejects.toThrow("is not a list");
+  });
+
+  it("reads a null project list as no spend", async () => {
+    api.getConsumptionHistoryPerProjectV2.mockResolvedValue({ data: { projects: null } });
+    await expect(fetchNeonCostData(apiClient, range)).resolves.toEqual([]);
+  });
+
+  describe("deriving the organization from projects", () => {
+    const listProjects = vi.fn();
+    const getOrganization = vi.fn();
+    const withProjects = { ...api, listProjects, getOrganization } as unknown as Api<unknown>;
+
+    beforeEach(() => {
+      listProjects.mockReset();
+      getOrganization.mockReset();
+      getOrganization.mockResolvedValue({ data: { id: "org-2", plan: "launch" } });
+    });
+
+    it("falls back when the key is refused the organization list", async () => {
+      api.getCurrentUserOrganizations.mockRejectedValue(httpError(403));
+      listProjects.mockResolvedValue({
+        data: { projects: [{ id: "p1", org_id: "org-2" }] },
+      });
+      await expect(fetchNeonCostData(withProjects, range)).resolves.toEqual([]);
+      expect(listProjects).toHaveBeenCalledWith({ limit: 400 });
+      expect(api.getConsumptionHistoryPerProjectV2).toHaveBeenCalledWith(
+        expect.objectContaining({ org_id: "org-2" }),
+      );
+    });
+
+    it.each([429, 500, 503])("fails on a %i rather than losing organizations", async (status) => {
+      api.getCurrentUserOrganizations.mockRejectedValue(httpError(status));
+      await expect(fetchNeonCostData(withProjects, range)).rejects.toMatchObject({
+        response: { status },
+      });
+      expect(listProjects).not.toHaveBeenCalled();
+    });
+
+    it("fails on a failure with no status", async () => {
+      api.getCurrentUserOrganizations.mockRejectedValue(new Error("socket hang up"));
+      await expect(fetchNeonCostData(withProjects, range)).rejects.toThrow("socket hang up");
+      expect(listProjects).not.toHaveBeenCalled();
+    });
+
+    it("reads organizations past the first 50 pages, and throws at the cap", async () => {
+      api.getCurrentUserOrganizations.mockRejectedValue(httpError(403));
+      listProjects.mockImplementation(async () => ({
+        data: { projects: [{ id: "p", org_id: "org-2" }], pagination: { cursor: "again" } },
+      }));
+      await expect(fetchNeonCostData(withProjects, range)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(listProjects).toHaveBeenCalledTimes(250);
+    });
+  });
+});
