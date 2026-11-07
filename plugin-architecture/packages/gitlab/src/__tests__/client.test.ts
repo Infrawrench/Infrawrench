@@ -433,6 +433,51 @@ describe("edits", () => {
     });
   });
 
+  describe("a role-level edit whose re-protect fails", () => {
+    const route = (posts: Array<{ status: number; body?: object }>) => (call: Call) => {
+      if (call.method === "DELETE") return { status: 204 };
+      if (call.method === "POST") return posts.shift()!;
+      return {
+        name: "main",
+        push_access_levels: [{ access_level: 40 }],
+        merge_access_levels: [{ access_level: 30 }],
+        allow_force_push: true,
+      };
+    };
+    const edit = (c: ReturnType<typeof client>["c"]) =>
+      c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+        pushAccess: "No one",
+      });
+
+    it("puts the old rule back and reports the failure", async () => {
+      const { c, calls } = client(
+        route([
+          { status: 500, body: { message: "boom" } },
+          { status: 201, body: { name: "main" } },
+        ]),
+      );
+      await expect(edit(c)).rejects.toThrow("boom");
+      expect(calls.filter((x) => x.method === "POST").map((x) => x.body)).toEqual([
+        expect.objectContaining({ push_access_level: 0, merge_access_level: 30 }),
+        expect.objectContaining({
+          push_access_level: 40,
+          merge_access_level: 30,
+          allow_force_push: true,
+        }),
+      ]);
+    });
+
+    it("says the branch is unprotected when that fails too", async () => {
+      const { c } = client(
+        route([
+          { status: 500, body: { message: "boom" } },
+          { status: 500, body: { message: "still down" } },
+        ]),
+      );
+      await expect(edit(c)).rejects.toThrow(/main is now unprotected.*boom/);
+    });
+  });
+
   it("re-protects a branch on the same project path it unprotected", async () => {
     const { c, calls } = client((call) => {
       if (call.method === "DELETE") return { status: 204 };

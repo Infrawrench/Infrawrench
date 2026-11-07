@@ -2005,13 +2005,29 @@ export class GitLabClient implements PluginClient {
             await this.api.delete(
               `/projects/${pathEncode(ownerId)}/protected_branches/${pathEncode(rest)}`,
             );
-            await this.protectBranch(ownerId, rest, {
-              push: branchLevelValue(fields["pushAccess"]) ?? level(current.push_access_levels),
-              merge: branchLevelValue(fields["mergeAccess"]) ?? level(current.merge_access_levels),
-              force: bool("allowForcePush") ?? current.allow_force_push ?? false,
-              codeOwners:
-                bool("codeOwnerApprovalRequired") ?? current.code_owner_approval_required ?? false,
-            });
+            const before = {
+              push: level(current.push_access_levels),
+              merge: level(current.merge_access_levels),
+              force: current.allow_force_push ?? false,
+              codeOwners: current.code_owner_approval_required ?? false,
+            };
+            try {
+              await this.protectBranch(ownerId, rest, {
+                push: branchLevelValue(fields["pushAccess"]) ?? before.push,
+                merge: branchLevelValue(fields["mergeAccess"]) ?? before.merge,
+                force: bool("allowForcePush") ?? before.force,
+                codeOwners: bool("codeOwnerApprovalRequired") ?? before.codeOwners,
+              });
+            } catch (err) {
+              // The old rule is already gone, so a failure here would leave the branch open.
+              await this.protectBranch(ownerId, rest, before).catch(() =>
+                fail(
+                  `${rest} is now unprotected: its rule was removed to change it, and neither the new nor the old one could be added back (${err instanceof Error ? err.message : String(err)})`,
+                  statusOf(err) || 500,
+                ),
+              );
+              throw err;
+            }
           } else {
             const body = compact({
               allow_force_push: bool("allowForcePush"),
