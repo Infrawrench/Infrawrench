@@ -203,6 +203,16 @@ describe("flaky tests", () => {
     expect(parts).toEqual([{ parentResourceIds: [`${ACC}:test-suite:a`] }]);
   });
 
+  it("shows a refusal of one suite where nothing keeps the rows", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname === SUITES) return suites;
+      if (call.url.pathname === `${SUITES}/a/tests`)
+        return { status: 403, body: { message: "no" } };
+      return tests;
+    });
+    await expect(c.listResources("test", ACC)).rejects.toThrow("error 403");
+  });
+
   it("shows a refusal of every suite where nothing keeps the rows", async () => {
     const { c } = client((call) =>
       call.url.pathname === SUITES ? suites : { status: 403, body: { message: "no" } },
@@ -322,6 +332,12 @@ describe("fan-out past the rate limit", () => {
       for (const slug of scheduleCalls(calls)) seen.add(slug);
     }
     expect(seen.size).toBe(45);
+  });
+
+  it("reads every pipeline where the host keeps no track of the rest", async () => {
+    const { c, calls } = schedules();
+    await c.listResources("schedule", ACC);
+    expect(scheduleCalls(calls)).toHaveLength(45);
   });
 
   it("reads everything with no report at or under the budget", async () => {

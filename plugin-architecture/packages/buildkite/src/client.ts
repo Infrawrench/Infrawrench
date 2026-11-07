@@ -360,25 +360,19 @@ export class BuildkiteClient implements PluginClient {
   ): Promise<T[]> {
     const parentId = (p: P) => `${accountId}:${parentTypeId}:${idOf(p)}`;
     const { now, later } = fanOutWindow(parents, idOf);
-    if (later.length > 0) reportUnreadListPart({ parentResourceIds: later.map(parentId) });
+    // A host that keeps no track answers false, and there only every parent is the whole list.
+    const tracked =
+      later.length === 0 || reportUnreadListPart({ parentResourceIds: later.map(parentId) });
     const out: T[] = [];
-    let readOne = false;
-    let refused: unknown;
-    for (const p of now) {
+    for (const p of tracked ? now : parents) {
       try {
         out.push(...(await read(p)));
-        readOne = true;
       } catch (err) {
-        if (isAbsent(err)) {
-          readOne = true;
-          continue;
-        }
+        if (isAbsent(err)) continue;
         if (statusOf(err) !== 403) throw err;
-        if (!reportUnreadListPart({ parentResourceIds: [parentId(p)] })) refused = err;
+        if (!reportUnreadListPart({ parentResourceIds: [parentId(p)] })) throw err;
       }
     }
-    // Refused throughout on a host that keeps no track (the desktop): a missing scope to show.
-    if (refused !== undefined && !readOne) throw refused;
     return out;
   }
 
