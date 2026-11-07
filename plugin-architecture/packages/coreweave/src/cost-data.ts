@@ -1,5 +1,6 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import type { CoreWeaveContext } from "./api.js";
+import { statusOf } from "./api.js";
 import { instanceSpec } from "./catalog.js";
 import type { FocusRow } from "./focus.js";
 import { dayOf, fetchFocusRows, quantityOf, toApiTime } from "./focus.js";
@@ -164,6 +165,28 @@ export function buildCostRows(
   return out;
 }
 
+/**
+ * The capacity plan view of a window. The plan split is an enrichment: without it every
+ * row is priced at the flat or list rate and tagged `unattributed`, which is still
+ * correct usage. So only the documented refusal goes without one. Any other failure has
+ * to throw, or a throttle would replace rows priced at a negotiated rate with list prices.
+ */
+export async function fetchPlanRows(
+  ctx: CoreWeaveContext,
+  window: { start: string; end: string },
+): Promise<FocusRow[]> {
+  try {
+    return await fetchFocusRows(ctx, {
+      startTime: window.start,
+      endTime: window.end,
+      groupBy: "capacity_plan",
+    });
+  } catch (err) {
+    if (statusOf(err) === 403) return [];
+    throw err;
+  }
+}
+
 export async function fetchCoreWeaveCostData(
   ctx: CoreWeaveContext,
   rates: NegotiatedRates,
@@ -178,14 +201,7 @@ export async function fetchCoreWeaveCostData(
     groupBy: "location",
   });
   if (location.length === 0) return [];
-  // The plan split is an enrichment: without it every row is priced at the
-  // flat or list rate and tagged `unattributed`, which is still correct usage.
-  const planRows = await fetchFocusRows(ctx, {
-    startTime: window.start,
-    endTime: window.end,
-    groupBy: "capacity_plan",
-  }).catch(() => [] as FocusRow[]);
-  return buildCostRows(location, planRows, rates);
+  return buildCostRows(location, await fetchPlanRows(ctx, window), rates);
 }
 
 /** Billable GPU-hours of one row, whatever unit its SKU meters in. */

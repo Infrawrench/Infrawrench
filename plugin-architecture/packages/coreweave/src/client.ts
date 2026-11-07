@@ -32,7 +32,13 @@ import {
   instanceSpec,
   isRackScale,
 } from "./catalog.js";
-import { buildCostRows, exportWindow, fetchCoreWeaveCostData, summarise } from "./cost-data.js";
+import {
+  buildCostRows,
+  exportWindow,
+  fetchCoreWeaveCostData,
+  fetchPlanRows,
+  summarise,
+} from "./cost-data.js";
 import type { FocusRow } from "./focus.js";
 import { fetchFocusRows } from "./focus.js";
 import type { CwCluster, CwNodePool, CwVpc } from "./mappers.js";
@@ -446,11 +452,7 @@ export class CoreWeaveClient implements PluginClient {
         endTime: window.end,
         groupBy: "location",
       });
-      const plans = await fetchFocusRows(this.ctx, {
-        startTime: window.start,
-        endTime: window.end,
-        groupBy: "capacity_plan",
-      }).catch(() => [] as FocusRow[]);
+      const plans = await fetchPlanRows(this.ctx, window);
       const summary = summarise(buildCostRows(location, plans, this.rates), location, window);
       return {
         ...row,

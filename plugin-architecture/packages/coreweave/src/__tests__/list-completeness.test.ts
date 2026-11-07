@@ -164,3 +164,40 @@ describe("the FOCUS export", () => {
     ]);
   });
 });
+
+describe("the capacity plan view behind a cost read", () => {
+  const RANGE = { fromDate: "2026-09-10", toDate: "2026-09-10" };
+  const NOW = Date.parse("2026-10-01T00:00:00Z");
+  const ROW = {
+    ChargePeriodStart: "2026-09-10T03:00:00Z",
+    PricingQuantity: 16,
+    PricingUnit: "Instance-Hour",
+    SkuId: "gd-8xh100ib-i128",
+    x_ClusterId: "c-1",
+  };
+  const planAnswers = (plan: Answer) =>
+    stubFetch((url) =>
+      url.searchParams.get("group_by") === "location" ? { body: { data: [ROW] } } : plan,
+    );
+
+  it("fails on a throttle rather than re-pricing every row at the list rate", async () => {
+    planAnswers({ status: 429, body: "slow down" });
+    await expect(fetchCoreWeaveCostData(CTX, parseNegotiatedRates(""), RANGE, NOW)).rejects.toThrow(
+      /429/,
+    );
+  });
+
+  it("fails when the plan view is cut short", async () => {
+    planAnswers({ body: { data: [ROW], next_page_token: "more" } });
+    await expect(fetchCoreWeaveCostData(CTX, parseNegotiatedRates(""), RANGE, NOW)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("reads the documented refusal as no plan split, keeping the usage", async () => {
+    planAnswers({ status: 403, body: "forbidden" });
+    const rows = await fetchCoreWeaveCostData(CTX, parseNegotiatedRates(""), RANGE, NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.tags?.["capacityPlan"]).toBe("unattributed");
+  });
+});
