@@ -183,7 +183,10 @@ export class ClerkClient implements PluginClient {
     return this.api.get("/users/count", { query });
   }
 
-  private listActiveSessions(userId: string, maxItems?: number): Promise<CkSession[]> {
+  private async listActiveSessions(userId: string, maxItems?: number): Promise<CkSession[]> {
+    // A blank `user_id` is dropped from the query, which turns this into every
+    // active session in the instance, and the revoke action acts on the result.
+    if (!userId.trim()) throw new Error("Clerk plugin: this action needs a user id");
     return this.api.list(
       (paging) =>
         this.api.get("/sessions", { query: { user_id: userId, status: "active", ...paging } }),
