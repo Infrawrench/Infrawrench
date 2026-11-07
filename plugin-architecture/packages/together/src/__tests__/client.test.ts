@@ -2,6 +2,7 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TogetherClient } from "../client.js";
 import { EndpointResourceType } from "../resources/endpoint.js";
+import { ManagedEndpointResourceType } from "../resources/managed-endpoint.js";
 
 const ACCOUNT = "acct-1";
 
@@ -138,35 +139,6 @@ describe("v2 DMI endpoints", () => {
 });
 
 describe("dedicated endpoints", () => {
-  it("nests replica counts under `autoscaling` on create", async () => {
-    installFetch(() =>
-      jsonResponse({
-        id: "endpoint-abc",
-        name: "acme/llama",
-        model: "meta/llama",
-        hardware: "1x_nvidia_h100_80gb_sxm",
-        state: "STARTED",
-        autoscaling: { min_replicas: 1, max_replicas: 4 },
-      }),
-    );
-    await client().createResource("endpoint", ACCOUNT, {
-      display_name: "prod",
-      model: "meta/llama",
-      hardware: "1x_nvidia_h100_80gb_sxm",
-      min_replicas: "1",
-      max_replicas: "4",
-      state: "STARTED",
-      inactive_timeout: "0",
-    });
-    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
-      model: "meta/llama",
-      hardware: "1x_nvidia_h100_80gb_sxm",
-      autoscaling: { min_replicas: 1, max_replicas: 4 },
-      display_name: "prod",
-      state: "STARTED",
-    });
-  });
-
   it("rejects a state the PATCH route does not accept", async () => {
     installFetch(() => jsonResponse({ id: "e1", autoscaling: {} }));
     await expect(
@@ -580,23 +552,541 @@ describe("catalogues that have left the document", () => {
       "has more than Infrawrench reads",
     );
   });
+});
 
-  it("offers dedicated models from the new catalogue on the create form", async () => {
-    installFetch((url) => {
-      if (url.includes("/v1/models") || url.endsWith("/v1/hardware")) {
-        return jsonResponse({ error: {} }, 404);
+describe("creating a managed endpoint", () => {
+  const MODEL = "projects/pub/models/ml_1/revisions/mr_1";
+  const CONFIG = "projects/pub/configs/cr_1";
+  const profile = {
+    profileId: "cr_1",
+    model: MODEL,
+    config: CONFIG,
+    gpuType: "H100",
+    gpuCount: 2,
+    quantization: "FP8",
+  };
+  const catalogue = [
+    { id: "ml_1", displayName: "Llama", status: "SUPPORTED", deploymentProfiles: [profile] },
+    {
+      id: "ml_2",
+      displayName: "Hidden",
+      status: "SUPPORTED_MODEL_STATUS_HIDDEN",
+      deploymentProfiles: [profile],
+    },
+    {
+      id: "ml_3",
+      displayName: "Unpinned",
+      status: "SUPPORTED",
+      baseModel: "",
+      deploymentProfiles: [{ ...profile, config: "", model: "" }],
+    },
+  ];
+  const fields = {
+    name: "my-endpoint",
+    visibility: "VISIBILITY_PRIVATE",
+    profile: `${MODEL}|${CONFIG}`,
+    deployment_name: "primary",
+    min_replicas: "1",
+    max_replicas: "4",
+  };
+  const base = "https://api.together.ai/v2/projects/proj-1/endpoints";
+  const writes = () =>
+    calls
+      .filter((call) => call.init?.method && call.init.method !== "GET")
+      .map((call) => `${call.init?.method} ${call.url}`);
+
+  function installCreate(onWrite?: (url: string, init: RequestInit) => Response | undefined) {
+    installFetch((url, init) => {
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ project: { id: "proj-1" } });
+      const written = onWrite?.(url, init ?? {});
+      if (written) return written;
+      if (init?.method === "POST" && url === base) {
+        return jsonResponse({ id: "e1", name: "acme/my-endpoint", etag: "v1", deployments: [] });
       }
-      if (url.includes("/v2/supported-models")) return jsonResponse({ data: [supported] });
+      if (init?.method === "POST" && url === `${base}/e1/deployments`) {
+        return jsonResponse({ id: "d1", name: "acme/my-endpoint/primary" });
+      }
+      if (init?.method === "PATCH") {
+        return jsonResponse({
+          id: "e1",
+          name: "acme/my-endpoint",
+          etag: "v2",
+          deployments: [{ id: "d1" }],
+        });
+      }
+      if (init?.method === "DELETE") return jsonResponse({});
+      throw new Error(`unrouted: ${init?.method ?? "GET"} ${url}`);
+    });
+  }
+
+  it("declares create and update on the type", () => {
+    expect(ManagedEndpointResourceType.supportsCreate).toBe(true);
+    expect(ManagedEndpointResourceType.supportsUpdate).toBe(true);
+  });
+
+  it("picks from what can be deployed, with the hardware and price each costs", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ project: { id: "proj-1" } });
+      if (url.includes("/v2/supported-models")) return jsonResponse({ data: catalogue });
       if (url.endsWith("/v2/public/inference-instance-types")) {
-        return jsonResponse({ data: [{ id: "it-1", gpuType: "H100" }] });
+        return jsonResponse({
+          data: [{ id: "it-1", gpuType: "H100", gpuCount: 2, priceCentsPerHour: 450 }],
+        });
       }
       throw new Error(`unrouted: ${url}`);
     });
-    const form = await client().getCreateConfig("endpoint");
+    const form = await client().getCreateConfig("managed-endpoint");
     expect(calls.some((call) => call.url.includes("product=PRODUCT_DEDICATED"))).toBe(true);
-    const json = JSON.stringify(form);
-    expect(json).toContain("meta-llama/Llama-3");
-    expect(json).toContain("it-1");
+    const picker = form.fields.find((field) => field.key === "profile");
+    expect(picker?.options).toEqual([
+      {
+        id: `${MODEL}|${CONFIG}`,
+        label: "Llama",
+        description: "2× H100 · FP8 · $4.50/hour per replica",
+      },
+    ]);
+  });
+
+  it("still offers the models when the prices cannot be read", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ project: { id: "proj-1" } });
+      if (url.includes("/v2/supported-models")) return jsonResponse({ data: catalogue });
+      return jsonResponse({ error: {} }, 500);
+    });
+    const form = await client().getCreateConfig("managed-endpoint");
+    const picker = form.fields.find((field) => field.key === "profile");
+    expect(picker?.options?.[0]?.description).toBe("2× H100 · FP8");
+  });
+
+  it("creates the endpoint and the deployment, then routes traffic to it", async () => {
+    installCreate();
+    const created = await client().createResource("managed-endpoint", ACCOUNT, fields);
+    expect(writes()).toEqual([
+      `POST ${base}`,
+      `POST ${base}/e1/deployments`,
+      `PATCH ${base}/e1?updateMask=trafficSplit`,
+    ]);
+    const bodies = calls
+      .filter((call) => call.init?.body)
+      .map((call) => JSON.parse(String(call.init?.body)));
+    expect(bodies[0]).toEqual({ name: "my-endpoint", visibility: "VISIBILITY_PRIVATE" });
+    expect(bodies[1]).toEqual({
+      name: "primary",
+      model: MODEL,
+      config: CONFIG,
+      autoscaling: { minReplicas: 1, maxReplicas: 4 },
+    });
+    expect(bodies[2]).toEqual({
+      trafficSplit: [{ deploymentId: "d1", weight: 1 }],
+      etag: "v1",
+    });
+    expect(created.id).toBe(`${ACCOUNT}:managed-endpoint:e1`);
+    expect(created.fields["deploymentCount"]).toBe(1);
+    expect(created.resolvedOutputs["endpointName"]).toBe("acme/my-endpoint");
+  });
+
+  it("removes the empty endpoint when the deployment is refused", async () => {
+    installCreate((url, init) =>
+      init.method === "POST" && url.endsWith("/deployments")
+        ? jsonResponse({ error: { message: "no capacity" } }, 400)
+        : undefined,
+    );
+    await expect(client().createResource("managed-endpoint", ACCOUNT, fields)).rejects.toThrow(
+      "no capacity",
+    );
+    expect(writes()).toEqual([`POST ${base}`, `POST ${base}/e1/deployments`, `DELETE ${base}/e1`]);
+  });
+
+  it("reports the refusal, not a failed cleanup", async () => {
+    installCreate((url, init) => {
+      if (init.method === "POST" && url.endsWith("/deployments")) {
+        return jsonResponse({ error: { message: "no capacity" } }, 400);
+      }
+      return init.method === "DELETE" ? jsonResponse({ error: {} }, 500) : undefined;
+    });
+    await expect(client().createResource("managed-endpoint", ACCOUNT, fields)).rejects.toThrow(
+      "no capacity",
+    );
+  });
+
+  it("keeps a provisioning deployment and says so when traffic cannot be routed", async () => {
+    installCreate((_url, init) =>
+      init.method === "PATCH" ? jsonResponse({ error: { message: "busy" } }, 409) : undefined,
+    );
+    await expect(client().createResource("managed-endpoint", ACCOUNT, fields)).rejects.toThrow(
+      "Set the traffic split",
+    );
+    expect(writes().some((write) => write.startsWith("DELETE"))).toBe(false);
+  });
+
+  it("refuses an organization key before writing anything, naming what it needs", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ organization: { id: "org-1" } });
+      throw new Error(`unrouted: ${url}`);
+    });
+    await expect(client().createResource("managed-endpoint", ACCOUNT, fields)).rejects.toThrow(
+      "project API key",
+    );
+    expect(writes()).toEqual([]);
+  });
+
+  it.each([
+    ["a blank name", { name: "  " }, "needs a name"],
+    ["no profile", { profile: "" }, "Choose a model"],
+    ["a half profile", { profile: MODEL }, "Choose a model"],
+    ["min above max", { min_replicas: "3", max_replicas: "1" }, "more than the maximum"],
+    ["a fractional bound", { min_replicas: "1.5" }, "whole number"],
+    ["a negative bound", { max_replicas: "-1" }, "whole number"],
+    ["a timeout under the floor", { inactive_timeout: "10" }, "30 to 1440"],
+    ["a timeout over the ceiling", { inactive_timeout: "2000" }, "30 to 1440"],
+  ])("refuses %s before writing anything", async (_what, change, message) => {
+    installCreate();
+    await expect(
+      client().createResource("managed-endpoint", ACCOUNT, { ...fields, ...change }),
+    ).rejects.toThrow(message);
+    expect(writes()).toEqual([]);
+  });
+
+  it("lets a blank maximum follow the minimum, so 0 creates it stopped", async () => {
+    installCreate();
+    await client().createResource("managed-endpoint", ACCOUNT, {
+      ...fields,
+      min_replicas: "0",
+      max_replicas: "",
+      inactive_timeout: "60",
+    });
+    const deployment = calls.find((call) => call.url.endsWith("/deployments"));
+    expect(JSON.parse(String(deployment?.init?.body))).toMatchObject({
+      autoscaling: { minReplicas: 0, maxReplicas: 0 },
+      inactiveTimeout: 60,
+    });
+  });
+});
+
+describe("editing a managed endpoint", () => {
+  const resourceId = `${ACCOUNT}:managed-endpoint:e1`;
+  const base = "https://api.together.ai/v2/projects/proj-1/endpoints/e1";
+  const current = {
+    id: "e1",
+    name: "acme/one",
+    visibility: "VISIBILITY_PRIVATE",
+    etag: "v7",
+    trafficSplit: [
+      { deploymentId: "d1", weight: 3 },
+      { deploymentId: "d2", weight: 1 },
+    ],
+    deployments: [{ id: "d1" }, { id: "d2" }],
+  };
+  const deployment = {
+    id: "d1",
+    etag: "dv3",
+    name: "acme/one/primary",
+    autoscaling: { minReplicas: 1, maxReplicas: 2 },
+    inactiveTimeout: 60,
+  };
+
+  function installEdit(onWrite?: (url: string, init: RequestInit) => Response | undefined) {
+    installFetch((url, init) => {
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ project: { id: "proj-1" } });
+      if (init?.method && init.method !== "GET") {
+        return onWrite?.(url, init) ?? jsonResponse(current);
+      }
+      if (url === base) return jsonResponse(current);
+      if (url === `${base}/deployments/d1`) return jsonResponse(deployment);
+      throw new Error(`unrouted: ${url}`);
+    });
+  }
+  const writes = () =>
+    calls
+      .filter((call) => call.init?.method && call.init.method !== "GET")
+      .map((call) => ({
+        write: `${call.init?.method} ${call.url.replace(base, "")}`,
+        body: call.init?.body ? JSON.parse(String(call.init.body)) : undefined,
+      }));
+  const command = (name: string, form: Record<string, string>) =>
+    client().executeNoSqlCommand!("managed-endpoint", resourceId, ACCOUNT, name, [
+      JSON.stringify(form),
+    ]);
+
+  it("sends what changed with the etag it read, and keeps the rest", async () => {
+    installEdit();
+    await client().updateResource("managed-endpoint", resourceId, ACCOUNT, {
+      name: "acme/one",
+      visibility: "VISIBILITY_INTERNAL",
+    });
+    expect(writes()).toEqual([
+      { write: "PATCH ", body: { etag: "v7", visibility: "VISIBILITY_INTERNAL" } },
+    ]);
+  });
+
+  it("writes nothing when nothing changed", async () => {
+    installEdit();
+    const updated = await client().updateResource("managed-endpoint", resourceId, ACCOUNT, {
+      name: "acme/one",
+      visibility: "VISIBILITY_PRIVATE",
+    });
+    expect(writes()).toEqual([]);
+    expect(updated.displayName).toBe("acme/one");
+  });
+
+  it("refuses a visibility Together does not have", async () => {
+    installEdit();
+    await expect(
+      client().updateResource("managed-endpoint", resourceId, ACCOUNT, { visibility: "PUBLIC" }),
+    ).rejects.toThrow("VISIBILITY_PRIVATE or VISIBILITY_INTERNAL");
+    expect(writes()).toEqual([]);
+  });
+
+  it("rescales a deployment, naming both bounds and only what changed", async () => {
+    installEdit();
+    await command("updateDeployment", {
+      deploymentId: "d1",
+      minReplicas: "1",
+      maxReplicas: "4",
+      inactiveTimeout: "60",
+    });
+    expect(writes()).toEqual([
+      {
+        write: "PATCH /deployments/d1?updateMask=autoscaling",
+        body: { etag: "dv3", autoscaling: { minReplicas: 1, maxReplicas: 4 } },
+      },
+    ]);
+  });
+
+  it("stops at 0/0 and turns the idle timeout off at 0, naming both in the mask", async () => {
+    installEdit();
+    await command("updateDeployment", {
+      deploymentId: "d1",
+      minReplicas: "0",
+      maxReplicas: "0",
+      inactiveTimeout: "0",
+    });
+    const [{ write, body }] = writes() as [{ write: string; body: unknown }];
+    expect(decodeURIComponent(write)).toBe(
+      "PATCH /deployments/d1?updateMask=autoscaling,inactiveTimeout",
+    );
+    expect(body).toEqual({
+      etag: "dv3",
+      autoscaling: { minReplicas: 0, maxReplicas: 0 },
+      inactiveTimeout: 0,
+    });
+  });
+
+  it("writes nothing when a deployment form changes nothing", async () => {
+    installEdit();
+    await command("updateDeployment", { deploymentId: "d1", minReplicas: "1", maxReplicas: "2" });
+    expect(writes()).toEqual([]);
+  });
+
+  it.each([
+    ["updateDeployment", {}],
+    ["updateDeployment", { deploymentId: " " }],
+    ["deleteDeployment", {}],
+  ])("refuses %s with no deployment id", async (name, form) => {
+    installEdit();
+    await expect(command(name, form)).rejects.toThrow("names no deployment");
+    expect(writes()).toEqual([]);
+  });
+
+  it("refuses an unknown command", async () => {
+    installEdit();
+    await expect(command("dropEverything", {})).rejects.toThrow("unknown command");
+    expect(writes()).toEqual([]);
+  });
+
+  it("replaces the split with the typed weights, keeping any not on the form", async () => {
+    installEdit();
+    await command("setTrafficSplit", { weight_d1: "5", weight_d3: "2" });
+    expect(writes()).toEqual([
+      {
+        write: "PATCH ?updateMask=trafficSplit",
+        body: {
+          etag: "v7",
+          trafficSplit: [
+            { deploymentId: "d1", weight: 5 },
+            { deploymentId: "d2", weight: 1 },
+            { deploymentId: "d3", weight: 2 },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("takes a deployment set to 0 out of the split, and a blank leaves it alone", async () => {
+    installEdit();
+    await command("setTrafficSplit", { weight_d1: "0", weight_d2: "" });
+    expect(writes()[0]?.body).toEqual({
+      etag: "v7",
+      trafficSplit: [{ deploymentId: "d2", weight: 1 }],
+    });
+  });
+
+  it("refuses a weight that is not a number, before writing", async () => {
+    installEdit();
+    await expect(command("setTrafficSplit", { weight_d1: "-1" })).rejects.toThrow("not negative");
+    await expect(command("setTrafficSplit", { weight_d1: "lots" })).rejects.toThrow("not negative");
+    expect(writes()).toEqual([]);
+  });
+
+  it("adds a deployment with no traffic unless a weight is given", async () => {
+    installEdit((url, init) =>
+      init.method === "POST" && url.endsWith("/deployments")
+        ? jsonResponse({ id: "d9" })
+        : undefined,
+    );
+    const form = {
+      deployment_name: "canary",
+      profile: "projects/p/models/m|projects/p/configs/c",
+      min_replicas: "1",
+      max_replicas: "1",
+    };
+    await command("addDeployment", form);
+    expect(writes()).toEqual([
+      {
+        write: "POST /deployments",
+        body: {
+          name: "canary",
+          model: "projects/p/models/m",
+          config: "projects/p/configs/c",
+          autoscaling: { minReplicas: 1, maxReplicas: 1 },
+        },
+      },
+    ]);
+    calls = [];
+    await command("addDeployment", { ...form, weight: "2" });
+    expect(writes()[1]).toEqual({
+      write: "PATCH ?updateMask=trafficSplit",
+      body: {
+        etag: "v7",
+        trafficSplit: [
+          { deploymentId: "d1", weight: 3 },
+          { deploymentId: "d2", weight: 1 },
+          { deploymentId: "d9", weight: 2 },
+        ],
+      },
+    });
+  });
+
+  it("takes one deployment out of the split, keeps the others, then deletes it", async () => {
+    installEdit();
+    await command("deleteDeployment", { deploymentId: "d1" });
+    expect(writes()).toEqual([
+      {
+        write: "PATCH ?updateMask=trafficSplit",
+        body: { etag: "v7", trafficSplit: [{ deploymentId: "d2", weight: 1 }] },
+      },
+      { write: "DELETE /deployments/d1", body: undefined },
+    ]);
+  });
+
+  it("says to delete the deployment again while it is still stopping", async () => {
+    installEdit((url, init) =>
+      init.method === "DELETE" ? jsonResponse({ error: {} }, 409) : undefined,
+    );
+    await expect(command("deleteDeployment", { deploymentId: "d1" })).rejects.toThrow(
+      "Delete the deployment again",
+    );
+  });
+
+  it("makes no write on an organization key's lookup failure", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ organization: { id: "org-1" } });
+      return jsonResponse({ data: [] });
+    });
+    await expect(command("setTrafficSplit", { weight_d1: "1" })).rejects.toThrow(
+      "does not list endpoint",
+    );
+    expect(writes()).toEqual([]);
+  });
+});
+
+describe("the managed endpoint detail page", () => {
+  const resourceId = `${ACCOUNT}:managed-endpoint:e1`;
+  const base = "https://api.together.ai/v2/projects/proj-1/endpoints/e1";
+  const stored = {
+    id: resourceId,
+    pluginId: "together",
+    resourceTypeId: "managed-endpoint",
+    accountId: ACCOUNT,
+    displayName: "acme/one",
+    externalId: "e1",
+    fields: { name: "acme/one", deploymentCount: 1 },
+    resolvedOutputs: {},
+    secretStates: [],
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
+  const deployment = {
+    id: "d1",
+    name: "acme/one/primary",
+    modelId: "ml_1",
+    hardware: "2x_h100",
+    autoscaling: { minReplicas: 1, maxReplicas: 4 },
+    inactiveTimeout: 60,
+    status: { state: "DEPLOYMENT_STATE_READY", readyReplicas: 2 },
+  };
+  const model = {
+    id: "ml_1",
+    displayName: "Llama",
+    status: "SUPPORTED",
+    deploymentProfiles: [
+      { model: "projects/p/models/m", config: "projects/p/configs/c", gpuCount: 1, gpuType: "A" },
+    ],
+  };
+
+  function install(split: unknown[], fail?: string) {
+    installFetch((url) => {
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ project: { id: "proj-1" } });
+      if (fail && url.includes(fail)) return jsonResponse({ error: {} }, 500);
+      if (url.includes("/analytics")) return jsonResponse({});
+      if (url.includes("/v2/supported-models")) return jsonResponse({ data: [model] });
+      if (url.includes("inference-instance-types")) return jsonResponse({ data: [] });
+      if (url.includes("/deployments")) return jsonResponse({ data: [deployment] });
+      if (url === base) return jsonResponse({ id: "e1", trafficSplit: split });
+      throw new Error(`unrouted: ${url}`);
+    });
+  }
+  const detail = async () => {
+    const c = client();
+    return JSON.stringify(c.renderDetail(await c.enrichDetail(stored)).sections);
+  };
+
+  it("lists each deployment with its state, replicas and weight, and the edits", async () => {
+    install([{ deploymentId: "d1", weight: 3 }]);
+    const json = await detail();
+    expect(json).toContain("acme/one/primary");
+    expect(json).toContain("Llama");
+    expect(json).toContain("2x_h100");
+    expect(json).toContain("2 ready, 1 to 4");
+    for (const name of [
+      "updateDeployment",
+      "deleteDeployment",
+      "setTrafficSplit",
+      "addDeployment",
+      "weight_d1",
+    ]) {
+      expect(json).toContain(name);
+    }
+    expect(json).not.toContain("isn't routed");
+  });
+
+  it("says so when no deployment is in the split", async () => {
+    install([]);
+    expect(await detail()).toContain("isn't routed");
+  });
+
+  it("leaves out Add deployment when the catalogue cannot be read", async () => {
+    install([], "/v2/supported-models");
+    const json = await detail();
+    expect(json).toContain("updateDeployment");
+    expect(json).not.toContain("addDeployment");
+  });
+
+  it("still renders the page when the deployments cannot be read", async () => {
+    install([], "/deployments");
+    const json = await detail();
+    expect(json).not.toContain("updateDeployment");
+    expect(json).toContain("Deleting this endpoint");
   });
 });
 
@@ -604,13 +1094,6 @@ describe("v1 endpoints Together has closed to new work", () => {
   const closed = {
     error: { code: "endpoints_v1_create_access_disabled", message: "disabled" },
   };
-
-  it("says what to do when a create is refused", async () => {
-    installFetch(() => jsonResponse(closed, 403));
-    await expect(
-      client().createResource("endpoint", ACCOUNT, { model: "m", hardware: "h" }),
-    ).rejects.toThrow("no longer lets this account");
-  });
 
   describe("a type that cannot wake again", () => {
     const stored = (state: string) => ({
@@ -652,10 +1135,18 @@ describe("v1 endpoints Together has closed to new work", () => {
   });
 
   it("leaves any other refusal as Together wrote it", async () => {
-    installFetch(() => jsonResponse({ error: { code: "quota_exceeded" } }, 403));
+    installFetch((_url, init) =>
+      init?.method === "PATCH"
+        ? jsonResponse({ error: { code: "quota_exceeded" } }, 403)
+        : jsonResponse({ id: "e1" }),
+    );
     await expect(
-      client().createResource("endpoint", ACCOUNT, { model: "m", hardware: "h" }),
+      client().invokeAction("endpoint", `${ACCOUNT}:endpoint:e1`, "start", ACCOUNT),
     ).rejects.toThrow("quota_exceeded");
+  });
+
+  it("offers no create form for a type Together has closed", () => {
+    expect(EndpointResourceType.supportsCreate).toBeUndefined();
   });
 });
 

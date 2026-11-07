@@ -26,13 +26,13 @@ export const EndpointResourceType = rt({
     }),
     o("baseUrl", "Inference Base URL"),
   ],
-  // `model` is a `/models` id and `hardware` a `/hardware` id: the same two
-  // catalogues the create form's pickers are built from.
+  // `model` is a `/models` id and `hardware` a `/hardware` id.
   dependsOn: [
     { fieldKey: "model", targetTypeId: "model", label: "serves" },
     { fieldKey: "hardware", targetTypeId: "hardware", label: "runs on" },
   ],
-  supportsCreate: true,
+  // No create: Together refuses new v1 endpoints, and Managed Endpoint is the replacement.
+  // https://docs.together.ai/docs/dedicated-endpoints/migrate-from-v1
   supportsUpdate: true,
   iconKey: "deployment",
 });

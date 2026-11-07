@@ -140,16 +140,6 @@ export interface DedicatedEndpoint extends ListEndpoint {
   autoscaling?: { min_replicas?: number; max_replicas?: number } | null;
 }
 
-/** `POST /v1/endpoints`. */
-export interface EndpointCreateBody {
-  model: string;
-  hardware: string;
-  autoscaling: { min_replicas: number; max_replicas: number };
-  display_name?: string;
-  state: "STARTED" | "STOPPED";
-  inactive_timeout?: number;
-}
-
 /** `PATCH /v1/endpoints/{id}`. */
 export interface EndpointUpdateBody {
   display_name?: string;
@@ -188,6 +178,9 @@ export type EvaluationJob = Schemas["EvaluationJob"];
 export type DmiEndpoint = Schemas["DE.Endpoint"];
 export type SupportedModel = Schemas["DE.SupportedModel"];
 export type InstanceType = Schemas["DE.InferenceInstanceType"];
+export type DmiEndpointUpdate = Schemas["DE.EndpointUpdate"];
+export type DmiDeploymentBody = Schemas["DE.CreateDeploymentRequest"];
+export type DmiDeploymentUpdate = Schemas["DE.UpdateDeploymentRequest"];
 export type DmiEndpointEvent = Schemas["DE.EndpointEvent"];
 export type DmiEndpointMetrics = Schemas["DE.EndpointMetrics"];
 export type DmiAnalytics = Schemas["DE.AnalyticsData"];

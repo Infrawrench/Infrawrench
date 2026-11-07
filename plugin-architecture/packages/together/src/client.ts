@@ -2,6 +2,7 @@ import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
+  ActionNode,
   CostFetchRange,
   CostRow,
   CreateFieldConfig,
@@ -16,6 +17,7 @@ import type {
   ResourceInstance,
   ResourceStatus,
   SchemaNode,
+  SelectOption,
   SectionNode,
   SidebarItemSchema,
   SpeechPanelCapability,
@@ -58,7 +60,9 @@ import {
   type DmiEndpoint,
   type DmiEndpointEvent,
   type DmiEndpointMetrics,
-  type EndpointCreateBody,
+  type DmiEndpointUpdate,
+  type DmiDeploymentBody,
+  type DmiDeploymentUpdate,
   type EndpointUpdateBody,
   type EvaluationJob,
   type FineTuneCheckpoint,
@@ -195,6 +199,11 @@ const NO_IDENTITY =
 
 const V1_ENDPOINTS_CLOSED = "endpoints_v1_create_access_disabled";
 
+/** Between the two resource names in a profile choice, neither of which can contain it. */
+const PROFILE_SEPARATOR = "|";
+/** Before the deployment id, on each field of the traffic split form. */
+const WEIGHT_FIELD = "weight_";
+
 interface TogetherIdentity {
   projectId: string | undefined;
   organizationId: string | undefined;
@@ -212,6 +221,180 @@ function endpointPath(project: string, endpointId: string) {
 
 function deploymentPath(project: string, endpointId: string, deploymentId: string) {
   return `${endpointPath(project, endpointId)}/deployments/${pathEncode(deploymentId)}` as const;
+}
+
+const MANAGED_ENDPOINT_COMMANDS = new Set([
+  "updateDeployment",
+  "deleteDeployment",
+  "setTrafficSplit",
+  "addDeployment",
+]);
+
+const REPLICAS_REVERSED =
+  "Together plugin: minimum replicas can't be more than the maximum replicas";
+
+/** The form a command was submitted with; anything unreadable leaves nothing to act on. */
+function parseFormArg(raw: string | number | undefined): Record<string, string> {
+  if (typeof raw !== "string") return {};
+  try {
+    const parsed: Record<string, unknown> = JSON.parse(raw);
+    return Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, String(v ?? "")]));
+  } catch {
+    return {};
+  }
+}
+
+function replicaBound(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Together plugin: replicas must be a whole number (got "${raw}")`);
+  }
+  return value;
+}
+
+/** The document: 0 turns it off, anything else is 30 to 1440 minutes. */
+function idleTimeout(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const value = Number(raw);
+  if (value !== 0 && !(Number.isInteger(value) && value >= 30 && value <= 1440)) {
+    throw new Error(
+      `Together plugin: idle timeout must be 0, or 30 to 1440 minutes (got "${raw}")`,
+    );
+  }
+  return value;
+}
+
+function parseWeight(raw: string): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(
+      `Together plugin: a traffic weight must be a number, not negative (got "${raw}")`,
+    );
+  }
+  return value;
+}
+
+/** A blank weight leaves that deployment as it is. */
+function typedWeights(form: Record<string, string>): Map<string, number> {
+  const weights = new Map<string, number>();
+  for (const [key, raw] of Object.entries(form)) {
+    if (key.startsWith(WEIGHT_FIELD) && raw.trim() !== "") {
+      weights.set(key.slice(WEIGHT_FIELD.length), parseWeight(raw));
+    }
+  }
+  return weights;
+}
+
+/** The split as it stands with these weights over it, so a deployment not named keeps its own. */
+function mergedSplit(
+  split: DmiEndpoint["trafficSplit"] | undefined,
+  weights: Map<string, number>,
+): DmiEndpoint["trafficSplit"] {
+  const merged = new Map((split ?? []).map((entry) => [entry.deploymentId, entry.weight]));
+  for (const [deploymentId, weight] of weights) merged.set(deploymentId, weight);
+  return [...merged].map(([deploymentId, weight]) => ({ deploymentId, weight }));
+}
+
+/** The body of a new deployment, from the fields `deploymentFormFields` offers. */
+function newDeployment(form: Record<string, string>): DmiDeploymentBody {
+  const name = form["deployment_name"]?.trim();
+  if (!name) throw new Error("Together plugin: a deployment needs a name");
+  const [model, config, ...rest] = (form["profile"] ?? "").split(PROFILE_SEPARATOR);
+  if (!model || !config || rest.length > 0) {
+    throw new Error("Together plugin: Choose a model and hardware to deploy");
+  }
+  const minReplicas = replicaBound(form["min_replicas"], 1);
+  const maxReplicas = replicaBound(form["max_replicas"], minReplicas);
+  if (minReplicas > maxReplicas) throw new Error(REPLICAS_REVERSED);
+  const timeout = idleTimeout(form["inactive_timeout"]);
+  return {
+    name,
+    model,
+    config,
+    autoscaling: { minReplicas, maxReplicas },
+    ...(timeout ? { inactiveTimeout: timeout } : {}),
+  };
+}
+
+/**
+ * One choice per certified profile. A config fixes the hardware, so there is no separate
+ * hardware picker to get wrong, and the profile hands over both resource names a deployment
+ * is created from. A profile with no config pinned cannot be deployed.
+ * https://docs.together.ai/docs/dedicated-endpoints/configs
+ */
+function profileOptionsOf(model: SupportedModel, types: InstanceType[]): SelectOption[] {
+  return (model.deploymentProfiles ?? []).flatMap((profile) => {
+    const weights = profile.model || model.baseModel;
+    if (!weights || !profile.config) return [];
+    const type = types.find(
+      (entry) =>
+        entry.id === profile.gpuType ||
+        (entry.gpuType === profile.gpuType && entry.gpuCount === profile.gpuCount),
+    );
+    const description = [
+      `${profile.gpuCount}× ${profile.gpuType}`,
+      profile.quantization,
+      type ? `$${(type.priceCentsPerHour / 100).toFixed(2)}/hour per replica` : "",
+      model.status === "SUPPORTED_MODEL_STATUS_DEPRECATED" ? "deprecated" : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return [
+      {
+        id: `${weights}${PROFILE_SEPARATOR}${profile.config}`,
+        label: model.displayName || model.name,
+        description,
+      },
+    ];
+  });
+}
+
+/** What create and Add deployment share. */
+function deploymentFormFields(options: SelectOption[]): CreateFieldConfig[] {
+  return [
+    {
+      key: "profile",
+      label: "Model and Hardware",
+      kind: "select",
+      required: true,
+      description: "Each model's certified configurations. The configuration fixes the GPUs.",
+      options,
+      ...(options[0] ? { defaultValue: options[0].id } : {}),
+    },
+    {
+      key: "min_replicas",
+      label: "Minimum Replicas",
+      kind: "number",
+      required: true,
+      description:
+        "Replicas kept running, billed whether idle or not. 0 for both creates it stopped.",
+      defaultValue: "1",
+      minValue: 0,
+      stepValue: 1,
+    },
+    {
+      key: "max_replicas",
+      label: "Maximum Replicas",
+      kind: "number",
+      required: true,
+      description: "Upper bound on autoscaling.",
+      defaultValue: "1",
+      minValue: 0,
+      stepValue: 1,
+    },
+    {
+      key: "inactive_timeout",
+      label: "Idle Timeout (minutes)",
+      kind: "number",
+      required: false,
+      description:
+        "Stop it after this long with no traffic: 30 to 1440. Blank or 0 keeps it running.",
+      minValue: 0,
+      maxValue: 1440,
+      stepValue: 1,
+    },
+  ];
 }
 
 /** Together turned this write down, as opposed to being unable to answer or to let the key in. */
@@ -282,6 +465,21 @@ interface StashedVolume {
   name: string;
   sizeTib: number | null;
   status: string;
+}
+
+/** Shape stashed under the `__deployments__` resolved output of a managed endpoint. */
+interface StashedDeployment {
+  id: string;
+  name: string;
+  model: string;
+  hardware: string;
+  state: string;
+  readyReplicas: number;
+  minReplicas: number;
+  maxReplicas: number;
+  inactiveTimeout: number;
+  maxConcurrent: string;
+  weight: number;
 }
 
 /** Shape stashed under the `__voices__` resolved output. */
@@ -793,20 +991,41 @@ export class TogetherClient implements PluginClient {
    * `/v2/supported-models` has not been compared with it on a live account, so the new
    * one is only read once the old one has gone.
    */
-  private async fetchCatalogue(dedicated = false): Promise<TogetherModel[]> {
+  private async fetchCatalogue(): Promise<TogetherModel[]> {
     try {
-      const query = dedicated ? "?dedicated=true" : "";
-      const models = await this.undocumented<TogetherModel[]>(`/models${query}`);
+      const models = await this.undocumented<TogetherModel[]>("/models");
       return listAt(models, "/v1/models", null);
     } catch (error) {
       if (!routeHasGone(error)) throw error;
     }
     const models = await this.dmi.getAll("/v2/supported-models", "data", {
-      query: { product: dedicated ? "PRODUCT_DEDICATED" : "PRODUCT_SERVERLESS" },
+      query: { product: "PRODUCT_SERVERLESS" },
     });
     return models
       .filter((model) => model.status !== "SUPPORTED_MODEL_STATUS_HIDDEN")
       .map(modelFromCatalogue);
+  }
+
+  /** A picker's list, so part of a very long catalogue is better than none. */
+  private async dedicatedModels(): Promise<SupportedModel[]> {
+    const models = await this.dmi.getAll("/v2/supported-models", "data", {
+      query: { product: "PRODUCT_DEDICATED" },
+      partial: true,
+    });
+    return models.filter((model) => model.status !== "SUPPORTED_MODEL_STATUS_HIDDEN");
+  }
+
+  /** What a deployment can be created from. A price the route cannot give only leaves it out. */
+  private async deploymentProfileOptions(models?: SupportedModel[]): Promise<SelectOption[]> {
+    const path = "/v2/public/inference-instance-types";
+    const [catalogue, types] = await Promise.all([
+      models ?? this.dedicatedModels(),
+      this.api
+        .get(path)
+        .then((page) => listAt(page.data, path, "data"))
+        .catch((): InstanceType[] => []),
+    ]);
+    return catalogue.flatMap((model) => profileOptionsOf(model, types));
   }
 
   /** As with the models: the documented catalogue is only read once `/v1/hardware` has gone. */
@@ -837,7 +1056,7 @@ export class TogetherClient implements PluginClient {
     } catch (error) {
       if (!(error instanceof Error) || !error.message.includes(V1_ENDPOINTS_CLOSED)) throw error;
       throw new Error(
-        "Together no longer lets this account create or restart v1 dedicated endpoints. Deploy the model as a managed endpoint from the Together dashboard instead.",
+        "Together no longer lets this account create or restart v1 dedicated endpoints. Create a managed endpoint to serve the model instead.",
         { cause: error },
       );
     }
@@ -1360,106 +1579,44 @@ export class TogetherClient implements PluginClient {
 
   getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
     return attempt(async () => {
-      if (typeId === "endpoint") {
-        // `?dedicated=true` narrows the catalogue to models that can actually be
-        // pinned to reserved hardware, so the picker can't offer an invalid one.
-        const [models, hardware] = await Promise.all([
-          this.fetchCatalogue(true).catch((): TogetherModel[] => []),
-          this.fetchHardware().catch((): TogetherHardware[] => []),
-        ]);
-        const modelOptions = models.map((model) => ({
-          id: model.id,
-          label: model.display_name ? `${model.display_name} (${model.id})` : model.id,
-        }));
-        const hardwareOptions = hardware
-          .filter((entry) => Boolean(entry.id))
-          .map((entry) => {
-            const specs = entry.specs ?? {};
-            const price = entry.pricing?.cents_per_minute;
-            const detail = [
-              specs.gpu_count && specs.gpu_type ? `${specs.gpu_count}× ${specs.gpu_type}` : "",
-              price != null ? `${price}¢/min` : "",
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return {
-              id: entry.id ?? "",
-              label: detail ? `${entry.id} (${detail})` : (entry.id ?? ""),
-            };
-          });
-
+      if (typeId === "managed-endpoint") {
+        await this.projectForCreate();
+        const options = await this.deploymentProfileOptions();
         return {
           fields: [
             {
-              key: "display_name",
-              label: "Display Name",
+              key: "name",
+              label: "Name",
               kind: "text",
               required: true,
-              description: "Human-readable name shown in the Together dashboard.",
-              placeholder: "prod-llama-70b",
+              description:
+                "Callers reach it as `<project_slug>/<name>`, passed as `model`, on Together's inference API.",
+              placeholder: "my-endpoint",
             },
             {
-              key: "model",
-              label: "Model",
+              key: "visibility",
+              label: "Visibility",
               kind: "select",
               required: true,
-              description:
-                "Model served by this endpoint. Only dedicated-capable models are listed.",
-              options: modelOptions,
-              ...(modelOptions[0] ? { defaultValue: modelOptions[0].id } : {}),
-            },
-            {
-              key: "hardware",
-              label: "Hardware",
-              kind: "select",
-              required: true,
-              description:
-                "GPU configuration each replica runs on. Not every model fits every configuration.",
-              options: hardwareOptions,
-              ...(hardwareOptions[0] ? { defaultValue: hardwareOptions[0].id } : {}),
-            },
-            {
-              key: "min_replicas",
-              label: "Minimum Replicas",
-              kind: "number",
-              required: true,
-              description:
-                "Replicas kept running at all times. You pay for these whether idle or not.",
-              defaultValue: "1",
-              minValue: 0,
-              stepValue: 1,
-            },
-            {
-              key: "max_replicas",
-              label: "Maximum Replicas",
-              kind: "number",
-              required: true,
-              description: "Upper bound on autoscaling.",
-              defaultValue: "1",
-              minValue: 1,
-              stepValue: 1,
-            },
-            {
-              key: "inactive_timeout",
-              label: "Idle Timeout (minutes)",
-              kind: "number",
-              required: false,
-              description:
-                "Stop the endpoint after this many minutes with no traffic. Leave blank or 0 to keep it running indefinitely.",
-              minValue: 0,
-              stepValue: 1,
-            },
-            {
-              key: "state",
-              label: "Start immediately",
-              kind: "select",
-              required: true,
+              defaultValue: "VISIBILITY_PRIVATE",
               options: [
-                { id: "STARTED", label: "Yes, start now" },
-                { id: "STOPPED", label: "No, create stopped" },
+                { id: "VISIBILITY_PRIVATE", label: "Private", description: "This project only" },
+                {
+                  id: "VISIBILITY_INTERNAL",
+                  label: "Internal",
+                  description: "Shared with the organization",
+                },
               ],
-              defaultValue: "STARTED",
             },
+            {
+              key: "deployment_name",
+              label: "Deployment Name",
+              kind: "text",
+              required: true,
+              description: "Its first deployment, which takes all of the endpoint's traffic.",
+              defaultValue: "primary",
+            },
+            ...deploymentFormFields(options),
           ],
         };
       }
@@ -1817,26 +1974,7 @@ export class TogetherClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      if (typeId === "endpoint") {
-        // https://docs.together.ai/reference/createendpoint
-        const timeout = Number.parseInt(fields["inactive_timeout"] ?? "", 10);
-        const body: EndpointCreateBody = {
-          model: fields["model"] ?? "",
-          hardware: fields["hardware"] ?? "",
-          autoscaling: {
-            min_replicas: toInt(fields["min_replicas"], 1),
-            max_replicas: toInt(fields["max_replicas"], 1),
-          },
-          ...(fields["display_name"] ? { display_name: fields["display_name"] } : {}),
-          state: fields["state"] === "STOPPED" ? "STOPPED" : "STARTED",
-          ...(Number.isFinite(timeout) && timeout > 0 ? { inactive_timeout: timeout } : {}),
-        };
-        const created = await this.writeEndpoint<DedicatedEndpoint>("/endpoints", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-        return this.mapEndpoint(created, accountId);
-      }
+      if (typeId === "managed-endpoint") return this.createManagedEndpoint(accountId, fields);
 
       if (typeId === "batch") {
         // 201, and the body wraps the job: `{ job, warning }`.
@@ -1890,6 +2028,9 @@ export class TogetherClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "gpu-cluster") return this.updateCluster(resourceId, accountId, fields);
       if (typeId === "shared-volume") return this.updateVolume(resourceId, accountId, fields);
+      if (typeId === "managed-endpoint") {
+        return this.updateManagedEndpoint(resourceId, accountId, fields);
+      }
       if (typeId !== "endpoint") {
         throw new Error(`Together plugin: updateResource not supported for type "${typeId}"`);
       }
@@ -1925,6 +2066,192 @@ export class TogetherClient implements PluginClient {
       );
       return this.mapEndpoint(updated, accountId);
     });
+  }
+
+  /** The samples in Together's reference all require this: a deployment belongs to one project. */
+  private async projectForCreate(): Promise<string> {
+    const { projectId } = await this.whoami();
+    if (projectId) return projectId;
+    throw new Error(
+      "Together plugin: creating a managed endpoint needs a project API key, and this key belongs to an organization. Create a key in the project to deploy to.",
+    );
+  }
+
+  /**
+   * What `tg endpoints deploy` does in one step: the endpoint, its deployment, and all of its
+   * traffic. A new endpoint has an empty split, so without the last step it serves nothing.
+   * https://docs.together.ai/reference/dmi/endpoints-create
+   */
+  private async createManagedEndpoint(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const name = fields["name"]?.trim();
+    if (!name) throw new Error("Together plugin: a managed endpoint needs a name");
+    const visibility =
+      fields["visibility"] === "VISIBILITY_INTERNAL" ? "VISIBILITY_INTERNAL" : "VISIBILITY_PRIVATE";
+    const deploymentBody = newDeployment(fields);
+    const project = await this.projectForCreate();
+
+    const endpoint = await this.api.post(`/v2/projects/${pathEncode(project)}/endpoints`, {
+      body: { name, visibility },
+    });
+    const path = endpointPath(project, endpoint.id);
+    let deployment;
+    try {
+      deployment = await this.api.post(`${path}/deployments`, { body: deploymentBody });
+    } catch (error) {
+      // An empty endpoint this call just made. A failed cleanup leaves it listed and harmless,
+      // and the refusal is what the user needs to read.
+      await this.api.delete(path).catch(() => undefined);
+      throw error;
+    }
+    try {
+      const routed = await this.writeTrafficSplit(path, endpoint, [
+        { deploymentId: deployment.id, weight: 1 },
+      ]);
+      return this.mapManagedEndpoint(routed, accountId);
+    } catch (error) {
+      // The deployment is provisioning and can be routed later, so it is not thrown away.
+      throw new Error(
+        `Together created endpoint ${endpoint.name} and its deployment, but would not route traffic to it. Set the traffic split on the endpoint's page. ${String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+
+  /** Sends what changed, with the etag it read, so a change made meanwhile is not overwritten. */
+  private async updateManagedEndpoint(
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const endpointId = externalIdOf(resourceId);
+    if (!endpointId) throw new Error("Together plugin: this resource names no endpoint");
+    const path = endpointPath(await this.projectOf(endpointId), endpointId);
+    const current = await this.api.get(path);
+    const body: DmiEndpointUpdate = { etag: current.etag };
+    const name = fields["name"]?.trim();
+    if (name && name !== current.name) body.name = name;
+    const visibility = fields["visibility"];
+    if (visibility && visibility !== current.visibility) {
+      if (visibility !== "VISIBILITY_PRIVATE" && visibility !== "VISIBILITY_INTERNAL") {
+        throw new Error(
+          `Together plugin: visibility must be VISIBILITY_PRIVATE or VISIBILITY_INTERNAL (got "${visibility}")`,
+        );
+      }
+      body.visibility = visibility;
+    }
+    if (body.name === undefined && body.visibility === undefined) {
+      return this.mapManagedEndpoint(current, accountId);
+    }
+    return this.mapManagedEndpoint(await this.api.patch(path, { body }), accountId);
+  }
+
+  /**
+   * The mask is what makes an empty split a clear rather than "nothing to change", which is
+   * how Together's own CLI sends it. A weight of 0 leaves the split, as the document has it.
+   */
+  private writeTrafficSplit(
+    path: ReturnType<typeof endpointPath>,
+    current: Pick<DmiEndpoint, "etag">,
+    split: DmiEndpoint["trafficSplit"],
+  ): Promise<DmiEndpoint> {
+    return this.api.patch(path, {
+      query: { updateMask: "trafficSplit" },
+      body: { trafficSplit: split.filter((entry) => entry.weight > 0), etag: current.etag },
+    });
+  }
+
+  /** The detail page's forms: a deployment and the traffic split have no resource type of their own. */
+  executeNoSqlCommand(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    command: string,
+    args: (string | number)[],
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const endpointId = externalIdOf(resourceId);
+      if (typeId !== "managed-endpoint" || !endpointId) {
+        throw new Error(`Together plugin: no commands for type "${typeId}"`);
+      }
+      const form = parseFormArg(args[0]);
+      if (!MANAGED_ENDPOINT_COMMANDS.has(command)) {
+        throw new Error(`Together plugin: unknown command "${command}"`);
+      }
+      const deploymentId = form["deploymentId"]?.trim();
+      if ((command === "updateDeployment" || command === "deleteDeployment") && !deploymentId) {
+        throw new Error("Together plugin: this form names no deployment");
+      }
+      const project = await this.projectOf(endpointId);
+      const path = endpointPath(project, endpointId);
+      if (command === "updateDeployment") {
+        await this.updateDeployment(deploymentPath(project, endpointId, deploymentId ?? ""), form);
+      } else if (command === "deleteDeployment") {
+        const current = await this.api.get(path);
+        const split = current.trafficSplit ?? [];
+        if (split.some((entry) => entry.deploymentId === deploymentId)) {
+          await this.writeTrafficSplit(
+            path,
+            current,
+            split.filter((entry) => entry.deploymentId !== deploymentId),
+          );
+        }
+        await this.deleteDeployment(project, endpointId, deploymentId ?? "", "deployment");
+      } else if (command === "setTrafficSplit") {
+        const weights = typedWeights(form);
+        const current = await this.api.get(path);
+        await this.writeTrafficSplit(path, current, mergedSplit(current.trafficSplit, weights));
+      } else {
+        const body = newDeployment(form);
+        const weight = form["weight"] ? parseWeight(form["weight"]) : 0;
+        const deployment = await this.api.post(`${path}/deployments`, { body });
+        if (weight > 0) {
+          const current = await this.api.get(path);
+          await this.writeTrafficSplit(
+            path,
+            current,
+            mergedSplit(current.trafficSplit, new Map([[deployment.id, weight]])),
+          );
+        }
+      }
+      return { ok: true };
+    });
+  }
+
+  /**
+   * Autoscaling merges on Together's side and every other field stays as it is, so this sends
+   * what changed. The mask names them because 0 means something here: 0/0 stops a deployment
+   * and a timeout of 0 turns it off, and without one a zero can read as not set.
+   */
+  private async updateDeployment(
+    path: ReturnType<typeof deploymentPath>,
+    form: Record<string, string>,
+  ): Promise<void> {
+    const current = await this.api.get(path);
+    const body: DmiDeploymentUpdate = { etag: current.etag };
+    const mask: string[] = [];
+    const scaling = current.autoscaling ?? {};
+    const min = replicaBound(form["minReplicas"], scaling.minReplicas ?? 1);
+    const max = replicaBound(form["maxReplicas"], scaling.maxReplicas ?? min);
+    if (min > max) throw new Error(REPLICAS_REVERSED);
+    if (min !== scaling.minReplicas || max !== scaling.maxReplicas) {
+      body.autoscaling = { minReplicas: min, maxReplicas: max };
+      mask.push("autoscaling");
+    }
+    const timeout = idleTimeout(form["inactiveTimeout"]);
+    if (timeout !== undefined && timeout !== (current.inactiveTimeout ?? 0)) {
+      body.inactiveTimeout = timeout;
+      mask.push("inactiveTimeout");
+    }
+    const concurrent = form["maxConcurrentRequestsPerReplica"]?.trim();
+    if (concurrent && concurrent !== current.maxConcurrentRequestsPerReplica) {
+      body.maxConcurrentRequestsPerReplica = concurrent;
+      mask.push("maxConcurrentRequestsPerReplica");
+    }
+    if (mask.length === 0) return;
+    await this.api.patch(path, { query: { updateMask: mask.join(",") }, body });
   }
 
   /**
@@ -2076,7 +2403,7 @@ export class TogetherClient implements PluginClient {
     }
     for (const deployment of deployments) {
       if (!deployment.id) continue;
-      await this.deleteDeployment(project, endpointId, deployment.id);
+      await this.deleteDeployment(project, endpointId, deployment.id, "endpoint");
     }
     await this.api.delete(path);
   }
@@ -2090,6 +2417,7 @@ export class TogetherClient implements PluginClient {
     project: string,
     endpointId: string,
     deploymentId: string,
+    retry: "endpoint" | "deployment",
   ): Promise<void> {
     const path = deploymentPath(project, endpointId, deploymentId);
     try {
@@ -2107,7 +2435,7 @@ export class TogetherClient implements PluginClient {
     } catch (error) {
       if (!refusedTheWrite(error)) throw error;
       throw new Error(
-        "Together is stopping this endpoint's deployments. Delete the endpoint again once they have stopped.",
+        `Together is stopping the deployment. Delete the ${retry} again once it has stopped.`,
         { cause: error },
       );
     }
@@ -2358,6 +2686,53 @@ export class TogetherClient implements PluginClient {
   }
 
   /**
+   * For the Deployments section. Nothing here is stored, and a page that cannot read one of
+   * these still opens: without the deployments there is no section, and without the catalogue
+   * no Add deployment, since `renderDetail` has no way to fetch the choices itself.
+   */
+  private async readDeploymentsForDetail(endpointId: string): Promise<Record<string, string>> {
+    const models = await this.dedicatedModels().catch(() => null);
+    try {
+      const project = await this.projectOf(endpointId);
+      const path = endpointPath(project, endpointId);
+      const [endpoint, deployments, profiles] = await Promise.all([
+        this.api.get(path),
+        this.dmi.getAll(`${path}/deployments`, "data", {
+          pageSize: 500,
+          maxPages: 20,
+          partial: true,
+        }),
+        models ? this.deploymentProfileOptions(models) : null,
+      ]);
+      const weights = new Map(
+        (endpoint.trafficSplit ?? []).map((entry) => [entry.deploymentId, entry.weight]),
+      );
+      const stashed: StashedDeployment[] = deployments.map((deployment) => ({
+        id: deployment.id,
+        name: deployment.name,
+        model:
+          models?.find((model) => model.id === deployment.modelId)?.displayName ??
+          deployment.modelId ??
+          "",
+        hardware: deployment.hardware ?? "",
+        state: deployment.status?.state ?? "",
+        readyReplicas: deployment.status?.readyReplicas ?? 0,
+        minReplicas: deployment.autoscaling?.minReplicas ?? 0,
+        maxReplicas: deployment.autoscaling?.maxReplicas ?? 0,
+        inactiveTimeout: deployment.inactiveTimeout ?? 0,
+        maxConcurrent: deployment.maxConcurrentRequestsPerReplica ?? "",
+        weight: weights.get(deployment.id) ?? 0,
+      }));
+      return {
+        __deployments__: JSON.stringify(stashed),
+        ...(profiles ? { __profiles__: JSON.stringify(profiles) } : {}),
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  /**
    * Extra calls for the detail page only: the last 24 hours of analytics on a
    * managed endpoint, and the event log and checkpoints of a fine-tune. Each
    * is stashed under a `__`-prefixed resolved output for `renderDetail`.
@@ -2367,18 +2742,18 @@ export class TogetherClient implements PluginClient {
       const externalId = resource.externalId ?? externalIdOf(resource.id);
       if (resource.resourceTypeId === "managed-endpoint") {
         const endMs = Date.now();
-        const analytics = await this.fetchAnalytics(
-          externalId,
-          endMs - 24 * 60 * 60 * 1000,
-          endMs,
-          false,
-        ).catch((): DmiAnalytics | null => null);
-        if (!analytics?.metrics) return resource;
+        const [analytics, editing] = await Promise.all([
+          this.fetchAnalytics(externalId, endMs - 24 * 60 * 60 * 1000, endMs, false).catch(
+            (): DmiAnalytics | null => null,
+          ),
+          this.readDeploymentsForDetail(externalId),
+        ]);
         return {
           ...resource,
           resolvedOutputs: {
             ...resource.resolvedOutputs,
-            __analytics__: JSON.stringify(analytics.metrics),
+            ...(analytics?.metrics ? { __analytics__: JSON.stringify(analytics.metrics) } : {}),
+            ...editing,
           },
         };
       }
@@ -3223,6 +3598,7 @@ export class TogetherClient implements PluginClient {
             },
           ],
         },
+        ...this.renderDeploymentSections(resource),
         ...this.renderAnalyticsSections(resource),
         {
           kind: "section",
@@ -3239,6 +3615,200 @@ export class TogetherClient implements PluginClient {
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
+  }
+
+  /** The deployments stashed by `enrichDetail`, with their edits; nothing if the read failed. */
+  private renderDeploymentSections(resource: ResourceInstance): SectionNode[] {
+    const raw = resource.resolvedOutputs["__deployments__"];
+    if (!raw) return [];
+    let deployments: StashedDeployment[];
+    let profiles: SelectOption[];
+    try {
+      deployments = JSON.parse(raw);
+      profiles = JSON.parse(resource.resolvedOutputs["__profiles__"] ?? "[]");
+    } catch {
+      return [];
+    }
+    const routed = deployments.some((deployment) => deployment.weight > 0);
+    const editForm = (deployment: StashedDeployment): ActionNode => ({
+      kind: "action",
+      label: "Edit",
+      action: {
+        type: "prompt-nosql-command",
+        command: "updateDeployment",
+        title: `Edit ${deployment.name}`,
+        description:
+          "Applies without a restart. Set both replica bounds to 0 to stop it and end its billing, and raise both to 1 or more to restart it once it has stopped.",
+        submitLabel: "Save",
+        fields: [
+          {
+            key: "deploymentId",
+            label: "Deployment",
+            kind: "text",
+            required: true,
+            hidden: true,
+            defaultValue: deployment.id,
+          },
+          {
+            key: "minReplicas",
+            label: "Minimum Replicas",
+            kind: "number",
+            required: true,
+            defaultValue: String(deployment.minReplicas),
+            minValue: 0,
+            stepValue: 1,
+          },
+          {
+            key: "maxReplicas",
+            label: "Maximum Replicas",
+            kind: "number",
+            required: true,
+            defaultValue: String(deployment.maxReplicas),
+            minValue: 0,
+            stepValue: 1,
+          },
+          {
+            key: "inactiveTimeout",
+            label: "Idle Timeout (minutes)",
+            kind: "number",
+            required: false,
+            description: "Stop it after this long with no traffic: 30 to 1440, or 0 for never.",
+            defaultValue: String(deployment.inactiveTimeout),
+            minValue: 0,
+            maxValue: 1440,
+            stepValue: 1,
+          },
+          {
+            key: "maxConcurrentRequestsPerReplica",
+            label: "Max Concurrent Requests per Replica",
+            kind: "number",
+            required: false,
+            description:
+              "Blank keeps the current limit. Together lowers a value above what the configuration allows.",
+            ...(deployment.maxConcurrent ? { defaultValue: deployment.maxConcurrent } : {}),
+            minValue: 0,
+            stepValue: 1,
+          },
+        ],
+      },
+    });
+    const deleteForm = (deployment: StashedDeployment): ActionNode => ({
+      kind: "action",
+      label: "Delete",
+      variant: "danger",
+      action: {
+        type: "prompt-nosql-command",
+        command: "deleteDeployment",
+        title: `Delete ${deployment.name}`,
+        description:
+          "Takes it out of the traffic split and deletes it. One still running is scaled to zero first; if it has not stopped yet, delete it again once it has.",
+        descriptionVariant: "error",
+        submitLabel: "Delete",
+        danger: true,
+        fields: [
+          {
+            key: "deploymentId",
+            label: "Deployment",
+            kind: "text",
+            required: true,
+            hidden: true,
+            defaultValue: deployment.id,
+          },
+        ],
+      },
+    });
+    const children: SchemaNode[] = [
+      ...(deployments.length > 0 && !routed
+        ? [
+            {
+              kind: "text" as const,
+              content:
+                "No deployment is in the traffic split, so this endpoint's name isn't routed to anything. Set the traffic split to serve requests.",
+              variant: "muted" as const,
+            },
+          ]
+        : []),
+      {
+        kind: "table",
+        columns: [
+          { key: "name", label: "Name", mono: true },
+          { key: "model", label: "Model" },
+          { key: "hardware", label: "Hardware", mono: true },
+          { key: "state", label: "State" },
+          { key: "replicas", label: "Replicas" },
+          { key: "weight", label: "Traffic Weight", width: "narrow" },
+          { key: "edit", label: "", width: "narrow" },
+          { key: "delete", label: "", width: "narrow" },
+        ],
+        rows: deployments.map((deployment) => ({
+          cells: {
+            name: deployment.name,
+            model: deployment.model,
+            hardware: deployment.hardware,
+            state: titleCase(deployment.state.replace("DEPLOYMENT_STATE_", "").toLowerCase()),
+            replicas: `${deployment.readyReplicas} ready, ${deployment.minReplicas} to ${deployment.maxReplicas}`,
+            weight: String(deployment.weight),
+            edit: editForm(deployment),
+            delete: deleteForm(deployment),
+          },
+        })),
+      },
+    ];
+    if (deployments.length > 0) {
+      children.push({
+        kind: "action",
+        label: "Set traffic split",
+        action: {
+          type: "prompt-nosql-command",
+          command: "setTrafficSplit",
+          title: "Set traffic split",
+          description:
+            "A deployment's share is its weight times its ready replicas, against the others. 0 takes it out of the split and leaves it running.",
+          submitLabel: "Save",
+          fields: deployments.map((deployment) => ({
+            key: `${WEIGHT_FIELD}${deployment.id}`,
+            label: deployment.name,
+            kind: "number",
+            required: false,
+            defaultValue: String(deployment.weight),
+            minValue: 0,
+          })),
+        },
+      });
+    }
+    if (profiles.length > 0) {
+      children.push({
+        kind: "action",
+        label: "Add deployment",
+        action: {
+          type: "prompt-nosql-command",
+          command: "addDeployment",
+          title: "Add a deployment",
+          description:
+            "Runs alongside the others. It takes no traffic until it has a weight, and it is billed from when it starts.",
+          submitLabel: "Add",
+          fields: [
+            {
+              key: "deployment_name",
+              label: "Deployment Name",
+              kind: "text",
+              required: true,
+              placeholder: "canary",
+            },
+            ...deploymentFormFields(profiles),
+            {
+              key: "weight",
+              label: "Traffic Weight",
+              kind: "number",
+              required: false,
+              description: "Blank or 0 adds it with no traffic.",
+              minValue: 0,
+            },
+          ],
+        },
+      });
+    }
+    return [{ kind: "section", title: "Deployments", children }];
   }
 
   /** The 24-hour aggregate stashed by `enrichDetail`; nothing if it failed. */
