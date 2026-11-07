@@ -1,5 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import { hostFetch } from "@infrawrench/plugin-base";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
@@ -272,6 +273,10 @@ export class CartesiaClient implements PluginClient {
   private readonly adminApiKey: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+
+  private get transport() {
+    return { http: this.services?.http, caCert: this.caCert };
+  }
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
@@ -962,15 +967,13 @@ export class CartesiaClient implements PluginClient {
    * POST /tts/bytes: verified 2026-07-28 against
    * https://docs.cartesia.ai/api-reference/tts/bytes
    *
-   * Deliberately not routed through `jsonRestFetch`: that helper JSON-parses
-   * every response, and this one is raw mp3. Using the global `fetch` here
-   * means this single call bypasses bastion egress routing and the custom CA
-   * credential; all the JSON control-plane calls still go through the host.
+   * Not routed through `jsonRestFetch`: that helper JSON-parses every response,
+   * and this one is raw mp3.
    */
   private async ttsBytes(
     body: Record<string, unknown>,
   ): Promise<{ bytes: Uint8Array; requestId?: string }> {
-    const res = await fetch(`${BASE_URL}/tts/bytes`, {
+    const res = await hostFetch(this.transport, `${BASE_URL}/tts/bytes`, {
       method: "POST",
       headers: {
         ...this.headers(),
@@ -997,9 +1000,8 @@ export class CartesiaClient implements PluginClient {
    * POST /stt: verified 2026-07-28 against
    * https://docs.cartesia.ai/api-reference/stt/transcribe
    *
-   * multipart/form-data, so this also goes through the global `fetch`:
-   * `jsonRestFetch`'s host-HTTP path stringifies FormData rather than
-   * encoding it. The clip's Content-Type is whatever MediaRecorder or the
+   * multipart/form-data, which `jsonRestFetch`'s host-HTTP path stringifies
+   * rather than encodes. The clip's Content-Type is whatever MediaRecorder or the
    * file picker produced: forwarded verbatim, never transcoded.
    */
   private async sttTranscribe(payload: TranscribeAudioPayload): Promise<CartesiaTranscript> {
@@ -1018,7 +1020,7 @@ export class CartesiaClient implements PluginClient {
 
     // No Content-Type header: fetch has to set it so the multipart boundary
     // matches the body it generated.
-    const res = await fetch(`${BASE_URL}/stt`, {
+    const res = await hostFetch(this.transport, `${BASE_URL}/stt`, {
       method: "POST",
       headers: this.headers(),
       body: form,
