@@ -7,6 +7,7 @@
  */
 
 import {
+  hostFetch,
   ListTruncatedError,
   pathEncode,
   requireListPage,
@@ -114,7 +115,7 @@ export async function uploadObject(
 ): Promise<void> {
   const contentType = file.type || "application/octet-stream";
   const url = await signedUrl(api, bucket, key, "PUT", contentType);
-  const res = await fetch(url, {
+  const res = await hostFetch(api.transport, url, {
     method: "PUT",
     headers: { "Content-Type": contentType },
     body: file,
@@ -126,7 +127,7 @@ export async function uploadObject(
 export async function makeFolder(api: LinodeApi, bucket: string, key: string): Promise<void> {
   const name = key.endsWith("/") ? key : `${key}/`;
   const url = await signedUrl(api, bucket, name, "PUT", "application/x-directory");
-  const res = await fetch(url, {
+  const res = await hostFetch(api.transport, url, {
     method: "PUT",
     headers: { "Content-Type": "application/x-directory" },
     body: "",
@@ -141,7 +142,7 @@ export async function deleteObject(api: LinodeApi, bucket: string, key: string):
   if (key.endsWith("/") && !names.includes(key)) names.push(key);
   for (const name of names) {
     const url = await signedUrl(api, bucket, name, "DELETE");
-    const res = await fetch(url, { method: "DELETE" });
+    const res = await hostFetch(api.transport, url, { method: "DELETE" });
     if (!res.ok && res.status !== 404) throw new Error(`Deleting ${name} failed: ${res.status}`);
   }
 }

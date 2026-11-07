@@ -9,12 +9,20 @@ const SIGN = "/object-storage/buckets/us-east/b/object-url";
 const row = (name: string) => ({ name, size: 1, last_modified: "2026-01-01T00:00:00" });
 
 /** The bucket's listing, plus signed URLs for anything that gets that far. */
-function bucket(list: (call: FakeCall) => unknown) {
-  return fakeApi((call) => {
-    if (call.path === LIST) return { json: list(call) };
-    if (call.path === SIGN) return { json: { url: SIGNED, exists: true } };
-    return undefined;
-  });
+function bucket(list: (call: FakeCall) => unknown, deleted: string[] = []) {
+  return fakeApi(
+    (call) => {
+      if (call.path === LIST) return { json: list(call) };
+      if (call.path === SIGN) return { json: { url: SIGNED, exists: true } };
+      return undefined;
+    },
+    undefined,
+    (url, method) => {
+      if (url !== SIGNED || method !== "DELETE") return undefined;
+      deleted.push(url);
+      return { status: 204 };
+    },
+  );
 }
 
 const signed = (calls: FakeCall[]) => calls.filter((c) => c.path === SIGN);
@@ -24,12 +32,8 @@ describe("the object list", () => {
 
   beforeEach(() => {
     deleted.length = 0;
-    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
-      if (url === SIGNED && init.method === "DELETE") {
-        deleted.push(url);
-        return new Response(null, { status: 204 });
-      }
-      throw new Error(`unexpected ${init.method} ${url}`);
+    vi.stubGlobal("fetch", () => {
+      throw new Error("the global fetch must not be reached");
     });
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -58,11 +62,14 @@ describe("the object list", () => {
   });
 
   it("deletes nothing from a folder too long to read whole", async () => {
-    const { api, calls } = bucket(({ query }) => ({
-      data: [row(`f/${query.get("marker") ?? ""}`)],
-      is_truncated: true,
-      next_marker: `${query.get("marker") ?? ""}x`,
-    }));
+    const { api, calls } = bucket(
+      ({ query }) => ({
+        data: [row(`f/${query.get("marker") ?? ""}`)],
+        is_truncated: true,
+        next_marker: `${query.get("marker") ?? ""}x`,
+      }),
+      deleted,
+    );
     await expect(deleteObject(api, "us-east/b", "f/")).rejects.toThrow(
       "has more than Infrawrench reads",
     );
@@ -78,10 +85,12 @@ describe("the object list", () => {
   });
 
   it("reads on from the last name when a truncated page gives no next_marker", async () => {
-    const { api, calls } = bucket(({ query }) =>
-      query.get("marker") === "f/500"
-        ? { data: [row("f/501")], is_truncated: false, next_marker: null }
-        : { data: [row("f/500")], is_truncated: true, next_marker: null },
+    const { api, calls } = bucket(
+      ({ query }) =>
+        query.get("marker") === "f/500"
+          ? { data: [row("f/501")], is_truncated: false, next_marker: null }
+          : { data: [row("f/500")], is_truncated: true, next_marker: null },
+      deleted,
     );
     await deleteObject(api, "us-east/b", "f/");
     expect(signed(calls)).toHaveLength(3);

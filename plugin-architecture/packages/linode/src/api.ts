@@ -21,6 +21,7 @@ import {
   type ApiClientOptions,
   type ApiResponse,
   type HostServices,
+  type HostTransport,
   type HttpHostServices,
   type NoSlashString,
   type PageAnswer,
@@ -72,6 +73,8 @@ export type LinodeResponse<Op extends keyof operations> = ApiResponse<operations
 export type LinodeApi = ReturnType<typeof paged> & {
   /** The Cloud Pulse metrics host, with a service-scoped token rather than the account's. */
   monitor(token: string): ApiClient<paths>;
+  /** How to reach anything else Linode hands out, such as a signed Object Storage URL. */
+  transport: HostTransport;
 };
 
 export interface LinodeApiConfig {
@@ -188,6 +191,7 @@ export function createLinodeApi(config: LinodeApiConfig): LinodeApi {
         baseUrl: monitorBase,
         headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
       }),
+    transport: { http: config.services?.http, caCert: config.caCert },
   };
 }
 
