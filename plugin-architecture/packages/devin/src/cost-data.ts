@@ -437,6 +437,9 @@ export async function fetchDevinCostData(
       denied++;
     }
   }
+  // The other orgs' rows are about to be written, so the host would zero what it has
+  // stored for this one over the same days.
+  if (denied > 0) degraded = true;
   if (orgs.length > 0 && denied === orgs.length) {
     throw new CostSetupError(
       "Devin refused to show consumption. Give the service user a role with the View Org Consumption permission (or View Account Consumption for an enterprise service user), then collect again.",

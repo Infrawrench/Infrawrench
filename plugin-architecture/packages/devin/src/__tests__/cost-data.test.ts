@@ -325,4 +325,35 @@ describe("fetchCostData", () => {
     const client = hostClient(new DevinClient({ apiKey: "cog_x" }, { http } as never));
     await expect(client.fetchCostData("acct", RANGE)).rejects.toThrow("is not a list");
   });
+
+  it("marks the pass degraded when one org refuses, so its stored rows are not zeroed", async () => {
+    const { http } = makeHttp((c) => {
+      if (c.path === "/v3/self") return { principal_type: "service_user", org_id: null };
+      if (c.path === "/v3/enterprise/organizations") {
+        return page([
+          { org_id: "org-1", name: "Platform" },
+          { org_id: "org-2", name: "Data" },
+        ]);
+      }
+      if (c.path === "/v3/organizations/org-2/consumption/daily") {
+        return reply(403, { detail: "forbidden" });
+      }
+      if (c.path === "/v3/organizations/org-1/consumption/daily") {
+        return {
+          consumption_by_date: [
+            {
+              date: day("2026-10-01"),
+              acus: 3,
+              acus_by_product: { devin: 3, cascade: 0, terminal: 0 },
+            },
+          ],
+        };
+      }
+      return page([]);
+    });
+    const client = hostClient(new DevinClient({ apiKey: "cog_x" }, { http } as never));
+    const out = await client.fetchCostData("acct", RANGE);
+    expect(total(out.rows)).toBe(3);
+    expect(out.degraded).toBe(true);
+  });
 });
