@@ -277,6 +277,48 @@ describe("a list past its first page (#712)", () => {
   });
 });
 
+const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+
+describe("a key whose policy leaves DNS out", () => {
+  const denied = () => {
+    route = (url) =>
+      url.pathname.startsWith("/domain/")
+        ? { status: 403, body: { type: "permissions_denied", message: "denied" } }
+        : undefined;
+  };
+
+  it.each(["dns-zone", "dns-record"])(
+    "keeps the stored %s rows without an error",
+    async (typeId) => {
+      denied();
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      try {
+        expect(await client().listResources(typeId, ACCOUNT)).toEqual([]);
+      } finally {
+        Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      }
+      expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    },
+  );
+
+  it("says so where nobody keeps the rows", async () => {
+    denied();
+    await expect(client().listResources("dns-zone", ACCOUNT)).rejects.toThrow("denied");
+  });
+
+  it("still fails on a 503", async () => {
+    route = (url) =>
+      url.pathname.startsWith("/domain/") ? { status: 503, body: { message: "busy" } } : undefined;
+    Reflect.set(globalThis, UNREAD_HOOK, vi.fn());
+    try {
+      await expect(client().listResources("dns-zone", ACCOUNT)).rejects.toThrow();
+    } finally {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    }
+  });
+});
+
 describe("a location that fails (#712)", () => {
   describe.each(FAN_OUTS)("$typeId", (type) => {
     it.each([500, 503, 429, 401])("a %i in one location fails the type", async (status) => {
@@ -294,12 +336,40 @@ describe("a location that fails (#712)", () => {
       expect(await client().listResources(type.typeId, ACCOUNT)).toHaveLength(2);
     });
 
-    it("every location refusing says so", async () => {
+    const everyLocationAnswers = (status: number) => {
       route = (url) =>
         type.pattern.test(url.pathname)
-          ? { status: 403, body: { type: "permissions_denied", message: "denied" } }
+          ? { status, body: { type: "permissions_denied", message: "denied" } }
           : undefined;
+    };
+
+    it("every location denying keeps the stored rows without an error", async () => {
+      everyLocationAnswers(403);
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      try {
+        expect(await client().listResources(type.typeId, ACCOUNT)).toEqual([]);
+      } finally {
+        Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      }
+      expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    });
+
+    it("every location denying says so where nobody keeps the rows", async () => {
+      everyLocationAnswers(403);
       await expect(client().listResources(type.typeId, ACCOUNT)).rejects.toThrow("refused");
+    });
+
+    it("every location answering 404 still says so, which is no permission problem", async () => {
+      everyLocationAnswers(404);
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      try {
+        await expect(client().listResources(type.typeId, ACCOUNT)).rejects.toThrow("refused");
+      } finally {
+        Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      }
+      expect(unread).not.toHaveBeenCalled();
     });
   });
 

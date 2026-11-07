@@ -34,6 +34,7 @@ import {
   makeS3Folder,
   pathStyleUrl,
   putS3BucketPolicy,
+  reportUnreadListPart,
   restRequest,
   signedS3Fetch,
   uploadS3Object,
@@ -41,7 +42,7 @@ import {
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import { fetchScalewayCostData } from "./cost-data.js";
-import { everyPage, fanOut, isRefusal, PAGE_SIZE, ScalewayHttpError } from "./lists.js";
+import { everyPage, fanOut, isDenied, isRefusal, PAGE_SIZE, ScalewayHttpError } from "./lists.js";
 import * as products from "./products.js";
 import type { ScwRest } from "./products.js";
 import type { Client, Region, Zone } from "@scaleway/sdk-client";
@@ -301,39 +302,50 @@ export class ScalewayClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      switch (typeId) {
-        case "instance":
-          return this.listInstances(accountId);
-        case "kapsule-cluster":
-          return this.listKapsuleClusters(accountId);
-        case "rdb-instance":
-          return this.listManagedDatabases(accountId);
-        case "object-storage-bucket":
-          return this.listObjectStorageBuckets(accountId);
-        case "block-volume":
-          return this.listBlockVolumes(accountId);
-        case "flexible-ip":
-          return this.listFlexibleIps(accountId);
-        case "load-balancer":
-          return products.listLoadBalancers(this.rest, this.zones(), accountId);
-        case "private-network":
-          return products.listPrivateNetworks(this.rest, this.regions(), accountId);
-        case "serverless-container":
-          return products.listContainers(this.rest, this.regions(), accountId);
-        case "serverless-function":
-          return products.listFunctions(this.rest, this.regions(), accountId);
-        case "registry-namespace":
-          return products.listRegistryNamespaces(this.rest, this.regions(), accountId);
-        case "secret":
-          return products.listSecrets(this.rest, this.regions(), accountId);
-        case "dns-zone":
-          return products.listDnsZones(this.rest, accountId);
-        case "dns-record":
-          return products.listDnsRecords(this.rest, accountId);
-        default:
-          throw new Error(`Scaleway plugin: unknown resource type "${typeId}"`);
+      try {
+        return await this.listType(typeId, accountId);
+      } catch (err) {
+        // A key whose policy leaves this product out keeps the type's stored rows
+        // without an error. Where nobody keeps them (the desktop) the refusal shows.
+        if (!isDenied(err) || !reportUnreadListPart({ idPrefixes: [""] })) throw err;
+        return [];
       }
     });
+  }
+
+  private async listType(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "instance":
+        return this.listInstances(accountId);
+      case "kapsule-cluster":
+        return this.listKapsuleClusters(accountId);
+      case "rdb-instance":
+        return this.listManagedDatabases(accountId);
+      case "object-storage-bucket":
+        return this.listObjectStorageBuckets(accountId);
+      case "block-volume":
+        return this.listBlockVolumes(accountId);
+      case "flexible-ip":
+        return this.listFlexibleIps(accountId);
+      case "load-balancer":
+        return products.listLoadBalancers(this.rest, this.zones(), accountId);
+      case "private-network":
+        return products.listPrivateNetworks(this.rest, this.regions(), accountId);
+      case "serverless-container":
+        return products.listContainers(this.rest, this.regions(), accountId);
+      case "serverless-function":
+        return products.listFunctions(this.rest, this.regions(), accountId);
+      case "registry-namespace":
+        return products.listRegistryNamespaces(this.rest, this.regions(), accountId);
+      case "secret":
+        return products.listSecrets(this.rest, this.regions(), accountId);
+      case "dns-zone":
+        return products.listDnsZones(this.rest, accountId);
+      case "dns-record":
+        return products.listDnsRecords(this.rest, accountId);
+      default:
+        throw new Error(`Scaleway plugin: unknown resource type "${typeId}"`);
+    }
   }
 
   getResource(

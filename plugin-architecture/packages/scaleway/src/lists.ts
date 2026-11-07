@@ -1,4 +1,4 @@
-import { ListPageError, ListTruncatedError } from "@infrawrench/plugin-base";
+import { ListPageError, ListTruncatedError, reportUnreadListPart } from "@infrawrench/plugin-base";
 
 /**
  * Reading a list across Scaleway's zones and regions. A sync soft-deletes whatever
@@ -28,6 +28,11 @@ function statusOf(err: unknown): number | undefined {
   return typeof err.status === "number" ? err.status : undefined;
 }
 
+/** Scaleway's `permissions_denied`: the key's policy leaves this out. */
+export function isDenied(err: unknown): boolean {
+  return statusOf(err) === 403;
+}
+
 /**
  * Whether an answer says this request is not served here, rather than that the read
  * failed. Scaleway documents no single answer for a product it does not offer in a
@@ -46,7 +51,9 @@ export function isRefusal(err: unknown): boolean {
  * Every location's rows. A location that refuses (see {@link isRefusal}) has none;
  * anything else fails the whole list, so the rows stored for it stay. A refusal from
  * every location says the credential or the request is at fault, not that the
- * account is empty, so that throws too.
+ * account is empty. A 403 among them is a key whose policy leaves this product out,
+ * which is normal: the type keeps its stored rows without an error, except where
+ * nobody keeps them. Anything else from every location throws.
  */
 export async function fanOut<L extends string, T>(
   locations: readonly L[],
@@ -62,6 +69,8 @@ export async function fanOut<L extends string, T>(
     else throw result.reason;
   }
   if (locations.length > 0 && refusals.length === locations.length) {
+    const denied = refusals.some(isDenied);
+    if (denied && reportUnreadListPart({ idPrefixes: [""] })) return [];
     const first = refusals[0];
     const reason = first instanceof Error ? first.message : String(first);
     throw new Error(`Scaleway refused ${what} in every location. The first answer: ${reason}`, {
