@@ -16,10 +16,17 @@ import type {
   SidebarItemSchema,
   SizeOption,
 } from "@infrawrench/plugin-base";
-import { pathEncode } from "@infrawrench/plugin-base";
+import { pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { ConfluentContext } from "./api.js";
 import type { operations } from "./api-types.management.gen.js";
-import { PAGE_SIZE, ccList, createConfluentContext, statusOf } from "./api.js";
+import {
+  NETWORK_MAX_PAGES,
+  NETWORK_PAGE_SIZE,
+  PAGE_SIZE,
+  ccList,
+  createConfluentContext,
+  statusOf,
+} from "./api.js";
 import type { CostContext, ResourceLocation } from "./cost-data.js";
 import { ckuHourlyRates, fetchConfluentCostData } from "./cost-data.js";
 import type { ClusterUsage, ConnectionKind } from "./mappers.js";
@@ -104,20 +111,28 @@ const CONNECTION_READS: Record<
 > = {
   Peering: {
     list: (ctx, environment) =>
-      ccList<CcConnection>(ctx, () =>
-        ctx.api.get("/networking/v1/peerings", {
-          query: { environment, page_size: PAGE_SIZE },
-        }),
+      ccList<CcConnection>(
+        ctx,
+        "/networking/v1/peerings",
+        () =>
+          ctx.api.get("/networking/v1/peerings", {
+            query: { environment, page_size: NETWORK_PAGE_SIZE },
+          }),
+        NETWORK_MAX_PAGES,
       ),
     get: (ctx, environment, id) =>
       ctx.api.get(`/networking/v1/peerings/${pathEncode(id)}`, { query: { environment } }),
   },
   "Transit Gateway Attachment": {
     list: (ctx, environment) =>
-      ccList<CcConnection>(ctx, () =>
-        ctx.api.get("/networking/v1/transit-gateway-attachments", {
-          query: { environment, page_size: PAGE_SIZE },
-        }),
+      ccList<CcConnection>(
+        ctx,
+        "/networking/v1/transit-gateway-attachments",
+        () =>
+          ctx.api.get("/networking/v1/transit-gateway-attachments", {
+            query: { environment, page_size: NETWORK_PAGE_SIZE },
+          }),
+        NETWORK_MAX_PAGES,
       ),
     get: (ctx, environment, id) =>
       ctx.api.get(`/networking/v1/transit-gateway-attachments/${pathEncode(id)}`, {
@@ -126,10 +141,14 @@ const CONNECTION_READS: Record<
   },
   "Private Link Access": {
     list: (ctx, environment) =>
-      ccList<CcConnection>(ctx, () =>
-        ctx.api.get("/networking/v1/private-link-accesses", {
-          query: { environment, page_size: PAGE_SIZE },
-        }),
+      ccList<CcConnection>(
+        ctx,
+        "/networking/v1/private-link-accesses",
+        () =>
+          ctx.api.get("/networking/v1/private-link-accesses", {
+            query: { environment, page_size: NETWORK_PAGE_SIZE },
+          }),
+        NETWORK_MAX_PAGES,
       ),
     get: (ctx, environment, id) =>
       ctx.api.get(`/networking/v1/private-link-accesses/${pathEncode(id)}`, {
@@ -138,7 +157,7 @@ const CONNECTION_READS: Record<
   },
   "Private Link Attachment": {
     list: (ctx, environment) =>
-      ccList<CcConnection>(ctx, () =>
+      ccList<CcConnection>(ctx, "/networking/v1/private-link-attachments", () =>
         ctx.api.get("/networking/v1/private-link-attachments", {
           query: { environment, page_size: PAGE_SIZE },
         }),
@@ -205,7 +224,7 @@ export class ConfluentCloudClient implements PluginClient {
 
   private environments(): Promise<CcEnvironment[]> {
     if (!this.envCache || Date.now() - this.envCache.at > CACHE_MS) {
-      const value = ccList<CcEnvironment>(this.ctx, () =>
+      const value = ccList<CcEnvironment>(this.ctx, "/org/v2/environments", () =>
         this.ctx.api.get("/org/v2/environments", { query: { page_size: PAGE_SIZE } }),
       );
       value.catch(() => (this.envCache = undefined));
@@ -215,7 +234,10 @@ export class ConfluentCloudClient implements PluginClient {
   }
 
   private async envNames(): Promise<Map<string, string>> {
-    const envs = await this.environments().catch((): CcEnvironment[] => []);
+    const envs = await this.environments().catch((err: unknown): CcEnvironment[] => {
+      rethrowIncompleteList(err);
+      return [];
+    });
     return new Map(envs.map((e) => [e.id ?? "", e.display_name ?? e.id ?? ""]));
   }
 
@@ -240,7 +262,7 @@ export class ConfluentCloudClient implements PluginClient {
   private clusters(): Promise<CcKafkaCluster[]> {
     if (!this.clusterCache || Date.now() - this.clusterCache.at > CACHE_MS) {
       const value = this.perEnvironment((env) =>
-        ccList<CcKafkaCluster>(this.ctx, () =>
+        ccList<CcKafkaCluster>(this.ctx, "/cmk/v2/clusters", () =>
           this.ctx.api.get("/cmk/v2/clusters", {
             query: { environment: env, page_size: PAGE_SIZE },
           }),
@@ -253,7 +275,7 @@ export class ConfluentCloudClient implements PluginClient {
   }
 
   private computePools(env: string): Promise<CcComputePool[]> {
-    return ccList<CcComputePool>(this.ctx, () =>
+    return ccList<CcComputePool>(this.ctx, "/fcpm/v2/compute-pools", () =>
       this.ctx.api.get("/fcpm/v2/compute-pools", {
         query: { environment: env, page_size: PAGE_SIZE },
       }),
@@ -261,7 +283,7 @@ export class ConfluentCloudClient implements PluginClient {
   }
 
   private ksqlClusters(env: string): Promise<CcKsqlCluster[]> {
-    return ccList<CcKsqlCluster>(this.ctx, () =>
+    return ccList<CcKsqlCluster>(this.ctx, "/ksqldbcm/v2/clusters", () =>
       this.ctx.api.get("/ksqldbcm/v2/clusters", {
         query: { environment: env, page_size: PAGE_SIZE },
       }),
@@ -269,13 +291,13 @@ export class ConfluentCloudClient implements PluginClient {
   }
 
   private schemaRegistries(env: string): Promise<CcSchemaRegistry[]> {
-    return ccList<CcSchemaRegistry>(this.ctx, () =>
+    return ccList<CcSchemaRegistry>(this.ctx, "/srcm/v3/clusters", () =>
       this.ctx.api.get("/srcm/v3/clusters", { query: { environment: env, page_size: PAGE_SIZE } }),
     );
   }
 
   private serviceAccounts(): Promise<CcServiceAccount[]> {
-    return ccList<CcServiceAccount>(this.ctx, () =>
+    return ccList<CcServiceAccount>(this.ctx, "/iam/v2/service-accounts", () =>
       this.ctx.api.get("/iam/v2/service-accounts", { query: { page_size: PAGE_SIZE } }),
     );
   }
@@ -331,10 +353,14 @@ export class ConfluentCloudClient implements PluginClient {
           return this.scoped(async () =>
             (
               await this.perEnvironment((env) =>
-                ccList<CcNetwork>(this.ctx, () =>
-                  this.ctx.api.get("/networking/v1/networks", {
-                    query: { environment: env, page_size: PAGE_SIZE },
-                  }),
+                ccList<CcNetwork>(
+                  this.ctx,
+                  "/networking/v1/networks",
+                  () =>
+                    this.ctx.api.get("/networking/v1/networks", {
+                      query: { environment: env, page_size: NETWORK_PAGE_SIZE },
+                    }),
+                  NETWORK_MAX_PAGES,
                 ),
               )
             ).map((n) => mapNetwork(accountId, n)),
@@ -344,7 +370,7 @@ export class ConfluentCloudClient implements PluginClient {
         case "encryption-key":
           return this.scoped(async () =>
             (
-              await ccList<CcByokKey>(this.ctx, () =>
+              await ccList<CcByokKey>(this.ctx, "/byok/v1/keys", () =>
                 this.ctx.api.get("/byok/v1/keys", { query: { page_size: PAGE_SIZE } }),
               )
             ).map((k) => mapEncryptionKey(accountId, k)),
@@ -431,10 +457,13 @@ export class ConfluentCloudClient implements PluginClient {
 
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
     const [keys, accounts] = await Promise.all([
-      ccList<CcApiKey>(this.ctx, () =>
+      ccList<CcApiKey>(this.ctx, "/iam/v2/api-keys", () =>
         this.ctx.api.get("/iam/v2/api-keys", { query: { page_size: PAGE_SIZE } }),
       ),
-      this.serviceAccounts().catch((): CcServiceAccount[] => []),
+      this.serviceAccounts().catch((err: unknown): CcServiceAccount[] => {
+        rethrowIncompleteList(err);
+        return [];
+      }),
     ]);
     const names = new Map(accounts.map((a) => [a.id ?? "", a.display_name ?? ""]));
     return keys.map((k) => mapApiKey(accountId, k, names));
@@ -644,7 +673,7 @@ export class ConfluentCloudClient implements PluginClient {
             ],
           };
         case "flink-compute-pool": {
-          const regions = await ccList<CcFlinkRegion>(this.ctx, () =>
+          const regions = await ccList<CcFlinkRegion>(this.ctx, "/fcpm/v2/regions", () =>
             this.ctx.api.get("/fcpm/v2/regions", { query: { page_size: PAGE_SIZE } }),
           ).catch((): CcFlinkRegion[] => []);
           return {
@@ -1177,7 +1206,10 @@ export class ConfluentCloudClient implements PluginClient {
   private async costContext(): Promise<CostContext> {
     const locations = new Map<string, ResourceLocation>();
     const environments = await this.envNames();
-    const clusters = await this.clusters().catch((): CcKafkaCluster[] => []);
+    const clusters = await this.clusters().catch((err: unknown): CcKafkaCluster[] => {
+      rethrowIncompleteList(err);
+      return [];
+    });
     for (const c of clusters) {
       if (c.id) {
         locations.set(c.id, {
@@ -1186,10 +1218,14 @@ export class ConfluentCloudClient implements PluginClient {
         });
       }
     }
+    const none = (err: unknown): never[] => {
+      rethrowIncompleteList(err);
+      return [];
+    };
     const [pools, registries, ksql] = await Promise.all([
-      this.perEnvironment((env) => this.computePools(env)).catch((): CcComputePool[] => []),
-      this.perEnvironment((env) => this.schemaRegistries(env)).catch((): CcSchemaRegistry[] => []),
-      this.perEnvironment((env) => this.ksqlClusters(env)).catch((): CcKsqlCluster[] => []),
+      this.perEnvironment((env) => this.computePools(env)).catch(none),
+      this.perEnvironment((env) => this.schemaRegistries(env)).catch(none),
+      this.perEnvironment((env) => this.ksqlClusters(env)).catch(none),
     ]);
     for (const p of [...pools, ...registries]) {
       if (p.id) {
@@ -1209,7 +1245,10 @@ export class ConfluentCloudClient implements PluginClient {
         const env = cl.spec?.environment?.id ?? "";
         if (!env || !cl.id) return;
         const byName = await this.fetchConnectors(env, cl.id).catch(
-          (): Record<string, CcConnectorExpanded> => ({}),
+          (err: unknown): Record<string, CcConnectorExpanded> => {
+            rethrowIncompleteList(err);
+            return {};
+          },
         );
         for (const c of Object.values(byName)) {
           const connectorId = c.id?.id;
@@ -1223,7 +1262,10 @@ export class ConfluentCloudClient implements PluginClient {
 
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
-      const context = await this.costContext().catch(() => undefined);
+      const context = await this.costContext().catch((err: unknown) => {
+        rethrowIncompleteList(err);
+        return undefined;
+      });
       return fetchConfluentCostData(this.ctx, range, context);
     });
   }

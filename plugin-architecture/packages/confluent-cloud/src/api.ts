@@ -1,5 +1,8 @@
 import {
+  ListTruncatedError,
   createApiClient,
+  followableLink,
+  requireListPage,
   restRequest,
   utf8ToBase64,
   type HttpHostServices,
@@ -26,8 +29,14 @@ export const MANAGEMENT_API = "https://api.confluent.cloud";
 export const TELEMETRY_API = "https://api.telemetry.confluent.cloud";
 export const CONSOLE_URL = "https://confluent.cloud";
 
-/** What every list asks for, unless it says otherwise. */
+/** The largest page the document allows on most lists. */
 export const PAGE_SIZE = 100;
+/** 10,000 rows at {@link PAGE_SIZE}. A cap costs nothing until a list really is that long. */
+const MAX_PAGES = 100;
+/** The document allows 1,000 on networks, peerings, transit gateways and private link accesses. */
+export const NETWORK_PAGE_SIZE = 1000;
+/** 50,000 rows at {@link NETWORK_PAGE_SIZE}. */
+export const NETWORK_MAX_PAGES = 50;
 const VENDOR = "Confluent Cloud";
 
 export interface ConfluentCredentials {
@@ -141,13 +150,12 @@ interface ListPage<Item> {
   metadata?: { next?: string | null } | null;
 }
 
-/** A next link as Confluent wrote it: absolute, as far as anyone has seen. */
-async function followLink<Page>(ctx: ConfluentContext, link: string): Promise<Page> {
-  const absolute = /^https?:\/\//.test(link);
-  const errorPath = absolute ? new URL(link).pathname : link;
+/** A next link {@link followableLink} has already allowed. */
+async function followLink<Page>(ctx: ConfluentContext, url: string): Promise<Page> {
+  const errorPath = new URL(url).pathname;
   const { body } = await restRequest<Page>({
     ...ctx.transport,
-    url: absolute ? link : `${MANAGEMENT_API}${link}`,
+    url,
     errorPath,
     httpError: ({ status, body: text }) => apiError(status, errorPath, text),
   });
@@ -155,29 +163,33 @@ async function followLink<Page>(ctx: ConfluentContext, link: string): Promise<Pa
 }
 
 /**
- * Walk a Confluent list endpoint from its first page, which is what types the
- * rest. Every list in the management API shares one shape: `{ data: [...],
- * metadata: { next } }`, where `next` is an absolute URL carrying an opaque
- * `page_token`. Hard-stops at `maxPages` so a misbehaving cursor cannot spin
- * forever.
+ * Walk a Confluent list endpoint from its first page, whose call is what types the
+ * rows. Every list in the management API shares one shape: `{ data: [...], metadata:
+ * { next } }`, where `next` is an absolute URL carrying an opaque `page_token`.
  *
- * This is a hand loop rather than `withLinkPagination` because that reads a `data`
- * that is not an array as an empty page, and the host prunes what a sync stops
- * seeing. Here spreading it throws, so the sync fails, as it always has.
+ * The rows are named by the caller because `withLinkPagination` cannot name them: these
+ * responses are `List & { data?: Arm[] }`, and its item type infers only the `Arm`,
+ * whose `required`-only fields generate as `unknown`.
  */
 export async function ccList<Item>(
   ctx: ConfluentContext,
+  path: string,
   first: () => Promise<ListPage<Item>>,
-  maxPages = 100,
+  maxPages = MAX_PAGES,
 ): Promise<Item[]> {
   const out: Item[] = [];
-  let next: string | undefined;
+  const place = { vendor: VENDOR, path };
+  let url: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const res: ListPage<Item> = next ? await followLink<ListPage<Item>>(ctx, next) : await first();
-    out.push(...(res.data ?? []));
-    const link = res.metadata?.next;
-    if (!link || (res.data ?? []).length === 0) break;
-    next = link;
+    const res: ListPage<Item> | undefined = url
+      ? await followLink<ListPage<Item>>(ctx, url)
+      : await first();
+    out.push(...requireListPage(res?.data, { ...place, key: "data", page: res }));
+    // ListMeta: "If a response does not contain a next link, then there is no more data
+    // available." So it alone ends the list, and an empty page that has one does not.
+    const next = res?.metadata?.next;
+    if (!next) return out;
+    url = followableLink(next, url ?? `${MANAGEMENT_API}${path}`, place);
   }
-  return out;
+  throw new ListTruncatedError({ ...place, items: out.length, maxPages });
 }

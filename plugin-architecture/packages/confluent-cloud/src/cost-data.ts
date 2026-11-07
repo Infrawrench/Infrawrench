@@ -30,6 +30,14 @@ import type { CcCost } from "./types.js";
 /** Max days per request: Confluent allows "one month", 28 is safe for every month. */
 const WINDOW_DAYS = 28;
 const DAY_MS = 86_400_000;
+/** The document's `maximum`. */
+const COST_PAGE_SIZE = 10_000;
+/**
+ * Cost lines do not go through the resource sync, so this has no ceiling to respect.
+ * It is this high because the document also says `x-max-page-items: 500`, and at
+ * that size it still reads what 100 pages of the old 5,000 did.
+ */
+const COST_MAX_PAGES = 1000;
 
 const PRODUCT_LABELS: Record<string, string> = {
   KAFKA: "Kafka",
@@ -164,10 +172,14 @@ export async function fetchCostLines(
   const lines: CcCost[] = [];
   try {
     for (const w of costWindows(range)) {
-      const batch = await ccList<CcCost>(ctx, () =>
-        ctx.api.get("/billing/v1/costs", {
-          query: { start_date: w.start, end_date: w.end, page_size: 5000 },
-        }),
+      const batch = await ccList<CcCost>(
+        ctx,
+        "/billing/v1/costs",
+        () =>
+          ctx.api.get("/billing/v1/costs", {
+            query: { start_date: w.start, end_date: w.end, page_size: COST_PAGE_SIZE },
+          }),
+        COST_MAX_PAGES,
       );
       lines.push(...batch);
     }
