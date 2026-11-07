@@ -1,4 +1,4 @@
-import type { DoApi } from "../api.js";
+import { pageWalker, type DoApi } from "../api.js";
 
 type Fetch = (path: string, init?: RequestInit) => unknown;
 
@@ -35,6 +35,9 @@ export function fakeApi(fetch: Fetch): DoApi {
     put: call("PUT"),
     patch: call("PATCH"),
     delete: call("DELETE"),
+    getAll: pageWalker(async (path: string, request: Call) => ({
+      body: await call("GET")(path, request),
+    })),
     written: async (path: string, request?: RequestInit) =>
       request ? fetch(path, request) : fetch(path),
     fetch: (url: string, init?: RequestInit) => globalThis.fetch(url, init),

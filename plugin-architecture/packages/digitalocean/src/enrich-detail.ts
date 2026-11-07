@@ -5,7 +5,7 @@
  * `resource.resolvedOutputs`, so the renderers themselves stay synchronous.
  */
 import { type ImageOption, type ResourceInstance, type SizeOption } from "@infrawrench/plugin-base";
-import { idSegment } from "./api.js";
+import { idSegment, PICKER } from "./api.js";
 import type { DoApi } from "./api.js";
 
 /** The slice of `DigitalOceanClient` the enrichers need. */
@@ -92,23 +92,25 @@ export async function enrichDoDetail(
   // Backup picker can show "Daily backup • Mar 21 (5 GB)" instead of
   // raw numeric ids. Skipped entirely when the droplet has neither.
   const [sizesRes, distrosRes, privateImagesRes, backupsRes, snapshotsRes] = await Promise.all([
-    needSizes ? ctx.api.get("/sizes", { query: { per_page: 200 } }) : Promise.resolve(null),
+    needSizes ? ctx.api.getAll("/sizes", "sizes", PICKER) : Promise.resolve(null),
     needDistros
-      ? ctx.api.get("/images", { query: { type: "distribution", per_page: 200 } })
+      ? ctx.api.getAll("/images", "images", { ...PICKER, query: { type: "distribution" } })
       : Promise.resolve(null),
-    ctx.api
-      .get("/images", { query: { private: true, per_page: 200 } })
-      .catch(() => ({ images: [] })),
+    ctx.api.getAll("/images", "images", { ...PICKER, query: { private: true } }).catch(() => []),
     hasBackups && externalId
-      ? ctx.api.get(`/droplets/${idSegment(externalId)}/backups`).catch(() => ({ backups: [] }))
+      ? ctx.api
+          .getAll(`/droplets/${idSegment(externalId)}/backups`, "backups", PICKER)
+          .catch(() => [])
       : Promise.resolve(null),
     hasSnapshots && externalId
-      ? ctx.api.get(`/droplets/${idSegment(externalId)}/snapshots`).catch(() => ({ snapshots: [] }))
+      ? ctx.api
+          .getAll(`/droplets/${idSegment(externalId)}/snapshots`, "snapshots", PICKER)
+          .catch(() => [])
       : Promise.resolve(null),
   ]);
 
   if (sizesRes) {
-    const sizes: SizeOption[] = sizesRes.sizes
+    const sizes: SizeOption[] = sizesRes
       .filter((s) => s.available)
       .map((s) => ({
         id: s.slug,
@@ -122,7 +124,7 @@ export async function enrichDoDetail(
     ctx.dropletCatalogCache.sizes = { value: sizes, expiresAt: now + CATALOG_TTL_MS };
   }
   if (distrosRes) {
-    const distros: ImageOption[] = distrosRes.images
+    const distros: ImageOption[] = distrosRes
       .filter((i) => i.status === "available")
       .map((i) => ({
         id: i.slug ?? String(i.id),
@@ -137,7 +139,7 @@ export async function enrichDoDetail(
 
   const sizes = ctx.dropletCatalogCache.sizes?.value ?? [];
   const distros = ctx.dropletCatalogCache.distributionImages?.value ?? [];
-  const privateImages: ImageOption[] = privateImagesRes.images
+  const privateImages: ImageOption[] = privateImagesRes
     .filter((i) => i.status === "available")
     .map((i) => ({
       id: String(i.id),
@@ -157,10 +159,10 @@ export async function enrichDoDetail(
   const restoreOptions: RestoreOption[] = [];
   // Newest first: DO returns oldest-first by default and "most recent"
   // is what people scan for when restoring.
-  const sortedBackups = [...(backupsRes?.backups ?? [])].sort((a, b) =>
+  const sortedBackups = [...(backupsRes ?? [])].sort((a, b) =>
     String(b.created_at).localeCompare(String(a.created_at)),
   );
-  const sortedSnapshots = [...(snapshotsRes?.snapshots ?? [])].sort((a, b) =>
+  const sortedSnapshots = [...(snapshotsRes ?? [])].sort((a, b) =>
     String(b.created_at).localeCompare(String(a.created_at)),
   );
   for (const b of sortedBackups) {
@@ -204,10 +206,8 @@ async function enrichReservedIp(
   resource: ResourceInstance,
 ): Promise<ResourceInstance> {
   const region = String(resource.fields["region"] ?? "");
-  const data = await ctx.api
-    .get("/droplets", { query: { per_page: 200 } })
-    .catch(() => ({ droplets: [] }));
-  const droplets = (data.droplets ?? [])
+  const rows = await ctx.api.getAll("/droplets", "droplets", PICKER).catch(() => []);
+  const droplets = rows
     .filter((d) => !region || String(d.region?.slug ?? "") === region)
     .map((d) => ({
       id: String(d.id ?? ""),
@@ -238,10 +238,8 @@ async function enrichGenAiAgent(
   if (!agentUuid) return resource;
   const [fullRes, allAgentsRes, allKbsRes, namespacesRes] = await Promise.all([
     ctx.api.get(`/gen-ai/agents/${idSegment(agentUuid)}`).catch(() => null),
-    ctx.api.get("/gen-ai/agents", { query: { per_page: 200 } }).catch(() => ({ agents: [] })),
-    ctx.api
-      .get("/gen-ai/knowledge_bases", { query: { per_page: 200 } })
-      .catch(() => ({ knowledge_bases: [] })),
+    ctx.api.getAll("/gen-ai/agents", "agents", PICKER).catch(() => []),
+    ctx.api.getAll("/gen-ai/knowledge_bases", "knowledge_bases", PICKER).catch(() => []),
     // Functions namespaces power the "Add function route" namespace picker.
     // Listing the individual functions within a namespace isn't exposed by
     // the /v2 API (that needs the per-namespace OpenWhisk key), so we only
@@ -259,10 +257,8 @@ async function enrichGenAiAgent(
     faas_namespace?: string;
   }> = Array.isArray(a.functions) ? a.functions : [];
   const childAgents = Array.isArray(a.child_agents) ? a.child_agents : [];
-  const allAgents = (allAgentsRes.agents ?? []).filter(
-    (other) => String(other.uuid ?? "") !== agentUuid,
-  );
-  const allKbs = allKbsRes.knowledge_bases ?? [];
+  const allAgents = allAgentsRes.filter((other) => String(other.uuid ?? "") !== agentUuid);
+  const allKbs = allKbsRes;
   // The chatbot identifier + config power the public embed snippet. The
   // identifier lives in `chatbot_identifiers[].agent_chatbot_identifier`.
   const chatbotIdentifiers = Array.isArray(a.chatbot_identifiers) ? a.chatbot_identifiers : [];
@@ -323,18 +319,19 @@ async function enrichGenAiModelRouter(
   resource: ResourceInstance,
 ): Promise<ResourceInstance> {
   const [taskRes, modelsRes] = await Promise.all([
+    ctx.api.getAll("/gen-ai/models/routers/tasks/presets", "tasks", PICKER).catch(() => []),
     ctx.api
-      .get("/gen-ai/models/routers/tasks/presets", { query: { per_page: 200 } })
-      .catch(() => ({ tasks: [] })),
-    ctx.api
-      .get("/gen-ai/models", { query: { usecases: ["MODEL_USECASE_SERVERLESS"], per_page: 200 } })
-      .catch(() => ({ models: [] })),
+      .getAll("/gen-ai/models", "models", {
+        ...PICKER,
+        query: { usecases: ["MODEL_USECASE_SERVERLESS"] },
+      })
+      .catch(() => []),
   ]);
   const nameById = new Map<string, string>();
-  for (const m of modelsRes.models ?? []) {
+  for (const m of modelsRes) {
     if (m.uuid) nameById.set(String(m.uuid), String(m.name ?? m.uuid));
   }
-  const tasks = (taskRes.tasks ?? [])
+  const tasks = taskRes
     .filter((t) => t.task_slug)
     .map((t) => ({
       task_slug: String(t.task_slug),
@@ -375,10 +372,12 @@ async function enrichGenAiKnowledgeBase(
   if (!kbUuid) return resource;
   const [dsRes, jobsRes, buckets] = await Promise.all([
     ctx.api
-      .get(`/gen-ai/knowledge_bases/${idSegment(kbUuid)}/data_sources`, {
-        query: { per_page: 100 },
-      })
-      .catch(() => ({ knowledge_base_data_sources: [] })),
+      .getAll(
+        `/gen-ai/knowledge_bases/${idSegment(kbUuid)}/data_sources`,
+        "knowledge_base_data_sources",
+        PICKER,
+      )
+      .catch(() => []),
     ctx.api
       .get(`/gen-ai/knowledge_bases/${idSegment(kbUuid)}/indexing_jobs`)
       .catch(() => ({ jobs: [] })),
@@ -389,7 +388,7 @@ async function enrichGenAiKnowledgeBase(
   // Flatten each data source to the handful of display/identity fields the
   // table needs. DO nests the actual source under one of the *_data_source
   // keys; derive a single type + human summary from whichever is present.
-  const dataSources = (dsRes.knowledge_base_data_sources ?? []).map((d) => {
+  const dataSources = dsRes.map((d) => {
     const spaces = d.spaces_data_source;
     const web = d.web_crawler_data_source;
     const file = d.file_upload_data_source;

@@ -8,8 +8,8 @@
  * `fetch`, and so `client.ts` stays a dispatcher.
  */
 import type { ApiListItem, ResourceInstance } from "@infrawrench/plugin-base";
-import { signedS3Fetch } from "@infrawrench/plugin-base";
-import { idSegment } from "./api.js";
+import { requireListPage, signedS3Fetch } from "@infrawrench/plugin-base";
+import { failedWith, idSegment, rowsOf } from "./api.js";
 import type { DoApi, DoResponse } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import { SPACES_REGIONS } from "./constants.js";
@@ -142,15 +142,17 @@ export async function listDoResources(
 
 /**
  * Waits for a request, but tolerates the "feature not enabled for this account"
- * shape DO returns for early-access products (GenAI / Dedicated Inference):
- * 401/403/404 collapses to an empty list so the sidebar group doesn't
- * become an error spinner for everyone who hasn't opted into the product.
+ * shape DO returns for early-access products (GenAI / Dedicated Inference): 403/404
+ * collapses to an empty list so the sidebar group doesn't become an error spinner
+ * for everyone who hasn't opted in. A 401 is a token that no longer works, and
+ * anything else is a failure: read as empty, either would prune what the account has.
  */
-async function orEmpty<T>(request: Promise<T>, fallback: Partial<T>): Promise<Partial<T>> {
+async function orEmpty<T>(request: Promise<T[]>): Promise<T[]> {
   try {
     return await request;
-  } catch {
-    return fallback;
+  } catch (err) {
+    if (failedWith(err, 403, 404)) return [];
+    throw err;
   }
 }
 
@@ -158,10 +160,8 @@ async function listGenAiAgents(
   ctx: DoListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await orEmpty(ctx.api.get("/gen-ai/agents", { query: { per_page: 200 } }), {
-    agents: [],
-  });
-  return (data.agents ?? []).map((a: DoAgentRow) => {
+  const agents = await orEmpty(ctx.api.getAll("/gen-ai/agents", "agents"));
+  return agents.map((a: DoAgentRow) => {
     const uuid = String(a.uuid ?? a.id ?? "");
     const model = a.model;
     const router = a.model_router;
@@ -212,10 +212,10 @@ async function listGenAiKnowledgeBases(
   ctx: DoListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await orEmpty(ctx.api.get("/gen-ai/knowledge_bases", { query: { per_page: 200 } }), {
-    knowledge_bases: [],
-  });
-  return (data.knowledge_bases ?? []).map((kb: DoKnowledgeBaseRow) => {
+  const knowledgeBases = await orEmpty(
+    ctx.api.getAll("/gen-ai/knowledge_bases", "knowledge_bases"),
+  );
+  return knowledgeBases.map((kb: DoKnowledgeBaseRow) => {
     const uuid = String(kb.uuid ?? kb.id ?? "");
     const lastJob = kb.last_indexing_job;
     const tags = Array.isArray(kb.tags) ? kb.tags : [];
@@ -252,10 +252,8 @@ async function listGenAiModelRouters(
   ctx: DoListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await orEmpty(ctx.api.get("/gen-ai/models/routers", { query: { per_page: 200 } }), {
-    model_routers: [],
-  });
-  return (data.model_routers ?? []).map((r: DoModelRouterRow) => {
+  const routers = await orEmpty(ctx.api.getAll("/gen-ai/models/routers", "model_routers"));
+  return routers.map((r: DoModelRouterRow) => {
     const uuid = String(r.uuid ?? r.id ?? "");
     const regions = Array.isArray(r.regions) ? r.regions : [];
     const config = r.config;
@@ -304,10 +302,8 @@ async function listDedicatedInferences(
   ctx: DoListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await orEmpty(ctx.api.get("/dedicated-inferences", { query: { per_page: 200 } }), {
-    dedicated_inferences: [],
-  });
-  return (data.dedicated_inferences ?? []).map((d) => {
+  const inferences = await orEmpty(ctx.api.getAll("/dedicated-inferences", "dedicated_inferences"));
+  return inferences.map((d) => {
     const id = String(d.id ?? "");
     const spec = d.spec ?? d.pending_deployment_spec;
     // `model_uuid` and `model_name` are not in the document.
@@ -368,63 +364,59 @@ interface InferenceBatchList {
 }
 
 /**
- * The Batch Inference API lives on a separate host (inference.do-ai.run)
- * and uses the same bearer token as the management plane. The endpoint
- * paginates with `after` cursors instead of page/per_page: we only fetch
- * the first page (newest 100) for the sidebar; the detail page can drill
- * in for older jobs.
+ * The Batch Inference API lives on a separate host (inference.do-ai.run) and uses
+ * the same bearer token as the management plane. 403/404 means the product is not
+ * enabled for this account.
  */
 async function listInferenceBatches(
   ctx: DoListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  try {
-    const res = await ctx.api.fetch("https://inference.do-ai.run/v1/batches?limit=100", {
-      headers: { Authorization: `Bearer ${ctx.token}` },
-    });
-    if (!res.ok) return [];
-    const data: InferenceBatchList = await res.json();
-    return (data.data ?? []).map((b) => {
-      const batchId = String(b.batch_id ?? b.id ?? "");
-      const counts = b.request_counts;
-      return {
-        id: `${accountId}:inference-batch:${batchId}`,
-        pluginId: "digitalocean",
-        resourceTypeId: "inference-batch",
-        accountId,
-        displayName: batchId,
-        fields: {
-          provider: String(b.provider ?? ""),
-          endpoint: String(b.endpoint ?? ""),
-          completionWindow: String(b.completion_window ?? "24h"),
-          inputFileId: String(b.input_file_id ?? ""),
-          outputFileId: String(b.output_file_id ?? ""),
-          errorFileId: String(b.error_file_id ?? ""),
-          status: String(b.status ?? ""),
-          totalRequests: Number(counts?.total ?? 0),
-          completedRequests: Number(counts?.completed ?? 0),
-          failedRequests: Number(counts?.failed ?? 0),
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: batchId,
-        createdAt: String(b.created_at ?? new Date().toISOString()),
-        updatedAt: String(b.updated_at ?? b.created_at ?? new Date().toISOString()),
-      };
-    });
-  } catch {
-    return [];
-  }
+  // Rolling window: the newest 100, which the document says is what the first page
+  // holds. Older rows falling off is what this type means.
+  const path = "/v1/batches";
+  const res = await ctx.api.fetch(`https://inference.do-ai.run${path}?limit=100`, {
+    headers: { Authorization: `Bearer ${ctx.token}` },
+  });
+  if (res.status === 403 || res.status === 404) return [];
+  if (!res.ok) throw new Error(`DO API error ${res.status} for ${path}: ${await res.text()}`);
+  const data: InferenceBatchList = await res.json();
+  return requireListPage(data.data, { vendor: "DO", path, key: "data" }).map((b) => {
+    const batchId = String(b.batch_id ?? b.id ?? "");
+    const counts = b.request_counts;
+    return {
+      id: `${accountId}:inference-batch:${batchId}`,
+      pluginId: "digitalocean",
+      resourceTypeId: "inference-batch",
+      accountId,
+      displayName: batchId,
+      fields: {
+        provider: String(b.provider ?? ""),
+        endpoint: String(b.endpoint ?? ""),
+        completionWindow: String(b.completion_window ?? "24h"),
+        inputFileId: String(b.input_file_id ?? ""),
+        outputFileId: String(b.output_file_id ?? ""),
+        errorFileId: String(b.error_file_id ?? ""),
+        status: String(b.status ?? ""),
+        totalRequests: Number(counts?.total ?? 0),
+        completedRequests: Number(counts?.completed ?? 0),
+        failedRequests: Number(counts?.failed ?? 0),
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: batchId,
+      createdAt: String(b.created_at ?? new Date().toISOString()),
+      updatedAt: String(b.updated_at ?? b.created_at ?? new Date().toISOString()),
+    };
+  });
 }
 
 async function listModelApiKeys(
   ctx: DoListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await orEmpty(ctx.api.get("/gen-ai/models/api_keys", { query: { per_page: 200 } }), {
-    api_key_infos: [],
-  });
-  return (data.api_key_infos ?? []).map((k: DoModelApiKeyRow) => {
+  const keys = await orEmpty(ctx.api.getAll("/gen-ai/models/api_keys", "api_key_infos"));
+  return keys.map((k: DoModelApiKeyRow) => {
     const uuid = String(k.uuid ?? k.id ?? "");
     return {
       id: `${accountId}:model-api-key:${uuid}`,
@@ -449,27 +441,25 @@ async function listModelApiKeys(
 /**
  * Agent-scoped API keys (the per-agent bearer tokens used by client SDKs
  * to call an agent's deployment endpoint). DO exposes them only per agent,
- * not as a flat list, so we fan out across every agent and concat. One
- * failed lookup doesn't blank the rest. Composite externalId
+ * not as a flat list, so we fan out across every agent and concat. An agent that went
+ * away mid-walk has no keys; any other failure fails the list rather than prune the
+ * keys of the agents it could not read. Composite externalId
  * `{agentUuid}/{keyUuid}` mirrors `nfs-share`'s `{region}/{shareId}` shape.
  */
 async function listAgentApiKeys(
   ctx: DoListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const agentList = await orEmpty(ctx.api.get("/gen-ai/agents", { query: { per_page: 200 } }), {
-    agents: [],
-  });
-  const agents = agentList.agents ?? [];
-  const keyLists = await Promise.allSettled(
+  const agents = await orEmpty(ctx.api.getAll("/gen-ai/agents", "agents"));
+  const keyLists = await Promise.all(
     agents.map(async (a: DoAgentRow): Promise<ResourceInstance[]> => {
       const agentUuid = String(a.uuid ?? a.id ?? "");
       if (!agentUuid) return [];
-      const resp = await ctx.api.get(`/gen-ai/agents/${idSegment(agentUuid)}/api_keys`, {
-        query: { per_page: 200 },
-      });
+      const keys = await orEmpty(
+        ctx.api.getAll(`/gen-ai/agents/${idSegment(agentUuid)}/api_keys`, "api_key_infos"),
+      );
       const now = new Date().toISOString();
-      return (resp.api_key_infos ?? []).map<ResourceInstance>((k: DoAgentApiKeyRow) => {
+      return keys.map<ResourceInstance>((k: DoAgentApiKeyRow) => {
         const keyUuid = String(k.uuid ?? k.id ?? "");
         return {
           id: `${accountId}:agent-api-key:${agentUuid}/${keyUuid}`,
@@ -496,12 +486,12 @@ async function listAgentApiKeys(
       });
     }),
   );
-  return keyLists.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  return keyLists.flat();
 }
 
 async function listProjects(ctx: DoListerContext, accountId: string): Promise<ResourceInstance[]> {
-  const data = await ctx.api.get("/projects");
-  return (data.projects ?? []).map((p) => ({
+  const projects = await ctx.api.getAll("/projects", "projects");
+  return projects.map((p) => ({
     id: `${accountId}:project:${String(p.id)}`,
     pluginId: "digitalocean",
     resourceTypeId: "project",
@@ -522,13 +512,11 @@ async function listProjects(ctx: DoListerContext, accountId: string): Promise<Re
 }
 
 async function listDroplets(ctx: DoListerContext, accountId: string): Promise<ResourceInstance[]> {
-  // DO's /droplets default page size is 20: without per_page, a freshly-
-  // created droplet on page 2 looks like it doesn't exist.
-  const [data, projectMap] = await Promise.all([
-    ctx.api.get("/droplets", { query: { per_page: 200 } }),
+  const [droplets, projectMap] = await Promise.all([
+    ctx.api.getAll("/droplets", "droplets"),
     ctx.getProjectUrnMap(),
   ]);
-  return (data.droplets ?? []).map((d) => mapDroplet(ctx, d, accountId, projectMap));
+  return droplets.map((d) => mapDroplet(ctx, d, accountId, projectMap));
 }
 
 /**
@@ -612,8 +600,8 @@ async function listSnapshots(ctx: DoListerContext, accountId: string): Promise<R
   // /v2/snapshots aggregates both droplet and volume snapshots. resource_type
   // disambiguates; resource_id points to the originating droplet (number) or
   // volume (uuid).
-  const data = await ctx.api.get("/snapshots", { query: { per_page: 200 } });
-  return (data.snapshots ?? []).map((s) => ({
+  const snapshots = await ctx.api.getAll("/snapshots", "snapshots");
+  return snapshots.map((s) => ({
     id: `${accountId}:snapshot:${String(s.id)}`,
     pluginId: "digitalocean",
     resourceTypeId: "snapshot",
@@ -639,8 +627,8 @@ async function listImages(ctx: DoListerContext, accountId: string): Promise<Reso
   // Surface user-owned images by default (snapshots, backups, custom uploads).
   // Distribution + application marketplace images are noisy in a sidebar and
   // already exposed in the droplet create form via getCreateConfig.
-  const data = await ctx.api.get("/images", { query: { private: true, per_page: 200 } });
-  return (data.images ?? []).map((img) => ({
+  const images = await ctx.api.getAll("/images", "images", { query: { private: true } });
+  return images.map((img) => ({
     id: `${accountId}:image:${String(img.id)}`,
     pluginId: "digitalocean",
     resourceTypeId: "image",
@@ -719,11 +707,11 @@ async function listDOKSClusters(
   ctx: DoListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const [data, projectMap] = await Promise.all([
-    ctx.api.get("/kubernetes/clusters"),
+  const [clusters, projectMap] = await Promise.all([
+    ctx.api.getAll("/kubernetes/clusters", "kubernetes_clusters"),
     ctx.getProjectUrnMap(),
   ]);
-  return (data.kubernetes_clusters ?? []).map((c) => {
+  return clusters.map((c) => {
     const nodePool = c.node_pools?.[0];
     const parentResourceId = ctx.parentResourceIdForUrn(
       accountId,
@@ -763,7 +751,7 @@ async function listManagedDatabases(
   // one (instead of an empty array), which made `.map` throw and the
   // account section render "Cannot read properties of null".
   const [data, projectMap] = await Promise.all([ctx.api.get("/databases"), ctx.getProjectUrnMap()]);
-  return (data.databases ?? []).map((db) => {
+  return rowsOf(data, "databases", "/databases").map((db) => {
     const parentResourceId = ctx.parentResourceIdForUrn(
       accountId,
       `do:dbaas:${String(db.id)}`,
@@ -797,23 +785,28 @@ async function listManagedDatabases(
 /**
  * Fan out across every cluster to enumerate its users. DO has no "list users
  * across all my clusters" endpoint (only per-cluster) so we re-use the
- * already-fetched cluster list and parallelise the per-cluster calls. Failed
- * lookups are skipped silently so one mid-provision cluster (which 409s on
- * /users until it's online) doesn't blow up the whole sidebar.
+ * already-fetched cluster list and parallelise the per-cluster calls. A cluster
+ * still provisioning answers 409 until it's online, one that went away 404, and a
+ * token without `database:view_credentials` 403: those have no users to show. Any
+ * other failure fails the list rather than prune one cluster's users.
  */
 async function listDatabaseUsers(
   ctx: DoListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const data = await ctx.api.get("/databases");
-  const clusters = data.databases ?? [];
-  const userLists = await Promise.allSettled(
+  const clusters = rowsOf(data, "databases", "/databases");
+  const userLists = await Promise.all(
     clusters.map(async (db): Promise<ResourceInstance[]> => {
       const clusterId = String(db.id ?? "");
       if (!clusterId) return [];
-      const resp = await ctx.api.get(`/databases/${idSegment(clusterId)}/users`);
+      const path = `/databases/${idSegment(clusterId)}/users` as const;
+      const resp = await ctx.api.get(path).catch((err: unknown) => {
+        if (failedWith(err, 403, 404, 409)) return { users: [] };
+        throw err;
+      });
       const now = String(db.created_at ?? new Date().toISOString());
-      return (resp.users ?? []).map<ResourceInstance>((u) => ({
+      return rowsOf(resp, "users", path).map<ResourceInstance>((u) => ({
         id: `${accountId}:db-user:${clusterId}:${u.name ?? ""}`,
         pluginId: "digitalocean",
         resourceTypeId: "db-user",
@@ -838,7 +831,7 @@ async function listDatabaseUsers(
       }));
     }),
   );
-  return userLists.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  return userLists.flat();
 }
 
 export async function listSpacesBuckets(
@@ -851,11 +844,11 @@ export async function listSpacesBuckets(
 
   const projectMap = await ctx.getProjectUrnMap();
 
-  // Per-region fan-out is tolerant of individual region failures:
-  // freshly-minted Spaces keys can take longer to propagate to some
-  // regions than others, and a single 403 must not fail the whole list
-  // call (and with it the post-create detail page). We log the
-  // failures but never throw from the per-region results.
+  // Per-region fan-out is tolerant of a region refusing the key: freshly-minted Spaces
+  // keys can take longer to propagate to some regions than others, and a single 403
+  // must not fail the whole list call (and with it the post-create detail page). A 5xx
+  // or 429 is different: read as nothing, it would prune that region's buckets.
+  const serverFailures: Error[] = [];
   const settled = await Promise.allSettled(
     SPACES_REGIONS.map(async (region) => {
       const host = `${region}.digitaloceanspaces.com`;
@@ -871,7 +864,9 @@ export async function listSpacesBuckets(
         // Bury the body so it doesn't appear in the host's toast as
         // "Spaces S3 API error 403 listing buckets in nyc1: …" while
         // the user is looking at the bucket they just created in fra1.
-        throw new Error(`Spaces ${region} returned ${res.status}`);
+        const failure = new Error(`Spaces ${region} returned ${res.status}`);
+        if (res.status >= 500 || res.status === 429) serverFailures.push(failure);
+        throw failure;
       }
       const xml = await res.text();
       // Parse each `<Bucket>…</Bucket>` block independently then extract
@@ -889,6 +884,7 @@ export async function listSpacesBuckets(
       return items;
     }),
   );
+  if (serverFailures[0]) throw serverFailures[0];
   const perRegion: Array<Array<{ name: string; createdAt: string; region: string }>> = [];
   for (let i = 0; i < settled.length; i++) {
     const r = settled[i]!;
@@ -991,8 +987,8 @@ async function listContainerRegistry(
 }
 
 async function listDomains(ctx: DoListerContext, accountId: string): Promise<ResourceInstance[]> {
-  const data = await ctx.api.get("/domains");
-  return (data.domains ?? []).map((d) => ({
+  const domains = await ctx.api.getAll("/domains", "domains");
+  return domains.map((d) => ({
     id: `${accountId}:domain:${String(d.name)}`,
     pluginId: "digitalocean",
     resourceTypeId: "domain",
@@ -1022,10 +1018,11 @@ async function listAllDnsRecords(
   for (const domain of domains) {
     const domainName = String(domain.fields["name"]);
     try {
-      const data = await ctx.api.get(`/domains/${idSegment(domainName)}/records`, {
-        query: { per_page: 200 },
-      });
-      for (const r of data.domain_records ?? []) {
+      const records = await ctx.api.getAll(
+        `/domains/${idSegment(domainName)}/records`,
+        "domain_records",
+      );
+      for (const r of records) {
         const type = String(r.type ?? "");
         const name = String(r.name ?? "@");
         const displayName = name === "@" ? domainName : `${name}.${domainName}`;
@@ -1057,19 +1054,20 @@ async function listAllDnsRecords(
           updatedAt: new Date().toISOString(),
         });
       }
-    } catch {
-      // Skip domains we can't read records for
+    } catch (err) {
+      // A domain that went away mid-walk, or one this token cannot read.
+      if (!failedWith(err, 403, 404)) throw err;
     }
   }
   return results;
 }
 
 async function listVolumes(ctx: DoListerContext, accountId: string): Promise<ResourceInstance[]> {
-  const [data, projectMap] = await Promise.all([
-    ctx.api.get("/volumes", { query: { per_page: 200 } }),
+  const [volumes, projectMap] = await Promise.all([
+    ctx.api.getAll("/volumes", "volumes"),
     ctx.getProjectUrnMap(),
   ]);
-  return (data.volumes ?? []).map((v) => {
+  return volumes.map((v) => {
     const parentResourceId = ctx.parentResourceIdForUrn(
       accountId,
       `do:volume:${String(v.id)}`,
@@ -1118,8 +1116,8 @@ async function listReservedIps(
   ctx: DoListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.api.get("/reserved_ips", { query: { per_page: 200 } });
-  return (data.reserved_ips ?? []).map((r) => {
+  const reservedIps = await ctx.api.getAll("/reserved_ips", "reserved_ips");
+  return reservedIps.map((r) => {
     const ip = String(r.ip ?? "");
     const droplet = r.droplet ?? null;
     const dropletId = droplet?.id != null ? String(droplet.id) : "";
@@ -1164,8 +1162,8 @@ async function listReservedIps(
  * `/v2/vpcs/{id}/members` request per VPC, which listing must not spend.
  */
 async function listVpcs(ctx: DoListerContext, accountId: string): Promise<ResourceInstance[]> {
-  const data = await ctx.api.get("/vpcs", { query: { per_page: 200 } });
-  return (data.vpcs ?? []).map((v) => {
+  const vpcs = await ctx.api.getAll("/vpcs", "vpcs");
+  return vpcs.map((v) => {
     const id = String(v.id ?? "");
     const createdAt = String(v.created_at ?? new Date().toISOString());
     return {

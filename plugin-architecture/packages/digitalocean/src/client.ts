@@ -34,6 +34,7 @@ import {
   makeS3Folder,
   putS3BucketPolicy,
   renderDnsRecordSidebar,
+  rethrowIncompleteList,
   resourceTypeDisplayName,
   signedS3Fetch,
   uploadS3Object,
@@ -42,7 +43,7 @@ import {
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import { idSegment } from "./api.js";
-import { createDoApi, type DoApi } from "./api.js";
+import { createDoApi, PICKER, type DoApi } from "./api.js";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
 import { SnapshotResourceType } from "./resources/snapshot.js";
@@ -245,23 +246,26 @@ export class DigitalOceanClient implements PluginClient {
     }
     const map = new Map<string, string>();
     try {
-      const projects = await this.api.get("/projects");
+      const projects = await this.api.getAll("/projects", "projects");
       await Promise.all(
-        (projects.projects ?? []).map(async (p) => {
+        projects.map(async (p) => {
           try {
-            const data = await this.api.get(`/projects/${idSegment(p.id)}/resources`, {
-              query: { per_page: 200 },
-            });
-            for (const r of data.resources ?? []) {
+            const resources = await this.api.getAll(
+              `/projects/${idSegment(p.id)}/resources`,
+              "resources",
+            );
+            for (const r of resources) {
               if (r.urn) map.set(r.urn, p.id);
             }
-          } catch {
-            /* skip projects whose resources we can't list */
+          } catch (err) {
+            // Skip projects whose resources we can't list, but not one that is too long.
+            rethrowIncompleteList(err);
           }
         }),
       );
-    } catch {
-      /* projects API failed entirely: leave the map empty */
+    } catch (err) {
+      // The projects API failed entirely: leave the map empty.
+      rethrowIncompleteList(err);
     }
     this.projectUrnMap = { map, expiresAt: now + 5000 };
     return map;
@@ -403,7 +407,7 @@ export class DigitalOceanClient implements PluginClient {
   private async doksNodeHourlyRates(clusterId: string): Promise<string> {
     const [cluster, sizes] = await Promise.all([
       this.api.get(`/kubernetes/clusters/${idSegment(clusterId)}`),
-      this.api.get("/sizes", { query: { per_page: 200 } }),
+      this.api.getAll("/sizes", "sizes", PICKER),
     ]);
 
     const used = new Set(
@@ -414,7 +418,7 @@ export class DigitalOceanClient implements PluginClient {
     if (used.size === 0) return "";
 
     const byInstanceType: Record<string, number> = {};
-    for (const size of sizes.sizes ?? []) {
+    for (const size of sizes) {
       if (used.has(size.slug) && Number.isFinite(size.price_hourly) && size.price_hourly > 0) {
         byInstanceType[size.slug] = size.price_hourly;
       }

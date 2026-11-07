@@ -19,7 +19,9 @@
  */
 
 import {
+  ListTruncatedError,
   pathEncode,
+  requireListPage,
   unencodedSegment,
   type CostFetchRange,
   type CostRow,
@@ -30,6 +32,9 @@ import type { DoApi, DoResponse } from "./api.js";
 export interface DoCostFetchContext {
   api: DoApi;
 }
+
+/** 50,000 rows at `per_page=200`, the most the host can reconcile for one account. */
+const MAX_PAGES = 250;
 
 export async function fetchDoCostData(
   ctx: DoCostFetchContext,
@@ -62,6 +67,7 @@ export async function fetchDoCostData(
 
   let page = 1;
   let totalPages = 1;
+  let read = 0;
   do {
     let data: DoResponse<"billingInsights_list">;
     try {
@@ -85,7 +91,13 @@ export async function fetchDoCostData(
       throw err;
     }
 
-    for (const point of data.data_points ?? []) {
+    const points = requireListPage(data.data_points, {
+      vendor: "DO",
+      path: "/billing/{account_urn}/insights",
+      key: "data_points",
+    });
+    read += points.length;
+    for (const point of points) {
       const date = point.start_date ?? "";
       if (!date) continue;
       const amount = Number(point.total_amount ?? "0");
@@ -103,6 +115,14 @@ export async function fetchDoCostData(
     }
 
     totalPages = Math.max(1, Number(data.total_pages ?? 1));
+    if (page === MAX_PAGES && totalPages > MAX_PAGES) {
+      throw new ListTruncatedError({
+        vendor: "DO",
+        path: "/billing/{account_urn}/insights",
+        items: read,
+        maxPages: MAX_PAGES,
+      });
+    }
     page += 1;
   } while (page <= totalPages);
 

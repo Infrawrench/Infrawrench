@@ -34,6 +34,7 @@
  */
 import {
   normalizePriceCatalogProducts,
+  requireListPage,
   type ApiListItem,
   type PriceCatalogDeclaration,
   type PriceCatalogProduct,
@@ -153,7 +154,7 @@ export async function fetchDoSizes(
   const sizes: DoSizeWire[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
     const data = await ctx.api.get("/sizes", { query: { per_page: PER_PAGE, page } });
-    const batch = data.sizes ?? [];
+    const batch = requireListPage(data.sizes, { vendor: "DO", path: "/sizes", key: "sizes" });
     sizes.push(...batch);
     const total = data.meta?.total;
     const done = batch.length < PER_PAGE || (typeof total === "number" && sizes.length >= total);

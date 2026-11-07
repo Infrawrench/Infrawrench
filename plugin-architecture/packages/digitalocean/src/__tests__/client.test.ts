@@ -69,7 +69,7 @@ describe("DigitalOceanClient constructor", () => {
 describe("fetch error translation", () => {
   it("adds a GenAI scope hint on 403 for /gen-ai paths", async () => {
     installFetch((path) => {
-      if (path === "/projects") return { projects: [] };
+      if (path === "/projects?per_page=200") return { projects: [] };
       if (path.startsWith("/gen-ai/agents")) return jsonResponse("forbidden", 403);
       return undefined;
     });
@@ -83,7 +83,7 @@ describe("fetch error translation", () => {
 describe("listResources dispatch + mappers", () => {
   beforeEach(() => {
     installFetch((path) => {
-      if (path === "/projects") return { projects: [{ id: "proj-1" }] };
+      if (path === "/projects?per_page=200") return { projects: [{ id: "proj-1" }] };
       if (path.startsWith("/projects/proj-1/resources"))
         return { resources: [{ urn: "do:droplet:42" }, { urn: "do:volume:vol-1" }] };
       if (path === "/droplets?per_page=200")
@@ -123,13 +123,13 @@ describe("listResources dispatch + mappers", () => {
       if (path === "/databases") return { databases: [{ id: "db-1", name: "pg", engine: "pg" }] };
       if (path === "/databases/db-1/users")
         return { users: [{ name: "doadmin", role: "primary" }] };
-      if (path === "/kubernetes/clusters")
+      if (path === "/kubernetes/clusters?per_page=200")
         return {
           kubernetes_clusters: [
             { id: "k-1", name: "kube", region: "nyc3", node_pools: [{ size: "s", count: 3 }] },
           ],
         };
-      if (path === "/domains") return { domains: [{ name: "example.com" }] };
+      if (path === "/domains?per_page=200") return { domains: [{ name: "example.com" }] };
       if (path.startsWith("/domains/example.com/records"))
         return { domain_records: [{ id: 7, type: "A", name: "www", data: "1.2.3.4" }] };
       if (path === "/nfs?per_page=200")
@@ -237,7 +237,7 @@ describe("vpc", () => {
 describe("getResource", () => {
   it("fetches a droplet via the single-resource endpoint", async () => {
     installFetch((path) => {
-      if (path === "/projects") return { projects: [] };
+      if (path === "/projects?per_page=200") return { projects: [] };
       if (path === "/droplets/42")
         return { droplet: { id: 42, name: "web-1", region: { slug: "nyc3" }, networks: {} } };
       return undefined;
@@ -248,7 +248,7 @@ describe("getResource", () => {
 
   it("falls back to list-and-find when the single endpoint 404s", async () => {
     installFetch((path) => {
-      if (path === "/projects") return { projects: [] };
+      if (path === "/projects?per_page=200") return { projects: [] };
       if (path === "/droplets/42") return jsonResponse("not found", 404);
       if (path === "/droplets?per_page=200")
         return { droplets: [{ id: 42, name: "web-1", region: { slug: "nyc3" }, networks: {} }] };
@@ -260,7 +260,7 @@ describe("getResource", () => {
 
   it("throws when a resource is not found", async () => {
     installFetch((path) => {
-      if (path === "/domains") return { domains: [] };
+      if (path === "/domains?per_page=200") return { domains: [] };
       return undefined;
     });
     await expect(
@@ -530,7 +530,7 @@ describe("invokeAction", () => {
     const paths: string[] = [];
     installFetch((path) => {
       paths.push(path);
-      if (path === "/projects") return { projects: [] };
+      if (path === "/projects?per_page=200") return { projects: [] };
       if (path === "/droplets/42")
         return { droplet: { id: 42, name: "web-1", region: { slug: "nyc3" }, networks: {} } };
       return {};
@@ -600,7 +600,7 @@ describe("getCreateConfig / estimateCost / exportCredential / manifests", () => 
 
   it("exportCredential mints a bucket-scoped Spaces key", async () => {
     installFetch((path) => {
-      if (path === "/projects") return { projects: [] };
+      if (path === "/projects?per_page=200") return { projects: [] };
       if (path === "/spaces/keys")
         return { key: { name: "k", access_key: "AK2", secret_key: "SK2" } };
       // getResource HEADs the bucket via the regional S3 endpoint; accept it.
@@ -621,7 +621,7 @@ describe("getCreateConfig / estimateCost / exportCredential / manifests", () => 
 
   it("exportCredential rejects unknown formats", async () => {
     installFetch((path) => {
-      if (path === "/projects") return { projects: [] };
+      if (path === "/projects?per_page=200") return { projects: [] };
       if (path.includes("b.nyc3.digitaloceanspaces.com")) return textResponse("", 200);
       return jsonResponse("err", 404);
     });

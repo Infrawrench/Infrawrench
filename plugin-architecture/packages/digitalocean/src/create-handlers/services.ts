@@ -13,6 +13,7 @@ import type {
   CreateResourceConfig,
   ResourceInstance,
 } from "@infrawrench/plugin-base";
+import { PICKER } from "../api.js";
 import type { operations } from "../api-types.gen.js";
 import { regionDisplay } from "../constants.js";
 import {
@@ -46,8 +47,8 @@ export const CDN_TTL_OPTIONS: Option[] = [
 ];
 
 async function regionOptions(ctx: DoCreateContext) {
-  const data = await ctx.api.get("/regions");
-  return (data.regions ?? [])
+  const regions = await ctx.api.getAll("/regions", "regions", PICKER);
+  return regions
     .filter((r) => r.available)
     .map((r) => {
       const info = regionDisplay(r.slug);
@@ -61,10 +62,8 @@ async function regionOptions(ctx: DoCreateContext) {
 
 /** Droplets as `name (region)` options, sorted by label. */
 export async function dropletOptions(ctx: DoCreateContext, region?: string): Promise<Option[]> {
-  const data = await ctx.api
-    .get("/droplets", { query: { per_page: 200 } })
-    .catch(() => ({ droplets: [] }));
-  return (data.droplets ?? [])
+  const droplets = await ctx.api.getAll("/droplets", "droplets", PICKER).catch(() => []);
+  return droplets
     .map((d) => {
       const slug = String(d.region?.slug ?? "");
       const name = String(d.name ?? d.id ?? "");
@@ -76,8 +75,8 @@ export async function dropletOptions(ctx: DoCreateContext, region?: string): Pro
 }
 
 export async function vpcOptions(ctx: DoCreateContext): Promise<Option[]> {
-  const data = await ctx.api.get("/vpcs", { query: { per_page: 200 } }).catch(() => ({ vpcs: [] }));
-  return (data.vpcs ?? [])
+  const vpcs = await ctx.api.getAll("/vpcs", "vpcs", PICKER).catch(() => []);
+  return vpcs
     .map((v) => ({
       id: String(v.id ?? ""),
       label: `${String(v.name ?? v.id)} (${String(v.region ?? "")}${v.default === true ? ", default" : ""})`,
@@ -87,18 +86,18 @@ export async function vpcOptions(ctx: DoCreateContext): Promise<Option[]> {
 }
 
 export async function tagOptions(ctx: DoCreateContext): Promise<Option[]> {
-  const data = await ctx.api.get("/tags", { query: { per_page: 200 } }).catch(() => ({ tags: [] }));
-  return (data.tags ?? [])
+  const tags = await ctx.api.getAll("/tags", "tags", PICKER).catch(() => []);
+  return tags
     .map((t) => String(t.name ?? ""))
     .filter(Boolean)
     .map((name) => ({ id: name, label: name }));
 }
 
 export async function certificateOptions(ctx: DoCreateContext): Promise<Option[]> {
-  const data = await ctx.api
-    .get("/certificates", { query: { per_page: 200 } })
-    .catch(() => ({ certificates: [] }));
-  return (data.certificates ?? [])
+  const certificates = await ctx.api
+    .getAll("/certificates", "certificates", PICKER)
+    .catch(() => []);
+  return certificates
     .map((c) => {
       const names = Array.isArray(c.dns_names) ? c.dns_names.join(", ") : "";
       return {
@@ -405,10 +404,8 @@ export async function servicesGetCreateConfig(
   }
 
   if (typeId === "certificate") {
-    const domainsData = await ctx.api
-      .get("/domains", { query: { per_page: 200 } })
-      .catch(() => ({ domains: [] }));
-    const domains = (domainsData.domains ?? [])
+    const domainRows = await ctx.api.getAll("/domains", "domains", PICKER).catch(() => []);
+    const domains = domainRows
       .map((d) => String(d.name ?? ""))
       .filter(Boolean)
       .map((name) => ({ id: name, label: name }));

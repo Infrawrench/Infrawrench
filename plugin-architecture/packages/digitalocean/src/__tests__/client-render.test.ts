@@ -211,7 +211,7 @@ describe("GenAI listers", () => {
         return { api_key_infos: [{ uuid: "mk-1", name: "mk" }] };
       if (path === "/gen-ai/agents?per_page=200") return { agents: [{ uuid: "a-1", name: "A1" }] };
       if (path.includes("/api_keys")) return { api_key_infos: [{ uuid: "ak-1", name: "ak" }] };
-      return { batch_jobs: [] };
+      return { object: "list", data: [], has_more: false };
     });
     // These should not throw; exact mapping varies but the call must succeed.
     await expect(client.listResources("dedicated-inference", ACC)).resolves.toBeInstanceOf(Array);

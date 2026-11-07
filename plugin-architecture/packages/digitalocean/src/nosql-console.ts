@@ -6,7 +6,7 @@
  */
 import type { ApiBody, ChatMessage, ChatStreamEvent, HostServices } from "@infrawrench/plugin-base";
 import { streamOpenAiSseChat } from "@infrawrench/plugin-base";
-import { idSegment } from "./api.js";
+import { idSegment, PICKER } from "./api.js";
 import type { DoApi, DoResponse } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import {
@@ -348,9 +348,9 @@ export async function executeDoNoSqlCommand(
       // No models picked → use the task preset's recommended default set.
       if (models.length === 0) {
         const presets = await ctx.api
-          .get("/gen-ai/models/routers/tasks/presets", { query: { per_page: 200 } })
-          .catch(() => ({ tasks: [] }));
-        const preset = (presets.tasks ?? []).find((t: RouterTaskPreset) => t.task_slug === task);
+          .getAll("/gen-ai/models/routers/tasks/presets", "tasks", PICKER)
+          .catch(() => []);
+        const preset = presets.find((t: RouterTaskPreset) => t.task_slug === task);
         models = Array.isArray(preset?.models) ? preset.models.map(String) : [];
       }
       if (models.length === 0) {

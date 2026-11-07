@@ -17,7 +17,7 @@ import {
   type NoSlashString,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
-import { idSegment } from "./api.js";
+import { idSegment, PICKER } from "./api.js";
 import type { DoApi, DoResponse } from "./api.js";
 import type { operations, paths } from "./api-types.gen.js";
 import {
@@ -637,10 +637,7 @@ export async function executeDoServiceCommand(
 // ── Detail enrichment ───────────────────────────────────────────────────
 
 async function droplets(ctx: DoServiceContext): Promise<DoDropletRow[]> {
-  const data = await ctx.api
-    .get("/droplets", { query: { per_page: 200 } })
-    .catch(() => ({ droplets: [] }));
-  return data.droplets ?? [];
+  return ctx.api.getAll("/droplets", "droplets", PICKER).catch(() => []);
 }
 
 function dropletOption(d: DoDropletRow) {
@@ -666,20 +663,19 @@ export async function enrichDoServiceDetail(
   const extra: Record<string, string> = {};
   const safe = async <T>(p: Promise<T>, fallback: Partial<T>): Promise<Partial<T>> =>
     p.catch(() => fallback);
-  const page = { query: { per_page: 200 } };
 
   switch (resource.resourceTypeId) {
     case "load-balancer": {
       const [all, certs] = await Promise.all([
         droplets(ctx),
-        safe(ctx.api.get("/certificates", page), { certificates: [] }),
+        ctx.api.getAll("/certificates", "certificates", PICKER).catch(() => []),
       ]);
       const region = String(resource.fields["region"] ?? "");
       extra["__droplets__"] = JSON.stringify(
         all.map(dropletOption).filter((d) => !region || d.region === region),
       );
       extra["__certificates__"] = JSON.stringify(
-        (certs.certificates ?? []).map((c) => ({
+        certs.map((c) => ({
           id: String(c.id ?? ""),
           label: String(c.name ?? c.id),
         })),
@@ -689,18 +685,16 @@ export async function enrichDoServiceDetail(
     case "firewall": {
       const [all, tags] = await Promise.all([
         droplets(ctx),
-        safe(ctx.api.get("/tags", page), { tags: [] }),
+        ctx.api.getAll("/tags", "tags", PICKER).catch(() => []),
       ]);
       extra["__droplets__"] = JSON.stringify(all.map(dropletOption));
-      extra["__tags__"] = JSON.stringify(
-        (tags.tags ?? []).map((t) => String(t.name ?? "")).filter(Boolean),
-      );
+      extra["__tags__"] = JSON.stringify(tags.map((t) => String(t.name ?? "")).filter(Boolean));
       break;
     }
     case "cdn-endpoint": {
-      const certs = await safe(ctx.api.get("/certificates", page), { certificates: [] });
+      const certs = await ctx.api.getAll("/certificates", "certificates", PICKER).catch(() => []);
       extra["__certificates__"] = JSON.stringify(
-        (certs.certificates ?? []).map((c) => ({
+        certs.map((c) => ({
           id: String(c.id ?? ""),
           label: String(c.name ?? c.id),
         })),
@@ -710,10 +704,10 @@ export async function enrichDoServiceDetail(
     case "uptime-check": {
       const [state, alerts] = await Promise.all([
         safe(ctx.api.get(`/uptime/checks/${segment}/state`), { state: {} }),
-        safe(ctx.api.get(`/uptime/checks/${segment}/alerts`, page), { alerts: [] }),
+        ctx.api.getAll(`/uptime/checks/${segment}/alerts`, "alerts", PICKER).catch(() => []),
       ]);
       extra["__state__"] = JSON.stringify(state.state ?? {});
-      extra["__alerts__"] = JSON.stringify(alerts.alerts ?? []);
+      extra["__alerts__"] = JSON.stringify(alerts);
       break;
     }
     case "app": {
@@ -742,12 +736,14 @@ export async function enrichDoServiceDetail(
     }
     case "autoscale-pool": {
       const [members, history] = await Promise.all([
-        safe(ctx.api.get(`/droplets/autoscale/${segment}/members`, page), { droplets: [] }),
+        ctx.api
+          .getAll(`/droplets/autoscale/${segment}/members`, "droplets", PICKER)
+          .catch(() => []),
         safe(ctx.api.get(`/droplets/autoscale/${segment}/history`, { query: { per_page: 20 } }), {
           history: [],
         }),
       ]);
-      extra["__members__"] = JSON.stringify(members.droplets ?? []);
+      extra["__members__"] = JSON.stringify(members);
       extra["__history__"] = JSON.stringify(history.history ?? []);
       break;
     }

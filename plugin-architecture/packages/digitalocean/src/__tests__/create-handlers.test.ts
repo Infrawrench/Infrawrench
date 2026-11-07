@@ -62,10 +62,10 @@ const PROJECTS = {
  * empty object; this is enough for the catalog-driven create config branches.
  */
 function routeFetch(path: string): unknown {
-  if (path === "/regions") return REGIONS;
+  if (path === "/regions?per_page=200") return REGIONS;
   if (path.startsWith("/sizes")) return SIZES;
   if (path.startsWith("/images")) return IMAGES;
-  if (path === "/projects") return PROJECTS;
+  if (path === "/projects?per_page=200") return PROJECTS;
   if (path === "/kubernetes/options")
     return {
       options: {
@@ -286,7 +286,7 @@ describe("doGetCreateConfig — every type produces fields", () => {
   it("tolerates a failing /projects fetch (no project field, no throw)", async () => {
     const ctx = makeCtx({
       fetch: vi.fn(async (path: string) => {
-        if (path === "/projects") throw new Error("403");
+        if (path === "/projects?per_page=200") throw new Error("403");
         return routeFetch(path);
       }) as Mock,
     });
@@ -370,7 +370,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/account/keys" && init?.method === "POST") {
         throw new Error("DigitalOcean API 422: SSH Key is already in use on your account");
       }
-      if (path === "/account/keys?per_page=200&page=1") return { ssh_keys: page1 };
+      if (path === "/account/keys?per_page=200") return { ssh_keys: page1 };
       if (path === "/account/keys?per_page=200&page=2")
         return { ssh_keys: [{ id: 999, public_key: sshPub }] };
       if (path === "/droplets") return { droplet: { id: 43, name: "web-2", networks: { v4: [] } } };

@@ -11,6 +11,7 @@
  */
 import type { ApiListItem, ResourceInstance } from "@infrawrench/plugin-base";
 import type { operations } from "./api-types.gen.js";
+import { failedWith } from "./api.js";
 import type { DoListerContext } from "./resource-listers.js";
 
 type DoLoadBalancer = ApiListItem<operations["loadBalancers_list"], "load_balancers">;
@@ -403,19 +404,15 @@ export function mapAutoscalePool(p: Partial<DoAutoscalePool>, accountId: string)
 }
 
 /**
- * Waits for a request, except that a 403/404 collapses to the fallback: NAT
- * gateways, peerings and autoscale pools are newer products and an older token,
- * or an account without access, should get an empty sidebar group, not an error.
+ * Waits for a request, except that a 403/404 collapses to none: NAT gateways, peerings
+ * and autoscale pools are newer products and an older token, or an account without
+ * access, should get an empty sidebar group, not an error.
  */
-async function orEmptyWhenAbsent<T>(
-  request: Promise<T>,
-  fallback: Partial<T>,
-): Promise<Partial<T>> {
+async function orEmptyWhenAbsent<T>(request: Promise<T[]>): Promise<T[]> {
   try {
     return await request;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (/\b(403|404)\b/.test(message)) return fallback;
+    if (failedWith(err, 403, 404)) return [];
     throw err;
   }
 }
@@ -426,51 +423,46 @@ export async function listDoServiceResources(
   typeId: string,
   accountId: string,
 ): Promise<ResourceInstance[] | null> {
-  const page = { query: { per_page: 200 } };
   switch (typeId) {
     case "load-balancer": {
-      const data = await ctx.api.get("/load_balancers", page);
-      return (data.load_balancers ?? []).map((lb) => mapLoadBalancer(lb, accountId));
+      const rows = await ctx.api.getAll("/load_balancers", "load_balancers");
+      return rows.map((lb) => mapLoadBalancer(lb, accountId));
     }
     case "firewall": {
-      const data = await ctx.api.get("/firewalls", page);
-      return (data.firewalls ?? []).map((fw) => mapFirewall(fw, accountId));
+      const rows = await ctx.api.getAll("/firewalls", "firewalls");
+      return rows.map((fw) => mapFirewall(fw, accountId));
     }
     case "certificate": {
-      const data = await ctx.api.get("/certificates", page);
-      return (data.certificates ?? []).map((c) => mapCertificate(c, accountId));
+      const rows = await ctx.api.getAll("/certificates", "certificates");
+      return rows.map((c) => mapCertificate(c, accountId));
     }
     case "cdn-endpoint": {
-      const data = await ctx.api.get("/cdn/endpoints", page);
-      return (data.endpoints ?? []).map((e) => mapCdnEndpoint(e, accountId));
+      const rows = await ctx.api.getAll("/cdn/endpoints", "endpoints");
+      return rows.map((e) => mapCdnEndpoint(e, accountId));
     }
     case "uptime-check": {
-      const data = await orEmptyWhenAbsent(ctx.api.get("/uptime/checks", page), { checks: [] });
-      return (data.checks ?? []).map((c) => mapUptimeCheck(c, accountId));
+      const rows = await orEmptyWhenAbsent(ctx.api.getAll("/uptime/checks", "checks"));
+      return rows.map((c) => mapUptimeCheck(c, accountId));
     }
     case "vpc-nat-gateway": {
-      const data = await orEmptyWhenAbsent(ctx.api.get("/vpc_nat_gateways", page), {
-        vpc_nat_gateways: [],
-      });
-      return (data.vpc_nat_gateways ?? []).map((g) => mapVpcNatGateway(g, accountId));
+      const rows = await orEmptyWhenAbsent(ctx.api.getAll("/vpc_nat_gateways", "vpc_nat_gateways"));
+      return rows.map((g) => mapVpcNatGateway(g, accountId));
     }
     case "vpc-peering": {
-      const data = await orEmptyWhenAbsent(ctx.api.get("/vpc_peerings", page), {
-        vpc_peerings: [],
-      });
-      return (data.vpc_peerings ?? []).map((p) => mapVpcPeering(p, accountId));
+      const rows = await orEmptyWhenAbsent(ctx.api.getAll("/vpc_peerings", "vpc_peerings"));
+      return rows.map((p) => mapVpcPeering(p, accountId));
     }
     case "app": {
       // `with_projects=true` makes DO include `project_id`, which nests the
       // app under its project without a URN lookup.
-      const data = await ctx.api.get("/apps", { query: { per_page: 200, with_projects: true } });
-      return (data.apps ?? []).map((a) => mapApp(a, accountId));
+      const rows = await ctx.api.getAll("/apps", "apps", { query: { with_projects: true } });
+      return rows.map((a) => mapApp(a, accountId));
     }
     case "autoscale-pool": {
-      const data = await orEmptyWhenAbsent(ctx.api.get("/droplets/autoscale", page), {
-        autoscale_pools: [],
-      });
-      return (data.autoscale_pools ?? []).map((p) => mapAutoscalePool(p, accountId));
+      const rows = await orEmptyWhenAbsent(
+        ctx.api.getAll("/droplets/autoscale", "autoscale_pools"),
+      );
+      return rows.map((p) => mapAutoscalePool(p, accountId));
     }
     default:
       return null;

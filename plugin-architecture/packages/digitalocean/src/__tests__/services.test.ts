@@ -302,13 +302,14 @@ describe("service create", () => {
 
   it("offers pickers, not id inputs, on the load balancer form", async () => {
     installFetch((p) => {
-      if (p === "/regions") return { regions: [{ slug: "nyc3", name: "NYC 3", available: true }] };
+      if (p === "/regions?per_page=200")
+        return { regions: [{ slug: "nyc3", name: "NYC 3", available: true }] };
       if (p.startsWith("/droplets"))
         return { droplets: [{ id: 11, name: "web-1", region: { slug: "nyc3" } }] };
       if (p.startsWith("/certificates")) return { certificates: [{ id: "c-1", name: "site" }] };
       if (p.startsWith("/tags")) return { tags: [{ name: "web" }] };
       if (p.startsWith("/vpcs")) return { vpcs: [] };
-      if (p === "/projects") return { projects: [] };
+      if (p === "/projects?per_page=200") return { projects: [] };
       return undefined;
     });
     const cfg = await client().getCreateConfig("load-balancer");

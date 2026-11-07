@@ -1,6 +1,6 @@
 /** Create handlers for DigitalOcean managed database clusters and their users. */
 import { type CreateResourceConfig, type ResourceInstance } from "@infrawrench/plugin-base";
-import { idSegment } from "../api.js";
+import { idSegment, PICKER } from "../api.js";
 import { regionDisplay } from "../constants.js";
 import { kafkaAclFields } from "../resources/managed-database.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
@@ -52,7 +52,7 @@ export async function databaseGetCreateConfig(
     // above. DO will reject mismatched engine+size combos at create time
     // with a clear message.
     const [regionsData, optionsData, projectField] = await Promise.all([
-      ctx.api.get("/regions"),
+      ctx.api.getAll("/regions", "regions", PICKER),
       ctx.api.get("/databases/options"),
       buildProjectField(ctx, parentResourceId),
     ]);
@@ -124,7 +124,7 @@ export async function databaseGetCreateConfig(
     }
 
     const dbCapableSlugs = engineRegions.size > 0 ? new Set(engineRegions.keys()) : null;
-    const regions = regionsData.regions
+    const regions = regionsData
       .filter((r) => r.available)
       // DBaaS isn't offered in DO's legacy datacenters: exclude them
       // regardless of whether the per-engine map came from the API or the

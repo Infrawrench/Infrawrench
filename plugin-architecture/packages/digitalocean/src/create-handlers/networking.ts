@@ -5,7 +5,7 @@ import {
   type CreateResourceConfig,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
-import { idSegment } from "../api.js";
+import { idSegment, PICKER } from "../api.js";
 import type { operations } from "../api-types.gen.js";
 import { regionDisplay } from "../constants.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
@@ -37,8 +37,8 @@ export async function networkingGetCreateConfig(
     const hasParent = !!parentResourceId;
     const fields: CreateResourceConfig["fields"] = [];
     if (!hasParent) {
-      const domains = await ctx.api.get("/domains");
-      const domainOptions = (domains.domains ?? []).map((d) => ({
+      const domains = await ctx.api.getAll("/domains", "domains", PICKER);
+      const domainOptions = domains.map((d) => ({
         id: String(d.name),
         label: String(d.name),
       }));
@@ -106,8 +106,8 @@ export async function networkingGetCreateConfig(
     // POST /v2/vpcs requires `name` + `region`; `description` and `ip_range`
     // are optional (DO generates a non-conflicting /20 when ip_range is
     // omitted). Verified against DigitalOcean's published OpenAPI spec.
-    const regionsData = await ctx.api.get("/regions");
-    const regions = regionsData.regions
+    const regionsData = await ctx.api.getAll("/regions", "regions", PICKER);
+    const regions = regionsData
       .filter((r) => r.available)
       .map((r) => {
         const info = regionDisplay(r.slug);
@@ -162,11 +162,11 @@ export async function networkingGetCreateConfig(
     // makes that a mode toggle so the user never has to know which key the
     // API wants, and both branches are pickers rather than free-text ids.
     const [regionsData, dropletsData, projectField] = await Promise.all([
-      ctx.api.get("/regions"),
-      ctx.api.get("/droplets", { query: { per_page: 200 } }).catch(() => ({ droplets: [] })),
+      ctx.api.getAll("/regions", "regions", PICKER),
+      ctx.api.getAll("/droplets", "droplets", PICKER).catch(() => []),
       buildProjectField(ctx, parentResourceId),
     ]);
-    const regions = regionsData.regions
+    const regions = regionsData
       .filter((r) => r.available)
       .map((r) => {
         const info = regionDisplay(r.slug);
@@ -177,7 +177,7 @@ export async function networkingGetCreateConfig(
         };
       });
     const firstRegion = regions[0]?.id;
-    const droplets = (dropletsData.droplets ?? [])
+    const droplets = dropletsData
       .map((d) => {
         const slug = String(d.region?.slug ?? "");
         const name = String(d.name ?? d.id ?? "");

@@ -149,7 +149,7 @@ describe("attachResource", () => {
   it("attaches a volume to a droplet in the same region", async () => {
     const posts: string[] = [];
     installFetch((path, method) => {
-      if (path === "/projects") return { projects: [] };
+      if (path === "/projects?per_page=200") return { projects: [] };
       // getResource("volume") has no single endpoint → list-and-find.
       if (path === "/volumes?per_page=200")
         return { volumes: [{ id: "vol-1", name: "data", region: { slug: "nyc3" } }] };
@@ -173,7 +173,7 @@ describe("attachResource", () => {
 
   it("rejects a cross-region volume attach", async () => {
     installFetch((path) => {
-      if (path === "/projects") return { projects: [] };
+      if (path === "/projects?per_page=200") return { projects: [] };
       if (path === "/volumes?per_page=200")
         return { volumes: [{ id: "vol-1", name: "data", region: { slug: "sfo3" } }] };
       if (path === "/droplets/42")
@@ -297,7 +297,7 @@ describe("executeNoSqlCommand delegation", () => {
 describe("fetchDashboardStats / getLogs", () => {
   it("returns droplet stats", async () => {
     installFetch((path) => {
-      if (path === "/projects") return { projects: [] };
+      if (path === "/projects?per_page=200") return { projects: [] };
       if (path === "/droplets/42")
         return {
           droplet: {

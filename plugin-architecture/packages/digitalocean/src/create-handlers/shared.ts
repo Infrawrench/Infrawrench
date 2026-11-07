@@ -12,7 +12,7 @@ import type {
   ResourceInstance,
   ResourceWarning,
 } from "@infrawrench/plugin-base";
-import type { DoApi } from "../api.js";
+import { PICKER, type DoApi } from "../api.js";
 
 export interface DoCreateContext {
   api: DoApi;
@@ -83,8 +83,7 @@ export async function buildProjectField(
   parentResourceId: string | undefined,
 ): Promise<CreateResourceConfig["fields"]> {
   if (parentResourceId) return [];
-  const projectsData = await ctx.api.get("/projects").catch(() => null);
-  const projects = projectsData?.projects ?? [];
+  const projects = await ctx.api.getAll("/projects", "projects", PICKER).catch(() => []);
   if (projects.length === 0) return [];
   const options = projects.map((p) => ({
     id: p.id,

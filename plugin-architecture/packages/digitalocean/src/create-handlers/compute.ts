@@ -5,6 +5,7 @@ import type {
   ResourceInstance,
   SizeOption,
 } from "@infrawrench/plugin-base";
+import { PICKER } from "../api.js";
 import { regionDisplay } from "../constants.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
 
@@ -25,14 +26,14 @@ export async function computeGetCreateConfig(
     // `is_default`).
     const [regionsData, sizesData, publicImagesData, privateImagesData, projectField] =
       await Promise.all([
-        ctx.api.get("/regions"),
-        ctx.api.get("/sizes", { query: { per_page: 200 } }),
-        ctx.api.get("/images", { query: { type: "distribution", per_page: 200 } }),
-        ctx.api.get("/images", { query: { private: true, per_page: 200 } }),
+        ctx.api.getAll("/regions", "regions", PICKER),
+        ctx.api.getAll("/sizes", "sizes", PICKER),
+        ctx.api.getAll("/images", "images", { ...PICKER, query: { type: "distribution" } }),
+        ctx.api.getAll("/images", "images", { ...PICKER, query: { private: true } }),
         buildProjectField(ctx, parentResourceId),
       ]);
 
-    const regions = regionsData.regions
+    const regions = regionsData
       .filter((r) => r.available)
       .map((r) => {
         const info = regionDisplay(r.slug);
@@ -44,7 +45,7 @@ export async function computeGetCreateConfig(
       });
 
     const sizesByCategory = new Map<string, SizeOption[]>();
-    for (const s of sizesData.sizes) {
+    for (const s of sizesData) {
       if (!s.available) continue;
       const cat = s.description || "Standard";
       if (!sizesByCategory.has(cat)) sizesByCategory.set(cat, []);
@@ -70,13 +71,13 @@ export async function computeGetCreateConfig(
     const sizes = [...sizesByCategory.values()].flat();
 
     const imageMap = new Map<string, ImageOption[]>();
-    for (const img of publicImagesData.images) {
+    for (const img of publicImagesData) {
       if (img.status !== "available") continue;
       const cat = img.distribution;
       if (!imageMap.has(cat)) imageMap.set(cat, []);
       imageMap.get(cat)!.push({ id: img.slug ?? String(img.id), label: img.name, category: cat });
     }
-    const privateImages: ImageOption[] = privateImagesData.images
+    const privateImages: ImageOption[] = privateImagesData
       .filter((i) => i.status === "available")
       .map((i) => ({ id: String(i.id), label: i.name, category: "My Snapshots", isOwned: true }));
     const images: ImageOption[] = [...[...imageMap.values()].flat(), ...privateImages];
@@ -154,7 +155,7 @@ export async function computeGetCreateConfig(
   if (typeId === "doks-cluster") {
     const [optionsData, sizesData, projectField] = await Promise.all([
       ctx.api.get("/kubernetes/options"),
-      ctx.api.get("/sizes", { query: { per_page: 200 } }),
+      ctx.api.getAll("/sizes", "sizes", PICKER),
       buildProjectField(ctx, parentResourceId),
     ]);
 
@@ -169,7 +170,7 @@ export async function computeGetCreateConfig(
 
     const availableSizeSlugs = new Set((optionsData.options?.sizes ?? []).map((size) => size.slug));
     const sizesByCategory = new Map<string, SizeOption[]>();
-    for (const size of sizesData.sizes) {
+    for (const size of sizesData) {
       if (!size.available || !availableSizeSlugs.has(size.slug)) continue;
       const category = size.description || "Standard";
       if (!sizesByCategory.has(category)) sizesByCategory.set(category, []);
@@ -261,17 +262,10 @@ export async function computeCreateResource(args: DoCreateArgs): Promise<Resourc
         } catch (e: unknown) {
           if (!String(e).includes("422")) throw e;
           // 422 means the key already exists on the account: look up its id.
-          // Keys can span multiple pages, so walk them until we find the
-          // match or exhaust the list.
-          const perPage = 200;
-          for (let page = 1; keyId === undefined; page += 1) {
-            const data = await ctx.api.get("/account/keys", {
-              query: { per_page: perPage, page },
-            });
-            const keys = data.ssh_keys ?? [];
-            keyId = keys.find((k) => k.public_key.trim() === sshPub.trim())?.id;
-            if (keys.length < perPage) break;
-          }
+          const keys = await ctx.api.getAll("/account/keys", "ssh_keys", {
+            stopWhen: (page) => page.some((k) => k.public_key.trim() === sshPub.trim()),
+          });
+          keyId = keys.find((k) => k.public_key.trim() === sshPub.trim())?.id;
         }
         if (keyId) sshKeyIds.push(keyId);
         if (!keyId) {

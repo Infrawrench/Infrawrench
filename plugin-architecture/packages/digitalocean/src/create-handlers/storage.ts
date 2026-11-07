@@ -1,6 +1,7 @@
 /** Create handlers for DigitalOcean Spaces buckets, block volumes and NFS shares. */
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { signedS3Fetch } from "@infrawrench/plugin-base";
+import { PICKER } from "../api.js";
 import type { DoResponse } from "../api.js";
 import { SPACES_REGIONS, regionDisplay } from "../constants.js";
 import { buildProjectField, type DoCreateArgs, type DoCreateContext } from "./shared.js";
@@ -19,10 +20,10 @@ export async function storageGetCreateConfig(
 ): Promise<CreateResourceConfig | null> {
   if (typeId === "spaces-bucket") {
     const [regionsData, projectField] = await Promise.all([
-      ctx.api.get("/regions"),
+      ctx.api.getAll("/regions", "regions", PICKER),
       buildProjectField(ctx, parentResourceId),
     ]);
-    const spacesRegions = regionsData.regions
+    const spacesRegions = regionsData
       .filter((r) => r.available)
       .filter((r) => SPACES_REGIONS.includes(r.slug))
       .map((r) => {
@@ -58,10 +59,10 @@ export async function storageGetCreateConfig(
 
   if (typeId === "volume") {
     const [regionsData, projectField] = await Promise.all([
-      ctx.api.get("/regions"),
+      ctx.api.getAll("/regions", "regions", PICKER),
       buildProjectField(ctx, parentResourceId),
     ]);
-    const regions = regionsData.regions
+    const regions = regionsData
       .filter((r) => r.available)
       .map((r) => {
         const info = regionDisplay(r.slug);
@@ -114,11 +115,11 @@ export async function storageGetCreateConfig(
     // NFS-eligible: DO returns 422 from create otherwise, surfaced as the
     // host error) and the account's VPCs so the user can pick.
     const [regionsData, vpcsData, projectField] = await Promise.all([
-      ctx.api.get("/regions"),
-      ctx.api.get("/vpcs", { query: { per_page: 200 } }).catch(() => ({ vpcs: [] })),
+      ctx.api.getAll("/regions", "regions", PICKER),
+      ctx.api.getAll("/vpcs", "vpcs", PICKER).catch(() => []),
       buildProjectField(ctx, parentResourceId),
     ]);
-    const regions = regionsData.regions
+    const regions = regionsData
       .filter((r) => r.available)
       .map((r) => {
         const info = regionDisplay(r.slug);
@@ -128,7 +129,7 @@ export async function storageGetCreateConfig(
           ...(info ? { location: info.location, flag: info.flag } : {}),
         };
       });
-    const vpcOptions = vpcsData.vpcs.map((v) => ({
+    const vpcOptions = vpcsData.map((v) => ({
       id: v.id,
       label: `${v.name} (${v.region})`,
     }));

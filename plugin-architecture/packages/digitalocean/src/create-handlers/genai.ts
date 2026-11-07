@@ -7,7 +7,7 @@ import {
   type CreateResourceConfig,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
-import { idSegment } from "../api.js";
+import { idSegment, PICKER } from "../api.js";
 import type { DoResponse } from "../api.js";
 import type { operations } from "../api-types.gen.js";
 import { regionDisplay } from "../constants.js";
@@ -45,20 +45,21 @@ export async function genaiGetCreateConfig(
     // footprint: GenAI is only deployed in a subset).
     const [models, routers, regions, workspaces, projectField] = await Promise.all([
       ctx.api
-        .get("/gen-ai/models", { query: { usecases: ["MODEL_USECASE_AGENT"], per_page: 200 } })
-        .catch(() => ({ models: [] })),
-      ctx.api
-        .get("/gen-ai/models/routers", { query: { per_page: 200 } })
-        .catch(() => ({ model_routers: [] })),
+        .getAll("/gen-ai/models", "models", {
+          ...PICKER,
+          query: { usecases: ["MODEL_USECASE_AGENT"] },
+        })
+        .catch(() => []),
+      ctx.api.getAll("/gen-ai/models/routers", "model_routers", PICKER).catch(() => []),
       ctx.api.get("/gen-ai/regions").catch(() => ({ regions: [] })),
       ctx.api.get("/gen-ai/workspaces").catch(() => ({ workspaces: [] })),
       buildProjectField(ctx, parentResourceId),
     ]);
-    const modelOptions = (models.models ?? []).map((m) => ({
+    const modelOptions = models.map((m) => ({
       id: String(m.uuid ?? ""),
       label: `${String(m.name ?? "")}${providerName(m.provider) ? ` (${providerName(m.provider)})` : ""}`,
     }));
-    const routerOptions = (routers.model_routers ?? []).map((r) => ({
+    const routerOptions = routers.map((r) => ({
       id: String(r.uuid ?? ""),
       label: String(r.name ?? r.uuid ?? ""),
     }));
@@ -219,14 +220,15 @@ export async function genaiGetCreateConfig(
   if (typeId === "gen-ai-knowledge-base") {
     const [models, regions, projectField] = await Promise.all([
       ctx.api
-        .get("/gen-ai/models", {
-          query: { usecases: ["MODEL_USECASE_KNOWLEDGEBASE"], per_page: 200 },
+        .getAll("/gen-ai/models", "models", {
+          ...PICKER,
+          query: { usecases: ["MODEL_USECASE_KNOWLEDGEBASE"] },
         })
-        .catch(() => ({ models: [] })),
+        .catch(() => []),
       ctx.api.get("/gen-ai/regions").catch(() => ({ regions: [] })),
       buildProjectField(ctx, parentResourceId),
     ]);
-    const modelOptions = (models.models ?? []).map((m) => ({
+    const modelOptions = models.map((m) => ({
       id: String(m.uuid ?? ""),
       label: String(m.name ?? ""),
     }));
@@ -279,10 +281,10 @@ export async function genaiGetCreateConfig(
     // explicit `regions`. Fallback/policy models must come from DO's router
     // presets (arbitrary serverless model UUIDs are rejected as "not found"),
     // so we offer a preset picker and pass its config through on create.
-    const presetsRes = await ctx.api
-      .get("/gen-ai/models/routers/presets", { query: { per_page: 200 } })
-      .catch(() => ({ presets: [] }));
-    const presetOptions = (presetsRes.presets ?? [])
+    const presets = await ctx.api
+      .getAll("/gen-ai/models/routers/presets", "presets", PICKER)
+      .catch(() => []);
+    const presetOptions = presets
       .filter((p) => p.slug)
       .map((p) => ({
         id: String(p.slug),
@@ -416,10 +418,8 @@ export async function genaiGetCreateConfig(
 
   if (typeId === "agent-api-key") {
     if (!parentResourceId) {
-      const list = await ctx.api
-        .get("/gen-ai/agents", { query: { per_page: 200 } })
-        .catch(() => ({ agents: [] }));
-      const options = (list.agents ?? []).map((a) => ({
+      const agents = await ctx.api.getAll("/gen-ai/agents", "agents", PICKER).catch(() => []);
+      const options = agents.map((a) => ({
         id: String(a.uuid ?? ""),
         label: String(a.name ?? a.uuid ?? ""),
       }));
@@ -603,10 +603,10 @@ export async function genaiCreateResource(args: DoCreateArgs): Promise<ResourceI
     const presetSlug = String(fields["presetSlug"] ?? "").trim();
     let cfg: DoRouterPreset["config"];
     if (presetSlug) {
-      const presetsRes = await ctx.api
-        .get("/gen-ai/models/routers/presets", { query: { per_page: 200 } })
-        .catch(() => ({ presets: [] }));
-      const preset = (presetsRes.presets ?? []).find((p: DoRouterPreset) => p.slug === presetSlug);
+      const presets = await ctx.api
+        .getAll("/gen-ai/models/routers/presets", "presets", PICKER)
+        .catch(() => []);
+      const preset = presets.find((p: DoRouterPreset) => p.slug === presetSlug);
       cfg = preset?.config;
     }
     const data = await ctx.api.post("/gen-ai/models/routers", {

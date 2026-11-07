@@ -319,11 +319,11 @@ describe("reserved-ip drag-attach", () => {
 describe("reserved-ip create", () => {
   it("offers a Droplet picker and a region picker behind a mode toggle", async () => {
     installFetch((path) => {
-      if (path === "/regions")
+      if (path === "/regions?per_page=200")
         return { regions: [{ slug: "nyc3", name: "New York 3", available: true }] };
       if (path === "/droplets?per_page=200")
         return { droplets: [{ id: 1, name: "web-01", region: { slug: "nyc3" } }] };
-      if (path === "/projects") return { projects: [] };
+      if (path === "/projects?per_page=200") return { projects: [] };
       return undefined;
     });
     const config = await newClient().getCreateConfig("reserved-ip");
