@@ -1,10 +1,10 @@
 /**
  * Billed spend from Exoscale's FOCUS report.
  *
- * `GET /v2/focus-report/{YYYY-MM}` ([BETA] in the API spec, 2026-10) returns
- * `{ "focus-report": { presigned_url, expires_in } }`; the URL points at the
- * organization's cost report for the month in the FinOps FOCUS schema. The
- * spec does not state the file encoding, so the body is sniffed: gzip is
+ * `GET /v2/focus-report/{YYYY-MM}` ([BETA], absent from the published document;
+ * shape from exoscale/egoscale v3) returns `{ presigned_url, expires_in }`; the
+ * URL points at the organization's cost report for the month in the FinOps FOCUS
+ * schema. The file encoding is not stated, so the body is sniffed: gzip is
  * inflated with `DecompressionStream`, then JSON (an array or JSON Lines)
  * or CSV with a header row is accepted. Parquet is refused with a setup
  * error rather than guessed at.
@@ -27,13 +27,23 @@ import { DEFAULT_ZONE, type ExoscaleApi, rawId, statusOf } from "./api.js";
 
 type FocusRow = Record<string, unknown>;
 
+type FocusReport = ApiResponse<operations["get-focus-report"]>;
+
 /**
- * The report as this plugin reads it, under a `focus-report` key. Exoscale's Go client
- * reads `presigned_url` at the top level (#407).
+ * Exoscale's Go client reads `presigned_url` at the top level. The plugin has always
+ * read it under a `focus-report` key and no live call has settled it, so both are read.
+ *
+ * An empty answer is a month with nothing to report. Anything else without a URL throws:
+ * skipping it would look like a successful sync of no spend.
  */
-type WrappedFocusReport = ApiResponse<operations["get-focus-report"]> & {
-  "focus-report"?: ApiResponse<operations["get-focus-report"]>;
-};
+export function presignedUrl(
+  answer: FocusReport & { "focus-report"?: FocusReport },
+  month: string,
+): string | undefined {
+  const url = answer.presigned_url ?? answer["focus-report"]?.presigned_url;
+  if (url || Object.keys(answer).length === 0) return url;
+  throw new Error(`Exoscale's FOCUS report answer for ${month} has no presigned_url`);
+}
 
 export function monthsBetween(from: string, to: string): string[] {
   const out: string[] = [];
@@ -198,12 +208,9 @@ export async function fetchExoscaleCostData(
 ): Promise<CostRow[]> {
   const out: CostRow[] = [];
   for (const month of monthsBetween(range.fromDate, range.toDate)) {
-    let url: string | undefined;
+    let report: FocusReport;
     try {
-      const res: WrappedFocusReport = await api
-        .at(DEFAULT_ZONE)
-        .get(`/focus-report/${rawId(month)}`);
-      url = res["focus-report"]?.presigned_url;
+      report = await api.at(DEFAULT_ZONE).get(`/focus-report/${rawId(month)}`);
     } catch (err) {
       const status = statusOf(err);
       if (status === 404) continue;
@@ -218,6 +225,7 @@ export async function fetchExoscaleCostData(
       }
       throw err;
     }
+    const url = presignedUrl(report, month);
     if (!url) continue;
     out.push(...focusRows(parseFocusBody(await download(url, services)), range));
   }

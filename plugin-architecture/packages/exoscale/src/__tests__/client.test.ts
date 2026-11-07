@@ -325,6 +325,52 @@ describe("account balance (#406)", () => {
   });
 });
 
+describe("FOCUS report url (#407)", () => {
+  blockFetch();
+
+  const range = { fromDate: "2026-09-01", toDate: "2026-09-30" };
+  const csv =
+    "ChargePeriodStart,ServiceName,BilledCost,BillingCurrency\n2026-09-02T00:00:00Z,Compute,1.5,CHF\n";
+  const presigned = "https://sos-ch-gva-2.exo.io/reports/2026-09.csv";
+
+  const answering = (report: { status?: number; body: unknown }) => {
+    const { services, calls } = host((c) => {
+      if (c.url === presigned) return { body: csv };
+      if (new URL(c.url).pathname === "/v2/focus-report/2026-09") return report;
+      throw new Error(`unexpected request ${c.url}`);
+    });
+    return { client: clientOver(services), calls };
+  };
+  const row = { date: "2026-09-02", service: "Compute", currency: "CHF", amount: 1.5 };
+
+  it("reads presigned_url at the top level, as Exoscale's Go client does", async () => {
+    const { client, calls } = answering({ body: { presigned_url: presigned, expires_in: 300 } });
+    expect(await client.fetchCostData("acct", range)).toEqual([row]);
+    const download = calls.find((c) => c.url === presigned);
+    expect(download?.headers["Authorization"]).toBeUndefined();
+  });
+
+  it("still reads presigned_url under a focus-report key", async () => {
+    const { client } = answering({ body: { "focus-report": { presigned_url: presigned } } });
+    expect(await client.fetchCostData("acct", range)).toEqual([row]);
+  });
+
+  it("skips a month with no report", async () => {
+    expect(
+      await answering({ status: 404, body: { message: "none" } }).client.fetchCostData(
+        "acct",
+        range,
+      ),
+    ).toEqual([]);
+    expect(await answering({ body: {} }).client.fetchCostData("acct", range)).toEqual([]);
+  });
+
+  it("fails rather than report no spend for an answer it cannot read", async () => {
+    const { client } = answering({ body: { "presigned-url": presigned } });
+    await expect(client.fetchCostData("acct", range)).rejects.toThrow(/FOCUS report/);
+  });
+});
+
 describe("status feed", () => {
   const now = Date.parse("2026-10-06T12:00:00Z");
   const item = (title: string, desc: string, extra = "") =>
