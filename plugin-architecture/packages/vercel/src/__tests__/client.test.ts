@@ -125,14 +125,52 @@ describe("wire format", () => {
     );
   });
 
-  it("sends the routes it never encoded raw, and the rest encoded", async () => {
-    installFetch(() => jsonResponse({}));
-    await client().deleteResource("vercel-project", "a:vercel-project:a b", ACCOUNT);
-    expect(calls[0]!.url).toBe("https://api.vercel.com/v9/projects/a b");
+  it("encodes every path segment, so an id cannot reach a different route", async () => {
+    installFetch((url) =>
+      url.includes("/v10/projects?")
+        ? jsonResponse({ projects: [{ id: "a/b?c", name: "n" }], pagination: { next: null } })
+        : jsonResponse({ id: "a/b?c", envs: [], name: "n" }),
+    );
+    const c = client();
+    await c.getResource("vercel-project", "a:vercel-project:a/b?c", ACCOUNT);
+    await c.deleteResource("vercel-project", "a:vercel-project:a/b?c", ACCOUNT);
+    await c.deleteResource("vercel-deployment", "a:vercel-deployment:a/b?c", ACCOUNT);
+    await c.deleteResource("vercel-domain", "a:vercel-domain:a/b?c", ACCOUNT);
+    await c.deleteResource("vercel-env-var", "a:vercel-env-var:p?x/e?y", ACCOUNT);
+    await c.updateResource("vercel-project", "a:vercel-project:a/b?c", ACCOUNT, {});
+    await c.listResources("vercel-env-var", ACCOUNT);
+    await c.createResource("vercel-env-var", ACCOUNT, {
+      projectId: "a/b?c",
+      key: "K",
+      value: "V",
+    });
+    const paths = calls.map((call) => call.url.replace("https://api.vercel.com", ""));
+    expect(paths).toEqual([
+      "/v9/projects/a%2Fb%3Fc",
+      "/v9/projects/a%2Fb%3Fc",
+      "/v13/deployments/a%2Fb%3Fc",
+      "/v6/domains/a%2Fb%3Fc",
+      "/v9/projects/p%3Fx/env/e%3Fy",
+      "/v9/projects/a%2Fb%3Fc",
+      "/v10/projects?limit=100",
+      "/v10/projects/a%2Fb%3Fc/env",
+      "/v10/projects/a%2Fb%3Fc/env",
+    ]);
+  });
 
-    calls = [];
-    await client().updateResource("vercel-project", "a:vercel-project:a b", ACCOUNT, {});
-    expect(calls[0]!.url).toBe("https://api.vercel.com/v9/projects/a%20b");
+  it("refuses a write with no id rather than aim it at the collection", async () => {
+    installFetch(() => jsonResponse({}));
+    const c = client();
+    await expect(c.deleteResource("vercel-project", "a:vercel-project:", ACCOUNT)).rejects.toThrow(
+      "names no resource",
+    );
+    await expect(
+      c.updateResource("vercel-project", "a:vercel-project:", ACCOUNT, { name: "x" }),
+    ).rejects.toThrow("names no resource");
+    await expect(
+      c.invokeAction("vercel-deployment", "a:vercel-deployment:", "cancel", ACCOUNT),
+    ).rejects.toThrow("names no resource");
+    expect(calls).toHaveLength(0);
   });
 });
 

@@ -25,7 +25,6 @@ import {
   pathEncode,
   renderDnsRecordDetail,
   renderDnsRecordSidebar,
-  unencodedSegment,
 } from "@infrawrench/plugin-base";
 import {
   createVercelApi,
@@ -198,7 +197,7 @@ export class VercelClient implements PluginClient {
       const externalId = resourceId.split(":").slice(2).join(":");
 
       if (typeId === "vercel-project") {
-        const project = await this.api.get(`/v9/projects/${unencodedSegment(externalId)}`);
+        const project = await this.api.get(`/v9/projects/${pathEncode(externalId)}`);
         return this.mapProject(project, accountId);
       }
 
@@ -795,7 +794,7 @@ export class VercelClient implements PluginClient {
       if (typeId === "vercel-env-var") {
         const projectId = fields["projectId"] ?? "";
         const data: VercelResponse<"createProjectEnv"> & { id?: string } = await this.api.post(
-          `/v10/projects/${unencodedSegment(projectId)}/env`,
+          `/v10/projects/${pathEncode(projectId)}/env`,
           {
             body: {
               key: fields["key"] ?? "",
@@ -858,20 +857,20 @@ export class VercelClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const externalId = resourceId.split(":").slice(2).join(":");
+      const externalId = requireExternalId(resourceId);
 
       if (typeId === "vercel-project") {
-        await this.api.delete(`/v9/projects/${unencodedSegment(externalId)}`);
+        await this.api.delete(`/v9/projects/${pathEncode(externalId)}`);
         return;
       }
 
       if (typeId === "vercel-deployment") {
-        await this.api.delete(`/v13/deployments/${unencodedSegment(externalId)}`);
+        await this.api.delete(`/v13/deployments/${pathEncode(externalId)}`);
         return;
       }
 
       if (typeId === "vercel-domain") {
-        await this.api.delete(`/v6/domains/${unencodedSegment(externalId)}`);
+        await this.api.delete(`/v6/domains/${pathEncode(externalId)}`);
         return;
       }
 
@@ -895,9 +894,7 @@ export class VercelClient implements PluginClient {
         const projectId = compound.slice(0, slashIdx);
         const envId = compound.slice(slashIdx + 1);
         if (!projectId || !envId) throw new Error("Invalid env var resource ID");
-        await this.api.delete(
-          `/v9/projects/${unencodedSegment(projectId)}/env/${unencodedSegment(envId)}`,
-        );
+        await this.api.delete(`/v9/projects/${pathEncode(projectId)}/env/${pathEncode(envId)}`);
         return;
       }
 
@@ -912,7 +909,7 @@ export class VercelClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const externalId = resourceId.split(":").slice(2).join(":");
+      const externalId = requireExternalId(resourceId);
 
       if (typeId === "vercel-project") {
         // Blank clears an override back to the framework default (`null`).
@@ -984,7 +981,7 @@ export class VercelClient implements PluginClient {
     accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const externalId = resourceId.split(":").slice(2).join(":");
+      const externalId = requireExternalId(resourceId);
 
       if (typeId === "vercel-deployment" && DEPLOYMENT_ACTIONS.has(actionId)) {
         const id = pathEncode(externalId);
@@ -1169,7 +1166,7 @@ export class VercelClient implements PluginClient {
 
     for (const project of projects) {
       try {
-        const data = await this.api.get(`/v10/projects/${unencodedSegment(project.id)}/env`);
+        const data = await this.api.get(`/v10/projects/${pathEncode(project.id)}/env`);
         const envs = "envs" in data ? (data.envs ?? []) : [];
         for (const env of envs) {
           results.push(this.mapEnvVar(env, project, accountId));
@@ -1971,6 +1968,13 @@ export class VercelClient implements PluginClient {
 /** The document says a bare array; `{ webhooks }` is an older shape the plugin still reads. */
 function webhooksIn(data: VercelWebhook[] | { webhooks?: VercelWebhook[] }): VercelWebhook[] {
   return Array.isArray(data) ? data : (data.webhooks ?? []);
+}
+
+/** The id a write acts on. A blank one would address the collection, not a resource. */
+function requireExternalId(resourceId: string): string {
+  const externalId = resourceId.split(":").slice(2).join(":");
+  if (!externalId) throw new Error(`Vercel plugin: resource id "${resourceId}" names no resource`);
+  return externalId;
 }
 
 /** `{domain}/{recordId}`: the DNS record's external id. */
