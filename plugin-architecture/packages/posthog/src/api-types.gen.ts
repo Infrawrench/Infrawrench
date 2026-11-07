@@ -2062,6 +2062,7 @@ export interface components {
         ExperimentHealth: {
             checks: components["schemas"]["ExperimentHealthCheckResult"][];
             findings: components["schemas"]["ExperimentHealthFinding"][];
+            setup?: components["schemas"]["ExperimentHealthSetup"] | null;
         };
         /** @enum {string} */
         ExperimentHealthCheckKeyEnum: "flag_state" | "flag_shared" | "flag_history" | "split_changed_mid_run" | "bucketing_changed_mid_run" | "release_conditions_changed_mid_run" | "flag_variants_mismatch" | "forced_variant_release_condition" | "new_flag_no_traffic" | "no_metric" | "metric_event_not_ingested" | "metric_cannot_compile" | "metric_calculation_failed" | "metric_all_zero" | "exposure_criteria_cannot_match" | "exposure_filters" | "early_significance" | "metrics_not_matured" | "zero_exposures" | "test_account_filter_removes_exposures" | "srm" | "bias_risk_multiple_excluded" | "multiple_variants_share";
@@ -2106,6 +2107,12 @@ export interface components {
         ExperimentHealthFindingCodeEnum: "flag_off_while_running" | "variant_shipped_while_running" | "flag_live_after_end" | "flag_live_before_launch" | "bias_risk_multiple_excluded" | "multiple_variants_share" | "no_metric" | "metric_event_not_ingested" | "metric_cannot_compile" | "metric_calculation_failed" | "metric_all_zero" | "exposure_criteria_cannot_match" | "exposure_filter_on_dynamic_cohort" | "srm" | "zero_exposures" | "test_account_filter_removes_exposures" | "forced_variant_release_condition" | "flag_variants_mismatch" | "split_changed_mid_run" | "bucketing_changed_mid_run" | "release_conditions_changed_mid_run" | "new_flag_no_traffic" | "early_significance" | "metrics_not_matured" | "flag_shared";
         /** @enum {string} */
         ExperimentHealthFindingSeverityEnum: "critical" | "warning" | "info";
+        ExperimentHealthReleaseCondition: {
+            aggregation_group_type_index: number | null;
+            property_count: number;
+            /** Format: double */
+            rollout_percentage: number;
+        };
         ExperimentHealthRuleMinimum: {
             /** Format: double */
             threshold: number;
@@ -2115,6 +2122,15 @@ export interface components {
         ExperimentHealthRuleSideEnum: "above" | "below";
         /** @enum {string} */
         ExperimentHealthRuleTestEnum: "chi_squared";
+        ExperimentHealthSetup: {
+            aggregation_group_type_index: number | null;
+            bucketing_identifier: components["schemas"]["BucketingIdentifierEnum"];
+            early_exit: boolean;
+            ensure_experience_continuity: boolean;
+            evaluation_contexts: string[];
+            evaluation_runtime: components["schemas"]["EvaluationRuntimeEnum"];
+            release_conditions: components["schemas"]["ExperimentHealthReleaseCondition"][];
+        };
         /** @enum {string} */
         ExperimentHealthValueKeyEnum: "exposed_count" | "compared_count" | "multiple_variant_count" | "multiple_variant_percentage" | "multiple_variant_handling" | "p_value" | "since_launch_hours" | "exposed_without_test_account_filter_count" | "kept_by_test_account_filter_percentage" | "only_count_matured_users" | "primary_metric_count" | "waiting_metric_count" | "metric_count" | "completed_metric_count" | "failed_metric_count" | "calculated_at" | "flag_active" | "flag_deleted" | "flag_rolled_out" | "shipped_variant";
         ExperimentHoldout: {
@@ -2524,7 +2540,7 @@ export interface components {
         };
         FeatureFlagRollOutToEveryoneRequest: {
             variant_key?: string | null;
-            version?: number | null;
+            version: number | null;
         };
         FeatureFlagSetActiveRequest: {
             version?: number | null;

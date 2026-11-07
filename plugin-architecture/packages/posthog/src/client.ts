@@ -40,11 +40,13 @@ import {
 import { fetchPostHogCost, spendSeries } from "./cost-data.js";
 import {
   LEVEL_IDS,
+  ROLLOUT_ACTION,
   instance,
   mapMember,
   mapProject,
   mapProjectObject,
   splitScoped,
+  variantKeys,
 } from "./mappers.js";
 import { verifyPostHogCredentials } from "./preflight.js";
 import { eventSeries, hogqlString, rangeOrDefault, runHogQL } from "./query.js";
@@ -631,6 +633,27 @@ export class PostHogClient implements PluginClient {
     });
   }
 
+  /**
+   * PostHog refuses this with no `version`, and from a multivariate flag with no
+   * variant or from any other flag with one. Asking first says why in plain words.
+   */
+  private async rollOutToEveryone(projectId: string, id: string, variant: string): Promise<void> {
+    const current = await this.getObject("feature-flag", projectId, id);
+    const variants = variantKeys(current.filters);
+    if (variants.length > 0 && !variant) {
+      throw new Error(
+        `This flag has variants. Pick the variant to give everyone: ${variants.join(", ")}.`,
+      );
+    }
+    if (variant && !variants.includes(variant)) {
+      throw new Error(`This flag has no variant "${variant}". Refresh it and try again.`);
+    }
+    await this.ctx.api.post(
+      `/api/projects/${pathEncode(projectId)}/feature_flags/${pathEncode(id)}/roll_out_to_everyone/`,
+      { body: { version: current.version ?? null, ...(variant ? { variant_key: variant } : {}) } },
+    );
+  }
+
   invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
     return attempt(async () => {
       const [pid, id] = splitScoped(externalIdOf(resourceId) || resourceId);
@@ -646,6 +669,13 @@ export class PostHogClient implements PluginClient {
         await (id ? typed() : listRouteRequest(this.ctx, "POST", route, pid, { action, body }));
       };
       const { api } = this.ctx;
+      if (typeId === "feature-flag") {
+        const [action, ...variant] = actionId.split(":");
+        if (action === ROLLOUT_ACTION) {
+          await this.rollOutToEveryone(pid, id, variant.join(":"));
+          return;
+        }
+      }
       switch (`${typeId}:${actionId}`) {
         case "feature-flag:enable":
           await post("feature_flags", "enable", () =>
@@ -655,13 +685,6 @@ export class PostHogClient implements PluginClient {
         case "feature-flag:disable":
           await post("feature_flags", "disable", () =>
             api.post(`/api/projects/${project}/feature_flags/${target}/disable/`, { body }),
-          );
-          return;
-        case "feature-flag:rollout-all":
-          await post("feature_flags", "roll_out_to_everyone", () =>
-            api.post(`/api/projects/${project}/feature_flags/${target}/roll_out_to_everyone/`, {
-              body,
-            }),
           );
           return;
         case "experiment:launch":

@@ -412,6 +412,78 @@ describe("reading all of the spend", () => {
   });
 });
 
+describe("rolling a flag out to everyone", () => {
+  const FLAG = "/api/projects/7/feature_flags/1/";
+  const ROLL_OUT = `${FLAG}roll_out_to_everyone/`;
+  const flagClient = (flag: object) => {
+    const { http, calls } = makeHttp((url, method) => {
+      if (url.pathname === FLAG && method === "GET") return { body: { id: 1, ...flag } };
+      if (url.pathname === ROLL_OUT && method === "POST") return { body: { id: 1 } };
+      return undefined;
+    });
+    return { client: hostClient(new PostHogClient(CREDS, { http })), calls };
+  };
+  const MULTIVARIATE = {
+    version: 3,
+    filters: {
+      multivariate: {
+        variants: [
+          { key: "control", rollout_percentage: 50 },
+          { key: "test", rollout_percentage: 50 },
+        ],
+      },
+    },
+  };
+  const invoke = (client: ReturnType<typeof flagClient>["client"], actionId: string) =>
+    client.invokeAction?.("feature-flag", "acct:feature-flag:7/1", actionId);
+  const rollOuts = (calls: Recorded[]) => calls.filter((c) => c.url.pathname === ROLL_OUT);
+
+  it("sends the version it has just read", async () => {
+    const { client, calls } = flagClient({ version: 12, filters: { groups: [] } });
+    await invoke(client, "rollout-all");
+    expect(calls.map((c) => c.method)).toEqual(["GET", "POST"]);
+    expect(rollOuts(calls)[0]?.body).toEqual({ version: 12 });
+  });
+
+  it("sends back the null a flag from before versioning reads as", async () => {
+    const { client, calls } = flagClient({ version: null });
+    await invoke(client, "rollout-all");
+    expect(rollOuts(calls)[0]?.body).toEqual({ version: null });
+  });
+
+  it("names the variant of a multivariate flag", async () => {
+    const { client, calls } = flagClient(MULTIVARIATE);
+    await invoke(client, "rollout-all:test");
+    expect(rollOuts(calls)[0]?.body).toEqual({ version: 3, variant_key: "test" });
+  });
+
+  it("refuses a multivariate flag with no variant, sending nothing", async () => {
+    const { client, calls } = flagClient(MULTIVARIATE);
+    await expect(invoke(client, "rollout-all")).rejects.toThrow("Pick the variant");
+    expect(rollOuts(calls)).toEqual([]);
+  });
+
+  it("refuses a variant the flag does not have, sending nothing", async () => {
+    const multivariate = flagClient(MULTIVARIATE);
+    await expect(invoke(multivariate.client, "rollout-all:gone")).rejects.toThrow("gone");
+    expect(rollOuts(multivariate.calls)).toEqual([]);
+    const boolean = flagClient({ version: 1, filters: { groups: [] } });
+    await expect(invoke(boolean.client, "rollout-all:test")).rejects.toThrow("test");
+    expect(rollOuts(boolean.calls)).toEqual([]);
+  });
+
+  it("offers one rollout per variant on a multivariate flag, and one on any other", () => {
+    const client = new PostHogClient(CREDS, { http: makeHttp(() => undefined).http });
+    const scope = { baseUrl: "https://eu.posthog.com", region: "eu" };
+    const rollouts = (flag: object) =>
+      JSON.stringify(
+        client.renderDetail(mapProjectObject("a", "feature-flag", "7", { id: 1, ...flag }, scope)),
+      ).match(/rollout-all[^"]*/g);
+    expect(rollouts(MULTIVARIATE)).toEqual(["rollout-all:control", "rollout-all:test"]);
+    expect(rollouts({ filters: { groups: [] } })).toEqual(["rollout-all"]);
+  });
+});
+
 describe("helpers", () => {
   it("builds rollouts, escapes HogQL and reads spend keys", () => {
     expect(withRollout({}, 20)).toEqual({ groups: [{ properties: [], rollout_percentage: 20 }] });

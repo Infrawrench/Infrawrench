@@ -95,11 +95,6 @@
       "why": "Missing from the request. A dashboard cannot be hard deleted, and PATCH with deleted is how PostHog's own 405 says to do it."
     },
     {
-      "pointer": "/components/schemas/FeatureFlagRollOutToEveryoneRequest/required",
-      "value": [],
-      "why": "Documented as required and sent without it today, which is #502. This keeps the request as it was."
-    },
-    {
       "pointer": "/paths/~1api~1projects~1{project_id}~1experiments~1{id}~1launch~1/post/requestBody",
       "value": {
         "content": {

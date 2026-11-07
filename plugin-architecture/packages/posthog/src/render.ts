@@ -9,6 +9,8 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import { joinSubtitle, withMetricsCapability } from "@infrawrench/plugin-base";
+import type { FlagFilters } from "./api.js";
+import { ROLLOUT_ACTION, variantKeys } from "./mappers.js";
 import { METRICS_WINDOW_MS } from "./query.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
@@ -33,6 +35,35 @@ const section = (title: string, children: SchemaNode[]): SectionNode => ({
   children,
 });
 const muted = (content: string): SchemaNode => ({ kind: "text", variant: "muted", content });
+
+function storedFilters(json: string): FlagFilters {
+  try {
+    const filters: FlagFilters | null = JSON.parse(json);
+    return filters ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** One action per variant on a multivariate flag, since PostHog needs to be told which one. */
+function rolloutActions(filtersJson: string): ActionNode[] {
+  const success = "Rolled out to everyone";
+  const keys = variantKeys(storedFilters(filtersJson));
+  if (keys.length === 0) {
+    return [
+      act("Roll out to everyone", ROLLOUT_ACTION, {
+        confirm: "Roll this flag out to 100% of users?",
+        success,
+      }),
+    ];
+  }
+  return keys.map((key) =>
+    act(`Roll out ${key} to everyone`, `${ROLLOUT_ACTION}:${key}`, {
+      confirm: `Give every user the ${key} variant? It gets 100% of the split and every other variant 0%, and removing the new condition later does not bring the old split back.`,
+      success,
+    }),
+  );
+}
 
 function act(
   label: string,
@@ -220,10 +251,7 @@ export function renderPostHogDetail(r: ResourceInstance): DetailViewSchema {
               success: "Flag turned off",
             })
           : act("Turn on", "enable", { success: "Flag turned on" }),
-        act("Roll out to everyone", "rollout-all", {
-          confirm: "Roll this flag out to 100% of users?",
-          success: "Rolled out to everyone",
-        }),
+        ...rolloutActions(str(f["filtersJson"])),
       ];
       break;
     }

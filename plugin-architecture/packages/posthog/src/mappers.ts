@@ -55,6 +55,13 @@ export function splitScoped(externalId: string): [string, string] {
   return i < 0 ? ["", externalId] : [externalId.slice(0, i), externalId.slice(i + 1)];
 }
 
+/** Rolls a flag out to everyone. A multivariate flag has to name a variant, as `rollout-all:<key>`. */
+export const ROLLOUT_ACTION = "rollout-all";
+
+export function variantKeys(filters: FlagFilters | undefined): string[] {
+  return (filters?.multivariate?.variants ?? []).map((v) => v.key);
+}
+
 /** The first release condition's rollout, which is what "rollout %" means for a simple flag. */
 export function rolloutOf(filters: FlagFilters | undefined): number | undefined {
   const g = filters?.groups?.[0];
