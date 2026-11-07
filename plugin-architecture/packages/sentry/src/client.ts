@@ -237,7 +237,11 @@ export class SentryClient implements PluginClient {
       this.api.getAll(`/organizations/${this.o}/monitors/`, null),
       this.api
         .getAll(`/organizations/${this.o}/uptime/`, null)
-        .catch((): SentryUptimeMonitor[] => []),
+        .catch((err: unknown): SentryUptimeMonitor[] => {
+          // The public document leaves this route out, so a 404 means it is not there.
+          if (isPermissionError(err) || statusOf(err) === 404) return [];
+          throw err;
+        }),
     ]);
     return {
       cron: crons.filter((m) => m.status !== "disabled").length,

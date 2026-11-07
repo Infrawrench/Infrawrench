@@ -286,6 +286,30 @@ describe("a failed read behind a list", () => {
     if (call.url.pathname.endsWith("/uptime/")) return uptime();
     return [];
   };
+
+  it("fails cost collection when the uptime list fails, rather than dropping its row", async () => {
+    const { c } = client(costRoute(() => ({ status: 500, body: { detail: "down" } })));
+    await expect(c.fetchCostData!(ACCOUNT, range)).rejects.toThrow(/500/);
+  });
+
+  it("reads an uptime list that is denied or absent as no monitors", async () => {
+    for (const status of [403, 404]) {
+      const { c } = client(costRoute(() => ({ status, body: { detail: "no" } })));
+      const rows = await c.fetchCostData!(ACCOUNT, range);
+      expect(rows.filter((r) => /monitors/i.test(r.service ?? ""))).toEqual([]);
+    }
+  });
+
+  it("carries a truncated monitor list through cost collection", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname.endsWith("/stats_v2/")) return stats(range.fromDate, 1, []);
+      if (call.url.pathname.endsWith("/projects/")) return [];
+      return endless(call);
+    });
+    await expect(c.fetchCostData!(ACCOUNT, range)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
 });
 
 describe("writes with a blank id", () => {

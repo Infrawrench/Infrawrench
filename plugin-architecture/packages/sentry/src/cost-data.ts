@@ -26,7 +26,7 @@
 import type { ApiResponse, CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
 import type { SentryContext } from "./api.js";
-import { isPermissionError, sentryApi } from "./api.js";
+import { isPermissionError, sentryApi, statusOf } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import type { SentryRates, UsageCategory } from "./rates.js";
 import { SERVICES, USAGE_CATEGORIES, usageCategoryOf } from "./rates.js";
@@ -301,7 +301,12 @@ export async function fetchSentryCostData(
       // Monitors are billed per monitor per month and stats_v2 carries no
       // seat counts, so only the current month is priced, from inventory.
       if (inputs.monitors && month.start <= today && today < month.end && inRange(month.start)) {
-        const counts = await inputs.monitors().catch(() => undefined);
+        // Only a token that may not read them has none to price. Any other failure has
+        // to throw, or this month's stored monitor rows go.
+        const counts = await inputs.monitors().catch((err: unknown) => {
+          if (isPermissionError(err) || statusOf(err) === 404) return undefined;
+          throw err;
+        });
         if (counts) {
           for (const [count, r, service] of [
             [counts.cron, inputs.rates.cronMonitors, SERVICES.cronMonitors],
