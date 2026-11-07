@@ -241,7 +241,7 @@ export interface CursorAuditEvent {
 
 interface AuditLogResponse {
   events?: CursorAuditEvent[];
-  pagination?: { hasNextPage?: boolean };
+  pagination?: { hasNextPage?: boolean; totalPages?: number };
 }
 
 export interface CursorGroupMember {
@@ -478,27 +478,46 @@ export async function getUsageEvents(
   throw new ListTruncatedError({ vendor: VENDOR, path, items: events.length, maxPages });
 }
 
-/** GET /teams/audit-logs, newest first, up to `limit` events within a 30-day window. */
+/**
+ * GET /teams/audit-logs: the newest `limit` events within a 30-day window. The
+ * docs say oldest first, with no sort parameter, so the newest are on the last
+ * pages. Reading both ends and sorting holds whichever way Cursor answers.
+ */
 export async function getAuditLogs(
   ctx: CursorContext,
   startMs: number,
   endMs: number,
   limit: number,
 ): Promise<CursorAuditEvent[]> {
-  const out: CursorAuditEvent[] = [];
-  const pageSize = Math.min(500, Math.max(1, limit));
-  for (let page = 1; out.length < limit && page <= 20; page++) {
+  if (limit <= 0) return [];
+  const pageSize = 500;
+  const read = (page: number) => {
     const query = new URLSearchParams({
       startTime: new Date(startMs).toISOString(),
       endTime: new Date(endMs).toISOString(),
       page: String(page),
       pageSize: String(pageSize),
     });
-    const body = await cursorRequest<AuditLogResponse>(ctx, `/teams/audit-logs?${query}`);
-    out.push(...(body?.events ?? []));
-    if (!body?.pagination?.hasNextPage) break;
+    return cursorRequest<AuditLogResponse>(ctx, `/teams/audit-logs?${query}`);
+  };
+  const first = await read(1);
+  const totalPages = first?.pagination?.totalPages ?? 1;
+  // One more than `limit` fills, because the last page can be nearly empty.
+  const reach = Math.min(10, Math.ceil(limit / pageSize) + 1);
+  const pages = new Set<number>();
+  for (let i = 0; i < reach; i++) {
+    pages.add(1 + i);
+    pages.add(totalPages - i);
   }
-  return out.slice(0, limit);
+  const out = [...(first?.events ?? [])];
+  for (const page of [...pages].sort((a, b) => a - b)) {
+    if (page <= 1 || page > totalPages) continue;
+    const body = await read(page);
+    out.push(...(body?.events ?? []));
+  }
+  return out
+    .sort((a, b) => Date.parse(a.timestamp ?? "") - Date.parse(b.timestamp ?? ""))
+    .slice(-limit);
 }
 
 /** POST /teams/user-spend-limit. `null` removes the member's limit. */

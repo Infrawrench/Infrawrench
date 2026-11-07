@@ -526,3 +526,50 @@ describe("a page that is not a list", () => {
     await expect(spend.c.listResources("team-member", "acc")).rejects.toThrow(NOT_A_LIST);
   });
 });
+
+describe("audit log tail", () => {
+  const event = (i: number) => ({
+    timestamp: new Date(Date.UTC(2026, 9, 1) + i * 60_000).toISOString(),
+    event_type: "login",
+    user_email: `u${i}@acme.com`,
+  });
+  const serve = (order: number[]) => (url: URL) => {
+    if (url.pathname !== "/teams/audit-logs") return undefined;
+    const page = Number(url.searchParams.get("page"));
+    const size = Number(url.searchParams.get("pageSize"));
+    return {
+      body: {
+        events: order.slice((page - 1) * size, page * size).map(event),
+        pagination: {
+          totalPages: Math.ceil(order.length / size),
+          hasNextPage: page * size < order.length,
+        },
+      },
+    };
+  };
+  const emails = (text: string) =>
+    text
+      .trim()
+      .split("\n")
+      .map((line) => line.split(" ")[2]);
+  const oldestFirst = Array.from({ length: 1400 }, (_, i) => i);
+
+  it("shows the newest events of a list answered oldest first, as documented", async () => {
+    const { c, calls } = client(serve(oldestFirst));
+    const logs = await c.getLogs("team", "acc:team:team", "acc", { tailLines: 2 });
+    expect(emails(logs.text)).toEqual(["u1398@acme.com", "u1399@acme.com"]);
+    expect(calls.filter((call) => call.url.pathname === "/teams/audit-logs")).toHaveLength(3);
+  });
+
+  it("shows the same events if Cursor answers newest first", async () => {
+    const { c } = client(serve([...oldestFirst].reverse()));
+    const logs = await c.getLogs("team", "acc:team:team", "acc", { tailLines: 2 });
+    expect(emails(logs.text)).toEqual(["u1398@acme.com", "u1399@acme.com"]);
+  });
+
+  it("fills a tail that spans the short last page", async () => {
+    const { c } = client(serve(oldestFirst));
+    const logs = await c.getLogs("team", "acc:team:team", "acc", { tailLines: 450 });
+    expect(emails(logs.text)[0]).toBe("u950@acme.com");
+  });
+});
