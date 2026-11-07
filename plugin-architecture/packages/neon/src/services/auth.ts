@@ -8,13 +8,8 @@ import type {
   ProjectListItem,
 } from "@neondatabase/api-client";
 import { requireListPage } from "@infrawrench/plugin-base";
-import {
-  enumerateBranches,
-  isServiceUnavailable,
-  readBranchServices,
-  resourceId,
-  type BranchRef,
-} from "./common.js";
+import { isServiceUnavailable, resourceId, type BranchRef } from "./common.js";
+import type { ListRun } from "./list-run.js";
 
 /** Neon Auth config spread across several endpoints, gathered for one branch. */
 export interface AuthSnapshot {
@@ -95,14 +90,9 @@ export function buildAuthResource(
   };
 }
 
-export async function listAllAuth(
-  api: Api<unknown>,
-  accountId: string,
-  projects: ProjectListItem[],
-): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, accountId, projects);
-  return readBranchServices(accountId, branches, async (ref) => [
-    buildAuthResource(accountId, ref, await readAuthSnapshot(api, ref)),
+export async function listAllAuth(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
+  return run.readBranchServices(accountId, async (ref) => [
+    buildAuthResource(accountId, ref, await readAuthSnapshot(run.api, ref)),
   ]);
 }
 
@@ -135,13 +125,11 @@ export function buildOauthProviderResource(
 }
 
 export async function listAllOauthProviders(
-  api: Api<unknown>,
+  run: ListRun,
   accountId: string,
-  projects: ProjectListItem[],
 ): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, accountId, projects);
-  return readBranchServices(accountId, branches, async (ref) => {
-    const resp = await api.listBranchNeonAuthOauthProviders(ref.projectId, ref.branchId);
+  return run.readBranchServices(accountId, async (ref) => {
+    const resp = await run.api.listBranchNeonAuthOauthProviders(ref.projectId, ref.branchId);
     return requireListPage(resp.data.providers, {
       vendor: "Neon",
       path: `/projects/${ref.projectId}/branches/${ref.branchId}/auth/oauth_providers`,
@@ -179,13 +167,11 @@ export function buildDomainResource(
 }
 
 export async function listAllAuthDomains(
-  api: Api<unknown>,
+  run: ListRun,
   accountId: string,
-  projects: ProjectListItem[],
 ): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, accountId, projects);
-  return readBranchServices(accountId, branches, async (ref) => {
-    const resp = await api.listBranchNeonAuthTrustedDomains(ref.projectId, ref.branchId);
+  return run.readBranchServices(accountId, async (ref) => {
+    const resp = await run.api.listBranchNeonAuthTrustedDomains(ref.projectId, ref.branchId);
     return requireListPage(resp.data.domains, {
       vendor: "Neon",
       path: `/projects/${ref.projectId}/branches/${ref.branchId}/auth/domains`,

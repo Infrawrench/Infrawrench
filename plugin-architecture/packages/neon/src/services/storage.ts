@@ -1,13 +1,8 @@
 import { hostFetch, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { HttpHostServices, ResourceInstance, StorageObject } from "@infrawrench/plugin-base";
-import type { Api, Bucket, CredentialMeta, ProjectListItem } from "@neondatabase/api-client";
-import {
-  enumerateBranches,
-  isServiceUnavailable,
-  readBranchServices,
-  resourceId,
-  type BranchRef,
-} from "./common.js";
+import type { Api, Bucket, CredentialMeta } from "@neondatabase/api-client";
+import { isServiceUnavailable, resourceId, type BranchRef } from "./common.js";
+import type { ListRun } from "./list-run.js";
 
 export interface BranchStorageInfo {
   s3Endpoint: string;
@@ -93,13 +88,12 @@ export function buildBucketResource(
 }
 
 export async function listAllBuckets(
-  api: Api<unknown>,
+  run: ListRun,
   accountId: string,
-  projects: ProjectListItem[],
   locator: BucketLocator,
 ): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, accountId, projects);
-  return readBranchServices(accountId, branches, async (ref) => {
+  const { api } = run;
+  return run.readBranchServices(accountId, async (ref) => {
     // No storage on this branch means the org lacks the Private Beta entitlement
     // or the branch is outside a supported region, not an error worth surfacing.
     const storageResp = await api.getProjectBranchStorage(ref.projectId, ref.branchId);
@@ -121,16 +115,15 @@ export async function listAllBuckets(
 
 /** Resolve which branch a bucket lives on, listing buckets to warm the cache if needed. */
 export async function locateBucket(
-  api: Api<unknown>,
+  run: ListRun,
   accountId: string,
-  projects: ProjectListItem[],
   locator: BucketLocator,
   bucketName: string,
 ): Promise<BranchRef> {
   const cached = locator.lookup(bucketName);
   if (cached) return cached;
 
-  await listAllBuckets(api, accountId, projects, locator);
+  await listAllBuckets(run, accountId, locator);
   const found = locator.lookup(bucketName);
   if (!found) throw new Error(`Neon plugin: bucket "${bucketName}" not found on any branch`);
   return found;
@@ -283,13 +276,11 @@ export function buildCredentialResource(
 }
 
 export async function listAllCredentials(
-  api: Api<unknown>,
+  run: ListRun,
   accountId: string,
-  projects: ProjectListItem[],
 ): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, accountId, projects);
-  return readBranchServices(accountId, branches, async (ref) => {
-    const resp = await api.listCredentials(ref.projectId, ref.branchId);
+  return run.readBranchServices(accountId, async (ref) => {
+    const resp = await run.api.listCredentials(ref.projectId, ref.branchId);
     const credentials = requireListPage(resp.data.credentials, {
       vendor: "Neon",
       path: `/projects/${ref.projectId}/branches/${ref.branchId}/credentials`,

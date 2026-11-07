@@ -226,16 +226,6 @@ describe("children of projects", () => {
     );
     expect(api.listProjectBranches).toHaveBeenCalledTimes(100);
   });
-
-  it("refuses to fan out over more than 1,000 projects, but still lists the projects", async () => {
-    const ids = Array.from({ length: 1001 }, (_, i) => `p${i}`);
-    api.listProjects.mockResolvedValue(projects(...ids));
-    await expect(makeClient().listResources("neon-endpoint", ACCOUNT)).rejects.toThrow(
-      "has more than Infrawrench reads",
-    );
-    expect(api.listProjectEndpoints).not.toHaveBeenCalled();
-    await expect(makeClient().listResources("neon-project", ACCOUNT)).resolves.toHaveLength(1001);
-  });
 });
 
 describe("children of branches", () => {
@@ -492,5 +482,234 @@ describe("the primary branch for a credential reroll", () => {
       ),
     ).rejects.toThrow();
     expect(api.listProjectBranchDatabases).toHaveBeenCalledWith("p1", "br-main");
+  });
+});
+
+describe("the budget of one poll", () => {
+  const CHILD_TYPES = [
+    "neon-branch",
+    "neon-endpoint",
+    "neon-database",
+    "neon-role",
+    "neon-data-api",
+    "neon-snapshot",
+    "neon-bucket",
+    "neon-credential",
+    "neon-function",
+    "neon-ai-gateway",
+    "neon-auth",
+    "neon-auth-oauth-provider",
+    "neon-auth-domain",
+  ];
+  const ALL_TYPES = ["neon-project", ...CHILD_TYPES];
+  const totalRequests = () => Object.values(api).reduce((sum, fn) => sum + fn.mock.calls.length, 0);
+  const ids = (count: number) => Array.from({ length: count }, (_, i) => `p${i}`);
+  const named = () => new Set(unread.flatMap((part) => part.parentResourceIds ?? []));
+  const database = (branchId: string) => ({
+    id: 1,
+    name: "db",
+    branch_id: branchId,
+    owner_name: "o",
+    created_at: "2026-01-01",
+    updated_at: "2026-01-01",
+  });
+
+  /** An account of `count` projects with two branches each, where every read answers. */
+  function account(count: number) {
+    api.listProjects.mockResolvedValue(projects(...ids(count)));
+    api.listProjectBranches.mockImplementation(async ({ projectId }: { projectId: string }) =>
+      wrap({ branches: [branch(`${projectId}-a`), branch(`${projectId}-b`)] }),
+    );
+    api.listProjectEndpoints.mockResolvedValue(wrap({ endpoints: [] }));
+    api.listProjectBranchDatabases.mockImplementation(async (_p: string, b: string) =>
+      wrap({ databases: [database(b)] }),
+    );
+    api.listProjectBranchRoles.mockResolvedValue(wrap({ roles: [] }));
+    api.getProjectBranchDataApi.mockRejectedValue(httpError(404));
+    api.listSnapshots.mockResolvedValue(wrap({ snapshots: [] }));
+    api.getProjectBranchStorage.mockResolvedValue(
+      wrap({ s3_endpoint: "https://s3.example.test", region: "r" }),
+    );
+    api.listProjectBranchBuckets.mockResolvedValue(wrap({ buckets: [] }));
+    api.listCredentials.mockResolvedValue(wrap({ credentials: [] }));
+    api.listProjectBranchFunctions.mockResolvedValue(wrap({ functions: [] }));
+    api.getProjectBranchAiGateway.mockResolvedValue(wrap({ enabled: false }));
+    api.getNeonAuth.mockRejectedValue(httpError(404));
+    api.listBranchNeonAuthOauthProviders.mockResolvedValue(wrap({ providers: [] }));
+    api.listBranchNeonAuthTrustedDomains.mockResolvedValue(wrap({ domains: [] }));
+  }
+
+  /** Every type at once on one client, as a sync does. */
+  function poll() {
+    const client = makeClient();
+    return Promise.all(ALL_TYPES.map((type) => client.listResources(type, ACCOUNT)));
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("reads what the budget allows past 1,000 projects and names the rest, with no error", async () => {
+    account(1500);
+    const rows = await makeClient().listResources("neon-endpoint", ACCOUNT);
+    expect(rows).toEqual([]);
+    const read = api.listProjectEndpoints.mock.calls.map(([id]) => `acct1:neon-project:${id}`);
+    expect(read.length).toBeGreaterThan(900);
+    expect(read.length).toBeLessThanOrEqual(1000);
+    expect(named().size).toBe(1500 - read.length);
+    for (const id of read) expect(named().has(id)).toBe(false);
+  });
+
+  it("keeps a whole poll inside 1,000 requests, and every type gets some of them", async () => {
+    account(600);
+    await poll();
+    expect(totalRequests()).toBeLessThanOrEqual(1000);
+    expect(totalRequests()).toBeGreaterThan(900);
+    expect(api.listProjects).toHaveBeenCalledTimes(1);
+    for (const fn of [
+      api.listProjectEndpoints,
+      api.listSnapshots,
+      api.listProjectBranchDatabases,
+      api.listProjectBranchRoles,
+      api.getProjectBranchDataApi,
+      api.getProjectBranchStorage,
+      api.listCredentials,
+      api.listProjectBranchFunctions,
+      api.getProjectBranchAiGateway,
+      api.getNeonAuth,
+      api.listBranchNeonAuthOauthProviders,
+      api.listBranchNeonAuthTrustedDomains,
+    ]) {
+      expect(fn.mock.calls.length).toBeGreaterThan(10);
+    }
+  });
+
+  it("shares the project and branch reads between the types of a poll", async () => {
+    account(3);
+    await poll();
+    expect(api.listProjects).toHaveBeenCalledTimes(1);
+    expect(api.listProjectBranches).toHaveBeenCalledTimes(3);
+    expect(api.listProjectBranchDatabases).toHaveBeenCalledTimes(6);
+    expect(unread).toEqual([]);
+  });
+
+  it("reads a small account whole, in a stable order, whatever the clock says", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-07T10:17:00Z") });
+    account(5);
+    const rows = await makeClient().listResources("neon-branch", ACCOUNT);
+    expect(rows.map((row) => row.externalId)).toEqual(
+      ids(5).flatMap((id) => [`${id}-a`, `${id}-b`]),
+    );
+    expect(unread).toEqual([]);
+  });
+
+  it("holds at most two requests in flight across every type", async () => {
+    account(4);
+    let inFlight = 0;
+    let peak = 0;
+    for (const fn of [api.listProjectEndpoints, api.listProjectBranchRoles, api.listCredentials]) {
+      fn.mockImplementation(async () => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        inFlight--;
+        return wrap({ endpoints: [], roles: [], credentials: [] });
+      });
+    }
+    await poll();
+    expect(peak).toBeGreaterThan(0);
+    expect(peak).toBeLessThanOrEqual(2);
+  });
+
+  it("reaches every project and branch over later polls", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-07T00:00:00Z") });
+    account(400);
+    const endpoints = new Set<string>();
+    const roles = new Set<string>();
+    for (let round = 0; round < 100; round++) {
+      vi.clearAllMocks();
+      await poll();
+      for (const [id] of api.listProjectEndpoints.mock.calls) endpoints.add(String(id));
+      for (const [, b] of api.listProjectBranchRoles.mock.calls) roles.add(String(b));
+      vi.setSystemTime(Date.now() + 5 * 60_000);
+    }
+    expect(endpoints.size).toBe(400);
+    expect(roles.size).toBe(800);
+  });
+
+  it("stops starting reads past the poll's time budget, and names what is left", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-07T00:00:00Z") });
+    account(500);
+    api.listProjectEndpoints.mockImplementation(async () => {
+      vi.setSystemTime(Date.now() + 2_000);
+      return wrap({ endpoints: [] });
+    });
+    await expect(makeClient().listResources("neon-endpoint", ACCOUNT)).resolves.toEqual([]);
+    const read = api.listProjectEndpoints.mock.calls.length;
+    expect(read).toBeLessThan(250);
+    expect(named().size).toBe(500 - read);
+  });
+
+  it("gives a long-lived client a fresh budget once the poll's lease has passed", async () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-07T00:00:00Z") });
+    account(1500);
+    const client = makeClient();
+    await client.listResources("neon-endpoint", ACCOUNT);
+    const first = api.listProjectEndpoints.mock.calls.length;
+    vi.setSystemTime(Date.now() + 6 * 60_000);
+    await client.listResources("neon-endpoint", ACCOUNT);
+    expect(api.listProjectEndpoints.mock.calls.length).toBeGreaterThan(first + 900);
+  });
+
+  it("names a refused project for every type sharing the read, not only the first", async () => {
+    account(2);
+    api.listProjectBranches.mockImplementation(async ({ projectId }: { projectId: string }) => {
+      if (projectId === "p1") throw httpError(403);
+      return wrap({ branches: [branch("br-1")] });
+    });
+    const client = makeClient();
+    await Promise.all(
+      ["neon-role", "neon-credential", "neon-database", "neon-data-api"].map((type) =>
+        client.listResources(type, ACCOUNT),
+      ),
+    );
+    expect(
+      unread.filter((part) => part.parentResourceIds?.[0] === "acct1:neon-project:p1"),
+    ).toHaveLength(4);
+  });
+
+  it("fails every type sharing a read that throttled, and keeps their rows", async () => {
+    account(2);
+    api.listProjectBranches.mockRejectedValue(httpError(429));
+    const client = makeClient();
+    const results = await Promise.allSettled(
+      ["neon-role", "neon-credential"].map((type) => client.listResources(type, ACCOUNT)),
+    );
+    expect(results.map((r) => r.status)).toEqual(["rejected", "rejected"]);
+  });
+
+  it("finds one resource outside the poll's reach by reading only its project", async () => {
+    account(1500);
+    api.listProjectEndpoints.mockImplementation(async (projectId: string) =>
+      wrap({
+        endpoints: [
+          {
+            id: "ep",
+            host: "h",
+            project_id: projectId,
+            branch_id: `${projectId}-a`,
+            current_state: "idle",
+            type: "read_write",
+            created_at: "2026-01-01",
+            updated_at: "2026-01-01",
+          },
+        ],
+      }),
+    );
+    const id = "acct1:neon-endpoint:p1499/ep";
+    const found = await makeClient().getResource("neon-endpoint", id, ACCOUNT);
+    expect(found.id).toBe(id);
+    expect(api.listProjectEndpoints).toHaveBeenCalledTimes(1);
+    expect(api.listProjects).not.toHaveBeenCalled();
   });
 });

@@ -1,11 +1,10 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import type { Api, NeonFunction, ProjectListItem } from "@neondatabase/api-client";
+import type { Api, NeonFunction } from "@neondatabase/api-client";
+import type { ListRun } from "./list-run.js";
 import { ListTruncatedError } from "@infrawrench/plugin-base";
 import {
-  enumerateBranches,
   hasStringFields,
   MAX_CHILD_PAGES,
-  readBranchServices,
   requireValidRows,
   resourceId,
   type BranchRef,
@@ -86,13 +85,11 @@ async function listFunctionsOfBranch(api: Api<unknown>, ref: BranchRef): Promise
 }
 
 export async function listAllFunctions(
-  api: Api<unknown>,
+  run: ListRun,
   accountId: string,
-  projects: ProjectListItem[],
 ): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, accountId, projects);
-  return readBranchServices(accountId, branches, async (ref) => {
-    const functions = await listFunctionsOfBranch(api, ref);
+  return run.readBranchServices(accountId, async (ref) => {
+    const functions = await listFunctionsOfBranch(run.api, ref);
     return functions.map((fn) => buildFunctionResource(accountId, ref, fn));
   });
 }
@@ -124,13 +121,11 @@ function buildAiGatewayResource(
 }
 
 export async function listAllAiGateways(
-  api: Api<unknown>,
+  run: ListRun,
   accountId: string,
-  projects: ProjectListItem[],
 ): Promise<ResourceInstance[]> {
-  const branches = await enumerateBranches(api, accountId, projects);
-  return readBranchServices(accountId, branches, async (ref) => {
-    const resp = await api.getProjectBranchAiGateway(ref.projectId, ref.branchId);
+  return run.readBranchServices(accountId, async (ref) => {
+    const resp = await run.api.getProjectBranchAiGateway(ref.projectId, ref.branchId);
     return resp.data.enabled ? [buildAiGatewayResource(accountId, ref, resp.data.base_url)] : [];
   });
 }

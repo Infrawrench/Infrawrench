@@ -297,16 +297,15 @@ describe("listResources - branches/endpoints/databases/roles", () => {
         ],
       }),
     );
-    api.getProjectBranchDataApi
-      .mockResolvedValueOnce(
-        wrap({
-          url: "https://api.neon.tech/rest/v1",
-          status: "enabled",
-          settings: { db_anon_role: "anonymous", db_schemas: ["public"] },
-          available_schemas: ["public", "auth"],
-        }),
-      )
-      .mockRejectedValueOnce(notFound());
+    api.getProjectBranchDataApi.mockImplementation(async (_p: string, _b: string, db: string) => {
+      if (db !== "neondb") throw notFound();
+      return wrap({
+        url: "https://api.neon.tech/rest/v1",
+        status: "enabled",
+        settings: { db_anon_role: "anonymous", db_schemas: ["public"] },
+        available_schemas: ["public", "auth"],
+      });
+    });
 
     const client = makeClient();
     const res = await client.listResources("neon-data-api", ACCOUNT);
@@ -325,8 +324,8 @@ describe("listResources - branches/endpoints/databases/roles", () => {
       },
       parentResourceId: "acct1:neon-database:p1/b1/neondb",
     });
-    expect(api.getProjectBranchDataApi).toHaveBeenNthCalledWith(1, "p1", "b1", "neondb");
-    expect(api.getProjectBranchDataApi).toHaveBeenNthCalledWith(2, "p1", "b1", "disabled");
+    expect(api.getProjectBranchDataApi).toHaveBeenCalledWith("p1", "b1", "neondb");
+    expect(api.getProjectBranchDataApi).toHaveBeenCalledWith("p1", "b1", "disabled");
   });
 });
 

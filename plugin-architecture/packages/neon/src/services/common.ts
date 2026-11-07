@@ -1,14 +1,10 @@
 import {
   ListPageError,
   ListTruncatedError,
-  reportUnreadListPart,
   requireListPage,
-  withinListCap,
   type ListPlace,
-  type UnreadListPart,
 } from "@infrawrench/plugin-base";
 import type { Api, Branch, ProjectListItem } from "@neondatabase/api-client";
-import { flatMapPooled } from "../pool.js";
 
 const VENDOR = "Neon";
 
@@ -20,8 +16,6 @@ const MAX_PROJECT_PAGES = 250;
 const BRANCH_PAGE_SIZE = 10_000;
 /** Generous so a server answering with less than `limit` still reaches 10,000 rows. */
 export const MAX_CHILD_PAGES = 100;
-/** One request per project per type: past this, a poll cannot read them all. */
-const MAX_FAN_OUT_PROJECTS = 1_000;
 
 /** A project/branch pair: the scope every beta service is keyed by. */
 export interface BranchRef {
@@ -35,7 +29,7 @@ export interface BranchRef {
  * regions. A branch without the entitlement answers 404 rather than an empty
  * list, so callers treat these statuses as "service not available here" and move
  * on instead of failing the whole listing. For a single read; a listing goes through
- * {@link readBranchServices}, which keeps what a 403 left unread.
+ * `ListRun.readBranchServices`, which keeps what a 403 left unread.
  */
 export function isServiceUnavailable(err: unknown): boolean {
   const status = httpStatus(err);
@@ -68,10 +62,6 @@ export function isSettledRefusal(err: unknown): boolean {
     status !== 425 &&
     status !== 429
   );
-}
-
-function isNotFound(err: unknown): boolean {
-  return httpStatus(err) === 404;
 }
 
 export function isNotEnabled(err: unknown): boolean {
@@ -158,14 +148,6 @@ export async function listAllProjects(api: Api<unknown>): Promise<ProjectListIte
   });
 }
 
-/** Every project, for a list that makes at least one request per project. */
-export async function listProjectsToFanOut(api: Api<unknown>): Promise<ProjectListItem[]> {
-  return withinListCap(await listAllProjects(api), MAX_FAN_OUT_PROJECTS, {
-    vendor: VENDOR,
-    path: "/projects",
-  });
-}
-
 /** Every branch of one project. */
 export async function listBranchesOfProject(
   api: Api<unknown>,
@@ -192,87 +174,6 @@ export async function listBranchesOfProject(
     items: results.length,
     maxPages: MAX_CHILD_PAGES,
   });
-}
-
-interface ReadChildrenOptions {
-  /** Requests in flight at once. */
-  limit?: number;
-  /** The answers meaning this parent has none of these. Defaults to a 404: it is gone. */
-  isNone?: (err: unknown) => boolean;
-}
-
-/**
- * Read a child list for each parent. Every other failure rejects, so stored rows stay:
- * a throttle, a 5xx or a key Neon rejects says nothing about what is there.
- *
- * A 403 is a restricted key, which is normal, so it does not fail the type; `unread` names
- * what that parent's refusal left unread, so those rows stay rather than read as deleted.
- */
-export async function readChildren<P, R>(
-  parents: readonly P[],
-  read: (parent: P) => Promise<R[]>,
-  unread: (parent: P) => UnreadListPart,
-  { limit, isNone = isNotFound }: ReadChildrenOptions = {},
-): Promise<R[]> {
-  let refused = 0;
-  const rows = await flatMapPooled(
-    parents,
-    async (parent) => {
-      try {
-        return await read(parent);
-      } catch (err) {
-        if (isPermissionRefused(err)) {
-          refused++;
-          reportUnreadListPart(unread(parent));
-          return [];
-        }
-        if (isNone(err)) return [];
-        throw err;
-      }
-    },
-    limit,
-  );
-  if (parents.length > 0 && refused === parents.length) {
-    reportUnreadListPart({ idPrefixes: [""] });
-  }
-  return rows;
-}
-
-/** Enumerate every branch across the given projects. */
-export async function enumerateBranches(
-  api: Api<unknown>,
-  accountId: string,
-  projects: readonly ProjectListItem[],
-  limit = 1,
-): Promise<BranchRef[]> {
-  return readChildren(
-    projects,
-    async (p) => {
-      const branches = await listBranchesOfProject(api, p.id);
-      return branches.map((b) => ({ projectId: p.id, branchId: b.id }));
-    },
-    (p) => ({ parentResourceIds: [resourceId(accountId, "neon-project", p.id)] }),
-    { limit },
-  );
-}
-
-/**
- * Read a Private Beta service off each branch, one branch at a time: a branch without
- * the entitlement answers 404 or 501, which is none.
- */
-export function readBranchServices<R>(
-  accountId: string,
-  branches: readonly BranchRef[],
-  read: (ref: BranchRef) => Promise<R[]>,
-): Promise<R[]> {
-  return readChildren(
-    branches,
-    read,
-    (ref) => ({
-      parentResourceIds: [resourceId(accountId, "neon-branch", `${ref.projectId}/${ref.branchId}`)],
-    }),
-    { limit: 1, isNone: isNotEnabled },
-  );
 }
 
 /** `{accountId}:{typeId}:{externalId}`: the plugin-wide resource id convention. */

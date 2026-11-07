@@ -1,9 +1,9 @@
 import { formatBytes, type ResourceInstance } from "@infrawrench/plugin-base";
-import type { Api, ProjectListItem, Snapshot } from "@neondatabase/api-client";
+import type { Api, Snapshot } from "@neondatabase/api-client";
+import { readChildren, type ListRun } from "./list-run.js";
 import {
   hasStringFields,
   isNotEnabled,
-  readChildren,
   requireValidRows,
   resourceId,
   validatedObject,
@@ -58,14 +58,14 @@ function buildSnapshotResource(
 
 /** Snapshots are listed per project, unlike the branch-scoped beta services. */
 export async function listAllSnapshots(
-  api: Api<unknown>,
+  run: ListRun,
   accountId: string,
-  projects: ProjectListItem[],
 ): Promise<ResourceInstance[]> {
   return readChildren(
-    projects,
+    await run.projectsToReadChildrenOf(),
+    run.budget,
     async (p) => {
-      const resp = await api.listSnapshots(p.id);
+      const resp = await run.api.listSnapshots(p.id);
       return requireValidRows(resp.data.snapshots, isSnapshot, {
         vendor: "Neon",
         path: `/projects/${p.id}/snapshots`,
@@ -74,7 +74,7 @@ export async function listAllSnapshots(
     },
     // By id: a snapshot's parent is its source branch, which it can outlive or not have.
     (p) => ({ idPrefixes: [resourceId(accountId, "neon-snapshot", `${p.id}/`)] }),
-    { limit: 1, isNone: isNotEnabled },
+    { isNone: isNotEnabled },
   );
 }
 

@@ -17,7 +17,6 @@ import type {
   StorageObject,
   CostFetchRange,
   CostRow,
-  UnreadListPart,
 } from "@infrawrench/plugin-base";
 import {
   decodePromptArgs,
@@ -45,21 +44,26 @@ import { fetchNeonCostData } from "./cost-data.js";
 import { hostAdapter } from "./host-adapter.js";
 import { fetchBranchLogs } from "./logs.js";
 import { fetchBranchUsageSeries, fetchProjectUsageSeries } from "./metrics.js";
-import { NEON_LIST_CONCURRENCY } from "./pool.js";
+import { PollBudget, SharedRead } from "./pool.js";
 import { COMPUTE_UNITS } from "./resources/endpoint.js";
 import {
-  enumerateBranches,
   httpStatus,
   isPermissionRefused,
   isSettledRefusal,
   listAllProjects,
   listBranchesOfProject,
-  listProjectsToFanOut,
   parseBranchExternalId,
-  readChildren,
-  resourceId,
   type BranchRef,
 } from "./services/common.js";
+import {
+  branchUnread,
+  collectChildren,
+  ListRun,
+  projectUnread,
+  readChildren,
+  reportUnread,
+  type ChildRead,
+} from "./services/list-run.js";
 import {
   listAllSnapshots,
   createSnapshot as createSnapshotResource,
@@ -87,13 +91,6 @@ import {
   listAllAuthDomains,
   listAllOauthProviders,
 } from "./services/auth.js";
-
-/** What a branch's refused child list left unread. */
-function branchUnread(accountId: string, ref: BranchRef): UnreadListPart {
-  return {
-    parentResourceIds: [resourceId(accountId, "neon-branch", `${ref.projectId}/${ref.branchId}`)],
-  };
-}
 
 /** Fallback region table, used when `GET /regions` can't be read. */
 const NEON_REGIONS: Record<string, { location: string; flag: string }> = {
@@ -180,6 +177,9 @@ export class NeonClient implements PluginClient {
 
   private readonly http: HttpHostServices | undefined;
 
+  /** What `listResources` reads through. A sync calls it once per type, all at once. */
+  private readonly pollRun: ListRun;
+
   constructor(credentials: Credentials, services?: HostServices) {
     const key = credentials["apiKey"];
     if (!key) throw new Error("Neon plugin: missing apiKey credential");
@@ -188,56 +188,58 @@ export class NeonClient implements PluginClient {
       apiKey: key,
       ...(services?.http ? { adapter: hostAdapter(services.http, () => this.api) } : {}),
     });
+    this.pollRun = new ListRun(this.api, PollBudget.forPoll());
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
-    return attempt(async () => {
-      try {
-        return await this.listType(typeId, accountId);
-      } catch (err) {
-        // A restricted key is normal: its rows stay, and the type does not go red.
-        if (!isPermissionRefused(err)) throw err;
-        reportUnreadListPart({ idPrefixes: [""] });
-        return [];
-      }
-    });
+    return attempt(() => this.listType(this.pollRun, typeId, accountId));
   }
 
-  private async listType(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+  private async listType(
+    run: ListRun,
+    typeId: string,
+    accountId: string,
+  ): Promise<ResourceInstance[]> {
+    try {
+      return await this.readType(run, typeId, accountId);
+    } catch (err) {
+      // A restricted key is normal: its rows stay, and the type does not go red.
+      if (!isPermissionRefused(err)) throw err;
+      reportUnreadListPart({ idPrefixes: [""] });
+      return [];
+    }
+  }
+
+  private readType(run: ListRun, typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
       case "neon-project":
-        return this.listProjects(accountId);
+        return this.listProjects(run, accountId);
       case "neon-branch":
-        return this.listAllBranches(accountId);
+        return this.listAllBranches(run, accountId);
       case "neon-endpoint":
-        return this.listAllEndpoints(accountId);
+        return this.listAllEndpoints(run, accountId);
       case "neon-database":
-        return this.listAllDatabases(accountId);
+        return this.listAllDatabases(run, accountId);
       case "neon-role":
-        return this.listAllRoles(accountId);
+        return this.listAllRoles(run, accountId);
       case "neon-data-api":
-        return this.listAllDataApis(accountId);
+        return this.listAllDataApis(run, accountId);
       case "neon-snapshot":
-        return listAllSnapshots(this.api, accountId, await listProjectsToFanOut(this.api));
+        return listAllSnapshots(run, accountId);
       case "neon-bucket":
-        return listAllBuckets(
-          this.api,
-          accountId,
-          await listProjectsToFanOut(this.api),
-          this.bucketLocator,
-        );
+        return listAllBuckets(run, accountId, this.bucketLocator);
       case "neon-credential":
-        return listAllCredentials(this.api, accountId, await listProjectsToFanOut(this.api));
+        return listAllCredentials(run, accountId);
       case "neon-function":
-        return listAllFunctions(this.api, accountId, await listProjectsToFanOut(this.api));
+        return listAllFunctions(run, accountId);
       case "neon-ai-gateway":
-        return listAllAiGateways(this.api, accountId, await listProjectsToFanOut(this.api));
+        return listAllAiGateways(run, accountId);
       case "neon-auth":
-        return listAllAuth(this.api, accountId, await listProjectsToFanOut(this.api));
+        return listAllAuth(run, accountId);
       case "neon-auth-oauth-provider":
-        return listAllOauthProviders(this.api, accountId, await listProjectsToFanOut(this.api));
+        return listAllOauthProviders(run, accountId);
       case "neon-auth-domain":
-        return listAllAuthDomains(this.api, accountId, await listProjectsToFanOut(this.api));
+        return listAllAuthDomains(run, accountId);
       default:
         throw new Error(`Neon plugin: unknown resource type "${typeId}"`);
     }
@@ -249,11 +251,20 @@ export class NeonClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const all = await this.listType(this.runForOne(typeId, resourceId), typeId, accountId);
       const found = all.find((r) => r.id === resourceId);
       if (!found) throw new Error(`Neon plugin: resource ${typeId}/${resourceId} not found`);
       return found;
     });
+  }
+
+  /**
+   * A read to find one resource has to find it wherever a poll's budget stopped, and
+   * every child type's id starts with its project, so that is all it needs to read.
+   */
+  private runForOne(typeId: string, resourceId: string): ListRun {
+    const projectId = typeId === "neon-project" ? "" : externalIdOf(resourceId).split("/")[0];
+    return new ListRun(this.api, PollBudget.unbounded(), projectId || undefined);
   }
 
   resolveOutput(
@@ -991,7 +1002,8 @@ export class NeonClient implements PluginClient {
       if (typeId === "neon-data-api") {
         const fields: CreateResourceConfig["fields"] = [];
         if (!parentResourceId) {
-          const databases = await this.listAllDatabases("create");
+          const run = new ListRun(this.api, PollBudget.unbounded());
+          const databases = await this.listAllDatabases(run, "create");
           const options = databases.map((db) => ({
             id: `${String(db.fields["projectId"])}/${String(db.fields["branchId"])}/${String(
               db.fields["name"],
@@ -1521,7 +1533,8 @@ export class NeonClient implements PluginClient {
   private async resolveBucketRef(bucket: string): Promise<BranchRef> {
     const cached = this.bucketLocator.lookup(bucket);
     if (cached) return cached;
-    return locateBucket(this.api, "", await this.fetchAllProjects(), this.bucketLocator, bucket);
+    const run = new ListRun(this.api, PollBudget.unbounded());
+    return locateBucket(run, "", this.bucketLocator, bucket);
   }
 
   /**
@@ -1709,8 +1722,8 @@ export class NeonClient implements PluginClient {
     return listAllProjects(this.api);
   }
 
-  private async listProjects(accountId: string): Promise<ResourceInstance[]> {
-    const projects = await this.fetchAllProjects();
+  private async listProjects(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
+    const projects = await run.projectList();
     return projects.map((p) => this.buildProjectResource(accountId, p));
   }
 
@@ -1753,15 +1766,9 @@ export class NeonClient implements PluginClient {
     };
   }
 
-  private async listAllBranches(accountId: string): Promise<ResourceInstance[]> {
-    return readChildren(
-      await listProjectsToFanOut(this.api),
-      async (p) => {
-        const branches = await listBranchesOfProject(this.api, p.id);
-        return branches.map((b) => this.buildBranchResource(accountId, p.id, b));
-      },
-      (p) => ({ parentResourceIds: [resourceId(accountId, "neon-project", p.id)] }),
-    );
+  private async listAllBranches(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
+    const branches = await run.branches(accountId);
+    return branches.map((b) => this.buildBranchResource(accountId, b.projectId, b.branch));
   }
 
   private buildBranchResource(accountId: string, projectId: string, b: Branch): ResourceInstance {
@@ -1793,19 +1800,20 @@ export class NeonClient implements PluginClient {
     };
   }
 
-  private async listAllEndpoints(accountId: string): Promise<ResourceInstance[]> {
+  private async listAllEndpoints(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
     return readChildren(
-      await listProjectsToFanOut(this.api),
+      await run.projectsToReadChildrenOf(),
+      run.budget,
       async (p) => {
         const path = `/projects/${p.id}/endpoints`;
-        const resp = await this.api.listProjectEndpoints(p.id);
+        const resp = await run.api.listProjectEndpoints(p.id);
         return requireListPage(resp.data.endpoints, {
           vendor: "Neon",
           path,
           key: "endpoints",
         }).map((ep) => this.buildEndpointResource(accountId, p.id, ep));
       },
-      (p) => ({ parentResourceIds: [resourceId(accountId, "neon-project", p.id)] }),
+      (p) => projectUnread(accountId, p),
     );
   }
 
@@ -1842,30 +1850,31 @@ export class NeonClient implements PluginClient {
     };
   }
 
-  private async listAllDatabases(accountId: string): Promise<ResourceInstance[]> {
-    const branches = await this.listProjectBranchPairs(accountId);
-    return readChildren(
-      branches,
-      async ({ projectId, branchId }) => {
-        const dbResp = await this.api.listProjectBranchDatabases(projectId, branchId);
-        return requireListPage(dbResp.data.databases, {
-          vendor: "Neon",
-          path: `/projects/${projectId}/branches/${branchId}/databases`,
-          key: "databases",
-        }).map((db) => this.buildDatabaseResource(accountId, projectId, branchId, db));
-      },
-      (ref) => branchUnread(accountId, ref),
-    );
+  private async listAllDatabases(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
+    const read = await this.readDatabases(run, accountId);
+    reportUnread(read.unread);
+    return read.rows;
   }
 
-  /** Every readable (project, branch) pair, for the per-branch listers. */
-  private async listProjectBranchPairs(accountId: string): Promise<BranchRef[]> {
-    return enumerateBranches(
-      this.api,
-      accountId,
-      await listProjectsToFanOut(this.api),
-      NEON_LIST_CONCURRENCY,
-    );
+  /** Shared because the Data API type reads one thing per database this finds. */
+  private readDatabases(run: ListRun, accountId: string): Promise<ChildRead<ResourceInstance>> {
+    return run.databases.run(async () => {
+      const branches = await run.readBranches(accountId);
+      const databases = await collectChildren(
+        branches.rows,
+        run.budget,
+        async ({ projectId, branchId }) => {
+          const dbResp = await run.api.listProjectBranchDatabases(projectId, branchId);
+          return requireListPage(dbResp.data.databases, {
+            vendor: "Neon",
+            path: `/projects/${projectId}/branches/${branchId}/databases`,
+            key: "databases",
+          }).map((db) => this.buildDatabaseResource(accountId, projectId, branchId, db));
+        },
+        (ref) => branchUnread(accountId, ref),
+      );
+      return { rows: databases.rows, unread: [...branches.unread, ...databases.unread] };
+    });
   }
 
   private buildDatabaseResource(
@@ -1895,12 +1904,12 @@ export class NeonClient implements PluginClient {
     };
   }
 
-  private async listAllRoles(accountId: string): Promise<ResourceInstance[]> {
-    const branches = await this.listProjectBranchPairs(accountId);
+  private async listAllRoles(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
     return readChildren(
-      branches,
+      await run.branches(accountId),
+      run.budget,
       async ({ projectId, branchId }) => {
-        const roleResp = await this.api.listProjectBranchRoles(projectId, branchId);
+        const roleResp = await run.api.listProjectBranchRoles(projectId, branchId);
         return requireListPage(roleResp.data.roles, {
           vendor: "Neon",
           path: `/projects/${projectId}/branches/${branchId}/roles`,
@@ -1911,22 +1920,25 @@ export class NeonClient implements PluginClient {
     );
   }
 
-  private async listAllDataApis(accountId: string): Promise<ResourceInstance[]> {
-    const databases = await this.listAllDatabases(accountId);
+  private async listAllDataApis(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
+    const databases = await this.readDatabases(run, accountId);
+    // A database this poll did not reach leaves its Data API row unread too.
+    reportUnread(databases.unread);
     return readChildren(
-      databases,
+      databases.rows,
+      run.budget,
       async (db) => {
         const projectId = String(db.fields["projectId"] ?? "");
         const branchId = String(db.fields["branchId"] ?? "");
         const databaseName = String(db.fields["name"] ?? "");
         if (!projectId || !branchId || !databaseName) return [];
-        const resp = await this.api.getProjectBranchDataApi(projectId, branchId, databaseName);
+        const resp = await run.api.getProjectBranchDataApi(projectId, branchId, databaseName);
         return [this.buildDataApiResource(accountId, projectId, branchId, databaseName, resp.data)];
       },
       (db) => ({ parentResourceIds: [db.id] }),
       // A database without the Data API enabled answers 404. The document names no status
       // for it, so any settled refusal reads the same; a rejected key is not one of them.
-      { isNone: (err) => httpStatus(err) !== 401 && isSettledRefusal(err) },
+      { isNone: (err) => httpStatus(err) !== 401 && isSettledRefusal(err), late: true },
     );
   }
 
