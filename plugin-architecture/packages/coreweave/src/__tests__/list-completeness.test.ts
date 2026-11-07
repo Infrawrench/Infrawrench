@@ -1,3 +1,4 @@
+import type { UnreadListPart } from "@infrawrench/plugin-base";
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CoreWeaveClient } from "../client.js";
@@ -199,5 +200,43 @@ describe("the capacity plan view behind a cost read", () => {
     const rows = await fetchCoreWeaveCostData(CTX, parseNegotiatedRates(""), RANGE, NOW);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.tags?.["capacityPlan"]).toBe("unattributed");
+  });
+});
+
+/** The host's side of `reportUnreadListPart`, which a sync installs around a list. */
+function trackUnread(): UnreadListPart[] {
+  const parts: UnreadListPart[] = [];
+  vi.stubGlobal(Symbol.for("infrawrench.unreadListPart"), (part: UnreadListPart) =>
+    parts.push(part),
+  );
+  return parts;
+}
+
+describe("a token its provider refuses for a whole type", () => {
+  const refused = () => stubFetch(() => ({ status: 403, body: "forbidden" }));
+
+  it.each(["cks-cluster", "node-pool", "vpc", "bucket", "access-key"])(
+    "keeps the stored %s rows without an error",
+    async (typeId) => {
+      refused();
+      const parts = trackUnread();
+      const client = hostClient(new CoreWeaveClient({ apiToken: "t" }));
+      await expect(client.listResources(typeId, "acc")).resolves.toEqual([]);
+      expect(parts).toEqual([{ idPrefixes: [""] }]);
+    },
+  );
+
+  it("still shows the refusal on a host that keeps no track", async () => {
+    refused();
+    const client = hostClient(new CoreWeaveClient({ apiToken: "t" }));
+    await expect(client.listResources("bucket", "acc")).rejects.toThrow(/403/);
+  });
+
+  it("fails the type on anything but a refusal", async () => {
+    stubFetch(() => ({ status: 401, body: "bad token" }));
+    const parts = trackUnread();
+    const client = hostClient(new CoreWeaveClient({ apiToken: "t" }));
+    await expect(client.listResources("bucket", "acc")).rejects.toThrow(/401/);
+    expect(parts).toEqual([]);
   });
 });

@@ -21,6 +21,7 @@ import {
   externalIdOf,
   listS3Objects,
   makeS3Folder,
+  reportUnreadListPart,
   uploadS3Object,
 } from "@infrawrench/plugin-base";
 import type { CoreWeaveContext } from "./api.js";
@@ -303,8 +304,11 @@ export class CoreWeaveClient implements PluginClient {
     try {
       return await load();
     } catch (err) {
-      if (statusOf(err) === 403) return [];
-      throw err;
+      if (statusOf(err) !== 403) throw err;
+      // This type's stored rows stay. A host that keeps no track (the desktop) answers
+      // false, and there the refusal should still show.
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      return [];
     }
   }
 
