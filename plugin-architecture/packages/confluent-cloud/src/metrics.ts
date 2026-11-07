@@ -93,8 +93,12 @@ function isPoints(value: unknown): value is FlatPoint[] {
   return Array.isArray(value);
 }
 
-/** One query, flat format: `{ timestamp, value, <group labels> }[]`. */
-export async function queryMetric(ctx: ConfluentContext, req: QueryRequest): Promise<FlatPoint[]> {
+/** One page of a query, flat format: `{ timestamp, value, <group labels> }[]`. */
+async function queryPage(
+  ctx: ConfluentContext,
+  req: QueryRequest,
+  pageToken?: string,
+): Promise<{ rows: FlatPoint[]; next: string | undefined }> {
   const body: components["schemas"]["QueryRequest"] = {
     aggregations: [{ metric: req.metric, ...(req.agg ? { agg: req.agg } : {}) }],
     filter: req.filter,
@@ -104,7 +108,10 @@ export async function queryMetric(ctx: ConfluentContext, req: QueryRequest): Pro
     ...(req.limit ? { limit: req.limit } : {}),
     format: "FLAT",
   };
-  const res = await ctx.telemetry.post(`/v2/metrics/${pathEncode("cloud")}/query`, { body });
+  const res = await ctx.telemetry.post(`/v2/metrics/${pathEncode("cloud")}/query`, {
+    body,
+    ...(pageToken ? { query: { page_token: pageToken } } : {}),
+  });
   const out: FlatPoint[] = [];
   for (const row of res?.data ?? []) {
     const { points, ...labels } = row;
@@ -115,7 +122,11 @@ export async function queryMetric(ctx: ConfluentContext, req: QueryRequest): Pro
       out.push(row);
     }
   }
-  return out;
+  return { rows: out, next: res?.meta?.pagination?.next_page_token };
+}
+
+export async function queryMetric(ctx: ConfluentContext, req: QueryRequest): Promise<FlatPoint[]> {
+  return (await queryPage(ctx, req)).rows;
 }
 
 /** How one chart is computed from one metric. */
@@ -357,7 +368,16 @@ export const SCHEMA_REGISTRY_SERIES: SeriesSpec[] = [
 // Listing-time enrichment: one grouped query per metric for every resource.
 // ---------------------------------------------------------------------------
 
-/** Value per group label from a granularity=ALL query. */
+/** `QueryRequest.limit`'s maximum: more groups than this are simply not returned. */
+const MAX_GROUPS = 1000;
+/** A hundred thousand topics. Past that a count is not worth the requests. */
+const TOPIC_MAX_PAGES = 100;
+
+/**
+ * Value per resource from a granularity=ALL query, which the document says cannot
+ * page. Each query filters on at most `MAX_GROUPS` resources and groups by resource,
+ * so none of them can have more groups than it returns.
+ */
 async function totalsBy(
   ctx: ConfluentContext,
   metric: string,
@@ -365,17 +385,71 @@ async function totalsBy(
   field: string,
   ids: string[],
   range: TimeRange,
-  extraGroup?: string,
 ): Promise<FlatPoint[]> {
-  return queryMetric(ctx, {
-    metric,
-    agg,
-    filter: anyOf(field, ids),
-    groupBy: extraGroup ? [field, extraGroup] : [field],
-    granularity: "ALL",
-    range,
-    limit: 1000,
-  });
+  const unique = [...new Set(ids.filter(Boolean))];
+  const batches: string[][] = [];
+  for (let i = 0; i < unique.length; i += MAX_GROUPS) {
+    batches.push(unique.slice(i, i + MAX_GROUPS));
+  }
+  const rows = await Promise.all(
+    batches.map((batch) =>
+      queryMetric(ctx, {
+        metric,
+        agg,
+        filter: anyOf(field, batch),
+        groupBy: [field],
+        granularity: "ALL",
+        range,
+        limit: MAX_GROUPS,
+      }),
+    ),
+  );
+  return rows.flat();
+}
+
+/**
+ * Distinct topics per cluster, or `null` if some may be missing, since a low count
+ * reads as fact and an absent one as unknown. Topics can outnumber any `limit`, so this
+ * asks for hourly buckets: the document only lets a time-based granularity page. An
+ * unaligned hour can cross two buckets, which the sets collapse. The token only holds
+ * while the body is identical, and `range` is absolute, as it has to be.
+ */
+async function topicsByCluster(
+  ctx: ConfluentContext,
+  field: string,
+  clusterIds: string[],
+  range: TimeRange,
+): Promise<Map<string, Set<string>> | null> {
+  const topics = new Map<string, Set<string>>();
+  let pageToken: string | undefined;
+  for (let page = 0; page < TOPIC_MAX_PAGES; page++) {
+    const { rows, next } = await queryPage(
+      ctx,
+      {
+        metric: "io.confluent.kafka.server/retained_bytes",
+        agg: "MAX",
+        filter: anyOf(field, clusterIds),
+        groupBy: [field, "metric.topic"],
+        granularity: "PT1H",
+        range,
+        limit: MAX_GROUPS,
+      },
+      pageToken,
+    );
+    const groups = new Set<string>();
+    for (const r of rows) {
+      const cluster = r[field];
+      const topic = r["metric.topic"];
+      if (typeof cluster !== "string" || typeof topic !== "string") continue;
+      groups.add(`${cluster}/${topic}`);
+      if (!topics.has(cluster)) topics.set(cluster, new Set());
+      topics.get(cluster)!.add(topic);
+    }
+    // A full page with no token would be the silent cut this is here to avoid.
+    if (!next) return groups.size >= MAX_GROUPS ? null : topics;
+    pageToken = next;
+  }
+  return null;
 }
 
 function sumByLabel(rows: FlatPoint[], label: string): Map<string, number> {
@@ -428,16 +502,8 @@ export async function fetchClusterUsage(
   const end = now - LATENCY_MS;
   const lastHour: TimeRange = { startMs: end - 60 * 60 * 1000, endMs: end };
   const week: TimeRange = { startMs: now - RETENTION_MS + 60 * 60 * 1000, endMs: end };
-  const [topicRows, partitionRows, retainedRows, inRows, outRows] = await Promise.all([
-    totalsBy(
-      ctx,
-      "io.confluent.kafka.server/retained_bytes",
-      "MAX",
-      field,
-      clusterIds,
-      lastHour,
-      "metric.topic",
-    ).catch(() => null),
+  const [topics, partitionRows, retainedRows, inRows, outRows] = await Promise.all([
+    topicsByCluster(ctx, field, clusterIds, lastHour).catch(() => null),
     totalsBy(
       ctx,
       "io.confluent.kafka.server/partition_count",
@@ -462,15 +528,7 @@ export async function fetchClusterUsage(
     ),
   ]);
   const out = { ...empty };
-  if (topicRows) {
-    const topics = new Map<string, Set<string>>();
-    for (const r of topicRows) {
-      const cluster = r[label];
-      const topic = r["metric.topic"];
-      if (typeof cluster !== "string" || typeof topic !== "string") continue;
-      if (!topics.has(cluster)) topics.set(cluster, new Set());
-      topics.get(cluster)!.add(topic);
-    }
+  if (topics) {
     for (const id of clusterIds) out.topics.set(id, topics.get(id)?.size ?? 0);
   }
   if (partitionRows) out.partitions = sumByLabel(partitionRows, label);
