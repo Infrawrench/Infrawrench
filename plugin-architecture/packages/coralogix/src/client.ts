@@ -15,9 +15,14 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  QuotaAccessError,
+  externalIdOf,
+  pathEncode,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { CoralogixContext } from "./api.js";
-import { apiV4, apiV5, isPermissionError, statusOf } from "./api.js";
+import { apiV4, apiV5, isPermissionError, listIn, statusOf } from "./api.js";
 import type { operations } from "./api-types.v5.gen.js";
 import { fetchCoralogixCostData, parseUnitPrice } from "./cost-data.js";
 import type {
@@ -120,8 +125,9 @@ export class CoralogixClient implements PluginClient {
           );
         case "dashboard":
           return this.scoped(async () => {
-            const res = await apiV5(this.ctx).get("/dashboards/dashboards/v1/catalog/list");
-            return (res?.items ?? []).map((d) => mapDashboard(accountId, d));
+            const path = "/dashboards/dashboards/v1/catalog/list";
+            const res = await apiV5(this.ctx).get(path);
+            return listIn(res, "items", path).map((d) => mapDashboard(accountId, d));
           });
         case "tco-policy":
           return this.scoped(async () =>
@@ -131,8 +137,9 @@ export class CoralogixClient implements PluginClient {
           );
         case "parsing-rule-group":
           return this.scoped(async () => {
-            const res = await apiV5(this.ctx).get("/parsing-rules/rule-groups/v1");
-            return (res?.ruleGroups ?? [])
+            const path = "/parsing-rules/rule-groups/v1";
+            const res = await apiV5(this.ctx).get(path);
+            return listIn(res, "ruleGroups", path)
               .filter((g) => !g.hidden)
               .map((g) => mapRuleGroup(accountId, g));
           });
@@ -140,7 +147,10 @@ export class CoralogixClient implements PluginClient {
           return this.scoped(async () => {
             const [enrichments, custom] = await Promise.all([
               this.fetchEnrichments(),
-              this.fetchCustomEnrichments().catch((): CxCustomEnrichment[] => []),
+              this.fetchCustomEnrichments().catch((err): CxCustomEnrichment[] => {
+                rethrowIncompleteList(err);
+                return [];
+              }),
             ]);
             const names = new Map<number, string>();
             for (const c of custom) if (c.id !== undefined && c.name) names.set(c.id, c.name);
@@ -152,13 +162,16 @@ export class CoralogixClient implements PluginClient {
           );
         case "outgoing-webhook":
           return this.scoped(async () => {
-            const res = await apiV5(this.ctx).get("/integrations/webhooks/v1");
-            return (res?.deployed ?? []).map((w) => mapWebhook(accountId, w));
+            const path = "/integrations/webhooks/v1";
+            const res = await apiV5(this.ctx).get(path);
+            return listIn(res, "deployed", path).map((w) => mapWebhook(accountId, w));
           });
         case "quota-rule":
           return this.scoped(async () => {
-            const set = await this.fetchQuotaRuleSet();
-            return (set?.rules ?? [])
+            const path = "/dataplan/quota-rules/v1";
+            const res = await apiV5(this.ctx).get(path);
+            // A team with no rule set has no rules; no answer at all says nothing.
+            return listIn(res && (res.ruleSet ?? {}), "rules", path)
               .filter((r) => r.entityType)
               .map((r) => mapQuotaRule(accountId, r));
           });
@@ -184,7 +197,7 @@ export class CoralogixClient implements PluginClient {
       const res = await apiV5(this.ctx).get("/alerts/alerts/v3", {
         query: { pagination: { pageSize: ALERT_PAGE, ...(token ? { pageToken: token } : {}) } },
       });
-      out.push(...(res?.alertDefs ?? []));
+      out.push(...listIn(res, "alertDefs", "/alerts/alerts/v3"));
       token = res?.pagination?.nextPageToken || undefined;
       if (!token) break;
     }
@@ -192,18 +205,18 @@ export class CoralogixClient implements PluginClient {
   }
 
   private async fetchPolicies(): Promise<CxPolicy[]> {
-    const res = await apiV5(this.ctx).get("/dataplans/policies/v1");
-    return res?.policies ?? [];
+    const path = "/dataplans/policies/v1";
+    return listIn(await apiV5(this.ctx).get(path), "policies", path);
   }
 
   private async fetchEnrichments(): Promise<CxEnrichment[]> {
-    const res = await apiV5(this.ctx).get("/enrichment-rules/enrichment-rules/v1");
-    return res?.enrichments ?? [];
+    const path = "/enrichment-rules/enrichment-rules/v1";
+    return listIn(await apiV5(this.ctx).get(path), "enrichments", path);
   }
 
   private async fetchCustomEnrichments(): Promise<CxCustomEnrichment[]> {
-    const res = await apiV5(this.ctx).get("/enrichment-rules/custom-enrichment-rules/v1");
-    return res?.customEnrichments ?? [];
+    const path = "/enrichment-rules/custom-enrichment-rules/v1";
+    return listIn(await apiV5(this.ctx).get(path), "customEnrichments", path);
   }
 
   private async fetchQuotaRuleSet(): Promise<CxQuotaRuleSet | undefined> {
@@ -212,8 +225,8 @@ export class CoralogixClient implements PluginClient {
   }
 
   private async fetchE2Ms(): Promise<CxE2M[]> {
-    const res = await apiV5(this.ctx).get("/events2metrics/events2metrics/v2");
-    return res?.e2m ?? [];
+    const path = "/events2metrics/events2metrics/v2";
+    return listIn(await apiV5(this.ctx).get(path), "e2m", path);
   }
 
   // -------------------------------------------------------------------------
@@ -237,7 +250,10 @@ export class CoralogixClient implements PluginClient {
       },
     ];
     for (const attempt of attempts) {
-      const id = await attempt().catch(() => undefined);
+      const id = await attempt().catch((err) => {
+        rethrowIncompleteList(err);
+        return undefined;
+      });
       if (id) return id;
     }
     return undefined;
@@ -254,7 +270,10 @@ export class CoralogixClient implements PluginClient {
       this.resolveTeamId(),
       apiV5(this.ctx)
         .get("/aaa/teams/v2")
-        .catch(() => undefined),
+        .catch((err) => {
+          rethrowIncompleteList(err);
+          return undefined;
+        }),
     ]);
     const teams = [...(list?.teams ?? []), ...(list?.defaultTeam ? [list.defaultTeam] : [])];
     const team = teamId

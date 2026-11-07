@@ -36,7 +36,8 @@
  */
 
 import type { CoralogixContext } from "./api.js";
-import { apiV4, apiV5, isMissingRoute } from "./api.js";
+import { rethrowIncompleteList } from "@infrawrench/plugin-base";
+import { apiV4, apiV5, isMissingRoute, listIn } from "./api.js";
 import type { components } from "./api-types.v4.gen.js";
 
 export type Pillar = "logs" | "metrics" | "traces" | "binary" | "profiles" | "ai" | "other";
@@ -212,7 +213,10 @@ async function fetchV4(ctx: CoralogixContext, range: DayRange): Promise<UsageCel
     apiV4(ctx).post("/dataplans/data-usage/v2/daily/units", { body }),
     apiV4(ctx)
       .post("/dataplans/data-usage/v2/daily/processed-gbs", { body })
-      .catch((): { gbs: DailyGbsRow[] } => ({ gbs: [] })),
+      .catch((err): { gbs: DailyGbsRow[] } => {
+        rethrowIncompleteList(err);
+        return { gbs: [] };
+      }),
   ]);
   const gbByDay = new Map<string, DailyGbsRow>();
   for (const row of gbs?.gbs ?? []) {
@@ -220,7 +224,7 @@ async function fetchV4(ctx: CoralogixContext, range: DayRange): Promise<UsageCel
     if (d) gbByDay.set(d, row);
   }
   const out: UsageCell[] = [];
-  for (const row of units?.units ?? []) {
+  for (const row of listIn(units, "units", "/dataplans/data-usage/v2/daily/units")) {
     const d = dayOf(row.statsDate);
     if (!d || d < range.fromDate || d > range.toDate) continue;
     out.push(...cellsFromDailyRows(row, gbByDay.get(d)));
@@ -275,7 +279,7 @@ async function fetchV5(ctx: CoralogixContext, range: DayRange): Promise<UsageCel
     },
   });
   const cells = new Map<string, UsageCell>();
-  for (const bucket of res?.buckets ?? []) {
+  for (const bucket of listIn(res, "buckets", "/dataplan/data-usage/v1/query")) {
     const date = dayOf(bucket.range?.start);
     if (!date || date < range.fromDate || date > range.toDate) continue;
     for (const entry of bucket.entries ?? []) {

@@ -276,6 +276,43 @@ describe("fetchCoralogixCostData", () => {
     ).rejects.toThrow(/400/);
   });
 
+  it("refuses a usage answer with no list in it", async () => {
+    const answer = (units: Record<string, unknown> | undefined) =>
+      makeHttp((url) => {
+        if (url.pathname.endsWith("/daily/units")) return units ? { body: units } : {};
+        if (url.pathname.endsWith("/daily/processed-gbs")) return { body: { gbs: [] } };
+        throw new Error(`Unexpected ${url.pathname}`);
+      }).http;
+    const range = { fromDate: "2026-10-01", toDate: "2026-10-01" };
+    await expect(fetchCoralogixCostData(ctxWith(answer(undefined)), range, 1.5)).rejects.toThrow(
+      "is not a list",
+    );
+    await expect(
+      fetchCoralogixCostData(ctxWith(answer({ units: {} })), range, 1.5),
+    ).rejects.toThrow("is not a list");
+    await expect(fetchCoralogixCostData(ctxWith(answer({})), range, 1.5)).resolves.toEqual([]);
+  });
+
+  it("refuses a usage answer with no buckets once the version 4 route is gone", async () => {
+    const answer = (query: Record<string, unknown> | undefined) =>
+      makeHttp((url) => {
+        if (url.pathname.includes("/dataplans/data-usage/v2/")) return { status: 404, body: {} };
+        if (url.pathname.endsWith("/data-usage/v1/capabilities")) {
+          return { body: { supportedLabels: [{ key: "pillar" }] } };
+        }
+        if (url.pathname.endsWith("/data-usage/v1/query")) return query ? { body: query } : {};
+        throw new Error(`Unexpected ${url.pathname}`);
+      }).http;
+    const range = { fromDate: "2026-10-01", toDate: "2026-10-01" };
+    await expect(fetchCoralogixCostData(ctxWith(answer(undefined)), range, 1.5)).rejects.toThrow(
+      "is not a list",
+    );
+    await expect(
+      fetchCoralogixCostData(ctxWith(answer({ buckets: {} })), range, 1.5),
+    ).rejects.toThrow("is not a list");
+    await expect(fetchCoralogixCostData(ctxWith(answer({})), range, 1.5)).resolves.toEqual([]);
+  });
+
   it("skips an old window the server will not answer, but not the newest", async () => {
     const { http } = makeHttp((url, _m, body) => {
       const from = (body as { dateRange?: { fromDate?: string } })?.dateRange?.fromDate ?? "";

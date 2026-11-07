@@ -89,6 +89,78 @@ describe("listing", () => {
     expect(calls[0]!.url.searchParams.get("pagination.pageSize")).toBe("100");
   });
 
+  const ONE_PAGE_LISTS: Array<[string, string, string]> = [
+    ["dashboard", "/dashboards/dashboards/v1/catalog/list", "items"],
+    ["tco-policy", "/dataplans/policies/v1", "policies"],
+    ["parsing-rule-group", "/parsing-rules/rule-groups/v1", "ruleGroups"],
+    ["custom-enrichment", "/enrichment-rules/custom-enrichment-rules/v1", "customEnrichments"],
+    ["outgoing-webhook", "/integrations/webhooks/v1", "deployed"],
+    ["events2metrics", "/events2metrics/events2metrics/v2", "e2m"],
+  ];
+  const onlyRoute = (path: string, reply: Reply) => (url: URL) => {
+    if (!url.pathname.endsWith(path)) throw new Error(`Unexpected ${url.pathname}`);
+    return reply;
+  };
+
+  it.each(ONE_PAGE_LISTS)("refuses a %s answer with no list in it", async (type, path, key) => {
+    const noBody = client(onlyRoute(path, {}));
+    await expect(noBody.c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    const notArray = client(onlyRoute(path, { body: { [key]: { oops: true } } }));
+    await expect(notArray.c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each(ONE_PAGE_LISTS)("reads a %s answer leaving the key out as empty", async (type, path) => {
+    const { c } = client(onlyRoute(path, { body: {} }));
+    await expect(c.listResources(type, ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("refuses an alert page with no list, on the first page and on a later one", async () => {
+    const first = client(onlyRoute("/alerts/alerts/v3", { body: { alertDefs: "nope" } }));
+    await expect(first.c.listResources("alert", ACCOUNT)).rejects.toThrow("is not a list");
+    const later = client((url) =>
+      url.searchParams.get("pagination.pageToken")
+        ? {}
+        : { body: { alertDefs: [{ id: "a1" }], pagination: { nextPageToken: "next" } } },
+    );
+    await expect(later.c.listResources("alert", ACCOUNT)).rejects.toThrow("is not a list");
+    expect(later.calls).toHaveLength(2);
+  });
+
+  it("refuses an enrichment list with no list in it", async () => {
+    const { c } = client((url) =>
+      url.pathname.endsWith("/custom-enrichment-rules/v1") ? { body: {} } : {},
+    );
+    await expect(c.listResources("enrichment", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("does not let a bad custom enrichment page hide behind the enrichment names", async () => {
+    const { c } = client((url) =>
+      url.pathname.endsWith("/custom-enrichment-rules/v1")
+        ? { body: { customEnrichments: {} } }
+        : { body: { enrichments: [{ id: 1, fieldName: "ip" }] } },
+    );
+    await expect(c.listResources("enrichment", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("still lists enrichments when custom enrichment names cannot be read", async () => {
+    const { c } = client((url) =>
+      url.pathname.endsWith("/custom-enrichment-rules/v1")
+        ? { status: 403, body: {} }
+        : { body: { enrichments: [{ id: 1, fieldName: "ip" }] } },
+    );
+    await expect(c.listResources("enrichment", ACCOUNT)).resolves.toHaveLength(1);
+  });
+
+  it("refuses a quota rule answer with no body, and reads no rule set as no rules", async () => {
+    const path = "/dataplan/quota-rules/v1";
+    const noBody = client(onlyRoute(path, {}));
+    await expect(noBody.c.listResources("quota-rule", ACCOUNT)).rejects.toThrow("is not a list");
+    const noRuleSet = client(onlyRoute(path, { body: {} }));
+    await expect(noRuleSet.c.listResources("quota-rule", ACCOUNT)).resolves.toEqual([]);
+    const notArray = client(onlyRoute(path, { body: { ruleSet: { rules: {} } } }));
+    await expect(notArray.c.listResources("quota-rule", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
   it("lists an empty type on 403 and throws on 401", async () => {
     const forbidden = client(() => ({ status: 403, body: {} }));
     await expect(forbidden.c.listResources("dashboard", ACCOUNT)).resolves.toEqual([]);

@@ -1,5 +1,5 @@
 import type { ApiClientOptions, HttpHostServices, ParamValue } from "@infrawrench/plugin-base";
-import { createApiClient } from "@infrawrench/plugin-base";
+import { ListPageError, createApiClient, requireListPage } from "@infrawrench/plugin-base";
 import type { paths as V4Paths } from "./api-types.v4.gen.js";
 import type { paths as V5Paths } from "./api-types.v5.gen.js";
 import type { CoralogixRegion } from "./regions.js";
@@ -85,6 +85,25 @@ export const apiV5 = (ctx: CoralogixContext) => createApiClient<V5Paths>(clientO
  * toggle) are only documented up to version 4, which the gateway keeps serving.
  */
 export const apiV4 = (ctx: CoralogixContext) => createApiClient<V4Paths>(clientOptions(ctx, 4));
+
+/**
+ * The list under `key` in a grpc-gateway answer. proto3 JSON can leave an empty
+ * repeated field out, so a key missing from an object is an empty list. No body, or
+ * a value that is not an array, says nothing about the list, and a sync would read
+ * an empty one as everything deleted.
+ */
+export function listIn<K extends string, T>(
+  page: { [P in K]?: T[] } | null | undefined,
+  key: K,
+  path: string,
+): T[] {
+  const where = { vendor: "Coralogix", path, key, page };
+  if (page === null || page === undefined) {
+    throw new ListPageError({ ...where, found: undefined });
+  }
+  const list: T[] | undefined = page[key];
+  return list === undefined ? [] : requireListPage(list, where);
+}
 
 /** HTTP status of a failed call, or 0 for a transport error. */
 export function statusOf(err: unknown): number {
