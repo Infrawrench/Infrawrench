@@ -122,19 +122,6 @@
         "type": "string"
       },
       "why": "Passed through from a form field; our picker offers the valid values and Okta validates whatever else arrives."
-    },
-    {
-      "pointer": "/paths/~1api~1v1~1groups~1{groupId}/get/parameters",
-      "value": [
-        {
-          "name": "expand",
-          "in": "query",
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "why": "The plugin sends expand=stats here, which the document only lists on the group list. The request stays as it is until #422 is settled."
     }
   ],
   "paths": {

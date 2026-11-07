@@ -161,6 +161,8 @@ function addresses(value: string | undefined): Schemas["NetworkZoneAddress"][] {
   }));
 }
 
+type GroupStats = NonNullable<NonNullable<Schemas["Group"]["_embedded"]>["stats"]>;
+
 type ZoneItem = string | Schemas["NetworkZoneLocation"];
 
 /** An array on a DYNAMIC zone, `{ include, exclude }` on DYNAMIC_V2. */
@@ -299,10 +301,7 @@ export class OktaClient implements PluginClient {
         case "user":
           return this.mapUser(accountId, await this.api.rest.get(`/api/v1/users/${id}`));
         case "group":
-          return this.mapGroup(
-            accountId,
-            await this.api.rest.get(`/api/v1/groups/${id}`, { query: { expand: "stats" } }),
-          );
+          return this.mapGroup(accountId, await this.groupWithStats(resourceId));
         case "app":
           return this.mapApp(accountId, await this.api.rest.get(`/api/v1/apps/${id}`));
         case "authorization-server":
@@ -329,6 +328,31 @@ export class OktaClient implements PluginClient {
           throw new Error(`Okta plugin: unknown resource type "${typeId}"`);
       }
     });
+  }
+
+  /**
+   * `expand=stats` is documented on the group list only, and there `filter` takes `id`.
+   * A group whose counts cannot be read is still the group, without them.
+   */
+  private async groupStats(resourceId: string): Promise<GroupStats | undefined> {
+    const id = externalIdOf(resourceId);
+    if (!/^[\w-]+$/.test(id)) return undefined;
+    try {
+      const rows = await this.api.rest.get("/api/v1/groups", {
+        query: { filter: `id eq "${id}"`, expand: "stats", limit: 1 },
+      });
+      return rows.find((g) => g.id === id)?._embedded?.stats;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async groupWithStats(resourceId: string): Promise<Schemas["Group"]> {
+    const [group, stats] = await Promise.all([
+      this.api.rest.get(`/api/v1/groups/${pathEncode(externalIdOf(resourceId))}`),
+      this.groupStats(resourceId),
+    ]);
+    return stats ? { ...group, _embedded: { ...group._embedded, stats } } : group;
   }
 
   resolveOutput(
@@ -838,13 +862,14 @@ export class OktaClient implements PluginClient {
     return attempt(async () => {
       const id = pathEncode(externalIdOf(resourceId));
       if (resourceTypeId === "group") {
-        const g = await this.api.rest.get(`/api/v1/groups/${id}`, {
-          query: { expand: "stats" },
-        });
-        return [
-          { label: "Members", value: String(g._embedded?.stats?.usersCount ?? 0) },
-          { label: "Apps", value: String(g._embedded?.stats?.appsCount ?? 0) },
+        const stats = await this.groupStats(resourceId);
+        const counts: Array<[string, number | undefined]> = [
+          ["Members", stats?.usersCount],
+          ["Apps", stats?.appsCount],
         ];
+        return counts.flatMap(([label, count]) =>
+          count === undefined ? [] : [{ label, value: String(count) }],
+        );
       }
       if (resourceTypeId === "app") {
         const [users, groups] = await Promise.all([

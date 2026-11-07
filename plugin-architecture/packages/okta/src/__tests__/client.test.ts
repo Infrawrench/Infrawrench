@@ -388,6 +388,75 @@ describe("list reads", () => {
   });
 });
 
+describe("group stats", () => {
+  const G = `${ACCOUNT}:group:00g1`;
+  const group = { id: "00g1", type: "OKTA_GROUP", profile: { name: "Eng" } };
+  const listed = {
+    ...group,
+    _embedded: { stats: { usersCount: 7, appsCount: 2 } },
+  };
+
+  it("reads a group's counts from the list, where expand=stats is documented", async () => {
+    const client = ssws((call) => ({
+      body: new URL(call.url).pathname === "/api/v1/groups" ? [listed] : group,
+    }));
+    const found = await client.getResource("group", G, ACCOUNT);
+    expect(found.fields).toMatchObject({ name: "Eng", memberCount: 7, appCount: 2 });
+    const single = calls.find((c) => new URL(c.url).pathname === "/api/v1/groups/00g1")!;
+    expect(new URL(single.url).search).toBe("");
+    const lookup = new URL(calls.find((c) => new URL(c.url).pathname === "/api/v1/groups")!.url);
+    expect(lookup.searchParams.get("filter")).toBe('id eq "00g1"');
+    expect(lookup.searchParams.get("expand")).toBe("stats");
+  });
+
+  it("still returns the group when its counts cannot be read", async () => {
+    const client = ssws((call) =>
+      new URL(call.url).pathname === "/api/v1/groups"
+        ? { status: 400, body: { errorSummary: "no" } }
+        : { body: group },
+    );
+    const found = await client.getResource("group", G, ACCOUNT);
+    expect(found.fields["name"]).toBe("Eng");
+    expect(found.fields).not.toHaveProperty("memberCount");
+  });
+
+  it("says a missing group is missing, whatever the counts did", async () => {
+    const client = ssws((call) =>
+      new URL(call.url).pathname === "/api/v1/groups"
+        ? { body: [] }
+        : { status: 404, body: { errorSummary: "gone" } },
+    );
+    const error = (await client.getResource("group", G, ACCOUNT).catch((e) => e)) as {
+      status?: number;
+    };
+    expect(error.status).toBe(404);
+  });
+
+  it("shows the dashboard's counts", async () => {
+    const client = ssws(() => ({ body: [listed] }));
+    await expect(client.fetchDashboardStats("group", G)).resolves.toEqual([
+      { label: "Members", value: "7" },
+      { label: "Apps", value: "2" },
+    ]);
+  });
+
+  it.each([
+    ["the answer has no stats", () => ({ body: [group] })],
+    ["the row is not there", () => ({ body: [] })],
+    ["the read fails", () => ({ status: 500, body: { errorSummary: "no" } })],
+  ])("shows no dashboard counts rather than 0 when %s", async (_name, reply) => {
+    await expect(ssws(reply).fetchDashboardStats("group", G)).resolves.toEqual([]);
+  });
+
+  it("does not put an id that is not one into a filter", async () => {
+    const client = ssws(() => ({ body: [listed] }));
+    await expect(
+      client.fetchDashboardStats("group", `${ACCOUNT}:group:x" or id eq "y`),
+    ).resolves.toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("detail lists", () => {
   const resource = (typeId: string, externalId: string): ResourceInstance => ({
     id: `${ACCOUNT}:${typeId}:${externalId}`,

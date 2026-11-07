@@ -4357,9 +4357,7 @@ export interface operations {
     };
     getGroup: {
         parameters: {
-            query?: {
-                expand?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 groupId: components["parameters"]["pathGroupId"];
