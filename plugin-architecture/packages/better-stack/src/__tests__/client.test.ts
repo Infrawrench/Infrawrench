@@ -336,4 +336,29 @@ describe("terraform", () => {
     });
     expect(s?.resource.importId).toBe("9/5");
   });
+
+  it("keeps a failed read of the SQL login from reading as never connected", async () => {
+    const source = {
+      id: "7",
+      attributes: { name: "app", team_id: 123, table_name: "app_x", data_region: "eu-nbg-2" },
+    };
+    const { http } = makeHttp((url) =>
+      url.pathname === "/api/v2/sources/7" ? { body: source } : { status: 404 },
+    );
+    const secrets = {
+      getPlaintext: async () => {
+        throw new Error("the secret store is down");
+      },
+    };
+    const c = hostClient(
+      new BetterStackClient({ apiToken: "tok" }, { http, secrets } as unknown as HostServices),
+    );
+    await expect(c.getLogs("source", "acc:source:7", ACCOUNT, { tailLines: 10 })).rejects.toThrow(
+      "the secret store is down",
+    );
+    // The page itself still opens, with the button that writes a new login.
+    const source7 = await c.getResource("source", "acc:source:7", ACCOUNT);
+    const page = await c.enrichDetail(source7);
+    expect(page.resolvedOutputs).toBeDefined();
+  });
 });

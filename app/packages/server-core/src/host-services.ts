@@ -10,6 +10,7 @@ import { eq, and } from "drizzle-orm";
 import { fetch as undiciFetch, type RequestInit as UndiciRequestInit } from "undici";
 import {
   readOAuthGrantState,
+  SecretReadError,
   type HostServices,
   type HttpHostServices,
   type OAuthHostServices,
@@ -148,9 +149,9 @@ const secretHostServices: SecretHostServices = {
         buildAad("secretField", `${resourceId}:${fieldKey}`, "value"),
       );
     } catch (err) {
-      // Log so silent decryption regressions (key rotation, AAD mismatch) are visible.
+      // Logged here too, so decryption regressions (key rotation, AAD mismatch) are visible.
       console.error(`[host-services] Failed to decrypt secret ${resourceId}:${fieldKey}:`, err);
-      return null;
+      throw new SecretReadError(fieldKey, err);
     }
   },
   setPlaintext: setLiteralSecretState,

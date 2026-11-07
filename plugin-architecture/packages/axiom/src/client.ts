@@ -403,7 +403,7 @@ export class AxiomClient implements PluginClient {
 
   private async storedSecret(resourceId: string, field: string): Promise<string | null> {
     if (!this.secrets) return null;
-    const v = await this.secrets.getPlaintext(resourceId, field).catch(() => null);
+    const v = await this.secrets.getPlaintext(resourceId, field);
     return v && v.trim() ? v.trim() : null;
   }
 

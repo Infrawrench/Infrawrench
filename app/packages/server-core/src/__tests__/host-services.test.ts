@@ -361,11 +361,24 @@ describe("secrets.getPlaintext", () => {
     expect(decrypt).toHaveBeenCalledWith("ENC", "IV", "secretField:r1:f1:value");
   });
 
-  it("returns null and logs when decryption throws", async () => {
+  it("rejects and logs when decryption throws, as a list cannot be built on it", async () => {
     pg.setRows([secretRow({ resolutionKind: "literal", encryptedValue: "THROW", valueIv: "IV" })]);
     const svc = await getSecretService();
-    expect(await svc.getPlaintext("r1", "f1")).toBeNull();
+    const failed = svc.getPlaintext("r1", "f1");
+    await expect(failed).rejects.toMatchObject({
+      name: "SecretReadError",
+      incompleteList: true,
+    });
+    await expect(failed).rejects.not.toThrow("THROW");
     expect(console.error).toHaveBeenCalled();
+  });
+
+  it("names neither the value nor the resource in what it throws", async () => {
+    pg.setRows([secretRow({ resolutionKind: "literal", encryptedValue: "THROW", valueIv: "IV" })]);
+    const svc = await getSecretService();
+    const err: unknown = await svc.getPlaintext("acc:db:r1", "f1").catch((e: unknown) => e);
+    expect(String(err)).toContain("f1");
+    expect(String(err)).not.toContain("acc:db:r1");
   });
 });
 

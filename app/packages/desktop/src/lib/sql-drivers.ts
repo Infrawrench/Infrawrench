@@ -2,6 +2,7 @@ import { invoke } from "../lib/invoke";
 import { desktopInstancePricingQuery } from "./instance-pricing";
 import { getDb } from "../db/client";
 import type { HostServices, PluginManifest, SecretHostServices } from "@infrawrench/plugin-base";
+import { SecretReadError } from "@infrawrench/plugin-base";
 
 export function sqlQuery(
   driverId: string,
@@ -160,7 +161,7 @@ export const secretHostServices: SecretHostServices = {
       return plaintext;
     } catch (err) {
       console.error(`[secrets] getPlaintext(${resourceId}, ${fieldKey}) failed:`, err);
-      return null;
+      throw new SecretReadError(fieldKey, err);
     }
   },
 };

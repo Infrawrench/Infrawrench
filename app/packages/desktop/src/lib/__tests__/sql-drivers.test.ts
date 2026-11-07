@@ -203,11 +203,26 @@ describe("secretHostServices.getPlaintext", () => {
     expect(await secretHostServices.getPlaintext("res", "field")).toBeNull();
   });
 
-  it("returns null and logs when the lookup throws", async () => {
+  it("rejects and logs when the lookup throws", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     select.mockRejectedValue(new Error("db down"));
-    expect(await secretHostServices.getPlaintext("res", "field")).toBeNull();
+    await expect(secretHostServices.getPlaintext("res", "field")).rejects.toMatchObject({
+      name: "SecretReadError",
+      incompleteList: true,
+    });
     expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it("rejects when a stored value cannot be decrypted", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    select.mockResolvedValue([
+      { resolution_kind: "literal", encrypted_value: "ct", value_iv: "iv" },
+    ]);
+    invoke.mockRejectedValue(new Error("bad tag"));
+    await expect(secretHostServices.getPlaintext("res", "field")).rejects.toMatchObject({
+      name: "SecretReadError",
+    });
     errSpy.mockRestore();
   });
 });

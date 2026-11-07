@@ -27,7 +27,7 @@ import type {
   ResourceTypeDefinition,
   SecretHostServices,
 } from "@infrawrench/plugin-base";
-import { readOAuthGrantState } from "@infrawrench/plugin-base";
+import { readOAuthGrantState, SecretReadError } from "@infrawrench/plugin-base";
 import { getPlugin } from "../src/plugins/loader";
 import { mainInstancePricing } from "./instance-pricing-client";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
@@ -215,7 +215,7 @@ const secretHostServices: SecretHostServices = {
       return decryptValue(ciphertext, iv, getEncryptionKey(), aad);
     } catch (err) {
       console.error(`[plugin-runtime] getPlaintext(${resourceId}, ${fieldKey}) failed:`, err);
-      return null;
+      throw new SecretReadError(fieldKey, err);
     }
   },
   async setPlaintext(resourceId: string, fieldKey: string, value: string): Promise<void> {

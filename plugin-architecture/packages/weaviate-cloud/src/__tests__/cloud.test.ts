@@ -291,4 +291,17 @@ describe("Weaviate Cloud organization", () => {
     );
     await expect(c.listResources("cluster", ACCOUNT)).rejects.toThrow(/wcloud auth login/);
   });
+
+  it("fails the list when a cluster's stored key cannot be read, rather than skip the cluster", async () => {
+    const { http, c } = signedIn();
+    http.route("GET", `${API}/v1/clusters`, { data: [{ id: "1", status: "READY", endpoint: A }] });
+    http.services.secrets = {
+      getPlaintext: async () => {
+        throw new Error("the secret store is down");
+      },
+    };
+    await expect(c.listResources("collection", ACCOUNT)).rejects.toThrow(
+      "the secret store is down",
+    );
+  });
 });

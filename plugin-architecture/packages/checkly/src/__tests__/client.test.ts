@@ -122,6 +122,19 @@ describe("actions", () => {
     expect(calls[0]?.body).toEqual({ target: { checkId: ["c1"] } });
   });
 
+  it("does not send someone to mint a key because a stored one failed to read", async () => {
+    const http = makeHttp(() => ({ status: 200, body: {} })).http;
+    const secrets = {
+      getPlaintext: async () => {
+        throw new Error("the secret store is down");
+      },
+    };
+    const c = hostClient(new ChecklyClient(creds, { http, secrets } as unknown as HostServices));
+    await expect(
+      c.resolveOutput("private-location", "acc:private-location:p1", "agentKey", ACCOUNT),
+    ).rejects.toThrow("the secret store is down");
+  });
+
   it("stores a generated private location key as an output", async () => {
     const { c, secrets } = client(() => ({
       status: 201,

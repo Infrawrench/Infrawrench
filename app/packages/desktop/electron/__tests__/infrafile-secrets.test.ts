@@ -50,4 +50,19 @@ describe("the CLI's secret store", () => {
     stubRow({ resolution_kind: "literal", encrypted_value: ciphertext, value_iv: iv });
     await expect(secretHostServices.getPlaintext("r1", "password")).resolves.toBe("hunter2");
   });
+
+  it("rejects a stored value it cannot decrypt, rather than read it as none", async () => {
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    const { ciphertext, iv } = encryptValue("hunter2", KEY, "some other aad");
+    stubRow({ resolution_kind: "literal", encrypted_value: ciphertext, value_iv: iv });
+    await expect(secretHostServices.getPlaintext("r1", "password")).rejects.toMatchObject({
+      name: "SecretReadError",
+      incompleteList: true,
+    });
+  });
+
+  it("reads a row that is not there as no secret", async () => {
+    stubRow(null);
+    await expect(secretHostServices.getPlaintext("r1", "password")).resolves.toBeNull();
+  });
 });

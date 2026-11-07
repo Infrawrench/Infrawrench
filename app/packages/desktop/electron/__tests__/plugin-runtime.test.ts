@@ -86,6 +86,37 @@ beforeEach(() => {
   stubRow({ encrypted_credentials: "v2:ct", credentials_iv: "iv" });
 });
 
+describe("the secret store", () => {
+  const secrets = () => buildPluginHostServices(manifest(), {}).secrets!;
+
+  it("reads a row that is not there as no secret", async () => {
+    stubRow(null);
+    await expect(secrets().getPlaintext("r", "f")).resolves.toBeNull();
+  });
+
+  it("rejects a stored value it cannot decrypt, rather than read it as none", async () => {
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    stubRow({ resolution_kind: "literal", encrypted_value: "v2:ct", value_iv: "iv" });
+    decryptValue.mockImplementation(() => {
+      throw new Error("bad tag");
+    });
+    await expect(secrets().getPlaintext("r", "f")).rejects.toMatchObject({
+      name: "SecretReadError",
+      incompleteList: true,
+    });
+  });
+
+  it("rejects a read the database failed", async () => {
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    prepare.mockImplementation(() => {
+      throw new Error("db down");
+    });
+    await expect(secrets().getPlaintext("r", "f")).rejects.toMatchObject({
+      name: "SecretReadError",
+    });
+  });
+});
+
 describe("buildPluginHostServices", () => {
   it("always supplies http and secrets", () => {
     const services = buildPluginHostServices(manifest(), {});

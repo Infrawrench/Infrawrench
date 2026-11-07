@@ -321,7 +321,8 @@ export class WeaviateClient implements PluginClient {
   }
 
   private async storedSecret(resourceId: string, field: string): Promise<string> {
-    const v = await this.services?.secrets?.getPlaintext(resourceId, field).catch(() => null);
+    // Not caught: a cluster whose key reads as none is skipped, which prunes its children.
+    const v = await this.services?.secrets?.getPlaintext(resourceId, field);
     return v?.trim() ?? "";
   }
 

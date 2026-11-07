@@ -467,7 +467,7 @@ export class ChecklyClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "private-location" && outputKey === AGENT_KEY_FIELD) {
         const stored = this.secrets
-          ? await this.secrets.getPlaintext(resourceId, AGENT_KEY_FIELD).catch(() => null)
+          ? await this.secrets.getPlaintext(resourceId, AGENT_KEY_FIELD)
           : null;
         if (stored) return stored;
         throw new Error(

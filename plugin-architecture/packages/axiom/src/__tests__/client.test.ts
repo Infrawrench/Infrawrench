@@ -155,6 +155,23 @@ describe("queries", () => {
   });
 });
 
+describe("a stored secret that cannot be read", () => {
+  it("says so, rather than that the token was created elsewhere", async () => {
+    const { http } = makeHttp(() => ({ status: 200, body: {} }));
+    const secrets = {
+      getPlaintext: async () => {
+        throw new Error("the secret store is down");
+      },
+    };
+    const c = hostClient(
+      new AxiomClient({ token: "xaat-abc" }, { http, secrets } as unknown as HostServices),
+    );
+    await expect(c.resolveOutput("api-token", "acc:api-token:t", "token", ACCOUNT)).rejects.toThrow(
+      "the secret store is down",
+    );
+  });
+});
+
 describe("writes", () => {
   it("stores a created token's value as its output", async () => {
     const { c, calls, secrets } = client((url, method) => {

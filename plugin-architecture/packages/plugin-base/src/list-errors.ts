@@ -249,6 +249,28 @@ export function followableLink(link: string, pageUrl: string, options: FollowLin
   return resolved;
 }
 
+/**
+ * A stored secret whose row is there and could not be read: the key has rotated, its
+ * AAD does not match, or the store itself failed. `getPlaintext` rejects with this,
+ * because a plugin deciding what to list from a secret reads "no secret" as "nothing
+ * here", and a sync then prunes what it stopped seeing. It is an incomplete list for
+ * the same reason, so a catch around a list read passes it on and a swallowed one still
+ * fails the read. `cause` holds what went wrong; only the field's name reaches the
+ * message, which is shown to people.
+ */
+export class SecretReadError extends IncompleteListError {
+  readonly _tag = "SecretReadError";
+
+  constructor(fieldKey: string, cause?: unknown) {
+    super(
+      { vendor: "Infrawrench", path: `secret "${fieldKey}"` },
+      `Infrawrench could not read its stored secret "${fieldKey}". Refusing to read that as no secret. Setting the secret again replaces it.`,
+    );
+    this.name = "SecretReadError";
+    if (cause !== undefined) this.cause = cause;
+  }
+}
+
 /** True for any {@link IncompleteListError}, or anything wrapping one as its `cause`. */
 export function isIncompleteListError(err: unknown): boolean {
   let current: unknown = err;

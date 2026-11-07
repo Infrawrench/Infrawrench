@@ -24,6 +24,7 @@ import { dockerDrivers, k8sDrivers, kvDrivers, sqlDrivers } from "../drivers";
 import { getSqlite } from "../db";
 import { buildAad, decryptValue, getEncryptionKey } from "../main-utils";
 import { getOAuthProvider, loadLocalAccountCredentials } from "../provider-oauth/local-accounts";
+import { SecretReadError } from "@infrawrench/plugin-base";
 
 /**
  * Main-process HTTP for plugins. Unlike the renderer's, this needs no proxying
@@ -87,8 +88,9 @@ export const secretHostServices: SecretHostServices = {
         getEncryptionKey(),
         buildAad("secretField", `${resourceId}:${fieldKey}`, "value"),
       );
-    } catch {
-      return null;
+    } catch (err) {
+      console.error(`[infrafile] getPlaintext(${resourceId}, ${fieldKey}) failed:`, err);
+      throw new SecretReadError(fieldKey, err);
     }
   },
   async setPlaintext(): Promise<void> {

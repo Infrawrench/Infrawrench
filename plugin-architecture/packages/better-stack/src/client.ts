@@ -374,10 +374,11 @@ export class BetterStackClient implements PluginClient {
           };
         }
         case "source": {
+          // Caught: this only badges the page, which holds the button that writes a new login.
           const conn = await this.sqlConnection(
             resource.accountId,
             String(resource.fields["teamId"] ?? ""),
-          );
+          ).catch(() => null);
           return {
             ...resource,
             resolvedOutputs: {
@@ -402,9 +403,10 @@ export class BetterStackClient implements PluginClient {
 
   private async sqlConnection(accountId: string, teamId: string): Promise<SqlConnection | null> {
     if (!this.secrets || !teamId) return null;
-    const raw = await this.secrets
-      .getPlaintext(this.sqlSecretId(accountId, teamId), SQL_SECRET_FIELD)
-      .catch(() => null);
+    const raw = await this.secrets.getPlaintext(
+      this.sqlSecretId(accountId, teamId),
+      SQL_SECRET_FIELD,
+    );
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as SqlConnection;

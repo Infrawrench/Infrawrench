@@ -479,6 +479,15 @@ export interface HttpHostServices {
  * Returns `null` when no entry exists or decryption fails.
  */
 export interface SecretHostServices {
+  /**
+   * The stored value, or `null` when none is stored for this resource and field. A
+   * value that is there and cannot be read rejects with a `SecretReadError`, as does
+   * a store that cannot answer, so `null` always means there is nothing to read. A
+   * plugin deciding what to list from a secret lets that reject: reading it as "no
+   * secret" lists nothing, and a sync prunes what it stopped seeing. Catch it only
+   * where a failed read changes nothing that is stored, such as a detail page's
+   * "connected" badge.
+   */
   getPlaintext(resourceId: string, fieldKey: string): Promise<string | null>;
   /**
    * Persist a plaintext secret against a resource + field, encrypted at rest

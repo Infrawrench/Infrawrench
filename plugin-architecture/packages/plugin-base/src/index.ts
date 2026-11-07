@@ -530,6 +530,7 @@ export {
   IncompleteListError,
   ListPageError,
   ListTruncatedError,
+  SecretReadError,
   followableLink,
   isIncompleteListError,
   isSameOrigin,
