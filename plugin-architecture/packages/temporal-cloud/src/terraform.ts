@@ -143,8 +143,11 @@ function mapConnectivityRule(r: ResourceInstance): TerraformExportResult | null 
   } else {
     const region = fieldString(r, "region");
     if (region) attributes["region"] = tf.str(region);
+    const endpoint = fieldString(r, "azurePeResourceId");
     const connection = fieldString(r, "connectionId");
-    if (connection) attributes["connection_id"] = tf.str(connection);
+    // The provider's docs: connection_id is "not applicable for Azure".
+    if (endpoint) attributes["azure_pe_resource_id"] = tf.str(endpoint);
+    else if (connection) attributes["connection_id"] = tf.str(connection);
     const project = fieldString(r, "gcpProjectId");
     if (project) attributes["gcp_project_id"] = tf.str(project);
   }

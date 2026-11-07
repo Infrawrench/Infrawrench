@@ -881,7 +881,17 @@ export class TemporalCloudClient implements PluginClient {
                 required: false,
                 showWhen: { fieldKey: "type", fieldValue: "private" },
                 description:
-                  "AWS: the VPC endpoint id (vpce-…). GCP: the Private Service Connect connection id.",
+                  "AWS: the VPC endpoint id (vpce-…). GCP: the Private Service Connect connection id. Azure: leave empty, Temporal Cloud fills it in once the connection is approved.",
+              },
+              {
+                key: "azurePeResourceId",
+                label: "Azure Private Endpoint Resource ID",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "type", fieldValue: "private" },
+                placeholder:
+                  "/subscriptions/…/resourceGroups/…/providers/Microsoft.Network/privateEndpoints/…",
+                description: "Only for Azure regions, where it is required.",
               },
               {
                 key: "gcpProjectId",
@@ -979,21 +989,7 @@ export class TemporalCloudClient implements PluginClient {
           } else {
             const region = (fields["region"] ?? "").trim();
             if (!region) throw new Error("Pick the region of the private connection");
-            const isGcp = region.startsWith("gcp-");
-            const connectionId = (fields["connectionId"] ?? "").trim();
-            if (!connectionId && !region.startsWith("azure-")) {
-              throw new Error("Enter the connection id of the private endpoint");
-            }
-            if (isGcp && !(fields["gcpProjectId"] ?? "").trim()) {
-              throw new Error("GCP private connections need the GCP project id");
-            }
-            spec = {
-              privateRule: {
-                region,
-                ...(connectionId ? { connectionId } : {}),
-                ...(isGcp ? { gcpProjectId: (fields["gcpProjectId"] ?? "").trim() } : {}),
-              },
-            };
+            spec = { privateRule: privateRule(region, fields) };
           }
           const res = await this.ctx.api.post("/cloud/connectivity-rules", { body: { spec } });
           await waitForOperation(this.ctx, res.asyncOperation, 10_000);
@@ -1554,6 +1550,32 @@ function attachedRules(namespaces: TcNamespace[]): Map<string, string[]> {
     }
   }
   return out;
+}
+
+/** What the document gives as the form of `azurePeResourceId`. ARM ids ignore case. */
+const AZURE_PRIVATE_ENDPOINT =
+  /^\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/Microsoft\.Network\/privateEndpoints\/[^/]+$/i;
+
+function privateRule(
+  region: string,
+  fields: Record<string, string>,
+): NonNullable<TcConnectivityRuleSpec["privateRule"]> {
+  if (region.startsWith("azure-")) {
+    const azurePeResourceId = (fields["azurePeResourceId"] ?? "").trim();
+    if (!AZURE_PRIVATE_ENDPOINT.test(azurePeResourceId)) {
+      throw new Error(
+        "Azure private connections need the Private Endpoint's resource id: /subscriptions/…/resourceGroups/…/providers/Microsoft.Network/privateEndpoints/…",
+      );
+    }
+    // Azure's `connectionId` is the provider's to fill in, not the customer's.
+    return { region, azurePeResourceId };
+  }
+  const connectionId = (fields["connectionId"] ?? "").trim();
+  if (!connectionId) throw new Error("Enter the connection id of the private endpoint");
+  if (!region.startsWith("gcp-")) return { region, connectionId };
+  const gcpProjectId = (fields["gcpProjectId"] ?? "").trim();
+  if (!gcpProjectId) throw new Error("GCP private connections need the GCP project id");
+  return { region, connectionId, gcpProjectId };
 }
 
 function exportSinkFields(sink: TcExportSink): Record<string, string> {

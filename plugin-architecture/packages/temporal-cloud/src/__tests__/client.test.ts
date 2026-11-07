@@ -383,3 +383,100 @@ describe("Cloud Ops lists", () => {
     );
   });
 });
+
+const PE_ID =
+  "/subscriptions/1111/resourceGroups/net/providers/Microsoft.Network/privateEndpoints/temporal";
+
+describe("private connectivity rules", () => {
+  const rules = () => {
+    const created: unknown[] = [];
+    const { c, calls } = client((url, method, body) => {
+      if (url.pathname === "/cloud/connectivity-rules" && method === "POST") {
+        created.push(body);
+        return { body: { connectivityRuleId: "r1", ...fulfilled } };
+      }
+      if (url.pathname === "/cloud/connectivity-rules/r1") {
+        return {
+          body: {
+            connectivityRule: {
+              id: "r1",
+              spec: {
+                privateRule: {
+                  region: "azure-eastus",
+                  azurePeResourceId: PE_ID,
+                  connectionId: "42",
+                },
+              },
+            },
+          },
+        };
+      }
+      return { body: { regions: [] } };
+    });
+    return { c, calls, created };
+  };
+
+  it("sends the Private Endpoint's id on Azure, and no connection id", async () => {
+    const { c, created } = rules();
+    const made = await c.createResource("connectivity-rule", "acc", {
+      type: "private",
+      region: "azure-eastus",
+      azurePeResourceId: ` ${PE_ID} `,
+      connectionId: "typed-by-mistake",
+    });
+    expect(created).toEqual([
+      { spec: { privateRule: { region: "azure-eastus", azurePeResourceId: PE_ID } } },
+    ]);
+    expect(made.fields["azurePeResourceId"]).toBe(PE_ID);
+    expect(made.displayName).toBe("Private azure-eastus temporal");
+  });
+
+  it.each([
+    ["missing", ""],
+    ["not an ARM id", "vpce-0123456789abcdef0"],
+    [
+      "another kind of resource",
+      "/subscriptions/1/resourceGroups/n/providers/Microsoft.Network/virtualNetworks/v",
+    ],
+  ])("refuses an Azure rule whose Private Endpoint id is %s", async (_label, value) => {
+    const { c, created } = rules();
+    await expect(
+      c.createResource("connectivity-rule", "acc", {
+        type: "private",
+        region: "azure-eastus",
+        azurePeResourceId: value ?? "",
+      }),
+    ).rejects.toThrow(/Private Endpoint/);
+    expect(created).toEqual([]);
+  });
+
+  it("leaves the Azure id off other clouds' rules", async () => {
+    const { c, created } = rules();
+    await c.createResource("connectivity-rule", "acc", {
+      type: "private",
+      region: "aws-us-east-1",
+      connectionId: "vpce-1",
+      azurePeResourceId: PE_ID,
+    });
+    expect(created).toEqual([
+      { spec: { privateRule: { region: "aws-us-east-1", connectionId: "vpce-1" } } },
+    ]);
+  });
+
+  it("asks for the Private Endpoint on the create form", async () => {
+    const { c } = rules();
+    const config = await c.getCreateConfig("connectivity-rule");
+    const field = config.fields.find((x) => x.key === "azurePeResourceId");
+    expect(field?.showWhen).toEqual({ fieldKey: "type", fieldValue: "private" });
+  });
+
+  it("exports the Private Endpoint to Terraform, and not the id Temporal fills in", async () => {
+    const { c } = rules();
+    const rule = await c.getResource("connectivity-rule", "acc:connectivity-rule:r1", "acc");
+    const result = temporalTerraformExport.mapResource(rule);
+    expect(result?.resource.attributes).toMatchObject({
+      azure_pe_resource_id: { kind: "string", value: PE_ID },
+    });
+    expect(result?.resource.attributes).not.toHaveProperty("connection_id");
+  });
+});

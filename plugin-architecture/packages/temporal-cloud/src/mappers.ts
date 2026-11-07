@@ -383,8 +383,10 @@ export function mapConnectivityRule(
   const priv = r.spec?.privateRule;
   const pub = r.spec?.publicRule;
   const type = priv ? "Private" : pub ? "Public" : "";
+  // An Azure rule's `connectionId` is an internal id, empty until it is approved.
+  const endpoint = priv?.azurePeResourceId?.split("/").at(-1) ?? priv?.connectionId ?? "";
   const label = priv
-    ? `Private ${priv.region ?? ""} ${priv.connectionId ?? ""}`.trim()
+    ? `Private ${priv.region ?? ""} ${endpoint}`.trim()
     : `Public${pub?.enableStableIps ? " (stable IPs)" : ""}`;
   return instance(
     accountId,
@@ -395,6 +397,7 @@ export function mapConnectivityRule(
       type,
       region: priv?.region,
       connectionId: priv?.connectionId,
+      azurePeResourceId: priv?.azurePeResourceId,
       gcpProjectId: priv?.gcpProjectId,
       stableIps: pub ? (pub.enableStableIps ?? false) : undefined,
       namespaces: (attached.get(id) ?? []).join(", "),

@@ -271,11 +271,12 @@ export const ConnectivityRuleResourceType = rt({
   name: "Connectivity Rule",
   id: "connectivity-rule",
   description:
-    "A connectivity rule for how namespaces are reached: public internet (optionally with stable IPs) or a private connection such as AWS PrivateLink or GCP Private Service Connect. Attach it to namespaces from the namespace page.",
+    "A connectivity rule for how namespaces are reached: public internet (optionally with stable IPs) or a private connection such as AWS PrivateLink, GCP Private Service Connect or an Azure Private Endpoint. Attach it to namespaces from the namespace page.",
   fields: [
     f("type", "Type", { ...ro, showcase: true }),
     f("region", "Region", { ...ro, showcase: true }),
     f("connectionId", "Connection ID", ro),
+    f("azurePeResourceId", "Azure Private Endpoint Resource ID", ro),
     f("gcpProjectId", "GCP Project ID", ro),
     f("stableIps", "Stable IPs", { kind: "boolean", ...ro }),
     f("namespaces", "Attached Namespaces", ro),

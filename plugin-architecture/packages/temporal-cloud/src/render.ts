@@ -710,6 +710,7 @@ function renderConnectivityRule(r: ResourceInstance): DetailViewSchema {
           ["Type", f["type"]],
           ["Region", f["region"]],
           ["Connection ID", f["connectionId"], true],
+          ["Azure Private Endpoint", f["azurePeResourceId"], true],
           ["GCP project", f["gcpProjectId"]],
           ["Stable IPs", f["stableIps"]],
           ["Attached to", f["namespaces"]],
