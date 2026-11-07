@@ -82,6 +82,7 @@ describe("listResources", () => {
       if (url.endsWith("/v1/embedding-models")) {
         return jsonResponse({ models: [{ id: "grok-embed", prompt_text_token_price: 10 }] });
       }
+      if (url.endsWith("/v1/video-generation-models")) return jsonResponse({ models: [] });
       throw new Error(`unrouted: ${url}`);
     });
 
@@ -127,13 +128,34 @@ describe("listResources", () => {
     expect(rows[2]?.fields["tone"]).toBe("warm");
   });
 
-  it("falls back to the documented built-in voices when /v1/tts/voices fails", async () => {
+  it("falls back to the documented built-in voices when the key may not read /v1/tts/voices", async () => {
     installFetch((url) => {
-      if (url.includes("/v1/tts/voices")) return jsonResponse("nope", 500);
+      if (url.includes("/v1/tts/voices")) return jsonResponse("nope", 403);
       return jsonResponse({ voices: [] });
     });
     const rows = await client().listResources("custom-voice", ACCOUNT);
     expect(rows.map((r) => r.externalId)).toEqual(["eve", "ara", "leo", "rex", "sal"]);
+  });
+
+  it("fails the voice list when /v1/tts/voices has an outage, rather than shrink it", async () => {
+    installFetch((url) => {
+      if (url.includes("/v1/tts/voices")) return jsonResponse("nope", 500);
+      return jsonResponse({ voices: [] });
+    });
+    await expect(client().listResources("custom-voice", ACCOUNT)).rejects.toThrow("500");
+  });
+
+  it("still offers the built-in voices in the Speech panel during that outage", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/language-models")) {
+        return jsonResponse({ models: [{ id: "grok-voice", input_modalities: ["audio"] }] });
+      }
+      if (url.includes("voices")) return jsonResponse("nope", 500);
+      return jsonResponse({ models: [] });
+    });
+    const row = await client().getResource("model", `${ACCOUNT}:model:grok-voice`, ACCOUNT);
+    const voices: Array<{ id: string }> = JSON.parse(row.resolvedOutputs["__voices__"] ?? "[]");
+    expect(voices.map((v) => v.id)).toEqual(["eve", "ara", "leo", "rex", "sal"]);
   });
 
   it("caps the file page size at 100 and follows pagination_token", async () => {
@@ -1148,5 +1170,59 @@ describe("deleting a file", () => {
       c.invokeAction("api-key", `${ACCOUNT}:api-key:`, "rotate", ACCOUNT),
     ).rejects.toThrow("no id");
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("model list failures", () => {
+  const OPTIONAL = [
+    "/v1/image-generation-models",
+    "/v1/video-generation-models",
+    "/v1/embedding-models",
+  ];
+
+  function modelRoutes(failing: string, answer: Response) {
+    installFetch((url) => {
+      if (url.endsWith(failing)) return answer;
+      return jsonResponse({ models: [{ id: `from-${url.split("/").pop()}` }] });
+    });
+  }
+
+  for (const route of OPTIONAL) {
+    for (const status of [429, 500, 503]) {
+      it(`rejects on a ${status} from ${route}, so a sync keeps what it has`, async () => {
+        modelRoutes(route, jsonResponse("busy", status));
+        await expect(client().listResources("model", ACCOUNT)).rejects.toThrow(String(status));
+      });
+    }
+
+    it(`rejects on an unreadable body from ${route}`, async () => {
+      modelRoutes(route, {
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError("Unexpected token <");
+        },
+      } as unknown as Response);
+      await expect(client().listResources("model", ACCOUNT)).rejects.toThrow("Unexpected token");
+    });
+
+    it(`rejects a page of ${route} with its key renamed`, async () => {
+      modelRoutes(route, jsonResponse({ items: [{ id: "x" }] }));
+      await expect(client().listResources("model", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    for (const status of [401, 403, 404]) {
+      it(`reads a ${status} from ${route} as a key that may not read those models`, async () => {
+        modelRoutes(route, jsonResponse("no", status));
+        const rows = await client().listResources("model", ACCOUNT);
+        expect(rows).toHaveLength(3);
+        expect(rows.map((r) => r.externalId)).not.toContain(`from-${route.split("/").pop()}`);
+      });
+    }
+  }
+
+  it("rejects a language model page with its key renamed", async () => {
+    modelRoutes("/v1/language-models", jsonResponse({ items: [] }));
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow("is not a list");
   });
 });

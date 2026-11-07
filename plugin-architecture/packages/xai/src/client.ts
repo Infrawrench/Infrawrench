@@ -27,11 +27,19 @@ import {
   CostSetupError,
   CreditAccessError,
   base64ToBytes,
-  jsonRestFetch,
+  hostTransport,
   pathEncode,
+  requireListPage,
+  restRequest,
   withAiCostTags,
 } from "@infrawrench/plugin-base";
-import { INFERENCE_BASE, createInferenceApi, type InferenceApi } from "./api.js";
+import {
+  INFERENCE_BASE,
+  XaiApiError,
+  createInferenceApi,
+  keyCannotRead,
+  type InferenceApi,
+} from "./api.js";
 import {
   type XaiInvoice,
   type XaiInvoicePreview,
@@ -311,15 +319,16 @@ export class XaiClient implements PluginClient {
 
   /** JSON over the inference host, for what its OpenAPI document leaves out (see `api.ts`). */
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
+    const answer = await restRequest<T>({
       vendor: "xAI",
       url: `${INFERENCE_BASE}${path}`,
       errorPath: path,
       headers: { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json" },
+      httpError: ({ status, body }) => new XaiApiError("xAI", status, path, body),
       ...(options ? { init: options } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
+      ...hostTransport(this.services?.http, this.caCert),
     });
+    return answer.body;
   }
 
   /**
@@ -333,15 +342,16 @@ export class XaiClient implements PluginClient {
         "xAI plugin: this operation needs a management key. Add one under the account's credentials (console.x.ai → Settings → Management Keys).",
       );
     }
-    return jsonRestFetch<T>({
+    const answer = await restRequest<T>({
       vendor: "xAI Management",
       url: `${MANAGEMENT_BASE}${path}`,
       errorPath: path,
       headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+      httpError: ({ status, body }) => new XaiApiError("xAI Management", status, path, body),
       ...(options ? { init: options } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
+      ...hostTransport(this.services?.http, this.caCert),
     });
+    return answer.body;
   }
 
   /**
@@ -443,17 +453,25 @@ export class XaiClient implements PluginClient {
   }
 
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
+    // A sync prunes what this stops returning, so only a key that may not read a
+    // route counts as having none of its models.
+    const noModels = (err: unknown) => {
+      if (!keyCannotRead(err)) throw err;
+      return { models: [] };
+    };
+    const modelsIn = <T>(path: string, models: readonly T[]) =>
+      requireListPage(models, { vendor: "xAI", path, key: "models" });
     const [language, image, video, embedding] = await Promise.all([
       this.inference.get("/v1/language-models"),
-      this.inference.get("/v1/image-generation-models").catch(() => ({ models: [] })),
-      this.inference.get("/v1/video-generation-models").catch(() => ({ models: [] })),
-      this.inference.get("/v1/embedding-models").catch(() => ({ models: [] })),
+      this.inference.get("/v1/image-generation-models").catch(noModels),
+      this.inference.get("/v1/video-generation-models").catch(noModels),
+      this.inference.get("/v1/embedding-models").catch(noModels),
     ]);
 
     const now = new Date().toISOString();
     const rows: ResourceInstance[] = [];
 
-    for (const m of language.models ?? []) {
+    for (const m of modelsIn("/v1/language-models", language.models)) {
       rows.push(
         this.makeModel(accountId, now, m.id, "language", {
           ownedBy: m.owned_by ?? "",
@@ -478,7 +496,7 @@ export class XaiClient implements PluginClient {
       );
     }
 
-    for (const m of image.models ?? []) {
+    for (const m of modelsIn("/v1/image-generation-models", image.models)) {
       rows.push(
         this.makeModel(accountId, now, m.id, "image-generation", {
           ownedBy: m.owned_by ?? "",
@@ -495,7 +513,7 @@ export class XaiClient implements PluginClient {
       );
     }
 
-    for (const m of video.models ?? []) {
+    for (const m of modelsIn("/v1/video-generation-models", video.models)) {
       rows.push(
         this.makeModel(accountId, now, m.id, "video-generation", {
           ownedBy: m.owned_by ?? "",
@@ -509,7 +527,7 @@ export class XaiClient implements PluginClient {
       );
     }
 
-    for (const m of embedding.models ?? []) {
+    for (const m of modelsIn("/v1/embedding-models", embedding.models)) {
       rows.push(
         this.makeModel(accountId, now, m.id, "embedding", {
           ownedBy: m.owned_by ?? "",
@@ -731,11 +749,14 @@ export class XaiClient implements PluginClient {
 
   /** GET /v1/tts/voices */
   private async fetchBuiltInVoices(): Promise<XaiVoice[]> {
+    const path = "/v1/tts/voices";
     try {
-      const data = await this.fetch<{ voices?: XaiVoice[] }>("/v1/tts/voices");
-      const voices = data.voices ?? [];
+      const data = await this.fetch<{ voices?: XaiVoice[] }>(path);
+      const voices = requireListPage(data.voices, { vendor: "xAI", path, key: "voices" });
       return voices.length > 0 ? voices : FALLBACK_BUILTIN_VOICES;
-    } catch {
+    } catch (err) {
+      // This feeds the voice inventory, which a sync prunes: an outage must not shrink it.
+      if (!keyCannotRead(err)) throw err;
       return FALLBACK_BUILTIN_VOICES;
     }
   }
@@ -1137,7 +1158,7 @@ export class XaiClient implements PluginClient {
 
   private async speechVoiceOptions(): Promise<SpeechPanelOption[]> {
     const [builtIn, custom] = await Promise.all([
-      this.fetchBuiltInVoices(),
+      this.fetchBuiltInVoices().catch((): XaiVoice[] => FALLBACK_BUILTIN_VOICES),
       this.fetchCustomVoices().catch((): XaiCustomVoice[] => []),
     ]);
     const options: SpeechPanelOption[] = builtIn.map((v) => ({
