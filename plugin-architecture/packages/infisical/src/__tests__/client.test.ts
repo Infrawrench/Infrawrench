@@ -126,7 +126,7 @@ describe("auth", () => {
   it("attaches the HTTP status to API errors", async () => {
     const c = client(() => ({ status: 403, body: { message: "Permission denied" } }));
     const error = (await c.listResources("secret-sync", ACCOUNT).catch((e) => e)) as unknown;
-    // Per-project failures are tolerated in listings; a direct read surfaces the error.
+    // A project the identity cannot read is skipped in listings; a direct read surfaces the error.
     expect(error).toEqual([]);
     const direct = await c
       .getResource("machine-identity", `${ACCOUNT}:machine-identity:id-1`, ACCOUNT)
@@ -291,6 +291,140 @@ describe("listing", () => {
       },
     });
     expect(c.renderSidebarItem(sync!).status?.status).toBe("error");
+  });
+});
+
+describe("incomplete lists", () => {
+  const certProject = { ...PROJECT, id: "cert-1", slug: "pki", type: "cert-manager" };
+
+  /** `client`, with a certificate project alongside the secret one. */
+  function certClient(handler: (call: Call) => { status?: number; body: unknown }) {
+    return hostClient(
+      new InfisicalClient(
+        { siteUrl: "eu.infisical.com", clientId: "cid", clientSecret: "csecret" },
+        services((call) => {
+          if (call.url.endsWith("/universal-auth/login")) return { body: LOGIN };
+          if (call.url.endsWith("/api/v1/projects")) return { body: { projects: [certProject] } };
+          return handler(call);
+        }),
+      ),
+    );
+  }
+
+  it("reads certificate authorities past the first page", async () => {
+    const c = certClient((call) => {
+      const offset = Number(new URL(call.url).searchParams.get("offset"));
+      if (offset === 0)
+        return {
+          body: { cas: Array.from({ length: 100 }, (_, i) => ({ id: `ca-${i}`, name: "n" })) },
+        };
+      return { body: { cas: [{ id: "ca-last", name: "n" }] } };
+    });
+    expect(await c.listResources("certificate-authority", ACCOUNT)).toHaveLength(101);
+  });
+
+  it("fails rather than truncate certificate authorities at the cap", async () => {
+    const c = certClient(() => ({
+      body: { cas: Array.from({ length: 100 }, (_, i) => ({ id: `ca-${i}`, name: "n" })) },
+    }));
+    await expect(c.listResources("certificate-authority", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((x) => x.url.includes("/cas"))).toHaveLength(100);
+  });
+
+  it("reads 50,000 certificates, and fails rather than truncate past that", async () => {
+    const c = certClient((call) => {
+      const { offset }: { offset: number } = JSON.parse(call.body!);
+      return {
+        body: {
+          certificates: Array.from({ length: 100 }, (_, i) => ({ id: `c-${offset + i}` })),
+          totalCount: 60_000,
+        },
+      };
+    });
+    await expect(c.listResources("certificate", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((x) => x.url.includes("/certificates/search"))).toHaveLength(500);
+  });
+
+  it("stops at the total the certificate search reports", async () => {
+    const c = certClient(() => ({
+      body: {
+        certificates: Array.from({ length: 100 }, (_, i) => ({ id: `c-${i}` })),
+        totalCount: 100,
+      },
+    }));
+    expect(await c.listResources("certificate", ACCOUNT)).toHaveLength(100);
+    expect(calls.filter((x) => x.url.includes("/certificates/search"))).toHaveLength(1);
+  });
+
+  it("rejects a certificate page with its key renamed, first and later", async () => {
+    const renamed = certClient(() => ({ body: { items: [] } }));
+    await expect(renamed.listResources("certificate", ACCOUNT)).rejects.toThrow("is not a list");
+
+    calls = [];
+    const later = certClient((call) => {
+      const { offset }: { offset: number } = JSON.parse(call.body!);
+      if (offset > 0) return { body: { items: [] } };
+      return { body: { certificates: Array.from({ length: 100 }, (_, i) => ({ id: `c-${i}` })) } };
+    });
+    await expect(later.listResources("certificate", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["project", "/api/v1/projects"],
+    ["folder", "/api/v2/folders"],
+    ["secret", "/api/v4/secrets"],
+    ["dynamic-secret", "/api/v1/dynamic-secrets"],
+    ["secret-sync", "/api/v1/secret-syncs"],
+    ["integration", "/integrations"],
+    ["machine-identity", "/api/v1/identities"],
+  ])("rejects a %s list with its key renamed, through every catch", async (typeId, route) => {
+    const c = hostClient(
+      new InfisicalClient(
+        { siteUrl: "eu.infisical.com", clientId: "cid", clientSecret: "csecret" },
+        services((call) => {
+          const path = new URL(call.url).pathname;
+          if (path.endsWith("/universal-auth/login")) return { body: LOGIN };
+          if (path.endsWith(route)) return { body: { renamed: [] } };
+          if (path === "/api/v1/projects") return { body: { projects: [PROJECT] } };
+          if (path === "/api/v2/folders") return { body: { folders: [] } };
+          if (path === "/api/v1/identities/details") {
+            return { body: { identityDetails: { organization: { id: "org-1" } } } };
+          }
+          return { body: {} };
+        }),
+      ),
+    );
+    await expect(c.listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("fails a listing on a server error, which is not an empty project", async () => {
+    const c = client(() => ({ status: 500, body: { message: "boom" } }));
+    await expect(c.listResources("integration", ACCOUNT)).rejects.toThrow(/500/);
+    await expect(c.listResources("secret", ACCOUNT)).rejects.toThrow(/500/);
+  });
+
+  it("does not read a failed folder listing as a project with only a root", async () => {
+    const c = client((call) => {
+      if (call.url.includes("/api/v2/folders")) return { status: 500, body: { message: "boom" } };
+      return { body: { dynamicSecrets: [] } };
+    });
+    await expect(c.listResources("dynamic-secret", ACCOUNT)).rejects.toThrow(/500/);
+  });
+
+  it("keeps the rest of an environment when one dynamic secret path is denied", async () => {
+    const c = client((call) => {
+      if (call.url.includes("/api/v2/folders"))
+        return { body: { folders: [{ id: "f1", name: "db", relativePath: "/" }] } };
+      if (new URL(call.url).searchParams.get("path") === "/db")
+        return { status: 403, body: { message: "denied" } };
+      return { body: { dynamicSecrets: [{ id: "ds1", name: "root" }] } };
+    });
+    const list = await c.listResources("dynamic-secret", ACCOUNT);
+    expect(list.map((d) => d.fields["path"])).toEqual(["/", "/"]);
   });
 });
 

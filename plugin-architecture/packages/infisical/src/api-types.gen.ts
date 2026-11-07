@@ -322,6 +322,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/identities/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["searchMachineIdentities"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integration/{integrationId}": {
         parameters: {
             query?: never;
@@ -492,6 +508,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["createEnvironment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/environments/{envId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEnvironmentById"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2298,6 +2330,105 @@ export interface operations {
             };
         };
     };
+    searchMachineIdentities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @default 50 */
+                    limit?: number;
+                    /** @default 0 */
+                    offset?: number;
+                    /**
+                     * @default name
+                     * @enum {string}
+                     */
+                    orderBy?: "name" | "role";
+                    /**
+                     * @default asc
+                     * @enum {string}
+                     */
+                    orderDirection?: "asc" | "desc";
+                    search?: {
+                        $or?: {
+                            name?: string | {
+                                $contains?: string;
+                                $eq?: string;
+                                $in?: string[];
+                            };
+                            role?: string | {
+                                $eq?: string;
+                                $in?: string[];
+                            };
+                        }[];
+                        name?: string | {
+                            $contains?: string;
+                            $eq?: string;
+                            $in?: string[];
+                        };
+                        role?: string | {
+                            $eq?: string;
+                            $in?: string[];
+                        };
+                    };
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        identities: {
+                            /** Format: date-time */
+                            createdAt: string;
+                            customRole?: {
+                                description?: string | null;
+                                /** Format: uuid */
+                                id: string;
+                                name: string;
+                                permissions?: unknown;
+                                slug: string;
+                            };
+                            /** Format: uuid */
+                            id: string;
+                            identity: {
+                                activeLockoutAuthMethods: string[];
+                                authMethods: string[];
+                                /** @default false */
+                                hasDeleteProtection?: boolean;
+                                /** Format: uuid */
+                                id: string;
+                                name: string;
+                                /** Format: uuid */
+                                orgId: string;
+                            };
+                            /** Format: uuid */
+                            identityId: string;
+                            lastLoginAuthMethod?: string | null;
+                            /** Format: date-time */
+                            lastLoginTime?: string | null;
+                            /** Format: uuid */
+                            orgId: string;
+                            role: string;
+                            /** Format: uuid */
+                            roleId?: string | null;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                        totalCount: number;
+                    };
+                };
+            };
+        };
+    };
     getIntegration: {
         parameters: {
             query?: never;
@@ -2882,6 +3013,30 @@ export interface operations {
             };
         };
         responses: responses_6c241af6;
+    };
+    getEnvironmentById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                envId: string;
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        environment: environment_b780dd6b;
+                    };
+                };
+            };
+        };
     };
     deleteEnvironment: {
         parameters: {
@@ -3676,6 +3831,26 @@ type ca_fca6235d = {
     /** Format: date-time */
     updatedAt: string;
 };
+type environment_b780dd6b = {
+    /** Format: date-time */
+    createdAt: string;
+    /** Format: date-time */
+    deleteAfter?: string | null;
+    /** Format: uuid */
+    deletedByIdentityId?: string | null;
+    /** Format: uuid */
+    deletedByUserId?: string | null;
+    /** Format: uuid */
+    id: string;
+    name: string;
+    position: number;
+    projectId: string;
+    slug: string;
+    /** Format: date-time */
+    softDeletedAt?: string | null;
+    /** Format: date-time */
+    updatedAt: string;
+};
 type getCertificateAuthorityV1_c3da20fd = {
     parameters: {
         query?: never;
@@ -3950,26 +4125,7 @@ type responses_6c241af6 = {
         };
         content: {
             "application/json": {
-                environment: {
-                    /** Format: date-time */
-                    createdAt: string;
-                    /** Format: date-time */
-                    deleteAfter?: string | null;
-                    /** Format: uuid */
-                    deletedByIdentityId?: string | null;
-                    /** Format: uuid */
-                    deletedByUserId?: string | null;
-                    /** Format: uuid */
-                    id: string;
-                    name: string;
-                    position: number;
-                    projectId: string;
-                    slug: string;
-                    /** Format: date-time */
-                    softDeletedAt?: string | null;
-                    /** Format: date-time */
-                    updatedAt: string;
-                };
+                environment: environment_b780dd6b;
                 message: string;
                 projectId: string;
             };

@@ -6,6 +6,7 @@ import {
   type HostServices,
   type HttpHostServices,
   type ParamValue,
+  withCursorPagination,
 } from "@infrawrench/plugin-base";
 import type { operations, paths } from "./api-types.gen.js";
 import { apiError, sendRaw, type RawRequest, type RawResponse } from "./http.js";
@@ -25,7 +26,25 @@ export const DEFAULT_SITE_URL = "https://app.infisical.com";
 /** Refresh the access token this long before Infisical says it expires. */
 const TOKEN_SKEW_MS = 60_000;
 
+/** The largest `limit` Infisical's document allows on its offset lists. */
+const PAGE_SIZE = 100;
+/** 10,000 rows. */
+const MAX_PAGES = 100;
+
 type Login = operations["loginWithUniversalAuth"];
+
+function withOffsetLists(rest: ApiClient<paths>) {
+  return withCursorPagination(rest, {
+    cursorParam: "offset",
+    firstCursor: 0,
+    sizeParam: "limit",
+    pageSize: PAGE_SIZE,
+    maxPages: MAX_PAGES,
+    next: ({ cursor }) => Number(cursor) + PAGE_SIZE,
+    stopOnShortPage: true,
+    total: "totalCount",
+  });
+}
 
 export interface InfisicalCredentials {
   siteUrl: string;
@@ -63,6 +82,8 @@ export function normalizeSiteUrl(raw: string): string {
 export class InfisicalApi {
   /** Every call but the login: signed in, and retried once with a fresh token on a 401. */
   readonly rest: ApiClient<paths>;
+  /** `rest`, plus `getAll` for the routes that page by `limit` and `offset`. */
+  readonly lists: ReturnType<typeof withOffsetLists>;
   private token: { value: string; expiresAt: number } | null = null;
   private login: Promise<string> | null = null;
 
@@ -80,6 +101,7 @@ export class InfisicalApi {
       serializeQuery: buildQuery,
       httpError: ({ status, path, body }) => apiError(status, path, body),
     });
+    this.lists = withOffsetLists(this.rest);
   }
 
   get siteUrl(): string {

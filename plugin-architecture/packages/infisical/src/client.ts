@@ -18,7 +18,12 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  ListTruncatedError,
+  pathEncode,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import { InfisicalApi, readCredentials } from "./api.js";
 import { messageOf, statusOf } from "./http.js";
 import type {
@@ -55,11 +60,20 @@ import { renderDetail, renderSidebarItem } from "./render.js";
 
 const PLUGIN_ID = "infisical";
 
+const VENDOR = "Infisical";
+
 /** Cap on audit-log pages (1000 events each) read for one metrics window. */
 const MAX_AUDIT_PAGES = 5;
 const AUDIT_PAGE_SIZE = 1000;
-/** Cap on folder paths probed for dynamic secrets per environment. */
+/**
+ * Cap on folder paths probed for dynamic secrets per environment. Each path is its own
+ * request on every sync, and Infisical Cloud allows 200 reads a minute on its free plan,
+ * so this stays well under what raising it to the usual 1,000 would need.
+ */
 const MAX_DYNAMIC_SECRET_PATHS = 40;
+const CERTIFICATE_PAGE_SIZE = 100;
+/** 50,000 rows: certificates are short-lived, so a project can hold many. */
+const MAX_CERTIFICATE_PAGES = 500;
 /** The Metrics tab's default window. */
 export const METRICS_DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
 const METRIC_BUCKETS = 48;
@@ -136,6 +150,16 @@ function split(externalId: string, parts: number, what: string): string[] {
   return out;
 }
 
+/**
+ * The answer that means an identity sees none of something: it has no access, or the
+ * thing went away mid-sync. Anything else leaves the list unknown, and reading that as
+ * empty would prune everything stored under it.
+ */
+function meansNone(error: unknown): boolean {
+  const status = statusOf(error);
+  return status === 403 || status === 404;
+}
+
 function notFound(what: string, id: string): Error {
   return Object.assign(new Error(`Infisical plugin: ${what} "${id}" not found`), { status: 404 });
 }
@@ -167,7 +191,10 @@ export class InfisicalClient implements PluginClient {
 
   async projects(): Promise<InfProject[]> {
     if (!this.projectsCache || Date.now() - this.projectsCache.at > 60_000) {
-      const value = this.api.rest.get("/api/v1/projects").then((body) => body.projects ?? []);
+      const path = "/api/v1/projects";
+      const value = this.api.rest
+        .get(path)
+        .then((body) => requireListPage(body.projects, { vendor: VENDOR, path, key: "projects" }));
       value.catch(() => {
         this.projectsCache = null;
       });
@@ -213,7 +240,10 @@ export class InfisicalClient implements PluginClient {
     return this.syncOptionsCache;
   }
 
-  /** Run `load` per item, tolerating per-item failures (one unreadable project must not empty a listing). */
+  /**
+   * Run `load` per item. One project the identity cannot read must not empty a listing, but
+   * any other failure must fail it: its rows would be read as deleted.
+   */
   private async each<I, T>(
     items: I[],
     label: (item: I) => string,
@@ -223,10 +253,11 @@ export class InfisicalClient implements PluginClient {
     const out: T[] = [];
     settled.forEach((result, index) => {
       if (result.status === "fulfilled") out.push(...result.value);
-      else
+      else if (meansNone(result.reason))
         console.warn(
           `Infisical plugin: skipping ${label(items[index]!)}: ${String(result.reason)}`,
         );
+      else throw result.reason;
     });
     return out;
   }
@@ -238,14 +269,16 @@ export class InfisicalClient implements PluginClient {
   }
 
   private async foldersIn(projectId: string, env: string): Promise<InfFolder[]> {
-    const body = await this.api.rest.get("/api/v2/folders", {
+    const path = "/api/v2/folders";
+    const body = await this.api.rest.get(path, {
       query: { projectId, environment: env, path: "/", recursive: true },
     });
-    return body.folders ?? [];
+    return requireListPage(body.folders, { vendor: VENDOR, path, key: "folders" });
   }
 
   private async secretsIn(projectId: string, env: string, path = "/", recursive = true) {
-    const body = await this.api.rest.get("/api/v4/secrets", {
+    const route = "/api/v4/secrets";
+    const body = await this.api.rest.get(route, {
       query: {
         projectId,
         environment: env,
@@ -256,53 +289,68 @@ export class InfisicalClient implements PluginClient {
         includeImports: "false",
       },
     });
-    return body.secrets ?? [];
+    return requireListPage(body.secrets, { vendor: VENDOR, path: route, key: "secrets" });
   }
 
   private async dynamicSecretsAt(projectSlug: string, env: string, path: string) {
-    const body = await this.api.rest.get("/api/v1/dynamic-secrets", {
+    const route = "/api/v1/dynamic-secrets";
+    const body = await this.api.rest.get(route, {
       query: { projectSlug, environmentSlug: env, path },
     });
-    return body.dynamicSecrets ?? [];
+    return requireListPage(body.dynamicSecrets, {
+      vendor: VENDOR,
+      path: route,
+      key: "dynamicSecrets",
+    });
   }
 
   private async syncsIn(projectId: string): Promise<InfSecretSync[]> {
-    const body = await this.api.rest.get("/api/v1/secret-syncs", { query: { projectId } });
-    return body.secretSyncs ?? [];
+    const path = "/api/v1/secret-syncs";
+    const body = await this.api.rest.get(path, { query: { projectId } });
+    return requireListPage(body.secretSyncs, { vendor: VENDOR, path, key: "secretSyncs" });
   }
 
   private async identities(): Promise<InfIdentityMembership[]> {
     const orgId = await this.orgId();
-    const body = await this.api.rest.get("/api/v1/identities", { query: { orgId } });
-    return body.identities ?? [];
+    const path = "/api/v1/identities";
+    const body = await this.api.rest.get(path, { query: { orgId } });
+    return requireListPage(body.identities, { vendor: VENDOR, path, key: "identities" });
   }
 
+  /**
+   * Infisical's source refuses an offset past 100 on this route, so a project with more than
+   * 200 certificate authorities fails with its 400 here rather than reading short.
+   */
   private async casIn(projectId: string): Promise<InfCa[]> {
-    const out: InfCa[] = [];
-    for (let offset = 0; offset < 1000; offset += 100) {
-      const body = await this.api.rest.get(`/api/v1/projects/${pathEncode(projectId)}/cas`, {
-        query: { offset, limit: 100 },
-      });
-      const page = body.cas ?? [];
-      out.push(...page);
-      if (page.length < 100) break;
-    }
-    return out;
+    return this.api.lists.getAll(`/api/v1/projects/${pathEncode(projectId)}/cas`, "cas");
   }
 
   private async certificatesIn(projectId: string): Promise<InfCertificate[]> {
+    const path = `/api/v1/projects/${pathEncode(projectId)}/certificates/search` as const;
     const out: InfCertificate[] = [];
-    for (let offset = 0; offset < 2000; offset += 100) {
-      const body = await this.api.rest.post(
-        `/api/v1/projects/${pathEncode(projectId)}/certificates/search`,
-        { body: { offset, limit: 100 } },
-      );
-      const page = body.certificates ?? [];
-      out.push(...page);
-      if (page.length < 100 || (body.totalCount !== undefined && out.length >= body.totalCount))
-        break;
+    for (let page = 0; page < MAX_CERTIFICATE_PAGES; page++) {
+      const body = await this.api.rest.post(path, {
+        body: { offset: page * CERTIFICATE_PAGE_SIZE, limit: CERTIFICATE_PAGE_SIZE },
+      });
+      const rows = requireListPage(body.certificates, {
+        vendor: VENDOR,
+        path,
+        key: "certificates",
+      });
+      out.push(...rows);
+      if (
+        rows.length < CERTIFICATE_PAGE_SIZE ||
+        (body.totalCount !== undefined && out.length >= body.totalCount)
+      ) {
+        return out;
+      }
     }
-    return out;
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path,
+      items: out.length,
+      maxPages: MAX_CERTIFICATE_PAGES,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -342,15 +390,24 @@ export class InfisicalClient implements PluginClient {
             ({ project, env }) => `${str(project.slug)}/${str(env.slug)}`,
             async ({ project, env }) => {
               const folders = await this.foldersIn(str(project.id), str(env.slug)).catch(
-                (): InfFolder[] => [],
+                (error: unknown): InfFolder[] => {
+                  if (meansNone(error)) return [];
+                  throw error;
+                },
               );
               const paths = ["/", ...folders.map(folderPath)].slice(0, MAX_DYNAMIC_SECRET_PATHS);
               const found = await Promise.all(
-                paths.map(async (path) =>
-                  (await this.dynamicSecretsAt(str(project.slug), str(env.slug), path)).map((ds) =>
-                    this.mapDynamicSecret(accountId, project, env, path, ds),
-                  ),
-                ),
+                paths.map(async (path) => {
+                  const here = await this.dynamicSecretsAt(
+                    str(project.slug),
+                    str(env.slug),
+                    path,
+                  ).catch((error: unknown): InfDynamicSecret[] => {
+                    if (meansNone(error)) return [];
+                    throw error;
+                  });
+                  return here.map((ds) => this.mapDynamicSecret(accountId, project, env, path, ds));
+                }),
               );
               return found.flat();
             },
@@ -369,12 +426,13 @@ export class InfisicalClient implements PluginClient {
             await this.secretProjects(),
             (p) => str(p.slug),
             async (p) => {
-              const body = await this.api.rest.get(
-                `/api/v1/projects/${pathEncode(str(p.id))}/integrations`,
-              );
-              return (body.integrations ?? []).map((i) =>
-                this.mapIntegration(accountId, str(p.id), i),
-              );
+              const path = `/api/v1/projects/${pathEncode(str(p.id))}/integrations` as const;
+              const body = await this.api.rest.get(path);
+              return requireListPage(body.integrations, {
+                vendor: VENDOR,
+                path,
+                key: "integrations",
+              }).map((i) => this.mapIntegration(accountId, str(p.id), i));
             },
           );
         case "machine-identity":
@@ -958,7 +1016,11 @@ export class InfisicalClient implements PluginClient {
       const body = await this.api.rest.get("/api/v1/organization/audit-logs", {
         query: { ...query, offset: page * Number(query["limit"] ?? AUDIT_PAGE_SIZE) },
       });
-      const items = body.auditLogs ?? [];
+      const items = requireListPage(body.auditLogs, {
+        vendor: VENDOR,
+        path: "/api/v1/organization/audit-logs",
+        key: "auditLogs",
+      });
       out.push(...items);
       if (items.length < Number(query["limit"] ?? AUDIT_PAGE_SIZE)) break;
     }
