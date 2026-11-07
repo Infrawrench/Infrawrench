@@ -197,3 +197,41 @@ describe("a job read in full", () => {
     expect(job.fields["parameterized"]).toBe(false);
   });
 });
+
+describe("a node read in full", () => {
+  const full = {
+    ID: "n1",
+    Name: "client-1",
+    HTTPAddr: "10.0.0.5:4646",
+    Attributes: { "nomad.version": "1.9.3" },
+  };
+  const route = (node: Record<string, unknown>) => (call: Call) =>
+    call.url.pathname.endsWith("/allocations") ? [] : node;
+
+  it("has the address and version a list row has", async () => {
+    const { c } = client(route(full));
+    const node = await c.getResource("nomad-node", "acct:nomad-node:n1", ACCOUNT);
+    expect(node.fields).toMatchObject({ address: "10.0.0.5", version: "1.9.3" });
+    expect(node.resolvedOutputs["address"]).toBe("10.0.0.5");
+  });
+
+  it("resolves the address output", async () => {
+    const { c } = client(route(full));
+    expect(await c.resolveOutput("nomad-node", "acct:nomad-node:n1", "address", ACCOUNT)).toBe(
+      "10.0.0.5",
+    );
+  });
+
+  it("takes an IPv6 address out of its brackets", async () => {
+    const { c } = client(route({ ...full, HTTPAddr: "[fd00::5]:4646" }));
+    const node = await c.getResource("nomad-node", "acct:nomad-node:n1", ACCOUNT);
+    expect(node.fields["address"]).toBe("fd00::5");
+  });
+
+  it("leaves a listed node's address and version as they came", async () => {
+    const { c } = client(() => [{ ID: "n1", Address: "10.0.0.9", Version: "1.8.0" }]);
+    const [node] = await c.listResources("nomad-node", ACCOUNT);
+    expect(node!.fields).toMatchObject({ address: "10.0.0.9", version: "1.8.0" });
+    expect(node!.resolvedOutputs["address"]).toBe("10.0.0.9");
+  });
+});

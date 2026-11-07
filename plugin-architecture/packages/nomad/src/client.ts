@@ -47,6 +47,7 @@ import {
   mapVariable,
   mapVolume,
   metaText,
+  nodeRow,
   parseMeta,
 } from "./mappers.js";
 import { COMMANDS, renderNomadDetail, renderNomadSidebar } from "./render.js";
@@ -473,7 +474,11 @@ export class NomadClient implements PluginClient {
             this.api.get(`/node/${pathEncode(id)}`),
             this.soft(this.api.get(`/node/${pathEncode(id)}/allocations`)),
           ]);
-          return mapNode(accountId, n, allocs?.filter((a) => a.ClientStatus === "running").length);
+          return mapNode(
+            accountId,
+            nodeRow(n),
+            allocs?.filter((a) => a.ClientStatus === "running").length,
+          );
         }
         case "nomad-job": {
           const [ns, jobId] = splitId(id, 2);

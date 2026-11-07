@@ -35,6 +35,23 @@ export type Deployment = ApiResponse<operations["GetDeployment"]>;
 
 export type NodeStub = ApiListItem<operations["GetNodes"], null>;
 
+type Node = ApiResponse<operations["GetNode"]>;
+
+/** `net.SplitHostPort`, which an IPv6 address needs: its brackets go and its colons stay. */
+function hostOf(addr: string): string {
+  return /^\[(.+)\]:\d+$/.exec(addr)?.[1] ?? /^([^:]+):\d+$/.exec(addr)?.[1] ?? addr;
+}
+
+/** What Nomad's own `Node.Stub()` makes of a full node, which has neither field a list row has. */
+export function nodeRow(node: Node): NodeStub {
+  const version = node.Attributes?.["nomad.version"];
+  return {
+    ...node,
+    ...(node.HTTPAddr ? { Address: hostOf(node.HTTPAddr) } : {}),
+    ...(version ? { Version: version } : {}),
+  };
+}
+
 export type Variable = ApiResponse<operations["GetVariableQuery"]>;
 
 export type AclToken = ApiResponse<operations["GetACLToken"]>;
