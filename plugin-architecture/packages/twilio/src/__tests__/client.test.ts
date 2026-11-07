@@ -245,6 +245,67 @@ describe("messaging services behind the phone numbers", () => {
       await expect(c.listResources("phone-number", ACCOUNT)).resolves.toHaveLength(1);
     },
   );
+
+  const finding = async (route: Parameters<typeof client>[0]) => {
+    const { c } = client(route, true);
+    const [number] = await c.listResources("phone-number", ACCOUNT);
+    return evaluateOrphanRule(PhoneNumberResourceType.orphanRule, number!.fields);
+  };
+  const numbers = (url: URL): Reply =>
+    url.pathname.endsWith("/IncomingPhoneNumbers.json")
+      ? { body: page("incoming_phone_numbers", [NUMBER]) }
+      : { status: 404 };
+
+  it("reports no orphan when the credential may not list services", async () => {
+    const reason = await finding((url) =>
+      url.pathname === "/v1/Services"
+        ? { status: 403, body: { message: "denied", code: 20003 } }
+        : numbers(url),
+    );
+    expect(reason).toBeNull();
+  });
+
+  it("reports no orphan when one service's numbers are closed to the credential", async () => {
+    const reason = await finding((url) => {
+      if (url.pathname === "/v1/Services") {
+        return { body: { services: SERVICES(2), meta: {} } };
+      }
+      if (url.pathname === "/v1/Services/MG1/PhoneNumbers") {
+        return { status: 401, body: { message: "denied" } };
+      }
+      if (url.pathname.endsWith("/PhoneNumbers")) {
+        return { body: { phone_numbers: [], meta: {} } };
+      }
+      return numbers(url);
+    });
+    expect(reason).toBeNull();
+  });
+
+  it("does not give a denied service a count of none", async () => {
+    const { c } = services(SERVICES(1), () => ({ status: 403, body: { message: "no" } }));
+    const [service] = await c.listResources("messaging-service", ACCOUNT);
+    expect(service?.fields).not.toHaveProperty("senderCount");
+  });
+
+  it("still reports an orphan when every service was read", async () => {
+    const reason = await finding((url) => {
+      if (url.pathname === "/v1/Services") return { body: { services: SERVICES(1), meta: {} } };
+      if (url.pathname.endsWith("/PhoneNumbers")) {
+        return { body: { phone_numbers: [], meta: {} } };
+      }
+      return numbers(url);
+    });
+    expect(reason).toMatch(/billed/);
+  });
+
+  it("still reports an orphan when a service was removed mid-read", async () => {
+    const reason = await finding((url) => {
+      if (url.pathname === "/v1/Services") return { body: { services: SERVICES(1), meta: {} } };
+      if (url.pathname.endsWith("/PhoneNumbers")) return { status: 404 };
+      return numbers(url);
+    });
+    expect(reason).toMatch(/billed/);
+  });
 });
 
 describe("the subaccount list behind cost data", () => {

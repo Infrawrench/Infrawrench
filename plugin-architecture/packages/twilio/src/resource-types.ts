@@ -128,6 +128,7 @@ export const PhoneNumberResourceType = rt({
     f("trunkSid", "SIP Trunk", { required: false, editable: false }),
     f("messagingServiceSid", "Messaging Service", { required: false, editable: false }),
     f("messagingServiceName", "Messaging Service Name", { required: false, editable: false }),
+    f("messagingServiceUnread", "Messaging Service Lookup", { required: false, editable: false }),
     f("subaccountSid", "Subaccount", { required: false, editable: false }),
     f("subaccountName", "Subaccount Name", { required: false, editable: false }),
     f("ownerAccountSid", "Owner Account SID", { required: false, editable: false }),
@@ -152,6 +153,9 @@ export const PhoneNumberResourceType = rt({
       { fieldKey: "smsApplicationSid", when: "empty" },
       { fieldKey: "trunkSid", when: "empty" },
       { fieldKey: "messagingServiceSid", when: "empty" },
+      // Set when membership could not be read: an empty service then proves nothing,
+      // and this finding sits next to a command that releases the number.
+      { fieldKey: "messagingServiceUnread", when: "empty" },
     ],
     reason:
       "Phone number has no voice or messaging webhook, TwiML app, SIP trunk or messaging service, so nothing answers it, but it is still billed every month",

@@ -132,6 +132,8 @@ export interface PhoneNumberContext {
   subaccountNames: Map<string, string>;
   /** Phone number SID → messaging service it is a sender in. */
   messagingServiceOf: Map<string, { sid: string; name: string }>;
+  /** False when that map may be missing services the credential was denied. */
+  membershipComplete: boolean;
   isoCountry?: string;
   monthlyPrice?: number;
   priceUnit?: string;
@@ -187,6 +189,8 @@ export function mapPhoneNumber(
       trunkSid: p.trunk_sid ?? "",
       messagingServiceSid: service?.sid ?? "",
       messagingServiceName: service?.name,
+      messagingServiceUnread:
+        service || ctx.membershipComplete ? "" : "This credential may not read messaging services",
       ownerAccountSid: owner,
       subaccountSid: owner && owner !== ctx.mainAccountSid ? owner : "",
       subaccountName: owner !== ctx.mainAccountSid ? ctx.subaccountNames.get(owner) : undefined,

@@ -77,6 +77,13 @@ const SID = {
   key: /^SK[0-9a-fA-F]{32}$/,
 };
 
+/** Messaging services and their numbers, keyed by phone number SID and `service:{sid}`. */
+interface ServiceMembership {
+  of: Map<string, { sid: string; name: string; count: number }>;
+  /** False when the credential was denied any of it, so no number's absence means anything. */
+  complete: boolean;
+}
+
 interface Cached<T> {
   at: number;
   value: Promise<T>;
@@ -177,8 +184,7 @@ export const usageTriggerForm = (fields: Fields): ApiForm<V2010Ops["UpdateUsageT
 export class TwilioClient implements PluginClient {
   private readonly ctx: TwilioContext;
   private subaccountCache: Cached<TwAccount[] | null> | undefined;
-  private membershipCache:
-    Cached<Map<string, { sid: string; name: string; count: number }>> | undefined;
+  private membershipCache: Cached<ServiceMembership> | undefined;
   private readonly priceCache = new Map<string, Promise<CountryNumberPrices | null>>();
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -262,18 +268,18 @@ export class TwilioClient implements PluginClient {
     );
   }
 
-  /** Messaging services with the phone numbers in each, keyed by phone number SID. */
-  private messagingMembership(): Promise<
-    Map<string, { sid: string; name: string; count: number }>
-  > {
+  /** Messaging services with the phone numbers in each. */
+  private messagingMembership(): Promise<ServiceMembership> {
     if (this.membershipCache && Date.now() - this.membershipCache.at < CACHE_MS) {
       return this.membershipCache.value;
     }
     const value = (async () => {
       const out = new Map<string, { sid: string; name: string; count: number }>();
+      let complete = true;
       const services = await this.fetchMessagingServices().catch((err) => {
-        if (isAccessDenied(err)) return [];
-        throw err;
+        if (!isAccessDenied(err)) throw err;
+        complete = false;
+        return [];
       });
       const readable = withinListCap(services, MAX_MESSAGING_SERVICES, {
         vendor: "Twilio",
@@ -284,10 +290,15 @@ export class TwilioClient implements PluginClient {
         const numbers = await messaging(this.ctx)
           .getAll(`/v1/Services/${pathEncode(s.sid)}/PhoneNumbers`, "phone_numbers")
           .catch((err: unknown) => {
-            // Removed since the list was read, or closed to this credential.
-            if (isAccessDenied(err) || statusOf(err) === 404) return [];
+            // Removed since the list was read.
+            if (statusOf(err) === 404) return [];
+            if (isAccessDenied(err)) return null;
             throw err;
           });
+        if (!numbers) {
+          complete = false;
+          return;
+        }
         out.set(`service:${s.sid}`, {
           sid: s.sid,
           name: s.friendly_name ?? s.sid,
@@ -298,7 +309,7 @@ export class TwilioClient implements PluginClient {
             out.set(n.sid, { sid: s.sid, name: s.friendly_name ?? s.sid, count: numbers.length });
         }
       });
-      return out;
+      return { of: out, complete };
     })();
     this.membershipCache = { at: Date.now(), value };
     return value;
@@ -353,7 +364,7 @@ export class TwilioClient implements PluginClient {
               this.messagingMembership(),
             ]);
             return services.map((s) =>
-              mapMessagingService(accountId, s, membership.get(`service:${s.sid}`)?.count),
+              mapMessagingService(accountId, s, membership.of.get(`service:${s.sid}`)?.count),
             );
           });
         case "verify-service":
@@ -474,7 +485,8 @@ export class TwilioClient implements PluginClient {
       return mapPhoneNumber(accountId, n, {
         mainAccountSid: this.ctx.accountSid,
         subaccountNames,
-        messagingServiceOf: membership,
+        messagingServiceOf: membership.of,
+        membershipComplete: membership.complete,
         ...(iso ? { isoCountry: iso } : {}),
         ...(price !== undefined
           ? { monthlyPrice: price, priceUnit: table?.priceUnit ?? "USD" }
@@ -535,7 +547,7 @@ export class TwilioClient implements PluginClient {
             messaging(this.ctx).get(`/v1/Services/${pathEncode(id)}`),
             this.messagingMembership(),
           ]);
-          return mapMessagingService(accountId, s, membership.get(`service:${id}`)?.count);
+          return mapMessagingService(accountId, s, membership.of.get(`service:${id}`)?.count);
         }
         case "twiml-app":
           return mapApplication(
