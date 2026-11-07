@@ -20,7 +20,8 @@ import { clickhouseRemediationCommands } from "./remediation.js";
 
 export const manifest = {
   id: "clickhouse",
-  egressHosts: [],
+  // The Cloud API, and a service's SQL endpoint such as abc123.us-east-1.aws.clickhouse.cloud.
+  egressHosts: ["*.clickhouse.cloud"],
   displayName: "ClickHouse",
   description:
     "Manage ClickHouse Cloud: services, ClickPipes, backups, Managed Postgres, API keys and members. Create, scale, and query your ClickHouse databases.",

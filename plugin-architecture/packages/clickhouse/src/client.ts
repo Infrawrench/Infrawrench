@@ -1,6 +1,7 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
+import { hostFetch } from "@infrawrench/plugin-base";
 import { createClient, type ClickHouseClient as ClickHouseSdkClient } from "@clickhouse/client-web";
 import type {
   ActionNode,
@@ -175,6 +176,17 @@ export class ClickHouseClient implements PluginClient {
     }
   }
 
+  /** The SDK's requests, through the host's HTTP service when it has one. */
+  private get sdkTransport(): { fetch?: typeof fetch } {
+    const http = this.services?.http;
+    if (!http) return {};
+    const transport = { http, caCert: this.caCert };
+    return {
+      fetch: (input, init) =>
+        hostFetch(transport, input instanceof Request ? input.url : String(input), init),
+    };
+  }
+
   private makeSdkClient(rawHost: string): ClickHouseSdkClient | null {
     const url = this.normalizeChUrl(rawHost);
     if (!url) return null;
@@ -183,6 +195,7 @@ export class ClickHouseClient implements PluginClient {
       username: this.chUser,
       password: this.chPassword,
       request_timeout: SQL_REQUEST_TIMEOUT_MS,
+      ...this.sdkTransport,
     });
   }
 
@@ -198,6 +211,7 @@ export class ClickHouseClient implements PluginClient {
           password: this.chPassword,
           request_timeout: requestTimeoutMs,
           ...(database ? { database } : {}),
+          ...this.sdkTransport,
         });
       },
     };
