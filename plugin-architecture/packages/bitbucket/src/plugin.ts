@@ -7,7 +7,7 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import type { BitbucketContext } from "./api.js";
-import { bitbucketClients, capped, isPermissionError } from "./api.js";
+import { PICKER_PAGES, bitbucketClients, isPermissionError } from "./api.js";
 import { BitbucketClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { bitbucketRemediationCommands } from "./remediation.js";
@@ -85,11 +85,10 @@ async function listCredentialOptions(
     ...(services?.http ? { http: services.http } : {}),
   };
   try {
-    const access = await bitbucketClients(ctx).lists.getAll(
-      "/user/workspaces",
-      "values",
-      capped(5),
-    );
+    const access = await bitbucketClients(ctx).lists.getAll("/user/workspaces", "values", {
+      maxPages: PICKER_PAGES,
+      partial: true,
+    });
     return access
       .filter((a) => a.workspace?.slug)
       .map((a) => ({

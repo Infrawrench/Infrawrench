@@ -1,7 +1,7 @@
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { pathEncode } from "@infrawrench/plugin-base";
-import { BitbucketApiError, authHeader, bitbucketClients, capped, statusOf } from "../api.js";
+import { BitbucketApiError, authHeader, bitbucketClients, statusOf } from "../api.js";
 import {
   BitbucketClient,
   cleanLog,
@@ -60,20 +60,13 @@ describe("transport", () => {
     });
     const projects = `/workspaces/${pathEncode("acme")}/projects` as const;
     const { lists } = bitbucketClients({ token: "t", http });
-    expect((await lists.getAll(projects, "values", capped(10))).map((x) => x.key)).toEqual([
-      "1",
-      "2",
-    ]);
+    expect((await lists.getAll(projects, "values")).map((x) => x.key)).toEqual(["1", "2"]);
     expect(calls).toHaveLength(2);
 
     const evil = makeHttp(() => ({ values: [], next: "https://evil.example/steal" }));
     await expect(
-      bitbucketClients({ token: "t", http: evil.http }).lists.getAll(
-        projects,
-        "values",
-        capped(10),
-      ),
-    ).rejects.toThrow(/refusing/);
+      bitbucketClients({ token: "t", http: evil.http }).lists.getAll(projects, "values"),
+    ).rejects.toThrow("Refusing to send the account's credentials there");
   });
 
   it("maps errors with a numeric status and Bitbucket's message", async () => {
@@ -338,6 +331,268 @@ describe("pipeline schedule history", () => {
     const shown = await recentRuns([RUN]);
     expect(shown).toContain('"n":"7"');
     expect(shown).toContain('"result":"FAILED"');
+  });
+});
+
+describe("reading a whole list", () => {
+  const PROJECTS = "/2.0/workspaces/acme/projects";
+  const REPOS = "/2.0/repositories/acme";
+  const pageOf = (call: Call) => Number(call.url.searchParams.get("page") ?? "1");
+
+  /** Pages of one row each, numbered from one, then no next link. */
+  function paged(call: Call, pages: number, row: (page: number) => object) {
+    const page = pageOf(call);
+    return {
+      values: [row(page)],
+      ...(page < pages ? { next: `${call.url.origin}${call.url.pathname}?page=${page + 1}` } : {}),
+    };
+  }
+
+  const none = () => ({ values: [] });
+  const project = (n: number) => ({ key: `P${n}`, name: `P${n}`, uuid: `{p${n}}` });
+  const variable = (n: number) => ({ uuid: `{v${n}}`, key: `K${n}`, value: "x", secured: false });
+
+  it("reads an inventory list past the old five pages", async () => {
+    const { c, calls } = client((call) => paged(call, 7, project));
+    expect(await c.listResources("project", ACC)).toHaveLength(7);
+    expect(calls).toHaveLength(7);
+  });
+
+  it("reads repositories past the old five pages", async () => {
+    const { c } = client((call) => paged(call, 7, (n) => ({ ...REPO, slug: `r${n}` })));
+    expect(await c.listResources("repository", ACC)).toHaveLength(7);
+  });
+
+  it("reads a repository's children past the old caps", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === REPOS ? { values: [REPO] } : paged(call, 5, variable),
+    );
+    expect(await c.listResources("repository-variable", ACC)).toHaveLength(5);
+  });
+
+  it("reads an environment's deployment variables past the old two pages", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname === REPOS) return { values: [REPO] };
+      if (call.url.pathname.endsWith("/environments")) {
+        return paged(call, 4, (n) => ({ uuid: `{e${n}}`, name: `E${n}` }));
+      }
+      return paged(call, 3, variable);
+    });
+    expect(await c.listResources("deployment-variable", ACC)).toHaveLength(12);
+  });
+
+  it("counts every member of a workspace, not the first five pages", async () => {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/members")
+        ? paged(call, 7, (n) => ({ user: { uuid: `{u${n}}` } }))
+        : { slug: "acme", name: "Acme", uuid: "{w}" },
+    );
+    const [w] = await c.listResources("workspace", ACC);
+    expect(w!.fields["members"]).toBe(7);
+  });
+
+  it("finds a deployment variable on a later page", async () => {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/variables")
+        ? paged(call, 5, variable)
+        : { uuid: "{e1}", name: "Production" },
+    );
+    const v = await c.getResource(
+      "deployment-variable",
+      "acc:deployment-variable:api/{e1}/{v5}",
+      ACC,
+    );
+    expect(v.displayName).toContain("K5");
+  });
+
+  it("finds a cache on a later page", async () => {
+    const { c } = client((call) =>
+      paged(call, 5, (n) => ({ uuid: `{c${n}}`, name: `C${n}`, path: "x" })),
+    );
+    const cache = await c.getResource("pipeline-cache", "acc:pipeline-cache:api/{c5}", ACC);
+    expect(cache.fields["name"]).toBe("C5");
+  });
+
+  it("clears every cache, past the old three pages", async () => {
+    const { c, calls } = client((call) =>
+      call.method === "DELETE"
+        ? { status: 204 }
+        : paged(call, 5, (n) => ({ uuid: `{c${n}}`, name: `C${n}` })),
+    );
+    await c.invokeAction("repository", "acc:repository:api", "clear-caches", ACC);
+    expect(calls.filter((x) => x.method === "DELETE")).toHaveLength(5);
+  });
+
+  it("refuses a list that never ends, after exactly 100 requests", async () => {
+    const { c, calls } = client((call) => paged(call, Number.MAX_SAFE_INTEGER, project));
+    await expect(c.listResources("project", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("deletes no cache when the list cannot be read whole", async () => {
+    const { c, calls } = client((call) =>
+      paged(call, Number.MAX_SAFE_INTEGER, (n) => ({ uuid: `{c${n}}`, name: `C${n}` })),
+    );
+    await expect(
+      c.invokeAction("repository", "acc:repository:api", "clear-caches", ACC),
+    ).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls.filter((x) => x.method === "DELETE")).toHaveLength(0);
+  });
+
+  it("refuses a page whose list key was renamed, first or later", async () => {
+    const first = client(() => ({ items: [] }));
+    await expect(first.c.listResources("project", ACC)).rejects.toThrow("is not a list");
+    const later = client((call) => (pageOf(call) === 1 ? paged(call, 2, project) : { items: [] }));
+    await expect(later.c.listResources("project", ACC)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a page with no list from a repository's pipelines", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === REPOS ? { values: [REPO] } : { items: [] },
+    );
+    await expect(c.listResources("pipeline", ACC)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses an answer with no body, which is not an empty list", async () => {
+    const { c } = client(() => ({ status: 200 }));
+    await expect(c.listResources("project", ACC)).rejects.toThrow("is not a list");
+  });
+
+  it("reads an empty list as empty, and goes on past an empty page naming a next one", async () => {
+    expect(await client(() => ({ values: [] })).c.listResources("project", ACC)).toEqual([]);
+    const { c } = client((call) =>
+      pageOf(call) === 1
+        ? { values: [], next: `${API}/workspaces/acme/projects?page=2` }
+        : { values: [project(2)] },
+    );
+    expect(await c.listResources("project", ACC)).toHaveLength(1);
+  });
+
+  it("refuses a next link off the API, sending nothing there", async () => {
+    const { c, calls } = client(() => ({ values: [], next: "https://evil.example/steal" }));
+    await expect(c.listResources("project", ACC)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it("refuses a next link off the API through the per-repository catch", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === REPOS
+        ? { values: [REPO] }
+        : { values: [], next: "https://evil.example/steal" },
+    );
+    await expect(c.listResources("repository-webhook", ACC)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+    expect(calls.every((x) => x.url.hostname === "api.bitbucket.org")).toBe(true);
+  });
+
+  it("refuses a next link off the API on what were the last pages of a list", async () => {
+    const { c } = client((call) =>
+      pageOf(call) < 5
+        ? paged(call, 5, project)
+        : { values: [project(5)], next: "https://evil.example/steal" },
+    );
+    await expect(c.listResources("project", ACC)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+  });
+
+  it("lists children of the 30 most recently updated repositories only", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === REPOS
+        ? { values: Array.from({ length: 40 }, (_, i) => ({ ...REPO, slug: `r${i}` })) }
+        : none(),
+    );
+    await c.listResources("repository-webhook", ACC);
+    expect(calls.filter((x) => x.url.pathname.endsWith("/hooks"))).toHaveLength(30);
+  });
+
+  it("reads project deploy keys of up to 1,000 projects, and refuses past that", async () => {
+    const rows = (count: number) => Array.from({ length: count }, (_, i) => project(i));
+    const within = client((call) =>
+      call.url.pathname === PROJECTS ? { values: rows(1000) } : none(),
+    );
+    await within.c.listResources("project-deploy-key", ACC);
+    expect(within.calls.filter((x) => x.url.pathname.endsWith("/deploy-keys"))).toHaveLength(1000);
+
+    const past = client((call) =>
+      call.url.pathname === PROJECTS ? { values: rows(1001) } : none(),
+    );
+    await expect(past.c.listResources("project-deploy-key", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(past.calls).toHaveLength(1);
+  });
+});
+
+describe("reads where part of a list is fine", () => {
+  const endless = (call: Call, row: (page: number) => object) => {
+    const page = Number(call.url.searchParams.get("page") ?? "1");
+    return { values: [row(page)], next: `${call.url.origin}${call.url.pathname}?page=${page + 1}` };
+  };
+
+  it("fills the repository picker from what it read", async () => {
+    const { c, calls } = client((call) =>
+      endless(call, (n) => ({ ...REPO, slug: `r${n}`, name: `R${n}` })),
+    );
+    const form = await c.getCreateConfig("repository-variable");
+    const options = form.fields.find((x) => x.key === "repository")!.options!;
+    expect(options.length).toBeGreaterThan(0);
+    expect(options).toHaveLength(calls.length);
+  });
+
+  it("fills the workspace picker from what it read", async () => {
+    const { http } = makeHttp((call) =>
+      endless(call, (n) => ({ workspace: { slug: `w${n}`, name: `W${n}` } })),
+    );
+    const options = await hostPlugin(plugin).listCredentialOptions!(
+      "workspace",
+      { email: "a@b.c", token: "t" },
+      { http } as never,
+    );
+    expect(options.length).toBeGreaterThan(0);
+  });
+
+  it("charts a repository from the pages it reads", async () => {
+    const created_on = new Date().toISOString();
+    const { c, calls } = client((call) =>
+      endless(call, (n) => ({ uuid: `{p${n}}`, created_on, state: { name: "COMPLETED" } })),
+    );
+    const series = await c.fetchMetricSeries("repository", "acc:repository:api", ACC);
+    expect(series.length).toBeGreaterThan(0);
+    expect(calls).toHaveLength(5);
+  });
+
+  it("charts an environment from the pages it reads", async () => {
+    const { c, calls } = client((call) =>
+      endless(call, (n) => ({ uuid: `{d${n}}`, environment: { uuid: "{e1}" } })),
+    );
+    await c.fetchMetricSeries("environment", "acc:environment:api/{e1}", ACC);
+    expect(calls).toHaveLength(5);
+  });
+
+  it("shows a pipeline's logs from the steps it reads", async () => {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/log")
+        ? "line\n"
+        : endless(call, (n) => ({ uuid: `{s${n}}`, name: `S${n}` })),
+    );
+    const logs = await c.getLogs("pipeline", "acc:pipeline:api/{p1}", ACC, {});
+    expect(logs.containers.length).toBeGreaterThan(0);
+  });
+
+  it("shows an environment's newest deployments from the pages it reads", async () => {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/deployments")
+        ? endless(call, (n) => ({ uuid: `{d${n}}`, environment: { uuid: "{e1}" } }))
+        : { uuid: "{e1}", name: "Production" },
+    );
+    const e = await c.getResource("environment", "acc:environment:api/{e1}", ACC);
+    expect(e.displayName).toBeTruthy();
   });
 });
 

@@ -18,12 +18,12 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, withinListCap } from "@infrawrench/plugin-base";
 import type { BitbucketContext } from "./api.js";
 import {
+  PICKER_PAGES,
   bbPostUnread,
   bitbucketClients,
-  capped,
   encUuid,
   isAbsent,
   splitScoped,
@@ -69,14 +69,17 @@ import type {
   BbWorkspace,
 } from "./types.js";
 
-/** Repositories read for the inventory (100 a page, most recently updated first). */
-const REPO_PAGES = 5;
 /**
  * Repositories whose children are listed. Bitbucket meters repository data
  * at about 1,000 requests an hour per user (more on paid plans), and every
  * child type costs one request per repository, so this is kept small.
  */
 export const FANOUT_LIMIT = 30;
+/**
+ * Projects whose deploy keys are listed, one request each. `/2.0/workspaces/*` is
+ * not among the routes Bitbucket documents an hourly limit for.
+ */
+const PROJECT_FANOUT_LIMIT = 1000;
 const PIPELINES_PER_REPO = 10;
 const PIPELINE_LIMIT = 200;
 /** Pages of pipelines (100 each) read for a repository's metrics. */
@@ -202,7 +205,6 @@ export class BitbucketClient implements PluginClient {
   private readonly services: HostServices | undefined;
   private readonly api: ReturnType<typeof bitbucketClients>["api"];
   private readonly lists: ReturnType<typeof bitbucketClients>["lists"];
-  private readonly newestFirst: ReturnType<typeof bitbucketClients>["newestFirst"];
   private reposCache: Promise<BbRepository[]> | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -218,11 +220,7 @@ export class BitbucketClient implements PluginClient {
       ...(services?.http ? { http: services.http } : {}),
     };
     this.services = services;
-    ({
-      api: this.api,
-      lists: this.lists,
-      newestFirst: this.newestFirst,
-    } = bitbucketClients(this.ctx));
+    ({ api: this.api, lists: this.lists } = bitbucketClients(this.ctx));
   }
 
   private get ws(): NoSlashString {
@@ -235,15 +233,23 @@ export class BitbucketClient implements PluginClient {
 
   private repos(): Promise<BbRepository[]> {
     this.reposCache ??= this.lists
-      .getAll(`/repositories/${this.ws}`, "values", {
-        query: { sort: "-updated_on" },
-        ...capped(REPO_PAGES),
-      })
+      .getAll(`/repositories/${this.ws}`, "values", { query: { sort: "-updated_on" } })
       .catch((err: unknown) => {
         this.reposCache = undefined;
         throw err;
       });
     return this.reposCache;
+  }
+
+  /** For a create form: the most recently updated repositories, none if they cannot be read. */
+  private pickerRepos(): Promise<BbRepository[]> {
+    return this.lists
+      .getAll(`/repositories/${this.ws}`, "values", {
+        query: { sort: "-updated_on" },
+        maxPages: PICKER_PAGES,
+        partial: true,
+      })
+      .catch((): BbRepository[] => []);
   }
 
   private async fanout(): Promise<string[]> {
@@ -285,20 +291,23 @@ export class BitbucketClient implements PluginClient {
         case "workspace":
           return [await this.workspace(id)];
         case "project":
-          return (
-            await this.lists.getAll(`/workspaces/${this.ws}/projects`, "values", capped(5))
-          ).map((p) => mapProject(id, this.ctx.workspace, p));
+          return (await this.lists.getAll(`/workspaces/${this.ws}/projects`, "values")).map((p) =>
+            mapProject(id, this.ctx.workspace, p),
+          );
         case "repository":
           this.reposCache = undefined;
           return (await this.repos()).map((r) => mapRepository(id, r));
         case "pipeline": {
-          const out = await this.perRepo(
-            async (slug) =>
-              (
-                await this.api.get(`${this.repo(slug)}/pipelines`, {
-                  query: { sort: "-created_on", pagelen: PIPELINES_PER_REPO },
-                })
-              ).values?.map((p) => mapPipeline(id, this.ctx.workspace, slug, p)) ?? [],
+          // Rolling window: the newest N. Older rows falling off is what this type means.
+          const out = await this.perRepo(async (slug) =>
+            (
+              await this.lists.getAll(`${this.repo(slug)}/pipelines`, "values", {
+                query: { sort: "-created_on" },
+                pageSize: PIPELINES_PER_REPO,
+                maxPages: 1,
+                partial: true,
+              })
+            ).map((p) => mapPipeline(id, this.ctx.workspace, slug, p)),
           );
           return out
             .sort((a, b) =>
@@ -311,40 +320,27 @@ export class BitbucketClient implements PluginClient {
         case "repository-variable":
           return this.perRepo(async (slug) =>
             (
-              await this.lists.getAll(
-                `${this.repo(slug)}/pipelines_config/variables`,
-                "values",
-                capped(3),
-              )
+              await this.lists.getAll(`${this.repo(slug)}/pipelines_config/variables`, "values")
             ).map((v) => mapVariable(id, { kind: "repository", slug }, v)),
           );
         case "workspace-variable":
           return (
-            await this.lists.getAll(
-              `/workspaces/${this.ws}/pipelines-config/variables`,
-              "values",
-              capped(3),
-            )
+            await this.lists.getAll(`/workspaces/${this.ws}/pipelines-config/variables`, "values")
           ).map((v) => mapVariable(id, { kind: "workspace" }, v));
         case "environment":
           return this.perRepo(async (slug) =>
-            (await this.lists.getAll(`${this.repo(slug)}/environments`, "values", capped(2))).map(
-              (e) => mapEnvironment(id, slug, e),
+            (await this.lists.getAll(`${this.repo(slug)}/environments`, "values")).map((e) =>
+              mapEnvironment(id, slug, e),
             ),
           );
         case "deployment-variable":
           return this.perRepo(async (slug) => {
             const out: ResourceInstance[] = [];
-            for (const e of await this.lists.getAll(
-              `${this.repo(slug)}/environments`,
-              "values",
-              capped(2),
-            )) {
+            for (const e of await this.lists.getAll(`${this.repo(slug)}/environments`, "values")) {
               const vars = await this.optional(
                 this.lists.getAll(
                   `${this.repo(slug)}/deployments_config/environments/${encUuid(e.uuid)}/variables`,
                   "values",
-                  capped(2),
                 ),
               );
               for (const v of vars ?? []) {
@@ -361,38 +357,38 @@ export class BitbucketClient implements PluginClient {
           });
         case "branch-restriction":
           return this.perRepo(async (slug) =>
-            (
-              await this.lists.getAll(`${this.repo(slug)}/branch-restrictions`, "values", capped(2))
-            ).map((b) => mapBranchRestriction(id, slug, b)),
+            (await this.lists.getAll(`${this.repo(slug)}/branch-restrictions`, "values")).map((b) =>
+              mapBranchRestriction(id, slug, b),
+            ),
           );
         case "repository-webhook":
           return this.perRepo(async (slug) =>
-            (await this.lists.getAll(`${this.repo(slug)}/hooks`, "values", capped(2))).map((h) =>
+            (await this.lists.getAll(`${this.repo(slug)}/hooks`, "values")).map((h) =>
               mapWebhook(id, slug, h),
             ),
           );
         case "workspace-webhook":
-          return (await this.lists.getAll(`/workspaces/${this.ws}/hooks`, "values", capped(2))).map(
-            (h) => mapWebhook(id, undefined, h),
+          return (await this.lists.getAll(`/workspaces/${this.ws}/hooks`, "values")).map((h) =>
+            mapWebhook(id, undefined, h),
           );
         case "deploy-key":
           return this.perRepo(async (slug) =>
-            (await this.lists.getAll(`${this.repo(slug)}/deploy-keys`, "values", capped(2))).map(
-              (k) => mapDeployKey(id, slug, k),
+            (await this.lists.getAll(`${this.repo(slug)}/deploy-keys`, "values")).map((k) =>
+              mapDeployKey(id, slug, k),
             ),
           );
         case "project-deploy-key": {
           const out: ResourceInstance[] = [];
-          for (const p of await this.lists.getAll(
-            `/workspaces/${this.ws}/projects`,
-            "values",
-            capped(5),
+          const path = `/workspaces/${this.ws}/projects` as const;
+          for (const p of withinListCap(
+            await this.lists.getAll(path, "values"),
+            PROJECT_FANOUT_LIMIT,
+            { vendor: "Bitbucket", path },
           )) {
             const keys = await this.optional(
               this.lists.getAll(
                 `/workspaces/${this.ws}/projects/${pathEncode(p.key)}/deploy-keys`,
                 "values",
-                capped(2),
               ),
             );
             out.push(...(keys ?? []).map((k) => mapProjectDeployKey(id, p.key, k)));
@@ -402,21 +398,13 @@ export class BitbucketClient implements PluginClient {
         case "runner": {
           const out: ResourceInstance[] = [];
           const workspaceRunners = await this.optional(
-            this.lists.getAll(
-              `/workspaces/${this.ws}/pipelines-config/runners`,
-              "values",
-              capped(3),
-            ),
+            this.lists.getAll(`/workspaces/${this.ws}/pipelines-config/runners`, "values"),
           );
           out.push(...(workspaceRunners ?? []).map((r) => mapRunner(id, undefined, r)));
           out.push(
             ...(await this.perRepo(async (slug) =>
               (
-                await this.lists.getAll(
-                  `${this.repo(slug)}/pipelines-config/runners`,
-                  "values",
-                  capped(2),
-                )
+                await this.lists.getAll(`${this.repo(slug)}/pipelines-config/runners`, "values")
               ).map((r) => mapRunner(id, slug, r)),
             )),
           );
@@ -425,22 +413,14 @@ export class BitbucketClient implements PluginClient {
         case "pipeline-schedule":
           return this.perRepo(async (slug) =>
             (
-              await this.lists.getAll(
-                `${this.repo(slug)}/pipelines_config/schedules`,
-                "values",
-                capped(2),
-              )
+              await this.lists.getAll(`${this.repo(slug)}/pipelines_config/schedules`, "values")
             ).map((s) => mapSchedule(id, slug, s)),
           );
         case "pipeline-cache":
           return this.perRepo(async (slug) =>
-            (
-              await this.lists.getAll(
-                `${this.repo(slug)}/pipelines-config/caches`,
-                "values",
-                capped(2),
-              )
-            ).map((c) => mapCache(id, slug, c)),
+            (await this.lists.getAll(`${this.repo(slug)}/pipelines-config/caches`, "values")).map(
+              (c) => mapCache(id, slug, c),
+            ),
           );
         default:
           throw new Error(`Bitbucket plugin: unknown resource type "${typeId}"`);
@@ -451,7 +431,7 @@ export class BitbucketClient implements PluginClient {
   private async workspace(accountId: string): Promise<ResourceInstance> {
     const [w, members] = await Promise.all([
       this.api.get(`/workspaces/${this.ws}`),
-      this.optional(this.lists.getAll(`/workspaces/${this.ws}/members`, "values", capped(5))),
+      this.optional(this.lists.getAll(`/workspaces/${this.ws}/members`, "values")),
     ]);
     return mapWorkspace(accountId, w, members ? { members: members.length } : {});
   }
@@ -500,11 +480,10 @@ export class BitbucketClient implements PluginClient {
           const [p, steps] = await Promise.all([
             this.api.get(`${this.repo(slug)}/pipelines/${encUuid(rest)}`),
             this.optional(
-              this.lists.getAll(
-                `${this.repo(slug)}/pipelines/${encUuid(rest)}/steps`,
-                "values",
-                capped(2),
-              ),
+              this.lists.getAll(`${this.repo(slug)}/pipelines/${encUuid(rest)}/steps`, "values", {
+                maxPages: 2,
+                partial: true,
+              }),
             ),
           ]);
           return stash(mapPipeline(accountId, this.ctx.workspace, slug, p), {
@@ -530,7 +509,6 @@ export class BitbucketClient implements PluginClient {
             this.lists.getAll(
               `${this.repo(slug)}/deployments_config/environments/${encUuid(envUuid)}/variables`,
               "values",
-              capped(3),
             ),
           ]);
           const v = vars.find((x) => x.uuid === varUuid);
@@ -608,7 +586,6 @@ export class BitbucketClient implements PluginClient {
           const caches = await this.lists.getAll(
             `${this.repo(slug)}/pipelines-config/caches`,
             "values",
-            capped(3),
           );
           const c = caches.find((x) => x.uuid === rest);
           if (!c) fail("cache not found (Bitbucket expires caches after a week)", 404);
@@ -633,7 +610,10 @@ export class BitbucketClient implements PluginClient {
     pages: number,
   ): Promise<BbDeployment[]> {
     const all = await this.optional(
-      this.lists.getAll(`${this.repo(slug)}/deployments`, "values", capped(pages)),
+      this.lists.getAll(`${this.repo(slug)}/deployments`, "values", {
+        maxPages: pages,
+        partial: true,
+      }),
     );
     const when = (d: BbDeployment) =>
       Date.parse(d.state?.completion_date ?? d.state?.start_date ?? d.last_update_time ?? "") || 0;
@@ -725,13 +705,13 @@ export class BitbucketClient implements PluginClient {
       const id = externalIdOf(resourceId);
       const range = rangeOrDefault(timeRange);
       if (resourceTypeId === "repository") {
-        const budget = capped(METRIC_PAGES);
-        const pipelines = await this.newestFirst.getAll(`${this.repo(id)}/pipelines`, "values", {
+        const pipelines = await this.lists.getAll(`${this.repo(id)}/pipelines`, "values", {
           query: { sort: "-created_on" },
           maxPages: METRIC_PAGES,
+          partial: true,
           stopWhen: (batch) => {
             const oldest = batch[batch.length - 1]?.created_on;
-            return budget.stopWhen() || !oldest || Date.parse(oldest) < range.startMs;
+            return !oldest || Date.parse(oldest) < range.startMs;
           },
         });
         return pipelineSeries(pipelines, range);
@@ -750,7 +730,7 @@ export class BitbucketClient implements PluginClient {
 
   private async repoField(parentResourceId: string | undefined): Promise<CreateFieldConfig[]> {
     if (parentResourceId) return [];
-    const repos = await this.repos().catch((): BbRepository[] => []);
+    const repos = await this.pickerRepos();
     const options = repos.map((r) => ({ id: slugOf(r), label: r.name, description: r.full_name }));
     return [
       {
@@ -766,7 +746,10 @@ export class BitbucketClient implements PluginClient {
 
   private async projectOptions(): Promise<SelectOption[]> {
     const projects = await this.lists
-      .getAll(`/workspaces/${this.ws}/projects`, "values", capped(5))
+      .getAll(`/workspaces/${this.ws}/projects`, "values", {
+        maxPages: PICKER_PAGES,
+        partial: true,
+      })
       .catch((): BbProject[] => []);
     return projects.map((p) => ({ id: p.key, label: p.name ?? p.key, description: p.key }));
   }
@@ -1069,7 +1052,7 @@ export class BitbucketClient implements PluginClient {
             ],
           };
         case "runner": {
-          const repos = await this.repos().catch((): BbRepository[] => []);
+          const repos = await this.pickerRepos();
           return {
             fields: [
               {
@@ -1475,9 +1458,7 @@ export class BitbucketClient implements PluginClient {
             const { scope: envUuid, rest: varUuid } = splitScoped(rest);
             const base =
               `${this.repo(slug)}/deployments_config/environments/${encUuid(envUuid)}/variables` as const;
-            current = (await this.lists.getAll(base, "values", capped(3))).find(
-              (v) => v.uuid === varUuid,
-            );
+            current = (await this.lists.getAll(base, "values")).find((v) => v.uuid === varUuid);
             if (!current) fail("deployment variable not found", 404);
             save = (body) => this.api.put(`${base}/${encUuid(varUuid)}`, { body });
           }
@@ -1671,7 +1652,6 @@ export class BitbucketClient implements PluginClient {
         const caches = await this.lists.getAll(
           `${this.repo(id)}/pipelines-config/caches`,
           "values",
-          capped(3),
         );
         for (const c of caches) {
           await this.api.delete(`${this.repo(id)}/pipelines-config/caches/${encUuid(c.uuid)}`);
@@ -1729,7 +1709,7 @@ export class BitbucketClient implements PluginClient {
       const steps = await this.lists.getAll(
         `${this.repo(slug)}/pipelines/${encUuid(rest)}/steps`,
         "values",
-        capped(2),
+        { maxPages: 2, partial: true },
       );
       const label = (s: BbStep, i: number) => `${i + 1}. ${s.name ?? "Step"}`;
       const labelled = steps.map((s, i) => ({ s, name: label(s, i) }));

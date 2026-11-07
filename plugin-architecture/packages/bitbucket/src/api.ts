@@ -27,6 +27,11 @@ import type { paths } from "./api-types.gen.js";
 export const API_BASE = "https://api.bitbucket.org/2.0";
 export const WEB_BASE = "https://bitbucket.org";
 
+/** A whole list is read up to 10,000 rows, at the documented maximum of 100 a page. */
+const LIST_PAGES = 100;
+/** Pages read for a picker, most useful first. Part of a list is fine there. */
+export const PICKER_PAGES = 10;
+
 export interface BitbucketContext {
   /** Atlassian account email for API tokens; empty for access tokens (Bearer). */
   email?: string;
@@ -102,17 +107,6 @@ function apiError(status: number, method: string, shown: string, body: string): 
   );
 }
 
-/** A `next` link as this API writes it (absolute, same host only), or anything else, against the API base. */
-function linkUrl(link: string): string {
-  if (/^https?:\/\//i.test(link)) {
-    if (!link.startsWith(`${API_BASE}/`)) {
-      throw new Error(`Bitbucket plugin: refusing to follow a link off ${API_BASE}: ${link}`);
-    }
-    return link;
-  }
-  return `${API_BASE}${link}`;
-}
-
 /** A failed request names the path as called, and a followed link by its path or as written. */
 function httpError({ status, method, path, body, link }: ApiFailure): BitbucketApiError {
   const shown = link === undefined ? path : link.startsWith("http") ? new URL(link).pathname : link;
@@ -124,10 +118,9 @@ function httpError({ status, method, path, body, link }: ApiFailure): BitbucketA
  * service whenever there is one: that is the only path that honours bastion
  * egress.
  *
- * Both list walkers run past an empty page while it still names a next one.
- * `lists` reads a page with no body as the end of the list. `newestFirst` is
- * for a walk that stops on what a page holds, so it reads a page with no body
- * as a failure, and sends the caller's `sort` before `pagelen`.
+ * The document says of `next` that "the last page of a collection does not have
+ * this value", so an empty page naming one is not the end of the list. It documents
+ * `values` with `minItems: 0` and no empty answer, so a page without one throws.
  */
 export function bitbucketClients(ctx: Pick<BitbucketContext, "email" | "token" | "http">) {
   const api = createApiClient<paths>({
@@ -143,33 +136,10 @@ export function bitbucketClients(ctx: Pick<BitbucketContext, "email" | "token" |
     next: "next",
     sizeParam: "pagelen",
     pageSize: 100,
-    pagingFirst: true,
-    maxPages: 10,
-    foreignLinks: "refuse",
-    resolveLink: linkUrl,
-    continueOnEmptyPage: true,
-    emptyBodyEndsList: true,
-  });
-  const newestFirst = withLinkPagination(api, {
-    next: "next",
-    sizeParam: "pagelen",
-    pageSize: 100,
-    maxPages: 10,
-    foreignLinks: "refuse",
-    resolveLink: linkUrl,
+    maxPages: LIST_PAGES,
     continueOnEmptyPage: true,
   });
-  return { api, lists, newestFirst };
-}
-
-/**
- * A list's page cap, for `getAll`. `stopWhen` ends the walk on the last page
- * allowed, before the client looks at that page's `next`: a link off this API is
- * refused when it would be followed, and one the cap would never reach is not.
- */
-export function capped(maxPages: number) {
-  let pages = 0;
-  return { maxPages, stopWhen: () => ++pages >= maxPages };
+  return { api, lists };
 }
 
 /**
