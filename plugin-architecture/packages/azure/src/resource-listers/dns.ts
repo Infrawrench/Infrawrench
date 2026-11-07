@@ -1,14 +1,15 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, extractResourceGroup, type ListerContext } from "./shared.js";
+import { ARM, extractResourceGroup, type ListerContext, listAllPages } from "./shared.js";
 
 export async function listDNSZones(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/dnsZones?api-version=2018-05-01`,
   );
-  return (data.value ?? []).map((zone) => {
+  return items.map((zone) => {
     const name = String(zone["name"] ?? "");
     const azureId = String(zone["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -43,10 +44,11 @@ export async function listPrivateDNSZones(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/privateDnsZones?api-version=2020-06-01`,
   );
-  return (data.value ?? []).map((zone) => {
+  return items.map((zone) => {
     const name = String(zone["name"] ?? "");
     const azureId = String(zone["id"] ?? "");
     const rg = extractResourceGroup(azureId);

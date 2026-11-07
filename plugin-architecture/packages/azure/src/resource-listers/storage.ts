@@ -1,14 +1,15 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, extractResourceGroup, extractVaultName, type ListerContext } from "./shared.js";
+import { ARM, extractResourceGroup, extractVaultName, type ListerContext, listAllPages } from "./shared.js";
 
 export async function listStorageAccounts(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Storage/storageAccounts?api-version=2023-01-01`,
   );
-  return (data.value ?? []).map((sa) => {
+  return items.map((sa) => {
     const name = String(sa["name"] ?? "");
     const azureId = String(sa["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -57,10 +58,11 @@ export async function listKeyVaults(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
-    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.KeyVault/vaults?api-version=2023-07-01&$top=100`,
+  const items = await listAllPages(
+    ctx,
+    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.KeyVault/vaults?api-version=2023-07-01`,
   );
-  return (data.value ?? []).map((vault) => {
+  return items.map((vault) => {
     const name = String(vault["name"] ?? "");
     const azureId = String(vault["id"] ?? "");
     const rg = extractResourceGroup(azureId);

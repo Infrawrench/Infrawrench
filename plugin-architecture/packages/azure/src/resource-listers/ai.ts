@@ -1,4 +1,4 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { rethrowIncompleteList, type ResourceInstance } from "@infrawrench/plugin-base";
 import {
   ARM,
   extractResourceGroup,
@@ -56,8 +56,9 @@ export async function listAIServicesAccounts(
           ctx,
           `${ARM}${azureId}/deployments?api-version=${COGNITIVE_API_VERSION}`,
         );
-      } catch {
+      } catch (err) {
         // Not every kind hosts deployments; see the doc comment.
+        rethrowIncompleteList(err);
       }
 
       return {

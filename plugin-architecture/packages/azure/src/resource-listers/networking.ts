@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import {
   ARM,
+  listAllPages,
   extractName,
   extractResourceGroup,
   extractVaultName,
@@ -15,10 +16,11 @@ export async function listVNets(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/virtualNetworks?api-version=2023-09-01`,
   );
-  return (data.value ?? []).map((vnet) => {
+  return items.map((vnet) => {
     const name = String(vnet["name"] ?? "");
     const azureId = String(vnet["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -54,11 +56,12 @@ export async function listSubnets(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/virtualNetworks?api-version=2023-09-01`,
   );
   const resources: ResourceInstance[] = [];
-  for (const vnet of data.value ?? []) {
+  for (const vnet of items) {
     const vnetName = String(vnet["name"] ?? "");
     const vnetId = String(vnet["id"] ?? "");
     const rg = extractResourceGroup(vnetId);
@@ -106,10 +109,11 @@ export async function listRouteTables(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/routeTables?api-version=2023-09-01`,
   );
-  return (data.value ?? []).map((routeTable) => {
+  return items.map((routeTable) => {
     const name = String(routeTable["name"] ?? "");
     const azureId = String(routeTable["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -143,10 +147,11 @@ export async function listNatGateways(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/natGateways?api-version=2023-09-01`,
   );
-  return (data.value ?? []).map((natGateway) => {
+  return items.map((natGateway) => {
     const name = String(natGateway["name"] ?? "");
     const azureId = String(natGateway["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -186,10 +191,11 @@ export async function listLoadBalancers(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/loadBalancers?api-version=2023-09-01`,
   );
-  return (data.value ?? []).map((lb) => {
+  return items.map((lb) => {
     const name = String(lb["name"] ?? "");
     const azureId = String(lb["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -239,10 +245,11 @@ export async function listLoadBalancers(
 }
 
 export async function listNSGs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/networkSecurityGroups?api-version=2023-09-01`,
   );
-  return (data.value ?? []).map((nsg) => {
+  return items.map((nsg) => {
     const name = String(nsg["name"] ?? "");
     const azureId = String(nsg["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -279,10 +286,11 @@ export async function listPublicIPs(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/publicIPAddresses?api-version=2023-09-01`,
   );
-  return (data.value ?? []).map((pip) => {
+  return items.map((pip) => {
     const name = String(pip["name"] ?? "");
     const azureId = String(pip["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -321,10 +329,11 @@ export async function listAppGateways(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/applicationGateways?api-version=2023-09-01`,
   );
-  return (data.value ?? []).map((gw) => {
+  return items.map((gw) => {
     const name = String(gw["name"] ?? "");
     const azureId = String(gw["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -385,8 +394,7 @@ export async function listFirewalls(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{
-    value: Array<{
+  const items = await listAllPages<{
       id: string;
       name: string;
       location: string;
@@ -398,12 +406,12 @@ export async function listFirewalls(
           properties?: { privateIPAddress?: string };
         }>;
       };
-    }>;
-  }>(
+    }>(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/azureFirewalls?api-version=2023-09-01`,
   );
 
-  return (data.value ?? []).map((fw) => {
+  return items.map((fw) => {
     const rg = extractResourceGroup(fw.id);
     const name = fw.name;
     const props = fw.properties;

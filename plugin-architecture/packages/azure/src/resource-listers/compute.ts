@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import {
   ARM,
+  listAllPages,
   extractName,
   extractResourceGroup,
   joinRefs,
@@ -15,12 +16,13 @@ import {
 
 export async function listVMs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   // Fetch VMs with instance view (includes power state)
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Compute/virtualMachines?api-version=2024-03-01&$expand=instanceView`,
   );
   const results: ResourceInstance[] = [];
 
-  for (const vm of data.value ?? []) {
+  for (const vm of items) {
     const name = String(vm["name"] ?? "");
     const location = String(vm["location"] ?? "");
     const azureId = String(vm["id"] ?? "");
@@ -152,10 +154,11 @@ export async function listDisks(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Compute/disks?api-version=2023-10-02`,
   );
-  return (data.value ?? []).map((disk) => {
+  return items.map((disk) => {
     const name = String(disk["name"] ?? "");
     const azureId = String(disk["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -193,10 +196,11 @@ export async function listAKSClusters(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ContainerService/managedClusters?api-version=2024-01-01`,
   );
-  return (data.value ?? []).map((cluster) => {
+  return items.map((cluster) => {
     const name = String(cluster["name"] ?? "");
     const azureId = String(cluster["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -268,10 +272,11 @@ export async function listFunctionApps(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Web/sites?api-version=2023-01-01`,
   );
-  const functionApps = (data.value ?? []).filter((site) => {
+  const functionApps = items.filter((site) => {
     const kind = String(site["kind"] ?? "");
     return kind.toLowerCase().includes("functionapp");
   });
@@ -320,10 +325,11 @@ export async function listAppServices(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Web/sites?api-version=2023-01-01`,
   );
-  const webApps = (data.value ?? []).filter((site) => {
+  const webApps = items.filter((site) => {
     const kind = String(site["kind"] ?? "");
     return !kind.toLowerCase().includes("functionapp");
   });
@@ -379,10 +385,11 @@ export async function listAppServicePlans(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Web/serverfarms?api-version=2023-01-01`,
   );
-  return (data.value ?? []).map((plan) => {
+  return items.map((plan) => {
     const name = String(plan["name"] ?? "");
     const azureId = String(plan["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -426,10 +433,11 @@ export async function listContainerInstances(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ContainerInstance/containerGroups?api-version=2023-05-01`,
   );
-  return (data.value ?? []).map((cg) => {
+  return items.map((cg) => {
     const name = String(cg["name"] ?? "");
     const azureId = String(cg["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -490,10 +498,11 @@ export async function listContainerRegistries(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ContainerRegistry/registries?api-version=2023-07-01`,
   );
-  return (data.value ?? []).map((reg) => {
+  return items.map((reg) => {
     const name = String(reg["name"] ?? "");
     const azureId = String(reg["id"] ?? "");
     const rg = extractResourceGroup(azureId);

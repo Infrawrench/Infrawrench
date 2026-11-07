@@ -1,5 +1,6 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { AZURE_REGIONS } from "./regions.js";
+import { listAllPages } from "./arm-list.js";
 import { ARM, fetchResourceGroups, type AzureCreateContext } from "./create-handlers-shared.js";
 
 export async function getSQLDatabaseCreateConfig(
@@ -7,10 +8,11 @@ export async function getSQLDatabaseCreateConfig(
 ): Promise<CreateResourceConfig> {
   const rgOptions = await fetchResourceGroups(ctx);
 
-  const servers = await ctx.get<{ value: Array<{ name: string; id: string }> }>(
+  const servers = await listAllPages<{ name: string; id: string }>(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Sql/servers?api-version=2023-05-01-preview`,
   );
-  const serverOptions = (servers.value ?? []).map((s) => {
+  const serverOptions = servers.map((s) => {
     const sRg = s.id.match(/resourceGroups\/([^/]+)/i)?.[1] ?? "";
     return { id: `${sRg}/${s.name}`, label: s.name };
   });

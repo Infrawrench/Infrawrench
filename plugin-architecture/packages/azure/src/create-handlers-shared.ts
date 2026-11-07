@@ -1,4 +1,5 @@
 import type { Client as GraphClient } from "@microsoft/microsoft-graph-client";
+import { listAllPages } from "./arm-list.js";
 import type { AzureHttpTransport } from "./http.js";
 
 export const ARM = "https://management.azure.com";
@@ -18,8 +19,9 @@ export interface AzureCreateContext extends AzureHttpTransport {
 }
 
 export async function fetchResourceGroups(ctx: AzureCreateContext) {
-  const rgs = await ctx.get<{ value: Array<{ name: string }> }>(
+  const rgs = await listAllPages<{ name: string }>(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/resourcegroups?api-version=2022-09-01`,
   );
-  return (rgs.value ?? []).map((rg) => ({ id: rg.name, label: rg.name }));
+  return rgs.map((rg) => ({ id: rg.name, label: rg.name }));
 }

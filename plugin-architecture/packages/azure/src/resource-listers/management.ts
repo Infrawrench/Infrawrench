@@ -1,14 +1,15 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, extractResourceGroup, type ListerContext } from "./shared.js";
+import { ARM, extractResourceGroup, type ListerContext, listAllPages } from "./shared.js";
 
 export async function listResourceGroups(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/resourcegroups?api-version=2022-09-01`,
   );
-  return (data.value ?? []).map((rg) => {
+  return items.map((rg) => {
     const name = String(rg["name"] ?? "");
     const props = rg["properties"] as Record<string, unknown> | undefined;
     return {
@@ -37,8 +38,7 @@ export async function listLogAnalyticsWorkspaces(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{
-    value: Array<{
+  const items = await listAllPages<{
       id: string;
       name: string;
       location: string;
@@ -49,12 +49,12 @@ export async function listLogAnalyticsWorkspaces(
         workspaceCapping?: { dailyQuotaGb?: number };
         customerId?: string;
       };
-    }>;
-  }>(
+    }>(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.OperationalInsights/workspaces?api-version=2022-10-01`,
   );
 
-  return (data.value ?? []).map((ws) => {
+  return items.map((ws) => {
     const rg = extractResourceGroup(ws.id);
     const name = ws.name;
     const props = ws.properties;
@@ -88,8 +88,7 @@ export async function listManagedIdentities(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{
-    value: Array<{
+  const items = await listAllPages<{
       id: string;
       name: string;
       location: string;
@@ -98,12 +97,12 @@ export async function listManagedIdentities(
         principalId?: string;
         tenantId?: string;
       };
-    }>;
-  }>(
+    }>(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ManagedIdentity/userAssignedIdentities?api-version=2023-01-31`,
   );
 
-  return (data.value ?? []).map((mi) => {
+  return items.map((mi) => {
     const rg = extractResourceGroup(mi.id);
     const name = mi.name;
     const props = mi.properties;

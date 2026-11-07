@@ -1,14 +1,15 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, extractResourceGroup, type ListerContext } from "./shared.js";
+import { ARM, extractResourceGroup, type ListerContext, listAllPages } from "./shared.js";
 
 export async function listServiceBusNamespaces(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ServiceBus/namespaces?api-version=2024-01-01`,
   );
-  return (data.value ?? []).map((ns) => {
+  return items.map((ns) => {
     const name = String(ns["name"] ?? "");
     const azureId = String(ns["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -45,10 +46,11 @@ export async function listEventHubNamespaces(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.EventHub/namespaces?api-version=2024-01-01`,
   );
-  return (data.value ?? []).map((ns) => {
+  return items.map((ns) => {
     const name = String(ns["name"] ?? "");
     const azureId = String(ns["id"] ?? "");
     const rg = extractResourceGroup(azureId);

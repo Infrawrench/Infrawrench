@@ -8,6 +8,7 @@
  * registry instead of wiring a secret by hand.
  */
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
+import { listAllPages } from "./arm-list.js";
 import { ARM, fetchResourceGroups, type AzureCreateContext } from "./create-handlers-shared.js";
 import type { AzureHttpContext } from "./shared.js";
 
@@ -39,21 +40,21 @@ export async function getContainerAppCreateConfig(
 ): Promise<CreateResourceConfig> {
   const [rgOptions, envs, registries] = await Promise.all([
     fetchResourceGroups(ctx),
-    ctx.get<{ value?: Bag[] }>(
+    listAllPages<Bag>(
+      ctx,
       `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.App/managedEnvironments?api-version=${API}`,
     ),
-    ctx
-      .get<{ value?: Bag[] }>(
-        `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ContainerRegistry/registries?api-version=2023-07-01`,
-      )
-      .catch(() => ({ value: [] as Bag[] })),
+    listAllPages<Bag>(
+      ctx,
+      `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ContainerRegistry/registries?api-version=2023-07-01`,
+    ).catch((): Bag[] => []),
   ]);
-  const envOptions = (envs.value ?? []).map((env) => ({
+  const envOptions = envs.map((env) => ({
     id: String(env["id"] ?? ""),
     label: String(env["name"] ?? ""),
     description: String(env["location"] ?? ""),
   }));
-  const registryOptions = (registries.value ?? []).map((registry) => {
+  const registryOptions = registries.map((registry) => {
     const props = registry["properties"] as Bag | undefined;
     return {
       id: String(registry["id"] ?? ""),

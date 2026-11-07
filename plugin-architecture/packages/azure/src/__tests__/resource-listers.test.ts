@@ -39,9 +39,9 @@ describe("listResourceGroups", () => {
     expect(out[0]!.resolvedOutputs["resourceId"]).toBe("/subscriptions/sub1/resourceGroups/rg-a");
   });
 
-  it("handles a missing value array", async () => {
+  it("refuses a page with no value array", async () => {
     const ctx = makeCtx(() => ({}));
-    expect(await listers.listResourceGroups(ctx, ACCT)).toEqual([]);
+    await expect(listers.listResourceGroups(ctx, ACCT)).rejects.toThrow("is not a list");
   });
 });
 
@@ -327,12 +327,12 @@ describe("listSQLDatabases", () => {
     expect(out[0]!.resolvedOutputs["connectionString"]).toContain("srv1.database.windows.net");
   });
 
-  it("skips servers whose database list fails", async () => {
+  it("skips servers it may not read", async () => {
     const ctx = makeCtx((url) => {
       if (url.includes("/servers?")) {
         return { value: [{ id: "/x/resourceGroups/rg1/.../servers/srv1", name: "srv1" }] };
       }
-      throw new Error("db list failed");
+      throw new Error("Azure API 403: AuthorizationFailed");
     });
     expect(await listers.listSQLDatabases(ctx, ACCT)).toEqual([]);
   });
@@ -641,7 +641,7 @@ describe("simple ARM list mappers", () => {
     });
 
     it(`${c.name} handles empty results`, async () => {
-      const ctx = makeCtx(() => ({}));
+      const ctx = makeCtx(() => ({ value: [] }));
       expect(await c.fn(ctx, ACCT)).toEqual([]);
     });
   }
@@ -744,9 +744,9 @@ describe("listAppServicePlans", () => {
     expect(out[0]!.fields["siteCount"]).toBe(0);
   });
 
-  it("handles a missing value array", async () => {
+  it("refuses a page with no value array", async () => {
     const ctx = makeCtx(() => ({}));
-    expect(await listers.listAppServicePlans(ctx, ACCT)).toEqual([]);
+    await expect(listers.listAppServicePlans(ctx, ACCT)).rejects.toThrow("is not a list");
   });
 });
 

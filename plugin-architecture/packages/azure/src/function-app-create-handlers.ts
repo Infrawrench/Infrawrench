@@ -1,5 +1,6 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { AZURE_REGIONS } from "./regions.js";
+import { listAllPages } from "./arm-list.js";
 import { ARM, fetchResourceGroups, type AzureCreateContext } from "./create-handlers-shared.js";
 
 export async function getFunctionAppCreateConfig(
@@ -8,10 +9,11 @@ export async function getFunctionAppCreateConfig(
   const rgOptions = await fetchResourceGroups(ctx);
 
   // List storage accounts for the required storage binding
-  const storageAccounts = await ctx.get<{ value: Array<{ id: string; name: string }> }>(
+  const storageAccounts = await listAllPages<{ id: string; name: string }>(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Storage/storageAccounts?api-version=2023-01-01`,
   );
-  const saOptions = (storageAccounts.value ?? []).map((sa) => {
+  const saOptions = storageAccounts.map((sa) => {
     const saRg = sa.id.match(/resourceGroups\/([^/]+)/i)?.[1] ?? "";
     return { id: `${saRg}/${sa.name}`, label: sa.name };
   });

@@ -1,4 +1,5 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { rethrowIncompleteList, type ResourceInstance } from "@infrawrench/plugin-base";
+import { isArmDeniedOrGone } from "../arm-list.js";
 import { flexibleSkuVCores } from "../extended-support.js";
 import {
   ARM,
@@ -15,23 +16,25 @@ export async function listSQLDatabases(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   // First list SQL servers, then databases within each
-  const servers = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const servers = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Sql/servers?api-version=2023-05-01-preview`,
   );
   const results: ResourceInstance[] = [];
 
-  for (const server of servers.value ?? []) {
+  for (const server of servers) {
     const serverName = String(server["name"] ?? "");
     const serverRg = extractResourceGroup(String(server["id"] ?? ""));
     const serverProps = server["properties"] as Record<string, unknown> | undefined;
     const serverFqdn = String(serverProps?.["fullyQualifiedDomainName"] ?? "");
 
     try {
-      const dbs = await ctx.get<{ value: Record<string, unknown>[] }>(
+      const dbs = await listAllPages(
+        ctx,
         `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${serverRg}/providers/Microsoft.Sql/servers/${serverName}/databases?api-version=2023-05-01-preview`,
       );
 
-      for (const db of dbs.value ?? []) {
+      for (const db of dbs) {
         const dbName = String(db["name"] ?? "");
         if (dbName === "master") continue; // Skip system database
         const dbProps = db["properties"] as Record<string, unknown> | undefined;
@@ -67,8 +70,11 @@ export async function listSQLDatabases(
           updatedAt: ctx.now(),
         });
       }
-    } catch {
-      // Skip servers we can't access
+    } catch (err) {
+      // A server this principal can't read, or one deleted since the list above. Any
+      // other failure says nothing about its databases, and reading it as none would
+      // delete them all from the inventory.
+      if (!isArmDeniedOrGone(err)) throw err;
     }
   }
   return results;
@@ -78,10 +84,11 @@ export async function listCosmosDBAccounts(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.DocumentDB/databaseAccounts?api-version=2023-11-15`,
   );
-  return (data.value ?? []).map((acct) => {
+  return items.map((acct) => {
     const name = String(acct["name"] ?? "");
     const azureId = String(acct["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -126,10 +133,11 @@ export async function listRedisCaches(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Cache/redis?api-version=2023-08-01`,
   );
-  return (data.value ?? []).map((redis) => {
+  return items.map((redis) => {
     const name = String(redis["name"] ?? "");
     const azureId = String(redis["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -199,8 +207,9 @@ export async function listManagedRedis(
           `${ARM}${azureId}/databases?api-version=${MANAGED_REDIS_API_VERSION}`,
         );
         db = dbs[0]?.["properties"] as Record<string, unknown> | undefined;
-      } catch {
+      } catch (err) {
         // See the doc comment: the cluster still lists.
+        rethrowIncompleteList(err);
       }
       const persistence = db?.["persistence"] as Record<string, unknown> | undefined;
       const modules = (db?.["modules"] as Array<Record<string, unknown>> | undefined) ?? [];
@@ -256,10 +265,11 @@ export async function listPostgresFlexibleServers(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.DBforPostgreSQL/flexibleServers?api-version=2023-06-01-preview`,
   );
-  return (data.value ?? []).map((srv) => {
+  return items.map((srv) => {
     const name = String(srv["name"] ?? "");
     const azureId = String(srv["id"] ?? "");
     const rg = extractResourceGroup(azureId);
@@ -317,10 +327,11 @@ export async function listMySQLFlexibleServers(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+  const items = await listAllPages(
+    ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.DBforMySQL/flexibleServers?api-version=2023-06-30`,
   );
-  return (data.value ?? []).map((srv) => {
+  return items.map((srv) => {
     const name = String(srv["name"] ?? "");
     const azureId = String(srv["id"] ?? "");
     const rg = extractResourceGroup(azureId);
