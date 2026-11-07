@@ -334,7 +334,7 @@ describe("fetchGitLabVulnerabilities", () => {
 
 describe("manifest", () => {
   it("declares the capability and the client implements it", () => {
-    expect(plugin.manifest.vulnerabilities?.partial).toBe(true);
+    expect(plugin.manifest.vulnerabilities).not.toHaveProperty("partial");
     const client = hostPlugin(plugin).createClient({ token: "t" });
     expect(typeof client.listVulnerabilityFindings).toBe("function");
   });

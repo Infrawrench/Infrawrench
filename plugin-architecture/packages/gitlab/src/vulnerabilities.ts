@@ -27,9 +27,9 @@
  * Community Edition has no `vulnerabilities` field at all, which is reported
  * as the tier gap it is.
  *
- * Bounds: 50 pages of 100 for a group, 10 pages per project across the 100
- * most recently active projects otherwise. The capability is declared
- * `partial` because either bound can bite on a large estate.
+ * Bounds: 200 pages of 100 for a group, 50 pages per project across up to 1,000
+ * active projects otherwise. Past any of them the read fails, because the
+ * collector closes what a read stops returning.
  *
  * What the report does not say is left absent: GraphQL exposes no fixed
  * version (only free-text `solution`) and no package ecosystem.

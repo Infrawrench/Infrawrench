@@ -28,7 +28,12 @@ import type {
   SidebarItemSchema,
   VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  pathEncode,
+  rethrowIncompleteList,
+  withinListCap,
+} from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
 import { listSecretDetectionFindings, resolveSecretDetectionFinding } from "./secret-detection.js";
 import {
@@ -110,10 +115,18 @@ import type {
 
 /**
  * Projects whose children (pipelines, variables, environments, ...) are
- * listed: the most recently active non-archived ones. Each child type costs
- * one request per project, so this bounds a sync on a large instance.
+ * listed: the most recently active non-archived ones. A sync runs about 13 child
+ * types at once at one request per project, which is 1,300 requests for 100. GitLab.com
+ * allows 2,000 a minute per user and 200 a minute for project members, and a raised
+ * cap would also outlast the sync's lease. A project past this has its children pruned:
+ * #573 is open for that.
  */
 export const FANOUT_LIMIT = 100;
+/**
+ * Projects whose vulnerability and secret reports are read. These run on their own
+ * schedule, at most four requests at a time, so 1,000 stays well inside those limits.
+ */
+const REPORT_PROJECT_LIMIT = 1000;
 /** Pipelines listed per project, and in total. */
 const PIPELINES_PER_PROJECT = 10;
 const PIPELINE_LIMIT = 300;
@@ -199,13 +212,22 @@ export class GitLabClient implements PluginClient {
     return this.projectsCache;
   }
 
+  private async activeProjects(): Promise<GlProject[]> {
+    const all = await this.projects();
+    return all.filter((p) => !p.archived && !p.marked_for_deletion_on);
+  }
+
   /** The projects whose children are listed. */
   private async fanout(filter: (p: GlProject) => boolean = () => true): Promise<GlProject[]> {
-    const all = await this.projects();
-    return all
-      .filter((p) => !p.archived && !p.marked_for_deletion_on)
-      .slice(0, FANOUT_LIMIT)
-      .filter(filter);
+    return (await this.activeProjects()).slice(0, FANOUT_LIMIT).filter(filter);
+  }
+
+  /** The projects whose reports are read. Findings a read misses are closed, so it refuses past the cap. */
+  private async reportProjects(): Promise<GlProject[]> {
+    return withinListCap(await this.activeProjects(), REPORT_PROJECT_LIMIT, {
+      vendor: "GitLab",
+      path: "/projects",
+    });
   }
 
   private groups(): Promise<GlGroup[]> {
@@ -925,7 +947,7 @@ export class GitLabClient implements PluginClient {
 
   listLeakedSecrets(query: LeakedSecretQuery): PluginEffect<LeakedSecretPage> {
     return attempt(async () => {
-      return listSecretDetectionFindings(this.ctx, await this.fanout(), query);
+      return listSecretDetectionFindings(this.ctx, await this.reportProjects(), query);
     });
   }
 
@@ -938,7 +960,7 @@ export class GitLabClient implements PluginClient {
   /**
    * Open dependency- and container-scanning findings: one walk of the
    * group's report for a group-scoped account, otherwise the report of each
-   * fanned-out project. See `vulnerabilities.ts` for the tier handling.
+   * active project. See `vulnerabilities.ts` for the tier handling.
    */
   listVulnerabilityFindings(_accountId: string): PluginEffect<VulnerabilityFinding[]> {
     return attempt(async () => {
@@ -948,7 +970,7 @@ export class GitLabClient implements PluginClient {
         const projects = await this.fanout().catch((): GlProject[] => []);
         return fetchGitLabVulnerabilities(this.ctx, { groupPath: root.full_path, projects });
       }
-      return fetchGitLabVulnerabilities(this.ctx, { projects: await this.fanout() });
+      return fetchGitLabVulnerabilities(this.ctx, { projects: await this.reportProjects() });
     });
   }
 

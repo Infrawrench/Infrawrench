@@ -2,7 +2,7 @@ import { pathEncode } from "@infrawrench/plugin-base";
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { GitLabApiError, gitlabApi, resolveBaseUrl, statusOf } from "../api.js";
-import { GitLabClient, cleanTrace, parseListish, splitVariable } from "../client.js";
+import { FANOUT_LIMIT, GitLabClient, cleanTrace, parseListish, splitVariable } from "../client.js";
 import { hookEventFlags, parseVariableLines } from "../inputs.js";
 import { describeLevels, mapVariable } from "../mappers.js";
 import { jobSeries, percentile, pipelineSeries, projectSeries } from "../metrics.js";
@@ -89,6 +89,69 @@ describe("a next page header that is not a number", () => {
     expect(new Set(calls.map((call) => call.url.origin))).toEqual(
       new Set(["https://gitlab.example.com"]),
     );
+  });
+});
+
+describe("the projects whose reports are read", () => {
+  const projects = (n: number) => ({
+    body: Array.from({ length: n }, (_, i) => ({ id: i + 1, path_with_namespace: `a/p${i + 1}` })),
+    headers: { "x-next-page": "" },
+  });
+  const reports = (n: number) => {
+    const read: string[] = [];
+    const scanned: string[] = [];
+    const { c, calls } = client((call) => {
+      if (call.url.pathname === "/api/v4/projects") return projects(n);
+      if (call.url.pathname !== "/api/graphql") throw new Error(`unexpected ${call.url}`);
+      const { fullPath, ids } = (call.body as { variables: { fullPath?: string; ids?: string[] } })
+        .variables;
+      if (fullPath) read.push(fullPath);
+      scanned.push(...(ids ?? []));
+      return ids
+        ? { data: { projects: { nodes: [] } } }
+        : {
+            data: {
+              scope: {
+                userPermissions: { readSecurityResource: true },
+                vulnerabilities: { nodes: [], pageInfo: { hasNextPage: false } },
+              },
+            },
+          };
+    });
+    return { c, calls, read, scanned };
+  };
+
+  it("reads the vulnerability report of a project past the 100 most active", async () => {
+    const { c, read } = reports(101);
+    await c.listVulnerabilityFindings!(ACC);
+    expect(read).toHaveLength(101);
+    expect(read).toContain("a/p101");
+  });
+
+  it("reads the secret findings of a project past the 100 most active", async () => {
+    const { c, scanned } = reports(101);
+    await c.listLeakedSecrets!({ limit: 100, includeResolved: false });
+    expect(scanned).toContain("gid://gitlab/Project/101");
+  });
+
+  it("refuses past 1,000 projects, rather than close the findings of the rest", async () => {
+    const { c, calls } = reports(1001);
+    await expect(c.listVulnerabilityFindings!(ACC)).rejects.toThrow(
+      "GitLab: /projects has more than Infrawrench reads. It stopped at 1000 items",
+    );
+    await expect(c.listLeakedSecrets!({ limit: 100, includeResolved: false })).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((x) => x.url.pathname === "/api/graphql")).toEqual([]);
+  });
+
+  it("still lists children for the 100 most active projects, the cap #573 leaves open", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === "/api/v4/projects" ? projects(101) : [],
+    );
+    await c.listResources("environment", ACC);
+    const asked = calls.filter((x) => x.url.pathname.endsWith("/environments"));
+    expect(asked).toHaveLength(FANOUT_LIMIT);
   });
 });
 

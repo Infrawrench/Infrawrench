@@ -114,13 +114,12 @@ export const manifest = {
     partial: true,
   },
   // Open dependency- and container-scanning findings from the vulnerability
-  // report (GraphQL). Ultimate only, and the user needs Developer or above;
-  // bounded per group or per project. See `vulnerabilities.ts`.
+  // report (GraphQL). Ultimate only, and the user needs Developer or above. A read
+  // past its bounds fails rather than come back short. See `vulnerabilities.ts`.
   vulnerabilities: {
     label: "GitLab Vulnerability Report",
     consoleUrl: "https://docs.gitlab.com/user/application_security/vulnerability_report/",
     requiresElevatedCredential: true,
-    partial: true,
   },
   // GitLab.com subscription seats (billable members of paid top-level groups).
   seats: { products: [GITLAB_PRODUCT], removal: true },
@@ -129,7 +128,7 @@ export const manifest = {
   secretScanning: {
     label: "Secret detection",
     description:
-      "Reads secret detection findings from the vulnerability report (GitLab Ultimate) of the account's 100 most recently active projects every 30 minutes. GitLab never returns the secret itself, so findings are matched by token type.",
+      "Reads secret detection findings from the vulnerability report (GitLab Ultimate) of the account's active projects every 30 minutes. GitLab never returns the secret itself, so findings are matched by token type.",
     canResolve: true,
     returnsSecretValue: false,
   },
