@@ -16,6 +16,7 @@
  * desktop CORS); catalog endpoints are followed as published, so they must
  * be reachable from wherever the host runs.
  */
+import { ListPageError, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 
 export interface OpenStackCredentials {
@@ -139,6 +140,29 @@ export interface RawResponse {
   headers: Record<string, string>;
   body: string;
   rawBody?: Uint8Array;
+}
+
+/**
+ * Whether a page links a next one: `{key}_links` (Nova, Cinder, Neutron, Octavia),
+ * `links.next` (Designate) or `next` (Glance).
+ */
+function linksNext(page: Record<string, unknown> | undefined, key: string): boolean {
+  if (!page) return false;
+  const links = page[`${key}_links`];
+  if (
+    Array.isArray(links) &&
+    links.some(
+      (l: unknown) => typeof l === "object" && l !== null && Reflect.get(l, "rel") === "next",
+    )
+  )
+    return true;
+  const designate = page["links"];
+  if (typeof designate === "object" && designate !== null && !Array.isArray(designate)) {
+    const next: unknown = Reflect.get(designate, "next");
+    if (typeof next === "string" && next) return true;
+  }
+  const glance = page["next"];
+  return typeof glance === "string" && glance !== "";
 }
 
 export class OpenStackApi {
@@ -463,7 +487,9 @@ export class OpenStackApi {
 
   /**
    * Every page of a marker-paginated list (`?limit=&marker=<last id>`), the
-   * scheme Nova, Neutron, Cinder, Octavia, Designate and Heat share.
+   * scheme Nova, Neutron, Cinder, Octavia, Designate and Heat share. A service
+   * may cap the page below `limit` (Neutron and Octavia `pagination_max_limit`,
+   * Nova `max_limit`), so a next link also says there is more.
    */
   async paginate<T extends Record<string, unknown>>(
     service: Service,
@@ -473,22 +499,35 @@ export class OpenStackApi {
     opts: { limit?: number; markerField?: string; maxPages?: number } = {},
   ): Promise<T[]> {
     const limit = opts.limit ?? 500;
+    const maxPages = opts.maxPages ?? 100;
     const markerField = opts.markerField ?? "id";
+    const where = { vendor: "OpenStack", path, key };
     const out: T[] = [];
     let marker: string | undefined;
-    for (let page = 0; page < (opts.maxPages ?? 100); page++) {
-      const data = await this.get<Record<string, unknown>>(service, path, {
+    for (let page = 0; page < maxPages; page++) {
+      const data = await this.get<Record<string, unknown> | undefined>(service, path, {
         ...query,
         limit,
         ...(marker ? { marker } : {}),
       });
-      const items = (data?.[key] as T[] | undefined) ?? [];
+      const listed: unknown = data?.[key];
+      const items = requireListPage<T>(
+        Array.isArray(listed) || listed === null ? listed : undefined,
+        { ...where, page: data },
+      );
       out.push(...items);
-      if (items.length < limit) break;
+      if (items.length < limit && !linksNext(data, key)) return out;
       const last = items[items.length - 1]?.[markerField];
-      if (typeof last !== "string" || last === marker) break;
+      if (typeof last !== "string" || !last || last === marker) {
+        throw new ListPageError({
+          ...where,
+          found: items,
+          page: data,
+          saysMoreWith: items.length ? "no cursor" : "no rows",
+        });
+      }
       marker = last;
     }
-    return out;
+    throw new ListTruncatedError({ ...where, items: out.length, maxPages });
   }
 }

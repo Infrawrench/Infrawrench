@@ -16,7 +16,13 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  externalIdOf,
+  reportUnreadListPart,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import { OpenStackApi, OpenStackApiError, type Service } from "./api.js";
 import {
   describeRule,
@@ -73,6 +79,41 @@ type Fields = Record<string, string | number | boolean>;
 type Obj = Record<string, unknown>;
 
 const CACHE_MS = 10_000;
+
+/**
+ * For a list read only to fill in another type's fields: a failure leaves those fields
+ * empty, but a list that could not be read whole must not pass for one.
+ */
+function noneUnlessIncomplete(err: unknown): Obj[] {
+  rethrowIncompleteList(err);
+  return [];
+}
+
+interface SwiftContainer {
+  name: string;
+  count: number;
+  bytes: number;
+  last_modified?: string;
+}
+
+// Swift's account listing, in 1,000-name pages: 50,000 containers.
+const CONTAINER_PAGE = 1000;
+const MAX_CONTAINER_PAGES = 50;
+// One HEAD per container per poll for its read ACL, against the manifest's 10 a second.
+const MAX_CONTAINER_HEADS = 1000;
+
+/**
+ * The containers to read ACLs for this poll, and those left for later. Polls share
+ * nothing, so past the budget the start moves with the clock by the golden ratio,
+ * which spreads evenly over the list however long it is.
+ */
+function containerWindow<T>(sorted: T[]): { now: T[]; later: T[] } {
+  if (sorted.length <= MAX_CONTAINER_HEADS) return { now: sorted, later: [] };
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  return { now: rotated.slice(0, MAX_CONTAINER_HEADS), later: rotated.slice(MAX_CONTAINER_HEADS) };
+}
 
 /** Which OpenStack service a resource type lives in. */
 export const SERVICE_OF: Record<string, Service> = {
@@ -232,25 +273,30 @@ export class OpenStackClient implements PluginClient {
   > {
     return this.neutron("security-groups", "security_groups");
   }
-  async containers(): Promise<
-    Array<{ name: string; count: number; bytes: number; last_modified?: string }>
-  > {
+  async containers(): Promise<SwiftContainer[]> {
     return this.cached("containers", async () => {
-      const out: Array<{ name: string; count: number; bytes: number; last_modified?: string }> = [];
+      const where = { vendor: "OpenStack", path: "/v1/{account}", key: null };
+      const out: SwiftContainer[] = [];
       let marker = "";
-      for (let page = 0; page < 50; page++) {
-        const list = await this.api.get<
-          Array<{ name: string; count: number; bytes: number; last_modified?: string }>
-        >("object-store", "", {
+      for (let page = 0; page < MAX_CONTAINER_PAGES; page++) {
+        const list = await this.api.get<SwiftContainer[] | undefined>("object-store", "", {
           format: "json",
-          limit: 1000,
+          limit: CONTAINER_PAGE,
           ...(marker ? { marker } : {}),
         });
-        out.push(...(list ?? []));
-        if (!list || list.length < 1000) break;
-        marker = list[list.length - 1]!.name;
+        // Swift documents a 204 with no body for an empty text listing, and older
+        // releases answer JSON the same way.
+        if (list === undefined) return out;
+        const rows = requireListPage(list, where);
+        out.push(...rows);
+        if (rows.length < CONTAINER_PAGE) return out;
+        marker = rows[rows.length - 1]!.name;
       }
-      return out;
+      throw new ListTruncatedError({
+        ...where,
+        items: out.length,
+        maxPages: MAX_CONTAINER_PAGES,
+      });
     });
   }
   async lbList(kind: "loadbalancers" | "listeners" | "pools" | "healthmonitors"): Promise<Obj[]> {
@@ -391,7 +437,15 @@ export class OpenStackClient implements PluginClient {
           return (
             await this.api
               .paginate<Obj>("block-storage", "/backups/detail", "backups")
-              .catch(() => [])
+              .catch((err: unknown) => {
+                // A cloud without the backup API answers its route with 404.
+                if (err instanceof OpenStackApiError && err.status === 404) return [];
+                if (!(err instanceof OpenStackApiError && err.status === 403)) throw err;
+                // This type's stored rows stay. A host that keeps no track (the desktop)
+                // answers false, and there the refusal should still show.
+                if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+                return [];
+              })
           ).map((b) =>
             this.instance(
               accountId,
@@ -454,7 +508,7 @@ export class OpenStackClient implements PluginClient {
             ),
           );
         case ROUTER: {
-          const ports = await this.ports().catch(() => [] as Obj[]);
+          const ports = await this.ports().catch(noneUnlessIncomplete);
           return (await this.neutron<Obj>("routers", "routers")).map((r) => {
             const gw = r["external_gateway_info"] as {
               network_id?: string;
@@ -496,7 +550,7 @@ export class OpenStackClient implements PluginClient {
         case FLOATING_IP: {
           const [fips, ports] = await Promise.all([
             this.neutron<Obj>("floatingips", "floatingips"),
-            this.ports().catch(() => [] as Obj[]),
+            this.ports().catch(noneUnlessIncomplete),
           ]);
           const deviceOf = new Map(ports.map((p) => [str(p["id"]), p]));
           return fips.map((ip) => {
@@ -637,15 +691,26 @@ export class OpenStackClient implements PluginClient {
             this.containers(),
             this.api.endpoint("object-store"),
           ]);
-          return mapLimit(list, 6, async (c) => {
+          const { now, later } = containerWindow(list);
+          if (later.length) {
+            // Exact ids as prefixes: a deleted container whose name extends an unread one
+            // stays until the run reaches that one.
+            reportUnreadListPart({
+              idPrefixes: later.map((c) => `${accountId}:${CONTAINER}:${c.name}`),
+            });
+          }
+          const rows = await mapLimit(now, 6, async (c) => {
             const head = await this.api
               .request("object-store", "HEAD", `/${encodeURIComponent(c.name)}`)
-              .catch(() => undefined);
-            const acl = head
-              ? Object.entries(head.headers).find(
-                  ([k]) => k.toLowerCase() === "x-container-read",
-                )?.[1]
-              : undefined;
+              .catch((err: unknown) => {
+                // Deleted since the listing.
+                if (err instanceof OpenStackApiError && err.status === 404) return null;
+                throw err;
+              });
+            if (!head) return null;
+            const acl = Object.entries(head.headers).find(
+              ([k]) => k.toLowerCase() === "x-container-read",
+            )?.[1];
             return this.instance(
               accountId,
               CONTAINER,
@@ -661,6 +726,7 @@ export class OpenStackClient implements PluginClient {
               { resolvedOutputs: { url: `${base}/${encodeURIComponent(c.name)}` } },
             );
           });
+          return rows.filter((r): r is ResourceInstance => r !== null);
         }
         case DNS_ZONE:
           return (await this.api.paginate<Obj>("dns", "/v2/zones", "zones")).map((z) =>
@@ -727,7 +793,7 @@ export class OpenStackClient implements PluginClient {
   private async listServers(accountId: string): Promise<ResourceInstance[]> {
     const [servers, networks] = await Promise.all([
       this.servers(),
-      this.networks().catch(() => [] as Obj[]),
+      this.networks().catch(noneUnlessIncomplete),
     ]);
     const byName = new Map(networks.map((n) => [str(n["name"]), str(n["id"])]));
     return servers.map((s) => {
