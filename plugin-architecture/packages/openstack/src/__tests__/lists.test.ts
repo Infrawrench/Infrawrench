@@ -216,6 +216,16 @@ describe("Swift containers", () => {
     expect(new Set([...rows.map((r) => r.id), ...named]).size).toBe(1100);
   });
 
+  it("reads every container where the host keeps no track of the rest", async () => {
+    const { http, seen } = containers(1100);
+    const rows = await hostClient(new OpenStackClient(APP, { http })).listResources(
+      "os-container",
+      "acct",
+    );
+    expect(seen.filter((r) => r.method === "HEAD")).toHaveLength(1100);
+    expect(rows).toHaveLength(1100);
+  });
+
   it("moves the run from one poll to the next", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const unreadAt = async (at: string) => {

@@ -696,14 +696,15 @@ export class OpenStackClient implements PluginClient {
             this.api.endpoint("object-store"),
           ]);
           const { now, later } = containerWindow(list);
-          if (later.length) {
-            // Exact ids as prefixes: a deleted container whose name extends an unread one
-            // stays until the run reaches that one.
+          // Exact ids as prefixes: a deleted container whose name extends an unread one
+          // stays until the run reaches that one. A host that keeps no track answers false,
+          // and has no poll to outlast: it reads every container.
+          const tracked =
+            later.length === 0 ||
             reportUnreadListPart({
               idPrefixes: later.map((c) => `${accountId}:${CONTAINER}:${c.name}`),
             });
-          }
-          const rows = await mapLimit(now, 6, async (c) => {
+          const rows = await mapLimit(tracked ? now : list, 6, async (c) => {
             const head = await this.api
               .request("object-store", "HEAD", `/${encodeURIComponent(c.name)}`)
               .catch((err: unknown) => {
