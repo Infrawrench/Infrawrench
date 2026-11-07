@@ -1230,7 +1230,7 @@ export class OpenRouterClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const externalId = resourceId.split(":").slice(2).join(":");
+      const externalId = requireExternalId(resourceId);
       switch (typeId) {
         case "api-key":
           break;
@@ -1284,7 +1284,7 @@ export class OpenRouterClient implements PluginClient {
   /** DELETE /keys/{hash}, /guardrails/{id}, /workspaces/{id} or /byok/{id} */
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const externalId = pathEncode(resourceId.split(":").slice(2).join(":"));
+      const externalId = pathEncode(requireExternalId(resourceId));
       switch (typeId) {
         case "api-key":
           await this.api.delete(`/keys/${externalId}`);
@@ -2012,6 +2012,13 @@ export class OpenRouterClient implements PluginClient {
 }
 
 // -------------------------------------------------------------- helpers
+
+/** Without an id, an edit or a delete would land on the whole collection's route. */
+function requireExternalId(resourceId: string): string {
+  const externalId = resourceId.split(":").slice(2).join(":");
+  if (!externalId) throw new Error(`OpenRouter plugin: resource "${resourceId}" has no id`);
+  return externalId;
+}
 
 /** What a key can do now. BYOK credentials go through here too, and have no expiry. */
 function keyStatus(fields: ResourceInstance["fields"]): "Active" | "Disabled" | "Expired" {

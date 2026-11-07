@@ -1191,6 +1191,24 @@ describe("guardrail assignments", () => {
   });
 });
 
+describe("a blank resource id", () => {
+  const blank = `${ACCOUNT}:api-key:`;
+
+  it.each(["api-key", "guardrail", "workspace", "byok-credential"])(
+    "refuses to delete or update %s and sends nothing",
+    async (typeId) => {
+      installFetch((url) => {
+        throw new Error(`reached ${url}`);
+      });
+      await expect(client().deleteResource(typeId, blank, ACCOUNT)).rejects.toThrow(/no id/);
+      await expect(client().updateResource(typeId, blank, ACCOUNT, { name: "x" })).rejects.toThrow(
+        /no id/,
+      );
+      expect(calls).toHaveLength(0);
+    },
+  );
+});
+
 describe("expired API keys", () => {
   const past = "2020-01-01T00:00:00Z";
 
