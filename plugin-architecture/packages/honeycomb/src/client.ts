@@ -16,7 +16,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf, pathEncode, type ApiBody } from "@infrawrench/plugin-base";
 import type { ConfigApi, HoneycombContext } from "./api.js";
-import { mapPooled, statusOf, v1, v1Lists, v2, v2Lists } from "./api.js";
+import { listRows, mapPooled, statusOf, v1, v1Lists, v2, v2Lists } from "./api.js";
 import type { operations } from "./api-types.config.gen.js";
 import type { operations as ManagementOperations } from "./api-types.management.gen.js";
 import type { EnvScope } from "./mappers.js";
@@ -419,7 +419,7 @@ export class HoneycombClient implements PluginClient {
     if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
     const value = v1(this.ctx, this.requireKey(env))
       .get("/1/datasets")
-      .then((d) => d ?? []);
+      .then((d) => listRows(d, "/1/datasets"));
     this.datasetCache.set(env.slug, { at: Date.now(), value });
     value.catch(() => this.datasetCache.delete(env.slug));
     return value;
@@ -551,7 +551,7 @@ export class HoneycombClient implements PluginClient {
         case "marker":
           return this.perDataset(accountId, true, async (env, key, dataset) => {
             const markers = await v1(this.ctx, key).get(`/1/markers/${pathEncode(dataset)}`);
-            return [...(markers ?? [])]
+            return listRows(markers, "/1/markers")
               .sort((a, b) => (b.start_time ?? 0) - (a.start_time ?? 0))
               .slice(0, MAX_MARKERS_PER_DATASET)
               .map((m) => mapMarker(accountId, env, dataset, m));
@@ -607,7 +607,7 @@ export class HoneycombClient implements PluginClient {
         const alerts = await v1(this.ctx, key).get(`/1/burn_alerts/${pathEncode(dataset)}`, {
           query: { slo_id: sloId },
         });
-        const full = await mapPooled(alerts ?? [], POOL, (b) =>
+        const full = await mapPooled(listRows(alerts, "/1/burn_alerts"), POOL, (b) =>
           this.burnAlertWithRecipients(key, dataset, b),
         );
         return full.map((b) => mapBurnAlert(accountId, env, dataset, sloId, b));
@@ -658,7 +658,7 @@ export class HoneycombClient implements PluginClient {
     for (const { key } of connected(await this.environments(accountId))) {
       try {
         const list = await v1(this.ctx, key).get("/1/recipients");
-        return (list ?? []).map((r) => mapRecipient(accountId, r));
+        return listRows(list, "/1/recipients").map((r) => mapRecipient(accountId, r));
       } catch (err) {
         const status = statusOf(err);
         if (status === 401 || status === 403 || status === 404) continue;

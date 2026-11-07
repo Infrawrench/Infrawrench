@@ -1,5 +1,6 @@
 import {
   createApiClient,
+  requireListPage,
   withLinkPagination,
   type ApiClient,
   type HttpHostServices,
@@ -141,6 +142,11 @@ export function v1Lists(ctx: HoneycombContext, key: string) {
     pageSize: 100,
     maxPages: 100,
   });
+}
+
+/** A `/1/...` list answers a bare array. Anything else, `null` included, is not "none". */
+export function listRows<Row>(rows: readonly Row[] | null | undefined, path: string): Row[] {
+  return requireListPage(rows, { vendor: "Honeycomb", path, key: null });
 }
 
 /** HTTP status of a failed call, or 0 for a transport error. */

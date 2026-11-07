@@ -847,3 +847,36 @@ describe("board views", () => {
     await expect(c.listResources("board-view", ACCOUNT)).rejects.toThrow();
   });
 });
+
+describe("a null answer to a list", () => {
+  const up = (url: URL): Reply | undefined => {
+    if (url.pathname === "/1/auth") return { body: AUTH_V1 };
+    if (url.pathname === "/1/slos/api") return { body: [{ id: "s1", name: "Avail" }] };
+    return undefined;
+  };
+  const CASES: Array<[string, string, Reply]> = [
+    ["dataset", "/1/datasets", { body: null }],
+    ["marker", "/1/markers/api", { body: null }],
+    ["burn-alert", "/1/burn_alerts/api", { body: null }],
+    ["recipient", "/1/recipients", { body: null }],
+  ];
+
+  for (const [type, path, answer] of CASES) {
+    it(`${type}: is not read as empty`, async () => {
+      const { c } = client((url): Reply => {
+        const known = up(url);
+        if (known) return known;
+        if (url.pathname === path) return answer;
+        if (url.pathname === "/1/datasets") return { body: [{ name: "API", slug: "api" }] };
+        return { body: [] };
+      });
+      await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    });
+  }
+
+  it("an empty array is still an empty list", async () => {
+    const { c } = client((url): Reply => up(url) ?? { body: [] });
+    expect(await c.listResources("dataset", ACCOUNT)).toEqual([]);
+    expect(await c.listResources("recipient", ACCOUNT)).toEqual([]);
+  });
+});
