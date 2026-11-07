@@ -1,5 +1,5 @@
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { HuggingFaceClient, jobSpecFrom } from "../client.js";
 import { endpointMetricSeries } from "../metrics.js";
@@ -504,6 +504,91 @@ describe("endpoint logs", () => {
         .split("\n")
         .map((l) => l.split(" ").slice(1).join(" ")),
     ).toEqual(["older", "same ms", "newer"]);
+  });
+});
+
+describe("the Playground stream", () => {
+  const CHUNKS = 'data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n';
+  const sse = () =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(CHUNKS));
+        controller.close();
+      },
+    });
+  const noFetch = () => {
+    const stub = vi.fn(async () => {
+      throw new Error("the global fetch was called");
+    });
+    vi.stubGlobal("fetch", stub);
+    return stub;
+  };
+  const chat = async (client: HuggingFaceClient) => {
+    const events = [];
+    for await (const event of hostClient(client).streamChatMessage!(
+      "hf-provider-model",
+      `${ACCOUNT}:hf-provider-model:org/model`,
+      ACCOUNT,
+      [{ role: "user", content: "hello" }],
+    )) {
+      events.push(event);
+    }
+    return events;
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("goes through the host's stream, so a bastion carries it", async () => {
+    const stub = noFetch();
+    const requestStream = vi.fn(async () => ({ status: 200, headers: {}, body: sse() }));
+    const request = vi.fn(async () => {
+      throw new Error("buffered a stream");
+    });
+    const events = await chat(
+      new HuggingFaceClient({ apiToken: "hf_x" }, { http: { request, requestStream } }),
+    );
+    expect(events).toContainEqual(expect.objectContaining({ text: "hi" }));
+    expect(stub).not.toHaveBeenCalled();
+    const [call] = requestStream.mock.calls[0] as unknown as [
+      { url: string; caCert?: string; headers: Record<string, string> },
+    ];
+    expect(call.url).toBe("https://router.huggingface.co/v1/chat/completions");
+    expect(call.headers["authorization"]).toBe("Bearer hf_x");
+    expect(call).not.toHaveProperty("caCert");
+  });
+
+  it("gives the host the account's CA", async () => {
+    const stub = noFetch();
+    const requestStream = vi.fn(async () => ({ status: 200, headers: {}, body: sse() }));
+    const request = vi.fn(async () => {
+      throw new Error("buffered a stream");
+    });
+    await chat(
+      new HuggingFaceClient(
+        { apiToken: "hf_x", caCert: "PEM" },
+        { http: { request, requestStream } },
+      ),
+    );
+    expect(stub).not.toHaveBeenCalled();
+    expect(requestStream.mock.calls[0]).toEqual([expect.objectContaining({ caCert: "PEM" })]);
+  });
+
+  it("turns a refused answer into a chat error", async () => {
+    noFetch();
+    const requestStream = vi.fn(async () => ({
+      status: 402,
+      headers: {},
+      body: new Response("out of credits").body,
+    }));
+    const request = vi.fn(async () => {
+      throw new Error("buffered a stream");
+    });
+    const events = await chat(
+      new HuggingFaceClient({ apiToken: "hf_x" }, { http: { request, requestStream } }),
+    );
+    expect(events).toEqual([
+      expect.objectContaining({ kind: "error", message: expect.stringContaining("credits") }),
+    ]);
   });
 });
 

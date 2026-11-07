@@ -19,6 +19,7 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import {
+  hostFetch,
   pathEncode,
   requireListPage,
   streamOpenAiSseChat,
@@ -1182,7 +1183,7 @@ export class HuggingFaceClient implements PluginClient {
 
     let res: Response;
     try {
-      res = await fetch(url, {
+      res = await hostFetch({ http: this.ctx.http, caCert: this.ctx.caCert, stream: true }, url, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.ctx.token}`,

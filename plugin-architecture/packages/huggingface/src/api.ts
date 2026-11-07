@@ -1,7 +1,7 @@
 /**
  * Typed clients over the two documents `plugingen.json` names: the Hub and
  * Inference Endpoints. The router and the Inference Catalog are in neither, so
- * they stay on `hfJson`, and the Playground's stream on its own `fetch`.
+ * they stay on `hfJson`, and the Playground's stream on `hostFetch`.
  */
 import {
   createApiClient,
