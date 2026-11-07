@@ -428,11 +428,16 @@ export class AstraPluginClient implements PluginClient {
         case T.collection: {
           const out: ResourceInstance[] = [];
           const notServed: string[] = [];
-          const active = (await this.databases()).filter(
-            (db) => (db.status ?? "").toUpperCase() === ACTIVE,
-          );
+          const dbs = await this.databases();
+          const isActive = (db: AstraDatabase) => (db.status ?? "").toUpperCase() === ACTIVE;
+          // Reading these would wake them, so their collections are not known to be gone.
+          for (const db of dbs.filter((d) => !isActive(d))) {
+            for (const ks of keyspacesOf(db)) {
+              notServed.push(`${accountId}:${T.keyspace}:${db.id}/${ks}`);
+            }
+          }
           await this.readChildren(
-            active.flatMap((db) =>
+            dbs.filter(isActive).flatMap((db) =>
               keyspacesOf(db).map((ks) => {
                 const parentId = `${accountId}:${T.keyspace}:${db.id}/${ks}`;
                 return {

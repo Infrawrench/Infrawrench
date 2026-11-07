@@ -609,6 +609,47 @@ describe("reading collections", () => {
   });
 });
 
+describe("collections of a database that is not running", () => {
+  it.each(["HIBERNATED", "HIBERNATING", "PARKED", "MAINTENANCE"])(
+    "keeps the rows of a %s database without waking it",
+    async (status) => {
+      const { calls } = mockFetch({ "GET /v2/databases": [{ ...DB, status }] });
+      const unread = trackUnread();
+      try {
+        const client = hostClient(new AstraPluginClient({ token: "t" }));
+        await expect(client.listResources(T.collection, "acc")).resolves.toEqual([]);
+        expect(calls).toHaveLength(1);
+        expect(unread.parts).toEqual([
+          {
+            parentResourceIds: [
+              `acc:${T.keyspace}:${DB.id}/default_keyspace`,
+              `acc:${T.keyspace}:${DB.id}/analytics`,
+            ],
+          },
+        ]);
+      } finally {
+        unread.stop();
+      }
+    },
+  );
+
+  it("says nothing went unread when every database is running", async () => {
+    const endpoint = `${DB.id}-us-east-2.apps.astra.datastax.com/api/json/v1`;
+    mockFetch({
+      "GET /v2/databases": [DB],
+      [`POST ${endpoint}/default_keyspace`]: { status: { collections: [] } },
+      [`POST ${endpoint}/analytics`]: { status: { collections: [] } },
+    });
+    const unread = trackUnread();
+    try {
+      await hostClient(new AstraPluginClient({ token: "t" })).listResources(T.collection, "acc");
+      expect(unread.parts).toEqual([]);
+    } finally {
+      unread.stop();
+    }
+  });
+});
+
 describe("status feed", () => {
   it("maps AWS and Azure components onto regions and Astra products onto types", () => {
     expect(mapComponent("AWS us-east-1")).toMatchObject({ regions: ["us-east-1"] });
