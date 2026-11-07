@@ -398,6 +398,11 @@ export function tagString(tags: Record<string, string>): string {
     .join(", ");
 }
 
+/** An IPv4 or bracketed IPv6 literal, as `URL.hostname` spells them. */
+function isIpHostname(hostname: string): boolean {
+  return hostname.startsWith("[") || /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
+}
+
 // ── Client ────────────────────────────────────────────────────────────────
 
 export class S3Client {
@@ -417,9 +422,10 @@ export class S3Client {
     const suffix = qs ? `?${qs}` : "";
     const path = key ? `/${encodeKey(key)}` : "/";
     if (!bucket) return `${origin}/${suffix}`;
-    if (this.cfg.pathStyle)
-      return `${origin}/${encodeURIComponent(bucket)}${key ? path : ""}${suffix}`;
     const u = new URL(origin);
+    // An address has no subdomains, so `bucket.10.0.0.5` is not a URL at all.
+    if (this.cfg.pathStyle || isIpHostname(u.hostname))
+      return `${origin}/${encodeURIComponent(bucket)}${key ? path : ""}${suffix}`;
     return `${u.protocol}//${bucket}.${u.host}${path}${suffix}`;
   }
 

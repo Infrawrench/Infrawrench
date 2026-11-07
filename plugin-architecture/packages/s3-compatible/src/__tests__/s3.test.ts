@@ -125,6 +125,16 @@ describe("S3Client", () => {
     ).toBe("https://b.h/?list-type=2");
   });
 
+  it("addresses buckets by path on an IP endpoint, which has no subdomains", () => {
+    const base = { region: "r", accessKey: "a", secretKey: "s", pathStyle: false };
+    expect(new S3Client({ ...base, endpoint: "https://10.0.0.5:9000" }).url("b", "k")).toBe(
+      "https://10.0.0.5:9000/b/k",
+    );
+    expect(new S3Client({ ...base, endpoint: "http://[fd00::5]:9000" }).url("b", undefined)).toBe(
+      "http://[fd00::5]:9000/b",
+    );
+  });
+
   it("maps XML errors with status and code, and sends Content-MD5 on config bodies", async () => {
     const seen: Array<{ url: string; headers: Record<string, string> }> = [];
     const http = {
