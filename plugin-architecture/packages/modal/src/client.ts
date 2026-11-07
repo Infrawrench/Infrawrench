@@ -125,6 +125,13 @@ interface FunctionRow {
   info: ModalAppInfo;
 }
 
+/** What a read across environments reached. `refusal` is set when one was left unread. */
+interface EnvironmentRead<T> {
+  rows: T[];
+  refusal: unknown;
+  nothingRead: boolean;
+}
+
 /**
  * The deployed apps to read functions for this poll, newest first, and those left for
  * later. Polls share nothing, so past the budget the start moves with the clock by the
@@ -185,34 +192,59 @@ export class ModalClient implements PluginClient {
    * Environment names to list per-environment objects under. A token that may
    * not list environments still sees its default one (the empty name).
    */
-  private async environmentNames(): Promise<string[]> {
+  private async environmentNames(): Promise<{ names: string[]; refusal: unknown }> {
     try {
       const envs = await this.environments();
-      return envs.length > 0 ? envs.map((e) => e.name) : [""];
+      return { names: envs.length > 0 ? envs.map((e) => e.name) : [""], refusal: undefined };
     } catch (err) {
-      if (grpcCodeOf(err) === GrpcCode.PERMISSION_DENIED) return [""];
+      if (grpcCodeOf(err) === GrpcCode.PERMISSION_DENIED) return { names: [""], refusal: err };
       throw err;
     }
   }
 
-  private async perEnvironment<T>(key: string, load: (env: string) => Promise<T[]>): Promise<T[]> {
+  private perEnvironment<T>(
+    key: string,
+    load: (env: string) => Promise<T[]>,
+  ): Promise<EnvironmentRead<T>> {
     return this.cached(key, async () => {
-      const names = await this.environmentNames();
-      const lists = await Promise.all(names.map((n) => load(n)));
-      return lists.flat();
+      const { names, refusal: listRefusal } = await this.environmentNames();
+      let refusal = listRefusal;
+      let refused = 0;
+      const lists = await Promise.all(
+        names.map((name) =>
+          load(name).catch((err: unknown) => {
+            if (grpcCodeOf(err) !== GrpcCode.PERMISSION_DENIED) throw err;
+            refusal = err;
+            refused++;
+            return [];
+          }),
+        ),
+      );
+      return { rows: lists.flat(), refusal, nothingRead: refused === names.length };
     });
   }
 
-  private apps(): Promise<ModalApp[]> {
+  /**
+   * The rows of a read across environments, for `listResources`: the report belongs to
+   * each type, and these reads are shared. The stored rows of an environment this token
+   * was refused stay. A host that keeps no track (the desktop) answers false, and there
+   * a refusal with nothing to show should still show.
+   */
+  private readable<T>(read: EnvironmentRead<T>): T[] {
+    if (read.refusal === undefined) return read.rows;
+    if (!reportUnreadListPart({ idPrefixes: [""] }) && read.nothingRead) throw read.refusal;
+    return read.rows;
+  }
+
+  private apps(): Promise<EnvironmentRead<ModalApp>> {
     return this.perEnvironment("apps", (env) => listApps(this.ctx, env));
   }
 
   /** Deployed apps with their functions (`AppGetInfo`), and the apps this poll left unread. */
-  private deployedFunctions(): Promise<{ rows: FunctionRow[]; later: ModalApp[] }> {
+  private deployedFunctions(): Promise<EnvironmentRead<FunctionRow> & { later: ModalApp[] }> {
     return this.cached("functions", async () => {
-      const { now, later } = appInfoWindow(
-        (await this.apps()).filter((a) => a.state === "deployed"),
-      );
+      const apps = await this.apps();
+      const { now, later } = appInfoWindow(apps.rows.filter((a) => a.state === "deployed"));
       const rows = await mapLimited(now, APP_INFO_CONCURRENCY, async (app) => {
         try {
           return { app, info: await getAppInfo(this.ctx, app.appId) };
@@ -222,19 +254,19 @@ export class ModalClient implements PluginClient {
           throw err;
         }
       });
-      return { rows: rows.filter((r): r is FunctionRow => !!r), later };
+      return { ...apps, rows: rows.filter((r): r is FunctionRow => !!r), later };
     });
   }
 
   /** For `listResources`: the report belongs to each type, and the read above is shared. */
   private async functionRows(accountId: string): Promise<FunctionRow[]> {
-    const { rows, later } = await this.deployedFunctions();
-    if (later.length > 0) {
+    const read = await this.deployedFunctions();
+    if (read.later.length > 0) {
       reportUnreadListPart({
-        parentResourceIds: later.map((app) => `${accountId}:app:${app.appId}`),
+        parentResourceIds: read.later.map((app) => `${accountId}:app:${app.appId}`),
       });
     }
-    return rows;
+    return this.readable(read);
   }
 
   private async workspace(): Promise<string> {
@@ -251,16 +283,27 @@ export class ModalClient implements PluginClient {
         case "workspace": {
           const [name, envs, summary, url] = await Promise.all([
             this.workspace(),
-            this.environments().catch(() => [] as ModalEnvironment[]),
+            this.environments().catch((err: unknown) => {
+              if (grpcCodeOf(err) === GrpcCode.PERMISSION_DENIED) return [] as ModalEnvironment[];
+              throw err;
+            }),
             billingSummary(this.ctx, monthStartMs()).catch(() => undefined),
             dashboardUrl(this.ctx).catch(() => ""),
           ]);
           return [mapWorkspace(accountId, name, envs.length, summary, url)];
         }
         case "environment":
-          return (await this.environments()).map((e) => mapEnvironment(accountId, e));
+          try {
+            return (await this.environments()).map((e) => mapEnvironment(accountId, e));
+          } catch (err) {
+            if (grpcCodeOf(err) !== GrpcCode.PERMISSION_DENIED) throw err;
+            // This type's stored rows stay. A host that keeps no track (the desktop)
+            // answers false, and there the refusal should still show.
+            if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+            return [];
+          }
         case "app":
-          return (await this.apps()).map((a) => mapApp(accountId, a));
+          return this.readable(await this.apps()).map((a) => mapApp(accountId, a));
         case "function":
           return (await this.functionRows(accountId)).flatMap(({ app, info }) =>
             info.functions.map((s) => mapFunction(accountId, "function", app, s)),
@@ -272,21 +315,21 @@ export class ModalClient implements PluginClient {
               .map((s) => mapFunction(accountId, "scheduled-function", app, s)),
           );
         case "volume":
-          return (await this.perEnvironment("volumes", (env) => listVolumes(this.ctx, env))).map(
-            (v) => mapVolume(accountId, v),
-          );
+          return this.readable(
+            await this.perEnvironment("volumes", (env) => listVolumes(this.ctx, env)),
+          ).map((v) => mapVolume(accountId, v));
         case "secret":
-          return (await this.perEnvironment("secrets", (env) => listSecrets(this.ctx, env))).map(
-            (s) => mapSecret(accountId, s),
-          );
+          return this.readable(
+            await this.perEnvironment("secrets", (env) => listSecrets(this.ctx, env)),
+          ).map((s) => mapSecret(accountId, s));
         case "dict":
-          return (await this.perEnvironment("dicts", (env) => listDicts(this.ctx, env))).map((d) =>
-            mapDict(accountId, d),
-          );
+          return this.readable(
+            await this.perEnvironment("dicts", (env) => listDicts(this.ctx, env)),
+          ).map((d) => mapDict(accountId, d));
         case "queue":
-          return (await this.perEnvironment("queues", (env) => listQueues(this.ctx, env))).map(
-            (q) => mapQueue(accountId, q),
-          );
+          return this.readable(
+            await this.perEnvironment("queues", (env) => listQueues(this.ctx, env)),
+          ).map((q) => mapQueue(accountId, q));
         default:
           throw new Error(`Modal plugin: unknown resource type "${typeId}"`);
       }

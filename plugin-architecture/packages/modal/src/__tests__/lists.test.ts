@@ -261,3 +261,110 @@ describe("functions of deployed apps", () => {
     expect(second).not.toEqual(first);
   });
 });
+
+describe("a token refused environments", () => {
+  const DENIED = { grpcStatus: 7, message: "denied" };
+  const TWO_ENVIRONMENTS = new ProtoWriter()
+    .message(2, new ProtoWriter().string(1, "main"))
+    .message(2, new ProtoWriter().string(1, "locked"));
+
+  function recordPrefixes() {
+    const prefixes: string[] = [];
+    Reflect.set(globalThis, UNREAD_HOOK, (part: { idPrefixes?: string[] }) => {
+      prefixes.push(...(part.idPrefixes ?? []));
+    });
+    return prefixes;
+  }
+
+  const oneVolume = new ProtoWriter().message(1, volume("vo-1", 1_700_000_000));
+
+  it("keeps the rows of environments it could not list", async () => {
+    const prefixes = recordPrefixes();
+    const { c, calls } = client((method) => {
+      if (method === "EnvironmentList") return DENIED;
+      return oneVolume;
+    });
+    const rows = await c.listResources("volume", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["vo-1"]);
+    expect(calls.find((x) => x.method === "VolumeList")?.request.string(1)).toBe("");
+    expect(prefixes).toEqual([""]);
+  });
+
+  it("says so for each type reading apps, through the cached read", async () => {
+    const prefixes = recordPrefixes();
+    const { c } = client((method) => (method === "EnvironmentList" ? DENIED : new ProtoWriter()));
+    await c.listResources("app", ACCOUNT);
+    await c.listResources("function", ACCOUNT);
+    await c.listResources("scheduled-function", ACCOUNT);
+    expect(prefixes).toEqual(["", "", ""]);
+  });
+
+  it("returns the environments it could read when one refuses", async () => {
+    const prefixes = recordPrefixes();
+    const { c } = client((method, request) => {
+      if (method === "EnvironmentList") return TWO_ENVIRONMENTS;
+      return request.string(1) === "locked" ? DENIED : oneVolume;
+    });
+    const rows = await c.listResources("volume", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["vo-1"]);
+    expect(prefixes).toEqual([""]);
+  });
+
+  it("keeps the rows quietly when every environment refuses", async () => {
+    const prefixes = recordPrefixes();
+    const { c } = client((method) => (method === "EnvironmentList" ? TWO_ENVIRONMENTS : DENIED));
+    expect(await c.listResources("volume", ACCOUNT)).toEqual([]);
+    expect(prefixes).toEqual([""]);
+  });
+
+  it("shows the refusal on a host that keeps no track, when nothing could be read", async () => {
+    const { c } = client((method) => (method === "EnvironmentList" ? TWO_ENVIRONMENTS : DENIED));
+    await expect(c.listResources("volume", ACCOUNT)).rejects.toThrow("PERMISSION_DENIED");
+  });
+
+  it("returns the default environment on a host that keeps no track", async () => {
+    const { c } = client((method) => (method === "EnvironmentList" ? DENIED : oneVolume));
+    expect(await c.listResources("volume", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("keeps the environment rows quietly when the list is refused", async () => {
+    const prefixes = recordPrefixes();
+    const { c } = client(() => DENIED);
+    expect(await c.listResources("environment", ACCOUNT)).toEqual([]);
+    expect(prefixes).toEqual([""]);
+  });
+
+  it("shows that refusal on a host that keeps no track", async () => {
+    const { c } = client(() => DENIED);
+    await expect(c.listResources("environment", ACCOUNT)).rejects.toThrow("PERMISSION_DENIED");
+  });
+
+  it.each([
+    ["a throttle", 8],
+    ["an outage", 14],
+    ["a rejected token", 16],
+  ])("fails the type on %s", async (_name, grpcStatus) => {
+    const prefixes = recordPrefixes();
+    const onEnvironments = client((method) =>
+      method === "EnvironmentList" ? { grpcStatus } : new ProtoWriter(),
+    );
+    await expect(onEnvironments.c.listResources("volume", ACCOUNT)).rejects.toThrow();
+    const onOneList = client((method, request) => {
+      if (method === "EnvironmentList") return TWO_ENVIRONMENTS;
+      return request.string(1) === "locked" ? { grpcStatus } : oneVolume;
+    });
+    await expect(onOneList.c.listResources("volume", ACCOUNT)).rejects.toThrow();
+    expect(prefixes).toEqual([]);
+  });
+
+  it("counts no environments on the workspace only when refused", async () => {
+    const workspace = (environments: Reply) =>
+      client((method) => {
+        if (method === "EnvironmentList") return environments;
+        return new ProtoWriter().string(1, "team");
+      }).c.listResources("workspace", ACCOUNT);
+    const [row] = await workspace(DENIED);
+    expect(row?.displayName).toBe("team");
+    await expect(workspace({ grpcStatus: 14 })).rejects.toThrow("UNAVAILABLE");
+  });
+});
