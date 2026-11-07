@@ -847,3 +847,40 @@ describe("a failed read under a derived list", () => {
     expect(versions.map((v) => v.externalId)).toEqual(["acme/one/v1"]);
   });
 });
+
+describe("a blank id", () => {
+  const blank = (typeId: string) => `${ACCOUNT}:${typeId}:`;
+
+  beforeEach(() => {
+    installFetch((url) => {
+      throw new Error(`sent a request for a blank id: ${url}`);
+    });
+  });
+
+  it.each([["model"], ["deployment"]])("refuses to update a %s", async (typeId) => {
+    await expect(
+      client().updateResource(typeId, blank(typeId), ACCOUNT, { description: "x", version: "v" }),
+    ).rejects.toThrow("cannot parse resource id");
+    expect(calls).toEqual([]);
+  });
+
+  it.each([["prediction"], ["training"]])("refuses to cancel a %s", async (typeId) => {
+    await expect(client().invokeAction(typeId, blank(typeId), "cancel", ACCOUNT)).rejects.toThrow(
+      "cannot parse resource id",
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it.each([
+    ["model", "acme/"],
+    ["model", "/detector"],
+    ["deployment", "acme/"],
+    ["model-version", "acme/detector/"],
+    ["model-version", "acme//abc"],
+  ])("refuses to delete a %s with a blank part, %s", async (typeId, id) => {
+    await expect(
+      client().deleteResource(typeId, `${ACCOUNT}:${typeId}:${id}`, ACCOUNT),
+    ).rejects.toThrow("cannot parse");
+    expect(calls).toEqual([]);
+  });
+});

@@ -1132,7 +1132,7 @@ export class ReplicateClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const ref = externalIdOf(resourceId);
+      const ref = ownerNameOf(resourceId);
       if (typeId === "model") {
         const body: ApiBody<operations["models.update"]> = {
           description: fields["description"]?.trim(),
@@ -1188,13 +1188,13 @@ export class ReplicateClient implements PluginClient {
         throw new Error(`Replicate plugin: cannot parse resource id "${resourceId}"`);
       switch (typeId) {
         case "deployment":
-          await this.api.delete(`/deployments/${encodePath(externalId)}`);
+          await this.api.delete(`/deployments/${encodePath(ownerNameOf(resourceId))}`);
           return;
         case "file":
           await this.api.delete(`/files/${pathEncode(externalId)}`);
           return;
         case "model":
-          await this.api.delete(`/models/${encodePath(externalId)}`);
+          await this.api.delete(`/models/${encodePath(ownerNameOf(resourceId))}`);
           return;
         case "model-version": {
           const { modelRef, versionId } = splitVersionRef(externalId);
@@ -1272,6 +1272,9 @@ export class ReplicateClient implements PluginClient {
         throw new Error(`Replicate plugin: unknown action "${actionId}"`);
       }
       const externalId = externalIdOf(resourceId);
+      if (!externalId) {
+        throw new Error(`Replicate plugin: cannot parse resource id "${resourceId}"`);
+      }
       if (typeId === "prediction") {
         await this.api.post(`/predictions/${pathEncode(externalId)}/cancel`);
         return;
@@ -2233,10 +2236,26 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 /** Split a model-version external id, `owner/name/versionId`. */
 function splitVersionRef(externalId: string): { modelRef: string; versionId: string } {
   const slash = externalId.lastIndexOf("/");
-  if (slash <= 0 || !externalId.slice(0, slash).includes("/")) {
+  const modelRef = externalId.slice(0, slash);
+  const versionId = externalId.slice(slash + 1);
+  if (!versionId || !isOwnerName(modelRef)) {
     throw new Error(`Replicate plugin: cannot parse model version id "${externalId}"`);
   }
-  return { modelRef: externalId.slice(0, slash), versionId: externalId.slice(slash + 1) };
+  return { modelRef, versionId };
+}
+
+function isOwnerName(ref: string): boolean {
+  const parts = ref.split("/");
+  return parts.length === 2 && parts.every(Boolean);
+}
+
+/** The `owner/name` a write acts on. A missing part would send it to some other route. */
+function ownerNameOf(resourceId: string): string {
+  const ref = externalIdOf(resourceId);
+  if (!isOwnerName(ref)) {
+    throw new Error(`Replicate plugin: cannot parse resource id "${resourceId}"`);
+  }
+  return ref;
 }
 
 /** A `policy-picker` submits a JSON array of ids. */
