@@ -1,7 +1,7 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import type { SupabaseContext } from "./api.js";
 import { pathEncode } from "@infrawrench/plugin-base";
-import { supabaseApi } from "./api.js";
+import { supabaseApi, supabaseList } from "./api.js";
 import type { SbProject } from "./types.js";
 
 /**
@@ -37,10 +37,9 @@ export async function fetchSupabaseCostData(
   for (const project of projects) {
     // Paused projects run no compute and are not billed for it.
     if (project.status === "INACTIVE") continue;
-    const addons = await supabaseApi(ctx).get(
-      `/v1/projects/${pathEncode(project.ref)}/billing/addons`,
-    );
-    for (const addon of addons?.selected_addons ?? []) {
+    const path = `/v1/projects/${pathEncode(project.ref)}/billing/addons` as const;
+    const addons = await supabaseApi(ctx).get(path);
+    for (const addon of supabaseList(addons?.selected_addons, path, "selected_addons")) {
       const price = addon.variant.price;
       if (!price || price.type !== "fixed" || !Number.isFinite(price.amount)) continue;
       const amount = price.interval === "hourly" ? price.amount * 24 : price.amount / daysInMonth;

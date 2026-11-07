@@ -1,7 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { SupabaseContext } from "./api.js";
-import { pathEncode } from "@infrawrench/plugin-base";
-import { projectUrl, statusOf, supabaseApi } from "./api.js";
+import { ListTruncatedError, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
+import { projectUrl, statusOf, supabaseApi, supabaseList } from "./api.js";
 import {
   clean,
   instance,
@@ -30,7 +30,7 @@ export function isRunning(project: Pick<SbProject, "status">): boolean {
 }
 
 export async function fetchProjects(ctx: SupabaseContext): Promise<SbProject[]> {
-  return (await supabaseApi(ctx).get("/v1/projects")) ?? [];
+  return supabaseList(await supabaseApi(ctx).get("/v1/projects"), "/v1/projects");
 }
 
 export async function fetchProject(ctx: SupabaseContext, ref: string): Promise<SbProject> {
@@ -38,8 +38,11 @@ export async function fetchProject(ctx: SupabaseContext, ref: string): Promise<S
 }
 
 export async function fetchOrganizations(ctx: SupabaseContext): Promise<SbOrganization[]> {
-  return (await supabaseApi(ctx).get("/v1/organizations")) ?? [];
+  return supabaseList(await supabaseApi(ctx).get("/v1/organizations"), "/v1/organizations");
 }
+
+/** 50,000 rows at the 100 this route is asked for per page. */
+const MAX_ORG_PROJECT_PAGES = 500;
 
 /** Every project of an organization, with compute size, disk and read replicas. */
 export async function fetchOrgProjects(
@@ -48,15 +51,20 @@ export async function fetchOrgProjects(
 ): Promise<SbOrgProject[]> {
   const out: SbOrgProject[] = [];
   const limit = 100;
-  for (let offset = 0; ; offset += limit) {
-    const page = await supabaseApi(ctx).get(`/v1/organizations/${pathEncode(slug)}/projects`, {
-      query: { offset, limit },
-    });
-    const batch = page?.projects ?? [];
+  const path = `/v1/organizations/${pathEncode(slug)}/projects` as const;
+  for (let page = 0; page < MAX_ORG_PROJECT_PAGES; page++) {
+    const answer = await supabaseApi(ctx).get(path, { query: { offset: page * limit, limit } });
+    const batch = supabaseList(answer?.projects, path, "projects");
     out.push(...batch);
-    const total = page?.pagination?.count ?? 0;
-    if (batch.length < limit || out.length >= total) return out;
+    const total = answer?.pagination?.count;
+    if (batch.length < limit || (total !== undefined && out.length >= total)) return out;
   }
+  throw new ListTruncatedError({
+    vendor: "Supabase",
+    path,
+    items: out.length,
+    maxPages: MAX_ORG_PROJECT_PAGES,
+  });
 }
 
 /**
@@ -92,7 +100,8 @@ export async function perProject<T>(
 async function settle<T>(p: Promise<T>): Promise<T | undefined> {
   try {
     return await p;
-  } catch {
+  } catch (err) {
+    rethrowIncompleteList(err);
     return undefined;
   }
 }
@@ -255,8 +264,8 @@ export function listBranches(
   return perProject(
     projects,
     async (p) => {
-      const branches =
-        (await supabaseApi(ctx).get(`/v1/projects/${pathEncode(p.ref)}/branches`)) ?? [];
+      const path = `/v1/projects/${pathEncode(p.ref)}/branches` as const;
+      const branches = supabaseList(await supabaseApi(ctx).get(path), path);
       // Only branches whose parent is this project: the API also answers for
       // a branch's own ref, which would list the family twice.
       return branches
@@ -275,10 +284,12 @@ export function listFunctions(
 ): Promise<ResourceInstance[]> {
   return perProject(
     projects,
-    async (p) =>
-      ((await supabaseApi(ctx).get(`/v1/projects/${pathEncode(p.ref)}/functions`)) ?? []).map(
-        (fn) => toFunction(fn, p.ref, accountId),
-      ),
+    async (p) => {
+      const path = `/v1/projects/${pathEncode(p.ref)}/functions` as const;
+      return supabaseList(await supabaseApi(ctx).get(path), path).map((fn) =>
+        toFunction(fn, p.ref, accountId),
+      );
+    },
     { runningOnly: true },
   );
 }
@@ -290,25 +301,29 @@ export function listSecrets(
 ): Promise<ResourceInstance[]> {
   return perProject(
     projects,
-    async (p) =>
-      ((await supabaseApi(ctx).get(`/v1/projects/${pathEncode(p.ref)}/secrets`)) ?? [])
-        // SUPABASE_* secrets are injected by the platform and cannot be changed.
-        .filter((s) => !s.name.startsWith("SUPABASE_"))
-        .map((s) =>
-          instance(
-            accountId,
-            "supabase-secret",
-            `${p.ref}/${s.name}`,
-            s.name,
-            clean({
-              name: s.name,
-              projectRef: p.ref,
-              digest: s.value,
-              updatedAt: s.updated_at ?? "",
-            }),
-            { parentTypeId: "supabase-project", parentExternalId: p.ref },
-          ),
-        ),
+    async (p) => {
+      const path = `/v1/projects/${pathEncode(p.ref)}/secrets` as const;
+      return (
+        supabaseList(await supabaseApi(ctx).get(path), path)
+          // SUPABASE_* secrets are injected by the platform and cannot be changed.
+          .filter((s) => !s.name.startsWith("SUPABASE_"))
+          .map((s) =>
+            instance(
+              accountId,
+              "supabase-secret",
+              `${p.ref}/${s.name}`,
+              s.name,
+              clean({
+                name: s.name,
+                projectRef: p.ref,
+                digest: s.value,
+                updatedAt: s.updated_at ?? "",
+              }),
+              { parentTypeId: "supabase-project", parentExternalId: p.ref },
+            ),
+          )
+      );
+    },
     { runningOnly: true },
   );
 }
@@ -320,10 +335,12 @@ export function listApiKeys(
 ): Promise<ResourceInstance[]> {
   return perProject(
     projects,
-    async (p) =>
-      ((await supabaseApi(ctx).get(`/v1/projects/${pathEncode(p.ref)}/api-keys`)) ?? []).map((k) =>
+    async (p) => {
+      const path = `/v1/projects/${pathEncode(p.ref)}/api-keys` as const;
+      return supabaseList(await supabaseApi(ctx).get(path), path).map((k) =>
         toApiKey(k, p.ref, accountId),
-      ),
+      );
+    },
     { runningOnly: true },
   );
 }
@@ -343,10 +360,8 @@ export function listBuckets(
       const viaStorage = await settle(
         (async () => listStorageBuckets(ctx, p.ref, await secretKeyFor(p.ref)))(),
       );
-      const buckets =
-        viaStorage ??
-        (await supabaseApi(ctx).get(`/v1/projects/${pathEncode(p.ref)}/storage/buckets`)) ??
-        [];
+      const path = `/v1/projects/${pathEncode(p.ref)}/storage/buckets` as const;
+      const buckets = viaStorage ?? supabaseList(await supabaseApi(ctx).get(path), path);
       return buckets.map((b) => toBucket(b, p.ref, accountId));
     },
     { runningOnly: true },
@@ -361,8 +376,9 @@ export function listBackups(
   return perProject(
     projects,
     async (p) => {
-      const data = await supabaseApi(ctx).get(`/v1/projects/${pathEncode(p.ref)}/database/backups`);
-      return (data?.backups ?? []).map((b) =>
+      const path = `/v1/projects/${pathEncode(p.ref)}/database/backups` as const;
+      const data = await supabaseApi(ctx).get(path);
+      return supabaseList(data?.backups, path, "backups").map((b) =>
         instance(
           accountId,
           "supabase-backup",
@@ -454,10 +470,11 @@ export function listSsoProviders(
   return perProject(
     projects,
     async (p) => {
-      const data = await supabaseApi(ctx).get(
-        `/v1/projects/${pathEncode(p.ref)}/config/auth/sso/providers`,
+      const path = `/v1/projects/${pathEncode(p.ref)}/config/auth/sso/providers` as const;
+      const data = await supabaseApi(ctx).get(path);
+      return supabaseList(data?.items, path, "items").map((sp) =>
+        toSsoProvider(sp, p.ref, accountId),
       );
-      return (data?.items ?? []).map((sp) => toSsoProvider(sp, p.ref, accountId));
     },
     // SAML SSO is a Pro-plan feature; disabled projects answer 4xx.
     { runningOnly: true, tolerate: [400, 402, 403] },
@@ -471,12 +488,12 @@ export function listThirdPartyAuth(
 ): Promise<ResourceInstance[]> {
   return perProject(
     projects,
-    async (p) =>
-      (
-        (await supabaseApi(ctx).get(
-          `/v1/projects/${pathEncode(p.ref)}/config/auth/third-party-auth`,
-        )) ?? []
-      ).map((t) => toThirdPartyAuth(t, p.ref, accountId)),
+    async (p) => {
+      const path = `/v1/projects/${pathEncode(p.ref)}/config/auth/third-party-auth` as const;
+      return supabaseList(await supabaseApi(ctx).get(path), path).map((t) =>
+        toThirdPartyAuth(t, p.ref, accountId),
+      );
+    },
     { runningOnly: true },
   );
 }
@@ -489,10 +506,9 @@ export function listSigningKeys(
   return perProject(
     projects,
     async (p) => {
-      const data = await supabaseApi(ctx).get(
-        `/v1/projects/${pathEncode(p.ref)}/config/auth/signing-keys`,
-      );
-      return (data?.keys ?? []).map((k) => toSigningKey(k, p.ref, accountId));
+      const path = `/v1/projects/${pathEncode(p.ref)}/config/auth/signing-keys` as const;
+      const data = await supabaseApi(ctx).get(path);
+      return supabaseList(data?.keys, path, "keys").map((k) => toSigningKey(k, p.ref, accountId));
     },
     { runningOnly: true },
   );

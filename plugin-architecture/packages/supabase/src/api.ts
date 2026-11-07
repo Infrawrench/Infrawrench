@@ -1,5 +1,6 @@
 import {
   createApiClient,
+  requireListPage,
   restRequest,
   type ApiResponse,
   type HttpHostServices,
@@ -45,6 +46,18 @@ export class SupabaseApiError extends Error {
     this.name = "SupabaseApiError";
     this.status = status;
   }
+}
+
+/**
+ * A list out of a 2xx answer. A sync prunes whatever a list stops returning, and the
+ * document calls each of these a required array, so an answer without one throws.
+ */
+export function supabaseList<T>(
+  list: readonly T[] | null | undefined,
+  path: string,
+  key: string | null = null,
+): T[] {
+  return requireListPage(list, { vendor: "Supabase", path, key });
 }
 
 /** HTTP status of a failed call, or 0 for a transport error. */

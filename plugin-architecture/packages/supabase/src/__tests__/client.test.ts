@@ -638,3 +638,132 @@ describe("the organization project index", () => {
     expect(found.externalId).toBe(REF);
   });
 });
+
+describe("a 2xx answer that does not hold its list", () => {
+  const ORG_PROJECTS = "/v1/organizations/acme/projects";
+  const REFUSED = "is not a list";
+  const base = [on("GET", "/v1/projects", [project])];
+  const orgProject = (ref: string) => ({ ref, is_branch: false, databases: [] });
+  const full = Array.from({ length: 100 }, (_, i) => orgProject(`ref${i}`));
+
+  it.each([
+    ["no body", ""],
+    ["an object", { projects: [] }],
+  ])("refuses %s for the project list every type starts from", async (_label, body) => {
+    const { c } = client([on("GET", "/v1/projects", body)]);
+    await expect(c.listResources("supabase-function", ACCOUNT)).rejects.toThrow(REFUSED);
+  });
+
+  it("refuses no body for the organization list", async () => {
+    const { c } = client([on("GET", "/v1/organizations", "")]);
+    await expect(c.listResources("supabase-organization", ACCOUNT)).rejects.toThrow(REFUSED);
+  });
+
+  it.each([
+    ["supabase-function", `/v1/projects/${REF}/functions`, ""],
+    ["supabase-secret", `/v1/projects/${REF}/secrets`, ""],
+    ["supabase-api-key", `/v1/projects/${REF}/api-keys`, ""],
+    ["supabase-third-party-auth", `/v1/projects/${REF}/config/auth/third-party-auth`, ""],
+    ["supabase-branch", `/v1/projects/${REF}/branches`, ""],
+    ["supabase-backup", `/v1/projects/${REF}/database/backups`, { items: [] }],
+    ["supabase-sso-provider", `/v1/projects/${REF}/config/auth/sso/providers`, { providers: [] }],
+    ["supabase-signing-key", `/v1/projects/${REF}/config/auth/signing-keys`, { items: [] }],
+  ])("refuses a bad answer for %s", async (type, path, body) => {
+    const { c } = client([...base, on("GET", path, body)]);
+    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow(REFUSED);
+  });
+
+  it("refuses a bucket list missing from both the Storage and Management APIs", async () => {
+    const { c } = client([...base, on("GET", `/v1/projects/${REF}/storage/buckets`, "")]);
+    await expect(c.listResources("supabase-bucket", ACCOUNT)).rejects.toThrow(REFUSED);
+  });
+
+  it("reads a real empty list as empty", async () => {
+    const { c } = client([...base, on("GET", `/v1/projects/${REF}/functions`, [])]);
+    expect(await c.listResources("supabase-function", ACCOUNT)).toEqual([]);
+  });
+
+  it("refuses an organization page with its key renamed, on the first page and a later one", async () => {
+    const first = client([...base, on("GET", ORG_PROJECTS, { items: [] })]);
+    await expect(first.c.listResources("supabase-read-replica", ACCOUNT)).rejects.toThrow(REFUSED);
+
+    const later = client([
+      ...base,
+      (call) => {
+        const url = new URL(call.url);
+        if (url.pathname !== ORG_PROJECTS) return undefined;
+        return url.searchParams.get("offset") === "0"
+          ? { status: 200, body: { projects: full, pagination: { count: 150 } } }
+          : { status: 200, body: { items: [] } };
+      },
+    ]);
+    await expect(later.c.listResources("supabase-read-replica", ACCOUNT)).rejects.toThrow(REFUSED);
+  });
+
+  it("lets a renamed key through no catch on the way to the organization list", async () => {
+    const { c } = client([
+      on("GET", "/v1/organizations", [{ id: "o", slug: "acme", name: "Acme" }]),
+      on("GET", ORG_PROJECTS, { items: [] }),
+    ]);
+    await expect(c.listResources("supabase-organization", ACCOUNT)).rejects.toThrow(REFUSED);
+  });
+
+  it("reads past a full page when the count is missing", async () => {
+    const offsets: (string | null)[] = [];
+    const { c } = client([
+      ...base,
+      (call) => {
+        const url = new URL(call.url);
+        if (url.pathname !== ORG_PROJECTS) return undefined;
+        const offset = url.searchParams.get("offset");
+        offsets.push(offset);
+        const replica = {
+          ref: REF,
+          is_branch: false,
+          databases: [{ identifier: "rr", type: "READ_REPLICA", region: "us-east-1" }],
+        };
+        return { status: 200, body: { projects: offset === "0" ? full : [replica] } };
+      },
+    ]);
+    const replicas = await c.listResources("supabase-read-replica", ACCOUNT);
+    expect(offsets).toEqual(["0", "100"]);
+    expect(replicas).toHaveLength(1);
+  });
+
+  it("throws at the cap on an organization list that never ends", async () => {
+    const { c, calls } = client([
+      ...base,
+      on("GET", ORG_PROJECTS, { projects: full, pagination: { count: 10_000_000 } }),
+    ]);
+    await expect(c.listResources("supabase-read-replica", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((call) => new URL(call.url).pathname === ORG_PROJECTS)).toHaveLength(500);
+  });
+
+  it("refuses an add-on answer without selected_addons rather than reporting no cost", async () => {
+    const { services } = fakeServices([
+      on("GET", `/v1/projects/${REF}/billing/addons`, { addons: [] }),
+    ]);
+    await expect(
+      fetchSupabaseCostData(
+        { token: "t", http: services.http! },
+        [project],
+        { fromDate: "2026-01-01", toDate: "2026-12-31" },
+        new Date("2026-06-01T00:00:00Z"),
+      ),
+    ).rejects.toThrow(REFUSED);
+  });
+
+  it("refuses an object page with no body, so a folder delete cannot report success", async () => {
+    const { c, calls } = client([
+      on("GET", `/v1/projects/${REF}/api-keys`, [
+        { id: "k", name: "secret", type: "secret", api_key: "sb_secret_x" },
+      ]),
+      on("POST", "/storage/v1/object/list/avatars", ""),
+      on("DELETE", "/storage/v1/object/avatars", []),
+    ]);
+    await expect(c.deleteStorageObject!(`${REF}/avatars`, "folder/")).rejects.toThrow(REFUSED);
+    expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+  });
+});

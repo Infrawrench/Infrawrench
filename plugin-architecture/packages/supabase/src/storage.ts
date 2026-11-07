@@ -1,7 +1,7 @@
 import type { StorageObject } from "@infrawrench/plugin-base";
 import type { SupabaseContext } from "./api.js";
 import { pathEncode } from "@infrawrench/plugin-base";
-import { supabaseStorageApi, uploadStorageBytes } from "./api.js";
+import { supabaseList, supabaseStorageApi, uploadStorageBytes } from "./api.js";
 import type { SbStorageBucket, SbStorageObject } from "./types.js";
 
 /**
@@ -15,7 +15,7 @@ export async function listStorageBuckets(
   ref: string,
   key: string,
 ): Promise<SbStorageBucket[]> {
-  return (await supabaseStorageApi(ctx, ref, key).get("/bucket")) ?? [];
+  return supabaseList(await supabaseStorageApi(ctx, ref, key).get("/bucket"), "storage/bucket");
 }
 
 export interface BucketInput {
@@ -106,16 +106,16 @@ async function listObjectsPage(
   prefix: string,
   offset: number,
 ): Promise<SbStorageObject[]> {
-  return (
-    (await supabaseStorageApi(ctx, ref, key).post(`/object/list/${pathEncode(bucket)}`, {
-      body: {
-        prefix,
-        limit: PAGE,
-        offset,
-        sortBy: { column: "name", order: "asc" },
-      },
-    })) ?? []
-  );
+  const path = `/object/list/${pathEncode(bucket)}` as const;
+  const page = await supabaseStorageApi(ctx, ref, key).post(path, {
+    body: {
+      prefix,
+      limit: PAGE,
+      offset,
+      sortBy: { column: "name", order: "asc" },
+    },
+  });
+  return supabaseList(page, `storage${path}`);
 }
 
 /** One directory level, the shape the host's file browser expects. */
