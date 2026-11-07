@@ -325,6 +325,26 @@ describe("CapellaClient", () => {
     await expect(client.fetchCreditBalance("acc")).rejects.toThrow(/Organization Owner/);
   });
 
+  it("reads every page of prepaid credits", async () => {
+    const credit = (id: string) => ({ id, creditName: id, total: 100, remaining: 50 });
+    const { calls } = mockFetch({
+      [`GET ${O}/billing/prePaidCredits`]: (url: URL) =>
+        url.searchParams.get("page") === "1"
+          ? page([credit("cr1")], 2, 1)
+          : page([credit("cr2")], 2, 2),
+    });
+    const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
+    const credits = await client.fetchCreditBalance("acc");
+    expect(credits.map((c) => c.key)).toEqual(["cr1", "cr2"]);
+    expect(calls.map((c) => c.url.searchParams.get("page"))).toEqual(["1", "2"]);
+  });
+
+  it("refuses a page of prepaid credits with no list rather than report no credits", async () => {
+    mockFetch({ [`GET ${O}/billing/prePaidCredits`]: { items: [] } });
+    const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
+    await expect(client.fetchCreditBalance("acc")).rejects.toThrow("is not a list");
+  });
+
   it("sets flush on a new bucket through flushEnabled, not the deprecated flush", async () => {
     const { calls } = mockFetch({
       [`GET ${O}/projects`]: page([{ id: "p1" }]),

@@ -2111,11 +2111,11 @@ export class CapellaClient implements PluginClient {
 
   fetchCreditBalance(_accountId: string): PluginEffect<CreditBalance[]> {
     return attempt(async () => {
-      let res: CapellaResponse<"prepaidCreditsBilling">;
+      let credits: CapellaRow<"prepaidCreditsBilling">[];
       try {
-        res = await this.api.get(`${this.org}/billing/prePaidCredits`, {
-          query: { perPage: 100 },
-        });
+        credits = await capellaList(`${this.org}/billing/prePaidCredits`, (path, query) =>
+          this.api.get(path, { query }),
+        );
       } catch (err) {
         if (statusOf(err) === 403) {
           throw new CreditAccessError(
@@ -2124,7 +2124,7 @@ export class CapellaClient implements PluginClient {
         }
         throw err;
       }
-      return (res?.data ?? []).map((c) => ({
+      return credits.map((c) => ({
         key: c.id,
         label: c.creditName ?? "Prepaid credits",
         remaining: c.remaining ?? 0,
