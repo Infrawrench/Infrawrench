@@ -17,7 +17,13 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, pathEncode, restRequest, type ApiResponse } from "@infrawrench/plugin-base";
+import {
+  base64ToBytes,
+  pathEncode,
+  requireListPage,
+  restRequest,
+  type ApiResponse,
+} from "@infrawrench/plugin-base";
 import {
   createAssemblyAIApis,
   HOSTS,
@@ -52,6 +58,8 @@ const LIST_LIMIT = 100;
 const JOB_PAGE_SIZE = 200;
 /** Bounds the metrics walk at 2,000 jobs, so a busy account cannot fan out unboundedly. */
 const MAX_JOB_PAGES = 10;
+/** Bounds the search for one transcript's list row at 1,000 jobs, on every open of a detail view. */
+const MAX_ROW_LOOKUP_PAGES = 5;
 
 /** Parallelism for the per-transcript hydration pass. Deliberately modest: a
  *  rate-limit violation comes back as a 403 that is indistinguishable from an
@@ -209,6 +217,45 @@ export class AssemblyAIClient implements PluginClient {
     return annotated(() => this.api.transcripts.get(`/v2/transcript/${pathEncode(id)}`));
   }
 
+  /** One page, newest first, and the `before_id` of the next one, or "" at the end. */
+  private async transcriptPage(before: string) {
+    const data = await annotated(() =>
+      this.api.transcripts.get("/v2/transcript", {
+        query: { limit: JOB_PAGE_SIZE, ...(before ? { before_id: before } : {}) },
+      }),
+    );
+    const rows = requireListPage(data.transcripts, {
+      vendor: "AssemblyAI",
+      path: "/v2/transcript",
+      key: "transcripts",
+    });
+    const last = rows[rows.length - 1];
+    // `prev_url` is the documented way on, to older transcripts. A full page without
+    // one costs a request that comes back empty; stopping there could lose rows.
+    const more = Boolean(data.page_details?.prev_url) || rows.length === JOB_PAGE_SIZE;
+    return { rows, next: last && more ? last.id : "" };
+  }
+
+  /**
+   * The list row of a transcript opened on its own, for the times only that row
+   * carries. Best effort: the transcript is still worth showing without them, on a
+   * job older than this reaches or when the list read is refused.
+   */
+  private async findListRow(id: string): Promise<TranscriptListItem | undefined> {
+    try {
+      let before = "";
+      for (let page = 0; page < MAX_ROW_LOOKUP_PAGES; page++) {
+        const { rows, next } = await this.transcriptPage(before);
+        const row = rows.find((r) => r.id === id);
+        if (row || !next) return row;
+        before = next;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+
   /**
    * Upload raw audio bytes. https://www.assemblyai.com/docs/api-reference/files/upload
    *
@@ -265,7 +312,7 @@ export class AssemblyAIClient implements PluginClient {
         HYDRATE_CONCURRENCY,
         async (item): Promise<TranscriptRecord> => {
           try {
-            return await this.getTranscript(item.id);
+            return withListRow(await this.getTranscript(item.id), item);
           } catch {
             return item;
           }
@@ -288,8 +335,9 @@ export class AssemblyAIClient implements PluginClient {
         throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
       }
       const id = transcriptIdOf(resourceId);
-      const data = await this.getTranscript(id);
-      return this.mapTranscript(data, accountId);
+      const data: TranscriptRecord = await this.getTranscript(id);
+      if (data.created) return this.mapTranscript(data, accountId);
+      return this.mapTranscript(withListRow(data, await this.findListRow(id)), accountId);
     });
   }
 
@@ -664,8 +712,8 @@ export class AssemblyAIClient implements PluginClient {
             kind: "key-value-list",
             items: [
               { key: "Audio URL", value: String(fields["audioUrl"] ?? "—"), copyable: true },
-              { key: "Created", value: String(fields["created"] ?? "—") },
-              { key: "Completed", value: String(fields["completed"] ?? "—") },
+              { key: "Created", value: String(fields["created"] || "—") },
+              { key: "Completed", value: String(fields["completed"] || "—") },
               ...(fields["errorMessage"]
                 ? [{ key: "Error", value: String(fields["errorMessage"]) }]
                 : []),
@@ -956,7 +1004,7 @@ export class AssemblyAIClient implements PluginClient {
   private mapTranscript(t: TranscriptRecord, accountId: string): ResourceInstance {
     const status = t.status ?? "queued";
     const text = t.text ?? "";
-    const created = t.created ?? new Date().toISOString();
+    const created = t.created ?? "";
     const displayName = buildDisplayName(t, text);
 
     return {
@@ -1026,6 +1074,20 @@ function transcriptIdOf(resourceId: string): string {
   const id = parts.length > 2 ? parts.slice(2).join(":") : resourceId;
   if (!id) throw new Error(`AssemblyAI plugin: cannot parse transcript id from "${resourceId}"`);
   return id;
+}
+
+/** A full record with what the document only gives to the list row. */
+function withListRow(
+  record: TranscriptRecord,
+  row: TranscriptListItem | undefined,
+): TranscriptRecord {
+  if (!row) return record;
+  return {
+    ...record,
+    created: record.created ?? row.created,
+    completed: record.completed ?? row.completed,
+    resource_url: record.resource_url ?? row.resource_url,
+  };
 }
 
 function modelOf(t: TranscriptRecord): string {

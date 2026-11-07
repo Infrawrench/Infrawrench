@@ -54,9 +54,6 @@ function completedTranscript(overrides: Record<string, unknown> = {}) {
     speaker_labels: true,
     speech_models: ["universal-3-5-pro"],
     audio_url: "https://cdn.assemblyai.com/upload/abc",
-    resource_url: `https://api.assemblyai.com/v2/transcript/${JOB_ID}`,
-    created: "2026-07-20T10:00:00.000Z",
-    completed: "2026-07-20T10:01:00.000Z",
     words: [
       { text: "Hello", start: 400, end: 900, confidence: 0.99, speaker: "A" },
       { text: "there.", start: 950, end: 1500, confidence: 0.9, speaker: "B" },
@@ -103,6 +100,118 @@ describe("auth and host selection", () => {
 
   it("throws without an API key", () => {
     expect(() => hostClient(new AssemblyAIClient({}))).toThrow(/missing apiKey/);
+  });
+});
+
+describe("transcript times, which the document only gives to the list row", () => {
+  const CREATED = "2026-07-20T10:00:00.000Z";
+  const COMPLETED = "2026-07-20T10:01:00.000Z";
+  const row = {
+    id: JOB_ID,
+    status: "completed",
+    created: CREATED,
+    completed: COMPLETED,
+    audio_url: "https://cdn.assemblyai.com/upload/abc",
+    resource_url: `https://api.assemblyai.com/v2/transcript/${JOB_ID}`,
+    error: null,
+  };
+
+  it("keeps the list row's created and completed through hydration", async () => {
+    installFetch((url) =>
+      url.includes("/v2/transcript?")
+        ? jsonResponse({ transcripts: [row] })
+        : jsonResponse(completedTranscript()),
+    );
+
+    const [resource] = await client().listResources("transcript", ACCOUNT);
+
+    expect(resource!.fields["created"]).toBe(CREATED);
+    expect(resource!.fields["completed"]).toBe(COMPLETED);
+    expect(resource!.createdAt).toBe(CREATED);
+    expect(resource!.updatedAt).toBe(COMPLETED);
+    expect(resource!.resolvedOutputs["resourceUrl"]).toBe(row.resource_url);
+  });
+
+  it("names an empty transcript after when it was created", async () => {
+    installFetch((url) =>
+      url.includes("/v2/transcript?")
+        ? jsonResponse({ transcripts: [row] })
+        : jsonResponse(completedTranscript({ text: "" })),
+    );
+
+    const [resource] = await client().listResources("transcript", ACCOUNT);
+
+    expect(resource!.displayName).toBe("Transcript 2026-07-20 10:00:00");
+  });
+
+  it("finds the list row when a single transcript is opened", async () => {
+    installFetch((url) =>
+      url.includes("/v2/transcript?")
+        ? jsonResponse({ transcripts: [row] })
+        : jsonResponse(completedTranscript()),
+    );
+
+    const resource = await client().getResource("transcript", JOB_ID, ACCOUNT);
+
+    expect(resource.fields["created"]).toBe(CREATED);
+    expect(resource.fields["completed"]).toBe(COMPLETED);
+    expect(resource.createdAt).toBe(CREATED);
+  });
+
+  it("walks older pages with before_id to find the row, and stops once it has", async () => {
+    const full = Array.from({ length: 200 }, (_, i) => ({ ...row, id: `newer-${i}` }));
+    installFetch((url) => {
+      if (url.includes("before_id=newer-199")) return jsonResponse({ transcripts: [row] });
+      if (url.includes("/v2/transcript?")) return jsonResponse({ transcripts: full });
+      return jsonResponse(completedTranscript());
+    });
+
+    const resource = await client().getResource("transcript", JOB_ID, ACCOUNT);
+
+    expect(resource.fields["created"]).toBe(CREATED);
+    expect(calls.filter((c) => c.url.includes("/v2/transcript?"))).toHaveLength(2);
+  });
+
+  it("leaves the times blank, never the current time, when no row can be found", async () => {
+    installFetch((url) =>
+      url.includes("/v2/transcript?")
+        ? jsonResponse({ transcripts: [] })
+        : jsonResponse(completedTranscript({ text: "" })),
+    );
+
+    const resource = await client().getResource("transcript", JOB_ID, ACCOUNT);
+
+    expect(resource.fields["created"]).toBe("");
+    expect(resource.createdAt).toBe("");
+    expect(resource.updatedAt).toBe("");
+    expect(resource.displayName).toBe(`Transcript ${JOB_ID.slice(0, 8)}`);
+    const detail = client().renderDetail(resource);
+    const source = detail.sections.find((s) => s.kind === "section" && s.title === "Source");
+    expect(JSON.stringify(source)).toContain('"key":"Created","value":"—"');
+  });
+
+  it("still opens the transcript when the list read fails", async () => {
+    installFetch((url) =>
+      url.includes("/v2/transcript?")
+        ? jsonResponse("slow down", 403)
+        : jsonResponse(completedTranscript()),
+    );
+
+    const resource = await client().getResource("transcript", JOB_ID, ACCOUNT);
+
+    expect(resource.fields["status"]).toBe("completed");
+    expect(resource.fields["created"]).toBe("");
+  });
+
+  it("makes no list request when the record itself carries the times", async () => {
+    installFetch(() =>
+      jsonResponse(completedTranscript({ created: CREATED, completed: COMPLETED })),
+    );
+
+    const resource = await client().getResource("transcript", JOB_ID, ACCOUNT);
+
+    expect(resource.fields["created"]).toBe(CREATED);
+    expect(calls).toHaveLength(1);
   });
 });
 
