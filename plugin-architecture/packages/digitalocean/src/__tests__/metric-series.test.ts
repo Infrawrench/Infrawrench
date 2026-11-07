@@ -195,7 +195,7 @@ describe("fetchDoMetricSeries — gen-ai-agent", () => {
   });
 });
 
-describe("fetchDoMetricSeries — what the document says an agent's usage is (#412)", () => {
+describe("fetchDoMetricSeries: what the document says an agent's usage is (#412)", () => {
   const usage = {
     usage: {
       resource_uuid: "a-1",

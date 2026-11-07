@@ -9,11 +9,11 @@ export const ModelApiKeyResourceType = rt({
   fields: [
     f("name", "Name"),
     f("createdBy", "Created By", { required: false, editable: false }),
-    f("lastUsedAt", "Last Used", { showcase: true, required: false, editable: false }),
+    f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
   outputs: [],
-  // `lastUsedAt` is real; there is no creation date in the field bag, so the
-  // key's age reads as unknown while its activity does not.
-  principalRole: { role: "key", lastUsedKey: "lastUsedAt", parentKey: "createdBy" },
+  // The document's key has `created_at` and no last use, so the key's age is known and
+  // its activity reads as unknown.
+  principalRole: { role: "key", parentKey: "createdBy" },
   iconKey: "key",
 });

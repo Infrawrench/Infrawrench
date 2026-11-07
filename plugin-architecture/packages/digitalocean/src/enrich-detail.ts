@@ -262,9 +262,10 @@ async function enrichGenAiAgent(
   ]);
   const a = fullRes?.agent ?? {};
   const kbs = Array.isArray(a.knowledge_bases) ? a.knowledge_bases : [];
-  // The document names this `name`, not `function_name` (#414).
+  // A function's name comes back as `name`, whatever it was created under.
   const functions: Array<{
     uuid?: string;
+    name?: string;
     function_name?: string;
     description?: string;
     faas_name?: string;
@@ -286,7 +287,7 @@ async function enrichGenAiAgent(
       __functions__: JSON.stringify(
         functions.map((f) => ({
           uuid: f.uuid,
-          function_name: f.function_name,
+          function_name: f.name ?? f.function_name,
           description: f.description,
           faas_name: f.faas_name,
           faas_namespace: f.faas_namespace,

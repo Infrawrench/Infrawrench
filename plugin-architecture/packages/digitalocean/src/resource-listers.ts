@@ -34,7 +34,7 @@ export interface DoListerContext {
 
 type DoDroplet = ApiListItem<operations["droplets_list"], "droplets">;
 
-/** The document's list rows have no `id`, `status` or `knowledge_bases` (#414). */
+/** The document's list rows have no `id`, `status` or `knowledge_bases`: only one agent's read does. */
 export type DoAgentRow = ApiListItem<operations["genai_list_agents"], "agents"> & {
   id?: string;
   status?: string;
@@ -46,8 +46,6 @@ export type DoKnowledgeBaseRow = ApiListItem<
   "knowledge_bases"
 > & {
   id?: string;
-  /** Not in the document (#414). */
-  data_sources?: readonly object[] | null;
 };
 
 type DoModelRouterRow = ApiListItem<operations["genai_list_model_routers"], "model_routers"> & {
@@ -56,8 +54,6 @@ type DoModelRouterRow = ApiListItem<operations["genai_list_model_routers"], "mod
 
 type DoModelApiKeyRow = ApiListItem<operations["genai_list_model_api_keys"], "api_key_infos"> & {
   id?: string;
-  /** Not in the document (#414). */
-  last_used_at?: string;
 };
 
 type DoAgentApiKeyRow = ApiListItem<operations["genai_list_agent_api_keys"], "api_key_infos"> & {
@@ -77,6 +73,30 @@ export function nfsMount(share: DoNfsRow): { mountTarget: string; mountCommand: 
         ? `sudo mount -t nfs -o nfsvers=4.1 ${mountTarget}:${share.mount_path} /mnt/${directory}`
         : "",
   };
+}
+
+/**
+ * What a list row leaves out, so the count and the graph edges can show. One failing
+ * only leaves them blank on that agent: the row itself is what the sync prunes by.
+ */
+async function attachedKnowledgeBases(
+  ctx: DoListerContext,
+  agent: DoAgentRow,
+  uuid: string,
+): Promise<ReadonlyArray<{ uuid?: string }>> {
+  if (Array.isArray(agent.knowledge_bases)) return agent.knowledge_bases;
+  if (!uuid) return [];
+  const full = await ctx.api.get(`/gen-ai/agents/${idSegment(uuid)}`).catch(() => null);
+  return full?.agent?.knowledge_bases ?? [];
+}
+
+/** How many data sources a knowledge base has, which its own row does not say. 0 if unreadable. */
+export async function countDataSources(api: DoApi, uuid: string): Promise<number> {
+  if (!uuid) return 0;
+  const page = await api
+    .get(`/gen-ai/knowledge_bases/${idSegment(uuid)}/data_sources`, { query: { per_page: 1 } })
+    .catch(() => null);
+  return page?.meta?.total ?? page?.knowledge_base_data_sources?.length ?? 0;
 }
 
 /** A router's model reference: the document says an id, and an object has been seen. */
@@ -168,12 +188,12 @@ async function listGenAiAgents(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const agents = await orEmpty(ctx.api.getAll("/gen-ai/agents", "agents"));
-  return agents.map((a: DoAgentRow) => {
+  const rows = agents.map(async (a: DoAgentRow): Promise<ResourceInstance> => {
     const uuid = String(a.uuid ?? a.id ?? "");
     const model = a.model;
     const router = a.model_router;
     const deployment = a.deployment;
-    const knowledgeBases = Array.isArray(a.knowledge_bases) ? a.knowledge_bases : [];
+    const knowledgeBases = await attachedKnowledgeBases(ctx, a, uuid);
     // Each attached KB carries its own uuid (schema `apiKnowledgeBase`): the
     // same uuid a `gen-ai-knowledge-base` resource uses as its externalId.
     const knowledgeBaseUuids = knowledgeBases.map((kb) => String(kb?.uuid ?? "")).filter(Boolean);
@@ -213,6 +233,7 @@ async function listGenAiAgents(
       updatedAt: String(a.updated_at ?? a.created_at ?? new Date().toISOString()),
     };
   });
+  return Promise.all(rows);
 }
 
 async function listGenAiKnowledgeBases(
@@ -222,11 +243,11 @@ async function listGenAiKnowledgeBases(
   const knowledgeBases = await orEmpty(
     ctx.api.getAll("/gen-ai/knowledge_bases", "knowledge_bases"),
   );
-  return knowledgeBases.map((kb: DoKnowledgeBaseRow) => {
+  const rows = knowledgeBases.map(async (kb: DoKnowledgeBaseRow): Promise<ResourceInstance> => {
     const uuid = String(kb.uuid ?? kb.id ?? "");
     const lastJob = kb.last_indexing_job;
     const tags = Array.isArray(kb.tags) ? kb.tags : [];
-    const dataSources = Array.isArray(kb.data_sources) ? kb.data_sources.length : 0;
+    const dataSources = await countDataSources(ctx.api, uuid);
     return {
       id: `${accountId}:gen-ai-knowledge-base:${uuid}`,
       pluginId: "digitalocean",
@@ -253,6 +274,7 @@ async function listGenAiKnowledgeBases(
       updatedAt: String(kb.updated_at ?? kb.created_at ?? new Date().toISOString()),
     };
   });
+  return Promise.all(rows);
 }
 
 async function listGenAiModelRouters(
@@ -438,7 +460,7 @@ async function listModelApiKeys(
       fields: {
         name: String(k.name ?? ""),
         createdBy: String(k.created_by ?? ""),
-        lastUsedAt: String(k.last_used_at ?? ""),
+        createdAt: String(k.created_at ?? ""),
       },
       resolvedOutputs: {},
       secretStates: [],

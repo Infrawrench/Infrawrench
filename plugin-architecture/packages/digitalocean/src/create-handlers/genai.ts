@@ -24,9 +24,16 @@ async function defaultVpcIn(ctx: DoCreateContext, region: string): Promise<strin
   return uuid;
 }
 
-/** The document says a model's provider is an enum string, which has no `name` (#414). */
+const MODEL_PROVIDERS: Readonly<Record<string, string>> = {
+  MODEL_PROVIDER_DIGITALOCEAN: "DigitalOcean",
+  MODEL_PROVIDER_ANTHROPIC: "Anthropic",
+  MODEL_PROVIDER_OPENAI: "OpenAI",
+};
+
+/** The document says an enum, which a later member may join; an object has been seen too. */
 function providerName(provider: string | { name?: string } | undefined): string | undefined {
-  return typeof provider === "object" ? provider.name : undefined;
+  if (typeof provider === "object") return provider.name;
+  return provider && (MODEL_PROVIDERS[provider] ?? provider.replace(/^MODEL_PROVIDER_/, ""));
 }
 
 /**

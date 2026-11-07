@@ -85,6 +85,7 @@ import {
   type DoAgentRow,
   type DoKnowledgeBaseRow,
   type DoListerContext,
+  countDataSources,
   listDoResources,
   listSpacesBuckets,
   mapDroplet,
@@ -1174,6 +1175,10 @@ export class DigitalOceanClient implements PluginClient {
             status: String(deployment?.status ?? a.status ?? ""),
             deploymentVisibility: String(deployment?.visibility ?? ""),
             knowledgeBaseCount: knowledgeBases.length,
+            knowledgeBaseUuids: knowledgeBases
+              .map((kb) => String(kb?.uuid ?? ""))
+              .filter(Boolean)
+              .join(", "),
             deploymentUrl,
           },
           resolvedOutputs: deploymentUrl ? { deploymentUrl, agentEndpoint: deploymentUrl } : {},
@@ -1209,7 +1214,7 @@ export class DigitalOceanClient implements PluginClient {
         const uuid = String(kb.uuid ?? externalId);
         const lastJob = kb.last_indexing_job;
         const tags = Array.isArray(kb.tags) ? kb.tags : [];
-        const dataSources = Array.isArray(kb.data_sources) ? kb.data_sources.length : 0;
+        const dataSources = await countDataSources(this.api, uuid);
         return {
           id: `${accountId}:gen-ai-knowledge-base:${uuid}`,
           pluginId: "digitalocean",
