@@ -1,0 +1,109 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml",
+  "patches": [
+    {
+      "pointer": "/components/schemas/CreateBatchRequest/properties/endpoint",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and OpenAI validates it, so a value outside this enum stays OpenAI's error."
+    },
+    {
+      "pointer": "/components/schemas/CreateBatchRequest/properties/completion_window",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and OpenAI validates it, so a value outside this enum stays OpenAI's error."
+    },
+    {
+      "pointer": "/components/schemas/CreateContainerBody/properties/memory_limit",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and OpenAI validates it, so a value outside this enum stays OpenAI's error."
+    },
+    {
+      "pointer": "/components/schemas/ProjectCreateRequest/properties/residency",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and OpenAI validates it, so a value outside this enum stays OpenAI's error."
+    },
+    {
+      "pointer": "/components/schemas/InviteRequest/properties/role",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and OpenAI validates it, so a value outside this enum stays OpenAI's error."
+    },
+    {
+      "pointer": "/components/schemas/InviteRequest/properties/projects/items/properties/role",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form field's text goes through as typed and OpenAI validates it, so a value outside this enum stays OpenAI's error."
+    }
+  ],
+  "paths": {
+    "/audio/speech": ["post"],
+    "/batches": ["get", "post"],
+    "/batches/{batch_id}": ["get"],
+    "/batches/{batch_id}/cancel": ["post"],
+    "/containers": ["get", "post"],
+    "/containers/{container_id}": ["get", "delete"],
+    "/evals": ["get"],
+    "/evals/{eval_id}": ["get", "post", "delete"],
+    "/files": ["get"],
+    "/files/{file_id}": ["get", "delete"],
+    "/fine_tuning/jobs": ["get", "post"],
+    "/fine_tuning/jobs/{fine_tuning_job_id}": ["get"],
+    "/fine_tuning/jobs/{fine_tuning_job_id}/cancel": ["post"],
+    "/fine_tuning/jobs/{fine_tuning_job_id}/pause": ["post"],
+    "/fine_tuning/jobs/{fine_tuning_job_id}/resume": ["post"],
+    "/models": ["get"],
+    "/models/{model}": ["get", "delete"],
+    "/organization/admin_api_keys": ["get"],
+    "/organization/admin_api_keys/{key_id}": ["get", "delete"],
+    "/organization/audit_logs": ["get"],
+    "/organization/costs": ["get"],
+    "/organization/invites": ["get", "post"],
+    "/organization/invites/{invite_id}": ["get", "delete"],
+    "/organization/projects": ["get", "post"],
+    "/organization/projects/{project_id}": ["get", "post"],
+    "/organization/projects/{project_id}/api_keys": ["get"],
+    "/organization/projects/{project_id}/api_keys/{api_key_id}": ["get", "delete"],
+    "/organization/projects/{project_id}/archive": ["post"],
+    "/organization/projects/{project_id}/rate_limits": ["get"],
+    "/organization/projects/{project_id}/rate_limits/{rate_limit_id}": ["post"],
+    "/organization/projects/{project_id}/service_accounts": ["get", "post"],
+    "/organization/projects/{project_id}/service_accounts/{service_account_id}": [
+      "get",
+      "post",
+      "delete"
+    ],
+    "/organization/projects/{project_id}/service_accounts/{service_account_id}/api_keys": ["post"],
+    "/organization/projects/{project_id}/spend_alerts": ["get", "post"],
+    "/organization/projects/{project_id}/spend_alerts/{alert_id}": ["get", "post", "delete"],
+    "/organization/projects/{project_id}/spend_limit": ["get", "post", "delete"],
+    "/organization/projects/{project_id}/users": ["get", "post"],
+    "/organization/projects/{project_id}/users/{user_id}": ["get", "post", "delete"],
+    "/organization/spend_alerts": ["get", "post"],
+    "/organization/spend_alerts/{alert_id}": ["get", "post", "delete"],
+    "/organization/spend_limit": ["get", "post", "delete"],
+    "/organization/usage/audio_speeches": ["get"],
+    "/organization/usage/audio_transcriptions": ["get"],
+    "/organization/usage/code_interpreter_sessions": ["get"],
+    "/organization/usage/completions": ["get"],
+    "/organization/usage/embeddings": ["get"],
+    "/organization/usage/file_search_calls": ["get"],
+    "/organization/usage/images": ["get"],
+    "/organization/usage/moderations": ["get"],
+    "/organization/usage/vector_stores": ["get"],
+    "/organization/usage/web_search_calls": ["get"],
+    "/organization/users": ["get"],
+    "/organization/users/{user_id}": ["get", "post", "delete"],
+    "/vector_stores": ["get", "post"],
+    "/vector_stores/{vector_store_id}": ["get", "post", "delete"]
+  }
+}
