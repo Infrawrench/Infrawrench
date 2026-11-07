@@ -419,9 +419,11 @@ export class FalClient implements PluginClient {
     );
   }
 
-  /** `GET /keys?limit=&cursor=` */
+  /** `GET /keys?expand=creator_info`: only that expansion names who made a key. */
   private async listKeys(accountId: string): Promise<ResourceInstance[]> {
-    const keys = await call(() => this.api.getAll("/keys", "keys"));
+    const keys = await call(() =>
+      this.api.getAll("/keys", "keys", { query: { expand: "creator_info" } }),
+    );
     return keys
       .filter((k) => k.key_id)
       .map((k) =>

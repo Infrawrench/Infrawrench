@@ -131,6 +131,18 @@ describe("fal client", () => {
     });
   });
 
+  it("asks for creator_info, which is what fills Created By on an API key", async () => {
+    const { http, calls } = host(() => ({
+      body: { keys: [{ key_id: "a", creator_nickname: "ada" }], next_cursor: null },
+    }));
+    const [key] = await hostClient(new FalClient({ apiKey: "k" }, { http })).listResources(
+      "fal-api-key",
+      ACCOUNT,
+    );
+    expect(new URL(calls[0]?.url ?? "").searchParams.get("expand")).toBe("creator_info");
+    expect(key?.fields["creator"]).toBe("ada");
+  });
+
   it("reads the credit balance", async () => {
     const { http } = host(() => ({
       body: { username: "me", credits: { current_balance: 12.5, currency: "usd" } },
