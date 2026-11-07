@@ -12,6 +12,7 @@ import type {
   PreflightCapabilityCheck,
   PreflightResult,
   ResourceInstance,
+  SecretHostServices,
   SelectOption,
   SettingDescriptor,
   SidebarItemSchema,
@@ -54,6 +55,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const SHORT_LIST: ListOptions = { maxItems: 500, partial: true };
 /** `readOnly` on `InstanceProtect`, and not in the body of `PATCH /instance/protect`. */
 const SPECTER_SETTING = "protect.specter_enabled";
+/** Clerk returns it only when an application is created or rotated, so the host's store keeps it. */
+const CLIENT_SECRET_FIELD = "clientSecret";
 
 /** The query of `GET /users/count`. */
 type CountQuery = NonNullable<operations["GetUsersCount"]["parameters"]["query"]>;
@@ -104,6 +107,7 @@ function primaryEmail(u: CkUser): string {
 
 export class ClerkClient implements PluginClient {
   readonly api: ClerkApi;
+  private readonly secrets: SecretHostServices | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const secretKey = (credentials["secretKey"] ?? "").trim();
@@ -114,6 +118,7 @@ export class ClerkClient implements PluginClient {
       );
     }
     this.api = createClerkApi(secretKey, credentials["caCert"] ?? "", services);
+    this.secrets = services?.secrets;
   }
 
   // -------------------------------------------------------------------------
@@ -291,6 +296,13 @@ export class ClerkClient implements PluginClient {
         );
         if (!body.secret) throw new Error("Clerk plugin: Clerk returned no machine secret");
         return body.secret;
+      }
+      if (typeId === "oauth-application" && outputKey === CLIENT_SECRET_FIELD) {
+        const secret = await this.secrets?.getPlaintext(resourceId, CLIENT_SECRET_FIELD);
+        if (secret) return secret;
+        throw new Error(
+          "Clerk plugin: Clerk only returns a client secret when the application is created or rotated, and this one was not created or rotated from Infrawrench. Rotate it from Get credentials to keep it here.",
+        );
       }
       const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
       const value = resource.resolvedOutputs[outputKey];
@@ -1236,7 +1248,20 @@ export class ClerkClient implements PluginClient {
               public: fields["public"] === "true",
             },
           });
-          return this.mapOAuthApp(accountId, app);
+          const created = this.mapOAuthApp(accountId, app);
+          // Not in the outputs, which the host stores in the clear. Not through the secret
+          // service either: the host's row for this resource does not exist until this returns.
+          return app.client_secret
+            ? {
+                ...created,
+                secretStates: [
+                  {
+                    fieldKey: CLIENT_SECRET_FIELD,
+                    resolution: { kind: "plaintext", value: app.client_secret },
+                  },
+                ],
+              }
+            : created;
         }
         case "enterprise-connection": {
           const connection = await this.api.post("/enterprise_connections", {
@@ -1596,15 +1621,23 @@ export class ClerkClient implements PluginClient {
         const body = await this.api.post(`/oauth_applications/${id}/rotate_secret`);
         const secret = str(body.client_secret);
         if (!secret) throw new Error("Clerk plugin: Clerk returned no client secret");
+        const kept = await this.keepClientSecret(resourceId, secret);
         return {
           content: `CLIENT_ID=${str(body.client_id)}\nCLIENT_SECRET=${secret}\n`,
           filename: "clerk-oauth-application.env",
           mimeType: "text/plain",
           fields: [
             { label: "Client ID", value: str(body.client_id) },
-            { label: "Client secret", value: secret, sensitive: true, hint: "Only shown once" },
+            {
+              label: "Client secret",
+              value: secret,
+              sensitive: true,
+              ...(kept ? {} : { hint: "Only shown once" }),
+            },
           ],
-          warning: "The previous client secret stopped working. Update every client that used it.",
+          warning: kept
+            ? "The previous client secret stopped working. Update every client that used it."
+            : "The previous client secret stopped working. Update every client that used it. Infrawrench could not keep this one, so copy it now.",
         };
       }
       if (
@@ -1628,6 +1661,15 @@ export class ClerkClient implements PluginClient {
       }
       throw new Error(`Clerk plugin: unknown credential format "${formatId}"`);
     });
+  }
+
+  /** False when the host could not, which leaves what the caller holds as the only copy. */
+  private async keepClientSecret(resourceId: string, secret: string): Promise<boolean> {
+    if (!this.secrets?.setPlaintext) return false;
+    return this.secrets.setPlaintext(resourceId, CLIENT_SECRET_FIELD, secret).then(
+      () => true,
+      () => false,
+    );
   }
 
   // -------------------------------------------------------------------------

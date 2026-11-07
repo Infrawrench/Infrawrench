@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { HostServices, SettingDescriptor } from "@infrawrench/plugin-base";
 import { ClerkClient } from "../client.js";
 import { API_VERSION } from "../api.js";
+import { OAuthApplicationResourceType } from "../resources.js";
 import { parseStatusFeed } from "../status-feed.js";
 
 const ACCOUNT = "acct";
@@ -19,8 +20,10 @@ let calls: Call[] = [];
 
 function client(
   handler: (call: Call) => { status?: number; body?: unknown },
+  secrets?: HostServices["secrets"],
 ): HostedMethods<ClerkClient> {
   const services: HostServices = {
+    ...(secrets ? { secrets } : {}),
     http: {
       request: async (req) => {
         const call: Call = {
@@ -217,6 +220,99 @@ describe("mutations", () => {
       ["/v1/instance/restrictions", { blocklist: true }],
       ["/v1/instance/organization_settings", { max_allowed_memberships: 25 }],
     ]);
+  });
+});
+
+describe("OAuth application client secret", () => {
+  const RESOURCE = `${ACCOUNT}:oauth-application:oa_1`;
+  const app = { id: "oa_1", name: "App", client_id: "cid", client_secret: "shh" };
+
+  function store() {
+    const saved = new Map<string, string>();
+    return {
+      saved,
+      secrets: {
+        getPlaintext: async (resourceId: string, field: string) =>
+          saved.get(`${resourceId}/${field}`) ?? null,
+        setPlaintext: async (resourceId: string, field: string, value: string) => {
+          saved.set(`${resourceId}/${field}`, value);
+        },
+      },
+    };
+  }
+  const create = (c: HostedMethods<ClerkClient>) =>
+    c.createResource("oauth-application", ACCOUNT, { name: "App", redirectUris: "https://a.test" });
+
+  it("hands the host the secret from the create response", async () => {
+    const { saved, secrets } = store();
+    const resource = await create(client(() => ({ body: app }), secrets));
+    expect(resource.id).toBe(RESOURCE);
+    expect(resource.secretStates).toEqual([
+      { fieldKey: "clientSecret", resolution: { kind: "plaintext", value: "shh" } },
+    ]);
+    // The host's store points at the resource row, which it writes after this returns.
+    expect(saved.size).toBe(0);
+  });
+
+  it("keeps the secret out of the fields and outputs, which are stored in the clear", async () => {
+    const resource = await create(client(() => ({ body: app })));
+    expect(JSON.stringify([resource.fields, resource.resolvedOutputs])).not.toContain("shh");
+  });
+
+  it("has nothing to hand over for a public client", async () => {
+    const { client_secret: _none, ...publicApp } = app;
+    const resource = await create(client(() => ({ body: publicApp })));
+    expect(resource.secretStates).toEqual([]);
+  });
+
+  it("reads the output back from the host's store", async () => {
+    const { saved, secrets } = store();
+    saved.set(`${RESOURCE}/clientSecret`, "shh");
+    const c = client(() => ({ body: {} }), secrets);
+    expect(await c.resolveOutput("oauth-application", RESOURCE, "clientSecret", ACCOUNT)).toBe(
+      "shh",
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it("explains an application whose secret was never kept", async () => {
+    const { secrets } = store();
+    const c = client(() => ({ body: app }), secrets);
+    await expect(
+      c.resolveOutput("oauth-application", RESOURCE, "clientSecret", ACCOUNT),
+    ).rejects.toThrow(/created or rotated/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("replaces the kept secret when it is rotated", async () => {
+    const { saved, secrets } = store();
+    saved.set(`${RESOURCE}/clientSecret`, "old");
+    const c = client(() => ({ body: { ...app, client_secret: "new" } }), secrets);
+    const exported = await c.exportCredential(
+      "oauth-application",
+      RESOURCE,
+      ACCOUNT,
+      "rotate-secret",
+    );
+    expect(saved.get(`${RESOURCE}/clientSecret`)).toBe("new");
+    expect(exported.warning).not.toContain("could not keep");
+  });
+
+  it("says so when a rotated secret could not be kept, and still shows it", async () => {
+    const c = client(() => ({ body: { ...app, client_secret: "new" } }));
+    const exported = await c.exportCredential(
+      "oauth-application",
+      RESOURCE,
+      ACCOUNT,
+      "rotate-secret",
+    );
+    expect(exported.fields?.find((f) => f.label === "Client secret")?.value).toBe("new");
+    expect(exported.warning).toContain("could not keep");
+  });
+
+  it("declares the secret as a sensitive output", () => {
+    const output = OAuthApplicationResourceType.outputs?.find((o) => o.key === "clientSecret");
+    expect(output?.sensitive).toBe(true);
   });
 });
 

@@ -195,13 +195,21 @@ export const OAuthApplicationResourceType = rt({
     f("discoveryUrl", "Discovery URL", { required: false, editable: false }),
     f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],
-  outputs: [o("clientId", "Client ID"), o("discoveryUrl", "Discovery URL")],
+  outputs: [
+    o("clientId", "Client ID"),
+    o("clientSecret", "Client Secret", {
+      sensitive: true,
+      description:
+        "Only available after creating or rotating from Infrawrench: Clerk returns a client secret only then. Public clients have none.",
+    }),
+    o("discoveryUrl", "Discovery URL"),
+  ],
   credentialFormats: [
     {
       id: "rotate-secret",
       label: "New client secret (rotates the current one)",
       description:
-        "Clerk only shows a client secret when it is created, so this rotates it and shows the new one once.",
+        "Clerk only returns a client secret when it is created or rotated, so this rotates it and shows the new one.",
       mediaType: "text",
     },
   ],
