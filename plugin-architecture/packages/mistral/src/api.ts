@@ -17,6 +17,8 @@ import {
   type ApiListItem,
   type ApiResponse,
   type HttpHostServices,
+  type PageAnswer,
+  withCursorPagination,
 } from "@infrawrench/plugin-base";
 import type { components, operations, paths } from "./api-types.gen.js";
 
@@ -49,11 +51,6 @@ export type MistralApiKey = ApiListItem<
   operations["users_api_admin_api_keys_get_api_keys"],
   "keys"
 >;
-
-// Named because each list loop feeds a page's cursor into the next call, and
-// inference cannot follow that through a variable it is still working out.
-export type AgentPage = ApiResponse<operations["agents_api_v1_agents_list_pages"]>;
-export type LibraryPage = ApiResponse<operations["libraries_list_v1"]>;
 
 export type MistralAgent = ApiListItem<operations["agents_api_v1_agents_list_pages"], "data">;
 export type AgentCreate = ApiBody<operations["agents_api_v1_agents_create"]>;
@@ -91,23 +88,80 @@ export type AggregationAnswer = ApiResponse<
 export type TraceRow = NonNullable<components["schemas"]["FeedResultGetTrace"]["results"]>[number];
 export type SpanRow = NonNullable<components["schemas"]["FeedResultGetSpan"]["results"]>[number];
 
+/** The next `page`, which Mistral counts from 0. */
+function nextPageNumber({ cursor }: PageAnswer): number {
+  return Number(cursor) + 1;
+}
+
+/** The next `offset`: where this page's rows end. */
+function nextOffset({ cursor, items }: PageAnswer): number {
+  return Number(cursor) + items.length;
+}
+
+/**
+ * Mistral's three list dialects, each only accepting the routes it fits. The document
+ * gives no largest `page_size` for numbered lists and defaults to 100, so that is kept,
+ * and caps `limit` on voices and `page_size` on libraries at 100.
+ */
+function listClients(data: MistralApi) {
+  const numbered = {
+    cursorParam: "page",
+    sizeParam: "page_size",
+    firstCursor: 0,
+    pageSize: 100,
+    maxPages: 100,
+    next: nextPageNumber,
+    stopOnShortPage: true,
+  } as const;
+  return {
+    numbered: withCursorPagination(data, numbered),
+    // `ListBatchJobsResponse` alone does not require `data`, and defaults it to `[]`.
+    batches: withCursorPagination(data, { ...numbered, missingListIsEmpty: true }),
+    offsets: withCursorPagination(data, {
+      cursorParam: "offset",
+      sizeParam: "limit",
+      firstCursor: 0,
+      pageSize: 100,
+      maxPages: 100,
+      next: nextOffset,
+      stopOnShortPage: true,
+      total: "total",
+      pagingFirst: true,
+    }),
+    tokens: withCursorPagination(data, {
+      cursorParam: "page_token",
+      sizeParam: "page_size",
+      next: "next_page_token",
+      pageSize: 100,
+      maxPages: 100,
+      // The document ends these lists on a null token, not an empty page, and agents
+      // are filtered by per-agent sharing, so a page can hold none and still have more.
+      continueOnEmptyPage: true,
+    }),
+  };
+}
+
+export type MistralLists = ReturnType<typeof listClients>;
+
 export function createMistralApis(options: {
   apiKey: string;
   adminApiKey: string;
   caCert: string;
   http: HttpHostServices | undefined;
-}): { data: MistralApi; admin: MistralApi } {
+}): { data: MistralApi; admin: MistralApi; lists: MistralLists } {
   const shared = {
     vendor: "Mistral",
     baseUrl: BASE,
     caCert: options.caCert,
     http: options.http,
   };
+  const data = createApiClient<paths>({
+    ...shared,
+    headers: { Authorization: `Bearer ${options.apiKey}`, Accept: "application/json" },
+  });
   return {
-    data: createApiClient<paths>({
-      ...shared,
-      headers: { Authorization: `Bearer ${options.apiKey}`, Accept: "application/json" },
-    }),
+    data,
+    lists: listClients(data),
     admin: createApiClient<paths>({
       ...shared,
       headers: {

@@ -24,11 +24,13 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   CostSetupError,
+  ListTruncatedError,
   base64ToBytes,
   formatBytes,
   hostFetch,
   joinSubtitle,
   pathEncode,
+  requireListPage,
   withAiCostTags,
 } from "@infrawrench/plugin-base";
 import { mapAgent, mapLibrary, renderAgentDetail, renderLibraryDetail } from "./agents.js";
@@ -36,12 +38,10 @@ import {
   BASE,
   createMistralApis,
   type AgentCreate,
-  type AgentPage,
   type AgentUpdate,
   type ApiKeyPage,
   type BatchJobCreate,
   type LibraryCreate,
-  type LibraryPage,
   type LibraryUpdate,
   type MistralAgent,
   type MistralApi,
@@ -49,7 +49,7 @@ import {
   type MistralBatchJob,
   type MistralFile,
   type MistralFineTuningJob,
-  type MistralLibrary,
+  type MistralLists,
   type MistralModel,
   type MistralTranscription,
   type MistralVoice,
@@ -83,6 +83,13 @@ const MAX_TTS_CHARACTERS = 4000;
  */
 const FALLBACK_STT_MODEL = "voxtral-mini-latest";
 const FALLBACK_TTS_MODEL = "voxtral-mini-tts-2603";
+
+/** 50,000 files: batch runs add their output files here, so this list grows past most. */
+const MAX_FILE_PAGES = 500;
+
+/** The document's largest `page_size` for agents, which makes the cap 50,000 rows. */
+const MAX_AGENT_PAGE_SIZE = 1000;
+const MAX_AGENT_PAGES = 50;
 
 /**
  * Endpoints a batch job can target (the `ApiEndpoint` enum).
@@ -180,16 +187,18 @@ function isSttModel(id: string): boolean {
  * degrades to an empty listing when the admin key is absent rather than
  * failing the sync.
  *
- * Pagination is deliberately not factored into one helper: Mistral genuinely
- * uses three schemes (`limit`/`offset` for admin keys and voices' request
- * side, `page`/`page_size` for files, batches and fine-tuning, and nothing at
- * all for `/models`).
+ * Mistral genuinely pages in four ways: `limit`/`offset` for admin keys and
+ * voices, `page`/`page_size` for files, batches and fine-tuning, `page_token`
+ * for agents and libraries, and nothing at all for `/models`. A list that cannot
+ * say it has every row throws, because a sync prunes whatever a list stops
+ * returning.
  */
 export class MistralClient implements PluginClient {
   private readonly apiKey: string;
   private readonly adminApiKey: string;
   private readonly api: MistralApi;
   private readonly enterpriseApi: MistralApi;
+  private readonly lists: MistralLists;
   private readonly transport: { http: HttpHostServices | undefined; caCert: string };
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -198,13 +207,14 @@ export class MistralClient implements PluginClient {
     this.apiKey = apiKey;
     this.adminApiKey = credentials["adminApiKey"] ?? "";
     this.transport = { http: services?.http, caCert: credentials["caCert"] ?? "" };
-    const { data, admin } = createMistralApis({
+    const { data, admin, lists } = createMistralApis({
       apiKey,
       adminApiKey: this.adminApiKey,
       ...this.transport,
     });
     this.api = data;
     this.enterpriseApi = admin;
+    this.lists = lists;
   }
 
   private get hasAdmin(): boolean {
@@ -254,9 +264,10 @@ export class MistralClient implements PluginClient {
    * comes back in one response.
    */
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.api.get("/models");
+    const { data } = await this.api.get("/models");
     const now = new Date().toISOString();
-    return (data.data ?? [])
+    // Every account has the base models, so no list here is never an empty catalogue.
+    return requireListPage(data, { vendor: "Mistral", path: "/models", key: "data" })
       .filter((m) => Boolean(m.id))
       .map((m) => this.mapModel(accountId, m, now));
   }
@@ -303,19 +314,11 @@ export class MistralClient implements PluginClient {
     return raw.filter((v) => Boolean(v.id)).map((v) => this.mapVoice(accountId, v, now));
   }
 
-  private async fetchAllVoices(): Promise<MistralVoice[]> {
-    const pageSize = 100;
-    const out: MistralVoice[] = [];
-    for (let offset = 0; offset < 10_000; offset += pageSize) {
-      const page = await this.api.get("/audio/voices", {
-        query: { limit: pageSize, offset, type: "all" },
-      });
-      const items = page.items ?? [];
-      out.push(...items);
-      if (items.length < pageSize) break;
-      if (typeof page.total === "number" && out.length >= page.total) break;
-    }
-    return out;
+  private fetchAllVoices(options: { partial?: boolean } = {}): Promise<MistralVoice[]> {
+    return this.lists.offsets.getAll("/audio/voices", "items", {
+      query: { type: "all" },
+      ...options,
+    });
   }
 
   private mapVoice(accountId: string, voice: MistralVoice, now: string): ResourceInstance {
@@ -349,17 +352,16 @@ export class MistralClient implements PluginClient {
   }
 
   /** https://docs.mistral.ai/api/endpoint/files: `GET /v1/files` (`page`/`page_size`). */
-  private async listFiles(accountId: string): Promise<ResourceInstance[]> {
-    const pageSize = 100;
-    const out: MistralFile[] = [];
-    for (let page = 0; page < 100; page += 1) {
-      const body = await this.api.get("/files", { query: { page, page_size: pageSize } });
-      const items = body.data ?? [];
-      out.push(...items);
-      if (items.length < pageSize) break;
-    }
+  private async listFiles(
+    accountId: string,
+    options: { partial?: boolean } = {},
+  ): Promise<ResourceInstance[]> {
+    const files = await this.lists.numbered.getAll("/files", "data", {
+      maxPages: MAX_FILE_PAGES,
+      ...options,
+    });
     const now = new Date().toISOString();
-    return out.filter((x) => Boolean(x.id)).map((x) => this.mapFile(accountId, x, now));
+    return files.filter((x) => Boolean(x.id)).map((x) => this.mapFile(accountId, x, now));
   }
 
   private mapFile(accountId: string, file: MistralFile, now: string): ResourceInstance {
@@ -391,18 +393,9 @@ export class MistralClient implements PluginClient {
 
   /** `GET /v1/fine_tuning/jobs` (`page`/`page_size`). */
   private async listFineTuningJobs(accountId: string): Promise<ResourceInstance[]> {
-    const pageSize = 100;
-    const out: MistralFineTuningJob[] = [];
-    for (let page = 0; page < 100; page += 1) {
-      const body = await this.api.get("/fine_tuning/jobs", {
-        query: { page, page_size: pageSize },
-      });
-      const items = body.data ?? [];
-      out.push(...items);
-      if (items.length < pageSize) break;
-    }
+    const jobs = await this.lists.numbered.getAll("/fine_tuning/jobs", "data");
     const now = new Date().toISOString();
-    return out.filter((x) => Boolean(x.id)).map((x) => this.mapFineTuningJob(accountId, x, now));
+    return jobs.filter((x) => Boolean(x.id)).map((x) => this.mapFineTuningJob(accountId, x, now));
   }
 
   private mapFineTuningJob(
@@ -447,16 +440,13 @@ export class MistralClient implements PluginClient {
 
   /** https://docs.mistral.ai/api/endpoint/batch: `GET /v1/batch/jobs` (`page`/`page_size`). */
   private async listBatchJobs(accountId: string): Promise<ResourceInstance[]> {
-    const pageSize = 100;
-    const out: MistralBatchJob[] = [];
-    for (let page = 0; page < 100; page += 1) {
-      const body = await this.api.get("/batch/jobs", { query: { page, page_size: pageSize } });
-      const items = body.data ?? [];
-      out.push(...items);
-      if (items.length < pageSize) break;
-    }
+    // Rolling window: the newest 10,000. Older rows falling off is what this type means.
+    const jobs = await this.lists.batches.getAll("/batch/jobs", "data", {
+      query: { order_by: "-created" },
+      partial: true,
+    });
     const now = new Date().toISOString();
-    return out.filter((x) => Boolean(x.id)).map((x) => this.mapBatchJob(accountId, x, now));
+    return jobs.filter((x) => Boolean(x.id)).map((x) => this.mapBatchJob(accountId, x, now));
   }
 
   private mapBatchJob(accountId: string, job: MistralBatchJob, now: string): ResourceInstance {
@@ -500,16 +490,20 @@ export class MistralClient implements PluginClient {
    */
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
     if (!this.hasAdmin) return [];
+    const path = "/admin/api-keys";
     const limit = 100;
+    const maxPages = 100;
     const out: MistralApiKey[] = [];
-    for (let offset = 0; offset < 10_000; offset += limit) {
-      const body = await this.adminApi.get("/admin/api-keys", { query: { limit, offset } });
+    for (let page = 0; page < maxPages; page += 1) {
+      const body = await this.adminApi.get(path, { query: { limit, offset: page * limit } });
       const items = apiKeyRows(body);
       out.push(...items);
-      if (items.length < limit) break;
+      if (items.length < limit) {
+        const now = new Date().toISOString();
+        return out.filter((k) => Boolean(k.key_id)).map((k) => this.mapApiKey(accountId, k, now));
+      }
     }
-    const now = new Date().toISOString();
-    return out.filter((k) => Boolean(k.key_id)).map((k) => this.mapApiKey(accountId, k, now));
+    throw new ListTruncatedError({ vendor: "Mistral", path, items: out.length, maxPages });
   }
 
   private mapApiKey(accountId: string, key: MistralApiKey, now: string): ResourceInstance {
@@ -545,17 +539,10 @@ export class MistralClient implements PluginClient {
    * and unlike the deprecated `GET /v1/agents` it honours per-agent sharing.
    */
   private async listAgents(accountId: string): Promise<ResourceInstance[]> {
-    const out: MistralAgent[] = [];
-    let token: string | undefined;
-    for (let page = 0; page < 50; page += 1) {
-      const body: AgentPage = await this.api.get("/agents/pages", {
-        query: { page_size: 100, ...(token ? { page_token: token } : {}) },
-      });
-      out.push(...(body.data ?? []));
-      const next = body.next_page_token || undefined;
-      if (!next || next === token) break;
-      token = next;
-    }
+    const out = await this.lists.tokens.getAll("/agents/pages", "data", {
+      pageSize: MAX_AGENT_PAGE_SIZE,
+      maxPages: MAX_AGENT_PAGES,
+    });
     const now = new Date().toISOString();
     // A cursor that repeats a page would otherwise yield duplicate ids.
     const byId = new Map<string, MistralAgent>();
@@ -565,19 +552,9 @@ export class MistralClient implements PluginClient {
 
   /** `GET /v1/libraries`: cursor-paged with `page_token`, at most 100 per page. */
   private async listLibraries(accountId: string): Promise<ResourceInstance[]> {
-    const out: MistralLibrary[] = [];
-    let token: string | undefined;
-    for (let page = 0; page < 50; page += 1) {
-      const body: LibraryPage = await this.api.get("/libraries", {
-        query: { page_size: 100, ...(token ? { page_token: token } : {}) },
-      });
-      out.push(...(body.data ?? []));
-      const next = body.next_page_token || undefined;
-      if (!next || next === token) break;
-      token = next;
-    }
+    const libraries = await this.lists.tokens.getAll("/libraries", "data");
     const now = new Date().toISOString();
-    return out.filter((l) => Boolean(l.id)).map((l) => mapLibrary(accountId, l, now));
+    return libraries.filter((l) => Boolean(l.id)).map((l) => mapLibrary(accountId, l, now));
   }
 
   // ------------------------------------------------------------------- get
@@ -599,7 +576,7 @@ export class MistralClient implements PluginClient {
         // in the renderer: the same trick the Cloudflare queue plugin uses for
         // `__consumers__`.
         const [voices, models] = await Promise.all([
-          this.fetchAllVoices().catch((): MistralVoice[] => []),
+          this.fetchAllVoices({ partial: true }).catch((): MistralVoice[] => []),
           this.api.get("/models").catch((): ModelList => ({ data: [] })),
         ]);
 
@@ -681,7 +658,7 @@ export class MistralClient implements PluginClient {
       if (typeId === "mistral-batch-job") {
         const [models, files] = await Promise.all([
           this.liveModelOptions(() => true),
-          this.listFiles("picker").catch((): ResourceInstance[] => []),
+          this.listFiles("picker", { partial: true }).catch((): ResourceInstance[] => []),
         ]);
         return {
           fields: [
@@ -1698,7 +1675,8 @@ function fineTunedModelActions(archived: boolean): ActionNode[] {
 
 /** The document says `{ keys }`; a bare array has always been accepted too. */
 function apiKeyRows(body: ApiKeyPage | MistralApiKey[]): MistralApiKey[] {
-  return Array.isArray(body) ? body : (body.keys ?? []);
+  if (Array.isArray(body)) return body;
+  return requireListPage(body.keys, { vendor: "Mistral", path: "/admin/api-keys", key: "keys" });
 }
 
 function splitList(value: string): string[] {

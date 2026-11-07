@@ -66,7 +66,7 @@ describe("pagination", () => {
 
     calls = [];
     await client().listResources("mistral-file", ACCOUNT);
-    expect(calls[0]?.url).toBe("https://api.mistral.ai/v1/files?page=0&page_size=100");
+    expect(calls[0]?.url).toBe("https://api.mistral.ai/v1/files?page_size=100&page=0");
   });
 
   it("uses limit/offset on the admin plane, with its own base and header", async () => {
@@ -77,6 +77,157 @@ describe("pagination", () => {
     const headers = calls[0]?.init?.headers as Record<string, string>;
     expect(headers["x-api-key"]).toBe("admin-key");
     expect(keys[0]?.fields["name"]).toBe("ci");
+  });
+});
+
+/** A page of `count` rows under `key`, each with a fresh id. */
+function fullPage(key: string, count: number, idKey = "id"): Record<string, unknown> {
+  return {
+    [key]: Array.from({ length: count }, (_, i) => ({ [idKey]: `row-${calls.length}-${i}` })),
+    next_page_token: `t${calls.length}`,
+  };
+}
+
+/** Each inventory list: the most requests it may take, and what a full page holds. */
+const CAPPED_LISTS = [
+  { type: "mistral-file", key: "data", pageSize: 100, maxPages: 500 },
+  { type: "mistral-voice", key: "items", pageSize: 100, maxPages: 100 },
+  { type: "mistral-fine-tuning-job", key: "data", pageSize: 100, maxPages: 100 },
+  { type: "mistral-api-key", key: "keys", pageSize: 100, maxPages: 100, idKey: "key_id" },
+  { type: "mistral-agent", key: "data", pageSize: 1000, maxPages: 50 },
+  { type: "mistral-library", key: "data", pageSize: 100, maxPages: 100 },
+];
+
+describe("incomplete lists", () => {
+  it.each(CAPPED_LISTS)(
+    "$type throws rather than return part of a list that never ends",
+    async ({ type, key, pageSize, maxPages, idKey }) => {
+      installFetch(() => jsonResponse(fullPage(key, pageSize, idKey)));
+      await expect(client("admin-key").listResources(type, ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(maxPages);
+    },
+  );
+
+  it.each(CAPPED_LISTS)(
+    "$type throws on a first page whose key was renamed",
+    async ({ type, key }) => {
+      installFetch(() => jsonResponse({ [`${key}_renamed`]: [] }));
+      await expect(client("admin-key").listResources(type, ACCOUNT)).rejects.toThrow(
+        "is not a list",
+      );
+      expect(calls).toHaveLength(1);
+    },
+  );
+
+  it.each(CAPPED_LISTS)(
+    "$type throws on a later page whose key was renamed",
+    async ({ type, key, pageSize, idKey }) => {
+      installFetch(() =>
+        calls.length === 1
+          ? jsonResponse(fullPage(key, pageSize, idKey))
+          : jsonResponse({ [`${key}_renamed`]: [] }),
+      );
+      await expect(client("admin-key").listResources(type, ACCOUNT)).rejects.toThrow(
+        "is not a list",
+      );
+      expect(calls).toHaveLength(2);
+    },
+  );
+
+  it("throws on a model catalogue with no list, which would prune every model", async () => {
+    installFetch(() => jsonResponse({ detail: "something else" }));
+    await expect(client().listResources("mistral-model", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("still reads a bare array of API keys", async () => {
+    installFetch(() => jsonResponse([{ key_id: "k1", name: "ci" }]));
+    const keys = await client("admin-key").listResources("mistral-api-key", ACCOUNT);
+    expect(keys.map((k) => k.externalId)).toEqual(["k1"]);
+  });
+
+  it("keeps batch jobs as a rolling window of the newest, asking for that order", async () => {
+    installFetch(() => jsonResponse(fullPage("data", 100)));
+    const jobs = await client().listResources("mistral-batch-job", ACCOUNT);
+    expect(calls).toHaveLength(100);
+    expect(jobs).toHaveLength(10_000);
+    expect(calls[0]?.url).toBe(
+      "https://api.mistral.ai/v1/batch/jobs?order_by=-created&page_size=100&page=0",
+    );
+    expect(calls[1]?.url).toContain("page=1");
+  });
+
+  it("reads a batch answer with no data as empty, which the document allows", async () => {
+    installFetch(() => jsonResponse({ total: 0 }));
+    expect(await client().listResources("mistral-batch-job", ACCOUNT)).toEqual([]);
+  });
+
+  it("still fails a batch page whose data is not a list", async () => {
+    installFetch(() => jsonResponse({ data: "nope", total: 1 }));
+    await expect(client().listResources("mistral-batch-job", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("follows a cursor past an empty page, since only a null token ends the list", async () => {
+    installFetch((url) =>
+      url.includes("page_token=t2")
+        ? jsonResponse({ data: [{ id: "lib_2", name: "Second" }], next_page_token: null })
+        : jsonResponse({ data: [], next_page_token: "t2" }),
+    );
+    const libraries = await client().listResources("mistral-library", ACCOUNT);
+    expect(libraries.map((l) => l.externalId)).toEqual(["lib_2"]);
+  });
+
+  it("pages voices by offset and stops at the reported total", async () => {
+    installFetch(() =>
+      jsonResponse({ items: Array.from({ length: 100 }, (_, i) => ({ id: `v${i}` })), total: 100 }),
+    );
+    await client().listResources("mistral-voice", ACCOUNT);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("advances the voice offset by what the page held", async () => {
+    installFetch(() =>
+      calls.length === 1
+        ? jsonResponse({ ...fullPage("items", 100), total: 150 })
+        : jsonResponse({ items: [{ id: "last" }], total: 150 }),
+    );
+    await client().listResources("mistral-voice", ACCOUNT);
+    expect(calls[1]?.url).toBe(
+      "https://api.mistral.ai/v1/audio/voices?limit=100&offset=100&type=all",
+    );
+  });
+
+  it("offers what it read of a long file list in the create form", async () => {
+    installFetch((url) =>
+      url.includes("/models")
+        ? jsonResponse({ data: [] })
+        : jsonResponse({
+            data: Array.from({ length: 100 }, (_, i) => ({
+              id: `f-${calls.length}-${i}`,
+              purpose: "batch",
+            })),
+          }),
+    );
+    const config = await client().getCreateConfig("mistral-batch-job");
+    const input = config.fields.find((field) => field.key === "inputFile");
+    expect(input?.options).toHaveLength(50_000);
+  });
+
+  it("fills the speech pickers from what it read of a long voice list", async () => {
+    installFetch((url) =>
+      url.includes("/models")
+        ? jsonResponse({ data: [{ id: "voxtral-mini-latest" }] })
+        : jsonResponse(fullPage("items", 100)),
+    );
+    const model = await client().getResource(
+      "mistral-model",
+      `${ACCOUNT}:mistral-model:voxtral-mini-latest`,
+      ACCOUNT,
+    );
+    expect(JSON.parse(String(model.resolvedOutputs["__voices__"]))).toHaveLength(10_000);
   });
 });
 
@@ -507,8 +658,8 @@ describe("agents", () => {
 
     const rows = await client().listResources("mistral-agent", ACCOUNT);
     expect(calls.map((c) => c.url)).toEqual([
-      "https://api.mistral.ai/v1/agents/pages?page_size=100",
-      "https://api.mistral.ai/v1/agents/pages?page_size=100&page_token=t2",
+      "https://api.mistral.ai/v1/agents/pages?page_size=1000",
+      "https://api.mistral.ai/v1/agents/pages?page_size=1000&page_token=t2",
     ]);
     expect(rows.map((r) => r.externalId)).toEqual(["ag_1", "ag_2"]);
     expect(rows[0]?.fields).toMatchObject({
