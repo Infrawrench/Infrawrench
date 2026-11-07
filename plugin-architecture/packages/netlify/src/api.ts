@@ -1,7 +1,10 @@
 import {
   createApiClient,
+  nextLinkHeader,
+  withLinkPagination,
+  withPagination,
   type ApiBody,
-  type ApiClient,
+  type ApiFailure,
   type ApiListItem,
   type ApiResponse,
   type HttpHostServices,
@@ -24,7 +27,31 @@ export type NetlifyDbBranch = ApiListItem<operations["listSiteDatabaseBranches"]
 export type NetlifyDbSnapshot = ApiListItem<operations["listSiteDatabaseSnapshots"], "snapshots">;
 export type NetlifyUser = ApiResponse<operations["getCurrentUser"]>;
 
-export type NetlifyApi = ApiClient<paths>;
+export type NetlifyApi = ReturnType<typeof createNetlifyApi>;
+
+/** Netlify's largest page is 100 rows, so a list stops at 10,000 and then throws. */
+const PAGE_SIZE = 100;
+const MAX_PAGES = 100;
+
+class NetlifyApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "NetlifyApiError";
+  }
+}
+
+/**
+ * For a read under a site or zone the same pass has just listed, which proves the token
+ * works: 401 and 403 are this one refusing it (a guest's team, a team requiring its own
+ * login) and 404 is there being none, as for a site with no database. Nothing else may
+ * stand for no rows, because a sync prunes what it stops seeing.
+ */
+export function isRefusal(err: unknown): boolean {
+  return err instanceof NetlifyApiError && [401, 403, 404].includes(err.status);
+}
 
 /**
  * The official `@netlify/api` SDK uses `module.createRequire` at import time, so it
@@ -36,12 +63,30 @@ export function createNetlifyApi(options: {
   accessToken: string;
   caCert: string;
   http: HttpHostServices | undefined;
-}): NetlifyApi {
+}) {
   const { accessToken, caCert, http } = options;
-  return createApiClient<paths>({
+  const client = createApiClient<paths>({
     vendor: "Netlify",
     baseUrl: "https://api.netlify.com/api/v1",
     headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-    ...(http ? { http, ...(caCert ? { caCert } : {}) } : {}),
+    http,
+    caCert,
+    httpError: ({ status, target, body }: ApiFailure) =>
+      new NetlifyApiError(status, `Netlify API error ${status} for ${target}: ${body}`),
   });
+  return {
+    /** Sites and a site's deploys: the document gives these `page` and `per_page`. */
+    pages: withPagination(client, {
+      pageParam: "page",
+      sizeParam: "per_page",
+      pageSize: PAGE_SIZE,
+      maxPages: MAX_PAGES,
+    }),
+    /**
+     * The other lists, whose document names no page parameter. Netlify's API guide says
+     * every answer over 100 rows is paged and the next page is in `Link`, and paging by
+     * number a route that ignored it would read its first page forever.
+     */
+    links: withLinkPagination(client, { next: nextLinkHeader(), maxPages: MAX_PAGES }),
+  };
 }

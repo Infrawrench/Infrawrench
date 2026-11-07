@@ -10,10 +10,11 @@ interface FetchCall {
 }
 let calls: FetchCall[] = [];
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: unknown, status = 200, headers: HeadersInit = {}): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: new Headers(headers),
     json: async () => body,
     text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
   } as unknown as Response;
@@ -156,10 +157,9 @@ describe("listResources sites + pagination", () => {
     expect(s.resolvedOutputs["siteId"]).toBe("site1");
   });
 
-  it("handles null list response", async () => {
+  it("does not read an answer of null as no sites", async () => {
     installFetch(() => jsonResponse(null));
-    const res = await client().listResources("netlify-site", ACCOUNT);
-    expect(res).toEqual([]);
+    await expect(client().listResources("netlify-site", ACCOUNT)).rejects.toThrow("is not a list");
   });
 
   it("maps site with minimal fields", async () => {
@@ -211,9 +211,8 @@ describe("deploys / forms / build hooks / env vars (per-site fan-out)", () => {
     expect(res[0]!.displayName).toBe("Deploy title");
     expect(res[0]!.fields["url"]).toBe("https://dep.ssl");
     expect(res[0]!.parentResourceId).toBe("acct-1:netlify-site:site1");
-    // per_page=5 query passed
     const deployCall = calls.find((c) => c.url.includes("/deploys"));
-    expect(deployCall?.url).toContain("per_page=5");
+    expect(deployCall?.url).toContain("per_page=100");
   });
 
   it("deploy label falls back to short ref then id", async () => {
@@ -271,10 +270,10 @@ describe("deploys / forms / build hooks / env vars (per-site fan-out)", () => {
     expect(res[0]!.fields["submissionCount"]).toBe(5);
   });
 
-  it("skips forms for sites that error", async () => {
+  it("skips forms for sites that refuse", async () => {
     router([
       [(u) => u.includes("/sites") && !u.includes("/forms"), [SITE]],
-      [(u) => u.includes("/forms"), "no", 500],
+      [(u) => u.includes("/forms"), "no", 403],
     ]);
     const res = await client().listResources("netlify-form", ACCOUNT);
     expect(res).toEqual([]);
@@ -1169,8 +1168,8 @@ describe("getCreateConfig", () => {
     expect(shownFor("tag")?.options?.map((o) => o.id)).toEqual(["issue", "issuewild", "iodef"]);
   });
 
-  it("dns record config handles null zones", async () => {
-    router([[(u) => u.includes("/dns_zones"), null]]);
+  it("dns record config handles no zones", async () => {
+    router([[(u) => u.includes("/dns_zones"), []]]);
     const cfg = await client().getCreateConfig("netlify-dns-record");
     const zone = cfg.fields.find((f) => f.key === "zoneId");
     expect(zone?.options).toEqual([]);
@@ -1911,5 +1910,268 @@ describe("form submissions", () => {
     const json = JSON.stringify(client().renderDetail(await client().enrichDetail(base)));
     expect(json).toContain("Recent Submissions");
     expect(json).toContain("ada@example.com");
+  });
+});
+
+describe("reading a list to the end or failing", () => {
+  const site = (id: string) => ({
+    id,
+    name: id,
+    account_id: "acc1",
+    created_at: "x",
+    updated_at: "y",
+  });
+  const fullPage = (from: number) => Array.from({ length: 100 }, (_, i) => site(`s${from + i}`));
+  const queryOf = (url: string, key: string) => new URL(url).searchParams.get(key);
+
+  /** Every list a sync reads per site or per zone, with a path only that list has. */
+  const FAN_OUTS = [
+    ["netlify-deploy", "/sites/site1/deploys"],
+    ["netlify-form", "/sites/site1/forms"],
+    ["netlify-build-hook", "/sites/site1/build_hooks"],
+    ["netlify-env-var", "/accounts/acc1/env"],
+    ["netlify-notification-hook", "/hooks"],
+    ["netlify-snippet", "/sites/site1/snippets"],
+    ["netlify-dns-record", "/dns_zones/z1/dns_records"],
+  ] as const;
+
+  /** Answers the parent lists, and hands anything under `path` to `child`. */
+  function fanOut(path: string, child: (url: string) => Response) {
+    return installFetch((url) => {
+      const { pathname } = new URL(url);
+      if (pathname.endsWith(path)) return child(url);
+      if (pathname.endsWith("/sites")) return jsonResponse([SITE]);
+      if (pathname.endsWith("/dns_zones")) {
+        return jsonResponse([{ id: "z1", name: "z", created_at: "x", updated_at: "y" }]);
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+  }
+
+  describe("sites", () => {
+    it("reads past the old cap of 1,000", async () => {
+      installFetch((url) => {
+        const page = Number(queryOf(url, "page"));
+        return jsonResponse(page <= 15 ? fullPage((page - 1) * 100) : [site("last")]);
+      });
+      const res = await client().listResources("netlify-site", ACCOUNT);
+      expect(res).toHaveLength(1501);
+    });
+
+    it("throws rather than return a list that never ends, after exactly 100 requests", async () => {
+      installFetch(() => jsonResponse(fullPage(0)));
+      await expect(client().listResources("netlify-site", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(100);
+    });
+
+    it("throws on a page that is not a list, first or later", async () => {
+      installFetch(() => jsonResponse({ sites: [] }));
+      await expect(client().listResources("netlify-site", ACCOUNT)).rejects.toThrow(
+        "is not a list",
+      );
+      calls = [];
+      vi.restoreAllMocks();
+      installFetch((url) =>
+        queryOf(url, "page") === "1" ? jsonResponse(fullPage(0)) : jsonResponse({ sites: [] }),
+      );
+      await expect(client().listResources("netlify-site", ACCOUNT)).rejects.toThrow(
+        "is not a list",
+      );
+      expect(calls).toHaveLength(2);
+    });
+
+    it("a past-the-cap list under a per-site read fails that read too", async () => {
+      installFetch(() => jsonResponse(fullPage(0)));
+      await expect(client().listResources("netlify-form", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+
+    it("a create form still offers the sites it could read past the cap", async () => {
+      installFetch(() => jsonResponse(fullPage(0)));
+      const cfg = await client().getCreateConfig("netlify-build-hook");
+      expect(cfg.fields.find((f) => f.key === "siteId")?.options).toHaveLength(10_000);
+    });
+  });
+
+  describe("deploys", () => {
+    const deploy = (id: string) => ({ id, state: "ready", created_at: "x", updated_at: "y" });
+
+    it("reads every page of a site's deploys, which Netlify keeps only for a while", async () => {
+      fanOut("/sites/site1/deploys", (url) =>
+        jsonResponse(
+          queryOf(url, "page") === "1"
+            ? Array.from({ length: 100 }, (_, i) => deploy(`d${i}`))
+            : [deploy("old")],
+        ),
+      );
+      const res = await client().listResources("netlify-deploy", ACCOUNT);
+      expect(res).toHaveLength(101);
+    });
+
+    it("throws past 10,000 on one site", async () => {
+      const page = Array.from({ length: 100 }, (_, i) => deploy(`d${i}`));
+      fanOut("/sites/site1/deploys", () => jsonResponse(page));
+      await expect(client().listResources("netlify-deploy", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls.filter((c) => c.url.includes("/deploys"))).toHaveLength(100);
+    });
+
+    it("throws past 50,000 across sites, which the sync could not prune", async () => {
+      const page = Array.from({ length: 100 }, (_, i) => deploy(`d${i}`));
+      const short = page.slice(0, 99);
+      installFetch((url) => {
+        const { pathname } = new URL(url);
+        if (pathname.endsWith("/sites")) {
+          return jsonResponse(queryOf(url, "page") === "1" ? fullPage(0) : [site("extra")]);
+        }
+        // 100 sites at 501 deploys each.
+        return jsonResponse(Number(queryOf(url, "page")) <= 5 ? page : short.slice(0, 1));
+      });
+      await expect(client().listResources("netlify-deploy", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+  });
+
+  describe.each(FAN_OUTS)("%s, under %s", (typeId, path) => {
+    it.each([500, 429, 502])("does not read a %i as no rows", async (status) => {
+      fanOut(path, () => jsonResponse("nope", status));
+      await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow(String(status));
+    });
+
+    it.each([401, 403, 404])("reads a %i as none for that parent", async (status) => {
+      fanOut(path, () => jsonResponse("nope", status));
+      await expect(client().listResources(typeId, ACCOUNT)).resolves.toEqual([]);
+    });
+
+    it("does not read an answer that is not a list as no rows", async () => {
+      fanOut(path, () => jsonResponse({ message: "not what you asked for" }));
+      await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+    });
+  });
+
+  describe("a database list", () => {
+    it("reads a 404 as a site with no database", async () => {
+      fanOut("/sites/site1/database/branches", () => jsonResponse("none", 404));
+      await expect(client().listResources("netlify-database", ACCOUNT)).resolves.toEqual([]);
+    });
+
+    it("does not read a 500 as a site with no database", async () => {
+      fanOut("/sites/site1/database/branches", () => jsonResponse("nope", 500));
+      await expect(client().listResources("netlify-database", ACCOUNT)).rejects.toThrow("500");
+    });
+  });
+
+  it("reads a site's children one at a time, under the 500 requests a minute", async () => {
+    let inFlight = 0;
+    let most = 0;
+    const sites = [site("a"), site("b"), site("c"), site("d")];
+    vi.spyOn(globalThis, "fetch").mockImplementation((async (url: string) => {
+      if (new URL(url).pathname.endsWith("/sites")) return jsonResponse(sites);
+      inFlight++;
+      most = Math.max(most, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight--;
+      return jsonResponse([]);
+    }) as typeof fetch);
+    await client().listResources("netlify-snippet", ACCOUNT);
+    expect(most).toBe(1);
+  });
+
+  describe("Link headers, on the lists whose document names no page parameter", () => {
+    const LINKED = [
+      ["netlify-form", "/sites/site1/forms", { id: "f", name: "f", created_at: "x" }],
+      ["netlify-build-hook", "/sites/site1/build_hooks", { id: "b" }],
+      ["netlify-env-var", "/accounts/acc1/env", { key: "K" }],
+      ["netlify-notification-hook", "/hooks", { id: "h" }],
+      ["netlify-snippet", "/sites/site1/snippets", { id: 1 }],
+      ["netlify-dns-record", "/dns_zones/z1/dns_records", { id: "r" }],
+    ] as const;
+    const next = "https://api.netlify.com/api/v1/next-page?page=2";
+
+    it.each(LINKED)("%s follows a next link", async (typeId, path, row) => {
+      fanOut(path, () =>
+        jsonResponse([row], 200, { link: `<${next}>; rel="next", <${next}>; rel="last"` }),
+      );
+      const spy = vi.mocked(globalThis.fetch);
+      const base = spy.getMockImplementation()!;
+      spy.mockImplementation((async (url: string, init?: RequestInit) => {
+        if (String(url) === next) {
+          calls.push({ url: String(url) });
+          return jsonResponse([row]);
+        }
+        return base(url, init);
+      }) as typeof fetch);
+      const res = await client().listResources(typeId, ACCOUNT);
+      expect(res).toHaveLength(2);
+      expect(calls.some((c) => c.url === next)).toBe(true);
+    });
+
+    it("follows a next link on the DNS zone list", async () => {
+      installFetch((url) =>
+        url === next
+          ? jsonResponse([{ id: "z2", name: "b", created_at: "x", updated_at: "y" }])
+          : jsonResponse([{ id: "z1", name: "a", created_at: "x", updated_at: "y" }], 200, {
+              link: `<${next}>; rel="next"`,
+            }),
+      );
+      const res = await client().listResources("netlify-dns-zone", ACCOUNT);
+      expect(res.map((r) => r.externalId)).toEqual(["z1", "z2"]);
+    });
+
+    it("sends no paging parameter the document does not list", async () => {
+      fanOut("/sites/site1/forms", () => jsonResponse([]));
+      await client().listResources("netlify-form", ACCOUNT);
+      const form = calls.find((c) => c.url.includes("/forms"));
+      expect(form?.url).toBe("https://api.netlify.com/api/v1/sites/site1/forms");
+    });
+
+    it("throws past 100 pages", async () => {
+      fanOut("/sites/site1/forms", () =>
+        jsonResponse([{ id: "f", name: "f", created_at: "x" }], 200, {
+          link: `<https://api.netlify.com/api/v1/sites/site1/forms?page=2>; rel="next"`,
+        }),
+      );
+      await expect(client().listResources("netlify-form", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls.filter((c) => c.url.includes("/forms"))).toHaveLength(100);
+    });
+
+    it("refuses a next link to another host, through the per-site read", async () => {
+      fanOut("/sites/site1/forms", () =>
+        jsonResponse([{ id: "f", name: "f", created_at: "x" }], 200, {
+          link: `<https://evil.example/steal>; rel="next"`,
+        }),
+      );
+      await expect(client().listResources("netlify-form", ACCOUNT)).rejects.toThrow(
+        "Refusing to send the account's credentials there",
+      );
+      expect(calls.some((c) => c.url.includes("evil.example"))).toBe(false);
+    });
+
+    it("reads the Link header through the host's HTTP service", async () => {
+      const request = vi.fn(async (req: { url: string }) => {
+        if (req.url.includes("/sites?")) return { status: 200, body: JSON.stringify([SITE]) };
+        return req.url.includes("page=2")
+          ? { status: 200, body: JSON.stringify([{ id: "f2", name: "g", created_at: "x" }]) }
+          : {
+              status: 200,
+              headers: { link: `<${req.url}?page=2>; rel="next"` },
+              body: JSON.stringify([{ id: "f1", name: "f", created_at: "x" }]),
+            };
+      });
+      const spy = installFetch(() => jsonResponse({}));
+      const res = await client({ accessToken: "tok" }, { http: { request } }).listResources(
+        "netlify-form",
+        ACCOUNT,
+      );
+      expect(res).toHaveLength(2);
+      expect(spy).not.toHaveBeenCalled();
+    });
   });
 });

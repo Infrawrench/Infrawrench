@@ -19,9 +19,11 @@ import {
   pathEncode,
   renderDnsRecordDetail,
   renderDnsRecordSidebar,
+  withinListCap,
 } from "@infrawrench/plugin-base";
 import {
   createNetlifyApi,
+  isRefusal,
   type NetlifyApi,
   type NetlifyBuildHook,
   type NetlifyDbBranch,
@@ -72,30 +74,28 @@ function mapSiteState(state: string): ResourceStatus {
 }
 
 export class NetlifyClient implements PluginClient {
-  private readonly api: NetlifyApi;
+  private readonly api: NetlifyApi["pages"];
+  private readonly links: NetlifyApi["links"];
 
   constructor(credentials: Credentials, services?: HostServices) {
     const accessToken = credentials["accessToken"];
     if (!accessToken) throw new Error("Netlify plugin: missing accessToken credential");
-    this.api = createNetlifyApi({
+    const { pages, links } = createNetlifyApi({
       accessToken,
       caCert: credentials["caCert"] ?? "",
       http: services?.http,
     });
+    this.api = pages;
+    this.links = links;
   }
 
-  /**
-   * Every site, up to 1,000. A hand loop rather than `getAll`, which reads an answer
-   * that is not a list as the end of the list, where this has always thrown.
-   */
-  private async allSites(): Promise<NetlifySite[]> {
-    const results: NetlifySite[] = [];
-    for (let page = 1; page <= 10; page++) {
-      const items = (await this.api.get("/sites", { query: { page, per_page: 100 } })) ?? [];
-      results.push(...items);
-      if (items.length < 100) break;
-    }
-    return results;
+  private allSites(): Promise<NetlifySite[]> {
+    return this.api.getAll("/sites", null);
+  }
+
+  /** For a create form, which can offer the sites it read when there are too many to read. */
+  private pickableSites(): Promise<NetlifySite[]> {
+    return this.api.getAll("/sites", null, { partial: true });
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
@@ -116,20 +116,20 @@ export class NetlifyClient implements PluginClient {
         case "netlify-env-var":
           return this.listAllEnvVars(accountId);
         case "netlify-notification-hook":
-          return this.perSite(accountId, async (site) =>
-            ((await this.api.get("/hooks", { query: { site_id: site.id } })) ?? []).map((h) =>
+          return eachParent(await this.allSites(), async (site) =>
+            (await this.links.getAll("/hooks", null, { query: { site_id: site.id } })).map((h) =>
               this.mapHook(h, accountId, site.id),
             ),
           );
         case "netlify-snippet":
-          return this.perSite(accountId, async (site) =>
-            ((await this.api.get(`/sites/${pathEncode(site.id)}/snippets`)) ?? []).map((sn) =>
+          return eachParent(await this.allSites(), async (site) =>
+            (await this.links.getAll(`/sites/${pathEncode(site.id)}/snippets`, null)).map((sn) =>
               this.mapSnippet(sn, accountId, site.id),
             ),
           );
         case "netlify-database":
-          // Sites without a database answer 404; perSite drops them.
-          return this.perSite(accountId, async (site) => [
+          // Sites without a database answer 404, which eachParent reads as none.
+          return eachParent(await this.allSites(), async (site) => [
             this.mapDatabase(
               site,
               (await this.api.get(`/sites/${pathEncode(site.id)}/database/branches`)).branches ??
@@ -412,7 +412,7 @@ export class NetlifyClient implements PluginClient {
       if (typeId === "netlify-dns-record") {
         const zoneField = !parentResourceId
           ? await (async () => {
-              const zones = (await this.api.get("/dns_zones")) ?? [];
+              const zones = await this.links.getAll("/dns_zones", null, { partial: true });
               const zoneOptions = zones.map((z) => ({
                 id: z.id,
                 label: z.name || z.domain || z.id,
@@ -525,7 +525,7 @@ export class NetlifyClient implements PluginClient {
       if (typeId === "netlify-build-hook") {
         const siteField = !parentResourceId
           ? await (async () => {
-              const sites = await this.allSites();
+              const sites = await this.pickableSites();
               const siteOptions = sites.map((s) => ({
                 id: s.id,
                 label: s.name || s.id,
@@ -567,7 +567,7 @@ export class NetlifyClient implements PluginClient {
       if (typeId === "netlify-env-var") {
         const siteField = !parentResourceId
           ? await (async () => {
-              const sites = await this.allSites();
+              const sites = await this.pickableSites();
               const siteOptions = sites.map((s) => ({
                 id: String(s.id),
                 label: s.name || String(s.id),
@@ -647,7 +647,7 @@ export class NetlifyClient implements PluginClient {
 
       const sitePicker = async (): Promise<CreateResourceConfig["fields"]> => {
         if (parentResourceId) return [];
-        const sites = await this.allSites();
+        const sites = await this.pickableSites();
         const options = sites.map((site) => ({ id: site.id, label: site.name || site.id }));
         return [
           {
@@ -1244,24 +1244,6 @@ export class NetlifyClient implements PluginClient {
     return site.account_id;
   }
 
-  /** Run `load` for every site, dropping sites whose call fails. */
-  private async perSite(
-    _accountId: string,
-    load: (site: NetlifySite) => Promise<ResourceInstance[]>,
-  ): Promise<ResourceInstance[]> {
-    const sites = await this.allSites();
-    const batches = await Promise.all(
-      sites.map(async (site) => {
-        try {
-          return await load(site);
-        } catch {
-          return [];
-        }
-      }),
-    );
-    return batches.flat();
-  }
-
   private mapHook(h: NetlifyHook, accountId: string, siteId: string): ResourceInstance {
     const data = h.data ?? {};
     const target = String(data["email"] ?? data["url"] ?? "");
@@ -1414,22 +1396,17 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllDeploys(accountId: string): Promise<ResourceInstance[]> {
-    const sites = await this.allSites();
-    const results: ResourceInstance[] = [];
-    for (const site of sites) {
-      try {
-        const deploys =
-          (await this.api.get(`/sites/${pathEncode(site.id)}/deploys`, {
-            query: { per_page: 5 },
-          })) ?? [];
-        for (const d of deploys) {
-          results.push(this.mapDeploy(d, accountId, site.id));
-        }
-      } catch {
-        // Skip sites we can't read deploys for
-      }
-    }
-    return results;
+    const deploys = await eachParent(await this.allSites(), async (site) =>
+      (await this.api.getAll(`/sites/${pathEncode(site.id)}/deploys`, null)).map((d) =>
+        this.mapDeploy(d, accountId, site.id),
+      ),
+    );
+    // Each site is capped, but they add up, and past about 65,000 rows the sync's prune fails
+    // for the whole account (#572). This fails only the deploys.
+    return withinListCap(deploys, MAX_DEPLOYS, {
+      vendor: "Netlify",
+      path: "/sites/{site_id}/deploys",
+    });
   }
 
   private mapDeploy(d: NetlifyDeploy, accountId: string, siteId: string): ResourceInstance {
@@ -1472,19 +1449,11 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllForms(accountId: string): Promise<ResourceInstance[]> {
-    const sites = await this.allSites();
-    const results: ResourceInstance[] = [];
-    for (const site of sites) {
-      try {
-        const forms = (await this.api.get(`/sites/${pathEncode(site.id)}/forms`)) ?? [];
-        for (const f of forms) {
-          results.push(this.mapForm(f, accountId, site.id));
-        }
-      } catch {
-        // Skip sites we can't read forms for
-      }
-    }
-    return results;
+    return eachParent(await this.allSites(), async (site) =>
+      (await this.links.getAll(`/sites/${pathEncode(site.id)}/forms`, null)).map((f) =>
+        this.mapForm(f, accountId, site.id),
+      ),
+    );
   }
 
   private mapForm(f: NetlifyForm, accountId: string, siteId: string): ResourceInstance {
@@ -1514,7 +1483,7 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listDnsZones(accountId: string): Promise<ResourceInstance[]> {
-    const zones = (await this.api.get("/dns_zones")) ?? [];
+    const zones = await this.links.getAll("/dns_zones", null);
     return zones.map((z) => this.mapDnsZone(z, accountId));
   }
 
@@ -1551,19 +1520,11 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllDnsRecords(accountId: string): Promise<ResourceInstance[]> {
-    const zones = (await this.api.get("/dns_zones")) ?? [];
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      try {
-        const records = (await this.api.get(`/dns_zones/${pathEncode(zone.id)}/dns_records`)) ?? [];
-        for (const r of records) {
-          results.push(this.mapDnsRecord(r, accountId, zone.id));
-        }
-      } catch {
-        // Skip zones we can't read records for
-      }
-    }
-    return results;
+    return eachParent(await this.links.getAll("/dns_zones", null), async (zone) =>
+      (await this.links.getAll(`/dns_zones/${pathEncode(zone.id)}/dns_records`, null)).map((r) =>
+        this.mapDnsRecord(r, accountId, zone.id),
+      ),
+    );
   }
 
   private mapDnsRecord(r: NetlifyDnsRecord, accountId: string, zoneId: string): ResourceInstance {
@@ -1597,19 +1558,11 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllBuildHooks(accountId: string): Promise<ResourceInstance[]> {
-    const sites = await this.allSites();
-    const results: ResourceInstance[] = [];
-    for (const site of sites) {
-      try {
-        const hooks = (await this.api.get(`/sites/${pathEncode(site.id)}/build_hooks`)) ?? [];
-        for (const h of hooks) {
-          results.push(this.mapBuildHook(h, accountId, site.id));
-        }
-      } catch {
-        // Skip sites we can't read build hooks for
-      }
-    }
-    return results;
+    return eachParent(await this.allSites(), async (site) =>
+      (await this.links.getAll(`/sites/${pathEncode(site.id)}/build_hooks`, null)).map((h) =>
+        this.mapBuildHook(h, accountId, site.id),
+      ),
+    );
   }
 
   private mapBuildHook(h: NetlifyBuildHook, accountId: string, siteId: string): ResourceInstance {
@@ -1639,23 +1592,17 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllEnvVars(accountId: string): Promise<ResourceInstance[]> {
-    const sites = await this.allSites();
-    const results: ResourceInstance[] = [];
-    for (const site of sites) {
-      try {
-        if (!site.account_id) continue;
-        const envVars =
-          (await this.api.get(`/accounts/${pathEncode(site.account_id)}/env`, {
-            query: { site_id: site.id },
-          })) ?? [];
-        for (const ev of envVars) {
-          results.push(this.mapEnvVar(ev, accountId, site.id));
-        }
-      } catch {
-        // Skip sites we can't read env vars for
-      }
-    }
-    return results;
+    return eachParent(await this.allSites(), async (site) => {
+      if (!site.account_id) return [];
+      const envVars = await this.links.getAll(
+        `/accounts/${pathEncode(site.account_id)}/env`,
+        null,
+        {
+          query: { site_id: site.id },
+        },
+      );
+      return envVars.map((ev) => this.mapEnvVar(ev, accountId, site.id));
+    });
   }
 
   private mapEnvVar(ev: NetlifyEnvVar, accountId: string, siteId: string): ResourceInstance {
@@ -2339,6 +2286,29 @@ function mapDbState(state: string): ResourceStatus {
     default:
       return "info";
   }
+}
+
+/** The most deploys one account may list. See `listAllDeploys`. */
+const MAX_DEPLOYS = 50_000;
+
+/**
+ * `load` for each parent. One at a time, because Netlify allows 500 requests a minute and
+ * a 429 fails the list. A parent refusing the read has no rows; any other failure fails
+ * the list, because a sync prunes what it stops seeing.
+ */
+async function eachParent<Parent>(
+  parents: Parent[],
+  load: (parent: Parent) => Promise<ResourceInstance[]>,
+): Promise<ResourceInstance[]> {
+  const rows: ResourceInstance[] = [];
+  for (const parent of parents) {
+    try {
+      rows.push(...(await load(parent)));
+    } catch (err) {
+      if (!isRefusal(err)) throw err;
+    }
+  }
+  return rows;
 }
 
 /** A form's number, undefined when blank. `Number()` alone would send junk as `null`. */
