@@ -23,18 +23,20 @@ Each project exports `DEPOT_PROJECT_ID`, and a newly created project token expor
 - **Depot plan**: Depot doesn't report which plan you're on or what it costs, so pick it: **Developer**, **Startup**, **Business** (custom contract) or **Usage only** (every minute at list price). The plan's monthly fee and its included build minutes, GitHub Actions minutes and storage shape the cost estimate and the plan allowance readings.
 - **Rate overrides** (optional): replace any published rate or allowance, one `key=value` per line. Use it for a Business contract or a price change.
 
-| Key                      | Meaning                                                   | Default       |
-| ------------------------ | --------------------------------------------------------- | ------------- |
-| `planFee`                | Monthly plan fee, USD                                     | From the plan |
-| `includedBuildMinutes`   | Docker build minutes included per cycle                   | From the plan |
-| `includedActionsMinutes` | GitHub Actions minutes included per cycle                 | From the plan |
-| `includedStorageGb`      | Cache and registry storage included                       | From the plan |
-| `buildMinute`            | USD per container build minute beyond the allowance       | 0.04          |
-| `actionsMinute`          | USD per billed GitHub Actions minute beyond the allowance | 0.006         |
-| `macosMinute`            | USD per macOS runner minute                               | 0.08          |
-| `sandboxMinute`          | USD per agent sandbox minute                              | 0.01          |
-| `storageGbMonth`         | USD per GB-month of storage beyond the allowance          | 0.20          |
-| `cycleStartDay`          | Day of the month your billing cycle starts (1 to 28)      | 1             |
+| Key                      | Meaning                                                          | Default       |
+| ------------------------ | ---------------------------------------------------------------- | ------------- |
+| `planFee`                | Monthly plan fee, USD                                            | From the plan |
+| `includedBuildMinutes`   | Docker build minutes included per cycle                          | From the plan |
+| `includedActionsMinutes` | GitHub Actions minutes included per cycle                        | From the plan |
+| `includedStorageGb`      | Cache and registry storage included                              | From the plan |
+| `includedSandboxMinutes` | Sandbox minutes included per cycle, at 2 vCPUs, used by Depot CI | From the plan |
+| `buildMinute`            | USD per container build minute beyond the allowance              | 0.04          |
+| `actionsMinute`          | USD per billed GitHub Actions minute beyond the allowance        | 0.006         |
+| `macosMinute`            | USD per macOS runner minute                                      | 0.08          |
+| `sandboxMinute`          | USD per agent sandbox minute                                     | 0.01          |
+| `ciVcpuMinute`           | USD per Depot CI vCPU-minute beyond the allowance                | 0.003         |
+| `storageGbMonth`         | USD per GB-month of storage beyond the allowance                 | 0.20          |
+| `cycleStartDay`          | Day of the month your billing cycle starts (1 to 28)             | 1             |
 
 You can change the plan or the overrides at any time from the account's **Edit credentials**. New values apply to the next cost update.
 
@@ -44,7 +46,7 @@ You can change the plan or the overrides at any time from the account's **Edit c
 
 Depot spend appears in [cost graphs and budgets](../features/cloud-costs.md). The amounts are **estimates**: Depot reports usage but not prices, so Infrawrench multiplies your usage by your plan's rates. Each day is broken down by:
 
-- **Service**: Container builds, GitHub Actions runners, GitHub Actions runners (macOS), Cache storage, Registry storage, Agent sandboxes, and Depot plan (the monthly fee spread across the days of the cycle).
+- **Service**: Container builds, GitHub Actions runners, GitHub Actions runners (macOS), Cache storage, Registry storage, Agent sandboxes, Depot CI, and Depot plan (the monthly fee spread across the days of the cycle).
 - **Resource**: the project, for container build minutes.
 - **Tags**: `project`, `repo`, `workflow`, `runner`, `storageType` and `agentType`, so you can filter or group runner spend by repository or workflow.
 
