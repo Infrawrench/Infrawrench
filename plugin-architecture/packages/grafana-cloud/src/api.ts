@@ -1,7 +1,9 @@
 import {
   createApiClient,
+  nextLinkHeader,
   requireListPage,
   restRequest,
+  withLinkPagination,
   withPagination,
   type ApiClient,
   type ApiClientOptions,
@@ -20,6 +22,8 @@ export const CLOUD_API_URL = "https://grafana.com/api";
 const SEARCH_PAGE_SIZE = 5000;
 /** 50,000 rows. */
 const SEARCH_MAX_PAGES = 10;
+/** The sync's ceiling on sequential requests. The document gives these lists no page size. */
+const SM_MAX_PAGES = 1000;
 
 /**
  * Everything a Grafana Cloud request needs. Split out of the client so the
@@ -122,10 +126,23 @@ export function stackApi(
  * The Synthetic Monitoring API of the stack's region, with a Synthetic
  * Monitoring access token (a tenant token, not an access policy token).
  */
-export function smApi(ctx: GrafanaContext, apiUrl: string, smToken: string): ApiClient<SmPaths> {
-  return createApiClient<SmPaths>(
-    clientOptions(ctx, "Grafana Synthetic Monitoring", apiUrl.replace(/\/+$/, ""), smToken),
+export function smApi(ctx: GrafanaContext, apiUrl: string, smToken: string) {
+  return withLinkPagination(
+    createApiClient<SmPaths>(
+      clientOptions(ctx, "Grafana Synthetic Monitoring", apiUrl.replace(/\/+$/, ""), smToken),
+    ),
+    { next: nextLinkHeader(), maxPages: SM_MAX_PAGES },
   );
+}
+
+/**
+ * An answer meaning this route is not there for this token. Under a `/check/{id}`
+ * route a removed `/check/list` can read as a bad id, so that takes any refusal. An
+ * expired token and a throttle say nothing about the route.
+ */
+export function isRouteRefusal(err: unknown): boolean {
+  const status = statusOf(err);
+  return status >= 400 && status < 500 && status !== 401 && status !== 429;
 }
 
 /**

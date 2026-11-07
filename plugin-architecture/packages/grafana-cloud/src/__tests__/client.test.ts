@@ -260,6 +260,130 @@ describe("reading a list to its end", () => {
   const hits = (count: number, from = 0) =>
     Array.from({ length: count }, (_, i) => ({ uid: `d${from + i}`, title: `D${from + i}` }));
 
+  describe("synthetic checks and probes", () => {
+    const check = (id: number) => ({ id, job: `job${id}`, target: "https://x", probes: [1] });
+    const probe = { id: 1, name: "Paris" };
+    const smCalls = (calls: Array<{ url: URL }>) =>
+      calls.filter((c) => c.url.origin === SM_URL).map((c) => c.url.pathname);
+
+    it("reads the routes Grafana's own clients treat as every row, with nothing else asked", async () => {
+      const { client, calls } = connected((url) => {
+        if (url.pathname === "/api/v1/check/list") return { body: [check(1), check(2), check(3)] };
+        if (url.pathname === "/api/v1/probe/list") return { body: [probe] };
+        // A current route answering one page of its own default size.
+        if (url.pathname === "/api/v1/check") return { body: [check(1)] };
+        if (url.pathname === "/api/v1/probe") return { body: [] };
+        return undefined;
+      });
+      const rows = await client.listResources("synthetic-check", "acct");
+      expect(rows).toHaveLength(3);
+      expect(rows[0]?.fields["probes"]).toBe("Paris");
+      expect(smCalls(calls).sort()).toEqual(["/api/v1/check/list", "/api/v1/probe/list"]);
+    });
+
+    // Under a `/check/{id}` route, a removed `/check/list` can be read as a bad id.
+    it.each([400, 403, 404, 405, 410])(
+      "reads the current routes when the old ones answer %i",
+      async (status) => {
+        const { client } = connected((url) => {
+          if (url.pathname === "/api/v1/check/list") return { status };
+          if (url.pathname === "/api/v1/probe/list") return { status };
+          if (url.pathname === "/api/v1/check") return { body: [check(1)] };
+          if (url.pathname === "/api/v1/probe") return { body: [probe] };
+          return undefined;
+        });
+        const rows = await client.listResources("synthetic-check", "acct");
+        expect(rows.map((r) => r.fields["probes"])).toEqual(["Paris"]);
+      },
+    );
+
+    it.each([429, 500])("does not read a %i as a route that has gone", async (status) => {
+      const { client, calls } = connected((url) => {
+        if (url.pathname === "/api/v1/check/list") return { status };
+        if (url.pathname === "/api/v1/probe/list") return { body: [probe] };
+        if (url.pathname === "/api/v1/check") return { body: [] };
+        return undefined;
+      });
+      await expect(client.listResources("synthetic-check", "acct")).rejects.toThrow(String(status));
+      expect(smCalls(calls)).not.toContain("/api/v1/check");
+    });
+
+    it("does not take an expired token to the other route", async () => {
+      const { client, calls } = connected((url) => {
+        if (url.pathname === "/api/v1/check/list") return { status: 401 };
+        if (url.pathname === "/api/v1/probe/list") return { status: 401 };
+        return undefined;
+      });
+      await client.listResources("synthetic-check", "acct");
+      expect(smCalls(calls).sort()).toEqual(["/api/v1/check/list", "/api/v1/probe/list"]);
+    });
+
+    it("follows a next link from the current route to the end", async () => {
+      const { client } = connected((url) => {
+        if (url.pathname === "/api/v1/probe/list") return { body: [probe] };
+        if (url.pathname === "/api/v1/check/list") return { status: 404 };
+        if (url.pathname !== "/api/v1/check") return undefined;
+        return url.searchParams.get("cursor") === "b"
+          ? { body: [check(2)] }
+          : {
+              body: [check(1)],
+              headers: { link: `<${SM_URL}/api/v1/check?cursor=b>; rel="next"` },
+            };
+      });
+      expect(await client.listResources("synthetic-check", "acct")).toHaveLength(2);
+    });
+
+    it("refuses a next link to another host, with no request reaching it", async () => {
+      const { client, calls } = connected((url) => {
+        if (url.pathname === "/api/v1/probe/list") return { body: [probe] };
+        if (url.pathname === "/api/v1/check/list") return { status: 404 };
+        if (url.pathname !== "/api/v1/check") return undefined;
+        return {
+          body: [check(1)],
+          headers: { link: '<https://evil.example/api/v1/check?cursor=b>; rel="next"' },
+        };
+      });
+      await expect(client.listResources("synthetic-check", "acct")).rejects.toThrow(
+        "Refusing to send the account's credentials there",
+      );
+      expect(calls.some((c) => c.url.hostname === "evil.example")).toBe(false);
+    });
+
+    it("rejects a list whose next link never ends, after exactly the cap", async () => {
+      const { client, calls } = connected((url) => {
+        if (url.pathname === "/api/v1/probe/list") return { body: [probe] };
+        if (url.pathname === "/api/v1/check/list") return { status: 404 };
+        if (url.pathname !== "/api/v1/check") return undefined;
+        const at = Number(url.searchParams.get("cursor") ?? 0);
+        return {
+          body: [check(at)],
+          headers: { link: `<${SM_URL}/api/v1/check?cursor=${at + 1}>; rel="next"` },
+        };
+      });
+      await expect(client.listResources("synthetic-check", "acct")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(smCalls(calls).filter((p) => p === "/api/v1/check")).toHaveLength(1000);
+    });
+
+    it("rejects a later page that is not a list", async () => {
+      const { client } = connected((url) => {
+        if (url.pathname === "/api/v1/probe/list") return { body: [probe] };
+        if (url.pathname === "/api/v1/check/list") return { status: 404 };
+        if (url.pathname !== "/api/v1/check") return undefined;
+        return url.searchParams.get("cursor")
+          ? { body: { checks: [] } }
+          : {
+              body: [check(1)],
+              headers: { link: `<${SM_URL}/api/v1/check?cursor=b>; rel="next"` },
+            };
+      });
+      await expect(client.listResources("synthetic-check", "acct")).rejects.toThrow(
+        "is not a list",
+      );
+    });
+  });
+
   describe("dashboards", () => {
     it("asks for the next page after a full one", async () => {
       const { client, calls } = connected((url) => {

@@ -233,7 +233,7 @@
               }
             }
           },
-          "why": "The route older deployments answer, which the plugin falls back to on a 404 or 405. The current document no longer lists it."
+          "why": "The current document no longer lists this route, and Grafana's own clients still read it as every row, with no paging. The plugin reads it first and falls back to the documented route when it is refused."
         },
         {
           "pointer": "/paths/~1api~1v1~1probe~1list",
@@ -257,7 +257,7 @@
               }
             }
           },
-          "why": "The route older deployments answer, which the plugin falls back to on a 404 or 405. The current document no longer lists it."
+          "why": "The current document no longer lists this route, and Grafana's own clients still read it as every row, with no paging. The plugin reads it first and falls back to the documented route when it is refused."
         },
         {
           "pointer": "/paths/~1api~1v1~1check~1delete~1{id}",

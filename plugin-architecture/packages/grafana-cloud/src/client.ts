@@ -27,7 +27,15 @@ import {
 import type { ApiBody } from "@infrawrench/plugin-base";
 import { invalidateStacks, listStacks, orgSlugOf, policyRegions, resolveOrg } from "./account.js";
 import type { GrafanaContext } from "./api.js";
-import { cloudApi, cloudItems, requestId, smApi, stackApi, statusOf } from "./api.js";
+import {
+  cloudApi,
+  cloudItems,
+  isRouteRefusal,
+  requestId,
+  smApi,
+  stackApi,
+  statusOf,
+} from "./api.js";
 import type { operations as CloudOperations } from "./api-types.cloud.gen.js";
 import type { operations as SmOperations } from "./api-types.sm.gen.js";
 import { fetchBillSummary, fetchGrafanaCostData } from "./cost-data.js";
@@ -77,7 +85,6 @@ const SERVICE_ACCOUNT_NAME = "infrawrench";
 const MAX_CURSOR_PAGES = 100;
 const CURSOR_PAGE_SIZE = 500;
 const STACK_VENDOR = "Grafana stack";
-const SM_VENDOR = "Grafana Synthetic Monitoring";
 /** A folder past this shows its UID, as one the token may not read does. */
 const MAX_FOLDER_LOOKUPS = 100;
 
@@ -470,23 +477,29 @@ export class GrafanaCloudClient implements PluginClient {
     return names;
   }
 
-  /** `/api/v1/check` in the current spec; older deployments only answer `/check/list`. */
+  /**
+   * `/check/list` first: it takes no paging, and Grafana's own clients read it as every
+   * check. The current document replaces it with `/check`, which takes a `cursor` and a
+   * `page_size` and answers a bare array, without saying what names the next page or
+   * how large a page is by default. So `/check` is only for when `/check/list` has gone.
+   */
   private async smChecks(apiUrl: string, token: string): Promise<SmCheck[]> {
     const sm = smApi(this.ctx, apiUrl, token);
-    const answer = await sm.get("/api/v1/check").catch((err) => {
-      if (statusOf(err) !== 404 && statusOf(err) !== 405) throw err;
-      return sm.get("/api/v1/check/list");
+    const answer = await sm.getAll("/api/v1/check/list", null).catch((err): undefined => {
+      if (!isRouteRefusal(err)) throw err;
+      return undefined;
     });
-    return requireListPage(answer, { vendor: SM_VENDOR, path: "/api/v1/check", key: null });
+    return answer ?? sm.getAll("/api/v1/check", null);
   }
 
+  /** As {@link smChecks}. */
   private async smProbes(apiUrl: string, token: string): Promise<SmProbe[]> {
     const sm = smApi(this.ctx, apiUrl, token);
-    const answer = await sm.get("/api/v1/probe").catch((err) => {
-      if (statusOf(err) !== 404 && statusOf(err) !== 405) throw err;
-      return sm.get("/api/v1/probe/list");
+    const answer = await sm.getAll("/api/v1/probe/list", null).catch((err): undefined => {
+      if (!isRouteRefusal(err)) throw err;
+      return undefined;
     });
-    return requireListPage(answer, { vendor: SM_VENDOR, path: "/api/v1/probe", key: null });
+    return answer ?? sm.getAll("/api/v1/probe", null);
   }
 
   private async organization(accountId: string, withBill: boolean): Promise<ResourceInstance> {

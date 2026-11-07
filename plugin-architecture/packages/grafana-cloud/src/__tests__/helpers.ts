@@ -3,6 +3,8 @@ import type { GrafanaContext } from "../api.js";
 export interface Reply {
   status?: number;
   body?: unknown;
+  /** Lower-cased names. */
+  headers?: Record<string, string>;
 }
 
 export interface Recorded {
@@ -31,7 +33,7 @@ export function makeHttp(route: (url: URL, method: string, body: unknown) => Rep
       calls.push({ url, method: req.method, headers: req.headers, body });
       const reply = route(url, req.method, body);
       const text = reply.body === undefined ? "" : JSON.stringify(reply.body);
-      return { status: reply.status ?? 200, headers: {}, body: text };
+      return { status: reply.status ?? 200, headers: reply.headers ?? {}, body: text };
     },
   };
   return { http, calls };

@@ -318,7 +318,7 @@ export const DatasourceResourceType = rt({
   iconKey: "database",
 });
 
-/** Synthetic Monitoring `GET /api/v1/check`. */
+/** Synthetic Monitoring `GET /api/v1/check/list`, or `GET /api/v1/check` where that has gone. */
 export const SyntheticCheckResourceType = rt({
   name: "Synthetic Check",
   id: "synthetic-check",
