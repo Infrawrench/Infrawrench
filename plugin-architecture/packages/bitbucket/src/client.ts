@@ -602,7 +602,7 @@ export class BitbucketClient implements PluginClient {
               ),
             ),
           ]);
-          return stash(mapSchedule(accountId, slug, s), { [DETAIL_KEYS.pipelines]: runs?.values });
+          return stash(mapSchedule(accountId, slug, s), { [DETAIL_KEYS.executions]: runs?.values });
         }
         case "pipeline-cache": {
           const caches = await this.lists.getAll(

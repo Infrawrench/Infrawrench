@@ -34,6 +34,16 @@ export type BbPipeline = Schemas["pipeline"] & {
   duration_in_seconds?: number;
 };
 
+/**
+ * One run of a schedule. The document puts the run under `pipeline`, or a failure
+ * to start under `error`, on subtypes behind a discriminator. Run fields at the top
+ * level are how this page was read before; no live answer has said they never occur.
+ */
+export type BbScheduleExecution = Partial<BbPipeline> & {
+  pipeline?: BbPipeline;
+  error?: { key?: string; message?: string };
+};
+
 export type BbStep = Schemas["pipeline_step"] & {
   name?: string;
   state?: BbState;

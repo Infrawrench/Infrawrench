@@ -277,6 +277,70 @@ describe("edits", () => {
   });
 });
 
+describe("pipeline schedule history", () => {
+  async function recentRuns(values: unknown[]) {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/executions")
+        ? { values }
+        : {
+            uuid: "{s1}",
+            enabled: true,
+            target: { ref_name: "main" },
+            cron_pattern: "0 0 3 * * ? *",
+          },
+    );
+    const resource = await c.getResource(
+      "pipeline-schedule",
+      "acc:pipeline-schedule:api/{s1}",
+      ACC,
+    );
+    const table = JSON.stringify(
+      new BitbucketClient(
+        { email: "e@x.y", token: "t", workspace: "acme" },
+        {} as never,
+      ).renderDetail(resource),
+    );
+    return table;
+  }
+
+  const RUN = {
+    uuid: "{p7}",
+    build_number: 7,
+    target: { ref_name: "main" },
+    state: { name: "COMPLETED", result: { name: "FAILED" } },
+    trigger: { name: "SCHEDULE" },
+    build_seconds_used: 90,
+    created_on: "2026-10-01T10:00:00Z",
+  };
+
+  it("reads the run nested under an executed execution", async () => {
+    const shown = await recentRuns([
+      { type: "pipeline_schedule_execution_executed", pipeline: RUN },
+    ]);
+    expect(shown).toContain('"n":"7"');
+    expect(shown).toContain('"ref":"main"');
+    expect(shown).toContain('"result":"FAILED"');
+    expect(shown).toContain('"trigger":"SCHEDULE"');
+    expect(shown).toContain('"created":"2026-10-01T10:00:00Z"');
+  });
+
+  it("says why an errored execution did not start", async () => {
+    const shown = await recentRuns([
+      {
+        type: "pipeline_schedule_execution_errored",
+        error: { key: "plan-limit", message: "Out of build minutes" },
+      },
+    ]);
+    expect(shown).toContain("Out of build minutes");
+  });
+
+  it("still reads a run written at the top level of the execution", async () => {
+    const shown = await recentRuns([RUN]);
+    expect(shown).toContain('"n":"7"');
+    expect(shown).toContain('"result":"FAILED"');
+  });
+});
+
 describe("logs", () => {
   it("tails the failed step's log with a Range request", async () => {
     const { c, calls } = client((call) => {

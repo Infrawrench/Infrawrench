@@ -13,12 +13,13 @@ import { WEB_BASE } from "./api.js";
 import { RESTRICTION_KINDS, bare, deploymentStatus, stateWord } from "./mappers.js";
 import { DEFAULT_METRICS_WINDOW_MS } from "./metrics.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
-import type { BbDeployment, BbPipeline, BbStep } from "./types.js";
+import type { BbDeployment, BbPipeline, BbScheduleExecution, BbStep } from "./types.js";
 
 export const DETAIL_KEYS = {
   pipelines: "__pipelines__",
   steps: "__steps__",
   deployments: "__deployments__",
+  executions: "__executions__",
 } as const;
 
 const str = (v: unknown): string => (v === undefined || v === null ? "" : String(v));
@@ -146,7 +147,18 @@ function simple(
   };
 }
 
-function pipelineTable(pipelines: BbPipeline[]): SchemaNode {
+function runCells(p: Partial<BbPipeline>) {
+  return {
+    n: str(p.build_number),
+    ref: str(p.target?.ref_name ?? p.target?.source),
+    result: str(stateWord(p.state)),
+    trigger: str(p.trigger?.name),
+    minutes: duration(p.build_seconds_used),
+    created: str(p.created_on),
+  };
+}
+
+function runTable(rows: Array<ReturnType<typeof runCells>>): SchemaNode {
   return {
     kind: "table",
     columns: [
@@ -157,17 +169,22 @@ function pipelineTable(pipelines: BbPipeline[]): SchemaNode {
       { key: "minutes", label: "Build time" },
       { key: "created", label: "Started" },
     ],
-    rows: pipelines.map((p) => ({
-      cells: {
-        n: str(p.build_number),
-        ref: str(p.target?.ref_name ?? p.target?.source),
-        result: str(stateWord(p.state)),
-        trigger: str(p.trigger?.name),
-        minutes: duration(p.build_seconds_used),
-        created: str(p.created_on),
-      },
-    })),
+    rows: rows.map((cells) => ({ cells })),
   };
+}
+
+function pipelineTable(pipelines: BbPipeline[]): SchemaNode {
+  return runTable(pipelines.map(runCells));
+}
+
+function scheduleRunTable(runs: BbScheduleExecution[]): SchemaNode {
+  return runTable(
+    runs.map((e) => {
+      const cells = runCells(e.pipeline ?? e);
+      if (e.pipeline || !e.error) return cells;
+      return { ...cells, result: `Did not start: ${e.error.message ?? e.error.key ?? "error"}` };
+    }),
+  );
 }
 
 function renderRepository(r: ResourceInstance): DetailViewSchema {
@@ -538,7 +555,7 @@ export function renderBitbucketDetail(r: ResourceInstance, workspace: string): D
       );
     }
     case "pipeline-schedule": {
-      const runs = parseJson<BbPipeline[]>(r.resolvedOutputs[DETAIL_KEYS.pipelines]);
+      const runs = parseJson<BbScheduleExecution[]>(r.resolvedOutputs[DETAIL_KEYS.executions]);
       const enabled = f["enabled"] !== false;
       return simple(
         r,
@@ -560,7 +577,7 @@ export function renderBitbucketDetail(r: ResourceInstance, workspace: string): D
               : action("Enable", "enable", "Schedule enabled."),
           ],
           ...(runs && runs.length > 0
-            ? { sections: [section("Recent runs", [pipelineTable(runs)])] }
+            ? { sections: [section("Recent runs", [scheduleRunTable(runs)])] }
             : {}),
         },
       );
