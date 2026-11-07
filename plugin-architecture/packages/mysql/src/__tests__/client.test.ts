@@ -1,9 +1,22 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { HostServices, ResourceInstance, SqlHostServices } from "@infrawrench/plugin-base";
+import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
+import type {
+  HostServices,
+  ResourceInstance,
+  SqlHostServices,
+  UnreadListPart,
+} from "@infrawrench/plugin-base";
 import { MySQLClient } from "../client.js";
 
 const CS = "mysql://user:pass@db.example.com:3306/appdb";
+
+const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+
+function trackUnread(): UnreadListPart[] {
+  const seen: UnreadListPart[] = [];
+  Reflect.set(globalThis, UNREAD_HOOK, (part: UnreadListPart) => seen.push(part));
+  return seen;
+}
 
 function makeSql() {
   return { query: vi.fn(), execute: vi.fn() };
@@ -67,14 +80,6 @@ describe("MySQLClient", () => {
       expect(res[0]!.fields["host"]).toBe("unknown");
     });
 
-    it("falls back to URL parsing on query error", async () => {
-      sql.query.mockRejectedValue(new Error("boom"));
-      const c = hostClient(new MySQLClient({ connectionString: CS }, services(sql)));
-      const res = await c.listResources("mysql-database", "acct");
-      expect(res).toHaveLength(1);
-      expect(res[0]!.displayName).toBe("appdb");
-    });
-
     it("falls back without sql service", async () => {
       const c = hostClient(new MySQLClient({ connectionString: CS }));
       const res = await c.listResources("mysql-database", "acct");
@@ -97,6 +102,69 @@ describe("MySQLClient", () => {
     it("throws on unknown type", async () => {
       const c = hostClient(new MySQLClient({ connectionString: CS }));
       await expect(c.listResources("nope", "acct")).rejects.toThrow(/unknown resource type/);
+    });
+
+    describe("a failed read of the database list", () => {
+      afterEach(() => {
+        Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      });
+
+      const client = () => hostClient(new MySQLClient({ connectionString: CS }, services(sql)));
+
+      it.each([
+        [
+          "a dropped connection",
+          Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }),
+        ],
+        [
+          "a wrong password",
+          Object.assign(new Error("Access denied for user 'u'@'h' (using password: YES)"), {
+            code: "ER_ACCESS_DENIED_ERROR",
+            errno: 1045,
+          }),
+        ],
+        [
+          "a login that may not use its own database",
+          Object.assign(new Error("Access denied for user 'u'@'h' to database 'appdb'"), {
+            code: "ER_DBACCESS_DENIED_ERROR",
+            errno: 1044,
+          }),
+        ],
+        ["any other failure", new Error("boom")],
+      ])("throws on %s, so no stored row is pruned", async (_name, error) => {
+        const unread = trackUnread();
+        sql.query.mockRejectedValue(error);
+        await expect(client().listResources("mysql-database", "acct")).rejects.toBe(error);
+        expect(unread).toEqual([]);
+      });
+
+      it("throws when the answer is not a list", async () => {
+        sql.query.mockResolvedValue(null);
+        await expect(client().listResources("mysql-database", "acct")).rejects.toThrow();
+      });
+
+      it.each([
+        [
+          "the driver's error, whatever language the server speaks",
+          Object.assign(new Error("Zugriff verweigert"), {
+            code: "ER_SPECIFIC_ACCESS_DENIED_ERROR",
+            errno: 1227,
+          }),
+        ],
+        [
+          "the message alone, which is all the desktop's IPC keeps",
+          new Error(
+            "Error invoking remote method 'plugin_sql_query': Error: Access denied; you need (at least one of) the SHOW DATABASES privilege(s) for this operation",
+          ),
+        ],
+      ])("keeps the stored rows when refused, read from %s", async (_name, error) => {
+        const unread = trackUnread();
+        sql.query.mockRejectedValue(error);
+        const res = await client().listResources("mysql-database", "acct");
+        expect(res.map((r) => r.displayName)).toEqual(["appdb"]);
+        expect(res[0]!.fields["host"]).toBe("db.example.com");
+        expect(unread).toEqual([{ idPrefixes: [""] }]);
+      });
     });
   });
 

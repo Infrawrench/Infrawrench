@@ -20,11 +20,25 @@ import {
   assertBusinessMetricSql,
   bindBusinessMetricSqlRange,
   joinSubtitle,
+  reportUnreadListPart,
   rowsToBusinessMetricPoints,
   withBusinessMetricTimeout,
 } from "@infrawrench/plugin-base";
 
 const SYSTEM_DATABASES = new Set(["information_schema", "performance_schema", "mysql", "sys"]);
+
+/**
+ * Whether this login may not run `SHOW DATABASES`, as a server on `skip_show_database`
+ * answers with error 1227, as opposed to a failed read. The desktop's IPC keeps only the
+ * message, so `code` is not always there.
+ */
+function isShowDatabasesRefused(err: unknown): boolean {
+  const code = typeof err === "object" && err !== null && "code" in err ? err.code : undefined;
+  return (
+    code === "ER_SPECIFIC_ACCESS_DENIED_ERROR" ||
+    /Access denied; you need \(at least one of\)/i.test(String(err))
+  );
+}
 
 export class MySQLClient implements PluginClient {
   private readonly connectionString: string;
@@ -389,12 +403,14 @@ export class MySQLClient implements PluginClient {
             createdAt: now,
             updatedAt: now,
           }));
-      } catch {
-        // Fall through to URL parsing
+      } catch (err) {
+        if (!isShowDatabasesRefused(err)) throw err;
+        // Shows only the database the login connects to, which says nothing about the rest.
+        reportUnreadListPart({ idPrefixes: [""] });
       }
     }
 
-    // Fallback: parse the connection string
+    // No host SQL service, or refused: parse the connection string
     let dbName = "mysql";
     let host = "unknown";
     try {
