@@ -173,14 +173,23 @@ describe.each(PARENT_LISTS)("$name when one parent's children fail", (list) => {
     await expect(list.run(whenSecondAnswers(err))).rejects.toBe(err);
   });
 
-  it("says so when every parent refuses, rather than listing nothing", async () => {
-    const err = apiError(403, "PERMISSION_DENIED");
-    const ctx = makeCtx((url) => {
+  const everyParentRefuses = (err: Error) =>
+    makeCtx((url) => {
       const parents = list.parents(url);
       if (parents) return parents;
       throw err;
     });
-    await expect(list.run(ctx)).rejects.toBe(err);
+
+  it("keeps every stored row without an error when every parent refuses", async () => {
+    const rows = await list.run(everyParentRefuses(apiError(403, "PERMISSION_DENIED")));
+    expect(rows).toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+  });
+
+  it("says so when every parent refuses and nobody keeps the rows", async () => {
+    Reflect.set(globalThis, unreadHook, () => false);
+    const err = apiError(403, "PERMISSION_DENIED");
+    await expect(list.run(everyParentRefuses(err))).rejects.toBe(err);
   });
 });
 
@@ -292,12 +301,21 @@ describe.each(REGION_LISTS)("$name when one region's read fails", (list) => {
     expect(rows).toHaveLength(list.survivors);
   });
 
-  it("says so when every region refuses, rather than listing nothing", async () => {
-    const err = apiError(403, "PERMISSION_DENIED");
-    const ctx = list.ctx(() => {
+  const everyRegionRefuses = (err: Error) =>
+    list.ctx(() => {
       throw err;
     });
-    await expect(list.run(ctx)).rejects.toBe(err);
+
+  it("keeps every stored row without an error when every region refuses", async () => {
+    const rows = await list.run(everyRegionRefuses(apiError(403, "PERMISSION_DENIED")));
+    expect(rows).toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+  });
+
+  it("says so when every region refuses and nobody keeps the rows", async () => {
+    Reflect.set(globalThis, unreadHook, () => false);
+    const err = apiError(403, "PERMISSION_DENIED");
+    await expect(list.run(everyRegionRefuses(err))).rejects.toBe(err);
   });
 });
 

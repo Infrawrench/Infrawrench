@@ -165,6 +165,11 @@ function isPermissionRefusal(err: unknown): boolean {
   return statusOf(err) === 403 && !(err instanceof Error && THROTTLED_403.test(err.message));
 }
 
+/** A 403 that is the credential's own, not a throttle and not an API left off. */
+export function isWholeTypeRefusal(err: unknown): boolean {
+  return isPermissionRefusal(err) && !isApiDisabled(err);
+}
+
 /** Whether a read that failed says nothing is there, or that the credential can't see. */
 type FanOutAnswer = "gone" | "refused" | "failed";
 
@@ -193,6 +198,7 @@ async function readFanOut<P, T>(
 ): Promise<T[]> {
   let answered = false;
   let refusal: { err: unknown } | undefined;
+  let denied = false;
   const readOne = async (parent: P): Promise<T[]> => {
     try {
       const rows = await read(parent);
@@ -203,6 +209,7 @@ async function readFanOut<P, T>(
       if (answer === "failed") throw err;
       if (answer === "refused") {
         if (!isApiDisabled(err)) refusal ??= { err };
+        if (isWholeTypeRefusal(err)) denied = true;
         const kept = reportUnreadListPart(options.unread(parent));
         // Nobody keeps this parent's rows, so leaving them out would be part of the
         // list. A region without the service holds none, and still reads as that.
@@ -218,9 +225,14 @@ async function readFanOut<P, T>(
     perParent.push(...(await Promise.all(parents.map(readOne))));
   }
   // Every parent refusing is the credential, not the parents, and an empty list would
-  // read as "all of it is gone". An API that is off is not that: it reads as none, and
-  // what `unread` named above keeps any stored rows while it stays off.
-  if (refusal && !answered) throw refusal.err;
+  // read as "all of it is gone". A 403 among them is a least-privilege key: keep every
+  // stored row, and show the refusal where nobody keeps them. Every region answering
+  // only 400 or 404 says nothing of the sort, so that still fails. An API that is off
+  // reads as none, and what `unread` named above keeps any stored rows while it stays off.
+  if (refusal && !answered) {
+    if (!denied || !reportUnreadListPart({ idPrefixes: [""] })) throw refusal.err;
+    return [];
+  }
   return perParent.flat();
 }
 

@@ -269,6 +269,46 @@ describe("an answer that says part of the list did not come back", () => {
   });
 });
 
+describe("a credential refused a whole type", () => {
+  const denied = new Refusal(403, { error: { code: 403, status: "PERMISSION_DENIED" } });
+  const billing = new Refusal(403, {
+    error: { code: 403, details: [{ reason: "BILLING_DISABLED", metadata: { service: "x" } }] },
+  });
+
+  describe.each(["pubsub-topic", "gcs-bucket", "kms-key-ring", "kms-key", "vertex-ai-endpoint"])(
+    "%s",
+    (typeId) => {
+      it.each([
+        ["a permission 403", denied],
+        ["a billing 403", billing],
+      ])("keeps every stored row without an error on %s", async (_, refusal) => {
+        const { client } = clientFor(() => refusal);
+        await expect(client.listResources(typeId, ACCT)).resolves.toEqual([]);
+        expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+      });
+
+      it("fails with the refusal where nobody keeps the rows", async () => {
+        Reflect.set(globalThis, unreadHook, () => false);
+        const { client } = clientFor(() => denied);
+        await expect(client.listResources(typeId, ACCT)).rejects.toThrow("403");
+      });
+
+      it.each([
+        [
+          "a throttle sent as a 403",
+          new Refusal(403, { error: { code: 403, errors: [{ reason: "rateLimitExceeded" }] } }),
+        ],
+        ["a 503", new Refusal(503, { error: { code: 503, status: "UNAVAILABLE" } })],
+        ["a 401", new Refusal(401, { error: { code: 401, status: "UNAUTHENTICATED" } })],
+      ])("still fails on %s", async (_, refusal) => {
+        const { client } = clientFor(() => refusal);
+        await expect(client.listResources(typeId, ACCT)).rejects.toThrow();
+        expect(unread).not.toHaveBeenCalledWith({ idPrefixes: [""] });
+      });
+    },
+  );
+});
+
 describe("an API switched off in the project", () => {
   // The two shapes Google answers with: the current ErrorInfo, and the older `errors[]`.
   const disabled = new Refusal(403, {
@@ -319,16 +359,6 @@ describe("an API switched off in the project", () => {
     });
 
     it.each([
-      ["any other 403", new Refusal(403, { error: { code: 403, status: "PERMISSION_DENIED" } })],
-      [
-        "a billing 403",
-        new Refusal(403, {
-          error: {
-            code: 403,
-            details: [{ reason: "BILLING_DISABLED", metadata: { service: "x" } }],
-          },
-        }),
-      ],
       [
         "a throttle sent as a 403",
         new Refusal(403, { error: { code: 403, errors: [{ reason: "rateLimitExceeded" }] } }),
@@ -347,14 +377,15 @@ describe("an API switched off in the project", () => {
   });
 
   it.each(["vertex-ai-endpoint", "cloud-build-trigger"])(
-    "%s fails when one region refuses for another reason and the rest are off",
+    "%s keeps every stored row when one region refuses for another reason and the rest are off",
     async (typeId) => {
       const { client } = clientFor((url) =>
         url.href.includes("us-east1")
           ? new Refusal(403, { error: { code: 403, status: "PERMISSION_DENIED" } })
           : disabled,
       );
-      await expect(client.listResources(typeId, ACCT)).rejects.toThrow("403");
+      await expect(client.listResources(typeId, ACCT)).resolves.toEqual([]);
+      expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
     },
   );
 

@@ -115,7 +115,7 @@ function gceDiskLine(
 }
 import type { ListerContext } from "./resource-listers.js";
 import * as listers from "./resource-listers.js";
-import { readPages, saysPartWentUnread } from "./resource-listers/shared.js";
+import { isWholeTypeRefusal, readPages, saysPartWentUnread } from "./resource-listers/shared.js";
 import type { FirestoreContext } from "./firestore-handlers.js";
 import { executeFirestoreCommand } from "./firestore-handlers.js";
 import type { BigQuerySpannerContext } from "./bigquery-spanner-handlers.js";
@@ -376,125 +376,137 @@ export class GcpClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      const p = this.project;
-      const ctx = this.listerCtx(typeId, accountId);
-      switch (typeId) {
-        case "gcp-project":
-          return listers.listGcpProjects(ctx, accountId, p);
-        case "gce-instance":
-          return listers.listGceInstances(ctx, accountId, p);
-        case "gce-disk":
-          return listers.listGceDisks(ctx, accountId, p);
-        case "gke-cluster":
-          return listers.listGkeClusters(ctx, accountId, p);
-        case "cloudsql-instance":
-          return listers.listCloudSqlInstances(ctx, accountId, p);
-        case "spanner-instance":
-          return listers.listSpannerInstances(ctx, accountId, p);
-        case "spanner-database":
-          return listers.listSpannerDatabases(ctx, accountId, p);
-        case "spanner-backup":
-          return listers.listSpannerBackups(ctx, accountId, p);
-        case "bigtable-instance":
-          return listers.listBigtableInstances(ctx, accountId, p);
-        case "firestore-database":
-          return listers.listFirestoreDatabases(ctx, accountId, p);
-        case "memorystore-redis":
-          return listers.listMemorystoreRedis(ctx, accountId, p);
-        case "alloydb-cluster":
-          return listers.listAlloyDbClusters(ctx, accountId, p);
-        case "alloydb-instance":
-          return listers.listAlloyDbInstances(ctx, accountId, p);
-        case "gcs-bucket":
-          return listers.listGcsBuckets(ctx, accountId, p);
-        case "pubsub-topic":
-          return listers.listPubSubTopics(ctx, accountId, p);
-        case "pubsub-subscription":
-          return listers.listPubSubSubscriptions(ctx, accountId, p);
-        case "cloud-run-service":
-          return listers.listCloudRunServices(ctx, accountId, p);
-        case "cloud-function":
-          return listers.listCloudFunctions(ctx, accountId, p);
-        case "vpc-network":
-          return listers.listVpcNetworks(ctx, accountId, p);
-        case "bigquery-dataset":
-          return listers.listBigQueryDatasets(ctx, accountId, p);
-        case "bigquery-table":
-          return listers.listBigQueryTables(ctx, accountId, p);
-        case "artifact-registry-repo":
-          return listers.listArtifactRegistryRepos(ctx, accountId, p);
-        case "gcp-service-account":
-          return listers.listServiceAccounts(ctx, accountId, p);
-        case "cloud-armor-policy":
-          return listers.listCloudArmorPolicies(ctx, accountId, p);
-        case "secret-manager-secret":
-          return listers.listSecretManagerSecrets(ctx, accountId, p);
-        case "dataflow-job":
-          return listers.listDataflowJobs(ctx, accountId, p);
-        case "cloud-dns-zone":
-          return listers.listCloudDnsZones(ctx, accountId, p);
-        case "cloud-dns-record-set":
-          return listers.listCloudDnsRecordSets(ctx, accountId, p);
-        case "firewall-rule":
-          return listers.listFirewallRules(ctx, accountId, p);
-        case "subnet":
-          return listers.listSubnets(ctx, accountId, p);
-        case "static-ip":
-          return listers.listStaticIps(ctx, accountId, p);
-        case "cloud-router":
-          return listers.listCloudRouters(ctx, accountId, p);
-        case "cloud-nat":
-          return listers.listCloudNats(ctx, accountId, p);
-        case "cloud-scheduler-job":
-          return listers.listCloudSchedulerJobs(ctx, accountId, p);
-        case "cloud-tasks-queue":
-          return listers.listCloudTasksQueues(ctx, accountId, p);
-        case "cloud-build-trigger":
-          return listers.listCloudBuildTriggers(ctx, accountId, p);
-        case "log-sink":
-          return listers.listLogSinks(ctx, accountId, p);
-        case "alert-policy":
-          return listers.listAlertPolicies(ctx, accountId, p);
-        case "kms-key-ring":
-          return listers.listKmsKeyRings(ctx, accountId, p);
-        case "kms-key":
-          return listers.listKmsKeys(ctx, accountId, p);
-        case "filestore-instance":
-          return listers.listFilestoreInstances(ctx, accountId, p);
-        case "backend-service":
-          return listers.listBackendServices(ctx, accountId, p);
-        case "forwarding-rule":
-          return listers.listForwardingRules(ctx, accountId, p);
-        case "memorystore-memcached":
-          return listers.listMemorystoreMemcached(ctx, accountId, p);
-        case "memorystore-valkey":
-          return listers.listMemorystoreValkey(ctx, accountId, p);
-        case "cloud-run-job":
-          return listers.listCloudRunJobs(ctx, accountId, p);
-        case "vertex-ai-endpoint":
-          return listers.listVertexAiEndpoints(ctx, accountId, p);
-        case "vertex-gemini-model":
-          return this.listVertexGeminiModels(accountId);
-        case "composer-environment":
-          return listers.listComposerEnvironments(ctx, accountId, p);
-        case "workflow":
-          return listers.listWorkflows(ctx, accountId, p);
-        case "cloud-deploy-pipeline":
-          return listers.listCloudDeployPipelines(ctx, accountId, p);
-        case "app-engine-service":
-          return listers.listAppEngineServices(ctx, accountId, p);
-        case "health-check":
-          return listers.listHealthChecks(ctx, accountId, p);
-        case "ssl-certificate":
-          return listers.listSslCertificates(ctx, accountId, p);
-        case "instance-group":
-          return listers.listInstanceGroups(ctx, accountId, p);
-        case "instance-template":
-          return listers.listInstanceTemplates(ctx, accountId, p);
-        default:
-          throw new Error(`GCP plugin: unknown resource type "${typeId}"`);
+      try {
+        return await this.listType(typeId, accountId);
+      } catch (err) {
+        // A least-privilege key refused the whole type: keep its stored rows rather
+        // than fail on every poll. Where nobody keeps them (the desktop) it still shows.
+        // An API that is off is not this: it names the API to turn on.
+        if (!isWholeTypeRefusal(err) || !reportUnreadListPart({ idPrefixes: [""] })) throw err;
+        return [];
       }
     });
+  }
+
+  private async listType(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    const p = this.project;
+    const ctx = this.listerCtx(typeId, accountId);
+    switch (typeId) {
+      case "gcp-project":
+        return listers.listGcpProjects(ctx, accountId, p);
+      case "gce-instance":
+        return listers.listGceInstances(ctx, accountId, p);
+      case "gce-disk":
+        return listers.listGceDisks(ctx, accountId, p);
+      case "gke-cluster":
+        return listers.listGkeClusters(ctx, accountId, p);
+      case "cloudsql-instance":
+        return listers.listCloudSqlInstances(ctx, accountId, p);
+      case "spanner-instance":
+        return listers.listSpannerInstances(ctx, accountId, p);
+      case "spanner-database":
+        return listers.listSpannerDatabases(ctx, accountId, p);
+      case "spanner-backup":
+        return listers.listSpannerBackups(ctx, accountId, p);
+      case "bigtable-instance":
+        return listers.listBigtableInstances(ctx, accountId, p);
+      case "firestore-database":
+        return listers.listFirestoreDatabases(ctx, accountId, p);
+      case "memorystore-redis":
+        return listers.listMemorystoreRedis(ctx, accountId, p);
+      case "alloydb-cluster":
+        return listers.listAlloyDbClusters(ctx, accountId, p);
+      case "alloydb-instance":
+        return listers.listAlloyDbInstances(ctx, accountId, p);
+      case "gcs-bucket":
+        return listers.listGcsBuckets(ctx, accountId, p);
+      case "pubsub-topic":
+        return listers.listPubSubTopics(ctx, accountId, p);
+      case "pubsub-subscription":
+        return listers.listPubSubSubscriptions(ctx, accountId, p);
+      case "cloud-run-service":
+        return listers.listCloudRunServices(ctx, accountId, p);
+      case "cloud-function":
+        return listers.listCloudFunctions(ctx, accountId, p);
+      case "vpc-network":
+        return listers.listVpcNetworks(ctx, accountId, p);
+      case "bigquery-dataset":
+        return listers.listBigQueryDatasets(ctx, accountId, p);
+      case "bigquery-table":
+        return listers.listBigQueryTables(ctx, accountId, p);
+      case "artifact-registry-repo":
+        return listers.listArtifactRegistryRepos(ctx, accountId, p);
+      case "gcp-service-account":
+        return listers.listServiceAccounts(ctx, accountId, p);
+      case "cloud-armor-policy":
+        return listers.listCloudArmorPolicies(ctx, accountId, p);
+      case "secret-manager-secret":
+        return listers.listSecretManagerSecrets(ctx, accountId, p);
+      case "dataflow-job":
+        return listers.listDataflowJobs(ctx, accountId, p);
+      case "cloud-dns-zone":
+        return listers.listCloudDnsZones(ctx, accountId, p);
+      case "cloud-dns-record-set":
+        return listers.listCloudDnsRecordSets(ctx, accountId, p);
+      case "firewall-rule":
+        return listers.listFirewallRules(ctx, accountId, p);
+      case "subnet":
+        return listers.listSubnets(ctx, accountId, p);
+      case "static-ip":
+        return listers.listStaticIps(ctx, accountId, p);
+      case "cloud-router":
+        return listers.listCloudRouters(ctx, accountId, p);
+      case "cloud-nat":
+        return listers.listCloudNats(ctx, accountId, p);
+      case "cloud-scheduler-job":
+        return listers.listCloudSchedulerJobs(ctx, accountId, p);
+      case "cloud-tasks-queue":
+        return listers.listCloudTasksQueues(ctx, accountId, p);
+      case "cloud-build-trigger":
+        return listers.listCloudBuildTriggers(ctx, accountId, p);
+      case "log-sink":
+        return listers.listLogSinks(ctx, accountId, p);
+      case "alert-policy":
+        return listers.listAlertPolicies(ctx, accountId, p);
+      case "kms-key-ring":
+        return listers.listKmsKeyRings(ctx, accountId, p);
+      case "kms-key":
+        return listers.listKmsKeys(ctx, accountId, p);
+      case "filestore-instance":
+        return listers.listFilestoreInstances(ctx, accountId, p);
+      case "backend-service":
+        return listers.listBackendServices(ctx, accountId, p);
+      case "forwarding-rule":
+        return listers.listForwardingRules(ctx, accountId, p);
+      case "memorystore-memcached":
+        return listers.listMemorystoreMemcached(ctx, accountId, p);
+      case "memorystore-valkey":
+        return listers.listMemorystoreValkey(ctx, accountId, p);
+      case "cloud-run-job":
+        return listers.listCloudRunJobs(ctx, accountId, p);
+      case "vertex-ai-endpoint":
+        return listers.listVertexAiEndpoints(ctx, accountId, p);
+      case "vertex-gemini-model":
+        return this.listVertexGeminiModels(accountId);
+      case "composer-environment":
+        return listers.listComposerEnvironments(ctx, accountId, p);
+      case "workflow":
+        return listers.listWorkflows(ctx, accountId, p);
+      case "cloud-deploy-pipeline":
+        return listers.listCloudDeployPipelines(ctx, accountId, p);
+      case "app-engine-service":
+        return listers.listAppEngineServices(ctx, accountId, p);
+      case "health-check":
+        return listers.listHealthChecks(ctx, accountId, p);
+      case "ssl-certificate":
+        return listers.listSslCertificates(ctx, accountId, p);
+      case "instance-group":
+        return listers.listInstanceGroups(ctx, accountId, p);
+      case "instance-template":
+        return listers.listInstanceTemplates(ctx, accountId, p);
+      default:
+        throw new Error(`GCP plugin: unknown resource type "${typeId}"`);
+    }
   }
 
   getResource(
