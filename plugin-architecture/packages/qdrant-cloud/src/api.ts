@@ -30,7 +30,9 @@ import type { paths as quotaPaths } from "./api-types.quota.gen.js";
  * - Each cluster's own database REST API at `<endpoint url>:6333`,
  *   authenticated with a *database* API key in the `api-key` header. The
  *   management key does not work there; the plugin mints a database key on
- *   request and keeps it in the host's secret store.
+ *   request and keeps it in the host's secret store. A hybrid cluster's
+ *   endpoint is the customer's own host: a bastion lets it through once it
+ *   is picked in the `clusterHosts` credential field.
  *
  * Errors come back as gRPC status JSON (`{code, message, details}`); the
  * HTTP status is what the poller classifies on.
@@ -39,6 +41,27 @@ import type { paths as quotaPaths } from "./api-types.quota.gen.js";
 export const API_HOST = "https://api.cloud.qdrant.io";
 
 export const VENDOR = "Qdrant Cloud";
+
+/** The credential field holding the hybrid cluster hosts a bastion should let through. */
+export const CLUSTER_HOSTS_LABEL = "Hybrid Cluster Endpoints";
+
+/** Whether `host` is under the manifest's `*.cloud.qdrant.io`, so a bastion already allows it. */
+export function isQdrantCloudHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  return h === "cloud.qdrant.io" || h.endsWith(".cloud.qdrant.io");
+}
+
+/** The host of a cluster endpoint URL, without brackets or a trailing dot. */
+export function endpointHost(url: string): string {
+  try {
+    return new URL(url).hostname
+      .replace(/^\[(.*)\]$/, "$1")
+      .replace(/\.$/, "")
+      .toLowerCase();
+  } catch {
+    return "";
+  }
+}
 
 /** The document gives no largest page size, so this stays what the plugin has always sent. */
 const PAGE_SIZE = 100;
@@ -158,13 +181,50 @@ export function listItems<T>(page: { items?: T[] } | undefined, path: string): T
   });
 }
 
+/** Whether a failed request was a bastion refusing its destination, in it or its causes. */
+function bastionRefusal(err: unknown): string | undefined {
+  let current: unknown = err;
+  for (let depth = 0; depth < 6 && current instanceof Error; depth++) {
+    if (/not allowed for this account|not allowlisted/.test(current.message)) {
+      return current.message;
+    }
+    current = current.cause;
+  }
+  return undefined;
+}
+
+/**
+ * A bastion refusing a hybrid cluster's own host, explained with the field that lets it
+ * through. Only a host outside Qdrant Cloud's: the manifest already allows those.
+ */
+function explainRefusals(http: HttpHostServices): HttpHostServices {
+  return {
+    async request(req) {
+      try {
+        return await http.request(req);
+      } catch (e) {
+        const host = endpointHost(req.url);
+        const refusal = bastionRefusal(e);
+        if (!refusal || !host || isQdrantCloudHost(host)) throw e;
+        throw new Error(
+          `The bastion refused Qdrant cluster endpoint ${host}: ${refusal}. A bastion lets through Qdrant Cloud's own hosts and the hosts picked under ${CLUSTER_HOSTS_LABEL} (Advanced options on the account), so pick ${host} there.`,
+          { cause: e },
+        );
+      }
+    },
+  };
+}
+
 export function createDatabaseApi(
   baseUrl: string,
   dbKey: string,
   connection: QdrantConnection,
 ): QdrantDatabaseApi {
   return createApiClient({
-    ...clientOptions(connection),
+    ...clientOptions({
+      ...connection,
+      http: connection.http ? explainRefusals(connection.http) : undefined,
+    }),
     baseUrl: baseUrl.replace(/\/+$/, ""),
     headers: { Accept: "application/json", "api-key": dbKey },
   });

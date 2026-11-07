@@ -6,8 +6,14 @@ import type {
   PluginManifest,
   CredentialsOf,
 } from "@infrawrench/plugin-base";
-import { caCertCredentialField } from "@infrawrench/plugin-base";
-import { createCloudApi, errorText } from "./api.js";
+import { caCertCredentialField, pathEncode } from "@infrawrench/plugin-base";
+import {
+  createCloudApi,
+  endpointHost,
+  errorText,
+  isQdrantCloudHost,
+  type QdrantCloudApi,
+} from "./api.js";
 import { QdrantCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -17,7 +23,8 @@ import { qdrantRemediationCommands } from "./remediation.js";
 
 export const manifest = {
   id: "qdrant-cloud",
-  // cluster database endpoints are per-cluster subdomains of cloud.qdrant.io (port 6333); hybrid clusters use the customer's own endpoint
+  // cluster database endpoints are per-cluster subdomains of cloud.qdrant.io (port 6333); hybrid clusters use the customer's own endpoint,
+  // which a bastion allows once it is picked in clusterHosts
   egressHosts: ["api.cloud.qdrant.io", "*.cloud.qdrant.io"],
   displayName: "Qdrant Cloud",
   description:
@@ -44,6 +51,17 @@ export const manifest = {
       placeholder: "8f4e8b4a-0000-0000-0000-000000000000",
       providerOptions: { dependsOn: ["apiKey"] },
     },
+    {
+      key: "clusterHosts",
+      providerHost: true,
+      label: "Hybrid Cluster Endpoints",
+      description:
+        "Only needed behind a bastion, for hybrid cloud clusters, whose database endpoint is on your own host rather than cloud.qdrant.io. Pick those hosts so the bastion lets collection reads and edits through. Public addresses only.",
+      sensitive: false,
+      optional: true,
+      advanced: true,
+      providerOptions: { dependsOn: ["apiKey", "accountId"], multiple: true },
+    },
     caCertCredentialField,
   ]),
   /**
@@ -60,15 +78,46 @@ export const manifest = {
 
 export type Credentials = CredentialsOf<typeof manifest>;
 
+/** Each cluster endpoint host a bastion does not already allow, with the clusters on it. */
+async function clusterHostOptions(
+  api: QdrantCloudApi,
+  accountId: string,
+): Promise<CredentialFieldOption[]> {
+  const clusters = await api.getAll(
+    `/api/cluster/v1/accounts/${pathEncode(accountId)}/clusters`,
+    "items",
+  );
+  const byHost = new Map<string, string[]>();
+  for (const c of clusters) {
+    const written = c.deletedAt ? "" : (c.state?.endpoint?.url ?? "");
+    if (!written) continue;
+    const host = endpointHost(/^https?:\/\//.test(written) ? written : `https://${written}`);
+    if (!host || isQdrantCloudHost(host)) continue;
+    byHost.set(host, [...(byHost.get(host) ?? []), c.name || c.id]);
+  }
+  return [...byHost]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([host, names]) => ({ id: host, label: host, description: names.join(", ") }));
+}
+
 async function listCredentialOptions(
   fieldKey: string,
   credentials: Record<string, string>,
   services?: HostServices,
 ): Promise<CredentialFieldOption[]> {
-  if (fieldKey !== "accountId") return [];
+  if (fieldKey !== "accountId" && fieldKey !== "clusterHosts") return [];
   const key = (credentials["apiKey"] ?? "").trim();
   if (!key) throw new Error("Enter the Cloud Management Key first.");
   const api = createCloudApi(key, { caCert: credentials["caCert"] ?? "", http: services?.http });
+  if (fieldKey === "clusterHosts") {
+    const accountId = (credentials["accountId"] ?? "").trim();
+    if (!accountId) throw new Error("Pick the Account first.");
+    try {
+      return await clusterHostOptions(api, accountId);
+    } catch (e) {
+      throw new Error(`Qdrant Cloud did not list clusters for this account: ${errorText(e)}`);
+    }
+  }
   try {
     const res = await api.get("/api/account/v1/accounts");
     return (res?.items ?? [])
