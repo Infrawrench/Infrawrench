@@ -69,6 +69,8 @@ import { EVENT_KEYS, eventFieldKey } from "./resource-types.js";
 const CONCURRENCY = 4;
 const MAX_KEY_SCOPE_READS = 200;
 const MAX_ADDRESSES = 1000;
+/** SendGrid leaves a subuser's region out of the answer unless asked for it. */
+const REGION_QUERY = { include_region: true };
 
 async function mapLimit<T, R>(
   items: T[],
@@ -328,7 +330,9 @@ export class SendGridClient implements PluginClient {
           // Subusers belong to the parent account; a connection acting as a subuser has none.
           if (this.ctx.onBehalfOf) return [];
           return this.scoped(async () =>
-            (await this.parent.getAll("/v3/subusers", null)).map((s) => mapSubuser(accountId, s)),
+            (await this.parent.getAll("/v3/subusers", null, { query: REGION_QUERY })).map((s) =>
+              mapSubuser(accountId, s),
+            ),
           );
         case "sendgrid-event-webhook":
           return this.scoped(async () => {
@@ -446,7 +450,9 @@ export class SendGridClient implements PluginClient {
           return stash(mapIpPool(accountId, id, ips), { [AVAILABLE_IPS_KEY]: available });
         }
         case "sendgrid-subuser": {
-          const list = await this.parent.get("/v3/subusers", { query: { username: id } });
+          const list = await this.parent.get("/v3/subusers", {
+            query: { username: id, ...REGION_QUERY },
+          });
           const s = (Array.isArray(list) ? list : []).find((x) => x.username === id);
           if (!s) throw notFound(typeId, resourceId);
           const end = Date.now();

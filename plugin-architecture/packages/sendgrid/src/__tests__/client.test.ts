@@ -9,11 +9,26 @@ function client(
   route: (url: URL, method: string) => { status?: number; body?: unknown },
   creds: Record<string, string> = {},
 ) {
-  const calls: Array<{ url: URL; method: string; headers: Record<string, string> }> = [];
+  const calls: Array<{
+    url: URL;
+    method: string;
+    headers: Record<string, string>;
+    body?: string;
+  }> = [];
   const http = {
-    async request(req: { url: string; method: string; headers: Record<string, string> }) {
+    async request(req: {
+      url: string;
+      method: string;
+      headers: Record<string, string>;
+      body?: string;
+    }) {
       const url = new URL(req.url);
-      calls.push({ url, method: req.method, headers: req.headers });
+      calls.push({
+        url,
+        method: req.method,
+        headers: req.headers,
+        ...(req.body !== undefined ? { body: req.body } : {}),
+      });
       const r = route(url, req.method);
       return {
         status: r.status ?? 200,
@@ -59,6 +74,26 @@ describe("SendGrid client", () => {
     expect(err).toBeInstanceOf(SendGridApiError);
     expect((err as SendGridApiError).status).toBe(403);
     expect((err as Error).message).toMatch(/access forbidden/);
+  });
+
+  it("asks for each subuser's region, on the list and on the detail read", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname === "/v3/subusers") {
+        return {
+          body:
+            url.searchParams.get("include_region") === "true"
+              ? [{ id: 1, username: "sub1", email: "a@example.com", disabled: false, region: "eu" }]
+              : [{ id: 1, username: "sub1", email: "a@example.com", disabled: false }],
+        };
+      }
+      return { body: [] };
+    });
+    const [listed] = await c.listResources("sendgrid-subuser", "a");
+    expect(listed!.fields["region"]).toBe("eu");
+    const detail = await c.getResource("sendgrid-subuser", "a:sendgrid-subuser:sub1", "a");
+    expect(detail.fields["region"]).toBe("eu");
+    const reads = calls.filter((x) => x.url.pathname === "/v3/subusers");
+    expect(reads.map((x) => x.url.searchParams.get("include_region"))).toEqual(["true", "true"]);
   });
 
   it("synthesises DNS records and reads the key id", () => {
