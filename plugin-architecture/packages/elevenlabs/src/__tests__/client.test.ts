@@ -1,3 +1,4 @@
+import { bytesToBase64, type HttpHostServices } from "@infrawrench/plugin-base";
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElevenLabsClient } from "../client.js";
@@ -528,6 +529,99 @@ const AGENT_DETAIL = {
 function bodyOf(call: FetchCall | undefined): Record<string, unknown> {
   return JSON.parse(String(call?.init?.body ?? "{}")) as Record<string, unknown>;
 }
+
+describe("speech through the host's HTTP service", () => {
+  type HostRequest = Parameters<HttpHostServices["request"]>[0];
+
+  function hostHarness(answer: () => Awaited<ReturnType<HttpHostServices["request"]>>) {
+    const requests: HostRequest[] = [];
+    const request: HttpHostServices["request"] = async (req) => {
+      requests.push(req);
+      return answer();
+    };
+    const fetchStub = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      throw new Error(`global fetch reached ${String(url)}`);
+    });
+    return { requests, fetchStub, http: { request } };
+  }
+
+  const speech = { text: "hello", voiceId: "v1", modelId: "eleven_flash_v2_5" };
+  const clip = { audioBase64: "AAEC", mimeType: "audio/webm", modelId: "scribe_v2" };
+
+  it("synthesises through the host with no CA, and hands back the audio's bytes", async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const { requests, fetchStub, http } = hostHarness(() => ({
+      status: 200,
+      headers: { "content-type": "audio/mpeg", "character-cost": "5", "request-id": "req-1" },
+      body: "",
+      rawBody: bytes,
+    }));
+    const hosted = hostClient(new ElevenLabsClient({ apiKey: "sk_test_key" }, { http }));
+
+    const result = await hosted.synthesizeSpeech?.("voice", `${ACCOUNT}:voice:v1`, ACCOUNT, speech);
+
+    expect(fetchStub).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toContain("https://api.elevenlabs.io/v1/text-to-speech/v1");
+    expect(requests[0]?.headers?.["xi-api-key"]).toBe("sk_test_key");
+    expect(requests[0]).not.toHaveProperty("caCert");
+    expect(result?.audioBase64).toBe(bytesToBase64(bytes));
+    expect(result?.characters).toBe(5);
+    expect(result?.requestId).toBe("req-1");
+  });
+
+  it("transcribes through the host with no CA, keeping the multipart boundary", async () => {
+    const { requests, fetchStub, http } = hostHarness(() => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: "",
+      rawBody: new TextEncoder().encode(JSON.stringify({ text: "hi there", words: [] })),
+    }));
+    const hosted = hostClient(new ElevenLabsClient({ apiKey: "sk_test_key" }, { http }));
+
+    const result = await hosted.transcribeAudio?.("voice", `${ACCOUNT}:voice:v1`, ACCOUNT, clip);
+
+    expect(fetchStub).not.toHaveBeenCalled();
+    expect(requests[0]?.url).toBe("https://api.elevenlabs.io/v1/speech-to-text");
+    expect(requests[0]).not.toHaveProperty("caCert");
+    expect(requests[0]?.headers?.["content-type"]).toMatch(/^multipart\/form-data; boundary=/);
+    const sent = requests[0]?.body;
+    if (!(sent instanceof Uint8Array)) throw new Error("expected the form's encoded bytes");
+    expect(new TextDecoder().decode(sent)).toContain('name="model_id"');
+    expect(result?.text).toBe("hi there");
+  });
+
+  it("sends a custom CA along on both", async () => {
+    const { requests, http } = hostHarness(() => ({
+      status: 200,
+      headers: {},
+      body: "",
+      rawBody: new TextEncoder().encode(JSON.stringify({ text: "", words: [] })),
+    }));
+    const hosted = hostClient(
+      new ElevenLabsClient({ apiKey: "sk_test_key", caCert: "PEM" }, { http }),
+    );
+
+    await hosted.synthesizeSpeech?.("voice", `${ACCOUNT}:voice:v1`, ACCOUNT, speech);
+    await hosted.transcribeAudio?.("voice", `${ACCOUNT}:voice:v1`, ACCOUNT, clip);
+
+    expect(requests.map((r) => r.caCert)).toEqual(["PEM", "PEM"]);
+  });
+
+  it("surfaces a refusal the host relays", async () => {
+    const { http } = hostHarness(() => ({
+      status: 401,
+      headers: {},
+      body: "",
+      rawBody: new TextEncoder().encode('{"detail":"bad key"}'),
+    }));
+    const hosted = hostClient(new ElevenLabsClient({ apiKey: "sk_test_key" }, { http }));
+
+    await expect(
+      hosted.synthesizeSpeech?.("voice", `${ACCOUNT}:voice:v1`, ACCOUNT, speech),
+    ).rejects.toThrow(/401.*bad key/);
+  });
+});
 
 describe("agents", () => {
   it("lists agents and hydrates each one's conversation config", async () => {

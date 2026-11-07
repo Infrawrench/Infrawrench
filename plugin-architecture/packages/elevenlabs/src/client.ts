@@ -27,6 +27,7 @@ import {
   base64ToBytes,
   buildMultipartBody,
   bytesToBase64,
+  hostFetch,
   joinSubtitle,
   jsonRestFetch,
   externalIdOf,
@@ -227,6 +228,10 @@ export class ElevenLabsClient implements PluginClient {
     });
     this.api = api;
     this.formQueryApi = formQueryApi;
+  }
+
+  private transport() {
+    return { http: this.services?.http, caCert: this.caCert };
   }
 
   // -------------------------------------------------------------------------
@@ -1305,15 +1310,7 @@ export class ElevenLabsClient implements PluginClient {
     });
   }
 
-  /**
-   * Binary path. `jsonRestFetch` JSON-parses its response and
-   * `HttpHostServices.request` only ever hands back a string, so audio has to
-   * go through the global `fetch` + `arrayBuffer`.
-   *
-   * NOTE: because this bypasses `services.http`, it also bypasses bastion
-   * egress routing and the custom CA credential. Control-plane calls (listing,
-   * quota, deletes) still go through the host and keep both.
-   */
+  /** Binary path: `jsonRestFetch` JSON-parses its response, so audio takes `hostFetch`. */
   private async requestSynthesisAudio(
     voiceId: string,
     body: SynthesisBody,
@@ -1323,15 +1320,19 @@ export class ElevenLabsClient implements PluginClient {
     requestId: string | undefined;
   }> {
     const path = `/v1/text-to-speech/${encodeURIComponent(voiceId)}`;
-    const response = await fetch(`${API_BASE}${path}?output_format=${MP3_OUTPUT_FORMAT}`, {
-      method: "POST",
-      headers: {
-        "xi-api-key": this.apiKey,
-        "Content-Type": "application/json",
-        Accept: "audio/mpeg",
+    const response = await hostFetch(
+      this.transport(),
+      `${API_BASE}${path}?output_format=${MP3_OUTPUT_FORMAT}`,
+      {
+        method: "POST",
+        headers: {
+          "xi-api-key": this.apiKey,
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg",
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+    );
     // Branch on status BEFORE touching the body: a failed call returns JSON
     // where the success path returns audio.
     if (!response.ok) {
@@ -1354,9 +1355,8 @@ export class ElevenLabsClient implements PluginClient {
    * the `file` field and a required `model_id`.
    * https://elevenlabs.io/docs/api-reference/speech-to-text/convert
    *
-   * Uses a real `FormData` against the global `fetch`: `jsonRestFetch` would
-   * stringify it (`bodyForHostHttp` has no FormData branch). Same bastion/CA
-   * caveat as the synthesis path above.
+   * Uses a real `FormData` through `hostFetch`: `jsonRestFetch` would stringify
+   * it (`bodyForHostHttp` has no FormData branch).
    */
   transcribeAudio(
     typeId: string,
@@ -1388,9 +1388,9 @@ export class ElevenLabsClient implements PluginClient {
       }
 
       const started = Date.now();
-      const response = await fetch(`${API_BASE}/v1/speech-to-text`, {
+      const response = await hostFetch(this.transport(), `${API_BASE}/v1/speech-to-text`, {
         method: "POST",
-        // No Content-Type: `fetch` sets it with the multipart boundary.
+        // No Content-Type: the encoding of the form sets it, with the multipart boundary.
         headers: { "xi-api-key": this.apiKey, Accept: "application/json" },
         body: form,
       });
