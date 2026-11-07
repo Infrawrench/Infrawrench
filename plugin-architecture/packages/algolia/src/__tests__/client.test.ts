@@ -252,4 +252,15 @@ describe("documented field names", () => {
     ).toBe("7");
     expect(mapIndex({ name: "prod" }, undefined, ACCOUNT).fields["abTest"]).toBe("");
   });
+
+  it("reads a crawler's last start from `lastReindexStartAt`, and still from the spelling read before", () => {
+    const at = "2026-10-01T10:00:00.000Z";
+    expect(
+      mapCrawler("c1", { lastReindexStartAt: at }, ACCOUNT).fields["lastReindexStartedAt"],
+    ).toBe(at);
+    expect(
+      mapCrawler("c1", { lastReindexStartedAt: at }, ACCOUNT).fields["lastReindexStartedAt"],
+    ).toBe(at);
+    expect(mapCrawler("c1", {}, ACCOUNT).fields["lastReindexStartedAt"]).toBe("");
+  });
 });

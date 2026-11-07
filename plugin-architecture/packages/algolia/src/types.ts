@@ -42,7 +42,8 @@ export type AlAbTest = Pick<FetchedAbTest, "abTestID"> &
 
 /**
  * A crawler's detail, or as little as its row in the list when that fails.
- * `lastReindexStartedAt` is what the mapper reads, where the document says `lastReindexStartAt`.
+ * The document says `lastReindexStartAt`. `lastReindexStartedAt` is what was read before
+ * that was noticed, and is still read because no live answer has ruled it out.
  */
 export type AlCrawler = Partial<Crawler["schemas"]["BaseResponse"]> & {
   config?: Crawler["schemas"]["Configuration"];

@@ -190,7 +190,7 @@ export function mapCrawler(id: string, c: AlCrawler, accountId: string): Resourc
     indexPrefix: c.config?.indexPrefix ?? "",
     schedule: c.config?.schedule ?? "",
     startUrls: (c.config?.startUrls ?? []).join(", "),
-    lastReindexStartedAt: c.lastReindexStartedAt ?? "",
+    lastReindexStartedAt: c.lastReindexStartAt ?? c.lastReindexStartedAt ?? "",
     lastReindexEndedAt: c.lastReindexEndedAt ?? "",
   };
   if (c.createdAt) fields["createdAt"] = c.createdAt;
