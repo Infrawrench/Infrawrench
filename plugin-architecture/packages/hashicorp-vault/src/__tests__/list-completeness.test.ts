@@ -269,7 +269,7 @@ describe("a failed read does not read as gone", () => {
     expect(unreadIdPrefixes()).toEqual([`${ACCOUNT}:vault-kv-secret:kv1::`]);
   });
 
-  it("fails the type when no folder could be read, rather than listing nothing", async () => {
+  it("fails the type when no folder could be read and the token is dead", async () => {
     const { c } = client((call) => {
       if (call.url.pathname === "/v1/sys/mounts") return KV_MOUNTS;
       return { status: 403, body: { errors: ["permission denied"] } };
@@ -296,7 +296,7 @@ describe("a failed read does not read as gone", () => {
     expect(calls.length).toBeLessThanOrEqual(7);
   });
 
-  it("fails the type when a token's lookup is refused", async () => {
+  it("fails the type when a token's lookup is refused and the token is dead", async () => {
     const { c } = client((call) => {
       if (isList(call)) return { data: { keys: ["a"] } };
       return { status: 403, body: { errors: ["permission denied"] } };
@@ -334,5 +334,36 @@ describe("unreadPrefixes", () => {
   it("handles an id that is a prefix of another", () => {
     expect(unreadPrefixes(["a", "ab"], new Set(["a"]))).toEqual(["ab"]);
     expect(unreadPrefixes(["a", "ab"], new Set(["ab"]))).toEqual(["a"]);
+  });
+});
+
+describe("a 200 that is not a LIST answer", () => {
+  it("rejects a login page from a proxy rather than listing nothing", async () => {
+    const { c } = client(() => ({ text: "<html>Sign in</html>" }));
+    await expect(c.listResources("vault-policy", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects JSON with no keys", async () => {
+    const { c } = client(() => ({ data: { other: 1 } }));
+    await expect(c.listResources("vault-token", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a later folder's bad answer too", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname === "/v1/sys/mounts") return KV_MOUNTS;
+      if (call.url.pathname === "/v1/secret/metadata/") return { data: { keys: ["a/"] } };
+      return { text: "<html>Sign in</html>" };
+    });
+    await expect(c.listResources("vault-kv-secret", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads Vault's own answer with warnings and no keys as empty", async () => {
+    const { c } = client(() => ({ data: null, warnings: ["nothing here"] }));
+    expect(await c.listResources("vault-policy", ACCOUNT)).toEqual([]);
+  });
+
+  it("reads null keys as empty", async () => {
+    const { c } = client(() => ({ data: { keys: null } }));
+    expect(await c.listResources("vault-policy", ACCOUNT)).toEqual([]);
   });
 });

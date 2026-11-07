@@ -1,4 +1,5 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { requireListPage } from "@infrawrench/plugin-base";
 
 /**
  * Everything one Vault request needs. Vault takes the token in
@@ -175,13 +176,21 @@ export async function vaultFetch<T>(
   }
 }
 
-/** A `LIST` (sent as `GET ?list=true`, which every proxy passes through); 404 means an empty list. */
+/**
+ * A `LIST` (sent as `GET ?list=true`, which every proxy passes through); 404 means an
+ * empty list. Vault only answers 200 with no keys when it has warnings to pass on
+ * (`RespondErrorCommon` in sdk/logical/response_util.go), so any other answer with no
+ * keys came from something else, such as a proxy's login page.
+ */
 export async function vaultList(ctx: VaultContext, path: string): Promise<string[]> {
   try {
-    const res = await vaultFetch<{ data?: { keys?: string[] } }>(ctx, path, {
-      query: { list: true },
-    });
-    return res?.data?.keys ?? [];
+    const res = await vaultFetch<{
+      data?: { keys?: string[] | null } | null;
+      warnings?: string[] | null;
+    }>(ctx, path, { query: { list: true } });
+    const keys = res?.data?.keys;
+    if (keys === undefined && Array.isArray(res?.warnings) && res.warnings.length > 0) return [];
+    return requireListPage(keys, { vendor: "HashiCorp Vault", path, key: "data.keys" });
   } catch (err) {
     if (statusOf(err) === 404) return [];
     throw err;
