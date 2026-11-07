@@ -1,6 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeepgramClient } from "../client.js";
+import { manifest } from "../plugin.js";
 
 const ACCOUNT = "acct-1";
 const PROJECT = "11111111-2222-3333-4444-555555555555";
@@ -1223,5 +1224,54 @@ describe("voice agent usage metrics", () => {
       "LLM Tokens In",
       "LLM Tokens Out",
     ]);
+  });
+});
+
+/** Host HTTP service answering from a route table. The `fetch` stub throws, so nothing can bypass it. */
+function hostHttp(
+  route: (url: string) => {
+    status?: number;
+    headers?: Record<string, string>;
+    body?: string;
+    rawBody?: Uint8Array;
+  },
+) {
+  return vi.fn(
+    async (req: {
+      url: string;
+      method: string;
+      headers: Record<string, string>;
+      body?: string | Uint8Array;
+      caCert?: string;
+      responseEncoding?: "utf8" | "binary";
+    }) => {
+      const answer = route(req.url);
+      return { status: 200, headers: {}, body: "", ...answer };
+    },
+  );
+}
+
+function refuseFetch() {
+  return vi.spyOn(globalThis, "fetch").mockImplementation((async (url: string) => {
+    throw new Error(`global fetch was used for ${String(url)}`);
+  }) as unknown as typeof fetch);
+}
+
+describe("egress hosts", () => {
+  it("declares every host the plugin calls, so a bastion's allowlist lets them through", async () => {
+    refuseFetch();
+    const request = hostHttp((url) =>
+      url.includes("/think/models")
+        ? { body: JSON.stringify({ models: [] }) }
+        : { body: JSON.stringify(MODEL_LIST) },
+    );
+    const hosted = hostClient(new DeepgramClient({ apiKey: "k" }, { http: { request } }));
+
+    await hosted.getCreateConfig("agent-config", `${ACCOUNT}:project:${PROJECT}`);
+
+    const hosts = new Set(request.mock.calls.map(([req]) => new URL(req.url).hostname));
+    expect(hosts).toContain("agent.deepgram.com");
+    const declared: readonly string[] = manifest.egressHosts;
+    for (const host of hosts) expect(declared).toContain(host);
   });
 });

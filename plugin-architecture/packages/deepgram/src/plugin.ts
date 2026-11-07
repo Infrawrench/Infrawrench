@@ -41,7 +41,7 @@ const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 
 export const manifest = {
   id: "deepgram",
-  egressHosts: ["api.deepgram.com"],
+  egressHosts: ["api.deepgram.com", "agent.deepgram.com"],
   displayName: "Deepgram",
   description:
     "Speech-to-text, text-to-speech and voice agents. Manage projects, keys, members, invites, balances and Voice Agent configurations, chart usage, read the request log, and try Nova transcription and Aura voices.",
