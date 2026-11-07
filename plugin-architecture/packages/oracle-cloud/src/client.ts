@@ -18,7 +18,7 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import { OciApi, isAuthorizationGap } from "./api.js";
 import { fetchCarbonReport, fetchCommitmentBalances, fetchServiceLimits } from "./billing.js";
 import { fetchOciCostData, monthToDateWithForecast } from "./cost-data.js";
@@ -58,6 +58,8 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 
 const INSTANCE_ACTIONS = new Set(["START", "STOP", "SOFTSTOP", "RESET", "SOFTRESET"]);
 const ADB_ACTIONS = new Set(["start", "stop", "restart"]);
+/** 100 pages of 1,000 objects. */
+const FOLDER_MAX_PAGES = 100;
 
 /** Types whose listing can be narrowed to one region when the OCID names it. */
 const REGIONAL_TYPES = new Set([
@@ -803,18 +805,27 @@ export class OracleCloudClient implements PluginClient {
     const { region, path } = await this.objectPath(bucket);
     const keys: string[] = [];
     let start: string | undefined;
-    for (let page = 0; page < 100; page++) {
-      const res = await this.api.get<{ objects?: Array<{ name: string }>; nextStartWith?: string }>(
-        "objectstorage",
-        region,
+    // A delete acts on this list, so it must not report success with objects left.
+    for (let page = 0; page < FOLDER_MAX_PAGES; page++) {
+      const res = await this.api.get<
+        { objects?: Array<{ name: string }> | null; nextStartWith?: string } | undefined
+      >("objectstorage", region, path, { prefix, limit: 1000, ...(start ? { start } : {}) });
+      const objects = requireListPage(res?.objects, {
+        vendor: "Oracle Cloud",
         path,
-        { prefix, limit: 1000, ...(start ? { start } : {}) },
-      );
-      for (const o of res.objects ?? []) if (o.name !== prefix) keys.push(o.name);
-      start = res.nextStartWith;
-      if (!start) break;
+        key: "objects",
+        page: res,
+      });
+      for (const o of objects) if (o.name !== prefix) keys.push(o.name);
+      start = res?.nextStartWith;
+      if (!start) return keys;
     }
-    return keys;
+    throw new ListTruncatedError({
+      vendor: "Oracle Cloud",
+      path,
+      items: keys.length,
+      maxPages: FOLDER_MAX_PAGES,
+    });
   }
 }
 

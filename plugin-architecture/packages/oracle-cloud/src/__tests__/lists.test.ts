@@ -232,3 +232,61 @@ describe("Oracle Cloud lists that cannot be read whole", () => {
     expect(parts).toEqual([{ parentResourceIds: ["acct:budget:ocid1.budget.oc1.iad.b"] }]);
   });
 });
+
+describe("Oracle Cloud folder delete", () => {
+  const objectRoute =
+    (list: (url: URL) => Reply) =>
+    (url: URL, method: string): Reply | undefined => {
+      if (!url.hostname.startsWith("objectstorage.")) return identityRoute(url);
+      if (url.pathname === "/n") return { body: "acmens" };
+      if (url.pathname === "/n/acmens/b/logs/o" && method === "GET") return list(url);
+      if (method === "DELETE") return { status: 204 };
+      return undefined;
+    };
+
+  it("deletes nothing when the folder has more objects than it reads", async () => {
+    const { client, calls } = makeClient(
+      objectRoute((url) => {
+        const page = Number(url.searchParams.get("start") ?? "0");
+        return {
+          body: { objects: [{ name: `old/${page}.log` }], nextStartWith: String(page + 1) },
+        };
+      }),
+    );
+    await expect(client.deleteStorageObject("us-ashburn-1/logs", "old/")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => c.method === "DELETE")).toEqual([]);
+  });
+
+  it("deletes nothing when a page of the folder is not a list", async () => {
+    const { client, calls } = makeClient(objectRoute(() => ({ body: { message: "busy" } })));
+    await expect(client.deleteStorageObject("us-ashburn-1/logs", "old/")).rejects.toThrow(
+      "is not a list",
+    );
+    expect(calls.filter((c) => c.method === "DELETE")).toEqual([]);
+  });
+
+  it("deletes every object under the folder, then the folder", async () => {
+    const { client, calls } = makeClient(
+      objectRoute((url) =>
+        url.searchParams.get("start") === "old/b.log"
+          ? { body: { objects: [{ name: "old/b.log" }] } }
+          : {
+              body: {
+                objects: [{ name: "old/" }, { name: "old/a.log" }],
+                nextStartWith: "old/b.log",
+              },
+            },
+      ),
+    );
+    await client.deleteStorageObject("us-ashburn-1/logs", "old/");
+    expect(
+      calls.filter((c) => c.method === "DELETE").map((c) => decodeURIComponent(c.url.pathname)),
+    ).toEqual([
+      "/n/acmens/b/logs/o/old/a.log",
+      "/n/acmens/b/logs/o/old/b.log",
+      "/n/acmens/b/logs/o/old/",
+    ]);
+  });
+});
