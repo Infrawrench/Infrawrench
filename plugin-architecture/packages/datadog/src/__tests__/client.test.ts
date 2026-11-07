@@ -6,7 +6,7 @@ import { chartableMonitorQuery } from "../metrics.js";
 import { resolveSite } from "../sites.js";
 import { productLabel } from "../products.js";
 import { datadogPolicyTemplate } from "../preflight.js";
-import { makeHttp } from "./helpers.js";
+import { makeHttp, type Reply } from "./helpers.js";
 
 const ACCOUNT = "acc";
 
@@ -356,6 +356,67 @@ describe("list limits", () => {
     const picker = config.fields.find((f) => f.key === "monitorId");
     expect(reads).toBe(50);
     expect(picker?.options).toHaveLength(50_001);
+  });
+});
+
+describe("organizations when a read fails", () => {
+  const estimated = {
+    body: { data: [{ attributes: { public_id: "p1", org_name: "Acme", charges: [] } }] },
+  };
+  const orgs = { body: { orgs: [{ public_id: "p1", name: "Acme" }] } };
+  const answer = (over: { org?: Reply; estimated?: Reply; projected?: Reply }) => (url: URL) => {
+    if (url.pathname === "/api/v1/org") return over.org ?? orgs;
+    if (url.pathname.endsWith("/projected_cost")) return over.projected ?? { body: { data: [] } };
+    return over.estimated ?? estimated;
+  };
+
+  it.each([500, 503, 429])("does not read a %i on the org list as no orgs", async (status) => {
+    const { c } = client(answer({ org: { status, body: { errors: ["busy"] } } }));
+    await expect(c.listResources("organization", ACCOUNT)).rejects.toThrow(String(status));
+  });
+
+  it.each([500, 503, 429])("does not read a %i on estimated cost as no orgs", async (status) => {
+    const { c } = client(answer({ estimated: { status, body: { errors: ["busy"] } } }));
+    await expect(c.listResources("organization", ACCOUNT)).rejects.toThrow(String(status));
+  });
+
+  it("does not read wrong keys as no orgs", async () => {
+    const { c } = client(() => ({ status: 401, body: { errors: ["Unauthorized"] } }));
+    await expect(c.listResources("organization", ACCOUNT)).rejects.toThrow("401");
+  });
+
+  it("fails on an answer with no list rather than dropping child organizations", async () => {
+    const { c: noOrgs } = client(answer({ org: { body: { renamed: [] } } }));
+    await expect(noOrgs.listResources("organization", ACCOUNT)).rejects.toThrow("is not a list");
+    const { c: noCost } = client(answer({ estimated: { body: { renamed: [] } } }));
+    await expect(noCost.listResources("organization", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("falls back to the org list when the key cannot read cost", async () => {
+    const denied = { status: 403, body: { errors: ["Forbidden"] } };
+    const { c } = client(answer({ estimated: denied, projected: denied }));
+    const rows = await c.listResources("organization", ACCOUNT);
+    expect(rows.map((r) => r.fields["name"])).toEqual(["Acme"]);
+  });
+
+  it("uses cost alone when a child organization's key cannot read the org list", async () => {
+    const { c } = client(answer({ org: { status: 403, body: { errors: ["Forbidden"] } } }));
+    const rows = await c.listResources("organization", ACCOUNT);
+    expect(rows.map((r) => r.fields["name"])).toEqual(["Acme"]);
+  });
+
+  it("keeps one row for the key's own organization when it can read neither", async () => {
+    const { c } = client(() => ({ status: 403, body: { errors: ["Forbidden"] } }));
+    const rows = await c.listResources("organization", ACCOUNT);
+    expect(rows).toHaveLength(1);
+  });
+
+  it("does not let a projection that is not out yet fail the list", async () => {
+    for (const projected of [{ status: 500 }, { status: 400 }, { body: {} }]) {
+      const { c } = client(answer({ projected }));
+      const rows = await c.listResources("organization", ACCOUNT);
+      expect(rows.map((r) => r.fields["name"])).toEqual(["Acme"]);
+    }
   });
 });
 

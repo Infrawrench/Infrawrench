@@ -49,10 +49,10 @@
  */
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import { CostSetupError, requireListPage } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
 import type { components } from "./api-types.v2.gen.js";
-import { isPermissionError, statusOf } from "./api.js";
+import { isPermissionError, isRefusal, statusOf } from "./api.js";
 import { productLabel } from "./products.js";
 
 /** One `charges[]` entry. */
@@ -175,6 +175,14 @@ function wrapCostError(err: unknown, what: string): never {
   throw err;
 }
 
+function estimatedRows(res: DdEstimatedResponse) {
+  return requireListPage(res.data, {
+    vendor: "Datadog",
+    path: "/api/v2/usage/estimated_cost",
+    key: "data",
+  });
+}
+
 /** Org identity for grouping: public id where Datadog sends one. */
 function orgKey(entry: DdCostEntry): string {
   const a = entry.attributes ?? {};
@@ -204,7 +212,7 @@ async function estimatedMonth(
 
   // org → date → entry (a later entry for the same day wins: re-estimates).
   const byOrg = new Map<string, Map<string, DdCostEntry>>();
-  for (const entry of res.data ?? []) {
+  for (const entry of estimatedRows(res)) {
     const date = (entry.attributes?.date ?? "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < start || date > end) continue;
     const key = orgKey(entry);
@@ -255,7 +263,12 @@ async function historicalMonths(
     .catch((err) => wrapCostError(err, "historical cost"));
 
   const rows: CostRow[] = [];
-  for (const entry of res.data ?? []) {
+  const entries = requireListPage(res.data, {
+    vendor: "Datadog",
+    path: "/api/v2/usage/historical_cost",
+    key: "data",
+  });
+  for (const entry of entries) {
     const raw = (entry.attributes?.date ?? "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) continue;
     const date = monthStart(raw);
@@ -345,9 +358,11 @@ function productTotals(charges: DdCharge[]): Map<string, number> {
 }
 
 /**
- * Current-month estimated and projected cost per org. Both halves are best
- * effort: a projection that is not published yet (before about the 12th) or a
- * key without billing access leaves that half empty rather than failing.
+ * Current-month estimated and projected cost per org. A key without billing access
+ * leaves the estimate empty rather than failing, but any other failure of the estimate
+ * throws, because the organization list takes its child organizations from it. The
+ * projection stays best effort whatever went wrong: it adds figures to those same
+ * organizations, and nothing says how Datadog answers before publishing it, around the 12th.
  */
 export async function fetchDatadogCostSummary(
   ctx: DatadogContext,
@@ -357,7 +372,10 @@ export async function fetchDatadogCostSummary(
       .get("/api/v2/usage/estimated_cost", {
         query: { view: "sub-org", start_month: utcDate(Date.now()).slice(0, 7) },
       })
-      .catch((): DdEstimatedResponse => ({ data: [] })),
+      .catch((err): DdEstimatedResponse => {
+        if (isRefusal(err)) return { data: [] };
+        throw err;
+      }),
     ctx.v2
       .get("/api/v2/usage/projected_cost", {
         query: { view: "sub-org" },
@@ -387,7 +405,7 @@ export async function fetchDatadogCostSummary(
   // A month query can still return one entry per day on some accounts; keep
   // the latest date per org, which is the month-to-date figure.
   const latest = new Map<string, components["schemas"]["CostByOrg"]>();
-  for (const entry of estimated.data ?? []) {
+  for (const entry of estimatedRows(estimated)) {
     const key = orgKey(entry);
     const prev = latest.get(key);
     if (!prev || (entry.attributes?.date ?? "") >= (prev.attributes?.date ?? "")) {

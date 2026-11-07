@@ -81,6 +81,15 @@ export function isPermissionError(err: unknown): boolean {
   return status === 401 || status === 403;
 }
 
+/**
+ * True when Datadog answered that this key cannot have this. A 5xx, a 429 or a dropped
+ * connection says nothing about what exists, and a 401 means the keys are wrong.
+ */
+export function isRefusal(err: unknown): boolean {
+  const status = statusOf(err);
+  return status >= 400 && status < 500 && status !== 401 && status !== 429;
+}
+
 /** Which list is being read, and how far. */
 export interface PagedList {
   /** The route, for the errors this throws. */

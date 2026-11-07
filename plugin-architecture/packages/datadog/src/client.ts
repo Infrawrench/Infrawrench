@@ -19,9 +19,16 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, requireListPage } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
-import { createDatadogContext, ddPaged, readJsonApiPages, readPages, statusOf } from "./api.js";
+import {
+  createDatadogContext,
+  ddPaged,
+  isRefusal,
+  readJsonApiPages,
+  readPages,
+  statusOf,
+} from "./api.js";
 import { fetchCostAttribution } from "./attribution.js";
 import {
   listDatadogMetricSourceOptions,
@@ -306,15 +313,21 @@ export class DatadogClient implements PluginClient {
    * child on a multi-org account), named and dated from `GET /api/v1/org`
    * where the key may read it. Without billing access the org list alone is
    * used; with neither, the API key's own organization still appears so the
-   * account is never empty.
+   * account is never empty. Only a refusal counts: a sync prunes the rows a failed
+   * read would otherwise drop, so any other failure throws.
    */
   private async listOrganizations(accountId: string): Promise<ResourceInstance[]> {
     const [summary, orgs] = await Promise.all([
-      fetchDatadogCostSummary(this.ctx).catch(() => []),
+      fetchDatadogCostSummary(this.ctx),
       this.ctx.v1
         .get("/api/v1/org")
-        .then((r) => r.orgs ?? [])
-        .catch((): DdOrg[] => []),
+        .then((r) =>
+          requireListPage(r.orgs, { vendor: "Datadog", path: "/api/v1/org", key: "orgs" }),
+        )
+        .catch((err): DdOrg[] => {
+          if (isRefusal(err)) return [];
+          throw err;
+        }),
     ]);
     const rows = new Map<string, OrgRow>();
     for (const o of orgs) {

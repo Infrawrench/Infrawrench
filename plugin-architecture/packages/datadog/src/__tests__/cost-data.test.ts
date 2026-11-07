@@ -213,6 +213,22 @@ describe("fetchDatadogCostData", () => {
     ).rejects.toBeInstanceOf(CostSetupError);
   });
 
+  it("fails on an estimated answer with no list rather than reporting no cost", async () => {
+    const { http } = makeHttp(() => ({ body: { errors: ["bad"] } }));
+    await expect(
+      fetchDatadogCostData(ctxWith(http), { fromDate: "2026-10-01", toDate: "2026-10-03" }, NOW),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("fails on a historical answer with no list rather than reporting no cost", async () => {
+    const { http } = makeHttp((url) => ({
+      body: url.pathname.endsWith("/historical_cost") ? { errors: ["bad"] } : { data: [] },
+    }));
+    await expect(
+      fetchDatadogCostData(ctxWith(http), { fromDate: "2026-01-01", toDate: "2026-03-31" }, NOW),
+    ).rejects.toThrow("is not a list");
+  });
+
   it("returns nothing for a range entirely in the future", async () => {
     const { http, calls } = makeHttp(() => ({ body: { data: [] } }));
     const rows = await fetchDatadogCostData(
