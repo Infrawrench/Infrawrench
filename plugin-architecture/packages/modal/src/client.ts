@@ -14,7 +14,7 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, externalIdOf } from "@infrawrench/plugin-base";
+import { QuotaAccessError, externalIdOf, reportUnreadListPart } from "@infrawrench/plugin-base";
 import type {
   BillingRates,
   BillingSummary,
@@ -79,8 +79,8 @@ import {
 } from "./render.js";
 
 const CACHE_TTL_MS = 30_000;
-/** Bound on `AppGetInfo` calls per listing; a workspace with more deployed apps lists the newest. */
-const MAX_APP_INFO = 300;
+// One `AppGetInfo` per deployed app per poll. Modal documents no rate limit.
+const MAX_APP_INFO = 1000;
 const APP_INFO_CONCURRENCY = 4;
 const BILLING_NOTE =
   "Modal returns billing data to Team and Enterprise workspaces; on other plans, spend is shown in the Modal dashboard only.";
@@ -123,6 +123,25 @@ async function mapLimited<T, R>(
 interface FunctionRow {
   app: ModalApp;
   info: ModalAppInfo;
+}
+
+/**
+ * The deployed apps to read functions for this poll, newest first, and those left for
+ * later. Polls share nothing, so past the budget the start moves with the clock by the
+ * golden ratio, which spreads evenly over the list however long it is.
+ */
+function appInfoWindow(deployed: ModalApp[]): { now: ModalApp[]; later: ModalApp[] } {
+  if (deployed.length <= MAX_APP_INFO) {
+    const newestFirst = [...deployed].sort(
+      (a, b) => (b.deployedAt ?? b.createdAt ?? 0) - (a.deployedAt ?? a.createdAt ?? 0),
+    );
+    return { now: newestFirst, later: [] };
+  }
+  const sorted = [...deployed].sort((a, b) => (a.appId < b.appId ? -1 : 1));
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  return { now: rotated.slice(0, MAX_APP_INFO), later: rotated.slice(MAX_APP_INFO) };
 }
 
 export class ModalClient implements PluginClient {
@@ -188,14 +207,13 @@ export class ModalClient implements PluginClient {
     return this.perEnvironment("apps", (env) => listApps(this.ctx, env));
   }
 
-  /** Deployed apps with their functions (`AppGetInfo`), newest deployments first. */
-  private deployedFunctions(): Promise<FunctionRow[]> {
+  /** Deployed apps with their functions (`AppGetInfo`), and the apps this poll left unread. */
+  private deployedFunctions(): Promise<{ rows: FunctionRow[]; later: ModalApp[] }> {
     return this.cached("functions", async () => {
-      const deployed = (await this.apps())
-        .filter((a) => a.state === "deployed")
-        .sort((a, b) => (b.deployedAt ?? b.createdAt ?? 0) - (a.deployedAt ?? a.createdAt ?? 0))
-        .slice(0, MAX_APP_INFO);
-      const rows = await mapLimited(deployed, APP_INFO_CONCURRENCY, async (app) => {
+      const { now, later } = appInfoWindow(
+        (await this.apps()).filter((a) => a.state === "deployed"),
+      );
+      const rows = await mapLimited(now, APP_INFO_CONCURRENCY, async (app) => {
         try {
           return { app, info: await getAppInfo(this.ctx, app.appId) };
         } catch (err) {
@@ -204,8 +222,19 @@ export class ModalClient implements PluginClient {
           throw err;
         }
       });
-      return rows.filter((r): r is FunctionRow => !!r);
+      return { rows: rows.filter((r): r is FunctionRow => !!r), later };
     });
+  }
+
+  /** For `listResources`: the report belongs to each type, and the read above is shared. */
+  private async functionRows(accountId: string): Promise<FunctionRow[]> {
+    const { rows, later } = await this.deployedFunctions();
+    if (later.length > 0) {
+      reportUnreadListPart({
+        parentResourceIds: later.map((app) => `${accountId}:app:${app.appId}`),
+      });
+    }
+    return rows;
   }
 
   private async workspace(): Promise<string> {
@@ -233,11 +262,11 @@ export class ModalClient implements PluginClient {
         case "app":
           return (await this.apps()).map((a) => mapApp(accountId, a));
         case "function":
-          return (await this.deployedFunctions()).flatMap(({ app, info }) =>
+          return (await this.functionRows(accountId)).flatMap(({ app, info }) =>
             info.functions.map((s) => mapFunction(accountId, "function", app, s)),
           );
         case "scheduled-function":
-          return (await this.deployedFunctions()).flatMap(({ app, info }) =>
+          return (await this.functionRows(accountId)).flatMap(({ app, info }) =>
             info.functions
               .filter((s) => s.schedule)
               .map((s) => mapFunction(accountId, "scheduled-function", app, s)),

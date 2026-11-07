@@ -2,9 +2,10 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModalClient } from "../client.js";
 import { ProtoWriter } from "../proto.js";
+import { FunctionResourceType, ScheduledFunctionResourceType } from "../resource-types.js";
 import type { ProtoMessage } from "../proto.js";
 import type { Reply } from "./helpers.js";
-import { makeHttp } from "./helpers.js";
+import { makeHttp, withMap } from "./helpers.js";
 
 const ACCOUNT = "acct";
 const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
@@ -164,3 +165,99 @@ function queueItem(id: string, seconds: number): ProtoWriter {
     .string(5, id)
     .message(6, new ProtoWriter().string(1, id).message(2, new ProtoWriter().double(1, seconds)));
 }
+
+describe("functions of deployed apps", () => {
+  function deployedApps(count: number) {
+    return client((method, request) => {
+      if (method === "EnvironmentList") {
+        return new ProtoWriter().message(2, new ProtoWriter().string(1, "main"));
+      }
+      if (method === "AppList") {
+        const res = new ProtoWriter();
+        for (let i = 0; i < count; i++) {
+          res.message(
+            1,
+            new ProtoWriter()
+              .string(1, `ap-${i}`)
+              .int(4, 3)
+              .double(5, 1_700_000_000 + i)
+              .string(10, `app-${i}`),
+          );
+        }
+        return res;
+      }
+      if (method === "AppGetInfo") {
+        const appId = request.string(1);
+        return new ProtoWriter().message(
+          1,
+          withMap(new ProtoWriter().string(2, appId), 5, { run: `fu-${appId}` }),
+        );
+      }
+      return new ProtoWriter();
+    });
+  }
+
+  function recordUnread() {
+    const named: string[] = [];
+    Reflect.set(globalThis, UNREAD_HOOK, (part: { parentResourceIds?: string[] }) => {
+      named.push(...(part.parentResourceIds ?? []));
+    });
+    return named;
+  }
+
+  it("hangs each function off its app, so a list can name the app as unread", async () => {
+    const { c } = deployedApps(1);
+    const [fn] = await c.listResources("function", ACCOUNT);
+    expect(fn?.parentResourceId).toBe("acct:app:ap-0");
+    const [app] = await c.listResources("app", ACCOUNT);
+    expect(app?.id).toBe(fn?.parentResourceId);
+    expect(FunctionResourceType.parentTypeId).toBe("app");
+    expect(FunctionResourceType.showInSidebar).toBe(true);
+    expect(ScheduledFunctionResourceType.parentTypeId).toBe("app");
+    expect(ScheduledFunctionResourceType.showInSidebar).toBe(true);
+  });
+
+  it("reads every app up to the budget and names none as unread", async () => {
+    const { c, calls } = deployedApps(1000);
+    const named = recordUnread();
+    const rows = await c.listResources("function", ACCOUNT);
+    expect(rows).toHaveLength(1000);
+    expect(calls.filter((x) => x.method === "AppGetInfo")).toHaveLength(1000);
+    expect(named).toEqual([]);
+  });
+
+  it("past the budget reads a run of apps and names the rest", async () => {
+    const { c, calls } = deployedApps(1100);
+    const named = recordUnread();
+    const rows = await c.listResources("function", ACCOUNT);
+    const read = calls
+      .filter((x) => x.method === "AppGetInfo")
+      .map((x) => `${ACCOUNT}:app:${x.request.string(1)}`);
+    expect(read).toHaveLength(1000);
+    expect(rows).toHaveLength(1000);
+    expect(named).toHaveLength(100);
+    expect(new Set([...read, ...named]).size).toBe(1100);
+  });
+
+  it("names the unread apps for each type sharing the read", async () => {
+    const { c, calls } = deployedApps(1100);
+    const named = recordUnread();
+    await c.listResources("function", ACCOUNT);
+    await c.listResources("scheduled-function", ACCOUNT);
+    expect(calls.filter((x) => x.method === "AppGetInfo")).toHaveLength(1000);
+    expect(named).toHaveLength(200);
+  });
+
+  it("moves the run of apps from one poll to the next", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const unreadAt = async (at: string) => {
+      vi.setSystemTime(new Date(at));
+      const named = recordUnread();
+      await deployedApps(1100).c.listResources("function", ACCOUNT);
+      return named;
+    };
+    const first = await unreadAt("2026-11-07T10:00:00Z");
+    const second = await unreadAt("2026-11-07T10:05:00Z");
+    expect(second).not.toEqual(first);
+  });
+});

@@ -150,23 +150,26 @@ export function mapFunction(
   s: ModalFunctionSummary,
 ): ResourceInstance {
   const name = s.tag.endsWith(".*") ? s.tag.slice(0, -2) : s.tag;
-  return instance(
-    accountId,
-    typeId,
-    s.functionId,
-    `${app.name}.${name}`,
-    {
-      name,
-      app: app.name,
-      environment: app.environment,
-      ...(typeId === "function" ? { kind: functionKind(s), webEndpoint: s.webFunction } : {}),
-      gpu: describeGpus(s.gpus),
-      schedule: s.schedule?.description,
-      appId: app.appId,
-      functionId: s.functionId,
-    },
-    { functionId: s.functionId, url: objectUrl(s.functionId) },
-  );
+  return {
+    ...instance(
+      accountId,
+      typeId,
+      s.functionId,
+      `${app.name}.${name}`,
+      {
+        name,
+        app: app.name,
+        environment: app.environment,
+        ...(typeId === "function" ? { kind: functionKind(s), webEndpoint: s.webFunction } : {}),
+        gpu: describeGpus(s.gpus),
+        schedule: s.schedule?.description,
+        appId: app.appId,
+        functionId: s.functionId,
+      },
+      { functionId: s.functionId, url: objectUrl(s.functionId) },
+    ),
+    parentResourceId: `${accountId}:app:${app.appId}`,
+  };
 }
 
 export function mapVolume(accountId: string, v: ModalVolume): ResourceInstance {

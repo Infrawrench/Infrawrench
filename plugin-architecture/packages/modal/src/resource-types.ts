@@ -125,6 +125,8 @@ export const FunctionResourceType = rt({
   id: "function",
   description:
     "A function, class or server of a deployed Modal app. Shows its GPU, CPU and memory, autoscaling (min, max and buffer containers, scale-down window), input concurrency, timeouts and schedule, its live backlog and running inputs, and charts inputs by outcome, cold starts, latency and container utilization.",
+  parentTypeId: "app",
+  showInSidebar: true,
   fields: [
     f("name", "Name", { editable: false }),
     f("app", "App", { required: false, editable: false }),
@@ -153,6 +155,8 @@ export const ScheduledFunctionResourceType = rt({
   id: "scheduled-function",
   description:
     "A function of a deployed Modal app that runs on a cron or fixed-period schedule, with its schedule, GPU and app, and the same invocation charts as any function.",
+  parentTypeId: "app",
+  showInSidebar: true,
   fields: [
     f("name", "Name", { editable: false }),
     f("schedule", "Schedule", { showcase: true, required: false, editable: false }),
