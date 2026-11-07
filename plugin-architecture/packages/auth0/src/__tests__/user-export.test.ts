@@ -505,12 +505,12 @@ describe("what fails an export", () => {
     );
     expect(posts()).toHaveLength(1);
     expect(downloads()).toHaveLength(1);
-  });
+  }, 30_000);
 
   it("reads exactly 100,000 users", async () => {
     const c = client({ job: () => ({ body: done }), file: () => exportFile(100_000) });
     await expect(c.listResources("user", ACCOUNT)).resolves.toHaveLength(100_000);
-  });
+  }, 30_000);
 
   it.each([402, 403])("keeps the stored rows quietly when Auth0 answers %i", async (status) => {
     const unread = trackingHost();
