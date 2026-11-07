@@ -11,9 +11,25 @@ import type {
   DashboardStat,
   CreateResourceConfig,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle } from "@infrawrench/plugin-base";
+import { joinSubtitle, reportUnreadListPart } from "@infrawrench/plugin-base";
 
 const SYSTEM_DBS = new Set(["master", "tempdb", "model", "msdb"]);
+
+/** Permission denied on an object or action: errors 229, 230, 297 and 300. */
+const CATALOG_REFUSED_NUMBERS: ReadonlySet<unknown> = new Set([229, 230, 297, 300]);
+
+/**
+ * Whether this login may not read `sys.databases`, as opposed to a failed read. The
+ * desktop's IPC keeps only the message, so `number` is not always there.
+ */
+function isCatalogRefused(err: unknown): boolean {
+  const number =
+    typeof err === "object" && err !== null && "number" in err ? err.number : undefined;
+  return (
+    CATALOG_REFUSED_NUMBERS.has(number) ||
+    /permission was denied on|does not have permission to perform this action/i.test(String(err))
+  );
+}
 
 export class MSSQLClient implements PluginClient {
   private readonly connectionString: string;
@@ -57,8 +73,10 @@ export class MSSQLClient implements PluginClient {
             createdAt: now,
             updatedAt: now,
           }));
-        } catch {
-          // fall through to URL parsing
+        } catch (err) {
+          if (!isCatalogRefused(err)) throw err;
+          // Shows only the database the login connects to, which says nothing about the rest.
+          reportUnreadListPart({ idPrefixes: [""] });
         }
       }
 

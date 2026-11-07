@@ -1,9 +1,22 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { HostServices, ResourceInstance, SqlHostServices } from "@infrawrench/plugin-base";
+import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
+import type {
+  HostServices,
+  ResourceInstance,
+  SqlHostServices,
+  UnreadListPart,
+} from "@infrawrench/plugin-base";
 import { MSSQLClient } from "../client.js";
 
 const CS = "mssql://sa:pass@db.example.com:1433/appdb";
+
+const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+
+function trackUnread(): UnreadListPart[] {
+  const seen: UnreadListPart[] = [];
+  Reflect.set(globalThis, UNREAD_HOOK, (part: UnreadListPart) => seen.push(part));
+  return seen;
+}
 
 function makeSql() {
   return { query: vi.fn(), execute: vi.fn() };
@@ -56,13 +69,6 @@ describe("MSSQLClient", () => {
       expect(res[0]!.fields["host"]).toBe("unknown");
     });
 
-    it("falls back to URL parsing on query error", async () => {
-      sql.query.mockRejectedValue(new Error("boom"));
-      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
-      const res = await c.listResources("mssql-database", "acct");
-      expect(res[0]!.displayName).toBe("appdb");
-    });
-
     it("falls back without sql service", async () => {
       const c = hostClient(new MSSQLClient({ connectionString: CS }));
       const res = await c.listResources("mssql-database", "acct");
@@ -85,6 +91,66 @@ describe("MSSQLClient", () => {
     it("throws on unknown type", async () => {
       const c = hostClient(new MSSQLClient({ connectionString: CS }));
       await expect(c.listResources("nope", "acct")).rejects.toThrow(/unknown resource type/);
+    });
+
+    describe("a failed read of the database list", () => {
+      afterEach(() => {
+        Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      });
+
+      const client = () => hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
+
+      it.each([
+        ["a dropped connection", Object.assign(new Error("Connection lost"), { code: "ESOCKET" })],
+        [
+          "a failed login",
+          Object.assign(new Error("Login failed for user 'sa'."), {
+            code: "ELOGIN",
+            number: 18456,
+          }),
+        ],
+        [
+          "a login that may not open its own database",
+          Object.assign(new Error('Cannot open database "appdb" requested by the login.'), {
+            code: "EREQUEST",
+            number: 4060,
+          }),
+        ],
+        ["any other failure", new Error("boom")],
+      ])("throws on %s, so no stored row is pruned", async (_name, error) => {
+        const unread = trackUnread();
+        sql.query.mockRejectedValue(error);
+        await expect(client().listResources("mssql-database", "acct")).rejects.toBe(error);
+        expect(unread).toEqual([]);
+      });
+
+      it("throws when the answer is not a list", async () => {
+        sql.query.mockResolvedValue(null);
+        await expect(client().listResources("mssql-database", "acct")).rejects.toThrow();
+      });
+
+      it.each([
+        [
+          "the driver's error, whatever language the server speaks",
+          Object.assign(new Error("Die SELECT-Berechtigung wurde verweigert."), {
+            code: "EREQUEST",
+            number: 229,
+          }),
+        ],
+        [
+          "the message alone, which is all the desktop's IPC keeps",
+          new Error(
+            "Error invoking remote method 'plugin_sql_query': RequestError: The SELECT permission was denied on the object 'databases', database 'mssqlsystemresource', schema 'sys'.",
+          ),
+        ],
+      ])("keeps the stored rows when refused, read from %s", async (_name, error) => {
+        const unread = trackUnread();
+        sql.query.mockRejectedValue(error);
+        const res = await client().listResources("mssql-database", "acct");
+        expect(res.map((r) => r.displayName)).toEqual(["appdb"]);
+        expect(res[0]!.fields["host"]).toBe("db.example.com");
+        expect(unread).toEqual([{ idPrefixes: [""] }]);
+      });
     });
   });
 
