@@ -20,12 +20,17 @@ export function geminiHeaders(apiKey: string): Record<string, string> {
 
 export type GeminiApi = ApiClient<paths>;
 
-export function createGeminiApi(apiKey: string, http: HttpHostServices | undefined): GeminiApi {
+export function createGeminiApi(
+  apiKey: string,
+  http: HttpHostServices | undefined,
+  caCert: string | undefined,
+): GeminiApi {
   return createApiClient<paths>({
     vendor: "Gemini",
     baseUrl: BASE_URL,
     headers: geminiHeaders(apiKey),
     http,
+    caCert,
   });
 }
 

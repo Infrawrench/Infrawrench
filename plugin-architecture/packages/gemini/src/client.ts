@@ -20,6 +20,7 @@ import type {
 import {
   base64ToBytes,
   bytesToBase64,
+  hostTransport,
   jsonRestFetch,
   externalIdOf,
   formatBytes,
@@ -131,6 +132,7 @@ function transcriptionPrompt(language: string | undefined): string {
 export class GeminiClient implements PluginClient {
   private readonly apiKey: string;
   private readonly services: HostServices | undefined;
+  private readonly caCert: string | undefined;
   private readonly api: GeminiApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -138,7 +140,8 @@ export class GeminiClient implements PluginClient {
     if (!apiKey) throw new Error("Gemini plugin: missing apiKey credential");
     this.apiKey = apiKey;
     this.services = services;
-    this.api = createGeminiApi(apiKey, services?.http);
+    this.caCert = credentials["caCert"];
+    this.api = createGeminiApi(apiKey, services?.http, this.caCert);
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -148,7 +151,7 @@ export class GeminiClient implements PluginClient {
       errorPath: path,
       headers: geminiHeaders(this.apiKey),
       ...(options ? { init: options } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
+      ...hostTransport(this.services?.http, this.caCert),
     });
   }
 

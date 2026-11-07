@@ -70,6 +70,48 @@ describe("auth", () => {
   });
 });
 
+describe("host transport", () => {
+  function hostHttp() {
+    return vi.fn(async (_request: { url: string; caCert?: string }) => ({
+      status: 200,
+      headers: {},
+      body: "{}",
+    }));
+  }
+
+  // Models go through the typed client and webhooks through the hand-written path.
+  const reads = ["model", "webhook"];
+
+  it("sends the CA certificate on every kind of request", async () => {
+    const stub = installFetch(() => {
+      throw new Error("fetch must not be reached with a host");
+    });
+    const request = hostHttp();
+    const c = hostClient(
+      new GeminiClient({ apiKey: "AIzaTestKey", caCert: "PEM" }, { http: { request } }),
+    );
+
+    for (const typeId of reads) await c.listResources(typeId, ACCOUNT);
+
+    expect(request.mock.calls.map(([sent]) => sent.caCert)).toEqual(["PEM", "PEM"]);
+    expect(stub).not.toHaveBeenCalled();
+  });
+
+  it("leaves caCert off when none is set, and still uses the host", async () => {
+    const stub = installFetch(() => {
+      throw new Error("fetch must not be reached with a host");
+    });
+    const request = hostHttp();
+    const c = hostClient(new GeminiClient({ apiKey: "AIzaTestKey" }, { http: { request } }));
+
+    for (const typeId of reads) await c.listResources(typeId, ACCOUNT);
+
+    expect(request).toHaveBeenCalledTimes(2);
+    for (const [sent] of request.mock.calls) expect(sent).not.toHaveProperty("caCert");
+    expect(stub).not.toHaveBeenCalled();
+  });
+});
+
 describe("listResources — Google-standard pagination", () => {
   it("walks pageSize/pageToken until nextPageToken is absent", async () => {
     installFetch((url) => {
