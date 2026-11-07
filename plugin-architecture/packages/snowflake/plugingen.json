@@ -1,0 +1,33 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/snowflakedb/snowflake-rest-api-specs/main/specifications/sqlapi.yaml",
+  "patches": [
+    {
+      "pointer": "/paths/~1api~1v2~1statements/post/requestBody/content/application~1json/schema/properties/bindings/additionalProperties",
+      "value": {
+        "type": "object",
+        "required": ["type", "value"],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "why": "Declared as an object with no properties, which types as `Record<string, never>`. Its own example, and the SQL API reference, key each bind variable by position with a `type` and a `value`."
+    },
+    {
+      "pointer": "/components/schemas/ResultSet/properties/resultSetMetaData/properties/rowType/items/required",
+      "value": ["name", "type"],
+      "why": "The document marks nothing required, but every column the SQL API reference describes has a name and a type, and the plugin has always read both without a fallback."
+    }
+  ],
+  "paths": {
+    "/api/v2/statements": ["post"],
+    "/api/v2/statements/{statementHandle}": ["get"],
+    "/api/v2/statements/{statementHandle}/cancel": ["post"]
+  }
+}
