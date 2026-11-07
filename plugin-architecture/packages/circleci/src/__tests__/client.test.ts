@@ -1,5 +1,5 @@
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CircleCIClient, buildParameters, buildTimetable } from "../client.js";
 import { percentile, projectSeriesFrom, workflowRunSeries } from "../metrics.js";
 import { plugin } from "../plugin.js";
@@ -381,5 +381,126 @@ describe("status feed", () => {
     expect(mapComponent("Runner")?.resourceTypes).toEqual(["runner-resource-class", "runner"]);
     expect(mapComponent("GitHub API Requests")).toBeNull();
     expect(mapComponent("AWS")).toBeNull();
+  });
+});
+
+describe("project slugs in paths (#455)", () => {
+  const PROJECT = { slug: "gh/acme/api", name: "api", id: "p1" };
+  const gone = { status: 404, body: { message: "Not found" } };
+
+  it("leaves a slug the API hands out exactly as it was, with its query", async () => {
+    const { c, calls } = client(() => ({ items: [], next_page_token: null }));
+    await c.fetchMetricSeries("workflow", `${ACC}:workflow:gh/acme/api/build`, ACC);
+    expect(calls.at(-1)!.url.pathname).toBe("/api/v2/insights/gh/acme/api/workflows/build");
+    expect(calls.at(-1)!.url.searchParams.get("all-branches")).toBe("true");
+  });
+
+  it("keeps a slug holding ? on its route, with the query still a query", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname.startsWith("/api/v2/project/") ? PROJECT : gone,
+    );
+    await c.getResource("project", `${ACC}:project:gh/acme/a?b`, ACC);
+    const read = calls.find((x) => x.url.pathname.startsWith("/api/v2/project/"))!;
+    expect(read.url.pathname).toBe("/api/v2/project/gh/acme/a%3Fb");
+    expect(read.url.search).toBe("");
+  });
+
+  it("encodes # and spaces in every route a slug goes into", async () => {
+    const { c, calls } = client((call) =>
+      call.method === "POST" ? { name: "A", value: "xxxx" } : { status: 204 },
+    );
+    await c.createResource("project-variable", ACC, {
+      project: "gh/acme/my app#x",
+      name: "A",
+      value: "1",
+    });
+    await c.deleteResource("project-variable", `${ACC}:project-variable:gh/acme/a#b/NAME`, ACC);
+    expect(calls.map((x) => x.url.href)).toEqual([
+      "https://circleci.com/api/v2/project/gh/acme/my%20app%23x/envvar",
+      "https://circleci.com/api/v2/project/gh/acme/a%23b/envvar/NAME",
+    ]);
+  });
+
+  it("refuses a slug that would climb out of its route", async () => {
+    const { c, calls } = client(() => ({}));
+    await expect(
+      c.deleteResource("project-variable", `${ACC}:project-variable:gh/../context/NAME`, ACC),
+    ).rejects.toThrow(/not a CircleCI slug/);
+    await expect(
+      c.createResource("project-variable", ACC, { project: "gh//api", name: "A", value: "1" }),
+    ).rejects.toThrow(/not a CircleCI slug/);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to run a pipeline on a slug missing its segments", async () => {
+    const { c, calls } = client(() => ({}));
+    await expect(c.createResource("pipeline", ACC, { project: "gh/acme" })).rejects.toThrow(
+      /not a CircleCI slug/,
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it.each([
+    ["context", `${ACC}:context:`],
+    ["schedule", `${ACC}:schedule:`],
+    ["runner-resource-class", `${ACC}:runner-resource-class:`],
+    ["context-variable", `${ACC}:context-variable:c1/`],
+    ["context-variable", `${ACC}:context-variable:/NAME`],
+    ["project-variable", `${ACC}:project-variable:gh/acme/api/`],
+    ["trigger", `${ACC}:trigger:gh/acme/api/pid/`],
+    ["trigger", `${ACC}:trigger:gh/acme/api//tid`],
+  ])("refuses to delete a %s with a blank id: %s", async (type, id) => {
+    const { c, calls } = client(() => ({}));
+    await expect(c.deleteResource(type, id, ACC)).rejects.toThrow(/blank/);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to edit or switch a trigger with a blank id", async () => {
+    const { c, calls } = client(() => ({}));
+    const id = `${ACC}:trigger:gh/acme/api/pid/`;
+    await expect(c.updateResource("trigger", id, ACC, { checkoutRef: "main" })).rejects.toThrow(
+      /blank/,
+    );
+    await expect(c.invokeAction("trigger", id, "disable", ACC)).rejects.toThrow(/blank/);
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("host transport", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends every call through the host's service, with no CA and no fetch", async () => {
+    const fetchStub = vi.fn(() => {
+      throw new Error("fetch must not be called");
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ items: [], next_page_token: null }),
+    }));
+    await hostClient(
+      new CircleCIClient({ apiToken: "TEST_TOKEN", organization: ORG_ID }, {
+        http: { request },
+      } as never),
+    ).fetchMetricSeries("workflow", `${ACC}:workflow:gh/acme/api/build`, ACC);
+    expect(request).toHaveBeenCalledOnce();
+    expect(request.mock.calls[0]).not.toHaveProperty("0.caCert");
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it("falls back to fetch with no host, and writes one query", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ items: [], next_page_token: null }), { status: 200 });
+    });
+    await hostClient(
+      new CircleCIClient({ apiToken: "TEST_TOKEN", organization: ORG_ID }),
+    ).fetchMetricSeries("workflow", `${ACC}:workflow:gh/acme/api/build`, ACC);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toMatch(
+      /^https:\/\/circleci\.com\/api\/v2\/insights\/gh\/acme\/api\/workflows\/build\?all-branches=true&/,
+    );
   });
 });

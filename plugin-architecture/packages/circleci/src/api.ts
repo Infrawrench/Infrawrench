@@ -5,7 +5,6 @@ import {
   type ApiClientOptions,
   type HttpHostServices,
   type NoSlashString,
-  type ParamValue,
 } from "@infrawrench/plugin-base";
 import type { paths as V2Paths } from "./api-types.v2.gen.js";
 import type { paths as V3Paths } from "./api-types.v3.gen.js";
@@ -62,17 +61,6 @@ export function isPermissionError(err: unknown): boolean {
   return status === 401 || status === 403;
 }
 
-export function buildQuery(query: Record<string, ParamValue> = {}): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query)) {
-    if (v === undefined || v === "") continue;
-    if (Array.isArray(v)) for (const item of v) params.append(k, String(item));
-    else params.set(k, String(v));
-  }
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
-}
-
 /** A field of a body nobody has validated, or `undefined` if it is not an object. */
 const fieldOf = (from: unknown, name: string): unknown =>
   typeof from === "object" && from !== null ? Reflect.get(from, name) : undefined;
@@ -94,38 +82,18 @@ function errorDetail(body: string): string {
 }
 
 /**
- * Marks where a query starts, for {@link circleTransport}. The private-use
- * character cannot come out of `buildQuery`, which percent-encodes it.
+ * A project or organization slug for a path: each segment encoded, the slashes
+ * kept because they are part of the route. A slug the API hands out comes through
+ * as it was; a hand-entered one holding `?`, `#` or a space stays on its route, and
+ * one with an empty or dot segment, which would land on another route, is refused.
  */
-const QUERY_MARK = "\uE000";
-
-/**
- * Routed through the host HTTP service whenever there is one: that is the only
- * path that honours bastion egress. `fetch` otherwise, as it always was.
- *
- * Project slugs go into paths as written (#455), so one holding a `?`
- * has always been followed by a second `?`. The client would write `&` there, so
- * it marks the query and this puts the `?` back, whatever came before the mark.
- */
-function circleTransport(ctx: CircleContext): HttpHostServices {
-  return {
-    request: async (req) => {
-      const url = req.url.replace(new RegExp(`[?&]${QUERY_MARK}`), "?");
-      if (ctx.http) return ctx.http.request({ ...req, url });
-      const { method, headers, body } = req;
-      // The client only ever sends text.
-      const res = await fetch(url, {
-        method,
-        headers,
-        ...(typeof body === "string" ? { body } : {}),
-      });
-      return { status: res.status, headers: {}, body: await res.text() };
-    },
-  };
+export function slugSegment(slug: string): NoSlashString {
+  const segments = slug.split("/");
+  if (segments.some((s) => s === "" || s === "." || s === "..")) {
+    throw new Error(`CircleCI plugin: "${slug}" is not a CircleCI slug`);
+  }
+  return unencodedSegment(segments.map(encodeURIComponent).join("/"));
 }
-
-/** A project or organization slug, sent as written: its slashes are part of the route. */
-export const slugSegment = (slug: string): NoSlashString => unencodedSegment(slug);
 
 /** The runner host's calls, by hand: it publishes no document. */
 export interface RunnerPaths {
@@ -142,12 +110,8 @@ interface RunnerTasksGet<Body> {
 export function circleApi(ctx: CircleContext) {
   const shared = {
     vendor: "CircleCI",
-    http: circleTransport(ctx),
+    http: ctx.http,
     contentType: "with-body",
-    serializeQuery: (query) => {
-      const written = buildQuery(query).slice(1);
-      return written && `${QUERY_MARK}${written}`;
-    },
     httpError: ({ status, path, body }) =>
       new CircleApiError(status, `CircleCI API error ${status} for ${path}: ${errorDetail(body)}`),
   } satisfies Partial<ApiClientOptions>;

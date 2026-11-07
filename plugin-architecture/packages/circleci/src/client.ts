@@ -15,7 +15,7 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, type NoSlashString } from "@infrawrench/plugin-base";
 import type { ApiBody } from "@infrawrench/plugin-base";
 import type { CircleApi, CircleContext } from "./api.js";
 import { circleApi, slugSegment, statusOf } from "./api.js";
@@ -83,6 +83,24 @@ interface ProjectRef {
   slug: string;
   name: string;
   id?: string;
+}
+
+/** One id for a write's path. A blank one is refused: it would aim the write at another route. */
+function idSegment(value: string | undefined, what: string): NoSlashString {
+  if (!value) throw new Error(`CircleCI plugin: refusing to act on a blank ${what}`);
+  return pathEncode(value);
+}
+
+/** The route of a context variable, from its `<context id>/<name>` id. */
+function contextVariableRoute(id: string) {
+  const [contextId, ...nameParts] = id.split("/");
+  return `/context/${idSegment(contextId, "context id")}/environment-variable/${idSegment(nameParts.join("/"), "variable name")}` as const;
+}
+
+/** The route of a trigger, from its `<project slug>/<project id>/<trigger id>` id. */
+function triggerRoute(id: string) {
+  const [projectId, triggerId] = splitScoped(id).rest.split("/");
+  return `/projects/${idSegment(projectId, "project id")}/triggers/${idSegment(triggerId, "trigger id")}` as const;
 }
 
 /** The organization picker's value: the collaboration id, or its slug when it has none. */
@@ -1093,10 +1111,13 @@ export class CircleCIClient implements PluginClient {
           const params = buildParameters(fields["parameters"], undefined);
           const ref = branch ? { branch } : tag ? { tag } : undefined;
           const [provider, orgName, ...rest] = project.split("/");
+          if (!provider || !orgName || rest.length === 0) {
+            throw new Error(`CircleCI plugin: "${project}" is not a CircleCI slug`);
+          }
           let created: { id?: string; message?: string } | undefined;
           try {
             created = await this.api.v2.post(
-              `/project/${slugSegment(String(provider))}/${slugSegment(String(orgName))}/${slugSegment(rest.join("/"))}/pipeline/run`,
+              `/project/${slugSegment(provider)}/${slugSegment(orgName)}/${slugSegment(rest.join("/"))}/pipeline/run`,
               {
                 body: {
                   ...(fields["definition"] ? { definition_id: fields["definition"] } : {}),
@@ -1243,13 +1264,7 @@ export class CircleCIClient implements PluginClient {
       switch (typeId) {
         case "context-variable": {
           const value = fields["value"] ?? "";
-          if (value) {
-            const [contextId, ...nameParts] = id.split("/");
-            await this.api.v2.put(
-              `/context/${pathEncode(contextId ?? "")}/environment-variable/${pathEncode(nameParts.join("/"))}`,
-              { body: { value } },
-            );
-          }
+          if (value) await this.api.v2.put(contextVariableRoute(id), { body: { value } });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "project-variable": {
@@ -1263,6 +1278,7 @@ export class CircleCIClient implements PluginClient {
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "schedule": {
+          const route = `/schedule/${idSegment(id, "schedule id")}` as const;
           const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
           const merged: Record<string, string> = {};
           for (const [k, v] of Object.entries(current.fields)) merged[k] = String(v);
@@ -1281,13 +1297,12 @@ export class CircleCIClient implements PluginClient {
             body["parameters"] = buildParameters(merged["parameters"], merged["branch"]);
           }
           if (Object.keys(body).length > 0) {
-            await this.api.v2.patch(`/schedule/${pathEncode(id)}`, { body });
+            await this.api.v2.patch(route, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "trigger": {
-          const { rest } = splitScoped(id);
-          const [projectId, triggerId] = rest.split("/");
+          const route = triggerRoute(id);
           const body: ApiBody<operations["updateTrigger"]> = {};
           if ("checkoutRef" in fields) body["checkout_ref"] = (fields["checkoutRef"] ?? "").trim();
           if ("configRef" in fields) body["config_ref"] = (fields["configRef"] ?? "").trim();
@@ -1297,18 +1312,18 @@ export class CircleCIClient implements PluginClient {
             };
           }
           if (Object.keys(body).length > 0) {
-            await this.api.v2.patch(
-              `/projects/${pathEncode(projectId ?? "")}/triggers/${pathEncode(triggerId ?? "")}`,
-              { body },
-            );
+            await this.api.v2.patch(route, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "runner-resource-class": {
           if ("description" in fields) {
-            await this.api.v3.post(`/runner/resource-classes/${pathEncode(id)}/update`, {
-              body: { description: (fields["description"] ?? "").trim() },
-            });
+            await this.api.v3.post(
+              `/runner/resource-classes/${idSegment(id, "resource class id")}/update`,
+              {
+                body: { description: (fields["description"] ?? "").trim() },
+              },
+            );
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
@@ -1323,39 +1338,33 @@ export class CircleCIClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "context":
-          await this.api.v2.delete(`/context/${pathEncode(id)}`);
+          await this.api.v2.delete(`/context/${idSegment(id, "context id")}`);
           return;
-        case "context-variable": {
-          const [contextId, ...nameParts] = id.split("/");
-          await this.api.v2.delete(
-            `/context/${pathEncode(contextId ?? "")}/environment-variable/${pathEncode(nameParts.join("/"))}`,
-          );
+        case "context-variable":
+          await this.api.v2.delete(contextVariableRoute(id));
           return;
-        }
         case "project-variable": {
           const { projectSlug, rest } = splitScoped(id);
           await this.api.v2.delete(
-            `/project/${slugSegment(projectSlug)}/envvar/${pathEncode(rest)}`,
+            `/project/${slugSegment(projectSlug)}/envvar/${idSegment(rest, "variable name")}`,
           );
           return;
         }
         case "schedule":
-          await this.api.v2.delete(`/schedule/${pathEncode(id)}`);
+          await this.api.v2.delete(`/schedule/${idSegment(id, "schedule id")}`);
           return;
-        case "trigger": {
-          const { rest } = splitScoped(id);
-          const [projectId, triggerId] = rest.split("/");
-          await this.api.v2.delete(
-            `/projects/${pathEncode(projectId ?? "")}/triggers/${pathEncode(triggerId ?? "")}`,
-          );
+        case "trigger":
+          await this.api.v2.delete(triggerRoute(id));
           return;
-        }
         case "runner-resource-class":
           // `force` also revokes the class's runner tokens; without it a class
           // that still has tokens cannot be deleted at all.
-          await this.api.v3.delete(`/runner/resource-classes/${pathEncode(id)}`, {
-            query: { force: "true" },
-          });
+          await this.api.v3.delete(
+            `/runner/resource-classes/${idSegment(id, "resource class id")}`,
+            {
+              query: { force: "true" },
+            },
+          );
           return;
         default:
           throw new Error(`CircleCI plugin: cannot delete "${typeId}" from Infrawrench`);
@@ -1401,12 +1410,7 @@ export class CircleCIClient implements PluginClient {
         }
       }
       if (typeId === "trigger" && (actionId === "enable" || actionId === "disable")) {
-        const { rest } = splitScoped(id);
-        const [projectId, triggerId] = rest.split("/");
-        await this.api.v2.patch(
-          `/projects/${pathEncode(projectId ?? "")}/triggers/${pathEncode(triggerId ?? "")}`,
-          { body: { disabled: actionId === "disable" } },
-        );
+        await this.api.v2.patch(triggerRoute(id), { body: { disabled: actionId === "disable" } });
         return;
       }
       throw new Error(`CircleCI plugin: unknown action "${actionId}" for "${typeId}"`);
