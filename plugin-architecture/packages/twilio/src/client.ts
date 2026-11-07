@@ -24,7 +24,7 @@ import {
 } from "@infrawrench/plugin-base";
 import type { ApiForm } from "@infrawrench/plugin-base";
 import type { TwilioContext } from "./api.js";
-import { accountPath, isAccessDenied, messaging, pricing, v2010, verify } from "./api.js";
+import { accountPath, isAccessDenied, messaging, pricing, statusOf, v2010, verify } from "./api.js";
 import type { operations as MessagingOps } from "./api-types.messaging.gen.js";
 import type { operations as V2010Ops } from "./api-types.v2010.gen.js";
 import type { operations as VerifyOps } from "./api-types.verify.gen.js";
@@ -59,7 +59,12 @@ import {
 
 const CACHE_MS = 60_000;
 const CONCURRENCY = 4;
-const MAX_MESSAGING_SERVICES = 200;
+/**
+ * Messaging services whose phone numbers are read, one request each. A number in a
+ * service not read looks unused and is reported as one to release, so past this a
+ * sync fails instead.
+ */
+const MAX_MESSAGING_SERVICES = 1000;
 /**
  * Subaccounts whose phone numbers are listed. Numbers have no account-wide route, so
  * each one costs a request. Past this a sync fails rather than prune the numbers of
@@ -270,13 +275,18 @@ export class TwilioClient implements PluginClient {
         if (isAccessDenied(err)) return [];
         throw err;
       });
-      await mapLimit(services.slice(0, MAX_MESSAGING_SERVICES), CONCURRENCY, async (s) => {
+      const readable = withinListCap(services, MAX_MESSAGING_SERVICES, {
+        vendor: "Twilio",
+        path: "/v1/Services",
+      });
+      await mapLimit(readable, CONCURRENCY, async (s) => {
         if (!s.sid) return;
         const numbers = await messaging(this.ctx)
           .getAll(`/v1/Services/${pathEncode(s.sid)}/PhoneNumbers`, "phone_numbers")
           .catch((err: unknown) => {
-            rethrowIncompleteList(err);
-            return [];
+            // Removed since the list was read, or closed to this credential.
+            if (isAccessDenied(err) || statusOf(err) === 404) return [];
+            throw err;
           });
         out.set(`service:${s.sid}`, {
           sid: s.sid,

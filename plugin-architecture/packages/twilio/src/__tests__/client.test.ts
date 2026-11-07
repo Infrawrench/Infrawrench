@@ -16,7 +16,10 @@ function client(
   const credentials: Record<string, string> = apiKey
     ? { accountSid: MAIN, apiKeySid: KEY, apiKeySecret: "s" }
     : { accountSid: MAIN, authToken: "t" };
-  return { c: hostClient(new TwilioClient(credentials, { http } as never)), calls };
+  return {
+    c: hostClient(new TwilioClient(credentials, { http } as never)),
+    calls,
+  };
 }
 
 describe("credentials", () => {
@@ -52,7 +55,12 @@ describe("a list answered with something else", () => {
     const { c } = client((url) =>
       url.searchParams.get("Page") === "1"
         ? { body: { message: "maintenance" } }
-        : { body: { usage_triggers: [{ sid: "UT1" }], next_page_uri: "/next?Page=1" } },
+        : {
+            body: {
+              usage_triggers: [{ sid: "UT1" }],
+              next_page_uri: "/next?Page=1",
+            },
+          },
     );
     await expect(c.listResources("usage-trigger", ACCOUNT)).rejects.toThrow("is not a list");
   });
@@ -86,7 +94,10 @@ describe("a next link off Twilio's hosts", () => {
 
   it("is refused on the v1 APIs too", async () => {
     const { c, calls } = client(() => ({
-      body: { services: [{ sid: "VA1" }], meta: { next_page_url: "https://evil.example/x" } },
+      body: {
+        services: [{ sid: "VA1" }],
+        meta: { next_page_url: "https://evil.example/x" },
+      },
     }));
     await expect(c.listResources("verify-service", ACCOUNT)).rejects.toThrow(
       "the next page of /v2/Services is on https://evil.example, not https://verify.twilio.com",
@@ -97,11 +108,15 @@ describe("a next link off Twilio's hosts", () => {
   it("is still followed when it stays on the host it came from", async () => {
     const { c, calls } = client((url) =>
       url.searchParams.get("Page") === "1"
-        ? { body: { services: [{ sid: "VA2" }], meta: { next_page_url: null } } }
+        ? {
+            body: { services: [{ sid: "VA2" }], meta: { next_page_url: null } },
+          }
         : {
             body: {
               services: [{ sid: "VA1" }],
-              meta: { next_page_url: "https://verify.twilio.com/v2/Services?Page=1" },
+              meta: {
+                next_page_url: "https://verify.twilio.com/v2/Services?Page=1",
+              },
             },
           },
     );
@@ -113,7 +128,10 @@ describe("a next link off Twilio's hosts", () => {
 describe("a list past its cap", () => {
   it("refuses a list that goes on past 50 pages, rather than prune the rest", async () => {
     const { c, calls } = client(() => ({
-      body: { usage_triggers: [{ sid: "UT1" }], next_page_uri: "/next.json?Page=1" },
+      body: {
+        usage_triggers: [{ sid: "UT1" }],
+        next_page_uri: "/next.json?Page=1",
+      },
     }));
     await expect(c.listResources("usage-trigger", ACCOUNT)).rejects.toThrow(
       "stopped at 50 pages (50 items)",
@@ -156,6 +174,79 @@ describe("a list past its cap", () => {
   });
 });
 
+describe("messaging services behind the phone numbers", () => {
+  const SERVICES = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      sid: `MG${i + 1}`,
+      friendly_name: `Service ${i + 1}`,
+    }));
+  const NUMBER = {
+    sid: "PN1",
+    account_sid: MAIN,
+    phone_number: "+14155550100",
+    type: "local",
+  };
+
+  function services(list: Array<{ sid: string }>, numbersOf: (url: URL) => Reply, apiKey = true) {
+    return client((url) => {
+      if (url.pathname === "/v1/Services") return { body: { services: list, meta: {} } };
+      if (url.pathname.endsWith("/PhoneNumbers")) return numbersOf(url);
+      if (url.pathname.endsWith("/IncomingPhoneNumbers.json")) {
+        return { body: page("incoming_phone_numbers", [NUMBER]) };
+      }
+      return { status: 404 };
+    }, apiKey);
+  }
+
+  it("finds a number's service past the 200 services it used to stop at", async () => {
+    const { c, calls } = services(SERVICES(250), (url) => ({
+      body: {
+        phone_numbers: url.pathname.includes("/MG250/") ? [{ sid: "PN1" }] : [],
+        meta: {},
+      },
+    }));
+    const [number] = await c.listResources("phone-number", ACCOUNT);
+    expect(calls.filter((call) => call.url.pathname.endsWith("/PhoneNumbers"))).toHaveLength(250);
+    expect(number?.fields["messagingServiceSid"]).toBe("MG250");
+    expect(evaluateOrphanRule(PhoneNumberResourceType.orphanRule!, number!.fields)).toBeNull();
+  });
+
+  it("refuses more services than it can read, rather than call their numbers unused", async () => {
+    const { c } = services(SERVICES(1001), () => ({
+      body: { phone_numbers: [], meta: {} },
+    }));
+    await expect(c.listResources("phone-number", ACCOUNT)).rejects.toThrow(
+      "/v1/Services has more than Infrawrench reads. It stopped at 1000 items",
+    );
+  });
+
+  it("fails the sync when a service's numbers cannot be read, rather than call them unused", async () => {
+    const failed = services(SERVICES(1), () => ({
+      status: 500,
+      body: { message: "boom" },
+    }));
+    await expect(failed.c.listResources("phone-number", ACCOUNT)).rejects.toThrow("500");
+    const again = services(SERVICES(1), () => ({
+      status: 429,
+      body: { message: "slow" },
+    }));
+    await expect(again.c.listResources("messaging-service", ACCOUNT)).rejects.toThrow("429");
+  });
+
+  it.each([404, 403])(
+    "reads a %i on a service's numbers as a service with none",
+    async (status) => {
+      const { c } = services(SERVICES(1), () => ({
+        status,
+        body: { message: "no" },
+      }));
+      const [service] = await c.listResources("messaging-service", ACCOUNT);
+      expect(service?.externalId).toBe("MG1");
+      await expect(c.listResources("phone-number", ACCOUNT)).resolves.toHaveLength(1);
+    },
+  );
+});
+
 describe("the subaccount list behind cost data", () => {
   const RANGE = { fromDate: "2026-09-01", toDate: "2026-09-02" };
   const noSpend = page("usage_records", [{ category: "totalprice", price: "0" }]);
@@ -173,7 +264,12 @@ describe("the subaccount list behind cost data", () => {
   it("fails on a list past its cap", async () => {
     const { c } = client((url) =>
       url.pathname === "/2010-04-01/Accounts.json"
-        ? { body: { accounts: [{ sid: SUB }], next_page_uri: "/2010-04-01/Accounts.json?Page=1" } }
+        ? {
+            body: {
+              accounts: [{ sid: SUB }],
+              next_page_uri: "/2010-04-01/Accounts.json?Page=1",
+            },
+          }
         : { body: noSpend },
     );
     await expect(c.fetchCostData(ACCOUNT, RANGE)).rejects.toThrow(
@@ -200,7 +296,12 @@ describe("phone numbers", () => {
       return {
         body: page("accounts", [
           { sid: MAIN, friendly_name: "Main", status: "active" },
-          { sid: SUB, friendly_name: "Acme", status: "active", owner_account_sid: MAIN },
+          {
+            sid: SUB,
+            friendly_name: "Acme",
+            status: "active",
+            owner_account_sid: MAIN,
+          },
         ]),
       };
     }
@@ -213,7 +314,12 @@ describe("phone numbers", () => {
       };
     }
     if (url.pathname === "/v1/Services/MG1/PhoneNumbers") {
-      return { body: { phone_numbers: [{ sid: "PN1" }], meta: { next_page_url: null } } };
+      return {
+        body: {
+          phone_numbers: [{ sid: "PN1" }],
+          meta: { next_page_url: null },
+        },
+      };
     }
     if (url.pathname === `/2010-04-01/Accounts/${MAIN}/IncomingPhoneNumbers.json`) {
       return {
@@ -312,7 +418,12 @@ describe("usage triggers", () => {
       url.pathname.endsWith("/Usage/Records/ThisMonth.json")
         ? {
             body: page("usage_records", [
-              { category: "sms", description: "SMS", price: "3", price_unit: "usd" },
+              {
+                category: "sms",
+                description: "SMS",
+                price: "3",
+                price_unit: "usd",
+              },
               {
                 category: "verify-push",
                 description: "Verify Push",
@@ -359,15 +470,26 @@ describe("usage triggers", () => {
     expect(post.url.pathname).toBe(`/2010-04-01/Accounts/${MAIN}/Usage/Triggers.json`);
     expect(post.headers["Content-Type"]).toBe("application/x-www-form-urlencoded");
     expect(post.form?.get("TriggerValue")).toBe("100");
-    expect(r.fields).toMatchObject({ triggerValue: 100, currentValue: 50, recurring: "monthly" });
+    expect(r.fields).toMatchObject({
+      triggerValue: 100,
+      currentValue: 50,
+      recurring: "monthly",
+    });
     await expect(
-      c.createResource("usage-trigger", ACCOUNT, { triggerValue: "5", callbackUrl: "ftp://x" }),
+      c.createResource("usage-trigger", ACCOUNT, {
+        triggerValue: "5",
+        callbackUrl: "ftp://x",
+      }),
     ).rejects.toThrow(/https/);
   });
 
   it("edits only the fields Twilio allows", () => {
     expect(
-      usageTriggerForm({ friendlyName: "Budget", callbackUrl: "https://x", triggerValue: "9" }),
+      usageTriggerForm({
+        friendlyName: "Budget",
+        callbackUrl: "https://x",
+        triggerValue: "9",
+      }),
     ).toEqual({ FriendlyName: "Budget", CallbackUrl: "https://x" });
   });
 });
@@ -375,7 +497,11 @@ describe("usage triggers", () => {
 describe("subaccounts and balance", () => {
   it("closes a subaccount on delete and suspends via action", async () => {
     const { c, calls } = client((_url, _m, form) => ({
-      body: { sid: SUB, friendly_name: "Acme", status: form?.get("Status") ?? "active" },
+      body: {
+        sid: SUB,
+        friendly_name: "Acme",
+        status: form?.get("Status") ?? "active",
+      },
     }));
     await c.deleteResource("subaccount", `${ACCOUNT}:subaccount:${SUB}`, ACCOUNT);
     await c.invokeAction("subaccount", `${ACCOUNT}:subaccount:${SUB}`, "suspend", ACCOUNT);
@@ -385,7 +511,12 @@ describe("subaccounts and balance", () => {
   it("reports the balance as a credit pot, and a permission gap as CreditAccessError", async () => {
     const ok = client(() => ({ body: { balance: "42.50", currency: "USD" } }));
     expect(await ok.c.fetchCreditBalance(ACCOUNT)).toEqual([
-      { key: "USD", label: "Account balance (USD)", remaining: 42.5, currency: "USD" },
+      {
+        key: "USD",
+        label: "Account balance (USD)",
+        remaining: 42.5,
+        currency: "USD",
+      },
     ]);
     const denied = client(() => ({ status: 403, body: { message: "no", code: 20003 } }), true);
     await expect(denied.c.fetchCreditBalance(ACCOUNT)).rejects.toBeInstanceOf(CreditAccessError);
@@ -430,7 +561,9 @@ describe("metrics", () => {
       "Call minutes",
       "Spend",
     ]);
-    expect(series.find((s) => s.label === "Spend")).toMatchObject({ unit: "USD" });
+    expect(series.find((s) => s.label === "Spend")).toMatchObject({
+      unit: "USD",
+    });
     expect(series.find((s) => s.label === "Call minutes")?.points[0]?.value).toBe(20);
   });
 });
