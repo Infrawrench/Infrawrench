@@ -4,6 +4,7 @@ import {
   type ApiListItem,
   type ApiResponse,
   type HttpHostServices,
+  requireListPage,
 } from "@infrawrench/plugin-base";
 import type { operations, paths } from "./api-types.gen.js";
 
@@ -56,6 +57,21 @@ export function httpStatusOf(err: unknown): number | undefined {
 export function meansNoneForThisProject(err: unknown): boolean {
   const status = httpStatusOf(err);
   return status === 401 || status === 403 || status === 404;
+}
+
+/**
+ * The list an answer names. The document marks every one of these keys optional and
+ * gives each response no other field, so `{}` is an empty list it allows. Anything
+ * else without the key is a wrapped error or a renamed field, which must not read as
+ * no rows: a sync prunes what a list stops returning.
+ */
+export function listIn<K extends string, T>(
+  page: { [P in K]?: T[] | null } | null | undefined,
+  key: K,
+  path: string,
+): T[] {
+  if (page && !Array.isArray(page) && Object.keys(page).length === 0) return [];
+  return requireListPage(page?.[key], { vendor: "Deepgram", path, key });
 }
 
 /** Named by the widest response: `mip_opt_out` only comes from a single read. */

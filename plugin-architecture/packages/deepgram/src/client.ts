@@ -33,6 +33,7 @@ import {
 } from "@infrawrench/plugin-base";
 import {
   createDeepgramApis,
+  listIn,
   meansNoneForThisProject,
   type CreateKeyBody,
   type DeepgramApi,
@@ -309,12 +310,14 @@ export class DeepgramClient implements PluginClient {
       const projects = await this.fetchProjects();
       return this.acrossProjects(projects, async (project) => {
         const data = await this.api.get(`/v1/projects/${pathEncode(project.project_id)}/balances`);
-        return (data.balances ?? []).map((b): CreditBalance => ({
-          key: `${project.project_id}:${b.balance_id}`,
-          label: `${project.name ?? project.project_id} balance`,
-          remaining: Number(b.amount ?? 0),
-          currency: (b.units ?? "usd").toUpperCase(),
-        }));
+        return listIn(data, "balances", "/v1/projects/{project_id}/balances").map(
+          (b): CreditBalance => ({
+            key: `${project.project_id}:${b.balance_id}`,
+            label: `${project.name ?? project.project_id} balance`,
+            remaining: Number(b.amount ?? 0),
+            currency: (b.units ?? "usd").toUpperCase(),
+          }),
+        );
       });
     });
   }
@@ -322,7 +325,7 @@ export class DeepgramClient implements PluginClient {
   /** https://developers.deepgram.com/reference/management-api/projects/list */
   private async fetchProjects(): Promise<DgProject[]> {
     const data = await this.api.get("/v1/projects");
-    return data.projects ?? [];
+    return listIn(data, "projects", "/v1/projects");
   }
 
   private async listProjects(accountId: string): Promise<ResourceInstance[]> {
@@ -333,25 +336,33 @@ export class DeepgramClient implements PluginClient {
   /** https://developers.deepgram.com/reference/management-api/keys/list */
   private async listApiKeys(accountId: string, projectId: string): Promise<ResourceInstance[]> {
     const data = await this.api.get(`/v1/projects/${pathEncode(projectId)}/keys`);
-    return (data.api_keys ?? []).map((entry) => this.mapApiKey(accountId, projectId, entry));
+    return listIn(data, "api_keys", "/v1/projects/{project_id}/keys").map((entry) =>
+      this.mapApiKey(accountId, projectId, entry),
+    );
   }
 
   /** https://developers.deepgram.com/reference/management-api/members/list */
   private async listMembers(accountId: string, projectId: string): Promise<ResourceInstance[]> {
     const data = await this.api.get(`/v1/projects/${pathEncode(projectId)}/members`);
-    return (data.members ?? []).map((m) => this.mapMember(accountId, projectId, m));
+    return listIn(data, "members", "/v1/projects/{project_id}/members").map((m) =>
+      this.mapMember(accountId, projectId, m),
+    );
   }
 
   /** https://developers.deepgram.com/reference/management-api/invitations/list */
   private async listInvites(accountId: string, projectId: string): Promise<ResourceInstance[]> {
     const data = await this.api.get(`/v1/projects/${pathEncode(projectId)}/invites`);
-    return (data.invites ?? []).map((i) => this.mapInvite(accountId, projectId, i));
+    return listIn(data, "invites", "/v1/projects/{project_id}/invites").map((i) =>
+      this.mapInvite(accountId, projectId, i),
+    );
   }
 
   /** https://developers.deepgram.com/reference/management-api/balances/list */
   private async listBalances(accountId: string, projectId: string): Promise<ResourceInstance[]> {
     const data = await this.api.get(`/v1/projects/${pathEncode(projectId)}/balances`);
-    return (data.balances ?? []).map((b) => this.mapBalance(accountId, projectId, b));
+    return listIn(data, "balances", "/v1/projects/{project_id}/balances").map((b) =>
+      this.mapBalance(accountId, projectId, b),
+    );
   }
 
   /**
@@ -379,9 +390,14 @@ export class DeepgramClient implements PluginClient {
         if (!meansNoneForThisProject(err)) throw err;
         return this.api.get("/v1/models");
       });
+    const path = "/v1/projects/{project_id}/models";
+    // Either kind can be absent, since a project may be entitled to only one, but
+    // an answer with neither has to be a list by `listIn`'s rule.
+    const stt = data.tts === undefined ? listIn(data, "stt", path) : (data.stt ?? []);
+    const tts = data.stt === undefined ? listIn(data, "tts", path) : (data.tts ?? []);
     return [
-      ...(data.stt ?? []).map((m) => this.mapModel(accountId, projectId, m, "stt")),
-      ...(data.tts ?? []).map((m) => this.mapModel(accountId, projectId, m, "tts")),
+      ...stt.map((m) => this.mapModel(accountId, projectId, m, "stt")),
+      ...tts.map((m) => this.mapModel(accountId, projectId, m, "tts")),
     ];
   }
 

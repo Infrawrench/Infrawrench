@@ -285,6 +285,22 @@ describe("fetchDeepgramCostData", () => {
     );
   });
 
+  it("does not read a breakdown without its results as no spend", async () => {
+    const { http } = makeHttp((url) =>
+      url.endsWith("/v1/projects")
+        ? { body: projectList(PROJECT_A) }
+        : { body: { start: "2026-08-01", end: "2026-09-01", renamed: [bucket()] } },
+    );
+
+    await expect(fetchDeepgramCostData({ ...ctx, http }, RANGE)).rejects.toThrow("is not a list");
+  });
+
+  it("does not read a project list without its key as no projects", async () => {
+    const { http } = makeHttp(() => ({ body: { renamed: [] } }));
+
+    await expect(fetchDeepgramCostData({ ...ctx, http }, RANGE)).rejects.toThrow("is not a list");
+  });
+
   it("refuses to guess a day when amounts arrive without a bucket start", async () => {
     const { http } = singleProject([{ dollars: 5, grouping: { line_item: "streaming::nova-3" } }]);
 

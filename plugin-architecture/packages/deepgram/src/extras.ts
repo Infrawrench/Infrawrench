@@ -18,6 +18,7 @@ import type {
   PurchaseOrder,
   RequestFilters,
 } from "./api.js";
+import { listIn } from "./api.js";
 
 /**
  * The project-scoped Deepgram surfaces added after the original plugin:
@@ -177,23 +178,29 @@ export class DeepgramExtras {
     switch (typeId) {
       case AGENT_CONFIG_TYPE: {
         const data = await this.api.get(`/v1/projects/${p}/agents`);
-        return (data.agents ?? []).map((a) => this.mapAgent(accountId, projectId, a));
+        return listIn(data, "agents", "/v1/projects/{project_id}/agents").map((a) =>
+          this.mapAgent(accountId, projectId, a),
+        );
       }
       case AGENT_VARIABLE_TYPE: {
         const data = await this.api.get(`/v1/projects/${p}/agent-variables`);
-        return (data.variables ?? []).map((v) => this.mapVariable(accountId, projectId, v));
+        return listIn(data, "variables", "/v1/projects/{project_id}/agent-variables").map((v) =>
+          this.mapVariable(accountId, projectId, v),
+        );
       }
       case PURCHASE_TYPE: {
-        const data = await this.api.get(`/v1/projects/${p}/purchases`, {
-          query: { limit: 1000 },
-        });
-        return (data.orders ?? []).map((o) => this.mapPurchase(accountId, projectId, o));
+        const data = await this.api.get(`/v1/projects/${p}/purchases`, { query: { limit: 1000 } });
+        return listIn(data, "orders", "/v1/projects/{project_id}/purchases").map((o) =>
+          this.mapPurchase(accountId, projectId, o),
+        );
       }
       case DISTRIBUTION_CREDENTIAL_TYPE: {
         const data = await this.api.get(`/v1/projects/${p}/self-hosted/distribution/credentials`);
-        return (data.distribution_credentials ?? []).map((c) =>
-          this.mapCredential(accountId, projectId, c),
-        );
+        return listIn(
+          data,
+          "distribution_credentials",
+          "/v1/projects/{project_id}/self-hosted/distribution/credentials",
+        ).map((c) => this.mapCredential(accountId, projectId, c));
       }
       default:
         throw new Error(`Deepgram plugin: unknown resource type "${typeId}"`);

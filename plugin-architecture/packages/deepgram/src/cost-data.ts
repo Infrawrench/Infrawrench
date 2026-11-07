@@ -47,8 +47,8 @@
  */
 
 import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
-import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
-import { createDeepgramApis, httpStatusOf, type DeepgramApi } from "./api.js";
+import { CostSetupError, pathEncode, requireListPage } from "@infrawrench/plugin-base";
+import { createDeepgramApis, httpStatusOf, listIn, type DeepgramApi } from "./api.js";
 
 const CONSOLE_HELP = {
   label: "Open the Deepgram Console",
@@ -105,7 +105,7 @@ function isoDay(value: string | undefined): string {
 async function listProjectIds(api: DeepgramApi): Promise<string[]> {
   try {
     const list = await api.get("/v1/projects");
-    return (list.projects ?? [])
+    return listIn(list, "projects", "/v1/projects")
       .map((p) => p.project_id)
       .filter((id): id is string => typeof id === "string" && id.length > 0);
   } catch (err) {
@@ -150,7 +150,12 @@ export async function fetchDeepgramCostData(
     if (!data) continue;
     succeeded++;
 
-    for (const result of data.results ?? []) {
+    // `results` is required here, unlike the lists `listIn` reads.
+    for (const result of requireListPage(data.results, {
+      vendor: "Deepgram",
+      path: "/v1/projects/{project_id}/billing/breakdown",
+      key: "results",
+    })) {
       sawResult = true;
       const dollars = result.dollars;
       // Absent amount == not available. Never coerced to 0.

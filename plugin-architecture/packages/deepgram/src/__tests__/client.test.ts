@@ -1406,6 +1406,56 @@ describe("a read that cannot say it has every row", () => {
     expect(pots.map((p) => p.key)).toEqual(["p-a:b1"]);
   });
 
+  it.each([
+    ["project", "/v1/projects"],
+    ["invite", "/invites"],
+    ["member", "/members"],
+    ["api-key", "/keys"],
+    ["balance", "/balances"],
+    ["agent-config", "/agents"],
+    ["agent-variable", "/agent-variables"],
+    ["purchase", "/purchases"],
+    ["distribution-credential", "/credentials"],
+    ["model", "/models"],
+  ])("%s: an answer without its list key is not read as an empty list", async (type, path) => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/projects") && path !== "/v1/projects") {
+        return jsonResponse(TWO_PROJECTS);
+      }
+      return jsonResponse({ renamed: [{ id: "x" }] });
+    });
+    await expect(client().listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads a body of nothing as not a list", async () => {
+    refuseFetch();
+    const request = hostHttp((url) =>
+      url.endsWith("/v1/projects") ? { body: JSON.stringify(TWO_PROJECTS) } : { body: "" },
+    );
+    const hosted = hostClient(new DeepgramClient({ apiKey: "k" }, { http: { request } }));
+    await expect(hosted.listResources("invite", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["an empty object", {}],
+    ["a null list", { invites: null }],
+  ])("reads %s as the empty list the document allows", async (_, body) => {
+    installFetch((url) =>
+      url.endsWith("/v1/projects") ? jsonResponse(TWO_PROJECTS) : jsonResponse(body),
+    );
+    await expect(client().listResources("invite", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("accepts a model answer that only has one kind", async () => {
+    installFetch((url) =>
+      url.endsWith("/v1/projects")
+        ? jsonResponse(PROJECT_LIST)
+        : jsonResponse({ stt: MODEL_LIST.stt }),
+    );
+    const models = await client().listResources("model", ACCOUNT);
+    expect(models).toHaveLength(MODEL_LIST.stt.length);
+  });
+
   it("does not replace a project's models with the public catalogue on a 500", async () => {
     installFetch((url) => {
       if (url.endsWith("/v1/projects")) return jsonResponse(PROJECT_LIST);
