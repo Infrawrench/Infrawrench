@@ -440,14 +440,6 @@
       "why": "Passed through from a form field; our select offers the valid values and GitLab validates whatever else arrives, so the plugin does not hold its own copy of the enum."
     },
     {
-      "pointer": "/components/schemas/postApiV4UserRunnersRequest/properties/tag_list",
-      "value": {
-        "type": "string",
-        "nullable": true
-      },
-      "why": "Typed as an array but described as comma-separated, which is what the plugin has always sent here. PUT /runners/:id sends an array; remove this if create moves to one too."
-    },
-    {
       "pointer": "/components/schemas/postApiV4UserRunnersRequest/required",
       "value": ["runner_type"],
       "why": "group_id and project_id are each required only for their own runner_type, and sending both is refused; the document cannot say that."

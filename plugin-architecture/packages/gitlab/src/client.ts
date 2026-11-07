@@ -1851,12 +1851,13 @@ export class GitLabClient implements PluginClient {
           const [kind, id] = (fields["scope"] ?? "").split(":");
           if ((kind !== "group" && kind !== "project") || !id)
             fail("pick where to register the runner");
+          const tags = parseListish(fields["tagList"]);
           const created = await this.api.post("/user/runners", {
             body: compact({
               runner_type: kind === "group" ? "group_type" : "project_type",
               ...(kind === "group" ? { group_id: Number(id) } : { project_id: Number(id) }),
               description: fields["description"],
-              tag_list: parseListish(fields["tagList"]).join(","),
+              tag_list: tags.length > 0 ? tags : undefined,
               run_untagged:
                 fields["runUntagged"] === undefined ? undefined : truthy(fields["runUntagged"]),
               access_level: fields["accessLevel"],
@@ -2124,7 +2125,7 @@ export class GitLabClient implements PluginClient {
         case "runner": {
           const body = compactKeepEmpty({
             description: text("description"),
-            tag_list: has("tagList") ? commaList(fields["tagList"]) : undefined,
+            tag_list: has("tagList") ? parseListish(fields["tagList"]) : undefined,
             paused: bool("paused"),
             run_untagged: bool("runUntagged"),
             locked: bool("locked"),

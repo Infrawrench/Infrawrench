@@ -275,6 +275,39 @@ describe("listing", () => {
 });
 
 describe("edits", () => {
+  describe("runner tags", () => {
+    const route = (call: Call) => {
+      if (call.method === "POST") return { id: 5, token: "glrt-x" };
+      if (call.url.pathname.endsWith("/jobs")) return [];
+      return { id: 5 };
+    };
+
+    it.each([
+      ["a comma list", "ruby, mysql"],
+      ["a string-list value", '["ruby","mysql"]'],
+    ])("sends %s as an array when creating and editing", async (_name, tagList) => {
+      const { c, calls } = client(route);
+      await c.createResource("runner", ACC, { scope: "project:7", tagList });
+      await c.updateResource("runner", "acc:runner:5", ACC, { tagList });
+      const sent = calls
+        .filter((x) => x.method !== "GET")
+        .map((x) => (x.body as { tag_list?: string[] }).tag_list);
+      expect(sent).toEqual([
+        ["ruby", "mysql"],
+        ["ruby", "mysql"],
+      ]);
+    });
+
+    it("sends no tags on a create without any, and clears them on an edit", async () => {
+      const { c, calls } = client(route);
+      await c.createResource("runner", ACC, { scope: "project:7", tagList: "" });
+      await c.updateResource("runner", "acc:runner:5", ACC, { tagList: "" });
+      const [create, edit] = calls.filter((x) => x.method !== "GET");
+      expect(create!.body).not.toHaveProperty("tag_list");
+      expect(edit!.body).toMatchObject({ tag_list: [] });
+    });
+  });
+
   it("re-protects a branch on the same project path it unprotected", async () => {
     const { c, calls } = client((call) => {
       if (call.method === "DELETE") return { status: 204 };

@@ -3646,7 +3646,7 @@ export interface components {
             run_untagged?: boolean;
             /** @enum {string} */
             runner_type: "instance_type" | "group_type" | "project_type";
-            tag_list?: string | null;
+            tag_list?: string[] | null;
             /** Format: date-time */
             token_expires_at?: string | null;
             /** Format: date-time */
