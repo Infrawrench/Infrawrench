@@ -101,6 +101,21 @@ function csv(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+/** The id a write acts on. A blank one would reach the collection's route, not one object. */
+function writeId(resourceId: string): string {
+  const id = externalIdOf(resourceId);
+  if (!id) throw new Error(`Axiom plugin: refusing to act on "${resourceId}" without an id`);
+  return id;
+}
+
+/** A field's id is `<dataset>/<name>`, and only the name may hold a slash. */
+function fieldKey(id: string): { dataset: string; name: string } {
+  const [dataset = "", ...rest] = id.split("/");
+  const name = rest.join("/");
+  if (!dataset || !name) throw new Error(`Axiom plugin: refusing field "${id}" without an id`);
+  return { dataset, name };
+}
+
 /**
  * A list answered whole. No body is not "none", because the sync would prune all of it.
  * An explicit JSON `null` is, as this plugin has always read it: a Go service can answer
@@ -514,8 +529,7 @@ export class AxiomClient implements PluginClient {
           );
         }
         case "field": {
-          const [dataset = "", ...rest] = id.split("/");
-          const name = rest.join("/");
+          const { dataset, name } = fieldKey(id);
           const f = await this.api.get(
             `/datasets/${pathEncode(dataset)}/fields/${pathEncode(name)}`,
           );
@@ -1400,7 +1414,7 @@ export class AxiomClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       const enc = pathEncode(id);
       switch (typeId) {
         case "organization": {
@@ -1431,8 +1445,7 @@ export class AxiomClient implements PluginClient {
           return mapDataset(accountId, d, org?.defaultEdgeDeployment);
         }
         case "field": {
-          const [dataset = "", ...rest] = id.split("/");
-          const name = rest.join("/");
+          const { dataset, name } = fieldKey(id);
           const path = `/datasets/${pathEncode(dataset)}/fields/${pathEncode(name)}` as const;
           const current = await this.api.get(path);
           const f = await this.api.put(path, {
@@ -1572,7 +1585,7 @@ export class AxiomClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       const enc = pathEncode(id);
       switch (typeId) {
         case "dataset":
@@ -1580,10 +1593,8 @@ export class AxiomClient implements PluginClient {
           this.datasetCache = undefined;
           return;
         case "field": {
-          const [dataset = "", ...rest] = id.split("/");
-          await this.api.delete(
-            `/datasets/${pathEncode(dataset)}/fields/${pathEncode(rest.join("/"))}`,
-          );
+          const { dataset, name } = fieldKey(id);
+          await this.api.delete(`/datasets/${pathEncode(dataset)}/fields/${pathEncode(name)}`);
           return;
         }
         case "virtual-field":
@@ -1630,7 +1641,7 @@ export class AxiomClient implements PluginClient {
     accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       const enc = pathEncode(id);
       const later = (hours: number) => new Date(Date.now() + hours * 3600_000).toISOString();
       if (typeId === "dataset") {

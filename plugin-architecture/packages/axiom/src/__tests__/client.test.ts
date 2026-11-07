@@ -802,3 +802,28 @@ describe("lists answered whole", () => {
     expect(await listing("/v2/views", { body: null }).listResources("view", ACCOUNT)).toEqual([]);
   });
 });
+
+describe("blank ids", () => {
+  const cases: Array<[string, (c: ReturnType<typeof client>["c"]) => Promise<unknown>]> = [
+    ["delete a dataset", (c) => c.deleteResource("dataset", "")],
+    ["delete a monitor", (c) => c.deleteResource("monitor", "acc:monitor:")],
+    ["delete a field with no name", (c) => c.deleteResource("field", "acc:field:logs/")],
+    ["delete a field with no dataset", (c) => c.deleteResource("field", "acc:field:/f")],
+    ["edit a notifier", (c) => c.updateResource("notifier", "", ACCOUNT, { name: "n" })],
+    ["edit a field", (c) => c.updateResource("field", "acc:field:logs/", ACCOUNT, { unit: "s" })],
+    ["run an action", (c) => c.invokeAction("dataset", "", "trim-7d", ACCOUNT)],
+  ];
+  for (const [name, run] of cases) {
+    it(`refuses to ${name}`, async () => {
+      const { c, calls } = client(() => ({ body: {} }));
+      await expect(run(c)).rejects.toThrow(/without an id/);
+      expect(calls).toEqual([]);
+    });
+  }
+
+  it("still reaches a field whose name holds a slash", async () => {
+    const { c, calls } = client(() => ({ body: {} }));
+    await c.deleteResource("field", "acc:field:logs/a/b");
+    expect(calls[0]?.url.pathname).toBe("/v2/datasets/logs/fields/a%2Fb");
+  });
+});
