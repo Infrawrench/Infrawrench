@@ -18,6 +18,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/audio/transcriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createTranscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/batches": {
         parameters: {
             query?: never;
@@ -918,6 +934,11 @@ export interface components {
             /** @enum {string} */
             object: "list";
         };
+        /**
+         * @default json
+         * @enum {string}
+         */
+        AudioResponseFormat: "json" | "text" | "srt" | "verbose_json" | "vtt" | "diarized_json";
         AuditLog: {
             actor?: components["schemas"]["AuditLogActor"] | null;
             "api_key.created"?: {
@@ -1476,6 +1497,58 @@ export interface components {
             interval: "month";
             notification_channel: components["schemas"]["SpendAlertNotificationChannel"];
             threshold_amount: number;
+        };
+        CreateTranscriptionRequest: {
+            chunking_strategy?: ("auto" | components["schemas"]["VadConfig"]) | null;
+            /** Format: binary */
+            file: string;
+            include?: components["schemas"]["TranscriptionInclude"][];
+            keywords?: string[];
+            known_speaker_names?: string[];
+            known_speaker_references?: string[];
+            language?: string;
+            languages?: string[];
+            model: string | ("whisper-1" | "gpt-transcribe" | "gpt-4o-transcribe" | "gpt-4o-mini-transcribe" | "gpt-4o-mini-transcribe-2025-12-15" | "gpt-4o-transcribe-diarize");
+            prompt?: string;
+            response_format?: components["schemas"]["AudioResponseFormat"];
+            stream?: boolean | null;
+            /** @default 0 */
+            temperature?: number;
+            /**
+             * @default [
+             *       "segment"
+             *     ]
+             */
+            timestamp_granularities?: ("word" | "segment")[];
+        };
+        CreateTranscriptionResponseDiarizedJson: {
+            /** Format: double */
+            duration: number;
+            segments: components["schemas"]["TranscriptionDiarizedSegment"][];
+            /** @enum {string} */
+            task: "transcribe";
+            text: string;
+            usage?: components["schemas"]["TranscriptTextUsageTokens"] | components["schemas"]["TranscriptTextUsageDuration"];
+        };
+        CreateTranscriptionResponseJson: {
+            languages?: components["schemas"]["TranscriptionLanguage"][];
+            logprobs?: {
+                bytes?: number[];
+                logprob?: number;
+                token?: string;
+            }[];
+            text: string;
+            usage?: components["schemas"]["TranscriptTextUsageTokens"] | components["schemas"]["TranscriptTextUsageDuration"];
+        };
+        CreateTranscriptionResponseStreamEvent: components["schemas"]["TranscriptTextSegmentEvent"] | components["schemas"]["TranscriptTextDeltaEvent"] | components["schemas"]["TranscriptTextDoneEvent"];
+        CreateTranscriptionResponseVerboseJson: {
+            /** Format: double */
+            duration: number;
+            language: string;
+            segments?: components["schemas"]["TranscriptionSegment"][];
+            text: string;
+            usage?: components["schemas"]["TranscriptTextUsageDuration"];
+            words?: components["schemas"]["TranscriptionWord"][];
         };
         CreateVectorStoreRequest: {
             chunking_strategy?: components["schemas"]["AutoChunkingStrategyRequestParam"] | components["schemas"]["StaticChunkingStrategyRequestParam"];
@@ -2313,6 +2386,104 @@ export interface components {
             /** @enum {string} */
             type: "static";
         };
+        TranscriptionDiarizedSegment: {
+            /** Format: double */
+            end: number;
+            id: string;
+            speaker: string;
+            /** Format: double */
+            start: number;
+            text: string;
+            /** @enum {string} */
+            type: "transcript.text.segment";
+        };
+        /** @enum {string} */
+        TranscriptionInclude: "logprobs";
+        TranscriptionLanguage: {
+            code: string;
+        };
+        TranscriptionSegment: {
+            /** Format: float */
+            avg_logprob: number;
+            /** Format: float */
+            compression_ratio: number;
+            /** Format: double */
+            end: number;
+            id: number;
+            /** Format: float */
+            no_speech_prob: number;
+            seek: number;
+            /** Format: double */
+            start: number;
+            /** Format: float */
+            temperature: number;
+            text: string;
+            tokens: number[];
+        };
+        TranscriptionWord: {
+            /** Format: double */
+            end: number;
+            /** Format: double */
+            start: number;
+            word: string;
+        };
+        TranscriptTextDeltaEvent: {
+            delta: string;
+            logprobs?: {
+                bytes?: number[];
+                logprob?: number;
+                token?: string;
+            }[];
+            segment_id?: string;
+            /** @enum {string} */
+            type: "transcript.text.delta";
+        };
+        TranscriptTextDoneEvent: {
+            languages?: components["schemas"]["TranscriptionLanguage"][];
+            logprobs?: {
+                bytes?: number[];
+                logprob?: number;
+                token?: string;
+            }[];
+            text: string;
+            /** @enum {string} */
+            type: "transcript.text.done";
+            usage?: components["schemas"]["TranscriptTextUsageTokens"];
+        };
+        TranscriptTextSegmentEvent: {
+            /** Format: double */
+            end: number;
+            id: string;
+            speaker: string;
+            /** Format: double */
+            start: number;
+            text: string;
+            /** @enum {string} */
+            type: "transcript.text.segment";
+        };
+        TranscriptTextUsageDuration: {
+            /** Format: double */
+            seconds: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "TranscriptTextUsageDuration";
+        };
+        TranscriptTextUsageTokens: {
+            input_token_details?: {
+                audio_tokens?: number;
+                text_tokens?: number;
+            };
+            input_tokens: number;
+            output_tokens: number;
+            total_tokens: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "TranscriptTextUsageTokens";
+        };
         UpdateOrganizationSpendLimitBody: {
             /** @enum {string} */
             currency: "USD";
@@ -2554,6 +2725,16 @@ export interface components {
             role_id?: string | null;
             technical_level?: string | null;
         };
+        VadConfig: {
+            /** @default 300 */
+            prefix_padding_ms?: number;
+            /** @default 200 */
+            silence_duration_ms?: number;
+            /** @default 0.5 */
+            threshold?: number;
+            /** @enum {string} */
+            type: "server_vad";
+        };
         VectorStoreExpirationAfter: {
             /** @enum {string} */
             anchor: "last_active_at";
@@ -2646,6 +2827,31 @@ export interface operations {
                     "audio/pcm": string;
                     "audio/wav": string;
                     "text/event-stream": components["schemas"]["CreateSpeechResponseStreamEvent"];
+                };
+            };
+        };
+    };
+    createTranscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["CreateTranscriptionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateTranscriptionResponseJson"] | components["schemas"]["CreateTranscriptionResponseDiarizedJson"] | components["schemas"]["CreateTranscriptionResponseVerboseJson"];
+                    "text/event-stream": components["schemas"]["CreateTranscriptionResponseStreamEvent"];
+                    "text/plain": string;
                 };
             };
         };

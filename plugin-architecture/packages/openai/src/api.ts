@@ -113,6 +113,9 @@ export type ServiceAccountBody = ApiBody<operations["update-project-service-acco
 export type SpendAlertBody = ApiBody<operations["create-organization-spend-alert"]>;
 export type SpeechBody = ApiBody<operations["createSpeech"]>;
 
+/** Which member answers depends on the `response_format` the model was asked for. */
+export type TranscriptionAnswer = AnyMember<ApiResponse<operations["createTranscription"]>>;
+
 /** One page's paging parameters, in the order they go on the wire. */
 export interface PageQuery {
   limit: number;

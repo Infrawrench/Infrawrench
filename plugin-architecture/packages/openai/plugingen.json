@@ -47,6 +47,7 @@
   ],
   "paths": {
     "/audio/speech": ["post"],
+    "/audio/transcriptions": ["post"],
     "/batches": ["get", "post"],
     "/batches/{batch_id}": ["get"],
     "/batches/{batch_id}/cancel": ["post"],

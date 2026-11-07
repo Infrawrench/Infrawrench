@@ -1047,3 +1047,33 @@ describe("audit logs", () => {
     expect(logs.text).toContain("Data controls");
   });
 });
+
+describe("transcription language (#563)", () => {
+  const clip = Buffer.from(new Uint8Array([1, 2, 3, 4])).toString("base64");
+  const transcribe = () =>
+    client().transcribeAudio("model", `${ACCOUNT}:model:gpt-transcribe`, ACCOUNT, {
+      audioBase64: clip,
+      mimeType: "audio/webm",
+      modelId: "gpt-transcribe",
+    });
+
+  it("reads the code out of the documented languages objects", async () => {
+    installFetch(() => jsonResponse({ text: "hi", languages: [{ code: "en" }, { code: "fr" }] }));
+    expect((await transcribe()).language).toBe("en");
+  });
+
+  it("still reads a language that comes as a plain string", async () => {
+    installFetch(() => jsonResponse({ text: "hi", languages: ["de"] }));
+    expect((await transcribe()).language).toBe("de");
+  });
+
+  it("prefers verbose_json's language", async () => {
+    installFetch(() => jsonResponse({ text: "hi", language: "english", duration: 1 }));
+    expect((await transcribe()).language).toBe("english");
+  });
+
+  it("has no language when none could be detected", async () => {
+    installFetch(() => jsonResponse({ text: "hi", languages: [] }));
+    expect(await transcribe()).not.toHaveProperty("language");
+  });
+});

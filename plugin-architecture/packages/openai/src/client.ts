@@ -70,6 +70,7 @@ import {
   type SpendAlert,
   type SpendAlertBody,
   type SpendLimit,
+  type TranscriptionAnswer,
   type UsageBucket,
   type UsageEndpointName,
   type UsageFilterQuery,
@@ -97,15 +98,15 @@ import {
 
 const PLUGIN_ID = "openai";
 
-/** The reads of a hand-written call: see `sttTranscribe`. */
-interface TranscriptionResponse {
-  text?: string;
-  language?: string;
-  languages?: string[];
-  duration?: number;
-  words?: Array<{ word?: string; start?: number; end?: number }>;
-  segments?: Array<{ text?: string; start?: number; end?: number; speaker?: string }>;
-  usage?: { type?: string; seconds?: number; input_tokens?: number; total_tokens?: number };
+/**
+ * `verbose_json` has a string `language`, `json` has `languages` of `{ code }`, and
+ * `diarized_json` has neither. Nothing has confirmed the objects on a real answer, so a
+ * plain string there still reads.
+ */
+function detectedLanguage(result: TranscriptionAnswer): string | undefined {
+  if (result.language) return result.language;
+  const first: { code?: string } | string | undefined = result.languages?.[0];
+  return (typeof first === "string" ? first : first?.code) || undefined;
 }
 
 // ---- Small helpers --------------------------------------------------------
@@ -3341,14 +3342,15 @@ export class OpenAIClient implements PluginClient {
             text: segment.text,
             ...(typeof segment.start === "number" ? { start: segment.start } : {}),
             ...(typeof segment.end === "number" ? { end: segment.end } : {}),
-            ...(segment.speaker ? { speaker: segment.speaker } : {}),
+            ...("speaker" in segment && segment.speaker ? { speaker: segment.speaker } : {}),
           });
         }
       }
 
-      const duration =
-        typeof result.duration === "number" ? result.duration : result.usage?.seconds;
-      const language = result.language ?? result.languages?.[0];
+      const usage = result.usage;
+      const usedSeconds = usage && "seconds" in usage ? usage.seconds : undefined;
+      const duration = typeof result.duration === "number" ? result.duration : usedSeconds;
+      const language = detectedLanguage(result);
 
       const summary = [
         model,
@@ -3422,7 +3424,7 @@ export class OpenAIClient implements PluginClient {
     model: string,
     responseFormat: string,
     withTimestamps: boolean,
-  ): Promise<TranscriptionResponse> {
+  ): Promise<TranscriptionAnswer> {
     const bytes = base64ToBytes(payload.audioBase64);
     const form = new FormData();
     form.append(
@@ -3455,7 +3457,7 @@ export class OpenAIClient implements PluginClient {
       );
     }
 
-    const result: TranscriptionResponse = await res.json();
+    const result: TranscriptionAnswer = await res.json();
     return result;
   }
 }
