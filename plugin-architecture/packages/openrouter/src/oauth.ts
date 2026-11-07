@@ -83,7 +83,7 @@ export async function exchangeOpenRouterCode(
     const error = json["error"];
     const message =
       (error && typeof error === "object" && "message" in error
-        ? String((error as { message: unknown }).message)
+        ? String(error.message)
         : typeof error === "string"
           ? error
           : "") || `OpenRouter's key exchange returned HTTP ${res.status}`;
