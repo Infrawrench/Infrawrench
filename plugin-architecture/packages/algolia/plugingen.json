@@ -102,6 +102,15 @@
       }
     },
     {
+      "name": "abtesting-v3",
+      "specUrl": "https://raw.githubusercontent.com/algolia/api-clients-automation/main/specs/bundled/abtesting-v3.yml",
+      "paths": {
+        "/3/abtests": ["get", "post"],
+        "/3/abtests/{id}": ["get", "delete"],
+        "/3/abtests/{id}/stop": ["post"]
+      }
+    },
+    {
       "name": "analytics",
       "specUrl": "https://raw.githubusercontent.com/algolia/api-clients-automation/main/specs/bundled/analytics.yml",
       "paths": {

@@ -1,6 +1,13 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { keyFingerprint } from "./api.js";
-import type { AlAbTest, AlApiKey, AlCrawler, AlIndex, AlSettings } from "./types.js";
+import type {
+  AlAbTest,
+  AlAbTestVariant,
+  AlApiKey,
+  AlCrawler,
+  AlIndex,
+  AlSettings,
+} from "./types.js";
 
 export const PLUGIN_ID = "algolia";
 export const APPLICATION_EXTERNAL_ID = "application";
@@ -141,6 +148,28 @@ export function mapApiKey(k: AlApiKey, accountId: string): ResourceInstance {
   });
 }
 
+// The document spells a metric both ways: `clickThroughRate` in its metric example and its
+// create example, `click_through_rate` among its primary metrics. It lists no result names.
+const CLICK_METRICS = ["clickThroughRate", "click_through_rate"];
+const CONVERSION_METRICS = ["conversionRate", "conversion_rate"];
+
+function metricOf(variant: AlAbTestVariant | undefined, names: string[]) {
+  return variant?.metrics?.find((m) => names.includes(m.name));
+}
+
+/**
+ * The significance `/2` reports, where 0.95 and up is significant, from what `/3` reports
+ * for the variant under test: a p-value, or for a Bayesian test the chance it is better.
+ */
+function significanceOf(variant: AlAbTestVariant | undefined, names: string[]) {
+  const metric = metricOf(variant, names);
+  if (metric?.pValue !== undefined) return Math.round((1 - metric.pValue) * 10000) / 10000;
+  return metric?.bayesian?.probabilityToBeBetter;
+}
+
+const clickRate = (variant: AlAbTestVariant | undefined) =>
+  variant?.clickThroughRate ?? metricOf(variant, CLICK_METRICS)?.value;
+
 export function mapAbTest(t: AlAbTest, accountId: string): ResourceInstance {
   const v = t.variants ?? [];
   const fields: Fields = {
@@ -152,16 +181,15 @@ export function mapAbTest(t: AlAbTest, accountId: string): ResourceInstance {
     trafficB: v[1]?.trafficPercentage ?? 0,
     endAt: t.endAt ?? "",
   };
-  if (t.clickSignificance !== undefined && t.clickSignificance !== null) {
-    fields["clickSignificance"] = t.clickSignificance;
-  }
-  if (t.conversionSignificance !== undefined && t.conversionSignificance !== null) {
-    fields["conversionSignificance"] = t.conversionSignificance;
-  }
-  if (v[0]?.clickThroughRate != null)
-    fields["ctrA"] = Math.round(v[0].clickThroughRate * 10000) / 100;
-  if (v[1]?.clickThroughRate != null)
-    fields["ctrB"] = Math.round(v[1].clickThroughRate * 10000) / 100;
+  const clickSignificance = t.clickSignificance ?? significanceOf(v[1], CLICK_METRICS);
+  if (clickSignificance != null) fields["clickSignificance"] = clickSignificance;
+  const conversionSignificance =
+    t.conversionSignificance ?? significanceOf(v[1], CONVERSION_METRICS);
+  if (conversionSignificance != null) fields["conversionSignificance"] = conversionSignificance;
+  const ctrA = clickRate(v[0]);
+  if (ctrA != null) fields["ctrA"] = Math.round(ctrA * 10000) / 100;
+  const ctrB = clickRate(v[1]);
+  if (ctrB != null) fields["ctrB"] = Math.round(ctrB * 10000) / 100;
   if (t.createdAt) fields["createdAt"] = t.createdAt;
   if (t.stoppedAt) fields["stoppedAt"] = t.stoppedAt;
   return makeInstance({

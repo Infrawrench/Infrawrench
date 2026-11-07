@@ -3,6 +3,10 @@ import type { ApiListItem } from "@infrawrench/plugin-base";
 import type {
   components as AbTesting,
   operations as AbTestingOps,
+} from "./api-types.abtesting-v3.gen.js";
+import type {
+  components as AbTestingV2,
+  operations as AbTestingV2Ops,
 } from "./api-types.abtesting.gen.js";
 import type { components as Crawler, operations as CrawlerOps } from "./api-types.crawler.gen.js";
 import type { components as Search, operations as SearchOps } from "./api-types.search.gen.js";
@@ -33,12 +37,24 @@ export type AlApiKeyBody = Search["schemas"]["apiKey"];
 
 export type AlAcl = Search["schemas"]["acl"];
 
+/** A variant from either route: `/3` reports `metrics`, `/2` a field per rate. */
+export type AlAbTestVariant = Partial<AbTesting["schemas"]["variant"]> &
+  Partial<Pick<AbTestingV2["schemas"]["variant"], "clickThroughRate">>;
+
 /** `abTestID` identifies a test; one just created has no statistics to report yet. */
 type FetchedAbTest = ApiListItem<AbTestingOps["listABTests"], "abtests">;
+type FetchedAbTestV2 = ApiListItem<AbTestingV2Ops["listABTests"], "abtests">;
 export type AlAbTest = Pick<FetchedAbTest, "abTestID"> &
-  Partial<Omit<FetchedAbTest, "variants">> & {
-    variants?: Partial<AbTesting["schemas"]["variant"]>[];
+  Partial<Omit<FetchedAbTest, "variants" | "configuration">> &
+  Partial<Pick<FetchedAbTestV2, "clickSignificance" | "conversionSignificance">> & {
+    variants?: AlAbTestVariant[];
   };
+
+/** A page of A/B tests from either route. */
+export interface AlAbTestPage {
+  abtests: AlAbTest[] | null;
+  total: number;
+}
 
 /**
  * A crawler's detail, or as little as its row in the list when that fails.

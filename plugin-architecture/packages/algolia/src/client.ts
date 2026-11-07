@@ -18,6 +18,7 @@ import {
   ListTruncatedError,
   pathEncode,
   requireListPage,
+  reportUnreadListPart,
   rethrowIncompleteList,
   unencodedSegment,
   withMetricsCapability,
@@ -45,6 +46,7 @@ import {
 import { ACL_LABELS, ACLS } from "./resource-types.js";
 import type {
   AlAbTest,
+  AlAbTestPage,
   AlAcl,
   AlApiKey,
   AlApiKeyBody,
@@ -64,6 +66,10 @@ const INDEX_PAGE_SIZE = 1000;
 const MAX_INDEX_PAGES = 50;
 const AB_TEST_PAGE_SIZE = 100;
 const MAX_AB_TEST_PAGES = 100;
+/** What `/3` answers for a request it turned down, which `/2` may still take. */
+const AB_TEST_V3_REFUSED = [400, 404, 405, 422];
+/** `POST /3/abtests` requires these; they are the rates a test here reports. */
+const AB_TEST_METRICS = [{ name: "clickThroughRate" }, { name: "conversionRate" }];
 // The document's largest `itemsPerPage` and last `page`: the route serves no more than this.
 const CRAWLER_PAGE_SIZE = 100;
 const MAX_CRAWLER_PAGES = 100;
@@ -296,19 +302,48 @@ export class AlgoliaClient implements PluginClient {
     return requireListPage(res?.keys, { vendor: VENDOR, path, key: "keys", page: res });
   }
 
+  /**
+   * The document's `/3` route, or the deprecated `/2` one when `/3` turns the request down,
+   * which it does before doing anything. No live call has confirmed `/3` for every
+   * application, so `/2` stays until the document drops it, which fails plugingen's check.
+   * Anything else, a 5xx above all, may have taken effect, so it is never sent twice.
+   */
+  private abTestRoute<T>(v3: () => Promise<T>, v2: () => Promise<T>): Promise<T> {
+    return v3().catch((e: unknown) => {
+      if (isStatus(e, ...AB_TEST_V3_REFUSED)) return v2();
+      throw e;
+    });
+  }
+
   /** Every A/B test: `offset` and `limit`, up to the `total` each page reports. */
   private async abTestRows(): Promise<AlAbTest[]> {
-    const path = "/2/abtests";
+    let path: "/3/abtests" | "/2/abtests" = "/3/abtests";
+    const v3 = (offset: number): Promise<AlAbTestPage> =>
+      this.api.abTests.get("/3/abtests", { query: { offset, limit: AB_TEST_PAGE_SIZE } });
+    const v2 = (offset: number): Promise<AlAbTestPage> =>
+      this.api.abTestsV2.get("/2/abtests", { query: { offset, limit: AB_TEST_PAGE_SIZE } });
+    const first = () =>
+      this.abTestRoute(
+        () => v3(0),
+        () => {
+          path = "/2/abtests";
+          return v2(0);
+        },
+      ).catch((e: unknown) => {
+        // The document's answer for a plan without A/B testing: there are none to read.
+        if (isStatus(e, 402)) return null;
+        // The analytics ACL missing, or neither route answering, says nothing about what
+        // exists, so the stored tests stay. A host that keeps no track shows the refusal.
+        if (isStatus(e, 403, ...AB_TEST_V3_REFUSED) && reportUnreadListPart({ idPrefixes: [""] }))
+          return null;
+        throw e;
+      });
     const out: AlAbTest[] = [];
     for (let page = 0; page < MAX_AB_TEST_PAGES; page++) {
-      const res = await this.api.abTests
-        .get(path, { query: { offset: out.length, limit: AB_TEST_PAGE_SIZE } })
-        .catch((e: unknown) => {
-          // A/B testing needs a plan that includes it and the analytics ACL. Past the
-          // first page these statuses are a failed read, which must not read as none.
-          if (page === 0 && isStatus(e, 400, 401, 403, 404)) return null;
-          throw e;
-        });
+      const res =
+        page === 0
+          ? await first()
+          : await (path === "/3/abtests" ? v3(out.length) : v2(out.length));
       if (res === null) return [];
       const rows = requireListPage(res?.abtests, {
         vendor: VENDOR,
@@ -449,7 +484,13 @@ export class AlgoliaClient implements PluginClient {
         case "api-key":
           return mapApiKey(await this.keyByFingerprint(id), accountId);
         case "ab-test":
-          return mapAbTest(await this.api.abTests.get(`/2/abtests/${pathEncode(id)}`), accountId);
+          return mapAbTest(
+            await this.abTestRoute<AlAbTest>(
+              () => this.api.abTests.get(`/3/abtests/${pathEncode(id)}`),
+              () => this.api.abTestsV2.get(`/2/abtests/${pathEncode(id)}`),
+            ),
+            accountId,
+          );
         case "crawler":
           return mapCrawler(
             id,
@@ -809,16 +850,27 @@ export class AlgoliaClient implements PluginClient {
           const endAt = new Date(str(fields["endAt"]));
           if (Number.isNaN(endAt.getTime()) || endAt.getTime() <= Date.now())
             throw new Error("Choose an end date in the future.");
-          const res = await this.api.abTests.post("/2/abtests", {
-            body: {
-              name: str(fields["name"]),
-              variants: [
-                { index: a, trafficPercentage: 100 - pct },
-                { index: b, trafficPercentage: pct },
-              ],
-              endAt: endAt.toISOString(),
-            },
-          });
+          const test = {
+            name: str(fields["name"]),
+            variants: [
+              { index: a, trafficPercentage: 100 - pct },
+              { index: b, trafficPercentage: pct },
+            ],
+            endAt: endAt.toISOString(),
+          };
+          const res = await this.abTestRoute(
+            () =>
+              this.api.abTests.post("/3/abtests", {
+                body: {
+                  ...test,
+                  metrics: AB_TEST_METRICS,
+                  // Left out it means Bayesian, which also requires a primary metric. This
+                  // keeps the p-value results a test on `/2` has always had.
+                  configuration: { method: "frequentist" },
+                },
+              }),
+            () => this.api.abTestsV2.post("/2/abtests", { body: test }),
+          );
           return mapAbTest(
             {
               abTestID: res.abTestID,
@@ -929,7 +981,10 @@ export class AlgoliaClient implements PluginClient {
           return;
         }
         case "ab-test":
-          await this.api.abTests.delete(`/2/abtests/${pathEncode(id)}`);
+          await this.abTestRoute<unknown>(
+            () => this.api.abTests.delete(`/3/abtests/${pathEncode(id)}`),
+            () => this.api.abTestsV2.delete(`/2/abtests/${pathEncode(id)}`),
+          );
           return;
         case "crawler":
           await this.api.crawler.delete(`/1/crawlers/${pathEncode(id)}`);
@@ -950,7 +1005,10 @@ export class AlgoliaClient implements PluginClient {
         return;
       }
       if (typeId === "ab-test" && actionId === "stop") {
-        await this.api.abTests.post(`/2/abtests/${pathEncode(id)}/stop`);
+        await this.abTestRoute<unknown>(
+          () => this.api.abTests.post(`/3/abtests/${pathEncode(id)}/stop`),
+          () => this.api.abTestsV2.post(`/2/abtests/${pathEncode(id)}/stop`),
+        );
         return;
       }
       if (

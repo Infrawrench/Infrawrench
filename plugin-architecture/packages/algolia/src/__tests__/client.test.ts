@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AlgoliaApiError, keyFingerprint } from "../api.js";
 import { AlgoliaClient, parseAcl, settingsPatch, usageSeries } from "../client.js";
 import { mapApiKey, mapCrawler, mapIndex } from "../mappers.js";
@@ -267,7 +267,8 @@ describe("documented field names", () => {
 
 describe("lists that cannot say they are complete", () => {
   const CRAWLERS = "crawler.algolia.com/api/1/crawlers";
-  const ABTESTS = "analytics.algolia.com/2/abtests";
+  const ABTESTS = "analytics.algolia.com/3/abtests";
+  const ABTESTS_V2 = "analytics.algolia.com/2/abtests";
   const INDEXES = `${READ}/1/indexes`;
   const crawlerCreds = { crawlerUserId: "user", crawlerApiKey: "key" };
   const on = (http: ReturnType<typeof fakeHttp>, path: string) =>
@@ -379,18 +380,74 @@ describe("lists that cannot say they are complete", () => {
     await expect(later.c.listResources("ab-test", ACCOUNT)).rejects.toThrow("is not a list");
   });
 
-  it("reads A/B testing being unavailable as none, but only on the first page", async () => {
+  it("reads A/B testing not being on the plan as none, but only on the first page", async () => {
     const first = client();
-    first.http.route("GET", ABTESTS, respond(403, { message: "Not on this plan" }));
+    first.http.route("GET", ABTESTS, respond(402, { message: "Not on this plan" }));
     await expect(first.c.listResources("ab-test", ACCOUNT)).resolves.toEqual([]);
+    expect(on(first.http, ABTESTS_V2)).toHaveLength(0);
 
     const later = client();
     later.http.route("GET", ABTESTS, (call: { url: URL }) =>
       call.url.searchParams.get("offset") === "100"
-        ? respond(403, { message: "Not on this plan" })
+        ? respond(402, { message: "Not on this plan" })
         : { abtests: tests(100), count: 100, total: 120 },
     );
     await expect(later.c.listResources("ab-test", ACCOUNT)).rejects.toThrow("Not on this plan");
+  });
+
+  it("reads A/B tests from /2 when /3 refuses the route, and stays there for later pages", async () => {
+    const { http, c } = client();
+    http.route("GET", ABTESTS, respond(404, { message: "Not found" }));
+    http.route("GET", ABTESTS_V2, (call: { url: URL }) => {
+      const offset = Number(call.url.searchParams.get("offset") ?? 0);
+      return { abtests: tests(offset === 0 ? 100 : 20, offset), count: 100, total: 120 };
+    });
+    await expect(c.listResources("ab-test", ACCOUNT)).resolves.toHaveLength(120);
+    expect(on(http, ABTESTS)).toHaveLength(1);
+    expect(on(http, ABTESTS_V2)).toHaveLength(2);
+  });
+
+  describe("an A/B test list nothing can read", () => {
+    const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    });
+
+    it("keeps the stored tests when both routes answer 404, rather than reading none", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const { http, c } = client();
+      await expect(c.listResources("ab-test", ACCOUNT)).resolves.toEqual([]);
+      expect(on(http, ABTESTS)).toHaveLength(1);
+      expect(on(http, ABTESTS_V2)).toHaveLength(1);
+      expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    });
+
+    it("keeps the stored tests quietly when the key lacks the ACL", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const { http, c } = client();
+      http.route("GET", ABTESTS, respond(403, { message: "Method not allowed" }));
+      await expect(c.listResources("ab-test", ACCOUNT)).resolves.toEqual([]);
+      expect(on(http, ABTESTS_V2)).toHaveLength(0);
+      expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    });
+
+    it("shows the refusal where a host keeps no track", async () => {
+      const { http, c } = client();
+      http.route("GET", ABTESTS, respond(403, { message: "Method not allowed" }));
+      await expect(c.listResources("ab-test", ACCOUNT)).rejects.toThrow("Method not allowed");
+    });
+
+    it.each([401, 429, 500])("fails the type on a %i, so the stored tests stay", async (status) => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const { http, c } = client();
+      http.route("GET", ABTESTS, respond(status, { message: "try again" }));
+      await expect(c.listResources("ab-test", ACCOUNT)).rejects.toThrow("try again");
+      expect(on(http, ABTESTS_V2)).toHaveLength(0);
+      expect(unread).not.toHaveBeenCalled();
+    });
   });
 
   it("walks crawlers by page until the reported total", async () => {
@@ -443,5 +500,152 @@ describe("lists that cannot say they are complete", () => {
         : { items: rows(100), total: 105 },
     );
     await expect(later.c.listResources("crawler", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+});
+
+describe("A/B tests on /3", () => {
+  const V3 = "analytics.algolia.com/3/abtests";
+  const V2 = "analytics.algolia.com/2/abtests";
+  const ID = `${ACCOUNT}:ab-test:7`;
+  const on = (http: ReturnType<typeof fakeHttp>, method: string, path: string) =>
+    http.calls.filter(
+      (call) => call.method === method && `${call.url.host}${call.url.pathname}` === path,
+    );
+  const form = {
+    name: "Ranking",
+    indexA: "a",
+    indexB: "b",
+    trafficB: "25",
+    endAt: "2099-01-01T00:00:00.000Z",
+  };
+  const created = { abTestID: 7, index: "a", taskID: 1 };
+
+  it("maps a test's variant metrics, in either documented spelling", async () => {
+    const { http, c } = client();
+    http.route("GET", `${V3}/7`, {
+      abTestID: 7,
+      name: "Ranking",
+      status: "active",
+      variants: [
+        { index: "a", trafficPercentage: 75, metrics: [{ name: "clickThroughRate", value: 0.2 }] },
+        {
+          index: "b",
+          trafficPercentage: 25,
+          metrics: [
+            { name: "click_through_rate", value: 0.25, pValue: 0.04 },
+            {
+              name: "conversionRate",
+              value: 0.1,
+              bayesian: { probabilityToBeBetter: 0.91 },
+            },
+          ],
+        },
+      ],
+    });
+    const test = await c.getResource("ab-test", ID, ACCOUNT);
+    expect(test.fields).toMatchObject({
+      indexA: "a",
+      indexB: "b",
+      trafficB: 25,
+      ctrA: 20,
+      ctrB: 25,
+      clickSignificance: 0.96,
+      conversionSignificance: 0.91,
+    });
+    expect(on(http, "GET", `${V2}/7`)).toHaveLength(0);
+  });
+
+  it("still maps what /2 reports", async () => {
+    const { http, c } = client();
+    http.route("GET", `${V2}/7`, {
+      abTestID: 7,
+      name: "Ranking",
+      status: "stopped",
+      clickSignificance: 0.97,
+      conversionSignificance: 0.5,
+      variants: [
+        { index: "a", trafficPercentage: 75, clickThroughRate: 0.2 },
+        { index: "b", trafficPercentage: 25, clickThroughRate: 0.25 },
+      ],
+    });
+    const test = await c.getResource("ab-test", ID, ACCOUNT);
+    expect(test.fields).toMatchObject({
+      status: "stopped",
+      ctrA: 20,
+      ctrB: 25,
+      clickSignificance: 0.97,
+      conversionSignificance: 0.5,
+    });
+    expect(on(http, "GET", `${V3}/7`)).toHaveLength(1);
+  });
+
+  it("creates on /3 with the metrics it requires", async () => {
+    const { http, c } = client();
+    http.route("POST", V3, created);
+    await expect(c.createResource("ab-test", ACCOUNT, form)).resolves.toMatchObject({
+      externalId: "7",
+    });
+    expect(on(http, "POST", V3)[0]!.body).toEqual({
+      name: "Ranking",
+      endAt: "2099-01-01T00:00:00.000Z",
+      variants: [
+        { index: "a", trafficPercentage: 75 },
+        { index: "b", trafficPercentage: 25 },
+      ],
+      metrics: [{ name: "clickThroughRate" }, { name: "conversionRate" }],
+      configuration: { method: "frequentist" },
+    });
+    expect(on(http, "POST", V2)).toHaveLength(0);
+  });
+
+  it.each([400, 404, 422])("creates on /2 when /3 refuses with a %i", async (status) => {
+    const { http, c } = client();
+    http.route("POST", V3, respond(status, { message: "no" }));
+    http.route("POST", V2, created);
+    await expect(c.createResource("ab-test", ACCOUNT, form)).resolves.toMatchObject({
+      externalId: "7",
+    });
+    expect(on(http, "POST", V2)[0]!.body).toEqual({
+      name: "Ranking",
+      endAt: "2099-01-01T00:00:00.000Z",
+      variants: [
+        { index: "a", trafficPercentage: 75 },
+        { index: "b", trafficPercentage: 25 },
+      ],
+    });
+  });
+
+  it("does not create twice when /3 fails in a way that may have created it", async () => {
+    const { http, c } = client();
+    http.route("POST", V3, respond(500, { message: "broken" }));
+    http.route("POST", V2, created);
+    await expect(c.createResource("ab-test", ACCOUNT, form)).rejects.toThrow("broken");
+    expect(on(http, "POST", V2)).toHaveLength(0);
+  });
+
+  it("stops and deletes on /3, and only reaches /2 when /3 refuses", async () => {
+    const { http, c } = client();
+    http.route("POST", `${V3}/7/stop`, created);
+    http.route("DELETE", `${V3}/7`, created);
+    await c.invokeAction("ab-test", ID, "stop");
+    await c.deleteResource("ab-test", ID);
+    expect(on(http, "POST", `${V2}/7/stop`)).toHaveLength(0);
+    expect(on(http, "DELETE", `${V2}/7`)).toHaveLength(0);
+
+    const old = client();
+    old.http.route("POST", `${V2}/7/stop`, created);
+    old.http.route("DELETE", `${V2}/7`, created);
+    await old.c.invokeAction("ab-test", ID, "stop");
+    await old.c.deleteResource("ab-test", ID);
+    expect(on(old.http, "POST", `${V3}/7/stop`)).toHaveLength(1);
+    expect(on(old.http, "POST", `${V2}/7/stop`)).toHaveLength(1);
+    expect(on(old.http, "DELETE", `${V2}/7`)).toHaveLength(1);
+  });
+
+  it("does not stop on /2 after /3 fails in a way that may have stopped it", async () => {
+    const { http, c } = client();
+    http.route("POST", `${V3}/7/stop`, respond(503, { message: "broken" }));
+    await expect(c.invokeAction("ab-test", ID, "stop")).rejects.toThrow("broken");
+    expect(on(http, "POST", `${V2}/7/stop`)).toHaveLength(0);
   });
 });

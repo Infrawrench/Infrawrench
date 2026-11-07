@@ -5,7 +5,8 @@ import type {
   ParamValue,
 } from "@infrawrench/plugin-base";
 import { createApiClient, utf8ToBase64 } from "@infrawrench/plugin-base";
-import type { paths as AbTestingPaths } from "./api-types.abtesting.gen.js";
+import type { paths as AbTestingV3Paths } from "./api-types.abtesting-v3.gen.js";
+import type { paths as AbTestingV2Paths } from "./api-types.abtesting.gen.js";
 import type { paths as AnalyticsPaths } from "./api-types.analytics.gen.js";
 import type { paths as CrawlerPaths } from "./api-types.crawler.gen.js";
 import type { paths as MonitoringPaths } from "./api-types.monitoring.gen.js";
@@ -144,7 +145,9 @@ function serializeQuery(query: Record<string, ParamValue>): string {
 export class AlgoliaApi {
   /** Search API with retry across Algolia's documented fallback hosts. */
   readonly search: ApiClient<SearchPaths>;
-  readonly abTests: ApiClient<AbTestingPaths>;
+  readonly abTests: ApiClient<AbTestingV3Paths>;
+  /** The deprecated routes, for an application `/3/abtests` refuses. */
+  readonly abTestsV2: ApiClient<AbTestingV2Paths>;
   readonly analytics: ApiClient<AnalyticsPaths>;
   readonly usage: ApiClient<UsagePaths>;
   readonly monitoring: ApiClient<MonitoringPaths>;
@@ -189,7 +192,8 @@ export class AlgoliaApi {
     const analyticsHost = region
       ? `https://analytics.${region}.algolia.com`
       : "https://analytics.algolia.com";
-    this.abTests = clientFor<AbTestingPaths>(() => [analyticsHost], keyHeaders(creds.apiKey));
+    this.abTests = clientFor<AbTestingV3Paths>(() => [analyticsHost], keyHeaders(creds.apiKey));
+    this.abTestsV2 = clientFor<AbTestingV2Paths>(() => [analyticsHost], keyHeaders(creds.apiKey));
     this.analytics = clientFor<AnalyticsPaths>(() => [analyticsHost], keyHeaders(creds.apiKey));
 
     this.usage = clientFor<UsagePaths>(
