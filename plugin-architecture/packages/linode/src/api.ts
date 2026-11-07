@@ -13,7 +13,17 @@
  * back out of prose is unreliable (see KNOWLEDGE.md, GCP section).
  */
 
-import type { HostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  unencodedSegment,
+  type ApiClient,
+  type ApiClientOptions,
+  type ApiResponse,
+  type HostServices,
+  type HttpHostServices,
+  type NoSlashString,
+} from "@infrawrench/plugin-base";
+import type { operations, paths } from "./api-types.gen.js";
 
 export const LINODE_API_BASE = "https://api.linode.com/v4";
 /** Akamai Cloud Pulse metrics live on their own host and version. */
@@ -28,10 +38,14 @@ export class LinodeApiError extends Error {
   }
 }
 
+interface ErrorBody {
+  errors?: Array<{ field?: string; reason?: string }>;
+}
+
 /** Linode errors are `{ errors: [{ field?, reason }] }`; flatten them for a message. */
 function summariseErrorBody(body: string): string {
   try {
-    const parsed = JSON.parse(body) as { errors?: Array<{ field?: string; reason?: string }> };
+    const parsed: ErrorBody = JSON.parse(body);
     if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
       return parsed.errors
         .map((e) => (e.field ? `${e.field}: ${e.reason ?? ""}` : (e.reason ?? "")))
@@ -44,34 +58,19 @@ function summariseErrorBody(body: string): string {
 }
 
 export function statusOf(err: unknown): number | undefined {
-  if (err && typeof err === "object" && "status" in err) {
-    const s = (err as { status?: unknown }).status;
-    if (typeof s === "number") return s;
+  if (err && typeof err === "object" && "status" in err && typeof err.status === "number") {
+    return err.status;
   }
   return undefined;
 }
 
-export interface Page<T> {
-  data: T[];
-  page: number;
-  pages: number;
-  results: number;
-}
+/** An operation's response, by its `operationId`. */
+export type LinodeResponse<Op extends keyof operations> = ApiResponse<operations[Op]>;
 
-export interface RequestOptions {
-  /** Serialised into the `X-Filter` header. */
-  filter?: Record<string, unknown>;
-  query?: Record<string, string | number | boolean | undefined>;
-}
-
-export interface LinodeApi {
-  get<T>(path: string, opts?: RequestOptions): Promise<T>;
-  send<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T>;
-  /** Every page of a collection. */
-  all<T>(path: string, opts?: RequestOptions): Promise<T[]>;
-  /** One request against the Cloud Pulse metrics host with a service-scoped token. */
-  monitor<T>(path: string, token: string, body: unknown): Promise<T>;
-}
+export type LinodeApi = ApiClient<paths> & {
+  /** The Cloud Pulse metrics host, with a service-scoped token rather than the account's. */
+  monitor(token: string): ApiClient<paths>;
+};
 
 export interface LinodeApiConfig {
   token: string;
@@ -83,110 +82,108 @@ export interface LinodeApiConfig {
 
 const PAGE_SIZE = 500;
 
-function buildUrl(base: string, path: string, query?: RequestOptions["query"]): string {
-  const url = `${base}${path}`;
-  if (!query) return url;
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query)) {
-    if (v !== undefined && v !== "") params.set(k, String(v));
-  }
-  const qs = params.toString();
-  if (!qs) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}${qs}`;
+/**
+ * Every page of a collection. `fetchPage` is one typed `api.get` with the query it
+ * is handed. `getAll` is not used because this loop goes by the `pages` a response
+ * reports and nothing else: it runs on past an empty or short page.
+ */
+export async function allPages<Item>(
+  fetchPage: (query: { page: number; page_size: number }) => Promise<{
+    data?: Item[];
+    pages?: number;
+  }>,
+): Promise<Item[]> {
+  const out: Item[] = [];
+  let page = 1;
+  let pages = 1;
+  do {
+    const res = await fetchPage({ page, page_size: PAGE_SIZE });
+    out.push(...(res.data ?? []));
+    pages = Math.max(1, Number(res.pages ?? 1));
+    page += 1;
+    // Bounded: 200 pages of 500 is 100,000 objects, far beyond any account.
+  } while (page <= pages && page <= 200);
+  return out;
+}
+
+/** The `X-Filter` header, which carries a JSON object. */
+export function xFilter(filter: object): { headers: Record<string, string> } {
+  return { headers: { "X-Filter": JSON.stringify(filter) } };
+}
+
+/**
+ * A path segment as the plugin has always sent it. Ids reach it unencoded, and a
+ * composite id that did not split gives `undefined`, which is written out.
+ */
+export function segment(value: string | number | undefined): NoSlashString {
+  return unencodedSegment(String(value));
+}
+
+/**
+ * The host's HTTP service where there is one and `fetch` where there is not, with
+ * two habits callers rely on: `Content-Type` directly after `Accept`, and a 2xx with
+ * no body read as an empty object, so a caller's `res.data` finds nothing rather
+ * than throwing.
+ */
+function transport(http: HttpHostServices | undefined): HttpHostServices {
+  const send: HttpHostServices["request"] = http
+    ? (req) => http.request(req)
+    : async ({ url, method, headers, body }) => {
+        const res = await fetch(url, {
+          method,
+          headers,
+          // The client only ever sends JSON text.
+          ...(typeof body === "string" ? { body } : {}),
+        });
+        return { status: res.status, headers: {}, body: await res.text() };
+      };
+  return {
+    request: async (req) => {
+      const { Accept: accept, "Content-Type": contentType, ...rest } = req.headers;
+      const res = await send({
+        ...req,
+        headers: {
+          ...(accept !== undefined ? { Accept: accept } : {}),
+          ...(contentType !== undefined ? { "Content-Type": contentType } : {}),
+          ...rest,
+        },
+      });
+      const empty = res.status >= 200 && res.status < 300 && (res.status === 204 || !res.body);
+      return empty
+        ? { status: 200, headers: {}, body: "{}" }
+        : { status: res.status, headers: {}, body: res.body };
+    },
+  };
 }
 
 export function createLinodeApi(config: LinodeApiConfig): LinodeApi {
-  const base = config.baseUrl ?? LINODE_API_BASE;
-  const monitorBase = config.monitorBaseUrl ?? LINODE_MONITOR_BASE;
-  const http = config.services?.http;
-
-  async function request<T>(
-    method: string,
-    url: string,
-    errorPath: string,
-    headers: Record<string, string>,
-    body?: unknown,
-  ): Promise<T> {
-    const merged: Record<string, string> = {
-      Accept: "application/json",
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...headers,
-    };
-    const payload = body !== undefined ? JSON.stringify(body) : undefined;
-    if (http) {
-      const res = await http.request({
-        url,
-        method,
-        headers: merged,
-        ...(payload !== undefined ? { body: payload } : {}),
-        ...(config.caCert ? { caCert: config.caCert } : {}),
-      });
-      if (res.status < 200 || res.status >= 300) {
-        throw new LinodeApiError(res.status, errorPath, res.body);
-      }
-      if (res.status === 204 || !res.body) return {} as T;
-      return JSON.parse(res.body) as T;
-    }
-    const res = await fetch(url, {
-      method,
-      headers: merged,
-      ...(payload !== undefined ? { body: payload } : {}),
-    });
-    if (!res.ok) throw new LinodeApiError(res.status, errorPath, await res.text());
-    const text = await res.text();
-    if (!text) return {} as T;
-    return JSON.parse(text) as T;
-  }
-
-  // An empty token sends no Authorization header: the public price
-  // endpoints (`/linode/types` and friends) answer anonymously, which is what
-  // lets the price catalog work without a connected account.
-  const auth: Record<string, string> = config.token
-    ? { Authorization: `Bearer ${config.token}` }
-    : {};
-
-  const api: LinodeApi = {
-    get<T>(path: string, opts?: RequestOptions) {
-      const headers: Record<string, string> = { ...auth };
-      if (opts?.filter) headers["X-Filter"] = JSON.stringify(opts.filter);
-      return request<T>("GET", buildUrl(base, path, opts?.query), path, headers);
-    },
-    send<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown) {
-      return request<T>(
-        method,
-        `${base}${path}`,
-        path,
-        auth,
-        body ?? (method === "DELETE" ? undefined : {}),
-      );
-    },
-    async all<T>(path: string, opts?: RequestOptions) {
-      const out: T[] = [];
-      let page = 1;
-      let pages = 1;
-      do {
-        const res = await api.get<Page<T>>(path, {
-          ...opts,
-          query: { ...(opts?.query ?? {}), page, page_size: PAGE_SIZE },
-        });
-        out.push(...(res.data ?? []));
-        pages = Math.max(1, Number(res.pages ?? 1));
-        page += 1;
-        // Bounded: 200 pages of 500 is 100,000 objects, far beyond any account.
-      } while (page <= pages && page <= 200);
-      return out;
-    },
-    monitor<T>(path: string, token: string, body: unknown) {
-      return request<T>(
-        "POST",
-        `${monitorBase}${path}`,
-        path,
-        { Authorization: `Bearer ${token}` },
-        body,
-      );
-    },
+  const shared: Omit<ApiClientOptions, "baseUrl" | "headers"> = {
+    vendor: "Linode",
+    http: transport(config.services?.http),
+    ...(config.caCert ? { caCert: config.caCert } : {}),
+    contentType: "with-body",
+    httpError: ({ status, path, body }) => new LinodeApiError(status, path, body),
   };
-  return api;
+  const monitorBase = config.monitorBaseUrl ?? LINODE_MONITOR_BASE;
+  return {
+    ...createApiClient<paths>({
+      ...shared,
+      baseUrl: config.baseUrl ?? LINODE_API_BASE,
+      headers: {
+        Accept: "application/json",
+        // An empty token sends no Authorization header: the public price
+        // endpoints (`/linode/types` and friends) answer anonymously, which is what
+        // lets the price catalog work without a connected account.
+        ...(config.token ? { Authorization: `Bearer ${config.token}` } : {}),
+      },
+    }),
+    monitor: (token) =>
+      createApiClient<paths>({
+        ...shared,
+        baseUrl: monitorBase,
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+      }),
+  };
 }
 
 /** Numeric/string id at the end of a host resource id (`acct:type:123`). */

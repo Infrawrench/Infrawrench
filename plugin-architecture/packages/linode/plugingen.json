@@ -1,0 +1,1828 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/linode/linode-api-docs/development/openapi.json",
+  "pathPrefix": "/{apiVersion}",
+  "patches": [
+    {
+      "pointer": "/paths/~1regions/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1linode~1types/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1volumes~1types/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1nodebalancers~1types/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1lke~1types/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1object-storage~1types/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1network-transfer~1prices/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1lke~1clusters/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1lke~1clusters~1{clusterId}~1pools/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1lke~1clusters~1{clusterId}~1api-endpoints/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1lke~1versions/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1object-storage~1buckets/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1monitor~1services/get/parameters",
+      "value": [
+        {
+          "name": "page",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "page_size",
+          "in": "query",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "why": "A paginated collection like every other, but the document lists no paging parameters here. The plugin walks it by page."
+    },
+    {
+      "pointer": "/paths/~1linode~1instances~1{linodeId}~1backups~1enable/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "Documented with no body. The plugin has always sent an empty JSON object here, and a migration keeps its requests as they were."
+    },
+    {
+      "pointer": "/paths/~1linode~1instances~1{linodeId}~1backups~1cancel/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "Documented with no body. The plugin has always sent an empty JSON object here, and a migration keeps its requests as they were."
+    },
+    {
+      "pointer": "/paths/~1linode~1instances~1{linodeId}~1shutdown/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "Documented with no body. The plugin has always sent an empty JSON object here, and a migration keeps its requests as they were."
+    },
+    {
+      "pointer": "/paths/~1volumes~1{volumeId}~1detach/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "Documented with no body. The plugin has always sent an empty JSON object here, and a migration keeps its requests as they were."
+    },
+    {
+      "pointer": "/paths/~1lke~1clusters~1{clusterId}~1recycle/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "Documented with no body. The plugin has always sent an empty JSON object here, and a migration keeps its requests as they were."
+    },
+    {
+      "pointer": "/paths/~1lke~1clusters~1{clusterId}~1pools~1{poolId}~1recycle/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "Documented with no body. The plugin has always sent an empty JSON object here, and a migration keeps its requests as they were."
+    },
+    {
+      "pointer": "/paths/~1networking~1reserved~1ips",
+      "why": "Reserved IPv4 addresses are in the API (techdocs changelog, 2026-07-01) but not yet in this document. Fields as the reference describes them.",
+      "value": {
+        "get": {
+          "operationId": "get-reserved-ips",
+          "parameters": [
+            {
+              "name": "page",
+              "in": "query",
+              "schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "name": "page_size",
+              "in": "query",
+              "schema": {
+                "type": "integer"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": ["address"],
+                          "properties": {
+                            "address": {
+                              "type": "string"
+                            },
+                            "region": {
+                              "type": "string"
+                            },
+                            "rdns": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "linode_id": {
+                              "type": "integer",
+                              "nullable": true
+                            },
+                            "assigned_entity": {
+                              "type": "object",
+                              "nullable": true,
+                              "properties": {
+                                "id": {
+                                  "type": "integer"
+                                },
+                                "label": {
+                                  "type": "string"
+                                },
+                                "type": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "page": {
+                        "type": "integer"
+                      },
+                      "pages": {
+                        "type": "integer"
+                      },
+                      "results": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "operationId": "post-reserved-ip",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "region": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["address"],
+                    "properties": {
+                      "address": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "type": "string"
+                      },
+                      "rdns": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "linode_id": {
+                        "type": "integer",
+                        "nullable": true
+                      },
+                      "assigned_entity": {
+                        "type": "object",
+                        "nullable": true,
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1networking~1reserved~1ips~1types",
+      "why": "Reserved IPv4 addresses are in the API (techdocs changelog, 2026-07-01) but not yet in this document. Fields as the reference describes them.",
+      "value": {
+        "get": {
+          "operationId": "get-reserved-ip-types",
+          "parameters": [
+            {
+              "name": "page",
+              "in": "query",
+              "schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "name": "page_size",
+              "in": "query",
+              "schema": {
+                "type": "integer"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": ["id"],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "price": {
+                              "type": "object",
+                              "properties": {
+                                "hourly": {
+                                  "type": "number",
+                                  "nullable": true
+                                },
+                                "monthly": {
+                                  "type": "number",
+                                  "nullable": true
+                                }
+                              }
+                            },
+                            "region_prices": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "hourly": {
+                                    "type": "number",
+                                    "nullable": true
+                                  },
+                                  "monthly": {
+                                    "type": "number",
+                                    "nullable": true
+                                  }
+                                }
+                              }
+                            },
+                            "transfer": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      },
+                      "page": {
+                        "type": "integer"
+                      },
+                      "pages": {
+                        "type": "integer"
+                      },
+                      "results": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1networking~1reserved~1ips~1{address}",
+      "why": "Reserved IPv4 addresses are in the API (techdocs changelog, 2026-07-01) but not yet in this document. Fields as the reference describes them.",
+      "value": {
+        "get": {
+          "operationId": "get-reserved-ip",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["address"],
+                    "properties": {
+                      "address": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "type": "string"
+                      },
+                      "rdns": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "linode_id": {
+                        "type": "integer",
+                        "nullable": true
+                      },
+                      "assigned_entity": {
+                        "type": "object",
+                        "nullable": true,
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "operationId": "put-reserved-ip",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["address"],
+                    "properties": {
+                      "address": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "type": "string"
+                      },
+                      "rdns": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "linode_id": {
+                        "type": "integer",
+                        "nullable": true
+                      },
+                      "assigned_entity": {
+                        "type": "object",
+                        "nullable": true,
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "operationId": "delete-reserved-ip",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1databases~1{engine}~1instances",
+      "why": "The document writes each engine out (`/databases/mysql/...`, `/databases/postgresql/...`), but the engine here comes from the resource id at runtime. Same operations with the engine as a parameter, narrowed to the fields the plugin reads.",
+      "value": {
+        "post": {
+          "operationId": "post-database-instance",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "engine": {
+                      "type": "string"
+                    },
+                    "region": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "cluster_size": {
+                      "type": "integer"
+                    },
+                    "allow_list": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "engine": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "cluster_size": {
+                        "type": "integer"
+                      },
+                      "platform": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      },
+                      "hosts": {
+                        "type": "object",
+                        "properties": {
+                          "primary": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "secondary": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        }
+                      },
+                      "allow_list": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "total_disk_size_gb": {
+                        "type": "integer"
+                      },
+                      "used_disk_size_gb": {
+                        "type": "integer"
+                      },
+                      "created": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1databases~1{engine}~1instances~1{instanceId}",
+      "why": "The document writes each engine out (`/databases/mysql/...`, `/databases/postgresql/...`), but the engine here comes from the resource id at runtime. Same operations with the engine as a parameter, narrowed to the fields the plugin reads.",
+      "value": {
+        "get": {
+          "operationId": "get-database-instance",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "engine": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "cluster_size": {
+                        "type": "integer"
+                      },
+                      "platform": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      },
+                      "hosts": {
+                        "type": "object",
+                        "properties": {
+                          "primary": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "secondary": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        }
+                      },
+                      "allow_list": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "total_disk_size_gb": {
+                        "type": "integer"
+                      },
+                      "used_disk_size_gb": {
+                        "type": "integer"
+                      },
+                      "created": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "operationId": "put-database-instance",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "allow_list": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "engine": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "string"
+                      },
+                      "region": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      },
+                      "cluster_size": {
+                        "type": "integer"
+                      },
+                      "platform": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      },
+                      "hosts": {
+                        "type": "object",
+                        "properties": {
+                          "primary": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "secondary": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        }
+                      },
+                      "allow_list": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "total_disk_size_gb": {
+                        "type": "integer"
+                      },
+                      "used_disk_size_gb": {
+                        "type": "integer"
+                      },
+                      "created": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "operationId": "delete-database-instance",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1databases~1{engine}~1instances~1{instanceId}~1credentials",
+      "why": "The document writes each engine out (`/databases/mysql/...`, `/databases/postgresql/...`), but the engine here comes from the resource id at runtime. Same operations with the engine as a parameter, narrowed to the fields the plugin reads.",
+      "value": {
+        "get": {
+          "operationId": "get-database-credentials",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "username": {
+                        "type": "string"
+                      },
+                      "password": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1databases~1{engine}~1instances~1{instanceId}~1ssl",
+      "why": "The document writes each engine out (`/databases/mysql/...`, `/databases/postgresql/...`), but the engine here comes from the resource id at runtime. Same operations with the engine as a parameter, narrowed to the fields the plugin reads.",
+      "value": {
+        "get": {
+          "operationId": "get-database-ssl",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "ca_certificate": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1databases~1{engine}~1instances~1{instanceId}~1suspend",
+      "why": "The document writes each engine out (`/databases/mysql/...`, `/databases/postgresql/...`), but the engine here comes from the resource id at runtime. Same operations with the engine as a parameter, narrowed to the fields the plugin reads.",
+      "value": {
+        "post": {
+          "operationId": "post-database-suspend",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1databases~1{engine}~1instances~1{instanceId}~1resume",
+      "why": "The document writes each engine out (`/databases/mysql/...`, `/databases/postgresql/...`), but the engine here comes from the resource id at runtime. Same operations with the engine as a parameter, narrowed to the fields the plugin reads.",
+      "value": {
+        "post": {
+          "operationId": "post-database-resume",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1databases~1{engine}~1instances~1{instanceId}~1patch",
+      "why": "The document writes each engine out (`/databases/mysql/...`, `/databases/postgresql/...`), but the engine here comes from the resource id at runtime. Same operations with the engine as a parameter, narrowed to the fields the plugin reads.",
+      "value": {
+        "post": {
+          "operationId": "post-database-patch",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1databases~1{engine}~1instances~1{instanceId}~1credentials~1reset",
+      "why": "The document writes each engine out (`/databases/mysql/...`, `/databases/postgresql/...`), but the engine here comes from the resource id at runtime. Same operations with the engine as a parameter, narrowed to the fields the plugin reads.",
+      "value": {
+        "post": {
+          "operationId": "post-database-credentials-reset",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1linode~1types/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1volumes~1types/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1nodebalancers~1types/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1lke~1types/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1object-storage~1types/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1network-transfer~1prices/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1regions/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1account~1invoices/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1images/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1databases~1types/get/responses/200/content/application~1json/schema/allOf/1/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1databases~1engines/get/responses/200/content/application~1json/schema/allOf/1/properties/data/items/required",
+      "value": ["id"],
+      "why": "The document marks no field required. Every row carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1object-storage~1buckets/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["label"],
+      "why": "The document marks no field required. Every row carries its label, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1object-storage~1buckets~1{regionId}~1{bucket}~1object-list/get/responses/200/content/application~1json/schema/properties/data/items/required",
+      "value": ["name"],
+      "why": "The document marks no field required. Every row carries its name, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1images/post/responses/200/content/application~1json/schema/required",
+      "value": ["id"],
+      "why": "Every image carries its id, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1object-storage~1buckets/post/responses/200/content/application~1json/schema/required",
+      "value": ["label"],
+      "why": "Every bucket carries its label, which the plugin keys on."
+    },
+    {
+      "pointer": "/paths/~1nodebalancers~1{nodeBalancerId}~1configs/get/responses/200/content/application~1json/schema",
+      "why": "Documented as one config per protocol; the endpoint answers with a page of configs, as its siblings do. Narrowed to the fields the plugin reads.",
+      "value": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "port": {
+                  "type": "integer"
+                },
+                "protocol": {
+                  "type": "string"
+                },
+                "algorithm": {
+                  "type": "string"
+                },
+                "stickiness": {
+                  "type": "string"
+                },
+                "check": {
+                  "type": "string"
+                },
+                "nodes_status": {
+                  "type": "object",
+                  "properties": {
+                    "up": {
+                      "type": "integer"
+                    },
+                    "down": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1nodebalancers~1{nodeBalancerId}~1stats/get/responses/200/content/application~1json/schema/properties/data",
+      "why": "Documented as flat numbers; each entry is a [timestamp, value] pair, the same as the Linode stats beside it.",
+      "value": {
+        "type": "object",
+        "properties": {
+          "connections": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "traffic": {
+            "type": "object",
+            "properties": {
+              "in": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              },
+              "out": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1object-storage~1buckets/post/requestBody/content/application~1json/schema/properties/acl",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1object-storage~1buckets~1{regionId}~1{bucket}~1access/put/requestBody/content/application~1json/schema/properties/acl",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1networking~1firewalls~1{firewallId}/put/requestBody/content/application~1json/schema/properties/status",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1domains~1{domainId}/put/requestBody/content/application~1json/schema/properties/status",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1domains/post/requestBody/content/application~1json/schema/allOf/0/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1domains~1{domainId}~1records/post/requestBody/content/application~1json/schema/allOf/0/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1domains~1{domainId}~1records/post/requestBody/content/application~1json/schema/allOf/0/properties/tag",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1domains~1{domainId}~1records~1{recordId}/put/requestBody/content/application~1json/schema/properties/tag",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1linode~1types/get/responses/200/content/application~1json/schema/properties/data/items/properties/price/properties/monthly",
+      "value": {
+        "type": "number",
+        "nullable": true
+      },
+      "why": "Plans billed only by the hour answer with a null monthly price, which the document does not allow for."
+    },
+    {
+      "pointer": "/paths/~1networking~1firewalls~1{firewallId}~1rules/put/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "inbound": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string"
+                },
+                "protocol": {
+                  "type": "string"
+                },
+                "ports": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "addresses": {
+                  "type": "object",
+                  "properties": {
+                    "ipv4": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "ipv6": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "outbound": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string"
+                },
+                "protocol": {
+                  "type": "string"
+                },
+                "ports": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "addresses": {
+                  "type": "object",
+                  "properties": {
+                    "ipv4": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "ipv6": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "inbound_policy": {
+            "type": "string"
+          },
+          "outbound_policy": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1networking~1firewalls/post/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "rules": {
+            "type": "object",
+            "properties": {
+              "inbound": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "protocol": {
+                      "type": "string"
+                    },
+                    "ports": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "addresses": {
+                      "type": "object",
+                      "properties": {
+                        "ipv4": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "ipv6": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "outbound": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "type": "string"
+                    },
+                    "protocol": {
+                      "type": "string"
+                    },
+                    "ports": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "addresses": {
+                      "type": "object",
+                      "properties": {
+                        "ipv4": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "ipv6": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "inbound_policy": {
+                "type": "string"
+              },
+              "outbound_policy": {
+                "type": "string"
+              }
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1nodebalancers~1{nodeBalancerId}~1configs/post/requestBody/content/application~1json/schema",
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum.",
+      "value": {
+        "type": "object",
+        "properties": {
+          "port": {
+            "type": "integer"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "algorithm": {
+            "type": "string"
+          },
+          "stickiness": {
+            "type": "string"
+          },
+          "check": {
+            "type": "string"
+          },
+          "check_path": {
+            "type": "string"
+          },
+          "ssl_cert": {
+            "type": "string"
+          },
+          "ssl_key": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1nodebalancers~1{nodeBalancerId}~1configs~1{configId}~1nodes/post/requestBody/content/application~1json/schema",
+      "why": "Passed through from a form field as typed; our select offers the valid values and Linode validates whatever else arrives, so the plugin does not hold its own copy of the enum.",
+      "value": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "pointer": "/paths/~1lke~1clusters/post/requestBody/content/application~1json/schema/properties/node_pools/items/required",
+      "value": [],
+      "why": "The plugin sends the form as it stands and leaves Linode to answer for a missing plan."
+    }
+  ],
+  "paths": {
+    "/account": ["get"],
+    "/account/invoices": ["get"],
+    "/account/invoices/{invoiceId}/items": ["get"],
+    "/account/transfer": ["get"],
+    "/databases/engines": ["get"],
+    "/databases/instances": ["get"],
+    "/databases/types": ["get"],
+    "/databases/{engine}/instances": ["post"],
+    "/databases/{engine}/instances/{instanceId}": ["get", "put", "delete"],
+    "/databases/{engine}/instances/{instanceId}/credentials": ["get"],
+    "/databases/{engine}/instances/{instanceId}/credentials/reset": ["post"],
+    "/databases/{engine}/instances/{instanceId}/patch": ["post"],
+    "/databases/{engine}/instances/{instanceId}/resume": ["post"],
+    "/databases/{engine}/instances/{instanceId}/ssl": ["get"],
+    "/databases/{engine}/instances/{instanceId}/suspend": ["post"],
+    "/domains": ["get", "post"],
+    "/domains/{domainId}": ["get", "put", "delete"],
+    "/domains/{domainId}/records": ["get", "post"],
+    "/domains/{domainId}/records/{recordId}": ["get", "put", "delete"],
+    "/images": ["get", "post"],
+    "/images/{imageId}": ["put", "delete"],
+    "/linode/instances": ["get", "post"],
+    "/linode/instances/{linodeId}": ["get", "put", "delete"],
+    "/linode/instances/{linodeId}/backups": ["get", "post"],
+    "/linode/instances/{linodeId}/backups/cancel": ["post"],
+    "/linode/instances/{linodeId}/backups/enable": ["post"],
+    "/linode/instances/{linodeId}/backups/{backupId}/restore": ["post"],
+    "/linode/instances/{linodeId}/boot": ["post"],
+    "/linode/instances/{linodeId}/disks": ["get"],
+    "/linode/instances/{linodeId}/firewalls": ["get"],
+    "/linode/instances/{linodeId}/reboot": ["post"],
+    "/linode/instances/{linodeId}/rebuild": ["post"],
+    "/linode/instances/{linodeId}/resize": ["post"],
+    "/linode/instances/{linodeId}/shutdown": ["post"],
+    "/linode/instances/{linodeId}/stats": ["get"],
+    "/linode/instances/{linodeId}/stats/{year}/{month}": ["get"],
+    "/linode/instances/{linodeId}/transfer": ["get"],
+    "/linode/stackscripts": ["get", "post"],
+    "/linode/stackscripts/{stackscriptId}": ["put", "delete"],
+    "/linode/types": ["get"],
+    "/lke/clusters": ["get", "post"],
+    "/lke/clusters/{clusterId}": ["get", "put", "delete"],
+    "/lke/clusters/{clusterId}/api-endpoints": ["get"],
+    "/lke/clusters/{clusterId}/kubeconfig": ["get"],
+    "/lke/clusters/{clusterId}/pools": ["get", "post"],
+    "/lke/clusters/{clusterId}/pools/{poolId}": ["get", "put", "delete"],
+    "/lke/clusters/{clusterId}/pools/{poolId}/recycle": ["post"],
+    "/lke/clusters/{clusterId}/recycle": ["post"],
+    "/lke/clusters/{clusterId}/regenerate": ["post"],
+    "/lke/types": ["get"],
+    "/lke/versions": ["get"],
+    "/monitor/services": ["get"],
+    "/monitor/services/{serviceType}/metrics": ["post"],
+    "/monitor/services/{serviceType}/token": ["post"],
+    "/network-transfer/prices": ["get"],
+    "/networking/firewalls": ["get", "post"],
+    "/networking/firewalls/{firewallId}": ["get", "put", "delete"],
+    "/networking/firewalls/{firewallId}/devices": ["get", "post"],
+    "/networking/firewalls/{firewallId}/devices/{deviceId}": ["delete"],
+    "/networking/firewalls/{firewallId}/rules": ["get", "put"],
+    "/networking/ips/assign": ["post"],
+    "/networking/reserved/ips": ["get", "post"],
+    "/networking/reserved/ips/types": ["get"],
+    "/networking/reserved/ips/{address}": ["get", "put", "delete"],
+    "/nodebalancers": ["get", "post"],
+    "/nodebalancers/types": ["get"],
+    "/nodebalancers/{nodeBalancerId}": ["put", "delete"],
+    "/nodebalancers/{nodeBalancerId}/configs": ["get", "post"],
+    "/nodebalancers/{nodeBalancerId}/configs/{configId}": ["delete"],
+    "/nodebalancers/{nodeBalancerId}/configs/{configId}/nodes": ["get", "post"],
+    "/nodebalancers/{nodeBalancerId}/configs/{configId}/nodes/{nodeId}": ["delete"],
+    "/nodebalancers/{nodeBalancerId}/stats": ["get"],
+    "/object-storage/buckets": ["get", "post"],
+    "/object-storage/buckets/{regionId}/{bucket}": ["delete"],
+    "/object-storage/buckets/{regionId}/{bucket}/access": ["get", "put"],
+    "/object-storage/buckets/{regionId}/{bucket}/object-list": ["get"],
+    "/object-storage/buckets/{regionId}/{bucket}/object-url": ["post"],
+    "/object-storage/types": ["get"],
+    "/profile": ["get"],
+    "/regions": ["get"],
+    "/volumes": ["get", "post"],
+    "/volumes/types": ["get"],
+    "/volumes/{volumeId}": ["get", "put", "delete"],
+    "/volumes/{volumeId}/attach": ["post"],
+    "/volumes/{volumeId}/detach": ["post"],
+    "/volumes/{volumeId}/resize": ["post"],
+    "/vpcs": ["get", "post"],
+    "/vpcs/{vpcId}": ["get", "put", "delete"],
+    "/vpcs/{vpcId}/subnets": ["post"],
+    "/vpcs/{vpcId}/subnets/{vpcSubnetId}": ["delete"]
+  }
+}

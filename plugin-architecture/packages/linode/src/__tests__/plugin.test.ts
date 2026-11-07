@@ -1,6 +1,6 @@
 import { evaluateOrphanRule, exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { describe, expect, it, vi } from "vitest";
-import type { LinodeApi } from "../api.js";
+import { createLinodeApi, type LinodeApi } from "../api.js";
 import { executeCommand } from "../actions.js";
 import { firewallRulesFromForm, recordBody } from "../create.js";
 import { creditsFromAccount } from "../credits.js";
@@ -239,30 +239,30 @@ describe("forms", () => {
       allowWeb: "true",
       allowPing: "false",
     });
-    expect(rules.inbound.map((r) => r["ports"])).toEqual(["22", "80,443"]);
+    expect(rules.inbound?.map((r) => r.ports)).toEqual(["22", "80,443"]);
     expect(rules.inbound_policy).toBe("DROP");
   });
 });
 
 function recordingApi(responses: Record<string, unknown> = {}) {
   const calls: Array<{ method: string; path: string; body?: unknown }> = [];
-  const api: LinodeApi = {
-    async get<T>(path: string) {
-      calls.push({ method: "GET", path });
-      return (responses[path] ?? {}) as T;
+  const api: LinodeApi = createLinodeApi({
+    token: "t",
+    baseUrl: "https://linode.test",
+    services: {
+      http: {
+        request: async ({ url, method, body }) => {
+          const path = url.slice("https://linode.test".length).split("?")[0]!;
+          calls.push({
+            method,
+            path,
+            ...(typeof body === "string" ? { body: JSON.parse(body) } : {}),
+          });
+          return { status: 200, headers: {}, body: JSON.stringify(responses[path] ?? {}) };
+        },
+      },
     },
-    async send<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown) {
-      calls.push({ method, path, body });
-      return {} as T;
-    },
-    async all<T>(path: string) {
-      calls.push({ method: "GET", path });
-      return ((responses[path] as T[]) ?? []) as T[];
-    },
-    async monitor<T>() {
-      return {} as T;
-    },
-  };
+  });
   return { api, calls };
 }
 

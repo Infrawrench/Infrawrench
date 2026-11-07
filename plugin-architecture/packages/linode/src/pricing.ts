@@ -22,7 +22,7 @@
  * monthly figures at 730 hours).
  */
 
-import type { LinodeApi } from "./api.js";
+import { allPages, type LinodeApi } from "./api.js";
 import type {
   LinodeDatabaseType,
   LinodePrice,
@@ -130,14 +130,14 @@ export function createPriceCatalogCache(api: LinodeApi): PriceCatalogCache {
       r.status === "fulfilled" ? r.value : [];
     const [linodeTypes, volumes, nbs, lke, obj, transfer, reserved, dbs] = await Promise.allSettled(
       [
-        api.all<LinodeType>("/linode/types"),
-        api.all<LinodeSimpleType>("/volumes/types"),
-        api.all<LinodeSimpleType>("/nodebalancers/types"),
-        api.all<LinodeSimpleType>("/lke/types"),
-        api.all<LinodeSimpleType>("/object-storage/types"),
-        api.all<LinodeSimpleType>("/network-transfer/prices"),
-        api.all<LinodeSimpleType>("/networking/reserved/ips/types"),
-        api.all<LinodeDatabaseType>("/databases/types"),
+        allPages((query) => api.get("/linode/types", { query })),
+        allPages((query) => api.get("/volumes/types", { query })),
+        allPages((query) => api.get("/nodebalancers/types", { query })),
+        allPages((query) => api.get("/lke/types", { query })),
+        allPages((query) => api.get("/object-storage/types", { query })),
+        allPages((query) => api.get("/network-transfer/prices", { query })),
+        allPages((query) => api.get("/networking/reserved/ips/types", { query })),
+        allPages((query) => api.get("/databases/types", { query })),
       ],
     );
     return {

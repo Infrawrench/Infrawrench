@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { LinodeApi } from "../api.js";
+import { createLinodeApi, type LinodeApi } from "../api.js";
 import {
   OTHER_UNINVOICED,
   RowBuilder,
@@ -346,25 +346,29 @@ describe("fetchLinodeCostData", () => {
         quantity: 720,
       },
     ];
-    return {
-      async get<T>(path: string) {
-        if (path === "/account/invoices")
-          return { data: invoices, page: 1, pages: 1, results: 1 } as T;
-        if (path === "/account") return { balance_uninvoiced: 1.5 } as T;
-        throw new Error(`unexpected ${path}`);
-      },
-      async send<T>() {
-        return {} as T;
-      },
-      async all<T>(path: string) {
-        if (path === "/account/invoices") return invoices as T[];
-        if (path === "/account/invoices/7/items") return items as T[];
-        return [] as T[];
-      },
-      async monitor<T>() {
-        return {} as T;
-      },
+    const page = (data: unknown[]) => ({ data, page: 1, pages: 1, results: data.length });
+    const answer = (url: string): unknown => {
+      const [path, query] = url.slice("https://linode.test".length).split("?");
+      if (path === "/account/invoices") return page(invoices);
+      if (path === "/account/invoices/7/items") return page(items);
+      if (path === "/account") return { balance_uninvoiced: 1.5 };
+      // Every other read here is a list, walked by page.
+      if (query?.includes("page=")) return page([]);
+      throw new Error(`unexpected ${path}`);
     };
+    return createLinodeApi({
+      token: "t",
+      baseUrl: "https://linode.test",
+      services: {
+        http: {
+          request: async ({ url }) => ({
+            status: 200,
+            headers: {},
+            body: JSON.stringify(answer(url)),
+          }),
+        },
+      },
+    });
   }
 
   it("combines a closed month from its invoice with the open month from the uninvoiced balance", async () => {

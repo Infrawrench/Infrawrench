@@ -88,12 +88,12 @@ describe("fetchLinodePriceCatalog", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("prices every declared region from /linode/types", async () => {
-    const all = vi.fn().mockResolvedValue([NANODE, GPU]);
+    const get = vi.fn().mockResolvedValue({ data: [NANODE, GPU], page: 1, pages: 1, results: 2 });
     const result = await fetchLinodePriceCatalogWith(
-      { all: all as never },
+      { get: get as never },
       { serviceId: "linodes" },
     );
-    expect(all).toHaveBeenCalledWith("/linode/types");
+    expect(get).toHaveBeenCalledWith("/linode/types", { query: { page: 1, page_size: 500 } });
     expect(result.products.map((p) => p.sku)).toEqual(["g6-nanode-1", "g1-gpu-rtx6000-2"]);
     expect(result.products[0]!.prices).toHaveLength(linodePriceCatalog.regions.length);
   });
@@ -124,11 +124,11 @@ describe("fetchLinodePriceCatalog", () => {
   });
 
   it("returns nothing for an undeclared service", async () => {
-    const all = vi.fn();
-    expect((await fetchLinodePriceCatalogWith({ all }, { serviceId: "nope" })).products).toEqual(
+    const get = vi.fn();
+    expect((await fetchLinodePriceCatalogWith({ get }, { serviceId: "nope" })).products).toEqual(
       [],
     );
-    expect(all).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
   });
 });
 

@@ -31,7 +31,7 @@
  */
 
 import type { CostChargeType, CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import type { LinodeApi, Page } from "./api.js";
+import { allPages, segment, xFilter, type LinodeApi } from "./api.js";
 import { SERVICE, parseInvoiceItemLabel } from "./invoice-label.js";
 import {
   type PriceCatalog,
@@ -43,7 +43,6 @@ import {
   simpleType,
 } from "./pricing.js";
 import type {
-  LinodeAccount,
   LinodeBucket,
   LinodeDatabase,
   LinodeInstance,
@@ -406,7 +405,7 @@ export function addUninvoicedPeriod(
 // --- orchestration -------------------------------------------------------------------
 
 async function itemsOf(api: LinodeApi, invoiceId: number): Promise<LinodeInvoiceItem[]> {
-  return api.all<LinodeInvoiceItem>(`/account/invoices/${invoiceId}/items`);
+  return allPages((query) => api.get(`/account/invoices/${segment(invoiceId)}/items`, { query }));
 }
 
 /** Day after the last day the newest invoice covers: where the open period starts. */
@@ -433,16 +432,16 @@ export function openPeriodStart(
 }
 
 async function loadInventory(api: LinodeApi): Promise<UninvoicedInventory> {
-  const safe = <T>(p: Promise<T[]>) => p.catch(() => [] as T[]);
+  const safe = <T>(p: Promise<T[]>) => p.catch((): T[] => []);
   const [linodes, volumes, nodeBalancers, lkeClusters, databases, buckets, reservedIps] =
     await Promise.all([
-      api.all<LinodeInstance>("/linode/instances"),
-      safe(api.all<LinodeVolume>("/volumes")),
-      safe(api.all<LinodeNodeBalancer>("/nodebalancers")),
-      safe(api.all<LinodeLkeCluster>("/lke/clusters")),
-      safe(api.all<LinodeDatabase>("/databases/instances")),
-      safe(api.all<LinodeBucket>("/object-storage/buckets")),
-      safe(api.all<LinodeReservedIp>("/networking/reserved/ips")),
+      allPages((query) => api.get("/linode/instances", { query })),
+      safe(allPages((query) => api.get("/volumes", { query }))),
+      safe(allPages((query) => api.get("/nodebalancers", { query }))),
+      safe(allPages((query) => api.get("/lke/clusters", { query }))),
+      safe(allPages((query) => api.get("/databases/instances", { query }))),
+      safe(allPages((query) => api.get("/object-storage/buckets", { query }))),
+      safe(allPages((query) => api.get("/networking/reserved/ips", { query }))),
     ]);
   return { linodes, volumes, nodeBalancers, lkeClusters, databases, buckets, reservedIps };
 }
@@ -464,14 +463,13 @@ export async function fetchLinodeCostData(
   // Invoices that can cover the range: dated from the range start to ~40
   // days after its end (a month's invoice is dated after the month).
   const toMs = Date.parse(`${range.toDate}T00:00:00Z`) + 40 * DAY_MS;
-  const invoices = await api.all<LinodeInvoice>("/account/invoices", {
-    filter: {
-      "+and": [
-        { date: { "+gte": `${range.fromDate}T00:00:00` } },
-        { date: { "+lte": new Date(toMs).toISOString().slice(0, 19) } },
-      ],
-    },
+  const filter = xFilter({
+    "+and": [
+      { date: { "+gte": `${range.fromDate}T00:00:00` } },
+      { date: { "+lte": new Date(toMs).toISOString().slice(0, 19) } },
+    ],
   });
+  const invoices = await allPages((query) => api.get("/account/invoices", { ...filter, query }));
   const itemsById = new Map<number, LinodeInvoiceItem[]>();
   for (const inv of invoices) {
     const items = await itemsOf(api, inv.id);
@@ -480,8 +478,8 @@ export async function fetchLinodeCostData(
   }
 
   // The open period, only when the range reaches it.
-  const newestPage = await api.get<Page<LinodeInvoice>>("/account/invoices", {
-    filter: { "+order_by": "date", "+order": "desc" },
+  const newestPage = await api.get("/account/invoices", {
+    ...xFilter({ "+order_by": "date", "+order": "desc" }),
     query: { page: 1, page_size: 25 },
   });
   const newest = newestPage.data?.[0];
@@ -489,7 +487,7 @@ export async function fetchLinodeCostData(
   const periodStart = openPeriodStart(newestItems, newest, now);
   if (range.toDate >= isoDay(periodStart) && range.fromDate <= isoDay(now)) {
     const [account, inventory, catalog] = await Promise.all([
-      api.get<LinodeAccount>("/account"),
+      api.get("/account"),
       loadInventory(api),
       deps.catalog(),
     ]);

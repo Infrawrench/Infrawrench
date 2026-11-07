@@ -22,7 +22,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { withMetricsCapability } from "@infrawrench/plugin-base";
 import * as actions from "./actions.js";
-import { type LinodeApi, createLinodeApi, trailingId } from "./api.js";
+import { type LinodeApi, allPages, createLinodeApi, segment, trailingId } from "./api.js";
 import { fetchLinodeCostData } from "./cost-data.js";
 import { createResource, getCreateConfig } from "./create.js";
 import { fetchCredits } from "./credits.js";
@@ -40,7 +40,6 @@ import { verifyLinodeCredentials } from "./preflight.js";
 import { type PriceCatalogCache, createPriceCatalogCache } from "./pricing.js";
 import { buildLkeNodeRates } from "./lke-node-rates.js";
 import { dashboardStats, renderDetail, renderSidebarItem } from "./render.js";
-import type { LinodeDatabase, LinodeInstance, LinodeLkeCluster, LinodeLkePool } from "./types.js";
 import { applyUpdate } from "./update.js";
 
 type Lister = (api: LinodeApi, accountId: string) => Promise<ResourceInstance[]>;
@@ -113,10 +112,8 @@ export class LinodeClient implements PluginClient {
       const id = trailingId(resourceId);
       if (typeId === "linode") {
         const [linode, firewalls] = await Promise.all([
-          this.api.get<LinodeInstance>(`/linode/instances/${id}`),
-          this.api
-            .get<{ data?: Array<{ id: number }> }>(`/linode/instances/${id}/firewalls`)
-            .catch(() => null),
+          this.api.get(`/linode/instances/${segment(id)}`),
+          this.api.get(`/linode/instances/${segment(id)}/firewalls`).catch(() => null),
         ]);
         return listers.mapLinode(
           linode,
@@ -126,7 +123,7 @@ export class LinodeClient implements PluginClient {
       }
       if (typeId === "database") {
         const [engine, dbId] = id.split("/");
-        const db = await this.api.get<LinodeDatabase>(`/databases/${engine}/instances/${dbId}`);
+        const db = await this.api.get(`/databases/${segment(engine)}/instances/${segment(dbId)}`);
         return listers.mapDatabase({ ...db, engine: db.engine ?? engine ?? "" }, accountId);
       }
       const all = await runPluginEffect(this.listResources(typeId, accountId));
@@ -150,14 +147,12 @@ export class LinodeClient implements PluginClient {
           case "clusterId":
             return id;
           case "kubeconfig": {
-            const res = await this.api.get<{ kubeconfig?: string }>(
-              `/lke/clusters/${id}/kubeconfig`,
-            );
+            const res = await this.api.get(`/lke/clusters/${segment(id)}/kubeconfig`);
             return res.kubeconfig ? decodeBase64(res.kubeconfig) : "";
           }
           case "apiEndpoint": {
-            const res = await this.api.all<{ endpoint?: string }>(
-              `/lke/clusters/${id}/api-endpoints`,
+            const res = await allPages((query) =>
+              this.api.get(`/lke/clusters/${segment(id)}/api-endpoints`, { query }),
             );
             return res[0]?.endpoint ?? "";
           }
@@ -175,12 +170,13 @@ export class LinodeClient implements PluginClient {
 
   private async resolveDatabaseOutput(id: string, outputKey: string): Promise<string> {
     const [engine, dbId] = id.split("/");
-    const base = `/databases/${engine}/instances/${dbId}`;
+    const e = segment(engine);
+    const d = segment(dbId);
     if (outputKey === "caCertificate") {
-      const ssl = await this.api.get<{ ca_certificate?: string }>(`${base}/ssl`);
+      const ssl = await this.api.get(`/databases/${e}/instances/${d}/ssl`);
       return ssl.ca_certificate ? decodeBase64(ssl.ca_certificate) : "";
     }
-    const db = await this.api.get<LinodeDatabase>(base);
+    const db = await this.api.get(`/databases/${e}/instances/${d}`);
     const host = db.hosts?.primary ?? "";
     const port = String(db.port ?? (engine === "postgresql" ? 5432 : 3306));
     // The current platform (`rdbms-default`) creates `defaultdb`; legacy
@@ -194,9 +190,7 @@ export class LinodeClient implements PluginClient {
     if (outputKey === "host") return host;
     if (outputKey === "port") return port;
     if (outputKey === "database") return database;
-    const creds = await this.api.get<{ username?: string; password?: string }>(
-      `${base}/credentials`,
-    );
+    const creds = await this.api.get(`/databases/${e}/instances/${d}/credentials`);
     if (outputKey === "username") return creds.username ?? "";
     if (outputKey === "password") return creds.password ?? "";
     if (outputKey === "connectionString") {
@@ -212,8 +206,8 @@ export class LinodeClient implements PluginClient {
   private async nodeHourlyRates(clusterId: string): Promise<string> {
     try {
       const [cluster, pools, catalog] = await Promise.all([
-        this.api.get<LinodeLkeCluster>(`/lke/clusters/${clusterId}`),
-        this.api.all<LinodeLkePool>(`/lke/clusters/${clusterId}/pools`),
+        this.api.get(`/lke/clusters/${segment(clusterId)}`),
+        allPages((query) => this.api.get(`/lke/clusters/${segment(clusterId)}/pools`, { query })),
         this.catalog.get(),
       ]);
       return buildLkeNodeRates(cluster, pools, catalog);
@@ -396,7 +390,7 @@ export class LinodeClient implements PluginClient {
         throw new Error(`Linode plugin: no credential format "${formatId}" for ${typeId}`);
       }
       const id = trailingId(resourceId);
-      const res = await this.api.get<{ kubeconfig?: string }>(`/lke/clusters/${id}/kubeconfig`);
+      const res = await this.api.get(`/lke/clusters/${segment(id)}/kubeconfig`);
       if (!res.kubeconfig)
         throw new Error(
           "Linode has not issued a kubeconfig for this cluster yet; try again once it is ready.",
