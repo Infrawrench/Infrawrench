@@ -1,24 +1,36 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch, utf8ToBase64 } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  restRequest,
+  utf8ToBase64,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { paths as ManagementPaths } from "./api-types.management.gen.js";
+import type { paths as TelemetryPaths } from "./api-types.telemetry.gen.js";
 
 /**
  * Confluent Cloud has two HTTP surfaces this plugin talks to, both of which
  * authenticate with the same organization-level **Cloud API key** sent as
- * HTTP Basic (`key:secret`):
+ * HTTP Basic (`key:secret`), and each typed from its own document
+ * (`plugingen.json`):
  *
  * - `https://api.confluent.cloud`: every management API (org, IAM, cmk,
  *   connect, fcpm, ksqldbcm, srcm, networking, byok) and the Billing Costs
- *   API. Verified against the published spec at
- *   https://docs.confluent.io/cloud/current/openapi.yaml (2026-10).
+ *   API, from https://docs.confluent.io/cloud/current/openapi.yaml.
  * - `https://api.telemetry.confluent.cloud`: the Metrics API
- *   (`POST /v2/metrics/cloud/query`). A Cloud API key is required there too;
- *   cluster-scoped keys are rejected.
+ *   (`POST /v2/metrics/cloud/query`), from
+ *   https://api.telemetry.confluent.cloud/docs/api.yaml. A Cloud API key is
+ *   required there too; cluster-scoped keys are rejected.
  */
 export const MANAGEMENT_API = "https://api.confluent.cloud";
 export const TELEMETRY_API = "https://api.telemetry.confluent.cloud";
 export const CONSOLE_URL = "https://confluent.cloud";
 
-export interface ConfluentContext {
+/** What every list asks for, unless it says otherwise. */
+export const PAGE_SIZE = 100;
+const VENDOR = "Confluent Cloud";
+
+export interface ConfluentCredentials {
   apiKey: string;
   apiSecret: string;
   caCert?: string;
@@ -35,59 +47,82 @@ export class ConfluentApiError extends Error {
   }
 }
 
-const STATUS_IN_MESSAGE = /Confluent Cloud API error (\d{3})/;
+function apiError(status: number, path: string, body: string): ConfluentApiError {
+  return new ConfluentApiError(status, `${VENDOR} API error ${status} for ${path}: ${body}`);
+}
 
-type Query = Record<string, string | number | boolean | undefined>;
-
-function withQuery(url: string, query?: Query): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) {
-    if (v !== undefined && v !== "") params.set(k, String(v));
+function isJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
   }
-  const qs = params.toString();
-  if (!qs) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}${qs}`;
 }
 
 /**
- * JSON request with the account's Cloud API key. `pathOrUrl` is either a path
- * on the management API or an absolute URL (the `metadata.next` links the
- * list endpoints return are absolute). Routed through the host HTTP service
- * whenever there is one: that is the only path that honours bastion egress
- * and a custom CA.
+ * The host's HTTP service whenever there is one, that being the only path that
+ * honours bastion egress and a custom CA, and otherwise the global fetch. Either
+ * way a 2xx whose body is not JSON reads as no body: action endpoints (connector
+ * pause/resume, 202 Accepted) can answer with nothing at all.
  */
-export async function ccFetch<T>(
-  ctx: ConfluentContext,
-  pathOrUrl: string,
-  init?: RequestInit & { query?: Query; base?: string },
-): Promise<T> {
-  const { query, base, ...rest } = init ?? {};
-  const absolute = /^https?:\/\//.test(pathOrUrl);
-  const url = withQuery(absolute ? pathOrUrl : `${base ?? MANAGEMENT_API}${pathOrUrl}`, query);
-  const errorPath = absolute ? new URL(pathOrUrl).pathname : pathOrUrl;
-  try {
-    return await jsonRestFetch<T>({
-      vendor: "Confluent Cloud",
-      url,
-      errorPath,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Basic ${utf8ToBase64(`${ctx.apiKey}:${ctx.apiSecret}`)}`,
-      },
-      ...(Object.keys(rest).length > 0 ? { init: rest } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
+function lenientTransport(http: HttpHostServices | undefined): HttpHostServices {
+  const send: HttpHostServices["request"] = async (req) => {
+    if (http) return http.request(req);
+    const res = await fetch(req.url, {
+      method: req.method,
+      headers: req.headers,
+      ...(req.body !== undefined
+        ? { body: typeof req.body === "string" ? req.body : req.body.slice() }
+        : {}),
     });
-  } catch (err) {
-    // Action endpoints (connector pause/resume, 202 Accepted) can answer
-    // with an empty body that the direct-fetch path fails to parse.
-    if (err instanceof SyntaxError) return undefined as T;
-    const message = err instanceof Error ? err.message : String(err);
-    const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
-    if (status) throw new ConfluentApiError(status, message);
-    throw err;
-  }
+    // Nothing here reads a response header.
+    return { status: res.status, headers: {}, body: await res.text() };
+  };
+  return {
+    async request(req) {
+      const res = await send(req);
+      const ok = res.status >= 200 && res.status < 300;
+      return ok && res.body && !isJson(res.body) ? { ...res, body: "" } : res;
+    },
+  };
 }
+
+/** Build everything a request needs. Split out of the client so tests can build one. */
+export function createConfluentContext({ apiKey, apiSecret, caCert, http }: ConfluentCredentials) {
+  const shared = {
+    vendor: VENDOR,
+    headers: {
+      Accept: "application/json",
+      Authorization: `Basic ${utf8ToBase64(`${apiKey}:${apiSecret}`)}`,
+    },
+    http: lenientTransport(http),
+    ...(caCert ? { caCert } : {}),
+  };
+  const clients = {
+    ...shared,
+    httpError: ({ status, path, body }: { status: number; path: string; body: string }) =>
+      apiError(status, path, body),
+    // An empty value means "no filter", so an environment id that came back empty
+    // sends no parameter at all rather than `environment=`.
+    serializeQuery: (query: Record<string, ParamValue>) => {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined && value !== "") params.set(key, String(value));
+      }
+      return params.toString();
+    },
+  };
+  return {
+    apiKey,
+    /** What following a next link needs: no operation in the document has that shape. */
+    transport: shared,
+    api: createApiClient<ManagementPaths>({ ...clients, baseUrl: MANAGEMENT_API }),
+    telemetry: createApiClient<TelemetryPaths>({ ...clients, baseUrl: TELEMETRY_API }),
+  };
+}
+
+export type ConfluentContext = ReturnType<typeof createConfluentContext>;
 
 /** HTTP status of a failed call, or 0 for a transport error. */
 export function statusOf(err: unknown): number {
@@ -100,30 +135,45 @@ export function isPermissionError(err: unknown): boolean {
   return status === 401 || status === 403;
 }
 
-interface ListPage<T> {
-  data?: T[];
-  metadata?: { next?: string | null; total_size?: number };
+/** What {@link ccList} reads from a page. Every management list fits it. */
+interface ListPage<Item> {
+  data?: readonly Item[] | null;
+  metadata?: { next?: string | null } | null;
+}
+
+/** A next link as Confluent wrote it: absolute, as far as anyone has seen. */
+async function followLink<Page>(ctx: ConfluentContext, link: string): Promise<Page> {
+  const absolute = /^https?:\/\//.test(link);
+  const errorPath = absolute ? new URL(link).pathname : link;
+  const { body } = await restRequest<Page>({
+    ...ctx.transport,
+    url: absolute ? link : `${MANAGEMENT_API}${link}`,
+    errorPath,
+    httpError: ({ status, body: text }) => apiError(status, errorPath, text),
+  });
+  return body;
 }
 
 /**
- * Walk a Confluent list endpoint. Every list in the management API shares
- * one shape: `{ data: [...], metadata: { next } }`, where `next` is an
- * absolute URL carrying an opaque `page_token`. Hard-stops at `maxPages` so a
- * misbehaving cursor cannot spin forever.
+ * Walk a Confluent list endpoint from its first page, which is what types the
+ * rest. Every list in the management API shares one shape: `{ data: [...],
+ * metadata: { next } }`, where `next` is an absolute URL carrying an opaque
+ * `page_token`. Hard-stops at `maxPages` so a misbehaving cursor cannot spin
+ * forever.
+ *
+ * This is a hand loop rather than `withLinkPagination` because that reads a `data`
+ * that is not an array as an empty page, and the host prunes what a sync stops
+ * seeing. Here spreading it throws, so the sync fails, as it always has.
  */
-export async function ccList<T>(
+export async function ccList<Item>(
   ctx: ConfluentContext,
-  path: string,
-  query: Query = {},
-  pageSize = 100,
+  first: () => Promise<ListPage<Item>>,
   maxPages = 100,
-): Promise<T[]> {
-  const out: T[] = [];
+): Promise<Item[]> {
+  const out: Item[] = [];
   let next: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const res: ListPage<T> = next
-      ? await ccFetch<ListPage<T>>(ctx, next)
-      : await ccFetch<ListPage<T>>(ctx, path, { query: { ...query, page_size: pageSize } });
+    const res: ListPage<Item> = next ? await followLink<ListPage<Item>>(ctx, next) : await first();
     out.push(...(res.data ?? []));
     const link = res.metadata?.next;
     if (!link || (res.data ?? []).length === 0) break;

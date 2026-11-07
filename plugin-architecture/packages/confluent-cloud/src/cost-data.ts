@@ -164,11 +164,10 @@ export async function fetchCostLines(
   const lines: CcCost[] = [];
   try {
     for (const w of costWindows(range)) {
-      const batch = await ccList<CcCost>(
-        ctx,
-        "/billing/v1/costs",
-        { start_date: w.start, end_date: w.end },
-        5000,
+      const batch = await ccList<CcCost>(ctx, () =>
+        ctx.api.get("/billing/v1/costs", {
+          query: { start_date: w.start, end_date: w.end, page_size: 5000 },
+        }),
       );
       lines.push(...batch);
     }
