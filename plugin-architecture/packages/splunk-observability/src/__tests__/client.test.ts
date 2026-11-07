@@ -39,14 +39,16 @@ describe("SplunkObservabilityClient", () => {
     expect(calls[1]?.url.searchParams.get("offset")).toBe("1000");
   });
 
-  it("maps errors to a status and lists a 403'd type empty", async () => {
+  it("maps errors to a status", async () => {
     const { http } = makeHttp((url) =>
       url.pathname === "/v2/token"
         ? { status: 403, body: { code: 403, message: "admin only" } }
         : { status: 500, body: { message: "boom" } },
     );
     const client = hostClient(new SplunkObservabilityClient(CREDS, { http }));
-    expect(await client.listResources("org-token", "acct")).toEqual([]);
+    expect(statusOf(await client.listResources("org-token", "acct").catch((e: unknown) => e))).toBe(
+      403,
+    );
     const err = await client.listResources("team", "acct").catch((e: unknown) => e);
     expect(statusOf(err)).toBe(500);
     expect(String(err)).toContain("boom");

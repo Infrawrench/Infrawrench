@@ -201,3 +201,31 @@ describe("synthetic tests", () => {
     ).rejects.toThrow("is not a list");
   });
 });
+
+describe("a token refused for a whole type", () => {
+  const refused = () =>
+    strictHttp((url) =>
+      url.pathname === "/v2/token"
+        ? { status: 403, body: { code: 403, message: "admin only" } }
+        : undefined,
+    );
+
+  it("keeps the stored rows instead of reading the refusal as none", async () => {
+    const parts: unknown[] = [];
+    Reflect.set(globalThis, UNREAD_HOOK, (part: unknown) => parts.push(part));
+    const { http } = refused();
+    const list = await hostClient(new SplunkObservabilityClient(CREDS, { http })).listResources(
+      "org-token",
+      "acct",
+    );
+    expect(list).toEqual([]);
+    expect(parts).toEqual([{ idPrefixes: [""] }]);
+  });
+
+  it("shows the refusal where the host keeps no track", async () => {
+    const { http } = refused();
+    await expect(
+      hostClient(new SplunkObservabilityClient(CREDS, { http })).listResources("org-token", "acct"),
+    ).rejects.toThrow("admin only");
+  });
+});

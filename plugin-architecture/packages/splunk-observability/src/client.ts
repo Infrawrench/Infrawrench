@@ -17,6 +17,7 @@ import type {
 import {
   externalIdOf,
   ListTruncatedError,
+  reportUnreadListPart,
   requireListPage,
   rethrowIncompleteList,
 } from "@infrawrench/plugin-base";
@@ -169,9 +170,11 @@ export class SplunkObservabilityClient implements PluginClient {
     try {
       return await load();
     } catch (err) {
-      // A token without the admin or API rights for this one list.
-      if (statusOf(err) === 403) return [];
-      throw err;
+      // A token without the admin or API rights for this one list. Its stored rows
+      // stay; a host that keeps no track (the desktop) answers false, and there the
+      // refusal should still show.
+      if (statusOf(err) !== 403 || !reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      return [];
     }
   }
 
