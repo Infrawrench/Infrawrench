@@ -516,6 +516,53 @@
       "why": "Native service discovery is missing from the document; Nomad 2.0 API docs (services)."
     },
     {
+      "pointer": "/paths/~1jobs~1statuses",
+      "value": {
+        "get": {
+          "operationId": "GetJobStatuses",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/NamespaceParam"
+            },
+            {
+              "name": "include_children",
+              "in": "query",
+              "schema": {
+                "type": "boolean"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ID": {
+                          "type": "string"
+                        },
+                        "Namespace": {
+                          "type": "string"
+                        },
+                        "Version": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The only list with a job's version, since JobListStub has none. Added in Nomad 1.8 for the web UI's job index and missing from the API docs: command/agent/job_endpoint_statuses.go and structs.JobStatusesJob. What the plugin reads."
+    },
+    {
       "pointer": "/paths/~1job~1{jobName}~1submission",
       "value": {
         "parameters": [
@@ -1033,6 +1080,7 @@
     "/node/{nodeId}/eligibility": ["post"],
     "/jobs": ["get", "post"],
     "/jobs/parse": ["post"],
+    "/jobs/statuses": ["get"],
     "/job/{jobName}": ["get", "delete"],
     "/job/{jobName}/summary": ["get"],
     "/job/{jobName}/versions": ["get"],

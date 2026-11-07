@@ -235,3 +235,60 @@ describe("a node read in full", () => {
     expect(node!.resolvedOutputs["address"]).toBe("10.0.0.9");
   });
 });
+
+describe("the version of a listed job", () => {
+  const row = (ID: string, Namespace = "prod") => ({ ID, Name: ID, Namespace, Type: "service" });
+
+  it("comes from the statuses route, in one request, with child jobs and version 0", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === "/v1/jobs/statuses"
+        ? [
+            { ID: "web", Namespace: "prod", Version: 7 },
+            { ID: "web", Namespace: "dev", Version: 0 },
+          ]
+        : [row("web"), row("web", "dev"), row("new")],
+    );
+    const jobs = await c.listResources("nomad-job", ACCOUNT);
+    expect(jobs.map((j) => j.fields["version"])).toEqual([7, 0, undefined]);
+    const statuses = calls.filter((x) => x.url.pathname === "/v1/jobs/statuses");
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]!.url.searchParams.get("namespace")).toBe("*");
+    expect(statuses[0]!.url.searchParams.get("include_children")).toBe("true");
+  });
+
+  it.each([
+    ["an agent older than the route", { status: 404, text: "Not Found" }],
+    ["a token that may not read it", { status: 403, text: "Permission denied" }],
+    ["an answer that is not a list", { nope: true }],
+  ])("leaves it blank and keeps the jobs on %s", async (_name, statuses) => {
+    const { c } = client((call) =>
+      call.url.pathname === "/v1/jobs/statuses" ? statuses : [row("web")],
+    );
+    const jobs = await c.listResources("nomad-job", ACCOUNT);
+    expect(jobs.map((j) => j.fields["id"])).toEqual(["web"]);
+    expect(jobs[0]!.fields["version"]).toBeUndefined();
+  });
+
+  it("is filled in when the detail view reads the job", async () => {
+    const { c } = client((call) =>
+      call.url.pathname.endsWith("/versions")
+        ? { Versions: [{ Version: 3 }, { Version: 2 }] }
+        : { ID: "web", Namespace: "prod", Version: 3, TaskGroups: [] },
+    );
+    const before = {
+      id: "acct:nomad-job:prod/web",
+      pluginId: "nomad",
+      resourceTypeId: "nomad-job",
+      accountId: ACCOUNT,
+      displayName: "web",
+      fields: { id: "web", status: "running" },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: "prod/web",
+      createdAt: "",
+      updatedAt: "",
+    };
+    const after = await c.enrichDetail!(before);
+    expect(after.fields).toEqual({ id: "web", status: "running", version: 3 });
+  });
+});

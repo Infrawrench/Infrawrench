@@ -288,6 +288,24 @@ export class NomadClient implements PluginClient {
     return this.api.get(`/var/${unencodedSegment(encodePath(path))}`, { query: { namespace: ns } });
   }
 
+  /**
+   * List rows have no version. This route has them all in one request, but it is
+   * Nomad 1.8+, undocumented, and built for the web UI, so whatever it answers only
+   * ever leaves a version blank. Without `include_children` it skips the child jobs
+   * that `/jobs` lists.
+   */
+  private async jobVersions(): Promise<Map<string, number>> {
+    const rows = await this.soft(
+      this.api.get("/jobs/statuses", { query: { ...ALL, include_children: true } }),
+    );
+    const versions = new Map<string, number>();
+    if (!Array.isArray(rows)) return versions;
+    for (const r of rows)
+      if (typeof r.Version === "number")
+        versions.set(joinId(r.Namespace ?? "default", r.ID ?? ""), r.Version);
+    return versions;
+  }
+
   private job(ns: string, id: string) {
     return this.api.get(`/job/${pathEncode(id)}`, { query: { namespace: ns } });
   }
@@ -316,10 +334,19 @@ export class NomadClient implements PluginClient {
           return (await this.api.get("/nodes", { query: { resources: true } })).map((n) =>
             mapNode(accountId, n),
           );
-        case "nomad-job":
-          return (await this.api.get("/jobs", { query: ALL }))
-            .slice(0, MAX_JOBS)
-            .map((j) => mapJob(accountId, j));
+        case "nomad-job": {
+          const [jobs, versions] = await Promise.all([
+            this.api.get("/jobs", { query: ALL }),
+            this.jobVersions(),
+          ]);
+          return jobs.slice(0, MAX_JOBS).map((j) => {
+            const version = versions.get(joinId(j.Namespace ?? "default", j.ID ?? ""));
+            return mapJob(accountId, {
+              ...j,
+              ...(version !== undefined ? { Version: version } : {}),
+            });
+          });
+        }
         case "nomad-allocation": {
           const allocs =
             (await this.api.get("/allocations", { query: { ...ALL, resources: false } })) ?? [];
@@ -564,6 +591,7 @@ export class NomadClient implements PluginClient {
     return attempt(async () => {
       const id = resource.externalId ?? externalIdOf(resource.id);
       const extra: Record<string, string> = {};
+      const fields = { ...resource.fields };
       try {
         if (resource.resourceTypeId === "nomad-job") {
           const [ns, jobId] = splitId(id, 2);
@@ -571,6 +599,7 @@ export class NomadClient implements PluginClient {
             this.api.get(`/job/${pathEncode(jobId!)}/versions`, { query: { namespace: ns! } }),
             this.job(ns!, jobId!),
           ]);
+          if (job.Version !== undefined) fields["version"] = job.Version;
           extra["__versions__"] = JSON.stringify(
             (versions?.Versions ?? []).map((v) => ({
               version: v.Version ?? 0,
@@ -604,7 +633,7 @@ export class NomadClient implements PluginClient {
       } catch {
         return resource;
       }
-      return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
+      return { ...resource, fields, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
     });
   }
 

@@ -524,6 +524,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/jobs/statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["GetJobStatuses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/metrics": {
         parameters: {
             query?: never;
@@ -3681,6 +3697,32 @@ export interface operations {
         };
         responses: {
             200: components["responses"]["PostJobParseResponse"];
+        };
+    };
+    GetJobStatuses: {
+        parameters: {
+            query?: {
+                include_children?: boolean;
+                namespace?: components["parameters"]["NamespaceParam"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ID?: string;
+                        Namespace?: string;
+                        Version?: number;
+                    }[];
+                };
+            };
         };
     };
     GetMetricsSummary: {
