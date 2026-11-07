@@ -328,6 +328,23 @@ describe("CloudflareClient.createResource / updateResource / deleteResource", ()
     expect(fakeApi.cf.put).toHaveBeenCalled();
   });
 
+  it("updateResource refuses when the current fields cannot be read", async () => {
+    const { client, fakeApi } = makeClient();
+    const edit = vi.fn(async () => ({}));
+    fakeApi.cf.waitingRooms = {
+      edit,
+      list: vi.fn(() => {
+        throw { status: 500, errors: [{ message: "Upstream broke" }] };
+      }),
+    } as never;
+    await expect(
+      client.updateResource("waiting-room", "acct:waiting-room:z1/wr1", "acct", {
+        suspended: "true",
+      }),
+    ).rejects.toThrow("Upstream broke");
+    expect(edit).not.toHaveBeenCalled();
+  });
+
   it("updateResource throws for an unsupported type", async () => {
     const { client, fakeApi } = makeClient();
     fakeApi.cf.workers.scripts.list = iter([{ id: "w1" }]) as never;

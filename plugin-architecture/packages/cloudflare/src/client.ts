@@ -999,7 +999,8 @@ export class CloudflareClient implements PluginClient {
   /**
    * Fetch a resource's current fields and merge the changed keys on top,
    * coercing every value to a string (the create/update builders all work in
-   * string space). Falls back to the changed keys alone if the fetch fails.
+   * string space). A failed read refuses the edit: the builders fill what is missing with blanks
+   * and defaults, which a full-object write would save over the user's values.
    */
   private async mergeCurrentFields(
     typeId: string,
@@ -1007,14 +1008,10 @@ export class CloudflareClient implements PluginClient {
     accountId: string,
     changed: Record<string, string>,
   ): Promise<Record<string, string>> {
-    let current: Record<string, string> = {};
-    try {
-      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-      for (const [k, v] of Object.entries(resource.fields)) {
-        if (v !== undefined && v !== null) current[k] = String(v);
-      }
-    } catch {
-      current = {};
+    const current: Record<string, string> = {};
+    const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    for (const [k, v] of Object.entries(resource.fields)) {
+      if (v !== undefined && v !== null) current[k] = String(v);
     }
     return { ...current, ...changed };
   }
