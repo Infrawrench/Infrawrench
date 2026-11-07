@@ -527,6 +527,33 @@ describe("lists that cannot say they have every row", () => {
   });
 });
 
+describe("blank ids", () => {
+  it.each(["instance", "template", "volume", "ssh-key", "serverless-endpoint", "env-var"])(
+    "%s: refuses to delete with no id",
+    async (type) => {
+      await expect(client().deleteResource(type, `acct:${type}:`, "acct")).rejects.toThrow(/no id/);
+      expect(calls).toEqual([]);
+    },
+  );
+
+  it.each(["template", "volume"])("%s: refuses to delete a non-numeric id", async (type) => {
+    await expect(client().deleteResource(type, `acct:${type}:abc`, "acct")).rejects.toThrow(
+      /no id/,
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to edit or act with no id", async () => {
+    await expect(
+      client().updateResource("instance", "acct:instance:", "acct", { label: "x" }),
+    ).rejects.toThrow(/no id/);
+    await expect(
+      client().invokeAction("instance", "acct:instance:", "stop", "acct"),
+    ).rejects.toThrow(/no id/);
+    expect(calls).toEqual([]);
+  });
+});
+
 describe("cost data", () => {
   const range = { fromDate: "2026-09-01", toDate: "2026-09-30" };
   const day = (d: string) => Date.parse(`${d}T00:00:00Z`) / 1000;

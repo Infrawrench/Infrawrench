@@ -73,6 +73,19 @@ function notFound(typeId: string, id: string): Error {
   return Object.assign(new Error(`Vast.ai plugin: ${typeId} ${id} not found`), { status: 404 });
 }
 
+/** The id an edit, delete or action is addressed to; a blank one must not reach Vast. */
+function targetOf(resourceId: string): string {
+  const id = externalOf(resourceId).trim();
+  if (!id) throw new Error(`Vast.ai plugin: "${resourceId}" has no id to act on`);
+  return id;
+}
+
+function numericTargetOf(resourceId: string): number {
+  const id = targetOf(resourceId);
+  if (!/^\d+$/.test(id)) throw new Error(`Vast.ai plugin: "${resourceId}" has no id to act on`);
+  return Number(id);
+}
+
 /** The document says a list; this has always taken a wrapped one as well. */
 function sshKeysOf(res: VSshKey[] | { ssh_keys?: VSshKey[] }): VSshKey[] {
   if (Array.isArray(res)) return res;
@@ -544,7 +557,7 @@ export class VastClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const raw = externalOf(resourceId);
+      const raw = targetOf(resourceId);
       const id = pathEncode(raw);
       switch (typeId) {
         case "instance": {
@@ -631,21 +644,23 @@ export class VastClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const raw = externalOf(resourceId);
+      const raw = targetOf(resourceId);
       const id = pathEncode(raw);
       switch (typeId) {
         case "instance":
           await this.api.delete(`/api/v0/instances/${id}/`);
           return;
         case "template": {
-          await this.api.delete("/api/v0/template/", { body: { template_id: Number(raw) } });
+          await this.api.delete("/api/v0/template/", {
+            body: { template_id: numericTargetOf(resourceId) },
+          });
           return;
         }
         case "volume":
           // The CLI sends the id as a query parameter, the spec as a body; send both.
           await this.api.delete("/api/v0/volumes/", {
             query: { id: raw },
-            body: { id: Number(raw) },
+            body: { id: numericTargetOf(resourceId) },
           });
           return;
         case "ssh-key":
@@ -674,7 +689,7 @@ export class VastClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const raw = externalOf(resourceId);
+      const raw = targetOf(resourceId);
       const id = pathEncode(raw);
       if (typeId === "instance") {
         switch (actionId) {
