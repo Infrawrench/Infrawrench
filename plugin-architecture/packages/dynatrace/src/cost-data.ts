@@ -16,7 +16,7 @@ import { DynatraceApiError, statusOf, withQuery } from "./api.js";
  *   `https://sso.dynatrace.com/sso/oauth2/token` with
  *   `resource=urn:dtaccount:<account uuid>` and lives five minutes.
  * - `GET /sub/v2/accounts/{account}/subscriptions` lists subscriptions,
- *   `GET .../subscriptions/{uuid}/environments/cost?startTime&endTime&environmentIds`
+ *   `GET /sub/v3/accounts/{account}/subscriptions/{uuid}/environments/cost?startTime&endTime&environmentIds`
  *   returns one record per day and capability, per environment, with
  *   `currencyCode`. Only this account's environment is requested: one OAuth
  *   client usually covers every environment of the Dynatrace account, and
@@ -27,6 +27,29 @@ export const SSO_TOKEN_URL = "https://sso.dynatrace.com/sso/oauth2/token";
 export const ACCOUNT_API_URL = "https://api.dynatrace.com";
 /** Per chunk of days. The API documents no page size, so this leaves room for a small one. */
 const COST_MAX_PAGES = 1000;
+
+interface CostRoute {
+  version: "v2" | "v3";
+  laterPage(key: string, query: Record<string, string>): Record<string, string>;
+}
+
+/** Only the timeframe may go once a `page-key` is sent. `environmentIds` has no such exception. */
+const COST_ROUTE: CostRoute = {
+  version: "v3",
+  laterPage: (key, { environmentIds }) => ({
+    "page-key": key,
+    ...(environmentIds ? { environmentIds } : {}),
+  }),
+};
+
+/** No longer documented, and kept for an account whose v3 route refuses the first page. */
+const OLD_COST_ROUTE: CostRoute = {
+  version: "v2",
+  laterPage: (key) => ({ nextPageKey: key }),
+};
+
+/** A route refusal, where v2 may still answer. A 401, throttle or 5xx would say the same on both. */
+const COST_ROUTE_REFUSALS = new Set([400, 403, 404, 405, 410]);
 
 export interface DpsCredentials {
   accountUuid: string;
@@ -168,30 +191,57 @@ function overlaps(s: DpsSubscription, from: string, to: string): boolean {
   return start <= to && end >= from;
 }
 
-/** Every page of one chunk of days. Throws past the cap: a cost read is reconciled like a sync. */
+function costPath(c: DpsCredentials, subscription: string, route: CostRoute): string {
+  return `/sub/${route.version}/accounts/${encodeURIComponent(c.accountUuid)}/subscriptions/${encodeURIComponent(subscription)}/environments/cost`;
+}
+
+/** The first page, from the documented route or, if it refuses, the older one. */
+async function firstCostPage(
+  c: DpsCredentials,
+  subscription: string,
+  route: CostRoute,
+  query: Record<string, string>,
+): Promise<{ route: CostRoute; res: DpsEnvCostResponse }> {
+  try {
+    const res = await accountFetch<DpsEnvCostResponse>(c, costPath(c, subscription, route), query);
+    return { route, res };
+  } catch (err) {
+    if (route === OLD_COST_ROUTE || !COST_ROUTE_REFUSALS.has(statusOf(err))) throw err;
+    const path = costPath(c, subscription, OLD_COST_ROUTE);
+    const res = await accountFetch<DpsEnvCostResponse>(c, path, query);
+    return { route: OLD_COST_ROUTE, res };
+  }
+}
+
+/**
+ * Every page of one chunk of days, and the route that answered. Throws past the cap:
+ * a cost read is reconciled like a sync.
+ */
 async function readCostPages(
   c: DpsCredentials,
-  path: string,
+  subscription: string,
+  preferred: CostRoute,
   query: Record<string, string>,
-): Promise<DpsEnvCost[]> {
-  const out: DpsEnvCost[] = [];
-  let next: string | undefined;
-  for (let page = 0; page < COST_MAX_PAGES; page++) {
-    const res: DpsEnvCostResponse = await accountFetch<DpsEnvCostResponse>(
-      c,
-      path,
-      next ? { nextPageKey: next } : query,
-    );
-    out.push(...requireListPage(res?.data, { vendor: "Dynatrace Account", path, key: "data" }));
-    next = res?.nextPageKey || undefined;
-    if (!next) return out;
+): Promise<{ route: CostRoute; envs: DpsEnvCost[] }> {
+  const first = await firstCostPage(c, subscription, preferred, query);
+  const { route } = first;
+  const path = costPath(c, subscription, route);
+  const envs: DpsEnvCost[] = [];
+  let res = first.res;
+  for (let page = 1; ; page++) {
+    envs.push(...requireListPage(res?.data, { vendor: "Dynatrace Account", path, key: "data" }));
+    const next = res?.nextPageKey;
+    if (!next) return { route, envs };
+    if (page >= COST_MAX_PAGES) {
+      throw new ListTruncatedError({
+        vendor: "Dynatrace Account",
+        path,
+        items: envs.length,
+        maxPages: COST_MAX_PAGES,
+      });
+    }
+    res = await accountFetch<DpsEnvCostResponse>(c, path, route.laterPage(next, query));
   }
-  throw new ListTruncatedError({
-    vendor: "Dynatrace Account",
-    path,
-    items: out.length,
-    maxPages: COST_MAX_PAGES,
-  });
 }
 
 export async function fetchDpsCostData(
@@ -217,15 +267,16 @@ export async function fetchDpsCostData(
     throw err;
   }
   const merged = new Map<string, CostRow>();
+  let route = COST_ROUTE;
   for (const sub of subs.filter((s) => s.uuid && overlaps(s, range.fromDate, range.toDate))) {
     for (const [from, to] of chunkRange(range.fromDate, range.toDate)) {
-      const path = `/sub/v2/accounts/${encodeURIComponent(c.accountUuid)}/subscriptions/${encodeURIComponent(sub.uuid ?? "")}/environments/cost`;
-      const envs = await readCostPages(c, path, {
+      const read = await readCostPages(c, sub.uuid ?? "", route, {
         startTime: `${from}T00:00:00Z`,
         endTime: `${addDays(to, 1)}T00:00:00Z`,
         ...(c.environmentId ? { environmentIds: c.environmentId } : {}),
       });
-      for (const env of envs) {
+      route = read.route;
+      for (const env of read.envs) {
         if (c.environmentId && env.environmentId && env.environmentId !== c.environmentId) {
           continue;
         }

@@ -90,7 +90,7 @@ export const manifest = {
   ]),
   costs: {
     // DPS daily cost per capability for this environment
-    // (`/sub/v2/accounts/{a}/subscriptions/{s}/environments/cost`). One record
+    // (`/sub/v3/accounts/{a}/subscriptions/{s}/environments/cost`). One record
     // per day; bookings can trail by a day or two.
     dimensions: ["service", "tag"],
     maxHistoryDays: 365,
