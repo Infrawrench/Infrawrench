@@ -4,7 +4,7 @@
  */
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import type { TwilioContext } from "./api.js";
-import { accountPath, list2010 } from "./api.js";
+import { accountPath, v2010 } from "./api.js";
 import type { TwUsageRecord } from "./mappers.js";
 import { num } from "./mappers.js";
 
@@ -51,15 +51,16 @@ export async function usageSeries(
   const fetched = new Map<string, TwUsageRecord[]>();
   await Promise.all(
     categories.map(async (category) => {
-      const records = await list2010<TwUsageRecord>(
-        ctx,
+      const records = await v2010(ctx).getAll(
         `${accountPath(accountSid)}/Usage/Records/Daily.json`,
         "usage_records",
         {
-          Category: category,
-          StartDate: day(range.startMs),
-          EndDate: day(range.endMs),
-          IncludeSubaccounts: includeSubaccounts,
+          query: {
+            Category: category,
+            StartDate: day(range.startMs),
+            EndDate: day(range.endMs),
+            IncludeSubaccounts: includeSubaccounts,
+          },
         },
       );
       fetched.set(category, records);

@@ -33,7 +33,7 @@
  */
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import type { TwilioContext } from "./api.js";
-import { accountPath, isAccessDenied, list2010 } from "./api.js";
+import { accountPath, isAccessDenied, v2010 } from "./api.js";
 import { TOTAL_CATEGORY, productOf, selectLeafCategories } from "./categories.js";
 import type { TwUsageRecord } from "./mappers.js";
 import { num } from "./mappers.js";
@@ -82,12 +82,9 @@ async function mapLimit<T, R>(
   fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const out: R[] = new Array(items.length);
-  let next = 0;
+  const queue = items.entries();
   async function worker() {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i] as T);
-    }
+    for (const [i, item] of queue) out[i] = await fn(item);
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
@@ -102,11 +99,10 @@ async function daily(
   category: string,
   range: CostFetchRange,
 ): Promise<Map<string, TwUsageRecord>> {
-  const records = await list2010<TwUsageRecord>(
-    ctx,
+  const records = await v2010(ctx).getAll(
     `${accountPath(scope.accountSid)}/Usage/Records/Daily.json`,
     "usage_records",
-    { Category: category, ...rangeQuery(range, scope.includeSubaccounts) },
+    { query: { Category: category, ...rangeQuery(range, scope.includeSubaccounts) } },
   );
   const out = new Map<string, TwUsageRecord>();
   for (const r of records) {
@@ -122,11 +118,10 @@ async function collectScope(
   scope: Scope,
   range: CostFetchRange,
 ): Promise<ScopeResult> {
-  const summary = await list2010<TwUsageRecord>(
-    ctx,
+  const summary = await v2010(ctx).getAll(
     `${accountPath(scope.accountSid)}/Usage/Records.json`,
     "usage_records",
-    rangeQuery(range, scope.includeSubaccounts),
+    { query: rangeQuery(range, scope.includeSubaccounts) },
   );
   const priced = new Map<string, number>();
   let currency = "USD";
@@ -337,11 +332,10 @@ export async function fetchPeriodSpend(
   period: "ThisMonth" | "LastMonth",
   includeSubaccounts: boolean,
 ): Promise<PeriodSpend> {
-  const records = await list2010<TwUsageRecord>(
-    ctx,
+  const records = await v2010(ctx).getAll(
     `${accountPath(accountSid)}/Usage/Records/${period}.json`,
     "usage_records",
-    { IncludeSubaccounts: includeSubaccounts },
+    { query: { IncludeSubaccounts: includeSubaccounts } },
   );
   const priced = new Map<string, number>();
   const byCategory = new Map<string, TwUsageRecord>();

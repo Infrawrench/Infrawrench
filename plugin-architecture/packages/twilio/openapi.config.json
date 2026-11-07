@@ -1,0 +1,184 @@
+{
+  "documents": [
+    {
+      "name": "v2010",
+      "specUrl": "https://raw.githubusercontent.com/twilio/twilio-oai/main/spec/json/twilio_api_v2010.json",
+      "patches": [
+        {
+          "pointer": "/paths/~12010-04-01~1Accounts~1{AccountSid}~1Applications.json/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/VoiceMethod",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so a value outside this enum stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~12010-04-01~1Accounts~1{AccountSid}~1Applications.json/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/SmsMethod",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so a value outside this enum stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~12010-04-01~1Accounts~1{AccountSid}~1Applications~1{Sid}.json/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/VoiceMethod",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so a value outside this enum stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~12010-04-01~1Accounts~1{AccountSid}~1Applications~1{Sid}.json/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/SmsMethod",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so a value outside this enum stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~12010-04-01~1Accounts~1{AccountSid}~1IncomingPhoneNumbers~1{Sid}.json/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/VoiceMethod",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so a value outside this enum stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~12010-04-01~1Accounts~1{AccountSid}~1IncomingPhoneNumbers~1{Sid}.json/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/SmsMethod",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so a value outside this enum stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~12010-04-01~1Accounts~1{AccountSid}~1Usage~1Triggers.json/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/CallbackMethod",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so a value outside this enum stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~12010-04-01~1Accounts~1{AccountSid}~1Usage~1Triggers.json/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/TriggerBy",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so a value outside this enum stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~12010-04-01~1Accounts~1{AccountSid}~1Usage~1Triggers.json/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/Recurring",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so a value outside this enum stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~12010-04-01~1Accounts~1{AccountSid}~1Usage~1Triggers~1{Sid}.json/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/CallbackMethod",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so a value outside this enum stays Twilio's error."
+        }
+      ],
+      "paths": {
+        "/2010-04-01/Accounts.json": ["get", "post"],
+        "/2010-04-01/Accounts/{Sid}.json": ["get", "post"],
+        "/2010-04-01/Accounts/{AccountSid}/Balance.json": ["get"],
+        "/2010-04-01/Accounts/{AccountSid}/Usage/Records.json": ["get"],
+        "/2010-04-01/Accounts/{AccountSid}/Usage/Records/ThisMonth.json": ["get"],
+        "/2010-04-01/Accounts/{AccountSid}/Usage/Records/LastMonth.json": ["get"],
+        "/2010-04-01/Accounts/{AccountSid}/Usage/Records/Daily.json": ["get"],
+        "/2010-04-01/Accounts/{AccountSid}/Usage/Triggers.json": ["get", "post"],
+        "/2010-04-01/Accounts/{AccountSid}/Usage/Triggers/{Sid}.json": ["get", "post", "delete"],
+        "/2010-04-01/Accounts/{AccountSid}/Applications.json": ["get", "post"],
+        "/2010-04-01/Accounts/{AccountSid}/Applications/{Sid}.json": ["get", "post", "delete"],
+        "/2010-04-01/Accounts/{AccountSid}/Keys.json": ["get", "post"],
+        "/2010-04-01/Accounts/{AccountSid}/Keys/{Sid}.json": ["get", "post", "delete"],
+        "/2010-04-01/Accounts/{AccountSid}/IncomingPhoneNumbers.json": ["get"],
+        "/2010-04-01/Accounts/{AccountSid}/IncomingPhoneNumbers/{Sid}.json": ["post", "delete"]
+      }
+    },
+    {
+      "name": "messaging",
+      "specUrl": "https://raw.githubusercontent.com/twilio/twilio-oai/main/spec/json/twilio_messaging_v1.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1v1~1Services/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/ValidityPeriod",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so 007 stays 007 and a typo stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~1v1~1Services~1{Sid}/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/ValidityPeriod",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so 007 stays 007 and a typo stays Twilio's error."
+        }
+      ],
+      "paths": {
+        "/v1/Services": ["get", "post"],
+        "/v1/Services/{Sid}": ["get", "post", "delete"],
+        "/v1/Services/{ServiceSid}/PhoneNumbers": ["get"]
+      }
+    },
+    {
+      "name": "verify",
+      "specUrl": "https://raw.githubusercontent.com/twilio/twilio-oai/main/spec/json/twilio_verify_v2.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1v2~1Services/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/CodeLength",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so 007 stays 007 and a typo stays Twilio's error."
+        },
+        {
+          "pointer": "/paths/~1v2~1Services~1{Sid}/post/requestBody/content/application~1x-www-form-urlencoded/schema/properties/CodeLength",
+          "value": {
+            "type": "string"
+          },
+          "why": "The form field's text goes through as typed and Twilio validates it, so 007 stays 007 and a typo stays Twilio's error."
+        }
+      ],
+      "paths": {
+        "/v2/Services": ["get", "post"],
+        "/v2/Services/{Sid}": ["get", "post", "delete"],
+        "/v2/Attempts/Summary": ["get"]
+      }
+    },
+    {
+      "name": "pricing",
+      "specUrl": "https://raw.githubusercontent.com/twilio/twilio-oai/main/spec/json/twilio_pricing_v1.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/pricing.v1.phone_number.phone_number_country-instance/properties/phone_number_prices/items/properties/base_price",
+          "value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "why": "Documented as a number; the plugin has always read a decimal string too, and Number() takes either."
+        },
+        {
+          "pointer": "/components/schemas/pricing.v1.phone_number.phone_number_country-instance/properties/phone_number_prices/items/properties/current_price",
+          "value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "why": "Documented as a number; the plugin has always read a decimal string too, and Number() takes either."
+        }
+      ],
+      "paths": {
+        "/v1/PhoneNumbers/Countries/{IsoCountry}": ["get"]
+      }
+    }
+  ]
+}

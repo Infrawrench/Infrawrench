@@ -1,7 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { CreditAccessError, evaluateOrphanRule } from "@infrawrench/plugin-base";
-import { TwilioClient, toForm } from "../client.js";
+import { TwilioClient, usageTriggerForm } from "../client.js";
 import { PhoneNumberResourceType } from "../resource-types.js";
 import { KEY, MAIN, SUB, makeHttp, page } from "./helpers.js";
 import type { Reply } from "./helpers.js";
@@ -213,14 +213,7 @@ describe("usage triggers", () => {
 
   it("edits only the fields Twilio allows", () => {
     expect(
-      toForm(
-        { friendlyName: "Budget", callbackUrl: "https://x", triggerValue: "9" },
-        {
-          friendlyName: "FriendlyName",
-          callbackUrl: "CallbackUrl",
-          callbackMethod: "CallbackMethod",
-        },
-      ),
+      usageTriggerForm({ friendlyName: "Budget", callbackUrl: "https://x", triggerValue: "9" }),
     ).toEqual({ FriendlyName: "Budget", CallbackUrl: "https://x" });
   });
 });

@@ -15,34 +15,17 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CreditAccessError, externalIdOf } from "@infrawrench/plugin-base";
-import type { FormValue, TwilioContext } from "./api.js";
-import {
-  API_HOST,
-  MESSAGING_HOST,
-  PRICING_HOST,
-  VERIFY_HOST,
-  accountPath,
-  isAccessDenied,
-  list2010,
-  listV1,
-  twilioFetch,
-} from "./api.js";
+import { CreditAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { ApiForm } from "@infrawrench/plugin-base";
+import type { TwilioContext } from "./api.js";
+import { accountPath, isAccessDenied, messaging, pricing, v2010, verify } from "./api.js";
+import type { operations as MessagingOps } from "./api-types.messaging.gen.js";
+import type { operations as V2010Ops } from "./api-types.v2010.gen.js";
+import type { operations as VerifyOps } from "./api-types.verify.gen.js";
 import { COMMON_TRIGGER_CATEGORIES, TOTAL_CATEGORY } from "./categories.js";
 import type { PeriodSpend, SubaccountRef } from "./cost-data.js";
 import { MAX_SUBACCOUNT_SCOPES, fetchPeriodSpend, fetchTwilioCostData } from "./cost-data.js";
-import type {
-  AccountSummary,
-  TwAccount,
-  TwApplication,
-  TwBalance,
-  TwKey,
-  TwMessagingService,
-  TwPhoneNumber,
-  TwUsageRecord,
-  TwUsageTrigger,
-  TwVerifyService,
-} from "./mappers.js";
+import type { AccountSummary, TwAccount } from "./mappers.js";
 import {
   mapAccount,
   mapApplication,
@@ -55,7 +38,7 @@ import {
   num,
 } from "./mappers.js";
 import { rangeOrDefault, usageSeries } from "./metrics.js";
-import type { CountryNumberPrices, TwilioPhoneNumberCountry } from "./pricing.js";
+import type { CountryNumberPrices } from "./pricing.js";
 import { countryOfNumber, normalizeNumberType, parseCountryPrices } from "./pricing.js";
 import type { VerifySummary } from "./render.js";
 import {
@@ -88,12 +71,9 @@ async function mapLimit<T, R>(
   fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const out: R[] = new Array(items.length);
-  let next = 0;
+  const queue = items.entries();
   async function worker() {
-    while (next < items.length) {
-      const i = next++;
-      out[i] = await fn(items[i] as T);
-    }
+    for (const [i, item] of queue) out[i] = await fn(item);
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
@@ -102,90 +82,80 @@ async function mapLimit<T, R>(
 const bool = (v: string | undefined): boolean | undefined =>
   v === undefined || v === "" ? undefined : v === "true";
 
-/** Form fields Twilio accepts for each editable resource field. */
-const PHONE_FORM: Record<string, string> = {
-  friendlyName: "FriendlyName",
-  voiceUrl: "VoiceUrl",
-  voiceMethod: "VoiceMethod",
-  voiceFallbackUrl: "VoiceFallbackUrl",
-  smsUrl: "SmsUrl",
-  smsMethod: "SmsMethod",
-  smsFallbackUrl: "SmsFallbackUrl",
-  statusCallback: "StatusCallback",
-};
+type Fields = Record<string, string>;
 
-const APP_FORM: Record<string, string> = {
-  friendlyName: "FriendlyName",
-  voiceUrl: "VoiceUrl",
-  voiceMethod: "VoiceMethod",
-  voiceFallbackUrl: "VoiceFallbackUrl",
-  smsUrl: "SmsUrl",
-  smsMethod: "SmsMethod",
-  smsFallbackUrl: "SmsFallbackUrl",
-  statusCallback: "StatusCallback",
-  smsStatusCallback: "SmsStatusCallback",
-};
+/** A field as the form sent it, or nothing if it did not: an absent key is left unchanged. */
+const text = (fields: Fields, key: string): string | undefined =>
+  key in fields ? (fields[key] ?? "").trim() : undefined;
 
-const MESSAGING_FORM: Record<string, string> = {
-  friendlyName: "FriendlyName",
-  usecase: "Usecase",
-  inboundRequestUrl: "InboundRequestUrl",
-  fallbackUrl: "FallbackUrl",
-  statusCallback: "StatusCallback",
-  stickySender: "StickySender",
-  smartEncoding: "SmartEncoding",
-  mmsConverter: "MmsConverter",
-  fallbackToLongCode: "FallbackToLongCode",
-  areaCodeGeomatch: "AreaCodeGeomatch",
-  validityPeriod: "ValidityPeriod",
-  useInboundWebhookOnNumber: "UseInboundWebhookOnNumber",
-};
+/** A toggle: blank means "Twilio default", so it is not sent. */
+const flag = (fields: Fields, key: string): boolean | undefined => bool(text(fields, key));
 
-const VERIFY_FORM: Record<string, string> = {
-  friendlyName: "FriendlyName",
-  codeLength: "CodeLength",
-  lookupEnabled: "LookupEnabled",
-  skipSmsToLandlines: "SkipSmsToLandlines",
-  dtmfInputRequired: "DtmfInputRequired",
-  doNotShareWarningEnabled: "DoNotShareWarningEnabled",
-  customCodeEnabled: "CustomCodeEnabled",
-  psd2Enabled: "Psd2Enabled",
-};
+/** A number kept as typed, which Twilio validates. Blank is not sent. */
+const unlessBlank = (fields: Fields, key: string): string | undefined =>
+  text(fields, key) || undefined;
 
-const BOOLEAN_FIELDS = new Set([
-  "stickySender",
-  "smartEncoding",
-  "mmsConverter",
-  "fallbackToLongCode",
-  "areaCodeGeomatch",
-  "useInboundWebhookOnNumber",
-  "lookupEnabled",
-  "skipSmsToLandlines",
-  "dtmfInputRequired",
-  "doNotShareWarningEnabled",
-  "customCodeEnabled",
-  "psd2Enabled",
-]);
+const callHandlers = (
+  fields: Fields,
+): ApiForm<V2010Ops["UpdateIncomingPhoneNumber"]> &
+  ApiForm<V2010Ops["CreateApplication"]> &
+  ApiForm<V2010Ops["UpdateApplication"]> => ({
+  FriendlyName: text(fields, "friendlyName"),
+  VoiceUrl: text(fields, "voiceUrl"),
+  VoiceMethod: text(fields, "voiceMethod"),
+  VoiceFallbackUrl: text(fields, "voiceFallbackUrl"),
+  SmsUrl: text(fields, "smsUrl"),
+  SmsMethod: text(fields, "smsMethod"),
+  SmsFallbackUrl: text(fields, "smsFallbackUrl"),
+  StatusCallback: text(fields, "statusCallback"),
+});
 
-/** Translate edited resource fields into a Twilio form body. */
-export function toForm(
-  fields: Record<string, string>,
-  mapping: Record<string, string>,
-): Record<string, FormValue> {
-  const form: Record<string, FormValue> = {};
-  for (const [key, param] of Object.entries(mapping)) {
-    if (!(key in fields)) continue;
-    const raw = (fields[key] ?? "").trim();
-    if (BOOLEAN_FIELDS.has(key)) {
-      const b = bool(raw);
-      if (b !== undefined) form[param] = b;
-      continue;
-    }
-    if ((key === "validityPeriod" || key === "codeLength") && raw === "") continue;
-    form[param] = raw;
-  }
-  return form;
-}
+const phoneForm = (fields: Fields): ApiForm<V2010Ops["UpdateIncomingPhoneNumber"]> =>
+  callHandlers(fields);
+
+const appForm = (
+  fields: Fields,
+): ApiForm<V2010Ops["CreateApplication"]> & ApiForm<V2010Ops["UpdateApplication"]> => ({
+  ...callHandlers(fields),
+  SmsStatusCallback: text(fields, "smsStatusCallback"),
+});
+
+const messagingForm = (
+  fields: Fields,
+): ApiForm<MessagingOps["CreateService"]> & ApiForm<MessagingOps["UpdateService"]> => ({
+  FriendlyName: text(fields, "friendlyName"),
+  Usecase: text(fields, "usecase"),
+  InboundRequestUrl: text(fields, "inboundRequestUrl"),
+  FallbackUrl: text(fields, "fallbackUrl"),
+  StatusCallback: text(fields, "statusCallback"),
+  StickySender: flag(fields, "stickySender"),
+  SmartEncoding: flag(fields, "smartEncoding"),
+  MmsConverter: flag(fields, "mmsConverter"),
+  FallbackToLongCode: flag(fields, "fallbackToLongCode"),
+  AreaCodeGeomatch: flag(fields, "areaCodeGeomatch"),
+  ValidityPeriod: unlessBlank(fields, "validityPeriod"),
+  UseInboundWebhookOnNumber: flag(fields, "useInboundWebhookOnNumber"),
+});
+
+const verifyForm = (
+  fields: Fields,
+): ApiForm<VerifyOps["CreateService"]> & ApiForm<VerifyOps["UpdateService"]> => ({
+  FriendlyName: text(fields, "friendlyName"),
+  CodeLength: unlessBlank(fields, "codeLength"),
+  LookupEnabled: flag(fields, "lookupEnabled"),
+  SkipSmsToLandlines: flag(fields, "skipSmsToLandlines"),
+  DtmfInputRequired: flag(fields, "dtmfInputRequired"),
+  DoNotShareWarningEnabled: flag(fields, "doNotShareWarningEnabled"),
+  CustomCodeEnabled: flag(fields, "customCodeEnabled"),
+  Psd2Enabled: flag(fields, "psd2Enabled"),
+});
+
+/** A trigger's category, measure and threshold are fixed once it exists. */
+export const usageTriggerForm = (fields: Fields): ApiForm<V2010Ops["UpdateUsageTrigger"]> => ({
+  FriendlyName: text(fields, "friendlyName"),
+  CallbackUrl: text(fields, "callbackUrl"),
+  CallbackMethod: text(fields, "callbackMethod"),
+});
 
 export class TwilioClient implements PluginClient {
   private readonly ctx: TwilioContext;
@@ -247,7 +217,8 @@ export class TwilioClient implements PluginClient {
     if (this.subaccountCache && Date.now() - this.subaccountCache.at < CACHE_MS) {
       return this.subaccountCache.value;
     }
-    const value = list2010<TwAccount>(this.ctx, "/2010-04-01/Accounts.json", "accounts")
+    const value = v2010(this.ctx)
+      .getAll("/2010-04-01/Accounts.json", "accounts")
       .then((all) => all.filter((a) => a.sid && a.sid !== this.ctx.accountSid))
       .catch((err) => {
         if (isAccessDenied(err)) return null;
@@ -280,17 +251,14 @@ export class TwilioClient implements PluginClient {
     const value = (async () => {
       const out = new Map<string, { sid: string; name: string; count: number }>();
       const services = await this.fetchMessagingServices().catch((err) => {
-        if (isAccessDenied(err)) return [] as TwMessagingService[];
+        if (isAccessDenied(err)) return [];
         throw err;
       });
       await mapLimit(services.slice(0, MAX_MESSAGING_SERVICES), CONCURRENCY, async (s) => {
         if (!s.sid) return;
-        const numbers = await listV1<{ sid?: string }>(
-          this.ctx,
-          MESSAGING_HOST,
-          `/v1/Services/${encodeURIComponent(s.sid)}/PhoneNumbers`,
-          "phone_numbers",
-        ).catch(() => [] as Array<{ sid?: string }>);
+        const numbers = await messaging(this.ctx)
+          .getAll(`/v1/Services/${pathEncode(s.sid)}/PhoneNumbers`, "phone_numbers")
+          .catch(() => []);
         out.set(`service:${s.sid}`, {
           sid: s.sid,
           name: s.friendly_name ?? s.sid,
@@ -307,18 +275,15 @@ export class TwilioClient implements PluginClient {
     return value;
   }
 
-  private fetchMessagingServices(): Promise<TwMessagingService[]> {
-    return listV1<TwMessagingService>(this.ctx, MESSAGING_HOST, "/v1/Services", "services");
+  private fetchMessagingServices() {
+    return messaging(this.ctx).getAll("/v1/Services", "services");
   }
 
   private countryPrices(iso: string): Promise<CountryNumberPrices | null> {
     let cached = this.priceCache.get(iso);
     if (!cached) {
-      cached = twilioFetch<TwilioPhoneNumberCountry>(
-        this.ctx,
-        PRICING_HOST,
-        `/v1/PhoneNumbers/Countries/${encodeURIComponent(iso)}`,
-      )
+      cached = pricing(this.ctx)
+        .get(`/v1/PhoneNumbers/Countries/${pathEncode(iso)}`)
         .then(parseCountryPrices)
         .catch(() => null);
       this.priceCache.set(iso, cached);
@@ -364,29 +329,25 @@ export class TwilioClient implements PluginClient {
           });
         case "verify-service":
           return this.scoped(async () =>
-            (await listV1<TwVerifyService>(this.ctx, VERIFY_HOST, "/v2/Services", "services")).map(
-              (s) => mapVerifyService(accountId, s),
+            (await verify(this.ctx).getAll("/v2/Services", "services")).map((s) =>
+              mapVerifyService(accountId, s),
             ),
           );
         case "twiml-app":
           return this.scoped(async () =>
-            (
-              await list2010<TwApplication>(this.ctx, `${main}/Applications.json`, "applications")
-            ).map((a) => mapApplication(accountId, a)),
+            (await v2010(this.ctx).getAll(`${main}/Applications.json`, "applications")).map((a) =>
+              mapApplication(accountId, a),
+            ),
           );
         case "usage-trigger":
           return this.scoped(async () =>
-            (
-              await list2010<TwUsageTrigger>(
-                this.ctx,
-                `${main}/Usage/Triggers.json`,
-                "usage_triggers",
-              )
-            ).map((t) => mapUsageTrigger(accountId, t)),
+            (await v2010(this.ctx).getAll(`${main}/Usage/Triggers.json`, "usage_triggers")).map(
+              (t) => mapUsageTrigger(accountId, t),
+            ),
           );
         case "api-key":
           return this.scoped(async () =>
-            (await list2010<TwKey>(this.ctx, `${main}/Keys.json`, "keys")).map((k) =>
+            (await v2010(this.ctx).getAll(`${main}/Keys.json`, "keys")).map((k) =>
               mapKey(accountId, k, this.ctx.username),
             ),
           );
@@ -398,13 +359,14 @@ export class TwilioClient implements PluginClient {
 
   private async loadAccount(accountId: string): Promise<ResourceInstance> {
     const main = accountPath(this.ctx.accountSid);
+    const api = v2010(this.ctx);
     const [account, balance, thisMonth, lastMonth, subs] = await Promise.all([
-      twilioFetch<TwAccount>(this.ctx, API_HOST, `${main}.json`).catch((err) => {
+      api.get(`${main}.json`).catch((err) => {
         // A Standard key cannot read the Accounts resource: keep the SID.
-        if (isAccessDenied(err)) return { sid: this.ctx.accountSid } as TwAccount;
+        if (isAccessDenied(err)) return { sid: this.ctx.accountSid };
         throw err;
       }),
-      twilioFetch<TwBalance>(this.ctx, API_HOST, `${main}/Balance.json`).catch(() => undefined),
+      api.get(`${main}/Balance.json`).catch(() => undefined),
       this.totalFor("ThisMonth"),
       this.totalFor("LastMonth"),
       this.subaccounts().catch(() => null),
@@ -424,11 +386,10 @@ export class TwilioClient implements PluginClient {
     period: "ThisMonth" | "LastMonth",
   ): Promise<{ price: number; unit: string } | undefined> {
     try {
-      const records = await list2010<TwUsageRecord>(
-        this.ctx,
+      const records = await v2010(this.ctx).getAll(
         `${accountPath(this.ctx.accountSid)}/Usage/Records/${period}.json`,
         "usage_records",
-        { Category: TOTAL_CATEGORY, IncludeSubaccounts: true },
+        { query: { Category: TOTAL_CATEGORY, IncludeSubaccounts: true } },
       );
       const r = records[0];
       if (!r) return undefined;
@@ -451,8 +412,7 @@ export class TwilioClient implements PluginClient {
       this.messagingMembership(),
       mapLimit(owners, CONCURRENCY, async (owner) => {
         try {
-          return await list2010<TwPhoneNumber>(
-            this.ctx,
+          return await v2010(this.ctx).getAll(
             `${accountPath(owner.sid)}/IncomingPhoneNumbers.json`,
             "incoming_phone_numbers",
           );
@@ -464,8 +424,12 @@ export class TwilioClient implements PluginClient {
     ]);
     const numbers = perOwner.flat();
     const countries = [
-      ...new Set(numbers.map((n) => countryOfNumber(n.phone_number ?? "")).filter(Boolean)),
-    ] as string[];
+      ...new Set(
+        numbers
+          .map((n) => countryOfNumber(n.phone_number ?? ""))
+          .filter((iso): iso is string => Boolean(iso)),
+      ),
+    ];
     const prices = new Map<string, CountryNumberPrices | null>();
     await mapLimit(countries, CONCURRENCY, async (iso) => {
       prices.set(iso, await this.countryPrices(iso));
@@ -512,7 +476,7 @@ export class TwilioClient implements PluginClient {
           return withSpend(base, thisMonth, lastMonth);
         }
         case "subaccount": {
-          const a = await twilioFetch<TwAccount>(this.ctx, API_HOST, `${accountPath(id)}.json`);
+          const a = await v2010(this.ctx).get(`${accountPath(id)}.json`);
           const spend =
             this.ctx.authMode === "auth-token"
               ? await fetchPeriodSpend(this.ctx, id, "ThisMonth", false).catch(() => undefined)
@@ -520,11 +484,7 @@ export class TwilioClient implements PluginClient {
           return withSpend(mapSubaccount(accountId, a), spend, undefined);
         }
         case "verify-service": {
-          const s = await twilioFetch<TwVerifyService>(
-            this.ctx,
-            VERIFY_HOST,
-            `/v2/Services/${encodeURIComponent(id)}`,
-          );
+          const s = await verify(this.ctx).get(`/v2/Services/${pathEncode(id)}`);
           const r = mapVerifyService(accountId, s);
           const summary = await this.verifySummary(id).catch(() => undefined);
           return summary
@@ -539,11 +499,7 @@ export class TwilioClient implements PluginClient {
         }
         case "messaging-service": {
           const [s, membership] = await Promise.all([
-            twilioFetch<TwMessagingService>(
-              this.ctx,
-              MESSAGING_HOST,
-              `/v1/Services/${encodeURIComponent(id)}`,
-            ),
+            messaging(this.ctx).get(`/v1/Services/${pathEncode(id)}`),
             this.messagingMembership(),
           ]);
           return mapMessagingService(accountId, s, membership.get(`service:${id}`)?.count);
@@ -551,29 +507,17 @@ export class TwilioClient implements PluginClient {
         case "twiml-app":
           return mapApplication(
             accountId,
-            await twilioFetch<TwApplication>(
-              this.ctx,
-              API_HOST,
-              `${main}/Applications/${encodeURIComponent(id)}.json`,
-            ),
+            await v2010(this.ctx).get(`${main}/Applications/${pathEncode(id)}.json`),
           );
         case "usage-trigger":
           return mapUsageTrigger(
             accountId,
-            await twilioFetch<TwUsageTrigger>(
-              this.ctx,
-              API_HOST,
-              `${main}/Usage/Triggers/${encodeURIComponent(id)}.json`,
-            ),
+            await v2010(this.ctx).get(`${main}/Usage/Triggers/${pathEncode(id)}.json`),
           );
         case "api-key":
           return mapKey(
             accountId,
-            await twilioFetch<TwKey>(
-              this.ctx,
-              API_HOST,
-              `${main}/Keys/${encodeURIComponent(id)}.json`,
-            ),
+            await v2010(this.ctx).get(`${main}/Keys/${pathEncode(id)}.json`),
             this.ctx.username,
           );
         default:
@@ -590,12 +534,7 @@ export class TwilioClient implements PluginClient {
     const end = new Date();
     const start = new Date(end.getTime() - 30 * 24 * 3600_000);
     const iso = (d: Date) => `${d.toISOString().slice(0, 19)}Z`;
-    const res = await twilioFetch<{
-      total_attempts?: number;
-      total_converted?: number;
-      total_unconverted?: number;
-      conversion_rate_percentage?: string | null;
-    }>(this.ctx, VERIFY_HOST, "/v2/Attempts/Summary", {
+    const res = await verify(this.ctx).get("/v2/Attempts/Summary", {
       query: {
         VerifyServiceSid: serviceSid,
         DateCreatedAfter: iso(start),
@@ -716,11 +655,7 @@ export class TwilioClient implements PluginClient {
   fetchCreditBalance(_accountId: string): PluginEffect<CreditBalance[]> {
     return attempt(async () => {
       try {
-        const b = await twilioFetch<TwBalance>(
-          this.ctx,
-          API_HOST,
-          `${accountPath(this.ctx.accountSid)}/Balance.json`,
-        );
+        const b = await v2010(this.ctx).get(`${accountPath(this.ctx.accountSid)}/Balance.json`);
         const remaining = num(b.balance);
         if (remaining === undefined) return [];
         const currency = (b.currency ?? "USD").toUpperCase();
@@ -878,11 +813,9 @@ export class TwilioClient implements PluginClient {
   private async usageTriggerFields(
     methodOptions: Array<{ id: string; label: string }>,
   ): Promise<CreateFieldConfig[]> {
-    const records = await list2010<TwUsageRecord>(
-      this.ctx,
-      `${accountPath(this.ctx.accountSid)}/Usage/Records/ThisMonth.json`,
-      "usage_records",
-    ).catch(() => [] as TwUsageRecord[]);
+    const records = await v2010(this.ctx)
+      .getAll(`${accountPath(this.ctx.accountSid)}/Usage/Records/ThisMonth.json`, "usage_records")
+      .catch(() => []);
     const common = new Set(COMMON_TRIGGER_CATEGORIES.map((c) => c.id));
     const rest = records
       .filter((r) => r.category && !common.has(r.category))
@@ -992,62 +925,44 @@ export class TwilioClient implements PluginClient {
             throw new Error("Twilio plugin: the webhook URL must start with https:// or http://");
           }
           const recurring = (fields["recurring"] ?? "").trim();
-          const t = await twilioFetch<TwUsageTrigger>(
-            this.ctx,
-            API_HOST,
-            `${main}/Usage/Triggers.json`,
-            {
-              form: {
-                UsageCategory: (fields["usageCategory"] ?? TOTAL_CATEGORY).trim() || TOTAL_CATEGORY,
-                TriggerBy: (fields["triggerBy"] ?? "price").trim() || "price",
-                TriggerValue: value,
-                CallbackUrl: callback,
-                CallbackMethod: (fields["callbackMethod"] ?? "POST").trim() || "POST",
-                ...(recurring ? { Recurring: recurring } : {}),
-                ...(name ? { FriendlyName: name } : {}),
-              },
+          const t = await v2010(this.ctx).post(`${main}/Usage/Triggers.json`, {
+            form: {
+              UsageCategory: (fields["usageCategory"] ?? TOTAL_CATEGORY).trim() || TOTAL_CATEGORY,
+              TriggerBy: (fields["triggerBy"] ?? "price").trim() || "price",
+              TriggerValue: value,
+              CallbackUrl: callback,
+              CallbackMethod: (fields["callbackMethod"] ?? "POST").trim() || "POST",
+              ...(recurring ? { Recurring: recurring } : {}),
+              ...(name ? { FriendlyName: name } : {}),
             },
-          );
+          });
           return mapUsageTrigger(accountId, t);
         }
         case "subaccount":
           return mapSubaccount(
             accountId,
-            await twilioFetch<TwAccount>(this.ctx, API_HOST, "/2010-04-01/Accounts.json", {
+            await v2010(this.ctx).post("/2010-04-01/Accounts.json", {
               form: { FriendlyName: name },
             }),
           );
         case "messaging-service": {
-          const s = await twilioFetch<TwMessagingService>(
-            this.ctx,
-            MESSAGING_HOST,
-            "/v1/Services",
-            {
-              form: toForm(fields, MESSAGING_FORM),
-            },
-          );
+          const s = await messaging(this.ctx).post("/v1/Services", { form: messagingForm(fields) });
           return mapMessagingService(accountId, s, 0);
         }
         case "verify-service":
           return mapVerifyService(
             accountId,
-            await twilioFetch<TwVerifyService>(this.ctx, VERIFY_HOST, "/v2/Services", {
-              form: toForm(fields, VERIFY_FORM),
-            }),
+            await verify(this.ctx).post("/v2/Services", { form: verifyForm(fields) }),
           );
         case "twiml-app":
           return mapApplication(
             accountId,
-            await twilioFetch<TwApplication>(this.ctx, API_HOST, `${main}/Applications.json`, {
-              form: toForm(fields, APP_FORM),
-            }),
+            await v2010(this.ctx).post(`${main}/Applications.json`, { form: appForm(fields) }),
           );
         case "api-key":
           return mapKey(
             accountId,
-            await twilioFetch<TwKey>(this.ctx, API_HOST, `${main}/Keys.json`, {
-              form: { FriendlyName: name },
-            }),
+            await v2010(this.ctx).post(`${main}/Keys.json`, { form: { FriendlyName: name } }),
             this.ctx.username,
           );
         default:
@@ -1063,83 +978,56 @@ export class TwilioClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalIdOf(resourceId));
+      const id = pathEncode(externalIdOf(resourceId));
       const main = accountPath(this.ctx.accountSid);
       switch (typeId) {
         case "subaccount": {
-          const form: Record<string, FormValue> = {};
-          if ("friendlyName" in fields)
-            form["FriendlyName"] = (fields["friendlyName"] ?? "").trim();
-          if ("status" in fields) {
-            const status = (fields["status"] ?? "").trim();
-            if (status !== "active" && status !== "suspended") {
-              throw new Error(
-                "Twilio plugin: a subaccount's status can be active or suspended; delete it to close it",
-              );
-            }
-            form["Status"] = status;
+          const status = text(fields, "status");
+          if (status !== undefined && status !== "active" && status !== "suspended") {
+            throw new Error(
+              "Twilio plugin: a subaccount's status can be active or suspended; delete it to close it",
+            );
           }
           return mapSubaccount(
             accountId,
-            await twilioFetch<TwAccount>(this.ctx, API_HOST, `/2010-04-01/Accounts/${id}.json`, {
-              form,
+            await v2010(this.ctx).post(`/2010-04-01/Accounts/${id}.json`, {
+              form: { FriendlyName: text(fields, "friendlyName"), Status: status },
             }),
           );
         }
         case "phone-number": {
           const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
           const owner = String(r.fields["ownerAccountSid"] ?? this.ctx.accountSid);
-          await twilioFetch<TwPhoneNumber>(
-            this.ctx,
-            API_HOST,
-            `${accountPath(owner)}/IncomingPhoneNumbers/${id}.json`,
-            { form: toForm(fields, PHONE_FORM) },
-          );
+          await v2010(this.ctx).post(`${accountPath(owner)}/IncomingPhoneNumbers/${id}.json`, {
+            form: phoneForm(fields),
+          });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "messaging-service":
-          await twilioFetch<TwMessagingService>(this.ctx, MESSAGING_HOST, `/v1/Services/${id}`, {
-            form: toForm(fields, MESSAGING_FORM),
-          });
+          await messaging(this.ctx).post(`/v1/Services/${id}`, { form: messagingForm(fields) });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         case "verify-service":
-          await twilioFetch<TwVerifyService>(this.ctx, VERIFY_HOST, `/v2/Services/${id}`, {
-            form: toForm(fields, VERIFY_FORM),
-          });
+          await verify(this.ctx).post(`/v2/Services/${id}`, { form: verifyForm(fields) });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         case "twiml-app":
           return mapApplication(
             accountId,
-            await twilioFetch<TwApplication>(
-              this.ctx,
-              API_HOST,
-              `${main}/Applications/${id}.json`,
-              {
-                form: toForm(fields, APP_FORM),
-              },
-            ),
+            await v2010(this.ctx).post(`${main}/Applications/${id}.json`, {
+              form: appForm(fields),
+            }),
           );
         case "usage-trigger":
           return mapUsageTrigger(
             accountId,
-            await twilioFetch<TwUsageTrigger>(
-              this.ctx,
-              API_HOST,
-              `${main}/Usage/Triggers/${id}.json`,
-              {
-                form: toForm(fields, {
-                  friendlyName: "FriendlyName",
-                  callbackUrl: "CallbackUrl",
-                  callbackMethod: "CallbackMethod",
-                }),
-              },
-            ),
+            await v2010(this.ctx).post(`${main}/Usage/Triggers/${id}.json`, {
+              form: usageTriggerForm(fields),
+            }),
           );
         case "api-key":
           return mapKey(
             accountId,
-            await twilioFetch<TwKey>(this.ctx, API_HOST, `${main}/Keys/${id}.json`, {
-              form: toForm(fields, { friendlyName: "FriendlyName" }),
+            await v2010(this.ctx).post(`${main}/Keys/${id}.json`, {
+              form: { FriendlyName: text(fields, "friendlyName") },
             }),
             this.ctx.username,
           );
@@ -1152,47 +1040,32 @@ export class TwilioClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const raw = externalIdOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       const main = accountPath(this.ctx.accountSid);
       switch (typeId) {
         case "subaccount":
           // Twilio has no DELETE for accounts: closing is permanent and releases its numbers.
-          await twilioFetch<TwAccount>(this.ctx, API_HOST, `/2010-04-01/Accounts/${id}.json`, {
+          await v2010(this.ctx).post(`/2010-04-01/Accounts/${id}.json`, {
             form: { Status: "closed" },
           });
           return;
         case "phone-number": {
           const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
           const owner = String(r.fields["ownerAccountSid"] ?? this.ctx.accountSid);
-          await twilioFetch<unknown>(
-            this.ctx,
-            API_HOST,
-            `${accountPath(owner)}/IncomingPhoneNumbers/${id}.json`,
-            {
-              method: "DELETE",
-            },
-          );
+          await v2010(this.ctx).delete(`${accountPath(owner)}/IncomingPhoneNumbers/${id}.json`);
           return;
         }
         case "messaging-service":
-          await twilioFetch<unknown>(this.ctx, MESSAGING_HOST, `/v1/Services/${id}`, {
-            method: "DELETE",
-          });
+          await messaging(this.ctx).delete(`/v1/Services/${id}`);
           return;
         case "verify-service":
-          await twilioFetch<unknown>(this.ctx, VERIFY_HOST, `/v2/Services/${id}`, {
-            method: "DELETE",
-          });
+          await verify(this.ctx).delete(`/v2/Services/${id}`);
           return;
         case "twiml-app":
-          await twilioFetch<unknown>(this.ctx, API_HOST, `${main}/Applications/${id}.json`, {
-            method: "DELETE",
-          });
+          await v2010(this.ctx).delete(`${main}/Applications/${id}.json`);
           return;
         case "usage-trigger":
-          await twilioFetch<unknown>(this.ctx, API_HOST, `${main}/Usage/Triggers/${id}.json`, {
-            method: "DELETE",
-          });
+          await v2010(this.ctx).delete(`${main}/Usage/Triggers/${id}.json`);
           return;
         case "api-key":
           if (raw === this.ctx.username) {
@@ -1200,9 +1073,7 @@ export class TwilioClient implements PluginClient {
               "This is the API key this connection signs in with. Change the account's credentials first, then delete it.",
             );
           }
-          await twilioFetch<unknown>(this.ctx, API_HOST, `${main}/Keys/${id}.json`, {
-            method: "DELETE",
-          });
+          await v2010(this.ctx).delete(`${main}/Keys/${id}.json`);
           return;
         default:
           throw new Error(`Twilio plugin: "${typeId}" cannot be deleted from Infrawrench`);
