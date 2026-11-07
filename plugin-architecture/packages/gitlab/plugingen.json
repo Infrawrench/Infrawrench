@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../plugingen/plugingen.schema.json",
   "specUrl": "https://gitlab.com/gitlab-org/gitlab/-/raw/master/doc/api/openapi/openapi_v3.yaml",
   "pathPrefix": "/api/v4",
   "patches": [

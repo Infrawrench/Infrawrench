@@ -127,6 +127,10 @@
     },
     "app/packages/website": {
       "ignoreDependencies": ["cloudflare"]
+    },
+    "plugingen": {
+      "entry": ["src/cli.ts", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts", "bin/*.mjs"]
     }
   }
 }

@@ -1,7 +1,7 @@
 /**
- * A typed client over a provider's OpenAPI document. `paths` comes from
- * `scripts/generate-plugin-api-types.mjs`, and everything else is worked out from
- * it in this one file, so a plugin gets checked paths, query strings, bodies and
+ * A typed client over a provider's OpenAPI document. `paths` comes from plugingen
+ * (the plugin's `plugingen.json`), and everything else is worked out from it in
+ * this one file, so a plugin gets checked paths, query strings, bodies and
  * responses without a cast at any call site:
  *
  *   const api = createApiClient<paths>({ vendor: "Hetzner", baseUrl, headers });

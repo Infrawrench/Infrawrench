@@ -1,4 +1,5 @@
 {
+  "$schema": "../../../plugingen/plugingen.schema.json",
   "specUrl": "https://openapi.vercel.sh/",
   "patches": [
     {
