@@ -49,10 +49,12 @@ export function instance(
 const tags = (t: readonly string[] | undefined): string | undefined =>
   Array.isArray(t) && t.length ? t.map(String).join(", ") : undefined;
 
-/** `<projectId>/<id>` → `[projectId, id]`. */
+/** `<projectId>/<id>` → `[projectId, id]`. Refuses a blank part rather than address the list route. */
 export function splitScoped(externalId: string): [string, string] {
   const i = externalId.indexOf("/");
-  return i < 0 ? ["", externalId] : [externalId.slice(0, i), externalId.slice(i + 1)];
+  const [projectId, id] = [externalId.slice(0, Math.max(i, 0)), externalId.slice(i + 1)];
+  if (!projectId || !id) throw new Error(`PostHog plugin: "${externalId}" is not a PostHog id.`);
+  return [projectId, id];
 }
 
 /** Rolls a flag out to everyone. A multivariate flag has to name a variant, as `rollout-all:<key>`. */

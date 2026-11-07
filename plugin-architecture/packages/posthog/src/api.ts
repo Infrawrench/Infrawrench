@@ -1,7 +1,5 @@
 import {
   createApiClient,
-  pathEncode,
-  restRequest,
   withCursorPagination,
   type ApiBody,
   type ApiClient,
@@ -143,33 +141,6 @@ export function statusOf(err: unknown): number {
   return err instanceof PostHogApiError ? err.status : 0;
 }
 
-/**
- * An external id with nothing after the project (`7/`) has always addressed the
- * list route, which is no operation in the document for most of these verbs. It
- * is not an id PostHog hands out, so this only keeps those requests as they were.
- */
-export async function listRouteRequest<Result>(
-  ctx: PostHogContext,
-  method: string,
-  route: string,
-  projectId: string,
-  options: { action?: string; body?: object } = {},
-): Promise<Result> {
-  const { action, body } = options;
-  const path = `/api/projects/${pathEncode(projectId)}/${route}/${action ? `${action}/` : ""}`;
-  const answer = await restRequest<Result>({
-    vendor: "PostHog",
-    url: `${ctx.baseUrl}${path}`,
-    errorPath: path,
-    headers: headersFor(ctx),
-    init: { method, ...(body ? { body: JSON.stringify(body) } : {}) },
-    httpError: (failure) => apiError(failure.status, path, failure.body),
-    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    ...(ctx.http ? { http: ctx.http } : {}),
-  });
-  return answer.body;
-}
-
 // ---------------------------------------------------------------------------
 // The objects that live under a project
 // ---------------------------------------------------------------------------
@@ -202,54 +173,44 @@ export interface ProjectObjects {
 export type ProjectObjectType = keyof ProjectObjects;
 
 interface ObjectRoutes<Row> {
-  route: string;
   list(api: PostHogApi, project: NoSlashString): Promise<readonly Row[]>;
   get(api: PostHogApi, project: NoSlashString, id: NoSlashString): Promise<Row>;
 }
 
 export const OBJECTS: { [T in ProjectObjectType]: ObjectRoutes<ProjectObjects[T]> } = {
   "feature-flag": {
-    route: "feature_flags",
     list: (api, p) => api.getAll(`/api/projects/${p}/feature_flags/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/feature_flags/${id}/`),
   },
   experiment: {
-    route: "experiments",
     list: (api, p) => api.getAll(`/api/projects/${p}/experiments/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/experiments/${id}/`),
   },
   cohort: {
-    route: "cohorts",
     list: (api, p) => api.getAll(`/api/projects/${p}/cohorts/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/cohorts/${id}/`),
   },
   dashboard: {
-    route: "dashboards",
     list: (api, p) => api.getAll(`/api/projects/${p}/dashboards/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/dashboards/${id}/`),
   },
   insight: {
-    route: "insights",
     list: (api, p) => api.getAll(`/api/projects/${p}/insights/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/insights/${id}/`),
   },
   action: {
-    route: "actions",
     list: (api, p) => api.getAll(`/api/projects/${p}/actions/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/actions/${id}/`),
   },
   annotation: {
-    route: "annotations",
     list: (api, p) => api.getAll(`/api/projects/${p}/annotations/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/annotations/${id}/`),
   },
   "hog-function": {
-    route: "hog_functions",
     list: (api, p) => api.getAll(`/api/projects/${p}/hog_functions/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/hog_functions/${id}/`),
   },
   "batch-export": {
-    route: "batch_exports",
     list: (api, p) => api.getAll(`/api/projects/${p}/batch_exports/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/batch_exports/${id}/`),
   },

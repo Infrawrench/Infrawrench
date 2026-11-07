@@ -540,6 +540,31 @@ describe("writing to a versioned flag", () => {
   });
 });
 
+describe("a resource id with a blank part", () => {
+  const client = () => {
+    const { http, calls } = makeHttp(() => ({ body: { results: [] } }));
+    return { client: hostClient(new PostHogClient(CREDS, { http })), calls };
+  };
+
+  it.each(["acct:dashboard:7/", "acct:dashboard:/9", "acct:dashboard:9"])(
+    "refuses %s, sending nothing",
+    async (id) => {
+      const { client: c, calls } = client();
+      await expect(c.deleteResource("dashboard", id)).rejects.toThrow("not a PostHog");
+      await expect(c.updateResource("dashboard", id, "acct", { name: "x" })).rejects.toThrow(
+        "not a PostHog",
+      );
+      await expect(c.getResource("dashboard", id, "acct")).rejects.toThrow("not a PostHog");
+      await expect(c.invokeAction?.("feature-flag", id, "enable")).rejects.toThrow("not a PostHog");
+      await expect(c.invokeAction?.("feature-flag", id, "rollout-all")).rejects.toThrow(
+        "not a PostHog",
+      );
+      await expect(c.deleteResource("batch-export", id)).rejects.toThrow("not a PostHog");
+      expect(calls).toEqual([]);
+    },
+  );
+});
+
 describe("helpers", () => {
   it("builds rollouts, escapes HogQL and reads spend keys", () => {
     expect(withRollout({}, 20)).toEqual({ groups: [{ properties: [], rollout_percentage: 20 }] });

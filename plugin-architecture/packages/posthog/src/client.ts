@@ -33,7 +33,6 @@ import {
   PATCHES,
   createPostHogContext,
   isProjectObjectType,
-  listRouteRequest,
   resolveHost,
   statusOf,
 } from "./api.js";
@@ -143,9 +142,7 @@ export class PostHogClient implements PluginClient {
     projectId: string,
     id: string,
   ): Promise<ProjectObjects[T]> {
-    return id
-      ? OBJECTS[typeId].get(this.ctx.api, pathEncode(projectId), pathEncode(id))
-      : listRouteRequest(this.ctx, "GET", OBJECTS[typeId].route, projectId);
+    return OBJECTS[typeId].get(this.ctx.api, pathEncode(projectId), pathEncode(id));
   }
 
   private async listObjects<T extends ProjectObjectType>(
@@ -177,10 +174,6 @@ export class PostHogClient implements PluginClient {
     id: string,
     body: ObjectPatches[T],
   ): Promise<void> {
-    if (!id) {
-      await listRouteRequest(this.ctx, "PATCH", OBJECTS[typeId].route, projectId, { body });
-      return;
-    }
     await PATCHES[typeId](this.ctx.api, pathEncode(projectId), pathEncode(id), body);
   }
 
@@ -635,9 +628,9 @@ export class PostHogClient implements PluginClient {
       // soft delete ("Hard delete of this model is not allowed").
       const type = this.objectType(typeId);
       if (type === "batch-export") {
-        await (id
-          ? this.ctx.api.delete(`/api/projects/${pathEncode(pid)}/batch_exports/${pathEncode(id)}/`)
-          : listRouteRequest(this.ctx, "DELETE", OBJECTS[type].route, pid));
+        await this.ctx.api.delete(
+          `/api/projects/${pathEncode(pid)}/batch_exports/${pathEncode(id)}/`,
+        );
         return;
       }
       await this.patch(type, pid, id, {
@@ -673,15 +666,8 @@ export class PostHogClient implements PluginClient {
       const [pid, id] = splitScoped(externalIdOf(resourceId) || resourceId);
       const project = pathEncode(pid);
       const target = pathEncode(id);
+      // The rest of these are a POST of an empty object to `<object>/<action>/`.
       const body = {};
-      // Each of these is a POST of an empty object to `<object>/<action>/`.
-      const post = async (
-        route: string,
-        action: string,
-        typed: () => Promise<object | undefined>,
-      ): Promise<void> => {
-        await (id ? typed() : listRouteRequest(this.ctx, "POST", route, pid, { action, body }));
-      };
       const { api } = this.ctx;
       if (typeId === "feature-flag") {
         const [action, ...variant] = actionId.split(":");
@@ -692,53 +678,35 @@ export class PostHogClient implements PluginClient {
       }
       switch (`${typeId}:${actionId}`) {
         case "feature-flag:enable":
-          await post("feature_flags", "enable", async () =>
-            api.post(`/api/projects/${project}/feature_flags/${target}/enable/`, {
-              body: versionOf(await this.getObject("feature-flag", pid, id)),
-            }),
-          );
+          await api.post(`/api/projects/${project}/feature_flags/${target}/enable/`, {
+            body: versionOf(await this.getObject("feature-flag", pid, id)),
+          });
           return;
         case "feature-flag:disable":
-          await post("feature_flags", "disable", async () =>
-            api.post(`/api/projects/${project}/feature_flags/${target}/disable/`, {
-              body: versionOf(await this.getObject("feature-flag", pid, id)),
-            }),
-          );
+          await api.post(`/api/projects/${project}/feature_flags/${target}/disable/`, {
+            body: versionOf(await this.getObject("feature-flag", pid, id)),
+          });
           return;
         case "experiment:launch":
-          await post("experiments", "launch", () =>
-            api.post(`/api/projects/${project}/experiments/${target}/launch/`, { body }),
-          );
+          await api.post(`/api/projects/${project}/experiments/${target}/launch/`, { body });
           return;
         case "experiment:pause":
-          await post("experiments", "pause", () =>
-            api.post(`/api/projects/${project}/experiments/${target}/pause/`, { body }),
-          );
+          await api.post(`/api/projects/${project}/experiments/${target}/pause/`, { body });
           return;
         case "experiment:resume":
-          await post("experiments", "resume", () =>
-            api.post(`/api/projects/${project}/experiments/${target}/resume/`, { body }),
-          );
+          await api.post(`/api/projects/${project}/experiments/${target}/resume/`, { body });
           return;
         case "experiment:archive":
-          await post("experiments", "archive", () =>
-            api.post(`/api/projects/${project}/experiments/${target}/archive/`, { body }),
-          );
+          await api.post(`/api/projects/${project}/experiments/${target}/archive/`, { body });
           return;
         case "experiment:end":
-          await post("experiments", "end", () =>
-            api.post(`/api/projects/${project}/experiments/${target}/end/`, { body }),
-          );
+          await api.post(`/api/projects/${project}/experiments/${target}/end/`, { body });
           return;
         case "batch-export:pause":
-          await post("batch_exports", "pause", () =>
-            api.post(`/api/projects/${project}/batch_exports/${target}/pause/`, { body }),
-          );
+          await api.post(`/api/projects/${project}/batch_exports/${target}/pause/`, { body });
           return;
         case "batch-export:unpause":
-          await post("batch_exports", "unpause", () =>
-            api.post(`/api/projects/${project}/batch_exports/${target}/unpause/`, { body }),
-          );
+          await api.post(`/api/projects/${project}/batch_exports/${target}/unpause/`, { body });
           return;
         case "hog-function:enable":
         case "hog-function:disable":
