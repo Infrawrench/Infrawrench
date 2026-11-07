@@ -1,0 +1,86 @@
+# Watches the vendor API documents the plugins' typed clients are generated from.
+#
+# Generated types only cover the operations a plugin lists in its plugingen.json,
+# so a diff here means something that plugin actually calls changed. A vendor
+# changing the rest of its API stays quiet, which is the point: without that, a
+# daily job over 80 documents would be noise nobody reads.
+#
+# All the logic lives in `plugingen watch` (plugingen/src/watch), where it is
+# tested. For each plugin:
+#   - types changed: one pull request from `plugingen/<plugin>`, updated in place,
+#     with the plugin's typecheck result. A compile failure still opens it.
+#   - types back in line with main: that pull request is closed.
+#   - could not check (operation removed, patch no longer applies, document moved
+#     or unreadable): one `bug` issue, closed once the check passes again.
+#   - network failure: a warning in the job summary and nothing else.
+#
+# Vendor documents are untrusted input. Nothing in this file interpolates anything
+# from them, and the token below only reaches the step that needs it, after the
+# install has run. KNOWLEDGE.md ("plugingen") has what the code does about the rest.
+name: plugingen watch
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+# Two runs would race on the same branches and pull requests.
+concurrency:
+  group: plugingen-watch
+  cancel-in-progress: false
+
+# Everything written goes through the App token below, because a pull request
+# opened with GITHUB_TOKEN does not trigger CI.
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    name: Check vendor documents
+    # workflow_dispatch can target any ref; the comparison is against main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Where the SDK_PUBLISHER_APP_* secrets live. It has no protection rules, so a
+    # scheduled run does not wait for anyone.
+    environment: release
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # plugingen pushes with its own credential helper, so that nothing the
+          # type check runs can find a token in .git/config.
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      # The permission inputs make this fail, rather than a later push, when the
+      # App lacks one. With no owner or repositories, it is scoped to this repository.
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        id: app-token
+        continue-on-error: true
+        with:
+          app-id: ${{ secrets.SDK_PUBLISHER_APP_ID }}
+          private-key: ${{ secrets.SDK_PUBLISHER_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
+      - name: Explain a missing token
+        if: steps.app-token.outcome != 'success'
+        run: |
+          echo "::error::Could not get a token from the SDK publisher GitHub App. The watcher needs that App installed on this repository with Contents, Pull requests and Issues write access, and SDK_PUBLISHER_APP_ID and SDK_PUBLISHER_APP_PRIVATE_KEY set in the release environment. The step above has the API's own message."
+          exit 1
+
+      # Called directly rather than through `pnpm plugingen`, which would also check
+      # the install. The summary and annotations come from plugingen itself.
+      - name: Watch
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node plugingen/bin/plugingen.mjs watch --apply
