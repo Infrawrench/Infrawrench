@@ -1,4 +1,5 @@
 import {
+  ListTruncatedError,
   createApiClient,
   pathEncode,
   withCursorPagination,
@@ -51,13 +52,26 @@ function retryingTransport(services: HostServices | undefined): HttpHostServices
   };
 }
 
-/** The last row's cursor, when it is text. */
+/** A row's cursor, when it is text. */
+function cursorOf(row: unknown): string | undefined {
+  if (typeof row !== "object" || row === null || !("cursor" in row)) return undefined;
+  return typeof row.cursor === "string" ? row.cursor : undefined;
+}
+
 function nextCursor({ items }: PageAnswer): string | undefined {
   // A row that is not an object fails where it is unwrapped, so nothing more is asked for.
   if (items.some((row) => typeof row !== "object" || row === null)) return undefined;
-  const last = items.at(-1);
-  if (typeof last !== "object" || last === null || !("cursor" in last)) return undefined;
-  return typeof last.cursor === "string" ? last.cursor : undefined;
+  return cursorOf(items.at(-1));
+}
+
+/**
+ * A walk also stops on a full page whose last row has no cursor, and that page cannot
+ * say it was the last one. `GET /env-groups` is documented that way: it takes `cursor`
+ * and `limit`, but its rows are bare `envGroupMeta` with no cursor to send back.
+ */
+function wholeList<T>(path: string, rows: T[]): T[] {
+  if (rows.length === 0 || rows.length % PAGE_SIZE !== 0 || cursorOf(rows.at(-1))) return rows;
+  throw new ListTruncatedError({ vendor: "Render", path, items: rows.length });
 }
 
 export function createRenderApi(
@@ -98,59 +112,70 @@ export interface OwnerQuery {
 type EnvGroupRow =
   components["schemas"]["envGroupMeta"] | { envGroup: components["schemas"]["envGroupMeta"] };
 
+const unwrapEnvGroup = (row: EnvGroupRow) => ("envGroup" in row ? row.envGroup : row);
+
 // Each list keeps a row with no wrapper as it is, and a few lists (environment
 // groups) document no wrapper at all.
 
 export const listOwners = async (api: RenderApi) =>
-  (await api.getAll("/owners", null)).map((row) => ("owner" in row ? row.owner : row));
+  wholeList("/owners", await api.getAll("/owners", null)).map((row) =>
+    "owner" in row ? row.owner : row,
+  );
 
 export const listServices = async (api: RenderApi, query: OwnerQuery) =>
-  (await api.getAll("/services", null, { query })).map((row) =>
+  wholeList("/services", await api.getAll("/services", null, { query })).map((row) =>
     "service" in row ? row.service : row,
   );
 
 export const listProjects = async (api: RenderApi, query: OwnerQuery) =>
-  (await api.getAll("/projects", null, { query })).map((row) =>
+  wholeList("/projects", await api.getAll("/projects", null, { query })).map((row) =>
     "project" in row ? row.project : row,
   );
 
 export const listEnvironments = async (api: RenderApi, projectId: string) =>
-  (await api.getAll("/environments", null, { query: { projectId: [projectId] } })).map((row) =>
-    "environment" in row ? row.environment : row,
-  );
+  wholeList(
+    "/environments",
+    await api.getAll("/environments", null, { query: { projectId: [projectId] } }),
+  ).map((row) => ("environment" in row ? row.environment : row));
 
 export const listDisks = async (api: RenderApi, query: OwnerQuery) =>
-  (await api.getAll("/disks", null, { query })).map((row) => ("disk" in row ? row.disk : row));
+  wholeList("/disks", await api.getAll("/disks", null, { query })).map((row) =>
+    "disk" in row ? row.disk : row,
+  );
 
 export const listPostgres = async (
   api: RenderApi,
   query: OwnerQuery & { includeReplicas?: boolean },
 ) =>
-  (await api.getAll("/postgres", null, { query })).map((row) =>
+  wholeList("/postgres", await api.getAll("/postgres", null, { query })).map((row) =>
     "postgres" in row ? row.postgres : row,
   );
 
 export const listKeyValues = async (api: RenderApi, query: OwnerQuery) =>
-  (await api.getAll("/key-value", null, { query })).map((row) =>
+  wholeList("/key-value", await api.getAll("/key-value", null, { query })).map((row) =>
     "keyValue" in row ? row.keyValue : row,
   );
 
 export const listBlueprints = async (api: RenderApi, query: OwnerQuery) =>
-  (await api.getAll("/blueprints", null, { query })).map((row) =>
+  wholeList("/blueprints", await api.getAll("/blueprints", null, { query })).map((row) =>
     "blueprint" in row ? row.blueprint : row,
   );
 
 export const listEnvVars = async (api: RenderApi, serviceId: string) =>
-  (await api.getAll(`/services/${pathEncode(serviceId)}/env-vars`, null)).map((row) =>
-    "envVar" in row ? row.envVar : row,
-  );
+  wholeList(
+    "/services/{serviceId}/env-vars",
+    await api.getAll(`/services/${pathEncode(serviceId)}/env-vars`, null),
+  ).map((row) => ("envVar" in row ? row.envVar : row));
 
 export const listCustomDomains = async (api: RenderApi, serviceId: string) =>
-  (await api.getAll(`/services/${pathEncode(serviceId)}/custom-domains`, null)).map((row) =>
-    "customDomain" in row ? row.customDomain : row,
-  );
+  wholeList(
+    "/services/{serviceId}/custom-domains",
+    await api.getAll(`/services/${pathEncode(serviceId)}/custom-domains`, null),
+  ).map((row) => ("customDomain" in row ? row.customDomain : row));
 
 export const listEnvGroups = async (api: RenderApi, query: OwnerQuery) =>
-  (await api.getAll("/env-groups", null, { query })).map((row: EnvGroupRow) =>
-    "envGroup" in row ? row.envGroup : row,
-  );
+  wholeList("/env-groups", await api.getAll("/env-groups", null, { query })).map(unwrapEnvGroup);
+
+/** For a picker, where the groups it could read are better than none. */
+export const listEnvGroupChoices = async (api: RenderApi, query: OwnerQuery) =>
+  (await api.getAll("/env-groups", null, { query, partial: true })).map(unwrapEnvGroup);

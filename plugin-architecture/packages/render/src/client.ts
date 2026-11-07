@@ -22,6 +22,7 @@ import {
   listBlueprints,
   listCustomDomains,
   listDisks,
+  listEnvGroupChoices,
   listEnvGroups,
   listEnvironments,
   listEnvVars,
@@ -818,7 +819,7 @@ export class RenderClient implements PluginClient {
         case "env-group-var": {
           const groupField: CreateFieldConfig[] = parentResourceId?.includes(":env-group:")
             ? []
-            : await listEnvGroups(this.api, this.ownerQuery()).then((groups) => [
+            : await listEnvGroupChoices(this.api, this.ownerQuery()).then((groups) => [
                 {
                   key: "envGroupId",
                   label: "Environment Group",

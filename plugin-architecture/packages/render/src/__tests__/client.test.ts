@@ -102,6 +102,53 @@ describe("transport", () => {
   });
 });
 
+describe("reading a whole list", () => {
+  const groups = (count: number, from = 0) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `evg-${from + i}`,
+      name: `group-${from + i}`,
+      ownerId: "tea-1",
+    }));
+  const bareOwners = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      owner: { id: `tea-${i}`, name: `t${i}`, type: "team" },
+    }));
+
+  it("refuses a full page of environment groups that names no next page", async () => {
+    route("GET", "/env-groups", groups(100));
+    await expect(client().listResources("env-group", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    await expect(client().listResources("env-group-var", ACCOUNT)).rejects.toThrow(
+      "/env-groups has more than Infrawrench reads",
+    );
+  });
+
+  it("follows a cursor on environment groups when the answer carries one", async () => {
+    route("GET", "/env-groups", (call: { query: URLSearchParams }) =>
+      call.query.get("cursor") === "c99"
+        ? groups(1, 100).map((g) => ({ ...g, cursor: "c100" }))
+        : groups(100).map((g, i) => ({ envGroup: g, cursor: `c${i}` })),
+    );
+    expect(await client().listResources("env-group", ACCOUNT)).toHaveLength(101);
+    expect(state.calls[1]!.query.get("cursor")).toBe("c99");
+  });
+
+  it("still offers what it read in the create form's group picker", async () => {
+    route("GET", "/env-groups", groups(100));
+    const config = await client().getCreateConfig("env-group-var");
+    const picker = config.fields.find((f) => f.key === "envGroupId");
+    expect(picker?.options).toHaveLength(100);
+  });
+
+  it("refuses a full page of any list that names no next page", async () => {
+    route("GET", "/owners", bareOwners(100));
+    await expect(client().listResources("workspace", ACCOUNT)).rejects.toThrow(
+      "/owners has more than Infrawrench reads",
+    );
+  });
+});
+
 describe("mappers", () => {
   it("maps a web service with autoscaling and outputs", async () => {
     route("GET", "/services", [{ service: WEB, cursor: "x" }]);
