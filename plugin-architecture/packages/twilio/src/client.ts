@@ -666,8 +666,8 @@ export class TwilioClient implements PluginClient {
 
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
-      const subs = await this.subaccountRefs().catch(() => null);
-      return fetchTwilioCostData(this.ctx, range, subs);
+      // Not caught: without the list every subaccount's spend lands on the main account.
+      return fetchTwilioCostData(this.ctx, range, await this.subaccountRefs());
     });
   }
 

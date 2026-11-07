@@ -156,6 +156,44 @@ describe("a list past its cap", () => {
   });
 });
 
+describe("the subaccount list behind cost data", () => {
+  const RANGE = { fromDate: "2026-09-01", toDate: "2026-09-02" };
+  const noSpend = page("usage_records", [{ category: "totalprice", price: "0" }]);
+
+  it("fails on a server error, rather than file every subaccount's spend under the main account", async () => {
+    const { c, calls } = client((url) =>
+      url.pathname === "/2010-04-01/Accounts.json"
+        ? { status: 500, body: { message: "boom" } }
+        : { body: noSpend },
+    );
+    await expect(c.fetchCostData(ACCOUNT, RANGE)).rejects.toThrow("500");
+    expect(calls.filter((call) => call.url.pathname.includes("/Usage/"))).toEqual([]);
+  });
+
+  it("fails on a list past its cap", async () => {
+    const { c } = client((url) =>
+      url.pathname === "/2010-04-01/Accounts.json"
+        ? { body: { accounts: [{ sid: SUB }], next_page_uri: "/2010-04-01/Accounts.json?Page=1" } }
+        : { body: noSpend },
+    );
+    await expect(c.fetchCostData(ACCOUNT, RANGE)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("still collects one scope for a key that may not list accounts", async () => {
+    const { c, calls } = client(
+      (url) =>
+        url.pathname === "/2010-04-01/Accounts.json"
+          ? { status: 403, body: { message: "denied", code: 20003 } }
+          : { body: noSpend },
+      true,
+    );
+    await expect(c.fetchCostData(ACCOUNT, RANGE)).resolves.toEqual([]);
+    expect(calls.at(-1)?.url.searchParams.get("IncludeSubaccounts")).toBe("true");
+  });
+});
+
 describe("phone numbers", () => {
   const numbersRoute = (url: URL): Reply => {
     if (url.pathname === "/2010-04-01/Accounts.json") {

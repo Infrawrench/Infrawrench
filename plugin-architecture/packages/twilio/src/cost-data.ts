@@ -228,7 +228,7 @@ function aggregate(rows: CostRow[]): CostRow[] {
 
 /**
  * Daily cost rows for `range`. `subaccounts` is the account's subaccount list
- * (null when it could not be read).
+ * (null when the credential may not list accounts).
  */
 export async function fetchTwilioCostData(
   ctx: TwilioContext,
