@@ -14,7 +14,14 @@ import type {
   ResourceCreateResult,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf, withMetricsCapability } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  decodePromptArgs,
+  externalIdOf,
+  reportUnreadListPart,
+  withMetricsCapability,
+  withinListCap,
+} from "@infrawrench/plugin-base";
 import type { AstraContext } from "./api.js";
 import {
   METRICS_API,
@@ -62,10 +69,25 @@ import type {
 } from "./types.js";
 
 const CACHE_MS = 20_000;
+/** The document's maximum for `limit` on `GET /v2/databases`. */
 const DB_PAGE = 100;
-const MAX_SNAPSHOTS = 30;
+const MAX_DB_PAGES = 100;
+const MAX_SNAPSHOTS_PER_DB = 10_000;
+const MAX_SNAPSHOT_ROWS = 100_000;
+/**
+ * Requests one poll can spend on a type that reads per parent. Three types do, and the
+ * manifest's 5 requests a second has to fit them all inside the poller's 300 seconds.
+ */
+const FAN_OUT_REQUESTS = 400;
+const FAN_OUT_ROTATE_MS = 60 * 60 * 1000;
 /** Data API calls wake a hibernated database, so collections are only read from active ones. */
 const ACTIVE = "ACTIVE";
+
+/** One parent's share of a type that reads its children per parent. */
+interface ChildRead {
+  parentId: string;
+  read: () => Promise<void>;
+}
 
 function csv(raw: string | undefined): string[] {
   const text = String(raw ?? "").trim();
@@ -167,7 +189,7 @@ export class AstraPluginClient implements PluginClient {
     return this.cached("databases", async () => {
       const out: AstraDatabase[] = [];
       let after: string | undefined;
-      for (let page = 0; page < 50; page++) {
+      for (let page = 0; page < MAX_DB_PAGES; page++) {
         const batch =
           (await this.api<AstraDatabase[]>("GET", "/v2/databases", {
             query: [
@@ -177,11 +199,32 @@ export class AstraPluginClient implements PluginClient {
             ],
           })) ?? [];
         out.push(...batch);
-        if (batch.length < DB_PAGE) break;
+        if (batch.length < DB_PAGE) return out;
         after = batch[batch.length - 1]!.id;
       }
-      return out;
+      throw new ListTruncatedError({
+        vendor: "Astra",
+        path: "/v2/databases",
+        items: out.length,
+        maxPages: MAX_DB_PAGES,
+      });
     });
+  }
+
+  /**
+   * Run each parent's read, up to what one poll can spend. Past that the rest are named,
+   * so their rows go stale rather than being deleted, and the start moves each hour so
+   * everything is read over time.
+   */
+  private async readChildren(parents: ChildRead[]): Promise<void> {
+    const start =
+      parents.length > FAN_OUT_REQUESTS
+        ? (Math.floor(Date.now() / FAN_OUT_ROTATE_MS) * FAN_OUT_REQUESTS) % parents.length
+        : 0;
+    const rotated = [...parents.slice(start), ...parents.slice(0, start)];
+    const past = rotated.slice(FAN_OUT_REQUESTS);
+    if (past.length) reportUnreadListPart({ parentResourceIds: past.map((p) => p.parentId) });
+    for (const parent of rotated.slice(0, FAN_OUT_REQUESTS)) await parent.read();
   }
 
   private async database(id: string): Promise<AstraDatabase> {
@@ -323,18 +366,25 @@ export class AstraPluginClient implements PluginClient {
           );
         case T.collection: {
           const out: ResourceInstance[] = [];
-          for (const db of await this.databases()) {
-            if ((db.status ?? "").toUpperCase() !== ACTIVE) continue;
-            for (const ks of keyspacesOf(db)) {
-              try {
-                for (const c of await this.collections(db, ks))
-                  out.push(mapCollection(accountId, db.id, ks, c));
-              } catch (err) {
-                if (statusOf(err) === 401) throw err;
-                // A non-vector database without the Data API, or a keyspace it refuses: no collections.
-              }
-            }
-          }
+          const active = (await this.databases()).filter(
+            (db) => (db.status ?? "").toUpperCase() === ACTIVE,
+          );
+          await this.readChildren(
+            active.flatMap((db) =>
+              keyspacesOf(db).map((ks) => ({
+                parentId: `${accountId}:${T.keyspace}:${db.id}/${ks}`,
+                read: async () => {
+                  try {
+                    for (const c of await this.collections(db, ks))
+                      out.push(mapCollection(accountId, db.id, ks, c));
+                  } catch (err) {
+                    if (statusOf(err) === 401) throw err;
+                    // A non-vector database without the Data API, or a keyspace it refuses: no collections.
+                  }
+                },
+              })),
+            ),
+          );
           return out;
         }
         case T.accessEntry: {
@@ -362,33 +412,38 @@ export class AstraPluginClient implements PluginClient {
         }
         case T.cdc: {
           const out: ResourceInstance[] = [];
-          for (const db of await this.databases()) {
-            const cdc = await this.optional(
-              () => this.api<AstraCdc>("GET", `/v3/databases/${encodeURIComponent(db.id)}/cdc`),
-              undefined as AstraCdc | undefined,
-            );
-            for (const t of cdc?.tables ?? []) {
-              if (!t.keyspaceName || !t.tableName) continue;
-              out.push(
-                instance(
-                  accountId,
-                  T.cdc,
-                  `${db.id}/${t.keyspaceName}/${t.tableName}`,
-                  `${t.keyspaceName}.${t.tableName}`,
-                  compact({
-                    table: t.tableName,
-                    keyspace: t.keyspaceName,
-                    databaseId: db.id,
-                    tenants: Array.from(
-                      new Set((cdc?.regions ?? []).map((r) => r.streamingTenantName)),
-                    ).join(", "),
-                    regions: (cdc?.regions ?? []).map((r) => r.datacenterRegion).join(", "),
-                  }),
-                  { typeId: T.database, externalId: db.id },
-                ),
-              );
-            }
-          }
+          await this.readChildren(
+            (await this.databases()).map((db) => ({
+              parentId: `${accountId}:${T.database}:${db.id}`,
+              read: async () => {
+                const cdc = await this.optional(
+                  () => this.api<AstraCdc>("GET", `/v3/databases/${encodeURIComponent(db.id)}/cdc`),
+                  undefined as AstraCdc | undefined,
+                );
+                for (const t of cdc?.tables ?? []) {
+                  if (!t.keyspaceName || !t.tableName) continue;
+                  out.push(
+                    instance(
+                      accountId,
+                      T.cdc,
+                      `${db.id}/${t.keyspaceName}/${t.tableName}`,
+                      `${t.keyspaceName}.${t.tableName}`,
+                      compact({
+                        table: t.tableName,
+                        keyspace: t.keyspaceName,
+                        databaseId: db.id,
+                        tenants: Array.from(
+                          new Set((cdc?.regions ?? []).map((r) => r.streamingTenantName)),
+                        ).join(", "),
+                        regions: (cdc?.regions ?? []).map((r) => r.datacenterRegion).join(", "),
+                      }),
+                      { typeId: T.database, externalId: db.id },
+                    ),
+                  );
+                }
+              },
+            })),
+          );
           return out;
         }
         case T.privateEndpoint: {
@@ -423,32 +478,38 @@ export class AstraPluginClient implements PluginClient {
         }
         case T.snapshot: {
           const out: ResourceInstance[] = [];
-          for (const db of await this.databases()) {
-            const res = await this.optional(
-              () =>
-                this.api<{ snapshots?: Array<{ id?: string; time?: string }> }>(
-                  "GET",
-                  `/v2/databases/${encodeURIComponent(db.id)}/snapshots`,
-                ),
-              {},
-            );
-            const snaps = (res.snapshots ?? [])
-              .filter((s) => s.id)
-              .sort((a, b) => String(b.time ?? "").localeCompare(String(a.time ?? "")))
-              .slice(0, MAX_SNAPSHOTS);
-            for (const s of snaps) {
-              out.push(
-                instance(
-                  accountId,
-                  T.snapshot,
-                  `${db.id}/${s.id}`,
-                  `${db.info?.name ?? db.id} · ${s.time ?? s.id}`,
-                  compact({ snapshotId: s.id, databaseId: db.id, createdAt: s.time }),
-                  { typeId: T.database, externalId: db.id },
-                ),
-              );
-            }
-          }
+          await this.readChildren(
+            (await this.databases()).map((db) => ({
+              parentId: `${accountId}:${T.database}:${db.id}`,
+              read: async () => {
+                const path = `/v2/databases/${encodeURIComponent(db.id)}/snapshots`;
+                const res = await this.optional(
+                  () =>
+                    this.api<{ snapshots?: Array<{ id?: string; time?: string }> }>("GET", path),
+                  {},
+                );
+                const snaps = withinListCap(res.snapshots ?? [], MAX_SNAPSHOTS_PER_DB, {
+                  vendor: "Astra",
+                  path,
+                })
+                  .filter((s) => s.id)
+                  .sort((a, b) => String(b.time ?? "").localeCompare(String(a.time ?? "")));
+                for (const s of snaps) {
+                  out.push(
+                    instance(
+                      accountId,
+                      T.snapshot,
+                      `${db.id}/${s.id}`,
+                      `${db.info?.name ?? db.id} · ${s.time ?? s.id}`,
+                      compact({ snapshotId: s.id, databaseId: db.id, createdAt: s.time }),
+                      { typeId: T.database, externalId: db.id },
+                    ),
+                  );
+                }
+                withinListCap(out, MAX_SNAPSHOT_ROWS, { vendor: "Astra", path });
+              },
+            })),
+          );
           return out;
         }
         case T.pcuGroup: {

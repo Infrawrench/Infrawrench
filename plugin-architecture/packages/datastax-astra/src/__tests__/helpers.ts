@@ -27,3 +27,11 @@ export function mockFetch(routes: Record<string, unknown>) {
   vi.stubGlobal("fetch", fn);
   return { fn, calls };
 }
+
+/** Stand in for a host that keeps track of unread rows, as the poller does. Call the result to stop. */
+export function trackUnread() {
+  const hook = Symbol.for("infrawrench.unreadListPart");
+  const parts: Array<{ parentResourceIds?: string[]; idPrefixes?: string[] }> = [];
+  Reflect.set(globalThis, hook, (part: (typeof parts)[number]) => parts.push(part));
+  return { parts, stop: () => Reflect.deleteProperty(globalThis, hook) };
+}

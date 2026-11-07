@@ -6,7 +6,7 @@ import { parseStatusFeed, mapComponent } from "../status-feed.js";
 import { astraTerraformExport } from "../terraform.js";
 import { RESOURCE_TYPES, T } from "../resource-types.js";
 import { createMockResource } from "@infrawrench/plugin-base/test-harness";
-import { mockFetch } from "./helpers.js";
+import { mockFetch, trackUnread } from "./helpers.js";
 
 const DB = {
   id: "11111111-2222-3333-4444-555555555555",
@@ -226,6 +226,88 @@ describe("AstraPluginClient", () => {
       [`GET metrics.astra.datastax.com/v1/pcugroup/p/metrics`]: new Response("", { status: 403 }),
     });
     expect(await client.fetchMetricSeries(T.pcuGroup, `acc:${T.pcuGroup}:p`, "acc")).toEqual([]);
+  });
+});
+
+describe("lists that stop early", () => {
+  const dbsNamed = (prefix: string, count: number) =>
+    Array.from({ length: count }, (_, i) => ({ ...DB, id: `${prefix}-${i}` }));
+
+  /** Serve `dbs` a page at a time, as `starting_after` asks. */
+  const pagedDatabases = (dbs: Array<{ id: string }>) => (url: URL) => {
+    const after = url.searchParams.get("starting_after");
+    const start = after ? dbs.findIndex((d) => d.id === after) + 1 : 0;
+    return dbs.slice(start, start + 100);
+  };
+
+  it("throws when the databases never end, instead of returning what it read", async () => {
+    let page = 0;
+    const { calls } = mockFetch({ "GET /v2/databases": () => dbsNamed(`p${page++}`, 100) });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    await expect(client.listResources(T.keyspace, "acc")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("reads past the old 5,000 databases", async () => {
+    mockFetch({ "GET /v2/databases": pagedDatabases(dbsNamed("db", 9_999)) });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    await expect(client.listResources(T.database, "acc")).resolves.toHaveLength(9_999);
+  });
+
+  it("lists every snapshot of a database, not the newest 30", async () => {
+    const snapshots = Array.from({ length: 45 }, (_, i) => ({ id: `s${i}` }));
+    mockFetch({
+      "GET /v2/databases": [DB],
+      [`GET /v2/databases/${DB.id}/snapshots`]: { snapshots },
+    });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    await expect(client.listResources(T.snapshot, "acc")).resolves.toHaveLength(45);
+  });
+
+  it("throws past 10,000 snapshots on one database", async () => {
+    const snapshots = Array.from({ length: 10_001 }, (_, i) => ({ id: `s${i}` }));
+    mockFetch({
+      "GET /v2/databases": [DB],
+      [`GET /v2/databases/${DB.id}/snapshots`]: { snapshots },
+    });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    await expect(client.listResources(T.snapshot, "acc")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("past what a poll can read, reads the budget, names the rest and moves on later", async () => {
+    const dbs = dbsNamed("db", 450);
+    const routes: Record<string, unknown> = { "GET /v2/databases": pagedDatabases(dbs) };
+    for (const db of dbs) {
+      routes[`GET /v2/databases/${db.id}/snapshots`] = { snapshots: [{ id: "s" }] };
+    }
+    const unread = trackUnread();
+    vi.useFakeTimers({ now: 0, toFake: ["Date"] });
+    try {
+      const first = mockFetch(routes);
+      const rows = await hostClient(new AstraPluginClient({ token: "t" })).listResources(
+        T.snapshot,
+        "acc",
+      );
+      expect(rows).toHaveLength(400);
+      expect(first.calls.filter((c) => c.url.pathname.endsWith("/snapshots"))).toHaveLength(400);
+      expect(unread.parts).toEqual([
+        { parentResourceIds: dbs.slice(400).map((d) => `acc:${T.database}:${d.id}`) },
+      ]);
+
+      unread.parts.length = 0;
+      vi.setSystemTime(60 * 60 * 1000);
+      await hostClient(new AstraPluginClient({ token: "t" })).listResources(T.snapshot, "acc");
+      const named = unread.parts[0]!.parentResourceIds!;
+      expect(named).toHaveLength(50);
+      expect(named).not.toContain(`acc:${T.database}:db-449`);
+    } finally {
+      vi.useRealTimers();
+      unread.stop();
+    }
   });
 });
 
