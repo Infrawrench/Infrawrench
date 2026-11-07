@@ -458,3 +458,32 @@ describe("a region marked unavailable", () => {
     expect(field?.regions?.map((r) => r.id)).toEqual(["us-south"]);
   });
 });
+
+describe("the server profile picker", () => {
+  it("offers every page of profiles", async () => {
+    const profile = (name: string) => ({
+      name,
+      family: "balanced",
+      vcpu_count: { type: "fixed", value: 2 },
+      memory: { type: "fixed", value: 8 },
+    });
+    const { client } = makeClient((req) => {
+      if (req.url.pathname === "/v1/instance/profiles") {
+        return req.url.searchParams.get("start")
+          ? { body: { profiles: [profile("bx2-second")] } }
+          : {
+              body: {
+                profiles: [profile("bx2-first")],
+                next: {
+                  href: "https://us-south.iaas.cloud.ibm.com/v1/instance/profiles?start=two",
+                },
+              },
+            };
+      }
+      return { body: {} };
+    });
+    const config = await client.getCreateConfig!("instance");
+    const sizes = config.fields.find((f) => f.key === "profile");
+    expect(sizes?.sizes?.map((s) => s.id)).toEqual(["bx2-first", "bx2-second"]);
+  });
+});

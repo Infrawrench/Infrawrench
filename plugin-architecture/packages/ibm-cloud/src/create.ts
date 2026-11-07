@@ -142,10 +142,12 @@ type Profile = Omit<Schemas["InstanceProfile"], "vcpu_count" | "memory"> & {
 };
 
 export async function listProfiles(ctx: ListContext): Promise<Profile[]> {
-  const res = await ctx.api
-    .vpc(ctx.inventory.homeRegion)
-    .get("/instance/profiles", { query: VPC_QUERY });
-  return res.profiles ?? [];
+  const vpc = ctx.api.vpc(ctx.inventory.homeRegion);
+  return vpcList(
+    { path: "/instance/profiles", key: "profiles" },
+    (paging) => vpc.get("/instance/profiles", { query: { ...VPC_LIST_QUERY, ...paging } }),
+    (p) => p.profiles,
+  );
 }
 
 function profileSizes(profiles: Profile[]): SizeOption[] {
