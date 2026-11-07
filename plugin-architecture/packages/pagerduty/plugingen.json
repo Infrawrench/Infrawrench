@@ -232,6 +232,9 @@
             "nullable": true,
             "readOnly": true,
             "properties": {
+              "id": {
+                "type": "string"
+              },
               "summary": {
                 "type": "string",
                 "nullable": true

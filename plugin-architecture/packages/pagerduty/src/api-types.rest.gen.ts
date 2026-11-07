@@ -1369,6 +1369,7 @@ export interface components {
             description?: string;
             name?: string;
             readonly parent?: {
+                id?: string;
                 summary?: string | null;
             } | null;
             /**

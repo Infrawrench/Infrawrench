@@ -21,18 +21,22 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { PagerDutyApi, PagerDutyRegion, PagerDutyTransport } from "./api.js";
 import { PagerDutyApiError, createPagerDutyApi, createPagerDutyEvents, statusOf } from "./api.js";
 import type { operations } from "./api-types.rest.gen.js";
 import { isPagerDutyOAuth } from "./oauth.js";
 import type {
   PdEscalationPolicy,
+  PdBusinessService,
   PdExpandable,
   PdIncident,
   PdIntegration,
+  PdOrchestration,
   PdTeam,
+  PdTeamReference,
   PdUser,
+  TeamNames,
 } from "./mappers.js";
 import {
   incidentReference,
@@ -45,6 +49,7 @@ import {
   mapService,
   mapTeam,
   mapUser,
+  teamNamesOf,
 } from "./mappers.js";
 import { rangeOrDefault, serviceAnalytics, seriesFromRows } from "./metrics.js";
 import type { PagingContext } from "./paging.js";
@@ -216,11 +221,29 @@ export class PagerDutyClient implements PluginClient {
     };
   }
 
+  private readonly teamNameRead = new CachedRead<PdTeam[]>(() =>
+    this.api.getAll("/teams", "teams", { partial: true }),
+  );
+
   private invalidate(): void {
     this.userRead.clear();
     this.policyRead.clear();
     this.userPickerRead.clear();
     this.policyPickerRead.clear();
+    this.teamNameRead.clear();
+  }
+
+  /** Names for team references that came without one; no request when none did. */
+  private async teamNames(
+    refs: readonly (PdTeamReference | null | undefined)[],
+  ): Promise<TeamNames> {
+    if (!refs.some((t) => t?.id && !t.summary)) return new Map();
+    const teams = await this.teamNameRead.get().catch((err: unknown): PdTeam[] => {
+      rethrowIncompleteList(err);
+      // A name is all this adds: a key or a plan that cannot read teams loses only that.
+      return [];
+    });
+    return teamNamesOf(teams);
   }
 
   private async userOptions(): Promise<Option[]> {
@@ -271,8 +294,11 @@ export class PagerDutyClient implements PluginClient {
           return (await this.api.getAll("/schedules", "schedules")).map((s) =>
             mapSchedule(accountId, s),
           );
-        case "pagerduty-team":
-          return (await this.api.getAll("/teams", "teams")).map((t) => mapTeam(accountId, t));
+        case "pagerduty-team": {
+          const teams = await this.api.getAll("/teams", "teams");
+          const names = teamNamesOf(teams);
+          return teams.map((t) => mapTeam(accountId, t, names));
+        }
         case "pagerduty-user":
           return (await this.userRead.get()).map((u) => mapUser(accountId, u));
         case "pagerduty-incident": {
@@ -301,20 +327,25 @@ export class PagerDutyClient implements PluginClient {
               query: { filter: "open" },
             })
           ).map((w) => mapMaintenanceWindow(accountId, w));
-        case "pagerduty-business-service":
-          return (await this.api.getAll("/business_services", "business_services")).map((b) =>
-            mapBusinessService(accountId, b),
+        case "pagerduty-business-service": {
+          const services: PdBusinessService[] = await this.api.getAll(
+            "/business_services",
+            "business_services",
           );
-        case "pagerduty-event-orchestration":
-          try {
-            return (await this.api.getAll("/event_orchestrations", "orchestrations")).map((o) =>
-              mapOrchestration(accountId, o),
-            );
-          } catch (err) {
-            // Event orchestration is not on every plan; a 403 means none to list.
-            if (statusOf(err) === 403) return [];
-            throw err;
-          }
+          const names = await this.teamNames(services.map((b) => b.team));
+          return services.map((b) => mapBusinessService(accountId, b, names));
+        }
+        case "pagerduty-event-orchestration": {
+          const orchestrations = await this.api
+            .getAll("/event_orchestrations", "orchestrations")
+            .catch((err: unknown): PdOrchestration[] => {
+              // Event orchestration is not on every plan; a 403 means none to list.
+              if (statusOf(err) === 403) return [];
+              throw err;
+            });
+          const names = await this.teamNames(orchestrations.map((o) => o.team));
+          return orchestrations.map((o) => mapOrchestration(accountId, o, names));
+        }
         default:
           throw new Error(`PagerDuty plugin: unknown resource type "${typeId}"`);
       }
@@ -454,7 +485,7 @@ export class PagerDutyClient implements PluginClient {
         case "pagerduty-team": {
           const res = await this.api.get(`/teams/${id}`);
           if (!res?.team) throw new PagerDutyApiError(404, "PagerDuty team not found");
-          return mapTeam(accountId, res.team);
+          return mapTeam(accountId, res.team, await this.teamNames([res.team.parent]));
         }
         case "pagerduty-user": {
           const res = await this.api.get(`/users/${id}`, { query: { "include[]": ["teams"] } });
@@ -506,14 +537,20 @@ export class PagerDutyClient implements PluginClient {
           if (!res?.business_service) {
             throw new PagerDutyApiError(404, "PagerDuty business service not found");
           }
-          return mapBusinessService(accountId, res.business_service);
+          const service: PdBusinessService = res.business_service;
+          return mapBusinessService(accountId, service, await this.teamNames([service.team]));
         }
         case "pagerduty-event-orchestration": {
           const res = await this.api.get(`/event_orchestrations/${id}`);
           if (!res?.orchestration) {
             throw new PagerDutyApiError(404, "PagerDuty event orchestration not found");
           }
-          return mapOrchestration(accountId, res.orchestration);
+          const orchestration: PdOrchestration = res.orchestration;
+          return mapOrchestration(
+            accountId,
+            orchestration,
+            await this.teamNames([orchestration.team]),
+          );
         }
         default:
           throw new Error(`PagerDuty plugin: unknown resource type "${typeId}"`);

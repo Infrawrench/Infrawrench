@@ -562,3 +562,122 @@ describe("incomplete lists", () => {
     expect(options).toHaveLength(100);
   });
 });
+
+describe("team names", () => {
+  const teams = {
+    teams: [
+      { id: "T1", name: "Payments", summary: "Payments" },
+      { id: "T2", name: "Platform", summary: "Platform", parent: { id: "T1" } },
+    ],
+    more: false,
+  };
+  /** The document's team reference: an id, a type and a link, and no name. */
+  const team = { id: "T1", type: "team_reference", self: "https://api.pagerduty.com/teams/T1" };
+
+  it("names the owning team of a listed business service from the team list", async () => {
+    const { c, calls } = client((call) =>
+      call.url.includes("/teams")
+        ? { status: 200, body: teams }
+        : {
+            status: 200,
+            body: {
+              business_services: [
+                { id: "B1", name: "Checkout", team },
+                { id: "B2", name: "Search", team: null },
+              ],
+              more: false,
+            },
+          },
+    );
+    const rows = await c.listResources("pagerduty-business-service", "acc");
+    expect(rows.map((r) => r.fields["teamName"])).toEqual(["Payments", undefined]);
+    expect(rows[0]!.fields["teamId"]).toBe("T1");
+    expect(calls.filter((call) => call.url.includes("/teams"))).toHaveLength(1);
+  });
+
+  it("names the team of a listed event orchestration", async () => {
+    const { c } = client((call) =>
+      call.url.includes("/teams")
+        ? { status: 200, body: teams }
+        : {
+            status: 200,
+            body: { orchestrations: [{ id: "O1", name: "Cart", team }], more: false },
+          },
+    );
+    const [row] = await c.listResources("pagerduty-event-orchestration", "acc");
+    expect(row!.fields["teamName"]).toBe("Payments");
+  });
+
+  it("names the team on the single reads too", async () => {
+    const { c } = client((call) => {
+      if (call.url.includes("/teams")) return { status: 200, body: teams };
+      return call.url.includes("/business_services/")
+        ? { status: 200, body: { business_service: { id: "B1", team } } }
+        : { status: 200, body: { orchestration: { id: "O1", team } } };
+    });
+    const b = await c.getResource("pagerduty-business-service", "acc:x:B1", "acc");
+    expect(b.fields["teamName"]).toBe("Payments");
+    const o = await c.getResource("pagerduty-event-orchestration", "acc:x:O1", "acc");
+    expect(o.fields["teamName"]).toBe("Payments");
+  });
+
+  it("keeps a summary PagerDuty does send, and spends no request on it", async () => {
+    const { c, calls } = client(() => ({
+      status: 200,
+      body: {
+        business_services: [{ id: "B1", team: { ...team, summary: "From the reference" } }],
+        more: false,
+      },
+    }));
+    const [row] = await c.listResources("pagerduty-business-service", "acc");
+    expect(row!.fields["teamName"]).toBe("From the reference");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("spends no request when nothing has a team", async () => {
+    const { c, calls } = client(() => ({
+      status: 200,
+      body: { business_services: [{ id: "B1", team: null }], more: false },
+    }));
+    await c.listResources("pagerduty-business-service", "acc");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("still lists the services when the teams cannot be read", async () => {
+    const { c } = client((call) =>
+      call.url.includes("/teams")
+        ? { status: 402, body: { error: { message: "Account does not have the abilities" } } }
+        : { status: 200, body: { business_services: [{ id: "B1", team }], more: false } },
+    );
+    const [row] = await c.listResources("pagerduty-business-service", "acc");
+    expect(row!.externalId).toBe("B1");
+    expect(row!.fields["teamName"]).toBeUndefined();
+  });
+
+  it("does not hide an incomplete team list behind the fallback", async () => {
+    const { c } = client((call) =>
+      call.url.includes("/teams")
+        ? { status: 200, body: { squads: [], more: false } }
+        : { status: 200, body: { business_services: [{ id: "B1", team }], more: false } },
+    );
+    await expect(c.listResources("pagerduty-business-service", "acc")).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("names a parent team from the list when its reference has no summary", async () => {
+    const { c } = client(() => ({ status: 200, body: teams }));
+    const rows = await c.listResources("pagerduty-team", "acc");
+    expect(rows.find((r) => r.externalId === "T2")!.fields["parentTeam"]).toBe("Payments");
+  });
+
+  it("names a parent team on the single read", async () => {
+    const { c } = client((call) =>
+      call.url.includes("/teams/T2")
+        ? { status: 200, body: { team: { id: "T2", name: "Platform", parent: { id: "T1" } } } }
+        : { status: 200, body: teams },
+    );
+    const row = await c.getResource("pagerduty-team", "acc:x:T2", "acc");
+    expect(row.fields["parentTeam"]).toBe("Payments");
+  });
+});

@@ -37,13 +37,36 @@ export interface PdIntegration extends PdExpandable {
   integration_key?: string;
 }
 
-/** The document's team reference here has no `summary`, but the plugin reads one. */
+/**
+ * The document's team reference here is an id, a type and a link, so a team's name
+ * comes from the team list. A `summary` PagerDuty does send still wins.
+ */
+export interface PdTeamReference {
+  id?: string;
+  summary?: string | null;
+}
+
 interface PdSummarizedTeam {
-  team?: { summary?: string | null } | null;
+  team?: PdTeamReference | null;
 }
 
 export type PdBusinessService = Partial<Schemas["BusinessService"]> & PdSummarizedTeam;
 export type PdOrchestration = Partial<Schemas["Orchestration"]> & PdSummarizedTeam;
+
+/** Team names by id, for the references that do not carry one. */
+export type TeamNames = ReadonlyMap<string, string>;
+
+const NO_TEAM_NAMES: TeamNames = new Map();
+
+export function teamNamesOf(teams: readonly PdTeam[]): TeamNames {
+  const out = new Map<string, string>();
+  for (const t of teams) if (t.id && t.name) out.set(t.id, t.name);
+  return out;
+}
+
+function teamName(team: PdTeamReference | null | undefined, names: TeamNames): string | undefined {
+  return team?.summary ?? (team?.id ? names.get(team.id) : undefined);
+}
 
 type Fields = ResourceInstance["fields"];
 
@@ -179,7 +202,11 @@ export function mapSchedule(accountId: string, s: PdSchedule): ResourceInstance 
   );
 }
 
-export function mapTeam(accountId: string, t: PdTeam): ResourceInstance {
+export function mapTeam(
+  accountId: string,
+  t: PdTeam,
+  names: TeamNames = NO_TEAM_NAMES,
+): ResourceInstance {
   const id = t.id ?? "";
   return instance(
     accountId,
@@ -189,7 +216,7 @@ export function mapTeam(accountId: string, t: PdTeam): ResourceInstance {
     clean({
       name: t.name,
       description: t.description ?? "",
-      parentTeam: t.parent?.summary,
+      parentTeam: teamName(t.parent, names),
       htmlUrl: t.html_url,
     }),
   );
@@ -282,7 +309,11 @@ export function mapMaintenanceWindow(accountId: string, w: PdMaintenanceWindow):
   );
 }
 
-export function mapBusinessService(accountId: string, b: PdBusinessService): ResourceInstance {
+export function mapBusinessService(
+  accountId: string,
+  b: PdBusinessService,
+  names: TeamNames = NO_TEAM_NAMES,
+): ResourceInstance {
   const id = b.id ?? "";
   return instance(
     accountId,
@@ -294,13 +325,17 @@ export function mapBusinessService(accountId: string, b: PdBusinessService): Res
       description: b.description ?? "",
       pointOfContact: b.point_of_contact ?? "",
       teamId: b.team?.id,
-      teamName: b.team?.summary,
+      teamName: teamName(b.team, names),
       htmlUrl: b.html_url,
     }),
   );
 }
 
-export function mapOrchestration(accountId: string, o: PdOrchestration): ResourceInstance {
+export function mapOrchestration(
+  accountId: string,
+  o: PdOrchestration,
+  names: TeamNames = NO_TEAM_NAMES,
+): ResourceInstance {
   const id = o.id ?? "";
   return instance(
     accountId,
@@ -310,7 +345,7 @@ export function mapOrchestration(accountId: string, o: PdOrchestration): Resourc
     clean({
       name: o.name,
       description: o.description ?? "",
-      teamName: o.team?.summary ?? undefined,
+      teamName: teamName(o.team, names),
       routes: o.routes,
       createdAt: o.created_at,
       updatedAt: o.updated_at,
