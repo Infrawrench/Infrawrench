@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import {
   VsphereApi,
@@ -282,6 +282,61 @@ describe("client", () => {
       placement: { host: "host-1" },
       power_on: true,
     });
+  });
+});
+
+describe("library items", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+  const vapiError = (status: number, type: string) => () => ({
+    status,
+    body: { error_type: type, messages: [{ default_message: type }] },
+  });
+  const libraryRoutes = (lib2: Route): Record<string, Route> => ({
+    "GET /api/content/library": ["lib-1", "lib-2"],
+    "GET /api/content/library/lib-1": { name: "ISOs" },
+    "GET /api/content/library/lib-2": { name: "Templates" },
+    "GET /api/content/library/item?library_id=lib-1": ["item-1"],
+    "GET /api/content/library/item/item-1": { name: "ubuntu.iso", type: "iso" },
+    "GET /api/content/library/item?library_id=lib-2": lib2,
+    "GET /api/content/library/item/item-2": { name: "web", type: "ovf" },
+  });
+  const list = (lib2: Route) => {
+    const { http } = mockHttp(libraryRoutes(lib2));
+    return hostClient(new VsphereClient(CREDS, { http })).listResources(
+      "vsphere-library-item",
+      "acct",
+    );
+  };
+
+  it("lists every library's items", async () => {
+    const items = await list(["item-2"]);
+    expect(items.map((i) => i.externalId)).toEqual(["item-1", "item-2"]);
+  });
+
+  it("fails the type when one library's items fail, rather than pruning them", async () => {
+    await expect(list(vapiError(500, "ERROR"))).rejects.toThrow(/500/);
+  });
+
+  it("keeps a refused library's items stored where the host tracks unread parts", async () => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    const items = await list(vapiError(403, "UNAUTHORIZED"));
+    expect(items.map((i) => i.externalId)).toEqual(["item-1"]);
+    expect(unread).toHaveBeenCalledWith({
+      parentResourceIds: ["acct:vsphere-content-library:lib-2"],
+    });
+  });
+
+  it("shows the refusal where the host keeps no track", async () => {
+    await expect(list(vapiError(403, "UNAUTHORIZED"))).rejects.toThrow(/403/);
+  });
+
+  it("reads a library deleted mid-sync as having no items", async () => {
+    const items = await list(vapiError(404, "NOT_FOUND"));
+    expect(items.map((i) => i.externalId)).toEqual(["item-1"]);
   });
 });
 

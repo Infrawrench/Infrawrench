@@ -11,7 +11,7 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
+import { decodePromptArgs, externalIdOf, reportUnreadListPart } from "@infrawrench/plugin-base";
 import { VsphereApi, VsphereApiError, type Query } from "./api.js";
 import {
   CLUSTER,
@@ -719,30 +719,47 @@ export class VsphereClient implements PluginClient {
   private async listLibraryItems(accountId: string): Promise<ResourceInstance[]> {
     const libs = await this.libraries();
     const lists = await mapLimit(libs, 3, async (l) =>
-      (await this.libraryItems(l.id).catch(() => [])).map((i) =>
-        this.instance(
-          accountId,
-          LIBRARY_ITEM,
-          i.id,
-          i.name ?? i.id,
-          {
-            name: i.name ?? "",
-            description: i.description ?? "",
-            type: i.type ?? "",
-            sizeGb: gib(i.size),
-            libraryId: l.id,
-            cached: !!i.cached,
-            createdAt: i.creation_time ?? "",
-            modifiedAt: i.last_modified_time ?? "",
-          },
-          {
-            parentResourceId: `${accountId}:${LIBRARY}:${l.id}`,
-            resolvedOutputs: { itemId: i.id },
-          },
-        ),
+      (await this.libraryItems(l.id).catch((err) => this.unreadLibrary(err, accountId, l.id))).map(
+        (i) =>
+          this.instance(
+            accountId,
+            LIBRARY_ITEM,
+            i.id,
+            i.name ?? i.id,
+            {
+              name: i.name ?? "",
+              description: i.description ?? "",
+              type: i.type ?? "",
+              sizeGb: gib(i.size),
+              libraryId: l.id,
+              cached: !!i.cached,
+              createdAt: i.creation_time ?? "",
+              modifiedAt: i.last_modified_time ?? "",
+            },
+            {
+              parentResourceId: `${accountId}:${LIBRARY}:${l.id}`,
+              resolvedOutputs: { itemId: i.id },
+            },
+          ),
       ),
     );
     return lists.flat();
+  }
+
+  /**
+   * A library's item list that failed. NOT_FOUND means the library went between the two
+   * reads, so it has no items. A refusal for this one library keeps its stored items
+   * without failing the type; anything else fails it.
+   */
+  private unreadLibrary(err: unknown, accountId: string, libraryId: string): never[] {
+    if (err instanceof VsphereApiError && err.status === 404) return [];
+    if (
+      err instanceof VsphereApiError &&
+      err.status === 403 &&
+      reportUnreadListPart({ parentResourceIds: [`${accountId}:${LIBRARY}:${libraryId}`] })
+    )
+      return [];
+    throw err;
   }
 
   private async listCategories(accountId: string): Promise<ResourceInstance[]> {
