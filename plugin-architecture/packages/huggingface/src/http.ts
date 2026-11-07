@@ -137,7 +137,7 @@ export async function hfJson<T>(
   return answer.body;
 }
 
-/** What an error names: the path alone, or a next link that is not a URL as it came. */
+/** What an error names: the path alone, or anything that is not a URL as it came. */
 export function labelFor(url: string): string {
   try {
     const parsed = new URL(url);

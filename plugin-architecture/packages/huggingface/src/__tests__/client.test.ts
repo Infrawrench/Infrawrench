@@ -291,6 +291,39 @@ describe("lists that page by Link header", () => {
     expect(calls.filter((c) => c.url.includes(path))).toHaveLength(pages);
   });
 
+  it.each([
+    ["hf-job", "/api/jobs/acme"],
+    ["hf-member-token", "/settings/tokens"],
+    ["hf-model", "/api/models"],
+  ])("refuses to send the token to another host from %s", async (type, path) => {
+    const { http, calls } = host((req) => {
+      if (req.url.endsWith("/api/whoami-v2")) return { body: WHOAMI };
+      if (req.url.includes("evil.example")) throw new Error("reached the other host");
+      if (req.url.includes(path)) {
+        return { body: [{ id: "a", _id: "a" }], headers: next("https://evil.example/steal") };
+      }
+      throw new Error(`unrouted ${req.url}`);
+    });
+    await expect(org(http).listResources(type, ACCOUNT)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+    expect(calls.some((c) => c.url.includes("evil.example"))).toBe(false);
+  });
+
+  it("resolves a relative next link on the host it came from", async () => {
+    const { http } = host((req) => {
+      if (req.url === "https://huggingface.co/api/jobs/acme") {
+        return { body: [{ id: "a" }], headers: next("/api/jobs/acme?cursor=two") };
+      }
+      if (req.url === "https://huggingface.co/api/jobs/acme?cursor=two") {
+        return { body: [{ id: "b" }] };
+      }
+      throw new Error(`unrouted ${req.url}`);
+    });
+    const items = await org(http).listResources("hf-job", ACCOUNT);
+    expect(items.map((i) => i.externalId)).toEqual(["a", "b"]);
+  });
+
   it("keeps reading past an empty page that names another", async () => {
     const { http } = host((req) => {
       if (req.url === "https://huggingface.co/api/jobs/acme") {

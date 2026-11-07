@@ -61,12 +61,11 @@ export function createHfApis(ctx: HfContext) {
       hfError(status, labelFor(url), body),
   };
   const hub = { ...shared, baseUrl: HUB_BASE };
-  // The Hub's listings: `Link: <…>; rel="next"`, followed as written until it stops
-  // coming, whatever the page held.
+  // The Hub's listings. The document ends one by leaving `rel="next"` out, so an empty
+  // page that still names another has more behind it, and huggingface.co is the only
+  // host it hands out, so `withLinkPagination` refuses any other by default.
   const links = {
     next: nextLinkHeader(),
-    resolveLink: (link: string) => link,
-    foreignLinks: "follow" as const,
     continueOnEmptyPage: true,
     maxPages: 20,
   };
