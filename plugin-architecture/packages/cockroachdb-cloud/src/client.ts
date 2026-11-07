@@ -136,6 +136,16 @@ async function settle<T>(p: Promise<T>): Promise<T | undefined> {
   }
 }
 
+/** What the sync reads as none: a 429 or a 500 here would prune what is still there. */
+async function unlessAbsent<T>(p: Promise<T>): Promise<T | undefined> {
+  try {
+    return await p;
+  } catch (err) {
+    if ([400, 403, 404].includes(statusOf(err))) return undefined;
+    throw err;
+  }
+}
+
 export class CockroachClient implements PluginClient {
   readonly api: CrdbApi;
   private readonly services: HostServices | undefined;
@@ -345,9 +355,9 @@ export class CockroachClient implements PluginClient {
       case "crdb-metric-export":
         return this.perCluster(async (c) => {
           const [datadog, cloudwatch, prometheus] = await Promise.all([
-            settle(this.api.get(`/api/v1/clusters/${id(c)}/metricexport/datadog`)),
-            settle(this.api.get(`/api/v1/clusters/${id(c)}/metricexport/cloudwatch`)),
-            settle(this.api.get(`/api/v1/clusters/${id(c)}/metricexport/prometheus`)),
+            unlessAbsent(this.api.get(`/api/v1/clusters/${id(c)}/metricexport/datadog`)),
+            unlessAbsent(this.api.get(`/api/v1/clusters/${id(c)}/metricexport/cloudwatch`)),
+            unlessAbsent(this.api.get(`/api/v1/clusters/${id(c)}/metricexport/prometheus`)),
           ]);
           const results = [
             metricExportResource(

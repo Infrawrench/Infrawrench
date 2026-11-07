@@ -443,6 +443,32 @@ describe("CockroachClient", () => {
     const rows = await client.listResources("crdb-folder", ACCOUNT);
     expect(rows.map((r) => r.externalId)).toEqual(["f"]);
   });
+
+  describe("metric exports", () => {
+    const type = "crdb-metric-export";
+    const datadog = "/api/v1/clusters/c1/metricexport/datadog";
+    const prometheus = "/api/v1/clusters/c1/metricexport/prometheus";
+    const clusters = on("GET", "/api/v1/clusters", { clusters: [cluster] });
+
+    it.each([429, 500, 401])("fails the type when a read answers %i", async (status) => {
+      const { client } = fake([
+        clusters,
+        on("GET", datadog, { code: 8, message: "no" }, status),
+        on("GET", prometheus, { status: "ENABLED", targets: {} }),
+      ]);
+      await expect(client.listResources(type, ACCOUNT)).rejects.toThrow(CrdbApiError);
+    });
+
+    it.each([400, 403, 404])("reads %i as no export of that kind", async (status) => {
+      const { client } = fake([
+        clusters,
+        on("GET", datadog, { code: 5, message: "no" }, status),
+        on("GET", prometheus, { status: "ENABLED", targets: {} }),
+      ]);
+      const rows = await client.listResources(type, ACCOUNT);
+      expect(rows.map((r) => r.externalId)).toEqual(["c1/prometheus"]);
+    });
+  });
 });
 
 describe("helpers", () => {
