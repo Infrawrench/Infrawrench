@@ -162,6 +162,123 @@ describe("runSql on a transient answer after the submit", () => {
   });
 });
 
+describe("runSql with everyRow", () => {
+  const answer = (res: () => Response) => scriptedFetch([{ match: isPost, res }]);
+
+  it("refuses a 200 that is not a ResultSet, as any other read would take it for no rows", async () => {
+    answer(() => new Response("<html>gateway</html>", { status: 200 }));
+    await expect(runSql(ctx(), "SHOW WAREHOUSES", { everyRow: true })).rejects.toThrow(
+      "is not a list",
+    );
+    answer(() => jsonResponse(200, {}));
+    await expect(runSql(ctx(), "SHOW WAREHOUSES", { everyRow: true })).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("accepts a missing or null data only where the answer says there are no rows", async () => {
+    const noRows = { resultSetMetaData: { numRows: 0, rowType: [{ name: "NAME", type: "text" }] } };
+    answer(() => jsonResponse(200, noRows));
+    expect((await runSql(ctx(), "SHOW PIPES IN ACCOUNT", { everyRow: true })).rows).toEqual([]);
+    answer(() => jsonResponse(200, { ...noRows, data: [] }));
+    expect((await runSql(ctx(), "SHOW PIPES IN ACCOUNT", { everyRow: true })).rows).toEqual([]);
+    answer(() => jsonResponse(200, { data: null }));
+    expect((await runSql(ctx(), "SHOW PIPES IN ACCOUNT", { everyRow: true })).rows).toEqual([]);
+  });
+
+  it("leaves a statement that does not read a list alone when the 200 has no rows", async () => {
+    answer(() => jsonResponse(200, { code: "090001", message: "done" }));
+    expect((await runSql(ctx(), "ALTER WAREHOUSE W SUSPEND")).rows).toEqual([]);
+  });
+
+  it("throws past maxRows instead of answering with part of the rows, and stops reading", async () => {
+    const calls = answer(twoPartitions);
+    await expect(
+      runSql(ctx(), "SHOW   WAREHOUSES", { everyRow: true, maxRows: 1 }),
+    ).rejects.toThrow("Snowflake: SHOW WAREHOUSES has more than Infrawrench reads");
+    expect(calls).toHaveLength(1);
+    answer(() => jsonResponse(200, resultSet([{ name: "NAME" }], [["a"], ["b"]])));
+    await expect(runSql(ctx(), "SELECT 1", { everyRow: true, maxRows: 1 })).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+});
+
+describe("runSql reading further partitions", () => {
+  it("refuses a partition answered without rows", async () => {
+    scriptedFetch([
+      { match: isPost, res: twoPartitions },
+      { match: isPartition, res: () => jsonResponse(200, { message: "wrapped" }) },
+    ]);
+    await expect(runSql(ctx(), "SELECT 1")).rejects.toThrow("is not a list");
+  });
+
+  it("accepts a partition with no rows when the metadata said it has none", async () => {
+    scriptedFetch([
+      {
+        match: isPost,
+        res: () =>
+          jsonResponse(
+            200,
+            resultSet([{ name: "NAME" }], [["a"]], {
+              statementHandle: "abc",
+              resultSetMetaData: {
+                rowType: [{ name: "NAME", type: "text" }],
+                partitionInfo: [{ rowCount: 1 }, { rowCount: 0 }],
+              },
+            }),
+          ),
+      },
+      { match: isPartition, res: () => jsonResponse(200, {}) },
+    ]);
+    expect((await runSql(ctx(), "SELECT 1")).rows).toEqual([{ name: "a" }]);
+  });
+
+  it("refuses a result with more partitions and no handle to read them by", async () => {
+    scriptedFetch([
+      {
+        match: isPost,
+        res: () =>
+          jsonResponse(
+            200,
+            resultSet([{ name: "NAME" }], [["a"]], {
+              statementHandle: undefined,
+              resultSetMetaData: {
+                rowType: [{ name: "NAME", type: "text" }],
+                partitionInfo: [{ rowCount: 1 }, { rowCount: 1 }],
+              },
+            }),
+          ),
+      },
+    ]);
+    await expect(runSql(ctx(), "SELECT 1")).rejects.toThrow("no statement handle");
+  });
+
+  it("reads them by the handle it polled, when the finished answer leaves it out", async () => {
+    scriptedFetch([
+      { match: isPost, res: accepted },
+      {
+        match: isPoll,
+        res: () =>
+          jsonResponse(
+            200,
+            resultSet([{ name: "NAME" }], [["a"]], {
+              statementHandle: undefined,
+              resultSetMetaData: {
+                rowType: [{ name: "NAME", type: "text" }],
+                partitionInfo: [{ rowCount: 1 }, { rowCount: 1 }],
+              },
+            }),
+          ),
+      },
+      { match: isPartition, res: () => jsonResponse(200, { data: [["b"]] }) },
+    ]);
+    const res = await withoutWaiting(() => runSql(ctx(), "SELECT 1"));
+    expect(res.rows).toEqual([{ name: "a" }, { name: "b" }]);
+    expect(res.statementHandle).toBe("abc");
+  });
+});
+
 describe("quoting", () => {
   it("doubles quotes in identifiers and escapes literals", () => {
     expect(qualified('my"db', "s")).toBe('"my""db"."s"');

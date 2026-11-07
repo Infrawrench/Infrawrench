@@ -34,6 +34,7 @@ export async function fetchBalances(ctx: SnowflakeContext): Promise<CreditBalanc
          CAPACITY_BALANCE AS CAPACITY, ROLLOVER_BALANCE AS ROLLOVER, FREE_USAGE_BALANCE AS FREE
        FROM SNOWFLAKE.ORGANIZATION_USAGE.REMAINING_BALANCE_DAILY
        QUALIFY ROW_NUMBER() OVER (PARTITION BY CONTRACT_NUMBER, CURRENCY ORDER BY DATE DESC) = 1`,
+      { everyRow: true },
     );
   } catch (err) {
     if (isNotAuthorized(err)) {
@@ -167,7 +168,7 @@ export async function fetchAttribution(
 export async function fetchMonitorQuotas(ctx: SnowflakeContext): Promise<QuotaUsage[]> {
   let res;
   try {
-    res = await runSql(ctx, "SHOW RESOURCE MONITORS");
+    res = await runSql(ctx, "SHOW RESOURCE MONITORS", { everyRow: true });
   } catch (err) {
     if (isNotAuthorized(err)) {
       throw new QuotaAccessError(

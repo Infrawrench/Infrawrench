@@ -32,8 +32,10 @@
  */
 
 import {
+  ListTruncatedError,
   createApiClient,
   pathEncode,
+  requireListPage,
   restRequest,
   type ApiBody,
   type HttpHostServices,
@@ -63,6 +65,12 @@ export interface StatementOptions {
   timeoutSec?: number;
   /** Stop reading partitions once this many rows are in hand. */
   maxRows?: number;
+  /**
+   * The rows are stored or acted on as the whole answer, so throw rather than
+   * answer with part of them: past `maxRows`, or on a 200 that holds no rows
+   * without saying there are none.
+   */
+  everyRow?: boolean;
   /** Keep column names as Snowflake returns them instead of lower-casing them. */
   keepColumnCase?: boolean;
   /**
@@ -417,18 +425,20 @@ export async function runSql(
   const withSignal = signal ? { signal } : {};
   const api = apiOf(ctx);
   const requestId = uuid();
+  const place = { vendor: "Snowflake", path: statement.replace(/\s+/g, " ").trim().slice(0, 80) };
 
   const res = await answerWithRetries(signal, (attempt) =>
     submit(ctx, `?requestId=${requestId}${attempt > 0 ? "&retry=true" : ""}`, body, signal),
   );
   let parsed = parseBody(res);
   let status = res.status;
+  let statementHandle = parsed.statementHandle;
 
   // Still running: poll the statement until it finishes.
   const started = Date.now();
   let delay = 500;
   while (status === 202) {
-    const handle = parsed.statementHandle;
+    const handle = statementHandle;
     if (!handle) throw new SnowflakeError("Snowflake: statement accepted without a handle.", 202);
     if (Date.now() - started > Math.max(MAX_POLL_MS, timeout * 1000)) {
       throw new SnowflakeError("Snowflake: gave up waiting for the statement to finish.", 408);
@@ -450,6 +460,7 @@ export async function runSql(
     });
     status = poll.status;
     parsed = parseBody(poll);
+    statementHandle = parsed.statementHandle ?? statementHandle;
     if (status !== 200 && status !== 202) throw errorFor(poll, parsed);
   }
   if (status !== 200) throw errorFor(res, parsed);
@@ -461,16 +472,28 @@ export async function runSql(
   }));
   const maxRows = opts.maxRows ?? DEFAULT_MAX_ROWS;
   const keepCase = opts.keepColumnCase === true;
-  const rows = toRows(parsed.data ?? [], columns, keepCase);
-  const partitions = parsed.resultSetMetaData?.partitionInfo?.length ?? 1;
+  // `data` is optional in the document, and neither it nor the reference says what a
+  // result with no rows sends, so that one case is told apart by the row count.
+  const firstPage =
+    opts.everyRow && parsed.resultSetMetaData?.numRows !== 0
+      ? requireListPage(parsed.data, { ...place, key: "data", page: parsed })
+      : (parsed.data ?? []);
+  const rows = toRows(firstPage, columns, keepCase);
+  const partitionInfo = parsed.resultSetMetaData?.partitionInfo;
+  const partitions = partitionInfo?.length ?? 1;
   let truncated = false;
   for (let p = 1; p < partitions; p++) {
     if (rows.length >= maxRows) {
       truncated = true;
       break;
     }
-    const handle = parsed.statementHandle;
-    if (!handle) break;
+    const handle = statementHandle;
+    if (!handle) {
+      throw new SnowflakeError(
+        `Snowflake: the result has ${partitions} partitions and no statement handle to read them by.`,
+        status,
+      );
+    }
     const part = await answerWithRetries(signal, () =>
       api.getText(`/api/v2/statements/${pathEncode(handle)}`, {
         query: { partition: p },
@@ -479,17 +502,24 @@ export async function runSql(
     );
     const partBody = parseBody(part);
     if (part.status !== 200) throw errorFor(part, partBody);
-    rows.push(...toRows(partBody.data ?? [], columns, keepCase));
+    const partRows =
+      partitionInfo?.[p]?.rowCount === 0
+        ? (partBody.data ?? [])
+        : requireListPage(partBody.data, { ...place, key: "data", page: partBody });
+    for (const row of toRows(partRows, columns, keepCase)) rows.push(row);
   }
   if (rows.length > maxRows) {
     rows.length = maxRows;
     truncated = true;
   }
+  if (truncated && opts.everyRow) {
+    throw new ListTruncatedError({ ...place, items: rows.length, maxItems: maxRows });
+  }
   return {
     columns,
     rows,
     truncated,
-    ...(parsed.statementHandle ? { statementHandle: parsed.statementHandle } : {}),
+    ...(statementHandle ? { statementHandle } : {}),
   };
 }
 

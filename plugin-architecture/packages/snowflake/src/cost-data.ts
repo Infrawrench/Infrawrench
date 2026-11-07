@@ -58,6 +58,12 @@ function daysInMonth(date: string): number {
   return new Date(Date.UTC(y!, m!, 0)).getUTCDate();
 }
 
+/**
+ * Cost rows do not go through the resource sync, so they are not held to its ceiling,
+ * and a year of daily rows per warehouse can pass `runSql`'s default.
+ */
+const COST_READ = { everyRow: true, maxRows: 500_000 };
+
 const round = (n: number, digits = 6) => Math.round(n * 10 ** digits) / 10 ** digits;
 
 /** Day → warehouse → compute credits, for the per-warehouse split. */
@@ -75,6 +81,7 @@ export async function warehouseCreditsByDay(
      FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
      WHERE START_TIME >= '${checkDate(from)}'::DATE AND START_TIME < DATEADD('day', 1, '${checkDate(to)}'::DATE)
      GROUP BY 1, 2`,
+    COST_READ,
   );
   const out: WarehouseShares = new Map();
   for (const r of res.rows) {
@@ -145,6 +152,7 @@ export async function fetchBilledRows(
      WHERE ACCOUNT_LOCATOR = CURRENT_ACCOUNT()
        AND USAGE_DATE BETWEEN '${checkDate(from)}' AND '${checkDate(to)}'
      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8`,
+    COST_READ,
   );
   const rows: CostRow[] = [];
   for (const r of res.rows) {
@@ -197,6 +205,7 @@ export async function fetchEstimatedRows(
        FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
        WHERE USAGE_DATE BETWEEN '${f}' AND '${t}'
        GROUP BY 1, 2`,
+      COST_READ,
     ),
     runSql(
       ctx,
@@ -205,6 +214,7 @@ export async function fetchEstimatedRows(
            + COALESCE(HYBRID_TABLE_STORAGE_BYTES, 0) AS BYTES
        FROM SNOWFLAKE.ACCOUNT_USAGE.STORAGE_USAGE
        WHERE USAGE_DATE BETWEEN '${f}' AND '${t}'`,
+      COST_READ,
     ).catch((err: unknown) => {
       if (isPrivilegeDenied(err)) return { rows: [] as Record<string, unknown>[] };
       throw err;
@@ -219,6 +229,7 @@ export async function fetchEstimatedRows(
            WHERE START_TIME >= '${f}'::DATE AND START_TIME < DATEADD('day', 1, '${t}'::DATE)
              AND TRANSFER_TYPE <> 'INTERNAL'
            GROUP BY 1, 2`,
+          COST_READ,
         ).catch((err: unknown) => {
           if (isPrivilegeDenied(err)) return { rows: [] as Record<string, unknown>[] };
           throw err;

@@ -37,6 +37,14 @@ function request(n: number) {
 }
 
 describe("loadWarehouseRows", () => {
+  it("does not change a table whose columns came back unreadable", async () => {
+    const { statements } = mockSnowflake(() => jsonResponse(200, { message: "gateway" }));
+    await expect(
+      hostClient(new SnowflakeClient(CREDS)).loadWarehouseRows("acc", request(1)),
+    ).rejects.toThrow("is not a list");
+    expect(statements).toEqual(['SHOW COLUMNS IN TABLE "ANALYTICS"."FINOPS"."COSTS"']);
+  });
+
   it("creates a missing table, stages with bound inserts, and swaps the period in one transaction", async () => {
     const { statements, bodies } = mockSnowflake((s) => {
       if (s.startsWith("SHOW COLUMNS")) return sqlError("002003", "Table does not exist");

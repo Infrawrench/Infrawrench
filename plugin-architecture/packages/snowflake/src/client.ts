@@ -149,7 +149,7 @@ export class SnowflakeClient implements PluginClient {
   }
 
   private async rows(statement: string): Promise<Record<string, unknown>[]> {
-    return (await this.sql(statement)).rows;
+    return (await this.sql(statement, { everyRow: true })).rows;
   }
 
   // -------------------------------------------------------------------------
@@ -247,6 +247,7 @@ export class SnowflakeClient implements PluginClient {
       `SELECT CURRENT_ACCOUNT() AS LOCATOR, CURRENT_ACCOUNT_NAME() AS NAME,
          CURRENT_ORGANIZATION_NAME() AS ORG, CURRENT_REGION() AS REGION, CURRENT_ROLE() AS ROLE,
          CURRENT_WAREHOUSE() AS WAREHOUSE`,
+      { everyRow: true },
     );
     const r = res.rows[0] ?? {};
     const name = str(r["name"]) || this.ctx.account.display;

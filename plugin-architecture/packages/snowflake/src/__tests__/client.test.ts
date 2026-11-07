@@ -120,6 +120,43 @@ describe("a read that fails while listing", () => {
   });
 });
 
+describe("a list read that cannot say it has every row", () => {
+  it.each([TYPE.warehouse, TYPE.database, TYPE.schema, TYPE.role, TYPE.pipe, TYPE.account])(
+    "fails %s on a 200 that is not a ResultSet, rather than pruning them",
+    async (typeId) => {
+      mockSnowflake(() => jsonResponse(200, { message: "gateway" }));
+      await expect(
+        hostClient(new SnowflakeClient(CREDS)).listResources(typeId, "acc"),
+      ).rejects.toThrow("is not a list");
+    },
+  );
+
+  it("does not read a bad answer to SHOW USERS as the role lacking the privilege", async () => {
+    mockSnowflake(() => jsonResponse(200, { message: "gateway" }));
+    await expect(
+      hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.user, "acc"),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("fails the monitor list when SHOW WAREHOUSES answers with something else", async () => {
+    mockSnowflake((s) =>
+      s === "SHOW RESOURCE MONITORS"
+        ? jsonResponse(200, resultSet([{ name: "name" }], [["LIMIT"]]))
+        : jsonResponse(200, { message: "gateway" }),
+    );
+    await expect(
+      hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.resourceMonitor, "acc"),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("fails balances and quotas on a 200 that is not a ResultSet", async () => {
+    mockSnowflake(() => jsonResponse(200, { message: "gateway" }));
+    const client = hostClient(new SnowflakeClient(CREDS));
+    await expect(client.fetchCreditBalance("acc")).rejects.toThrow("is not a list");
+    await expect(client.fetchQuotas("acc")).rejects.toThrow("is not a list");
+  });
+});
+
 describe("actions", () => {
   it("resizes, sets auto-suspend and assigns monitors with quoted identifiers", async () => {
     const { statements } = mockSnowflake(() =>

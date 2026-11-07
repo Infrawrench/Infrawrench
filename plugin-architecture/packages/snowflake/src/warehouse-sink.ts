@@ -192,7 +192,7 @@ async function existingColumns(
   opts: StatementOptions,
 ): Promise<Set<string> | null> {
   try {
-    const res = await exec(ctx, `SHOW COLUMNS IN TABLE ${fq}`, opts);
+    const res = await exec(ctx, `SHOW COLUMNS IN TABLE ${fq}`, { ...opts, everyRow: true });
     return new Set(res.rows.map((r) => str(r["column_name"])));
   } catch (err) {
     if (err instanceof SnowflakeError && err.code === "002003") return null;

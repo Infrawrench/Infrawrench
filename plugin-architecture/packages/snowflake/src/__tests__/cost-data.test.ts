@@ -3,7 +3,12 @@ import { parseAccount } from "../account.js";
 import type { SnowflakeContext } from "../api.js";
 import { SnowflakeAuth } from "../auth.js";
 import { parseRates } from "../catalog.js";
-import { fetchSnowflakeCostData, splitByWarehouse, summarizeMonth } from "../cost-data.js";
+import {
+  fetchSnowflakeCostData,
+  splitByWarehouse,
+  summarizeMonth,
+  warehouseCreditsByDay,
+} from "../cost-data.js";
 import { mockSnowflake, resultSet, jsonResponse, sqlError } from "./helpers.js";
 
 const account = parseAccount("myorg-myaccount");
@@ -27,6 +32,62 @@ const meteringByWarehouse = () =>
   );
 
 describe("a read that fails while collecting", () => {
+  const rowsOf = (count: number) =>
+    jsonResponse(
+      200,
+      resultSet(
+        [{ name: "D" }, { name: "W" }, { name: "C", type: "fixed", scale: 3 }],
+        Array.from({ length: count }, (_, i) => ["2026-09-01", `WH_${i}`, "1.000"]),
+      ),
+    );
+
+  it("reads warehouse shares past the row cap other reads have", async () => {
+    mockSnowflake(() => rowsOf(60_000));
+    const shares = await warehouseCreditsByDay(ctx, "2026-09-01", "2026-09-02");
+    expect(shares.get("2026-09-01")?.size).toBe(60_000);
+  });
+
+  it("throws when even the cost cap is not enough, rather than splitting by part of them", async () => {
+    mockSnowflake(() => rowsOf(500_001));
+    await expect(warehouseCreditsByDay(ctx, "2026-09-01", "2026-09-02")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it.each(["USAGE_IN_CURRENCY_DAILY", "WAREHOUSE_METERING_HISTORY"])(
+    "fails on a 200 from %s that is not a ResultSet, rather than reading no cost",
+    async (view) => {
+      mockSnowflake((s) => {
+        if (s.includes(view)) return jsonResponse(200, { message: "gateway" });
+        if (s.includes("WAREHOUSE_METERING_HISTORY")) return meteringByWarehouse();
+        return jsonResponse(200, resultSet([{ name: "D" }], []));
+      });
+      await expect(
+        fetchSnowflakeCostData(ctx, parseRates({}), "2026-09-01", "2026-09-02"),
+      ).rejects.toThrow("is not a list");
+    },
+  );
+
+  it.each(["METERING_DAILY_HISTORY", "STORAGE_USAGE", "DATA_TRANSFER_HISTORY"])(
+    "fails the estimate on a 200 from %s that is not a ResultSet",
+    async (view) => {
+      mockSnowflake((s) => {
+        if (s.includes(view)) return jsonResponse(200, { message: "gateway" });
+        if (s.includes("WAREHOUSE_METERING_HISTORY")) return meteringByWarehouse();
+        if (s.includes("USAGE_IN_CURRENCY_DAILY")) return sqlError("002003", "not authorized");
+        return jsonResponse(200, resultSet([{ name: "D" }], []));
+      });
+      await expect(
+        fetchSnowflakeCostData(
+          ctx,
+          parseRates({ dataTransferPricePerTb: "90" }),
+          "2026-09-01",
+          "2026-09-02",
+        ),
+      ).rejects.toThrow("is not a list");
+    },
+  );
+
   it("fails the estimate on a 403 for storage rather than leaving storage out", async () => {
     mockSnowflake((s) => {
       if (s.includes("WAREHOUSE_METERING_HISTORY")) return meteringByWarehouse();
