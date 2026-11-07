@@ -14,6 +14,7 @@
  * Verified against postmarkapp.com/developer/api/* (2026-10).
  */
 import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 
 export const API_BASE = "https://api.postmarkapp.com";
 export const POSTMARK_HOSTNAMES = ["api.postmarkapp.com"];
@@ -126,9 +127,17 @@ export async function postmarkFetch<T>(
 }
 
 /**
+ * Rows a `count`/`offset` list reads before it throws. 20 pages of 500; no Postmark
+ * account is near it for servers, domains, signatures, or a server's templates
+ * (Postmark allows 100) and inbound rules.
+ */
+export const MAX_LIST_ITEMS = 10_000;
+
+/**
  * Walk a `count`/`offset` list. Postmark returns `TotalCount` and the items
  * under a per-endpoint key (`Servers`, `Domains`, `SenderSignatures`,
- * `Templates`, `InboundRules`).
+ * `Templates`, `InboundRules`). A list longer than `maxItems` throws, since a
+ * sync reads the rows it did not reach as deleted.
  */
 export async function listPaged<T>(
   transport: PostmarkTransport,
@@ -137,17 +146,24 @@ export async function listPaged<T>(
   path: string,
   key: string,
   query: Record<string, QueryValue> = {},
-  maxItems = 5000,
+  maxItems = MAX_LIST_ITEMS,
 ): Promise<T[]> {
   const out: T[] = [];
   for (let offset = 0; offset < maxItems; offset += MAX_PAGE) {
-    const res = await postmarkFetch<Record<string, unknown>>(transport, kind, token, path, {
-      query: { ...query, count: MAX_PAGE, offset },
-    });
-    const items = Array.isArray(res?.[key]) ? (res[key] as T[]) : [];
+    // Untyped JSON: requireListPage checks the list is really an array.
+    const res = await postmarkFetch<Record<string, T[] | null | undefined> | undefined>(
+      transport,
+      kind,
+      token,
+      path,
+      { query: { ...query, count: MAX_PAGE, offset } },
+    );
+    const items = requireListPage(res?.[key], { vendor: "Postmark", path, key, page: res });
     out.push(...items);
-    const total = typeof res?.["TotalCount"] === "number" ? (res["TotalCount"] as number) : 0;
-    if (items.length < MAX_PAGE || out.length >= total) break;
+    const total: unknown = res?.["TotalCount"];
+    if (items.length < MAX_PAGE || (typeof total === "number" && out.length >= total)) {
+      return out;
+    }
   }
-  return out;
+  throw new ListTruncatedError({ vendor: "Postmark", path, items: out.length, maxItems });
 }
