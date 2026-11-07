@@ -257,6 +257,66 @@ describe("QStash", () => {
   });
 });
 
+describe("Redis metrics", () => {
+  const ID = `${ACC}:upstash-redis:db1`;
+  const stats = `GET ${API}/redis/stats/db1`;
+  const answer = { throughput: [{ x: "2026-10-01 15:12:52.799480932 +0000 UTC", y: 1 }] };
+  const sent = (calls: ReturnType<typeof mockFetch>) =>
+    calls.map((c) => c.url.searchParams.get("period"));
+
+  it("asks for the period that covers the selected range", async () => {
+    const calls = mockFetch({ [stats]: answer });
+    const series = await hostClient(new UpstashClient(creds)).fetchMetricSeries(
+      "upstash-redis",
+      ID,
+      ACC,
+      { startMs: 0, endMs: 5 * 86_400_000 },
+    );
+    expect(sent(calls)).toEqual(["7d"]);
+    expect(series.map((s) => s.label)).toEqual(["Throughput"]);
+  });
+
+  it("asks for an hour with no range selected", async () => {
+    const calls = mockFetch({ [stats]: answer });
+    await hostClient(new UpstashClient(creds)).fetchMetricSeries("upstash-redis", ID, ACC);
+    expect(sent(calls)).toEqual(["1h"]);
+  });
+
+  it("falls back to 7d when the plan refuses 30d", async () => {
+    const calls = mockFetch({
+      [stats]: (url: URL) =>
+        url.searchParams.get("period") === "30d"
+          ? new Response("30d needs a Pro plan", { status: 400 })
+          : answer,
+    });
+    const series = await hostClient(new UpstashClient(creds)).fetchMetricSeries(
+      "upstash-redis",
+      ID,
+      ACC,
+      { startMs: 0, endMs: 20 * 86_400_000 },
+    );
+    expect(sent(calls)).toEqual(["30d", "7d"]);
+    expect(series).toHaveLength(1);
+  });
+
+  it("does not retry a refusal of a shorter period, or a server failure", async () => {
+    const short = mockFetch({ [stats]: new Response("nope", { status: 403 }) });
+    await expect(
+      hostClient(new UpstashClient(creds)).fetchMetricSeries("upstash-redis", ID, ACC),
+    ).rejects.toThrow(/403/);
+    expect(sent(short)).toEqual(["1h"]);
+
+    const failing = mockFetch({ [stats]: new Response("down", { status: 503 }) });
+    await expect(
+      hostClient(new UpstashClient(creds)).fetchMetricSeries("upstash-redis", ID, ACC, {
+        startMs: 0,
+        endMs: 20 * 86_400_000,
+      }),
+    ).rejects.toThrow(/503/);
+    expect(sent(failing)).toEqual(["30d"]);
+  });
+});
+
 describe("Redis owner", () => {
   const listed = async (db: object) => {
     mockFetch({ [`GET ${API}/redis/databases`]: [{ database_id: "db1", ...db }] });

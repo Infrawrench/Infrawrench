@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { NoSlashString, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostFetchResult,
@@ -27,7 +27,7 @@ import {
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { DeveloperClient, QStashClient, UpstashContext } from "./api.js";
-import { dev, qstash, qstashBase, qstashPost } from "./api.js";
+import { dev, qstash, qstashBase, qstashPost, statusOf } from "./api.js";
 import { fetchUpstashCostData } from "./cost-data.js";
 import {
   iso,
@@ -362,6 +362,22 @@ export class UpstashClient implements PluginClient {
 
   private redis(id: string) {
     return this.dev((api) => api.get(`/redis/database/${pathEncode(id)}`));
+  }
+
+  /**
+   * 30d needs a Pro plan or the Production Pack. The document does not say how another
+   * plan is refused, so any 4xx on 30d gets the longest period every plan has.
+   */
+  private async redisStats(id: NoSlashString, period: string) {
+    const read = (p: string) =>
+      this.dev((api) => api.get(`/redis/stats/${id}`, { query: { period: p } }));
+    try {
+      return await read(period);
+    } catch (err) {
+      const status = statusOf(err);
+      if (period !== "30d" || status < 400 || status >= 500) throw err;
+      return read("7d");
+    }
   }
 
   resolveOutput(
@@ -1497,7 +1513,7 @@ export class UpstashClient implements PluginClient {
       const add = (label: string, points: Point[] | undefined, unit?: string) =>
         series.push(pointsToSeries(label, points, unit));
       if (resourceTypeId === T.redis) {
-        const s = await this.dev((api) => api.get(`/redis/stats/${ext}`));
+        const s = await this.redisStats(ext, period);
         add("Throughput", s?.throughput, "ops/s");
         add("Reads", s?.read);
         add("Writes", s?.write);
