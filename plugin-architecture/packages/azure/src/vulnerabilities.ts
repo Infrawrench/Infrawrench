@@ -55,7 +55,9 @@
  */
 
 import {
+  ListPageError,
   ListTruncatedError,
+  requireListPage,
   normalizeVulnerabilityFindings,
   normalizeVulnerabilitySeverity,
   VulnerabilityAccessError,
@@ -118,8 +120,10 @@ export interface AzureVulnerabilityContext {
 type Bag = Record<string, unknown>;
 
 interface GraphPage {
-  data?: Bag[];
+  data?: Bag[] | null;
   $skipToken?: string;
+  /** "true" or "false", a string: the document's ResultTruncated enumeration. */
+  resultTruncated?: string;
 }
 
 function isBag(value: unknown): value is Bag {
@@ -180,7 +184,8 @@ async function errorText(res: AzureResponse): Promise<string> {
 
 /**
  * One Resource Graph query, every page up to `maxPages`. Past that it stops, which
- * only enrichment may do; `refuseAtCap` is for a read that decides what is open.
+ * only enrichment may do. `refuseAtCap` is for a read that decides what is open: it
+ * also refuses a page Resource Graph marks truncated and gives no token to continue from.
  */
 async function queryResourceGraph(
   ctx: AzureVulnerabilityContext,
@@ -189,6 +194,7 @@ async function queryResourceGraph(
   maxPages: number,
   refuseAtCap = false,
 ): Promise<Bag[]> {
+  const place = { vendor: "Azure Resource Graph", path: new URL(RESOURCE_GRAPH_URL).pathname };
   const rows: Bag[] = [];
   let skipToken: string | undefined;
   for (let page = 0; page < maxPages; page++) {
@@ -212,17 +218,23 @@ async function queryResourceGraph(
       throw new Error(`Azure Resource Graph ${res.status}: ${await errorText(res)}`);
     }
     const json = await res.json<GraphPage>();
-    rows.push(...(json.data ?? []));
+    rows.push(...requireListPage(json.data, { ...place, key: "data", page: json }));
     skipToken = json.$skipToken || undefined;
-    if (!skipToken) return rows;
+    if (!skipToken) {
+      if (refuseAtCap && json.resultTruncated === "true") {
+        throw new ListPageError({
+          ...place,
+          key: "data",
+          found: json.data,
+          page: json,
+          saysMoreWith: "no cursor",
+        });
+      }
+      return rows;
+    }
   }
   if (refuseAtCap) {
-    throw new ListTruncatedError({
-      vendor: "Azure Resource Graph",
-      path: new URL(RESOURCE_GRAPH_URL).pathname,
-      items: rows.length,
-      maxPages,
-    });
+    throw new ListTruncatedError({ ...place, items: rows.length, maxPages });
   }
   return rows;
 }

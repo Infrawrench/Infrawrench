@@ -339,6 +339,36 @@ describe("fetchAzureVulnerabilityFindings", () => {
     expect(assessmentCalls[1]!.body).toMatchObject({ options: { $skipToken: "token-0" } });
   });
 
+  it("refuses an assessments page with no data, which would read every finding as fixed", async () => {
+    const { ctx } = makeCtx({ assessmentPages: [res(200, { error: "wrapped" })] });
+    await expect(fetchAzureVulnerabilityFindings(ctx)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a later assessments page with no data", async () => {
+    const { ctx } = makeCtx({
+      assessmentPages: [
+        res(200, {
+          data: [assessment({ key: "k", cves: [{ CveId: "CVE-2024-1", Severity: "Low" }] })],
+          $skipToken: "more",
+        }),
+        res(200, {}),
+      ],
+    });
+    await expect(fetchAzureVulnerabilityFindings(ctx)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses assessments Resource Graph says it truncated with no way to read on", async () => {
+    const { ctx } = makeCtx({
+      assessmentPages: [
+        res(200, {
+          data: [assessment({ key: "k", cves: [{ CveId: "CVE-2024-1", Severity: "Low" }] })],
+          resultTruncated: "true",
+        }),
+      ],
+    });
+    await expect(fetchAzureVulnerabilityFindings(ctx)).rejects.toThrow("says there is more");
+  });
+
   it("does not refuse over registry names, which only name the image", async () => {
     const { ctx } = makeCtx({
       assessmentPages: [
