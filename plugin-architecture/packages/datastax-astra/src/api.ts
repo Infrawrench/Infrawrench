@@ -49,6 +49,29 @@ export function isFeatureOff(err: unknown): boolean {
   return s === 404 || s === 501;
 }
 
+/** Data API error codes that mean what an HTTP status already means here. */
+const DATA_API_ERROR_STATUS: Record<string, number> = {
+  MISSING_AUTHENTICATION_TOKEN: 401,
+  UNAUTHENTICATED_REQUEST: 401,
+  UNAUTHORIZED_ACCESS: 403,
+};
+
+/**
+ * Data API commands report errors in the body, `errors` beside or instead of `status`,
+ * on a successful answer. The status is 200 for a code with no HTTP equivalent.
+ */
+export function dataApiError(
+  errors: ReadonlyArray<{ errorCode?: string; message?: string }> | undefined,
+): AstraApiError | undefined {
+  const first = errors?.[0];
+  if (!first) return undefined;
+  const text = errors.map((e) => e.message ?? e.errorCode ?? "unknown error").join("; ");
+  return new AstraApiError(
+    DATA_API_ERROR_STATUS[first.errorCode ?? ""] ?? 200,
+    `Astra Data API error: ${text}`,
+  );
+}
+
 function friendly(status: number, raw: string): string {
   if (status === 401) {
     return "Astra API error 401: the application token was rejected. Generate a new one under Settings, Tokens in the Astra Portal.";

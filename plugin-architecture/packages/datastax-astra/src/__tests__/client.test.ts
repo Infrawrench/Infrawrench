@@ -451,6 +451,73 @@ describe("a token refused a list", () => {
   });
 });
 
+describe("Data API errors in a 200 answer", () => {
+  const endpoint = `${DB.id}-us-east-2.apps.astra.datastax.com/api/json/v1/default_keyspace`;
+  const failing = (errorCode: string) => ({
+    errors: [{ errorCode, message: `said ${errorCode}` }],
+  });
+
+  it("does not report a collection created", async () => {
+    mockFetch({
+      "GET /v2/databases": [DB],
+      [`POST ${endpoint}`]: failing("TOO_MANY_COLLECTIONS"),
+    });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    await expect(
+      client.createResource(T.collection, "acc", {
+        keyspaceRef: `${DB.id}/default_keyspace`,
+        name: "docs",
+      }),
+    ).rejects.toThrow("said TOO_MANY_COLLECTIONS");
+  });
+
+  it("does not report a collection deleted", async () => {
+    mockFetch({
+      "GET /v2/databases": [DB],
+      [`POST ${endpoint}`]: failing("UNKNOWN_KEYSPACE"),
+    });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    await expect(
+      client.deleteResource(
+        T.collection,
+        `acc:${T.collection}:${DB.id}/default_keyspace/docs`,
+        "acc",
+      ),
+    ).rejects.toThrow("said UNKNOWN_KEYSPACE");
+  });
+
+  it("still creates on an answer with no errors", async () => {
+    mockFetch({
+      "GET /v2/databases": [DB],
+      [`POST ${endpoint}`]: { status: { ok: 1 } },
+    });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    await expect(
+      client.createResource(T.collection, "acc", {
+        keyspaceRef: `${DB.id}/default_keyspace`,
+        name: "docs",
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it.each([
+    ["UNAUTHENTICATED_REQUEST", 401],
+    ["MISSING_AUTHENTICATION_TOKEN", 401],
+    ["UNAUTHORIZED_ACCESS", 403],
+  ])("carries %s as a %i", async (code, status) => {
+    mockFetch({
+      "GET /v2/databases": [DB],
+      [`POST ${endpoint}`]: failing(code),
+    });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
+    const err = await client
+      .deleteResource(T.collection, `acc:${T.collection}:${DB.id}/default_keyspace/docs`, "acc")
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AstraApiError);
+    expect((err as AstraApiError).status).toBe(status);
+  });
+});
+
 describe("status feed", () => {
   it("maps AWS and Azure components onto regions and Astra products onto types", () => {
     expect(mapComponent("AWS us-east-1")).toMatchObject({ regions: ["us-east-1"] });

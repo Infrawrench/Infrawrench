@@ -26,6 +26,7 @@ import type { AstraContext } from "./api.js";
 import {
   METRICS_API,
   astraRequest,
+  dataApiError,
   devops,
   fetchText,
   isFeatureOff,
@@ -200,11 +201,20 @@ export class AstraPluginClient implements PluginClient {
   }
 
   /** One Data API command against a database's endpoint. */
-  private dataApi<V>(endpoint: string, path: string, command: Record<string, unknown>): Promise<V> {
-    return astraRequest<V>(this.ctx, "POST", `${endpoint.replace(/\/$/, "")}/api/json/v1/${path}`, {
+  private async dataApi<V>(
+    endpoint: string,
+    path: string,
+    command: Record<string, unknown>,
+  ): Promise<V> {
+    const res = await astraRequest<
+      V & { errors?: Array<{ errorCode?: string; message?: string }> }
+    >(this.ctx, "POST", `${endpoint.replace(/\/$/, "")}/api/json/v1/${path}`, {
       body: command,
       dataApi: true,
     });
+    const failed = dataApiError(res?.errors);
+    if (failed) throw failed;
+    return res;
   }
 
   org(): Promise<{ id: string; name?: string }> {
