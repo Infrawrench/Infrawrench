@@ -7,14 +7,13 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
-import { errorText, QdrantApi } from "./api.js";
+import { createCloudApi, errorText } from "./api.js";
 import { QdrantCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { qdrantTerraformExport } from "./terraform.js";
 import { qdrantRemediationCommands } from "./remediation.js";
-import type { QcAccount } from "./types.js";
 
 export const manifest = {
   id: "qdrant-cloud",
@@ -69,9 +68,9 @@ async function listCredentialOptions(
   if (fieldKey !== "accountId") return [];
   const key = (credentials["apiKey"] ?? "").trim();
   if (!key) throw new Error("Enter the Cloud Management Key first.");
-  const api = new QdrantApi(key, credentials["caCert"] ?? "", services);
+  const api = createCloudApi(key, { caCert: credentials["caCert"] ?? "", http: services?.http });
   try {
-    const res = await api.cloud<{ items?: QcAccount[] }>("/api/account/v1/accounts");
+    const res = await api.get("/api/account/v1/accounts");
     return (res?.items ?? [])
       .map((a) => ({ id: a.id, label: a.name || a.id, description: a.ownerEmail || a.id }))
       .sort((a, b) => a.label.localeCompare(b.label));

@@ -1,4 +1,22 @@
-import type { HostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  type ApiClient,
+  type ApiClientOptions,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { paths as accountPaths } from "./api-types.account.gen.js";
+import type { paths as billingPaths } from "./api-types.billing.gen.js";
+import type { paths as bookingPaths } from "./api-types.booking.gen.js";
+import type { paths as clusterAuthPaths } from "./api-types.cluster-auth.gen.js";
+import type { paths as clusterBackupPaths } from "./api-types.cluster-backup.gen.js";
+import type { paths as clusterPaths } from "./api-types.cluster.gen.js";
+import type { paths as databasePaths } from "./api-types.database.gen.js";
+import type { paths as hybridPaths } from "./api-types.hybrid.gen.js";
+import type { paths as meteringPaths } from "./api-types.metering.gen.js";
+import type { paths as monitoringPaths } from "./api-types.monitoring.gen.js";
+import type { paths as platformPaths } from "./api-types.platform.gen.js";
+import type { paths as quotaPaths } from "./api-types.quota.gen.js";
 
 /**
  * Transport for the Qdrant Cloud public API (REST/JSON gateway of the gRPC
@@ -32,11 +50,17 @@ export class QdrantApiError extends Error {
 /** gRPC-gateway errors are `{code, message}`; the database API uses `{status: {error}}`. */
 export function summarizeBody(body: string): string {
   try {
-    const parsed = JSON.parse(body) as { message?: unknown; status?: unknown };
-    if (typeof parsed.message === "string" && parsed.message) return parsed.message;
-    if (parsed.status && typeof parsed.status === "object") {
-      const e = (parsed.status as { error?: unknown }).error;
-      if (typeof e === "string" && e) return e;
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === "object") {
+      if ("message" in parsed && typeof parsed.message === "string" && parsed.message) {
+        return parsed.message;
+      }
+      if ("status" in parsed && parsed.status && typeof parsed.status === "object") {
+        const { status } = parsed;
+        if ("error" in status && typeof status.error === "string" && status.error) {
+          return status.error;
+        }
+      }
     }
   } catch {
     /* not JSON */
@@ -44,16 +68,8 @@ export function summarizeBody(body: string): string {
   return body.slice(0, 500);
 }
 
-export type QueryValue = string | number | boolean | undefined | null;
-
-export interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-}
-
-export function buildQuery(query: Record<string, QueryValue> | undefined): string {
-  if (!query) return "";
+/** An empty value is left out, so a blank region or cluster id never reaches the query. */
+function buildQuery(query: Record<string, ParamValue>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined || value === null || value === "") continue;
@@ -62,68 +78,63 @@ export function buildQuery(query: Record<string, QueryValue> | undefined): strin
   return params.toString();
 }
 
-export class QdrantApi {
-  constructor(
-    private readonly apiKey: string,
-    private readonly caCert: string,
-    private readonly services: HostServices | undefined,
-  ) {}
+/** What every request needs from the account it runs for. */
+export interface QdrantConnection {
+  caCert: string;
+  http: HttpHostServices | undefined;
+}
 
-  private async send(
-    url: string,
-    method: string,
-    headers: Record<string, string>,
-    body: string | undefined,
-  ): Promise<{ status: number; body: string }> {
-    const http = this.services?.http;
-    if (http) {
-      const res = await http.request({
-        url,
-        method,
-        headers,
-        ...(body !== undefined ? { body } : {}),
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-      });
-      return { status: res.status, body: res.body ?? "" };
-    }
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    return { status: res.status, body: await res.text() };
-  }
+function clientOptions({
+  caCert,
+  http,
+}: QdrantConnection): Omit<ApiClientOptions, "baseUrl" | "headers"> {
+  return {
+    vendor: "Qdrant Cloud",
+    caCert,
+    http,
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    serializeQuery: buildQuery,
+    httpError: ({ status, path, body }) => new QdrantApiError(status, path, body ?? ""),
+  };
+}
 
-  private async raw<T>(
-    base: string,
-    path: string,
-    auth: Record<string, string>,
-    opts: RequestOptions,
-  ): Promise<T> {
-    const method = opts.method ?? "GET";
-    const query = buildQuery(opts.query);
-    const url = `${base}${path}${query ? `?${query}` : ""}`;
-    const headers: Record<string, string> = { Accept: "application/json", ...auth };
-    const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-    const res = await this.send(url, method, headers, body);
-    if (res.status < 200 || res.status >= 300) {
-      throw new QdrantApiError(res.status, path, res.body);
-    }
-    if (!res.body) return undefined as unknown as T;
-    return JSON.parse(res.body) as T;
-  }
+/** The Management API, which is one host across the services it has a document each for. */
+export type QdrantCloudApi = ApiClient<
+  accountPaths &
+    billingPaths &
+    bookingPaths &
+    clusterAuthPaths &
+    clusterBackupPaths &
+    clusterPaths &
+    hybridPaths &
+    meteringPaths &
+    monitoringPaths &
+    platformPaths &
+    quotaPaths
+>;
 
-  /** Management API request (`https://api.cloud.qdrant.io{path}`). */
-  async cloud<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    return this.raw<T>(API_HOST, path, { Authorization: `apikey ${this.apiKey}` }, opts);
-  }
+/** One cluster's own database REST API. */
+export type QdrantDatabaseApi = ApiClient<databasePaths>;
 
-  /** Database REST request against a cluster endpoint, with a database API key. */
-  async database<T>(
-    baseUrl: string,
-    dbKey: string,
-    path: string,
-    opts: RequestOptions = {},
-  ): Promise<T> {
-    return this.raw<T>(baseUrl.replace(/\/+$/, ""), path, { "api-key": dbKey }, opts);
-  }
+export function createCloudApi(apiKey: string, connection: QdrantConnection): QdrantCloudApi {
+  return createApiClient({
+    ...clientOptions(connection),
+    baseUrl: API_HOST,
+    headers: { Accept: "application/json", Authorization: `apikey ${apiKey}` },
+  });
+}
+
+export function createDatabaseApi(
+  baseUrl: string,
+  dbKey: string,
+  connection: QdrantConnection,
+): QdrantDatabaseApi {
+  return createApiClient({
+    ...clientOptions(connection),
+    baseUrl: baseUrl.replace(/\/+$/, ""),
+    headers: { Accept: "application/json", "api-key": dbKey },
+  });
 }
 
 export function isStatus(err: unknown, ...statuses: number[]): boolean {

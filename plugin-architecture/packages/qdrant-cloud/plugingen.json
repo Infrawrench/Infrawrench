@@ -1,0 +1,411 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "account",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/account/v1/account.swagger.json",
+      "paths": {
+        "/api/account/v1/accounts": ["get"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/v1Account/required",
+          "value": ["id"],
+          "why": "The document marks nothing required, but every account the API answers with has this and the plugin keys resources by it."
+        }
+      ]
+    },
+    {
+      "name": "billing",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/billing/v1/billing.swagger.json",
+      "paths": {
+        "/api/billing/v1/accounts/{accountId}/credit-contracts": ["get"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/v1CreditContract/required",
+          "value": ["id"],
+          "why": "The document marks nothing required, but every credit contract the API answers with has this and the plugin keys resources by it."
+        }
+      ]
+    },
+    {
+      "name": "booking",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/booking/v1/booking.swagger.json",
+      "paths": {
+        "/api/booking/v1/accounts/{accountId}/packages": ["get"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/v1Package/required",
+          "value": ["id"],
+          "why": "The document marks nothing required, but every package the API answers with has this and the plugin keys resources by it."
+        }
+      ]
+    },
+    {
+      "name": "cluster",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/cluster/v1/cluster.swagger.json",
+      "paths": {
+        "/api/cluster/v1/accounts/{accountId}/backups/{backupId}/clusters": ["post"],
+        "/api/cluster/v1/accounts/{accountId}/clusters": ["get"],
+        "/api/cluster/v1/accounts/{accountId}/clusters/{clusterId}": ["get", "delete"],
+        "/api/cluster/v1/accounts/{accountId}/clusters/{clusterId}/enable-jwt": ["post"],
+        "/api/cluster/v1/accounts/{accountId}/clusters/{clusterId}/restart": ["post"],
+        "/api/cluster/v1/accounts/{accountId}/clusters/{clusterId}/suspend": ["post"],
+        "/api/cluster/v1/accounts/{accountId}/clusters/{clusterId}/unsuspend": ["post"],
+        "/api/cluster/v1/accounts/{accountId}/releases": ["get"],
+        "/api/cluster/v1/accounts/{cluster.accountId}/clusters": ["post"],
+        "/api/cluster/v1/accounts/{cluster.accountId}/clusters/{cluster.id}": ["put"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/v1Cluster/required",
+          "value": ["id", "name"],
+          "why": "The document marks nothing required, but every cluster the API answers with has this and the plugin keys resources by it."
+        },
+        {
+          "pointer": "/components/schemas/v1QdrantRelease/required",
+          "value": ["version"],
+          "why": "The document marks nothing required, but every release the API answers with has this and the plugin keys resources by it."
+        },
+        {
+          "pointer": "/components/schemas/v1GetClusterResponse/required",
+          "value": ["cluster"],
+          "why": "The document marks nothing required, but this response exists to carry the cluster."
+        },
+        {
+          "pointer": "/components/schemas/v1CreateClusterResponse/required",
+          "value": ["cluster"],
+          "why": "The document marks nothing required, but this response exists to carry the cluster."
+        },
+        {
+          "pointer": "/components/schemas/v1StorageTierType",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin builds this from a form field and Qdrant validates whatever arrives, so a value outside this enum stays Qdrant's error."
+        },
+        {
+          "pointer": "/components/schemas/ClusterServiceCreateClusterBody/properties/cluster/properties/accountId",
+          "value": {
+            "type": "string"
+          },
+          "why": "The gateway binds this from the path, so the generated body leaves it out; the plugin has always sent it in the body as well."
+        },
+        {
+          "pointer": "/paths/~1api~1cluster~1v1~1accounts~1{accountId}~1clusters~1{clusterId}~1restart/post/requestBody",
+          "value": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "why": "The document takes no body here; the plugin has always sent an empty JSON object, and this keeps that request as it was."
+        },
+        {
+          "pointer": "/paths/~1api~1cluster~1v1~1accounts~1{accountId}~1clusters~1{clusterId}~1suspend/post/requestBody",
+          "value": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "why": "The document takes no body here; the plugin has always sent an empty JSON object, and this keeps that request as it was."
+        },
+        {
+          "pointer": "/paths/~1api~1cluster~1v1~1accounts~1{accountId}~1clusters~1{clusterId}~1unsuspend/post/requestBody",
+          "value": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "why": "The document takes no body here; the plugin has always sent an empty JSON object, and this keeps that request as it was."
+        },
+        {
+          "pointer": "/paths/~1api~1cluster~1v1~1accounts~1{accountId}~1clusters~1{clusterId}~1enable-jwt/post/requestBody",
+          "value": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "why": "The document takes no body here; the plugin has always sent an empty JSON object, and this keeps that request as it was."
+        },
+        {
+          "pointer": "/paths/~1api~1cluster~1v1~1accounts~1{accountId}~1backups~1{backupId}~1clusters/post/requestBody",
+          "value": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "why": "The document takes no body here; the plugin has always sent an empty JSON object, and this keeps that request as it was."
+        }
+      ]
+    },
+    {
+      "name": "cluster-auth",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/cluster/auth/v2/database_api_key.swagger.json",
+      "paths": {
+        "/api/cluster/auth/v2/accounts/{accountId}/database-api-keys": ["get"],
+        "/api/cluster/auth/v2/accounts/{accountId}/database-api-keys/{databaseApiKeyId}": [
+          "delete"
+        ],
+        "/api/cluster/auth/v2/accounts/{databaseApiKey.accountId}/database-api-keys": ["post"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/v2DatabaseApiKey/required",
+          "value": ["id"],
+          "why": "The document marks nothing required, but every database API key the API answers with has this and the plugin keys resources by it."
+        },
+        {
+          "pointer": "/components/schemas/v2CreateDatabaseApiKeyResponse/required",
+          "value": ["databaseApiKey"],
+          "why": "The document marks nothing required, but this response exists to carry the databaseApiKey."
+        },
+        {
+          "pointer": "/components/schemas/v2GlobalAccessRuleAccessType",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin builds this from a form field and Qdrant validates whatever arrives, so a value outside this enum stays Qdrant's error."
+        },
+        {
+          "pointer": "/components/schemas/v2CollectionAccessRuleAccessType",
+          "value": {
+            "type": "string"
+          },
+          "why": "The plugin builds this from a form field and Qdrant validates whatever arrives, so a value outside this enum stays Qdrant's error."
+        },
+        {
+          "pointer": "/components/schemas/DatabaseApiKeyServiceCreateDatabaseApiKeyBody/properties/databaseApiKey/properties/accountId",
+          "value": {
+            "type": "string"
+          },
+          "why": "The gateway binds this from the path, so the generated body leaves it out; the plugin has always sent it in the body as well."
+        }
+      ]
+    },
+    {
+      "name": "cluster-backup",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/cluster/backup/v1/backup.swagger.json",
+      "paths": {
+        "/api/cluster/backup/v1/accounts/{accountId}/backup_restores": ["get"],
+        "/api/cluster/backup/v1/accounts/{accountId}/backup_schedules": ["get"],
+        "/api/cluster/backup/v1/accounts/{accountId}/backup_schedules/{backupScheduleId}": [
+          "get",
+          "delete"
+        ],
+        "/api/cluster/backup/v1/accounts/{accountId}/backups": ["get"],
+        "/api/cluster/backup/v1/accounts/{accountId}/backups/{backupId}": ["get", "delete"],
+        "/api/cluster/backup/v1/accounts/{accountId}/backups/{backupId}/restore": ["post"],
+        "/api/cluster/backup/v1/accounts/{backup.accountId}/backups": ["post"],
+        "/api/cluster/backup/v1/accounts/{backup.accountId}/backups/{backup.id}": ["patch"],
+        "/api/cluster/backup/v1/accounts/{backupSchedule.accountId}/backup_schedules": ["post"],
+        "/api/cluster/backup/v1/accounts/{backupSchedule.accountId}/backup_schedules/{backupSchedule.id}": [
+          "put"
+        ]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/v1Backup/required",
+          "value": ["id"],
+          "why": "The document marks nothing required, but every backup the API answers with has this and the plugin keys resources by it."
+        },
+        {
+          "pointer": "/components/schemas/v1BackupSchedule/required",
+          "value": ["id"],
+          "why": "The document marks nothing required, but every backup schedule the API answers with has this and the plugin keys resources by it."
+        },
+        {
+          "pointer": "/components/schemas/v1BackupRestore/required",
+          "value": ["id"],
+          "why": "The document marks nothing required, but every backup restore the API answers with has this and the plugin keys resources by it."
+        },
+        {
+          "pointer": "/components/schemas/v1GetBackupResponse/required",
+          "value": ["backup"],
+          "why": "The document marks nothing required, but this response exists to carry the backup."
+        },
+        {
+          "pointer": "/components/schemas/v1CreateBackupResponse/required",
+          "value": ["backup"],
+          "why": "The document marks nothing required, but this response exists to carry the backup."
+        },
+        {
+          "pointer": "/components/schemas/v1GetBackupScheduleResponse/required",
+          "value": ["backupSchedule"],
+          "why": "The document marks nothing required, but this response exists to carry the backupSchedule."
+        },
+        {
+          "pointer": "/components/schemas/v1CreateBackupScheduleResponse/required",
+          "value": ["backupSchedule"],
+          "why": "The document marks nothing required, but this response exists to carry the backupSchedule."
+        },
+        {
+          "pointer": "/components/schemas/BackupServiceCreateBackupBody/properties/backup/properties/accountId",
+          "value": {
+            "type": "string"
+          },
+          "why": "The gateway binds this from the path, so the generated body leaves it out; the plugin has always sent it in the body as well."
+        },
+        {
+          "pointer": "/components/schemas/BackupServiceCreateBackupScheduleBody/properties/backupSchedule/properties/accountId",
+          "value": {
+            "type": "string"
+          },
+          "why": "The gateway binds this from the path, so the generated body leaves it out; the plugin has always sent it in the body as well."
+        },
+        {
+          "pointer": "/components/schemas/BackupServiceUpdateBackupBody/properties/backup/properties/accountId",
+          "value": {
+            "type": "string"
+          },
+          "why": "The gateway binds this from the path, so the generated body leaves it out; the plugin has always sent it in the body as well."
+        },
+        {
+          "pointer": "/components/schemas/BackupServiceUpdateBackupBody/properties/backup/properties/id",
+          "value": {
+            "type": "string"
+          },
+          "why": "The gateway binds this from the path, so the generated body leaves it out; the plugin has always sent it in the body as well."
+        },
+        {
+          "pointer": "/paths/~1api~1cluster~1backup~1v1~1accounts~1{accountId}~1backups~1{backupId}~1restore/post/requestBody",
+          "value": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "why": "The document takes no body here; the plugin has always sent an empty JSON object, and this keeps that request as it was."
+        }
+      ]
+    },
+    {
+      "name": "database",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant/master/docs/redoc/master/openapi.json",
+      "paths": {
+        "/collections": ["get"],
+        "/collections/{collection_name}": ["get", "put", "patch", "delete"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/Distance",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our select offers the valid values and Qdrant validates whatever else arrives."
+        }
+      ]
+    },
+    {
+      "name": "hybrid",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/hybrid/v1/hybrid_cloud.swagger.json",
+      "paths": {
+        "/api/hybrid/v1/accounts/{accountId}/hybrid-cloud-environments": ["get"],
+        "/api/hybrid/v1/accounts/{accountId}/hybrid-cloud-environments/{hybridCloudEnvironmentId}": [
+          "get",
+          "delete"
+        ],
+        "/api/hybrid/v1/accounts/{accountId}/hybrid-cloud-environments/{hybridCloudEnvironmentId}/bootstrap-commands": [
+          "post"
+        ],
+        "/api/hybrid/v1/accounts/{hybridCloudEnvironment.accountId}/hybrid-cloud-environments": [
+          "post"
+        ],
+        "/api/hybrid/v1/accounts/{hybridCloudEnvironment.accountId}/hybrid-cloud-environments/{hybridCloudEnvironment.id}": [
+          "put"
+        ]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/v1HybridCloudEnvironment/required",
+          "value": ["id", "name"],
+          "why": "The document marks nothing required, but every hybrid environment the API answers with has this and the plugin keys resources by it."
+        },
+        {
+          "pointer": "/components/schemas/v1GetHybridCloudEnvironmentResponse/required",
+          "value": ["hybridCloudEnvironment"],
+          "why": "The document marks nothing required, but this response exists to carry the hybridCloudEnvironment."
+        },
+        {
+          "pointer": "/components/schemas/v1CreateHybridCloudEnvironmentResponse/required",
+          "value": ["hybridCloudEnvironment"],
+          "why": "The document marks nothing required, but this response exists to carry the hybridCloudEnvironment."
+        },
+        {
+          "pointer": "/components/schemas/HybridCloudServiceCreateHybridCloudEnvironmentBody/properties/hybridCloudEnvironment/properties/accountId",
+          "value": {
+            "type": "string"
+          },
+          "why": "The gateway binds this from the path, so the generated body leaves it out; the plugin has always sent it in the body as well."
+        }
+      ]
+    },
+    {
+      "name": "metering",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/metering/v1/metering.swagger.json",
+      "paths": {
+        "/api/metering/v1/accounts/{accountId}/meterings/{year}/{month}": ["get"]
+      }
+    },
+    {
+      "name": "monitoring",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/monitoring/v1/monitoring.swagger.json",
+      "paths": {
+        "/api/monitoring/v1/accounts/{accountId}/cluster/{clusterId}/alerts": ["get"],
+        "/api/monitoring/v1/accounts/{accountId}/cluster/{clusterId}/logs": ["get"],
+        "/api/monitoring/v1/accounts/{accountId}/cluster/{clusterId}/usage-metrics": ["get"]
+      }
+    },
+    {
+      "name": "platform",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/platform/v1/platform.swagger.json",
+      "paths": {
+        "/api/platform/v1/accounts/{accountId}/cloud-providers": ["get"],
+        "/api/platform/v1/accounts/{accountId}/cloud-providers/{cloudProviderId}/regions": ["get"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/v1CloudProvider/required",
+          "value": ["id"],
+          "why": "The document marks nothing required, but every cloud provider the API answers with has this and the plugin keys resources by it."
+        },
+        {
+          "pointer": "/components/schemas/v1CloudProviderRegion/required",
+          "value": ["id"],
+          "why": "The document marks nothing required, but every region the API answers with has this and the plugin keys resources by it."
+        }
+      ]
+    },
+    {
+      "name": "quota",
+      "specUrl": "https://raw.githubusercontent.com/qdrant/qdrant-cloud-public-api/main/gen/openapiv2/qdrant/cloud/quota/v1/quota.swagger.json",
+      "paths": {
+        "/api/quota/v1/accounts/{accountId}/quotas": ["get"]
+      }
+    }
+  ]
+}

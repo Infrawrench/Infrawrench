@@ -22,10 +22,21 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   CreditAccessError,
+  pathEncode,
   QuotaAccessError,
   withMetricsCapability,
+  type NoSlashString,
 } from "@infrawrench/plugin-base";
-import { collectPages, daysToDuration, errorText, isStatus, QdrantApi } from "./api.js";
+import {
+  collectPages,
+  createCloudApi,
+  createDatabaseApi,
+  daysToDuration,
+  errorText,
+  isStatus,
+  type QdrantCloudApi,
+  type QdrantConnection,
+} from "./api.js";
 import { fetchQdrantCostData } from "./cost-data.js";
 import {
   clusterPhase,
@@ -57,21 +68,18 @@ import {
 } from "./render.js";
 import { REBALANCE_STRATEGIES, RESTART_POLICIES, STORAGE_TIERS } from "./resource-types.js";
 import type {
+  QcAccessRule,
   QcAlert,
   QcBackup,
-  QcBackupRestore,
-  QcBackupSchedule,
-  QcCloudProvider,
   QcCluster,
-  QcCreditContract,
+  QcCreditContracts,
   QcDatabaseApiKey,
-  QcHybridEnvironment,
   QcPackage,
   QcQuotas,
   QcRegion,
   QcRelease,
   QcUsageMetrics,
-  QdbCollectionInfo,
+  QdbCollectionParamsDiff,
 } from "./types.js";
 
 const CLUSTER_TTL_MS = 30_000;
@@ -84,9 +92,7 @@ const CLUSTER_NAME_RE = /^[A-Za-z0-9_-]{2,64}$/;
 export const DB_KEY_FIELD = "databaseApiKey";
 export const BOOTSTRAP_FIELD = "bootstrapCommands";
 
-const enc = encodeURIComponent;
-
-function str(v: unknown): string {
+function str(v: string | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
 }
 
@@ -106,9 +112,8 @@ function intField(raw: string | undefined, label: string, min: number, max?: num
 function parseFormArg(raw: string | number | undefined): Record<string, string> {
   if (typeof raw !== "string") return {};
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
     const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(parsed)) out[k] = String(v ?? "");
+    for (const [k, v] of Object.entries<unknown>(JSON.parse(raw))) out[k] = String(v ?? "");
     return out;
   } catch {
     return {};
@@ -136,6 +141,9 @@ export function parseIpRanges(raw: string): string[] {
   if (ranges.length > 40) throw new Error("Qdrant allows at most 40 IP ranges per cluster.");
   return ranges;
 }
+
+/** A page token only goes back once there is one. */
+const pageAfter = (token: string | undefined) => (token ? { pageToken: token } : {});
 
 interface Cached<T> {
   at: number;
@@ -173,6 +181,12 @@ interface RegionChoice {
   label: string;
 }
 
+const isRestartPolicy = (value: string): value is (typeof RESTART_POLICIES)[number] =>
+  RESTART_POLICIES.some((policy) => policy === value);
+
+const isRebalanceStrategy = (value: string): value is (typeof REBALANCE_STRATEGIES)[number] =>
+  REBALANCE_STRATEGIES.some((strategy) => strategy === value);
+
 /**
  * Build the cluster update body: the current cluster with the edited fields
  * applied. UpdateCluster replaces the whole cluster when no field mask is
@@ -183,7 +197,9 @@ export function buildClusterUpdate(
   fields: Record<string, string>,
   releases: QcRelease[],
 ): QcCluster | null {
-  const next = JSON.parse(JSON.stringify(current)) as QcCluster;
+  const next: Omit<QcCluster, "state"> & { state?: NonNullable<QcCluster["state"]> } = JSON.parse(
+    JSON.stringify(current),
+  );
   delete next.state;
   const conf = (next.configuration ??= {});
   let changed = false;
@@ -235,14 +251,14 @@ export function buildClusterUpdate(
   }
   if (fields["restartPolicy"]) {
     const v = str(fields["restartPolicy"]);
-    if (!RESTART_POLICIES.includes(v))
+    if (!isRestartPolicy(v))
       throw new Error(`Restart policy must be one of ${RESTART_POLICIES.join(", ")}.`);
     conf.restartPolicy = `CLUSTER_CONFIGURATION_RESTART_POLICY_${v}`;
     changed = true;
   }
   if (fields["rebalanceStrategy"]) {
     const v = str(fields["rebalanceStrategy"]);
-    if (!REBALANCE_STRATEGIES.includes(v)) {
+    if (!isRebalanceStrategy(v)) {
       throw new Error(`Shard rebalancing must be one of ${REBALANCE_STRATEGIES.join(", ")}.`);
     }
     conf.rebalanceStrategy = `CLUSTER_CONFIGURATION_REBALANCE_STRATEGY_${v}`;
@@ -276,8 +292,11 @@ export function buildClusterUpdate(
  * management key is account-scoped); every route carries the account id.
  */
 export class QdrantCloudClient implements PluginClient {
-  readonly api: QdrantApi;
+  readonly api: QdrantCloudApi;
   private readonly accountId: string;
+  /** The account id as every Management API path holds it. */
+  private readonly acct: NoSlashString;
+  private readonly connection: QdrantConnection;
   private clusterCache: Cached<QcCluster[]> | undefined;
   private regionCache: Cached<RegionChoice[]> | undefined;
   private releaseCache: Cached<QcRelease[]> | undefined;
@@ -291,23 +310,24 @@ export class QdrantCloudClient implements PluginClient {
     if (!apiKey) throw new Error("Qdrant Cloud plugin: missing apiKey credential");
     this.accountId = str(credentials["accountId"]);
     if (!this.accountId) throw new Error("Qdrant Cloud plugin: missing accountId credential");
-    this.api = new QdrantApi(apiKey, credentials["caCert"] ?? "", services);
+    this.acct = pathEncode(this.accountId);
+    this.connection = { caCert: credentials["caCert"] ?? "", http: services?.http };
+    this.api = createCloudApi(apiKey, this.connection);
   }
 
-  private get base(): string {
-    return `/api/cluster/v1/accounts/${enc(this.accountId)}`;
-  }
-
-  private get backupBase(): string {
-    return `/api/cluster/backup/v1/accounts/${enc(this.accountId)}`;
+  /** A client for one cluster's own REST API. */
+  private database(url: string, key: string) {
+    return createDatabaseApi(url, key, this.connection);
   }
 
   // ── Discovery ────────────────────────────────────────────────────────
 
   clusters(): Promise<QcCluster[]> {
     this.clusterCache = cached(this.clusterCache, CLUSTER_TTL_MS, () =>
-      collectPages<QcCluster>((token) =>
-        this.api.cloud(`${this.base}/clusters`, { query: { pageSize: 100, pageToken: token } }),
+      collectPages((token) =>
+        this.api.get(`/api/cluster/v1/accounts/${this.acct}/clusters`, {
+          query: { pageSize: 100, ...pageAfter(token) },
+        }),
       ).then((list) => list.filter((c) => !c.deletedAt)),
     );
     return this.clusterCache.value;
@@ -318,18 +338,20 @@ export class QdrantCloudClient implements PluginClient {
   }
 
   private async clusterName(id: string): Promise<string> {
-    const list = await this.clusters().catch(() => [] as QcCluster[]);
+    const list = await this.clusters().catch((): QcCluster[] => []);
     return list.find((c) => c.id === id)?.name ?? "";
   }
 
   private async getCluster(id: string): Promise<QcCluster> {
-    const res = await this.api.cloud<{ cluster: QcCluster }>(`${this.base}/clusters/${enc(id)}`);
+    const res = await this.api.get(
+      `/api/cluster/v1/accounts/${this.acct}/clusters/${pathEncode(id)}`,
+    );
     return res.cluster;
   }
 
   releases(): Promise<QcRelease[]> {
     this.releaseCache = cached(this.releaseCache, CATALOG_TTL_MS, () =>
-      this.api.cloud<{ items?: QcRelease[] }>(`${this.base}/releases`).then((r) => r?.items ?? []),
+      this.api.get(`/api/cluster/v1/accounts/${this.acct}/releases`).then((r) => r?.items ?? []),
     );
     return this.releaseCache.value;
   }
@@ -337,17 +359,14 @@ export class QdrantCloudClient implements PluginClient {
   /** Every cloud region the account can create clusters in, hybrid environments included. */
   regions(): Promise<RegionChoice[]> {
     this.regionCache = cached(this.regionCache, CATALOG_TTL_MS, async () => {
-      const acct = enc(this.accountId);
       const providers = await this.api
-        .cloud<{ items?: QcCloudProvider[] }>(`/api/platform/v1/accounts/${acct}/cloud-providers`)
+        .get(`/api/platform/v1/accounts/${this.acct}/cloud-providers`)
         .then((r) => (r?.items ?? []).filter((p) => p.available !== false));
       const lists = await mapLimit(providers, FAN_OUT, async (p) => {
         const regions = await this.api
-          .cloud<{ items?: QcRegion[] }>(
-            `/api/platform/v1/accounts/${acct}/cloud-providers/${enc(p.id)}/regions`,
-          )
+          .get(`/api/platform/v1/accounts/${this.acct}/cloud-providers/${pathEncode(p.id)}/regions`)
           .then((r) => r?.items ?? [])
-          .catch(() => [] as QcRegion[]);
+          .catch((): QcRegion[] => []);
         return regions
           .filter((r) => r.available !== false)
           .map((r) => ({
@@ -366,10 +385,9 @@ export class QdrantCloudClient implements PluginClient {
   }
 
   private async packagesFor(provider: string, region: string): Promise<QcPackage[]> {
-    const res = await this.api.cloud<{ items?: QcPackage[] }>(
-      `/api/booking/v1/accounts/${enc(this.accountId)}/packages`,
-      { query: { cloudProviderId: provider, cloudProviderRegionId: region } },
-    );
+    const res = await this.api.get(`/api/booking/v1/accounts/${this.acct}/packages`, {
+      query: { cloudProviderId: provider, cloudProviderRegionId: region },
+    });
     return (res?.items ?? []).filter((p) => !p.status || p.status === "PACKAGE_STATUS_ACTIVE");
   }
 
@@ -381,10 +399,9 @@ export class QdrantCloudClient implements PluginClient {
   }
 
   private async listDatabaseKeys(clusterId?: string): Promise<QcDatabaseApiKey[]> {
-    const res = await this.api.cloud<{ items?: QcDatabaseApiKey[] }>(
-      `/api/cluster/auth/v2/accounts/${enc(this.accountId)}/database-api-keys`,
-      { query: { clusterId } },
-    );
+    const res = await this.api.get(`/api/cluster/auth/v2/accounts/${this.acct}/database-api-keys`, {
+      query: clusterId ? { clusterId } : {},
+    });
     return res?.items ?? [];
   }
 
@@ -401,32 +418,32 @@ export class QdrantCloudClient implements PluginClient {
           return keys.map((k) => mapDatabaseKey(k, names.get(k.clusterId ?? "") ?? "", accountId));
         }
         case "backup": {
-          const list = await collectPages<QcBackup>((token) =>
-            this.api.cloud(`${this.backupBase}/backups`, {
-              query: { pageSize: 100, pageToken: token },
+          const list = await collectPages((token) =>
+            this.api.get(`/api/cluster/backup/v1/accounts/${this.acct}/backups`, {
+              query: { pageSize: 100, ...pageAfter(token) },
             }),
           );
           return list.filter((b) => !b.deletedAt).map((b) => mapBackup(b, accountId));
         }
         case "backup-schedule": {
           const [list, clusters] = await Promise.all([
-            collectPages<QcBackupSchedule>((token) =>
-              this.api.cloud(`${this.backupBase}/backup_schedules`, {
-                query: { pageSize: 100, pageToken: token },
+            collectPages((token) =>
+              this.api.get(`/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules`, {
+                query: { pageSize: 100, ...pageAfter(token) },
               }),
             ),
             this.clusters(),
           ]);
           const names = new Map(clusters.map((c) => [c.id, c.name]));
           return list
-            .filter((s) => !(s as { deletedAt?: string }).deletedAt)
+            .filter((s) => !s.deletedAt)
             .map((s) => mapBackupSchedule(s, names.get(s.clusterId ?? "") ?? "", accountId));
         }
         case "backup-restore": {
           const [list, clusters] = await Promise.all([
-            collectPages<QcBackupRestore>((token) =>
-              this.api.cloud(`${this.backupBase}/backup_restores`, {
-                query: { pageSize: 100, pageToken: token },
+            collectPages((token) =>
+              this.api.get(`/api/cluster/backup/v1/accounts/${this.acct}/backup_restores`, {
+                query: { pageSize: 100, ...pageAfter(token) },
               }),
             ),
             this.clusters(),
@@ -435,15 +452,15 @@ export class QdrantCloudClient implements PluginClient {
           return list.map((r) => mapRestore(r, names.get(r.clusterId ?? "") ?? "", accountId));
         }
         case "hybrid-environment": {
-          const res = await this.api.cloud<{ items?: QcHybridEnvironment[] }>(
-            `/api/hybrid/v1/accounts/${enc(this.accountId)}/hybrid-cloud-environments`,
+          const res = await this.api.get(
+            `/api/hybrid/v1/accounts/${this.acct}/hybrid-cloud-environments`,
           );
           return (res?.items ?? []).map((h) => mapHybridEnvironment(h, accountId));
         }
         case "collection": {
           const clusters = (await this.clusters()).filter((c) => clusterPhase(c) === "HEALTHY");
           const lists = await mapLimit(clusters, FAN_OUT, (c) =>
-            this.listCollections(c, accountId).catch(() => [] as ResourceInstance[]),
+            this.listCollections(c, accountId).catch((): ResourceInstance[] => []),
           );
           return lists.flat();
         }
@@ -458,17 +475,14 @@ export class QdrantCloudClient implements PluginClient {
     const url = clusterRestUrl(c);
     const key = await this.dbKey(accountId, c.id);
     if (!url || !key) return [];
-    const res = await this.api.database<{ result?: { collections?: Array<{ name: string }> } }>(
-      url,
-      key,
-      "/collections",
-    );
+    const db = this.database(url, key);
+    const res = await db.get("/collections");
     const names = (res?.result?.collections ?? [])
       .map((x) => x.name)
       .slice(0, MAX_COLLECTIONS_PER_CLUSTER);
     const infos = await mapLimit(names, FAN_OUT, (name) =>
-      this.api
-        .database<{ result?: QdbCollectionInfo }>(url, key, `/collections/${enc(name)}`)
+      db
+        .get(`/collections/${pathEncode(name)}`)
         .then((r) => r?.result)
         .catch(() => undefined),
     );
@@ -486,21 +500,21 @@ export class QdrantCloudClient implements PluginClient {
         case "cluster":
           return mapCluster(await this.getCluster(id), accountId);
         case "backup": {
-          const res = await this.api.cloud<{ backup: QcBackup }>(
-            `${this.backupBase}/backups/${enc(id)}`,
+          const res = await this.api.get(
+            `/api/cluster/backup/v1/accounts/${this.acct}/backups/${pathEncode(id)}`,
           );
           return mapBackup(res.backup, accountId);
         }
         case "backup-schedule": {
-          const res = await this.api.cloud<{ backupSchedule: QcBackupSchedule }>(
-            `${this.backupBase}/backup_schedules/${enc(id)}`,
+          const res = await this.api.get(
+            `/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules/${pathEncode(id)}`,
           );
           const s = res.backupSchedule;
           return mapBackupSchedule(s, await this.clusterName(s.clusterId ?? ""), accountId);
         }
         case "hybrid-environment": {
-          const res = await this.api.cloud<{ hybridCloudEnvironment: QcHybridEnvironment }>(
-            `/api/hybrid/v1/accounts/${enc(this.accountId)}/hybrid-cloud-environments/${enc(id)}`,
+          const res = await this.api.get(
+            `/api/hybrid/v1/accounts/${this.acct}/hybrid-cloud-environments/${pathEncode(id)}`,
           );
           return mapHybridEnvironment(res.hybridCloudEnvironment, accountId);
         }
@@ -509,12 +523,8 @@ export class QdrantCloudClient implements PluginClient {
           const cluster = await this.getCluster(clusterId);
           const key = await this.dbKey(accountId, clusterId);
           const info = key
-            ? await this.api
-                .database<{ result?: QdbCollectionInfo }>(
-                  clusterRestUrl(cluster),
-                  key,
-                  `/collections/${enc(name)}`,
-                )
+            ? await this.database(clusterRestUrl(cluster), key)
+                .get(`/collections/${pathEncode(name)}`)
                 .then((r) => r?.result)
             : undefined;
           return mapCollection(clusterId, cluster.name, name, info, accountId);
@@ -523,11 +533,9 @@ export class QdrantCloudClient implements PluginClient {
           const all = await runPluginEffect(this.listResources(typeId, accountId));
           const found = all.find((r) => r.id === resourceId || r.externalId === id);
           if (!found) {
-            const err = new Error(`Qdrant Cloud plugin: ${typeId} ${id} not found`) as Error & {
-              status: number;
-            };
-            err.status = 404;
-            throw err;
+            throw Object.assign(new Error(`Qdrant Cloud plugin: ${typeId} ${id} not found`), {
+              status: 404,
+            });
           }
           return found;
         }
@@ -578,16 +586,15 @@ export class QdrantCloudClient implements PluginClient {
       const [cluster, alerts, releases, key] = await Promise.all([
         this.getCluster(id).catch(() => null),
         this.api
-          .cloud<{ alerts?: QcAlert[] }>(
-            `/api/monitoring/v1/accounts/${enc(this.accountId)}/cluster/${enc(id)}/alerts`,
-            { query: { state: "CLUSTER_ALERT_STATE_FIRING" } },
-          )
+          .get(`/api/monitoring/v1/accounts/${this.acct}/cluster/${pathEncode(id)}/alerts`, {
+            query: { state: "CLUSTER_ALERT_STATE_FIRING" },
+          })
           .then((r) => r?.alerts ?? [])
-          .catch(() => [] as QcAlert[]),
+          .catch((): QcAlert[] => []),
         this.api
-          .cloud<{ items?: QcRelease[] }>(`${this.base}/releases`, { query: { clusterId: id } })
+          .get(`/api/cluster/v1/accounts/${this.acct}/releases`, { query: { clusterId: id } })
           .then((r) => r?.items ?? [])
-          .catch(() => [] as QcRelease[]),
+          .catch((): QcRelease[] => []),
         this.dbKey(resource.accountId, id).catch(() => null),
       ]);
       if (key) fields[ENRICH_HAS_DB_KEY] = "1";
@@ -607,7 +614,7 @@ export class QdrantCloudClient implements PluginClient {
         const packages = await this.packagesFor(
           cluster.cloudProviderId ?? "",
           cluster.cloudProviderRegionId ?? "",
-        ).catch(() => [] as QcPackage[]);
+        ).catch((): QcPackage[] => []);
         if (packages.length) {
           const opts: PackageOption[] = packages.map((p) => ({
             id: p.id,
@@ -665,7 +672,7 @@ export class QdrantCloudClient implements PluginClient {
   // ── Create ───────────────────────────────────────────────────────────
 
   private async clusterOptions(filter: (c: QcCluster) => boolean = () => true) {
-    const clusters = await this.clusters().catch(() => [] as QcCluster[]);
+    const clusters = await this.clusters().catch((): QcCluster[] => []);
     return clusters.filter(filter).map((c) => ({
       id: c.id,
       label: c.name,
@@ -690,10 +697,10 @@ export class QdrantCloudClient implements PluginClient {
             ];
       switch (typeId) {
         case "cluster": {
-          const regions = await this.regions().catch(() => [] as RegionChoice[]);
+          const regions = await this.regions().catch((): RegionChoice[] => []);
           const perRegion = await mapLimit(regions, FAN_OUT, async (r) => ({
             r,
-            pkgs: await this.packagesFor(r.provider, r.region).catch(() => [] as QcPackage[]),
+            pkgs: await this.packagesFor(r.provider, r.region).catch((): QcPackage[] => []),
           }));
           const sizes = new Map<string, SizeOption>();
           for (const { r, pkgs } of perRegion) {
@@ -1016,8 +1023,7 @@ export class QdrantCloudClient implements PluginClient {
           const tier = str(fields["storageTier"]);
           const ranges = parseIpRanges(fields["allowedIpSourceRanges"] ?? "");
           const labels = parseLabels(fields["labels"] ?? "");
-          const res = await this.api.cloud<{ cluster: QcCluster }>(`${this.base}/clusters`, {
-            method: "POST",
+          const res = await this.api.post(`/api/cluster/v1/accounts/${this.acct}/clusters`, {
             body: {
               cluster: {
                 accountId: this.accountId,
@@ -1083,10 +1089,9 @@ export class QdrantCloudClient implements PluginClient {
           checkCron(schedule);
           const days = intField(fields["retentionDays"], "Retention", 1, 365) ?? 7;
           const name = str(fields["name"]);
-          const res = await this.api.cloud<{ backupSchedule: QcBackupSchedule }>(
-            `${this.backupBase}/backup_schedules`,
+          const res = await this.api.post(
+            `/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules`,
             {
-              method: "POST",
               body: {
                 backupSchedule: {
                   accountId: this.accountId,
@@ -1109,10 +1114,9 @@ export class QdrantCloudClient implements PluginClient {
           if (!CLUSTER_NAME_RE.test(name)) {
             throw new Error("Environment names are letters, digits, underscores or hyphens.");
           }
-          const res = await this.api.cloud<{ hybridCloudEnvironment: QcHybridEnvironment }>(
-            `/api/hybrid/v1/accounts/${enc(this.accountId)}/hybrid-cloud-environments`,
+          const res = await this.api.post(
+            `/api/hybrid/v1/accounts/${this.acct}/hybrid-cloud-environments`,
             {
-              method: "POST",
               body: {
                 hybridCloudEnvironment: {
                   accountId: this.accountId,
@@ -1132,8 +1136,8 @@ export class QdrantCloudClient implements PluginClient {
           const { url, key, cluster } = await this.databaseAccess(accountId, clusterId);
           const shards = intField(fields["shardNumber"], "Shards", 1);
           const rf = intField(fields["replicationFactor"], "Replication factor", 1);
-          await this.api.database(url, key, `/collections/${enc(name)}`, {
-            method: "PUT",
+          const db = this.database(url, key);
+          await db.put(`/collections/${pathEncode(name)}`, {
             body: {
               vectors: {
                 size: intField(fields["vectorSize"], "Vector size", 1) ?? 1536,
@@ -1144,8 +1148,8 @@ export class QdrantCloudClient implements PluginClient {
               ...(rf ? { replication_factor: rf } : {}),
             },
           });
-          const info = await this.api
-            .database<{ result?: QdbCollectionInfo }>(url, key, `/collections/${enc(name)}`)
+          const info = await db
+            .get(`/collections/${pathEncode(name)}`)
             .then((r) => r?.result)
             .catch(() => undefined);
           return mapCollection(clusterId, cluster.name, name, info, accountId);
@@ -1159,13 +1163,12 @@ export class QdrantCloudClient implements PluginClient {
   private async createDatabaseKey(
     clusterId: string,
     name: string,
-    accessRules: unknown[],
+    accessRules: QcAccessRule[],
     expiresAt?: string,
   ): Promise<QcDatabaseApiKey> {
-    const res = await this.api.cloud<{ databaseApiKey: QcDatabaseApiKey }>(
-      `/api/cluster/auth/v2/accounts/${enc(this.accountId)}/database-api-keys`,
+    const res = await this.api.post(
+      `/api/cluster/auth/v2/accounts/${this.acct}/database-api-keys`,
       {
-        method: "POST",
         body: {
           databaseApiKey: {
             accountId: this.accountId,
@@ -1183,8 +1186,7 @@ export class QdrantCloudClient implements PluginClient {
   private async createBackup(clusterId: string, fields: Record<string, string>): Promise<QcBackup> {
     const days = intField(fields["retentionDays"], "Retention", 1, 365) ?? 7;
     const name = str(fields["name"]);
-    const res = await this.api.cloud<{ backup: QcBackup }>(`${this.backupBase}/backups`, {
-      method: "POST",
+    const res = await this.api.post(`/api/cluster/backup/v1/accounts/${this.acct}/backups`, {
       body: {
         backup: {
           accountId: this.accountId,
@@ -1223,14 +1225,11 @@ export class QdrantCloudClient implements PluginClient {
         case "cluster": {
           const [current, releases] = await Promise.all([
             this.getCluster(id),
-            fields["version"]
-              ? this.releases().catch(() => [] as QcRelease[])
-              : Promise.resolve([]),
+            fields["version"] ? this.releases().catch((): QcRelease[] => []) : Promise.resolve([]),
           ]);
           const body = buildClusterUpdate(current, fields, releases);
           if (body) {
-            await this.api.cloud(`${this.base}/clusters/${enc(id)}`, {
-              method: "PUT",
+            await this.api.put(`/api/cluster/v1/accounts/${this.acct}/clusters/${pathEncode(id)}`, {
               body: { cluster: body },
             });
             this.invalidateClusters();
@@ -1240,16 +1239,16 @@ export class QdrantCloudClient implements PluginClient {
         case "backup": {
           const name = str(fields["name"]);
           if (name) {
-            await this.api.cloud(`${this.backupBase}/backups/${enc(id)}`, {
-              method: "PATCH",
-              body: { backup: { id, accountId: this.accountId, displayName: name } },
-            });
+            await this.api.patch(
+              `/api/cluster/backup/v1/accounts/${this.acct}/backups/${pathEncode(id)}`,
+              { body: { backup: { id, accountId: this.accountId, displayName: name } } },
+            );
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "backup-schedule": {
-          const res = await this.api.cloud<{ backupSchedule: QcBackupSchedule }>(
-            `${this.backupBase}/backup_schedules/${enc(id)}`,
+          const res = await this.api.get(
+            `/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules/${pathEncode(id)}`,
           );
           const s = { ...res.backupSchedule };
           delete s.status;
@@ -1260,38 +1259,37 @@ export class QdrantCloudClient implements PluginClient {
           const days = intField(fields["retentionDays"], "Retention", 1, 365);
           if (days !== undefined) s.retentionPeriod = daysToDuration(days);
           if (fields["name"] !== undefined) s.displayName = str(fields["name"]);
-          await this.api.cloud(`${this.backupBase}/backup_schedules/${enc(id)}`, {
-            method: "PUT",
-            body: { backupSchedule: s },
-          });
+          await this.api.put(
+            `/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules/${pathEncode(id)}`,
+            { body: { backupSchedule: s } },
+          );
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "hybrid-environment": {
           const name = str(fields["name"]);
           if (name) {
-            const res = await this.api.cloud<{ hybridCloudEnvironment: QcHybridEnvironment }>(
-              `/api/hybrid/v1/accounts/${enc(this.accountId)}/hybrid-cloud-environments/${enc(id)}`,
+            const res = await this.api.get(
+              `/api/hybrid/v1/accounts/${this.acct}/hybrid-cloud-environments/${pathEncode(id)}`,
             );
             const env = { ...res.hybridCloudEnvironment, name };
             delete env.status;
-            await this.api.cloud(
-              `/api/hybrid/v1/accounts/${enc(this.accountId)}/hybrid-cloud-environments/${enc(id)}`,
-              { method: "PUT", body: { hybridCloudEnvironment: env } },
+            await this.api.put(
+              `/api/hybrid/v1/accounts/${this.acct}/hybrid-cloud-environments/${pathEncode(id)}`,
+              { body: { hybridCloudEnvironment: env } },
             );
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "collection": {
           const { clusterId, name } = parseCollectionId(resourceId);
-          const params: Record<string, number> = {};
+          const params: QdbCollectionParamsDiff = {};
           const rf = intField(fields["replicationFactor"], "Replication factor", 1);
           const wc = intField(fields["writeConsistencyFactor"], "Write consistency", 1);
-          if (rf !== undefined) params["replication_factor"] = rf;
-          if (wc !== undefined) params["write_consistency_factor"] = wc;
+          if (rf !== undefined) params.replication_factor = rf;
+          if (wc !== undefined) params.write_consistency_factor = wc;
           if (Object.keys(params).length) {
             const { url, key } = await this.databaseAccess(accountId, clusterId);
-            await this.api.database(url, key, `/collections/${enc(name)}`, {
-              method: "PATCH",
+            await this.database(url, key).patch(`/collections/${pathEncode(name)}`, {
               body: { params },
             });
           }
@@ -1308,40 +1306,35 @@ export class QdrantCloudClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalOf(resourceId);
-      const acct = enc(this.accountId);
       switch (typeId) {
         case "cluster":
-          await this.api.cloud(`${this.base}/clusters/${enc(id)}`, { method: "DELETE" });
+          await this.api.delete(`/api/cluster/v1/accounts/${this.acct}/clusters/${pathEncode(id)}`);
           this.invalidateClusters();
           return;
         case "database-api-key":
-          await this.api.cloud(
-            `/api/cluster/auth/v2/accounts/${acct}/database-api-keys/${enc(id)}`,
-            {
-              method: "DELETE",
-            },
+          await this.api.delete(
+            `/api/cluster/auth/v2/accounts/${this.acct}/database-api-keys/${pathEncode(id)}`,
           );
           return;
         case "backup":
-          await this.api.cloud(`${this.backupBase}/backups/${enc(id)}`, { method: "DELETE" });
+          await this.api.delete(
+            `/api/cluster/backup/v1/accounts/${this.acct}/backups/${pathEncode(id)}`,
+          );
           return;
         case "backup-schedule":
-          await this.api.cloud(`${this.backupBase}/backup_schedules/${enc(id)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(
+            `/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules/${pathEncode(id)}`,
+          );
           return;
         case "hybrid-environment":
-          await this.api.cloud(
-            `/api/hybrid/v1/accounts/${acct}/hybrid-cloud-environments/${enc(id)}`,
-            {
-              method: "DELETE",
-            },
+          await this.api.delete(
+            `/api/hybrid/v1/accounts/${this.acct}/hybrid-cloud-environments/${pathEncode(id)}`,
           );
           return;
         case "collection": {
           const { clusterId, name } = parseCollectionId(resourceId);
           const { url, key } = await this.databaseAccess(accountId, clusterId);
-          await this.api.database(url, key, `/collections/${enc(name)}`, { method: "DELETE" });
+          await this.database(url, key).delete(`/collections/${pathEncode(name)}`);
           return;
         }
         default:
@@ -1352,6 +1345,30 @@ export class QdrantCloudClient implements PluginClient {
 
   // ── Actions ──────────────────────────────────────────────────────────
 
+  /** Each is its own route in the document, so each path is written out. */
+  private clusterLifecycle(actionId: string, id: NoSlashString) {
+    switch (actionId) {
+      case "restart":
+        return this.api.post(`/api/cluster/v1/accounts/${this.acct}/clusters/${id}/restart`, {
+          body: {},
+        });
+      case "suspend":
+        return this.api.post(`/api/cluster/v1/accounts/${this.acct}/clusters/${id}/suspend`, {
+          body: {},
+        });
+      case "unsuspend":
+        return this.api.post(`/api/cluster/v1/accounts/${this.acct}/clusters/${id}/unsuspend`, {
+          body: {},
+        });
+      case "enable-jwt":
+        return this.api.post(`/api/cluster/v1/accounts/${this.acct}/clusters/${id}/enable-jwt`, {
+          body: {},
+        });
+      default:
+        return undefined;
+    }
+  }
+
   invokeAction(
     typeId: string,
     resourceId: string,
@@ -1361,18 +1378,9 @@ export class QdrantCloudClient implements PluginClient {
     return attempt(async () => {
       const id = externalOf(resourceId);
       if (typeId === "cluster") {
-        const simple: Record<string, string> = {
-          restart: "restart",
-          suspend: "suspend",
-          unsuspend: "unsuspend",
-          "enable-jwt": "enable-jwt",
-        };
-        const suffix = simple[actionId];
-        if (suffix) {
-          await this.api.cloud(`${this.base}/clusters/${enc(id)}/${suffix}`, {
-            method: "POST",
-            body: {},
-          });
+        const lifecycle = this.clusterLifecycle(actionId, pathEncode(id));
+        if (lifecycle) {
+          await lifecycle;
           this.invalidateClusters();
           return;
         }
@@ -1390,16 +1398,16 @@ export class QdrantCloudClient implements PluginClient {
         }
       }
       if (typeId === "backup" && actionId === "restore") {
-        await this.api.cloud(`${this.backupBase}/backups/${enc(id)}/restore`, {
-          method: "POST",
-          body: {},
-        });
+        await this.api.post(
+          `/api/cluster/backup/v1/accounts/${this.acct}/backups/${pathEncode(id)}/restore`,
+          { body: {} },
+        );
         return;
       }
       if (typeId === "hybrid-environment" && actionId === "bootstrap") {
-        const res = await this.api.cloud<{ commands?: string[] }>(
-          `/api/hybrid/v1/accounts/${enc(this.accountId)}/hybrid-cloud-environments/${enc(id)}/bootstrap-commands`,
-          { method: "POST", body: {} },
+        const res = await this.api.post(
+          `/api/hybrid/v1/accounts/${this.acct}/hybrid-cloud-environments/${pathEncode(id)}/bootstrap-commands`,
+          { body: {} },
         );
         const commands = (res?.commands ?? []).join("\n");
         if (!commands) throw new Error("Qdrant Cloud returned no bootstrap commands.");
@@ -1416,7 +1424,7 @@ export class QdrantCloudClient implements PluginClient {
     accountId: string,
     command: string,
     args: (string | number)[],
-  ): PluginEffect<unknown> {
+  ): PluginEffect<null> {
     return attempt(async () => {
       const id = externalOf(resourceId);
       const vals = parseFormArg(args[0]);
@@ -1428,8 +1436,7 @@ export class QdrantCloudClient implements PluginClient {
           [],
         );
         if (body) {
-          await this.api.cloud(`${this.base}/clusters/${enc(id)}`, {
-            method: "PUT",
+          await this.api.put(`/api/cluster/v1/accounts/${this.acct}/clusters/${pathEncode(id)}`, {
             body: { cluster: body },
           });
           this.invalidateClusters();
@@ -1445,11 +1452,10 @@ export class QdrantCloudClient implements PluginClient {
         if (!CLUSTER_NAME_RE.test(name)) {
           throw new Error("Cluster names are 2 to 64 letters, digits, underscores or hyphens.");
         }
-        await this.api.cloud(`${this.base}/backups/${enc(id)}/clusters`, {
-          method: "POST",
-          query: { clusterName: name },
-          body: {},
-        });
+        await this.api.post(
+          `/api/cluster/v1/accounts/${this.acct}/backups/${pathEncode(id)}/clusters`,
+          { query: { clusterName: name }, body: {} },
+        );
         this.invalidateClusters();
         return null;
       }
@@ -1467,8 +1473,8 @@ export class QdrantCloudClient implements PluginClient {
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
       if (typeId !== "cluster") throw new Error("Only clusters have logs.");
-      const res = await this.api.cloud<{ items?: Array<{ timestamp?: string; message?: string }> }>(
-        `/api/monitoring/v1/accounts/${enc(this.accountId)}/cluster/${enc(externalOf(resourceId))}/logs`,
+      const res = await this.api.get(
+        `/api/monitoring/v1/accounts/${this.acct}/cluster/${pathEncode(externalOf(resourceId))}/logs`,
         {
           query: {
             limit: Math.min(Math.max(params.tailLines ?? 200, 1), 10_000),
@@ -1494,8 +1500,8 @@ export class QdrantCloudClient implements PluginClient {
       if (resourceTypeId !== "cluster") return [];
       const end = timeRange?.endMs ?? Date.now();
       const start = timeRange?.startMs ?? end - 6 * 3_600_000;
-      const res = await this.api.cloud<QcUsageMetrics>(
-        `/api/monitoring/v1/accounts/${enc(this.accountId)}/cluster/${enc(externalOf(resourceId))}/usage-metrics`,
+      const res = await this.api.get(
+        `/api/monitoring/v1/accounts/${this.acct}/cluster/${pathEncode(externalOf(resourceId))}/usage-metrics`,
         {
           query: {
             since: new Date(start).toISOString(),
@@ -1518,11 +1524,9 @@ export class QdrantCloudClient implements PluginClient {
 
   fetchCreditBalance(): PluginEffect<CreditBalance[]> {
     return attempt(async () => {
-      let res: { items?: QcCreditContract[] };
+      let res: QcCreditContracts;
       try {
-        res = await this.api.cloud(
-          `/api/billing/v1/accounts/${enc(this.accountId)}/credit-contracts`,
-        );
+        res = await this.api.get(`/api/billing/v1/accounts/${this.acct}/credit-contracts`);
       } catch (e) {
         if (isStatus(e, 401, 403)) {
           throw new CreditAccessError(
@@ -1550,7 +1554,7 @@ export class QdrantCloudClient implements PluginClient {
     return attempt(async () => {
       let q: QcQuotas;
       try {
-        q = await this.api.cloud<QcQuotas>(`/api/quota/v1/accounts/${enc(this.accountId)}/quotas`);
+        q = await this.api.get(`/api/quota/v1/accounts/${this.acct}/quotas`);
       } catch (e) {
         if (isStatus(e, 401, 403))
           throw new QuotaAccessError(`Qdrant Cloud refused the quota read: ${errorText(e)}`);
@@ -1614,7 +1618,11 @@ function packageLabel(p: QcPackage): string {
   return parts.filter(Boolean).join(", ");
 }
 
-const SERIES: Array<{ key: keyof QcUsageMetrics; label: string; unit?: string }> = [
+const SERIES: Array<{
+  key: Exclude<keyof QcUsageMetrics, "nodes">;
+  label: string;
+  unit?: string;
+}> = [
   { key: "cpu", label: "CPU" },
   { key: "ram", label: "RAM" },
   { key: "ramCache", label: "RAM Cache" },
