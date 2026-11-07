@@ -133,22 +133,22 @@ export function circleApi(ctx: CircleContext) {
     headers: circleToken,
   });
 
-  // Both walks carry on past an empty page while a cursor is on offer, and read a
-  // 2xx with no body as the end of the list: that is what the plugin has always
-  // done. `maxPages` is each list's cap unless the call names its own.
+  // Both documents end a list only by the cursor going null (v3 says "stop when
+  // `page.next` is `null`"), so an empty page with a cursor is not the end of one.
   const v2Paged = withCursorPagination(v2, {
     cursorParam: "page-token",
     next: "next_page_token",
-    maxPages: 10,
+    // v2 has no page size to ask for and documents none: at least 10,000 rows even
+    // at 10 a page, and 50,000 at most unless a page is over 50.
+    maxPages: 1000,
     continueOnEmptyPage: true,
-    emptyBodyEndsList: true,
   });
   const v3Paged = withCursorPagination(v3, {
     cursorParam: "page[cursor]",
     next: "page.next",
-    maxPages: 20,
+    // At the largest pages the document allows: 10,000 projects at 50, 50,000 agents at 250.
+    maxPages: 200,
     continueOnEmptyPage: true,
-    emptyBodyEndsList: true,
   });
   return { v2, v3, runner, v2Paged, v3Paged };
 }

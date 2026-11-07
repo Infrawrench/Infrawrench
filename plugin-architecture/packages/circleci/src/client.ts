@@ -67,6 +67,9 @@ const REPORTING_WINDOW = "last-30-days";
 /** Pipelines listed: the most recent across the organization. */
 const PIPELINE_LIMIT = 50;
 
+/** The first rows of what a detail view shows beside a resource: its size was never the point. */
+const DETAIL_ROWS = { maxPages: 10, partial: true };
+
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] as const;
 const MONTHS = [
   "JAN",
@@ -263,9 +266,11 @@ export class CircleCIClient implements PluginClient {
   private recentPipelines(): Promise<CirclePipeline[]> {
     this.pipelinesCache ??= this.org()
       .then((org) =>
+        // Rolling window: the newest N. Older rows falling off is what this type means.
         this.api.v2Paged.getAll("/pipeline", "items", {
           query: { "org-slug": org.slug },
           maxPages: 3,
+          partial: true,
         }),
       )
       .catch((err: unknown) => {
@@ -297,7 +302,10 @@ export class CircleCIClient implements PluginClient {
       org.id
         ? this.api.v3Paged
             .getAll("/projects", "data", { query: { "filter[org_id]": org.id, "page[limit]": 50 } })
-            .catch(() => undefined)
+            .catch((err: unknown) => {
+              rethrowIncompleteList(err);
+              return undefined;
+            })
         : Promise.resolve(undefined),
       this.recentPipelines().catch((): CirclePipeline[] => []),
     ]);
@@ -416,7 +424,6 @@ export class CircleCIClient implements PluginClient {
   private workflowMetrics(slug: string): Promise<WorkflowMetrics[]> {
     return this.api.v2Paged.getAll(`/insights/${slugSegment(slug)}/workflows`, "items", {
       query: { "all-branches": true, "reporting-window": REPORTING_WINDOW },
-      maxPages: 3,
     });
   }
 
@@ -496,7 +503,10 @@ export class CircleCIClient implements PluginClient {
           const contexts = await this.contexts();
           const out: ResourceInstance[] = [];
           for (const c of contexts) {
-            const vars = await this.contextVariables(c.id).catch(() => undefined);
+            const vars = await this.contextVariables(c.id).catch((err: unknown) => {
+              rethrowIncompleteList(err);
+              return undefined;
+            });
             out.push(mapContext(accountId, c, vars));
           }
           return out;
@@ -504,7 +514,10 @@ export class CircleCIClient implements PluginClient {
         case "context-variable": {
           const out: ResourceInstance[] = [];
           for (const c of await this.contexts()) {
-            const vars = await this.contextVariables(c.id).catch((): ContextVariable[] => []);
+            const vars = await this.contextVariables(c.id).catch((err: unknown) => {
+              rethrowIncompleteList(err);
+              return [];
+            });
             out.push(...vars.map((v) => mapContextVariable(accountId, c, v)));
           }
           return out;
@@ -607,6 +620,7 @@ export class CircleCIClient implements PluginClient {
               .getAll(`${insights}/jobs`, "items", {
                 query: { "all-branches": true, "reporting-window": REPORTING_WINDOW },
                 maxPages: 3,
+                partial: true,
               })
               .catch(() => undefined),
             this.api.v2.get(insights, { query: { "all-branches": true } }).catch(() => undefined),
@@ -624,11 +638,12 @@ export class CircleCIClient implements PluginClient {
           const workflows = await this.api.v2Paged.getAll(
             `/pipeline/${pathEncode(id)}/workflow`,
             "items",
+            DETAIL_ROWS,
           );
           const detailed: PipelineWorkflowDetail[] = [];
           for (const w of workflows) {
             const jobs = await this.api.v2Paged
-              .getAll(`/workflow/${pathEncode(w.id)}/job`, "items")
+              .getAll(`/workflow/${pathEncode(w.id)}/job`, "items", DETAIL_ROWS)
               .catch(() => undefined);
             detailed.push({ ...w, ...(jobs ? { jobs } : {}) });
           }

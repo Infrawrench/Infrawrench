@@ -548,3 +548,203 @@ describe("runner views on the answers the v3 document shows (#456)", () => {
     expect(rc!.fields).not.toHaveProperty("runnerCount");
   });
 });
+
+describe("list caps and bad pages (#384)", () => {
+  const WORKFLOW = { name: "build", metrics: {} };
+  const endless = (row: unknown) => ({ items: [row], next_page_token: "more" });
+  const endlessV3 = (row: unknown) => ({ data: [row], page: { next: "more" } });
+  const CONTEXTS = "/api/v2/context";
+
+  it("throws past the cap on a v2 inventory list, after 1,000 requests", async () => {
+    const { c, calls } = client(() => endless({ id: "c", name: "c" }));
+    await expect(c.listResources("context", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((x) => x.url.pathname === CONTEXTS)).toHaveLength(1000);
+  });
+
+  it("throws past the cap on a v3 inventory list, after 200 requests at the largest page", async () => {
+    const { c, calls } = client(() => endlessV3({ id: "a" }));
+    await expect(c.listResources("runner", ACC)).rejects.toThrow("has more than Infrawrench reads");
+    const agents = calls.filter((x) => x.url.pathname === "/api/v3/runner/agents");
+    expect(agents).toHaveLength(200);
+    expect(agents[0]!.url.searchParams.get("page[limit]")).toBe("250");
+  });
+
+  it("gets the truncation past the catch around the v3 project list", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === "/api/v3/projects"
+        ? endlessV3({ id: "p", attributes: { name: "p" } })
+        : { items: [], next_page_token: null, org_data: {}, all_projects: [] },
+    );
+    await expect(c.listResources("project", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    const listed = calls.filter((x) => x.url.pathname === "/api/v3/projects");
+    expect(listed).toHaveLength(200);
+    expect(listed[0]!.url.searchParams.get("page[limit]")).toBe("50");
+  });
+
+  it("gets the truncation past the catch around a context's variables", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === CONTEXTS
+        ? { items: [{ id: "c1", name: "aws" }], next_page_token: null }
+        : endless({ variable: "A" }),
+    );
+    await expect(c.listResources("context", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    await expect(c.listResources("context-variable", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("gets the truncation past the catch around a class's runner count", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === "/api/v3/runner/agents"
+        ? endlessV3({ id: "a" })
+        : { data: [{ id: "rc1" }] },
+    );
+    await expect(c.listResources("runner-resource-class", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("reads a project's workflows past the old three pages", async () => {
+    let page = 0;
+    const { c } = client((call) => {
+      if (call.url.pathname === "/api/v3/projects") {
+        return { data: [{ id: "p1", attributes: { name: "api" } }], page: { next: null } };
+      }
+      if (call.url.pathname === "/api/v2/insights/gh/acme/api/workflows") {
+        page++;
+        return {
+          items: [{ ...WORKFLOW, name: `w${page}` }],
+          next_page_token: page < 5 ? `t${page}` : null,
+        };
+      }
+      return { items: [], next_page_token: null };
+    });
+    const workflows = await c.listResources("workflow", ACC);
+    expect(workflows.map((w) => w.displayName)).toEqual(["w1", "w2", "w3", "w4", "w5"]);
+  });
+
+  it.each([
+    ["the first page", 0],
+    ["a later page", 1],
+  ])("throws on a renamed list key on %s, v2 and v3", async (_, badPage) => {
+    let v2Page = 0;
+    const v2 = client(() =>
+      v2Page++ === badPage
+        ? { results: [], next_page_token: null }
+        : { items: [{ id: "c", name: "c" }], next_page_token: "more" },
+    );
+    await expect(v2.c.listResources("context", ACC)).rejects.toThrow("is not a list");
+    let v3Page = 0;
+    const v3 = client(() =>
+      v3Page++ === badPage ? { rows: [] } : { data: [{ id: "a" }], page: { next: "more" } },
+    );
+    await expect(v3.c.listResources("runner", ACC)).rejects.toThrow("is not a list");
+  });
+
+  it("does not read a 2xx with no body as the end of a list", async () => {
+    const { c } = client(() => ({ status: 200 }));
+    await expect(c.listResources("context", ACC)).rejects.toThrow("is not a list");
+    await expect(c.listResources("runner", ACC)).rejects.toThrow("is not a list");
+  });
+
+  it("walks past an empty page while the document's cursor is still on offer", async () => {
+    let v2Page = 0;
+    const v2 = client(() =>
+      v2Page++ === 0
+        ? { items: [], next_page_token: "more" }
+        : { items: [{ id: "c", name: "c" }], next_page_token: null },
+    );
+    expect((await v2.c.listResources("context", ACC)).map((r) => r.externalId)).toEqual(["c"]);
+    let v3Page = 0;
+    const v3 = client(() =>
+      v3Page++ === 0
+        ? { data: [], page: { next: "more" } }
+        : { data: [{ id: "a" }], page: { next: null } },
+    );
+    expect((await v3.c.listResources("runner", ACC)).map((r) => r.externalId)).toEqual(["a"]);
+  });
+
+  it("reads an empty account, and a list key set to null, as empty", async () => {
+    const empty = client(() => ({ items: [], next_page_token: null }));
+    expect(await empty.c.listResources("context", ACC)).toEqual([]);
+    const nil = client(() => ({ items: null, next_page_token: null }));
+    expect(await nil.c.listResources("context", ACC)).toEqual([]);
+    const v3 = client(() => ({ data: [], page: { next: null } }));
+    expect(await v3.c.listResources("runner", ACC)).toEqual([]);
+  });
+
+  it("keeps pipelines a rolling window of the newest, and does not throw", async () => {
+    const { c, calls } = client(() => ({
+      items: Array.from({ length: 20 }, (_, i) => ({
+        id: `p${calls.length}-${i}`,
+        number: i,
+        project_slug: "gh/acme/api",
+        state: "created",
+        created_at: "",
+      })),
+      next_page_token: "more",
+    }));
+    const pipelines = await c.listResources("pipeline", ACC);
+    expect(pipelines).toHaveLength(50);
+    expect(calls.filter((x) => x.url.pathname === "/api/v2/pipeline")).toHaveLength(3);
+  });
+
+  it("charts what it could read rather than failing on a long window", async () => {
+    const run = { id: "r", created_at: "2026-10-01T00:00:00Z", status: "success", duration: 1 };
+    const workflow = client(() => endless(run));
+    const series = await workflow.c.fetchMetricSeries(
+      "workflow",
+      `${ACC}:workflow:gh/acme/api/build`,
+      ACC,
+    );
+    expect(series.length).toBeGreaterThan(0);
+    expect(workflow.calls).toHaveLength(20);
+    const project = client((call) =>
+      call.url.pathname === "/api/v2/insights/gh/acme/api/workflows"
+        ? endless(WORKFLOW)
+        : { items: [] },
+    );
+    await project.c.fetchMetricSeries("project", `${ACC}:project:gh/acme/api`, ACC);
+    const walked = project.calls.filter(
+      (x) => x.url.pathname === "/api/v2/insights/gh/acme/api/workflows",
+    );
+    expect(walked).toHaveLength(3);
+  });
+
+  it("shows the first jobs in a detail view rather than none on a long list", async () => {
+    const insights = "/api/v2/insights/gh/acme/api/workflows";
+    const workflow = client((call) => {
+      if (call.url.pathname === insights) return { items: [WORKFLOW], next_page_token: null };
+      if (call.url.pathname === `${insights}/build/jobs`) return endless({ name: "job" });
+      return { items: [], next_page_token: null };
+    });
+    const w = await workflow.c.getResource("workflow", `${ACC}:workflow:gh/acme/api/build`, ACC);
+    expect(JSON.parse(w.resolvedOutputs["__jobs__"] ?? "[]")).toHaveLength(3);
+
+    const pipeline = client((call) => {
+      if (call.url.pathname === "/api/v2/pipeline/p1") {
+        return {
+          id: "p1",
+          number: 1,
+          project_slug: "gh/acme/api",
+          state: "created",
+          created_at: "",
+        };
+      }
+      if (call.url.pathname === "/api/v2/pipeline/p1/workflow") return endless({ id: "w1" });
+      return endless({ name: "job" });
+    });
+    await expect(
+      pipeline.c.getResource("pipeline", `${ACC}:pipeline:p1`, ACC),
+    ).resolves.toMatchObject({ externalId: "p1" });
+    expect(
+      pipeline.calls.filter((x) => x.url.pathname === "/api/v2/pipeline/p1/workflow"),
+    ).toHaveLength(10);
+  });
+});

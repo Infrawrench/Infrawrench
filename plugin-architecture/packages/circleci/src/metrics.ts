@@ -116,7 +116,11 @@ export async function workflowSeries(
   const runs = await circleApi(ctx).v2Paged.getAll(
     `/insights/${slugSegment(projectSlug)}/workflows/${pathEncode(workflow)}`,
     "items",
-    { query: { "all-branches": true, "start-date": w.start, "end-date": w.end }, maxPages: 20 },
+    {
+      query: { "all-branches": true, "start-date": w.start, "end-date": w.end },
+      maxPages: 20,
+      partial: true,
+    },
   );
   return workflowRunSeries(runs, w.bucketMs);
 }
@@ -168,6 +172,7 @@ export async function projectSeries(
   const workflows = await v2Paged.getAll(`/insights/${slug}/workflows`, "items", {
     query: { "all-branches": true, "reporting-window": "last-90-days" },
     maxPages: 3,
+    partial: true,
   });
   const busiest = workflows
     .sort((a, b) => (b.metrics?.total_credits_used ?? 0) - (a.metrics?.total_credits_used ?? 0))
