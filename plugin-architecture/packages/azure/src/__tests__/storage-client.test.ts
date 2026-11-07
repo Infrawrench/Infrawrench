@@ -302,6 +302,14 @@ describe("blob names in the URL", () => {
   });
 });
 
+describe("makeStorageFolder", () => {
+  it("names the marker blob with a trailing slash, so it lists as a folder", async () => {
+    const { ctx, calls } = host(() => ({ status: 201 }));
+    await makeStorageFolder(ctx, "acc", "c/parent/newfolder");
+    expect(calls[0]!.url.pathname).toBe("/c/parent/newfolder/");
+  });
+});
+
 describe("storage account names", () => {
   it("sends the storage token only to a storage account's own host", async () => {
     const { ctx, calls } = host(() => ({ status: 202 }));

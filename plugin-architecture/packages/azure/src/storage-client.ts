@@ -268,8 +268,9 @@ export async function makeStorageFolder(
   bucket: string,
   key: string,
 ): Promise<void> {
-  // Azure doesn't have real folders: upload a zero-byte blob with trailing /
-  const url = blobUrl(bucket, key);
+  // Azure doesn't have real folders: a zero-byte blob named with a trailing /
+  // lists as a BlobPrefix, so it shows as a folder.
+  const url = blobUrl(bucket, key.endsWith("/") ? key : `${key}/`);
   const tok = await ctx.storageToken();
   const res = await azureRequest(ctx.http, url, {
     method: "PUT",
