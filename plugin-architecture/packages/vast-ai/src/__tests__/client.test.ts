@@ -288,6 +288,140 @@ describe("other resources", () => {
   });
 });
 
+describe("template edits", () => {
+  const STORED = {
+    id: 9,
+    hash_id: "old-hash",
+    creator_id: 42,
+    name: "vllm",
+    image: "vllm/vllm-openai",
+    tag: "v1",
+    env: "-e HF_TOKEN=hf_secret -p 8000:8000",
+    onstart: "echo hi",
+    runtype: "ssh",
+    ssh_direct: true,
+    use_ssh: true,
+    jup_direct: false,
+    docker_login_repo: "docker.io",
+    docker_login_user: "********",
+    docker_login_pass: "********",
+    extra_filters: { cuda_max_good: { gte: 12.6 } },
+    recommended_disk_space: 40,
+    desc: "old description",
+    readme: "read me",
+    readme_visible: true,
+    private: true,
+    args_str: null,
+    count_created: 7,
+    created_at: 1_760_000_000,
+  };
+
+  const stored = (template: Record<string, unknown> = STORED) => {
+    route("GET", "/api/v0/users/current/", { id: 42 });
+    route("GET", "/api/v0/template/", { success: true, templates: [template] });
+  };
+
+  const edit = (fields: Record<string, string>) =>
+    client().updateResource("template", "acct:template:9", "acct", fields);
+
+  const sent = () => calls.find((c) => c.url.pathname === "/api/v1/template/")!.body;
+
+  it("edits on the v1 route with the whole template, not just what changed", async () => {
+    stored();
+    route("PUT", "/api/v1/template/", {
+      success: true,
+      template: { id: 10, hash_id: "new-hash" },
+    });
+    await edit({ name: "renamed" });
+    expect(calls.filter((c) => c.method === "PUT").map((c) => c.url.pathname)).toEqual([
+      "/api/v1/template/",
+    ]);
+    expect(sent()).toEqual({
+      id: 9,
+      hash_id: "old-hash",
+      name: "renamed",
+      image: "vllm/vllm-openai",
+      tag: "v1",
+      env: "-e HF_TOKEN=hf_secret -p 8000:8000",
+      onstart: "echo hi",
+      runtype: "ssh",
+      ssh_direct: true,
+      use_ssh: true,
+      jup_direct: false,
+      docker_login_repo: "docker.io",
+      docker_login_user: "********",
+      docker_login_pass: "********",
+      extra_filters: { cuda_max_good: { gte: 12.6 } },
+      recommended_disk_space: 40,
+      desc: "old description",
+      readme: "read me",
+      readme_visible: true,
+      private: true,
+    });
+  });
+
+  it("answers with the new version, whose id and hash are new", async () => {
+    stored();
+    route("PUT", "/api/v1/template/", {
+      success: true,
+      template: { id: 10, hash_id: "new-hash" },
+    });
+    const updated = await edit({ description: "new", diskGb: "64", image: "other/image" });
+    expect(updated.id).toBe("acct:template:10");
+    expect(updated.externalId).toBe("10");
+    expect(updated.fields).toMatchObject({
+      name: "vllm",
+      image: "other/image",
+      description: "new",
+      diskGb: 64,
+      hashId: "new-hash",
+    });
+    expect(JSON.stringify(updated)).not.toContain("hf_secret");
+  });
+
+  it("keeps the version when Vast reports no edits", async () => {
+    stored();
+    route("PUT", "/api/v1/template/", { success: true, msg: "No edits were made" });
+    const updated = await edit({ name: "vllm" });
+    expect(updated.externalId).toBe("9");
+    expect(updated.fields["hashId"]).toBe("old-hash");
+  });
+
+  it("does not blank a field the form left empty or could not read", async () => {
+    stored();
+    route("PUT", "/api/v1/template/", { success: true, template: { id: 10, hash_id: "n" } });
+    await edit({ name: " ", image: "", diskGb: "not a number" });
+    expect(sent()).toMatchObject({
+      name: "vllm",
+      image: "vllm/vllm-openai",
+      recommended_disk_space: 40,
+    });
+  });
+
+  it("can clear the description", async () => {
+    stored();
+    route("PUT", "/api/v1/template/", { success: true, template: { id: 10, hash_id: "n" } });
+    await edit({ description: "" });
+    expect(sent()).toMatchObject({ desc: "" });
+  });
+
+  it("reads the tag from default_tag when that is where the read puts it", async () => {
+    const { tag: _tag, ...rest } = STORED;
+    stored({ ...rest, default_tag: "v2" });
+    route("PUT", "/api/v1/template/", { success: true, template: { id: 10, hash_id: "n" } });
+    await edit({ name: "renamed" });
+    expect(sent()).toMatchObject({ tag: "v2" });
+  });
+
+  it("refuses to edit a template it cannot find or has no hash for", async () => {
+    stored({ ...STORED, id: 8 });
+    await expect(edit({ name: "x" })).rejects.toThrow(/not found/);
+    stored({ ...STORED, hash_id: "" });
+    await expect(edit({ name: "x" })).rejects.toThrow(/hash/);
+    expect(calls.filter((c) => c.method === "PUT")).toEqual([]);
+  });
+});
+
 describe("cost data", () => {
   const range = { fromDate: "2026-09-01", toDate: "2026-09-30" };
   const day = (d: string) => Date.parse(`${d}T00:00:00Z`) / 1000;

@@ -17,13 +17,14 @@
     "/api/v0/secrets": ["get", "post", "put", "delete"],
     "/api/v0/ssh": ["get", "post"],
     "/api/v0/ssh/{id}": ["put", "delete"],
-    "/api/v0/template": ["get", "post", "put", "delete"],
+    "/api/v0/template": ["get", "post", "delete"],
     "/api/v0/users/current": ["get"],
     "/api/v0/volumes": ["get", "put", "delete"],
     "/api/v0/volumes/search": ["post"],
     "/api/v0/workergroups": ["get", "post"],
     "/api/v0/workergroups/{id}": ["put", "delete"],
-    "/api/v1/instances": ["get"]
+    "/api/v1/instances": ["get"],
+    "/api/v1/template": ["put"]
   },
   "patches": [
     {
@@ -167,58 +168,6 @@
         }
       ],
       "why": "The document only has the body; vast-cli's delete volume sends the query parameter, and the plugin sends both."
-    },
-    {
-      "pointer": "/paths/~1api~1v0~1template/put",
-      "value": {
-        "operationId": "updateTemplate",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["hash_id"],
-                "properties": {
-                  "hash_id": {
-                    "type": "string"
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "image": {
-                    "type": "string"
-                  },
-                  "desc": {
-                    "type": "string"
-                  },
-                  "recommended_disk_space": {
-                    "type": "number"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "why": "The document only has PUT /api/v1/template. This is the route the plugin calls today."
     },
     {
       "pointer": "/paths/~1api~1v1~1instances/get/responses/200/content/application~1json/schema/properties/instances/items/properties/volume_info/items",

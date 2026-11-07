@@ -146,7 +146,7 @@ export function mapTemplate(t: VTemplate, accountId: string): ResourceInstance {
     fields: {
       name: t.name ?? "",
       image: t.image ?? "",
-      tag: t.tag ?? "",
+      tag: t.tag ?? t.default_tag ?? "",
       description: t.desc ?? "",
       diskGb: t.recommended_disk_space ?? 0,
       runtype: t.runtype ?? "",

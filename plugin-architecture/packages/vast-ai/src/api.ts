@@ -8,7 +8,7 @@ import type { paths } from "./api-types.gen.js";
 
 /**
  * Transport for the Vast.ai REST API (`https://console.vast.ai/api/v0`, plus
- * `/api/v1` for the paginated instance and invoice lists). Verified 2026-10
+ * `/api/v1` for the paginated instances and for template edits). Verified 2026-10
  * against the published OpenAPI document
  * (`https://docs.vast.ai/api-reference/openapi.yaml`) and the `vast-cli`
  * source. Auth is `Authorization: Bearer <key>`. Errors are usually

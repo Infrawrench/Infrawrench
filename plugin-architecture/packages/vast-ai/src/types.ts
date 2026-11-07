@@ -43,12 +43,29 @@ export type VVolumeOffer = Schemas["VolumeOffer"];
 export type VTemplate = Schemas["Template"] & {
   hash_id?: string;
   tag?: string;
+  /** The document's filter list names this column beside `tag`. */
+  default_tag?: string;
   desc?: string;
   env?: string;
+  onstart?: string;
   runtype?: string;
   ssh_direct?: boolean;
+  use_ssh?: boolean;
+  jup_direct?: boolean;
+  jupyter_dir?: string;
+  use_jupyter_lab?: boolean;
+  docker_login_repo?: string;
+  docker_login_user?: string;
+  docker_login_pass?: string;
+  extra_filters?: Record<string, unknown>;
   recommended_disk_space?: number;
+  readme?: string;
+  readme_visible?: boolean;
+  args_str?: string;
+  href?: string;
+  repo?: string;
   private?: boolean;
+  volume_info?: Record<string, unknown> | null;
   /** Set by this plugin on the ones Vast recommends. */
   recommended?: boolean;
   count_created?: number;

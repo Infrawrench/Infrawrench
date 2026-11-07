@@ -76,6 +76,51 @@ function sshKeysOf(res: VSshKey[] | { ssh_keys?: VSshKey[] }): VSshKey[] {
   return Array.isArray(res) ? res : (res?.ssh_keys ?? []);
 }
 
+/** Every field `PUT /api/v1/template` documents, plus the `readme_visible` vast-cli sends. */
+const TEMPLATE_VERSION_FIELDS = [
+  "name",
+  "image",
+  "env",
+  "onstart",
+  "runtype",
+  "ssh_direct",
+  "use_ssh",
+  "jup_direct",
+  "jupyter_dir",
+  "use_jupyter_lab",
+  "docker_login_repo",
+  "docker_login_user",
+  "docker_login_pass",
+  "extra_filters",
+  "recommended_disk_space",
+  "desc",
+  "readme",
+  "readme_visible",
+  "args_str",
+  "href",
+  "repo",
+  "private",
+  "volume_info",
+] as const;
+
+/**
+ * Vast's versions are immutable and a field left out is not carried over, so an edit
+ * sends the whole template. A docker login reads back as `********`, which the document
+ * says keeps the stored credential when sent back.
+ */
+function templateEditBody(
+  t: VTemplate,
+  id: number,
+  hash_id: string,
+): ApiBody<operations["editTemplate"]> {
+  const kept = TEMPLATE_VERSION_FIELDS.flatMap((key) => {
+    const value = t[key];
+    return value === undefined || value === null ? [] : [[key, value]];
+  });
+  const tag = t.tag ?? t.default_tag;
+  return { ...Object.fromEntries(kept), ...(tag ? { tag } : {}), id, hash_id };
+}
+
 /** Default offer search: verified, rentable hosts, best-scored first. */
 export const OFFER_QUERY: ApiBody<operations["searchOffers"]> = {
   verified: { eq: true },
@@ -489,16 +534,33 @@ export class VastClient implements PluginClient {
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "template": {
-          const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-          const body: ApiBody<operations["updateTemplate"]> = {
-            hash_id: String(current.fields["hashId"] ?? ""),
-          };
-          if (fields["name"] !== undefined) body.name = str(fields["name"]);
-          if (fields["image"] !== undefined) body.image = str(fields["image"]);
-          if (fields["description"] !== undefined) body.desc = str(fields["description"]);
-          if (fields["diskGb"] !== undefined) body.recommended_disk_space = num(fields["diskGb"]);
-          await this.api.put("/api/v0/template/", { body });
-          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          const current = (await this.ownTemplates()).find((t) => String(t.id) === raw);
+          if (!current?.id) throw notFound(typeId, raw);
+          if (!current.hash_id) {
+            throw new Error(
+              `Vast.ai plugin: template ${raw} has no hash id, so it cannot be edited`,
+            );
+          }
+          const edited: VTemplate = { ...current };
+          // Whatever is sent replaces the template, so a blank name or an unreadable
+          // number keeps what is there instead of clearing it.
+          if (str(fields["name"])) edited.name = str(fields["name"]);
+          if (str(fields["image"])) edited.image = str(fields["image"]);
+          if (fields["description"] !== undefined) edited.desc = str(fields["description"]);
+          const disk = num(fields["diskGb"]);
+          if (disk !== undefined) edited.recommended_disk_space = disk;
+          const res = await this.api.put("/api/v1/template/", {
+            body: templateEditBody(edited, current.id, current.hash_id),
+          });
+          // An edit is a new version with its own id and hash, unless nothing changed.
+          return mapTemplate(
+            {
+              ...edited,
+              id: res?.template?.id ?? current.id,
+              hash_id: res?.template?.hash_id ?? current.hash_id,
+            },
+            accountId,
+          );
         }
         case "ssh-key": {
           if (fields["publicKey"] !== undefined) {

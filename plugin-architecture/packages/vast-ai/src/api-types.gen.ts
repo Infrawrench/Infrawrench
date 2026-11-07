@@ -250,7 +250,7 @@ export interface paths {
             cookie?: never;
         };
         get: operations["searchTemplates"];
-        put: operations["updateTemplate"];
+        put?: never;
         post: operations["createTemplate"];
         delete: operations["deleteTemplate"];
         options?: never;
@@ -347,6 +347,22 @@ export interface paths {
         };
         get: operations["showInstances"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["editTemplate"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1297,37 +1313,6 @@ export interface operations {
             };
         };
     };
-    updateTemplate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    desc?: string;
-                    hash_id: string;
-                    image?: string;
-                    name?: string;
-                    recommended_disk_space?: number;
-                };
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        success?: boolean;
-                    };
-                };
-            };
-        };
-    };
     createTemplate: {
         parameters: {
             query?: never;
@@ -1851,6 +1836,65 @@ export interface operations {
                         next_token?: string | null;
                         success?: boolean;
                         total_instances?: number;
+                    };
+                };
+            };
+        };
+    };
+    editTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    args_str?: string;
+                    desc?: string;
+                    docker_login_pass?: string;
+                    docker_login_repo?: string;
+                    docker_login_user?: string;
+                    env?: string;
+                    extra_filters?: Record<string, never>;
+                    hash_id: string;
+                    href?: string;
+                    id: number;
+                    image?: string;
+                    jup_direct?: boolean;
+                    jupyter_dir?: string;
+                    name?: string;
+                    onstart?: string;
+                    private?: boolean;
+                    readme?: string;
+                    recommended_disk_space?: number;
+                    repo?: string;
+                    /** @enum {string} */
+                    runtype?: "ssh" | "jupyter" | "args";
+                    ssh_direct?: boolean;
+                    tag?: string;
+                    use_jupyter_lab?: boolean;
+                    use_ssh?: boolean;
+                    volume_info?: Record<string, never> | null;
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        msg?: string;
+                        success?: boolean;
+                        template?: {
+                            hash_id?: string;
+                            id?: number;
+                        };
                     };
                 };
             };
