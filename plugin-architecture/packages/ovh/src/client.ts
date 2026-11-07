@@ -319,7 +319,7 @@ export class OvhClient implements PluginClient {
         // A consumer key limited by access rules is normal, and failing the type on every
         // poll would page someone. Its stored rows stay, with no error.
         if (!isAccessRefusal(err)) throw err;
-        reportTypeUnread();
+        reportTypeUnread(err);
         return [];
       }
     });

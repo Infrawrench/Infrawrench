@@ -65,9 +65,12 @@ export async function readList<T>(
   return requireListPage(await fetch<T[]>(path), { vendor: "OVH", path, key: null });
 }
 
-/** A credential refused a whole type: its stored rows stay, with no error. */
-export function reportTypeUnread(): void {
-  reportUnreadListPart({ idPrefixes: [""] });
+/**
+ * A credential refused a whole type: its stored rows stay, with no error. A host that keeps
+ * no track (the desktop) answers false, and there `err` is thrown so the refusal shows.
+ */
+export function reportTypeUnread(err: unknown): void {
+  if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
 }
 
 /**
@@ -89,6 +92,7 @@ export async function perRegion<T>(
   read: (region: string) => Promise<T[]>,
 ): Promise<T[]> {
   const refused: string[] = [];
+  let refusal: unknown;
   const declined: Array<{ region: string; err: unknown }> = [];
   const results = await Promise.all(
     regions.map(async (region) => {
@@ -96,8 +100,10 @@ export async function perRegion<T>(
         return await read(region);
       } catch (err) {
         if (isMissingRoute(err)) return [];
-        if (isAccessRefusal(err)) refused.push(region);
-        else if (isDeclinedRequest(err)) declined.push({ region, err });
+        if (isAccessRefusal(err)) {
+          refused.push(region);
+          refusal ??= err;
+        } else if (isDeclinedRequest(err)) declined.push({ region, err });
         else throw err;
         return [];
       }
@@ -107,7 +113,7 @@ export async function perRegion<T>(
   if (first && declined.length === regions.length) throw first.err;
   const unread = [...refused, ...declined.map((d) => d.region)];
   if (unread.length === regions.length && unread.length > 0) {
-    reportTypeUnread();
+    reportTypeUnread(refusal ?? first?.err);
   } else if (unread.length > 0) {
     reportUnreadListPart({ idPrefixes: unread.map((r) => `${accountId}:${typeId}:${r}/`) });
   }

@@ -145,6 +145,15 @@ describe.each([
     expect(unread).toHaveBeenCalledExactlyOnceWith({ idPrefixes: [""] });
   });
 
+  it("shows every region's refusal where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    serve({
+      ...regionB(notGranted),
+      [path("A")]: iamDenied,
+    });
+    await expect(makeClient().listResources(typeId, ACCOUNT)).rejects.toThrow(/OVH API error 403/);
+  });
+
   it("fails the type when every region calls the request bad", async () => {
     serve({
       ...regionB(badRequest),
@@ -199,6 +208,14 @@ describe("a type that is not read per region", () => {
     serve({ [`${PROJECT}/instance`]: notGranted });
     await expect(makeClient().listResources("instance", ACCOUNT)).resolves.toEqual([]);
     expect(unread).toHaveBeenCalledExactlyOnceWith({ idPrefixes: [""] });
+  });
+
+  it("shows the refusal where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    serve({ [`${PROJECT}/instance`]: notGranted });
+    await expect(makeClient().listResources("instance", ACCOUNT)).rejects.toThrow(
+      /OVH API error 403/,
+    );
   });
 
   it.each([
