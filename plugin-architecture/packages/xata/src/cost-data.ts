@@ -1,5 +1,5 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import type { XInvoice, XOrg } from "./api.js";
+import type { XInvoice, XOrg, XUpcomingInvoice } from "./api.js";
 
 /**
  * Billed spend from `GET /organizations/{id}/billing/invoices` plus the
@@ -23,8 +23,7 @@ export function coveredMonthStart(invoiceDate: string): string {
 export function fetchXataCostData(
   org: XOrg,
   invoices: XInvoice[],
-  upcoming:
-    { amount_due?: number; total?: number; currency?: string; target_date?: string } | undefined,
+  upcoming: Partial<XUpcomingInvoice> | undefined,
   range: CostFetchRange,
 ): CostRow[] {
   const totals = new Map<string, { currency: string; amount: number; status: string }>();

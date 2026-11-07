@@ -230,6 +230,7 @@ describe("helpers", () => {
           currency: "usd",
           invoice_date: "2026-09-01T00:00:00Z",
           status: "paid",
+          invoice_pdf: null,
         },
         {
           id: "2",
@@ -238,6 +239,7 @@ describe("helpers", () => {
           currency: "usd",
           invoice_date: "2026-08-01T00:00:00Z",
           status: "void",
+          invoice_pdf: null,
         },
       ],
       { total: 3.25, currency: "usd", target_date: "2026-11-01T00:00:00Z" },
@@ -258,6 +260,9 @@ describe("helpers", () => {
         section: "Logging",
         defaultValue: "off",
         currentValue: "on",
+        defaultValueSource: "postgres",
+        documentationLink: "https://example.test/log_lock_waits",
+        recommendation: "",
       }),
     ).toMatchObject({ id: "log_lock_waits", control: "toggle", value: "on" });
   });

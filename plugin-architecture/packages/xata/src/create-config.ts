@@ -4,8 +4,7 @@ import type {
   RegionOption,
   SizeOption,
 } from "@infrawrench/plugin-base";
-import type { XataContext, XImage, XInstanceType, XRegion } from "./api.js";
-import { enc, xata } from "./api.js";
+import { enc } from "./api.js";
 import type { XataClient } from "./client.js";
 import { API_KEY_SCOPES } from "./resource-types.js";
 
@@ -28,7 +27,6 @@ async function orgPicker(client: XataClient, parent: string[]): Promise<CreateFi
 }
 
 export async function getCreateConfig(
-  ctx: XataContext,
   client: XataClient,
   typeId: string,
   parentResourceId?: string,
@@ -75,8 +73,7 @@ export async function getCreateConfig(
         });
       }
       const regions = org
-        ? ((await xata<{ regions?: XRegion[] }>(ctx, "GET", `/organizations/${enc(org)}/regions`))
-            ?.regions ?? [])
+        ? ((await client.api.get(`/organizations/${enc(org)}/regions`))?.regions ?? [])
         : [];
       const regionOptions: RegionOption[] = regions.map((r) => ({
         id: r.id,
@@ -92,15 +89,9 @@ export async function getCreateConfig(
             region: r.id,
             types:
               (
-                await xata<{ instanceTypes?: XInstanceType[] }>(
-                  ctx,
-                  "GET",
-                  `/organizations/${enc(org)}/instanceTypes`,
-                  undefined,
-                  {
-                    region: r.id,
-                  },
-                ).catch(() => undefined)
+                await client.api
+                  .get(`/organizations/${enc(org)}/instanceTypes`, { query: { region: r.id } })
+                  .catch(() => undefined)
               )?.instanceTypes ?? [],
           })),
         );
@@ -122,13 +113,8 @@ export async function getCreateConfig(
         }
         sizes.push(...byName.values());
         const imgs =
-          (
-            await xata<{ images?: XImage[] }>(
-              ctx,
-              "GET",
-              `/organizations/${enc(org)}/images`,
-            ).catch(() => undefined)
-          )?.images ?? [];
+          (await client.api.get(`/organizations/${enc(org)}/images`).catch(() => undefined))
+            ?.images ?? [];
         for (const i of imgs)
           images.push({ id: i.name, label: `Postgres ${i.fullVersion} (${i.name})` });
       }

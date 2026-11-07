@@ -24,7 +24,8 @@ function json<T>(r: ResourceInstance, k: string): T | undefined {
   const raw = r.fields[k];
   if (typeof raw !== "string") return undefined;
   try {
-    return JSON.parse(raw) as T;
+    const parsed: T = JSON.parse(raw);
+    return parsed;
   } catch {
     return undefined;
   }

@@ -22,27 +22,33 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf } from "@infrawrench/plugin-base";
 import type {
+  BranchPath,
+  OrgPath,
+  ProjectPath,
   XApiKey,
+  XataApi,
   XataContext,
   XBackup,
-  XBranch,
+  XBranchPatch,
+  XBranchRow,
+  XBranchShort,
   XBranchSummary,
   XCredentials,
-  XInstanceType,
-  XInvitation,
   XInvoice,
-  XMember,
+  XMetricName,
   XOrg,
   XPgParameter,
   XProject,
+  XProjectConfigPatch,
+  XProjectPatch,
 } from "./api.js";
-import { enc, send, statusOf, xata, XataApiError } from "./api.js";
+import { createGatewayApi, createXataApi, enc, statusOf, XataApiError } from "./api.js";
 import { getCreateConfig } from "./create-config.js";
 import { fetchXataCostData } from "./cost-data.js";
 import { verifyXataCredentials } from "./preflight.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
 
-const METRICS: Array<[string, string]> = [
+const METRICS: Array<[XMetricName, string]> = [
   ["cpu", "CPU"],
   ["memory", "Memory"],
   ["disk", "Disk"],
@@ -127,7 +133,7 @@ export function listValue(v: string | undefined): string[] {
 }
 
 /** Host of a postgres:// URL, without credentials. */
-export function hostOf(connectionString: string | undefined): string {
+export function hostOf(connectionString: string | null | undefined): string {
   if (!connectionString) return "";
   const m = /@([^/:?]+)/.exec(connectionString);
   return m?.[1] ?? "";
@@ -144,7 +150,8 @@ function parts(externalId: string): string[] {
 }
 
 export class XataClient implements PluginClient {
-  readonly ctx: XataContext;
+  readonly api: XataApi;
+  private readonly ctx: XataContext;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["apiKey"] ?? "").trim();
@@ -155,44 +162,38 @@ export class XataClient implements PluginClient {
       ...(services?.http ? { http: services.http } : {}),
       ...(caCert ? { caCert } : {}),
     };
+    this.api = createXataApi(this.ctx);
   }
 
-  private orgPath(org: string): string {
+  private orgPath(org: string | undefined): OrgPath {
     return `/organizations/${enc(org)}`;
   }
 
-  private projectPath(org: string, project: string): string {
+  private projectPath(org: string | undefined, project: string | undefined): ProjectPath {
     return `${this.orgPath(org)}/projects/${enc(project)}`;
   }
 
-  private branchPath(org: string, project: string, branch: string): string {
+  private branchPath(
+    org: string | undefined,
+    project: string | undefined,
+    branch: string | undefined,
+  ): BranchPath {
     return `${this.projectPath(org, project)}/branches/${enc(branch)}`;
   }
 
   async orgs(): Promise<XOrg[]> {
-    return (
-      (await xata<{ organizations?: XOrg[] }>(this.ctx, "GET", "/organizations"))?.organizations ??
-      []
-    );
+    return (await this.api.get("/organizations"))?.organizations ?? [];
   }
 
   async projects(org: string): Promise<XProject[]> {
-    return (
-      (await xata<{ projects?: XProject[] }>(this.ctx, "GET", `${this.orgPath(org)}/projects`))
-        ?.projects ?? []
-    );
+    return (await this.api.get(`${this.orgPath(org)}/projects`))?.projects ?? [];
   }
 
-  async branchSummaries(org: string, project: string): Promise<XBranchSummary[]> {
-    return (
-      (
-        await xata<{ branches?: XBranchSummary[] }>(
-          this.ctx,
-          "GET",
-          `${this.projectPath(org, project)}/branches`,
-        )
-      )?.branches ?? []
-    );
+  async branchSummaries(
+    org: string | undefined,
+    project: string | undefined,
+  ): Promise<XBranchSummary[]> {
+    return (await this.api.get(`${this.projectPath(org, project)}/branches`))?.branches ?? [];
   }
 
   private async allProjects(): Promise<Array<{ org: string; project: XProject }>> {
@@ -218,11 +219,9 @@ export class XataClient implements PluginClient {
           const orgs = await this.orgs();
           return Promise.all(
             orgs.map(async (o) => {
-              const members = await xata<{ members?: XMember[] }>(
-                this.ctx,
-                "GET",
-                `${this.orgPath(o.id)}/members`,
-              ).catch(() => undefined);
+              const members = await this.api
+                .get(`${this.orgPath(o.id)}/members`)
+                .catch(() => undefined);
               return orgResource(o, accountId, members?.members?.length);
             }),
           );
@@ -252,13 +251,7 @@ export class XataClient implements PluginClient {
           const lists = await Promise.all(
             all.map(async ({ org, project }) => {
               const backups =
-                (
-                  await xata<{ backups?: XBackup[] }>(
-                    this.ctx,
-                    "GET",
-                    `${this.projectPath(org, project.id)}/backups`,
-                  )
-                )?.backups ?? [];
+                (await this.api.get(`${this.projectPath(org, project.id)}/backups`))?.backups ?? [];
               return backups.map((b) => backupResource(org, project.id, b, accountId));
             }),
           );
@@ -268,15 +261,9 @@ export class XataClient implements PluginClient {
           const orgs = await this.orgs();
           const lists = await Promise.all(
             orgs.map(async (o) =>
-              (
-                (
-                  await xata<{ keys?: XApiKey[] }>(
-                    this.ctx,
-                    "GET",
-                    `${this.orgPath(o.id)}/api-keys`,
-                  )
-                )?.keys ?? []
-              ).map((k) => apiKeyResource(o.id, k, accountId)),
+              ((await this.api.get(`${this.orgPath(o.id)}/api-keys`))?.keys ?? []).map((k) =>
+                apiKeyResource(o.id, k, accountId),
+              ),
             ),
           );
           return lists.flat();
@@ -285,15 +272,7 @@ export class XataClient implements PluginClient {
           const orgs = await this.orgs();
           const lists = await Promise.all(
             orgs.map(async (o) =>
-              (
-                (
-                  await xata<{ members?: XMember[] }>(
-                    this.ctx,
-                    "GET",
-                    `${this.orgPath(o.id)}/members`,
-                  )
-                )?.members ?? []
-              ).map((m) =>
+              ((await this.api.get(`${this.orgPath(o.id)}/members`))?.members ?? []).map((m) =>
                 instance(
                   accountId,
                   typeId,
@@ -312,17 +291,8 @@ export class XataClient implements PluginClient {
           const lists = await Promise.all(
             orgs.map(async (o) =>
               (
-                (
-                  await xata<{ invitations?: XInvitation[] }>(
-                    this.ctx,
-                    "GET",
-                    `${this.orgPath(o.id)}/invitations`,
-                    undefined,
-                    {
-                      max: 100,
-                    },
-                  )
-                )?.invitations ?? []
+                (await this.api.get(`${this.orgPath(o.id)}/invitations`, { query: { max: 100 } }))
+                  ?.invitations ?? []
               ).map((i) =>
                 instance(
                   accountId,
@@ -361,16 +331,12 @@ export class XataClient implements PluginClient {
     return Promise.all(
       summaries.map(async (s) => {
         try {
-          const b = await xata<XBranch & { connectionString?: string }>(
-            this.ctx,
-            "GET",
-            this.branchPath(org, project, s.id),
-          );
+          const b = await this.api.get(this.branchPath(org, project, s.id));
           return branchResource(org, project, b, accountId, hostOf(b.connectionString));
         } catch (err) {
           // A branch deleted between the two calls: list what the summary had.
           if (statusOf(err) !== 404) throw err;
-          return branchResource(org, project, s as XBranch, accountId, "");
+          return branchResource(org, project, s, accountId, "");
         }
       }),
     );
@@ -384,17 +350,13 @@ export class XataClient implements PluginClient {
     return attempt(async () => {
       const p = parts(externalIdOf(resourceId));
       if (typeId === "xata-branch") {
-        const [org, project, branch] = p as [string, string, string];
-        const b = await xata<XBranch & { connectionString?: string }>(
-          this.ctx,
-          "GET",
-          this.branchPath(org, project, branch),
-        );
+        const [org = "", project, branch] = p;
+        const b = await this.api.get(this.branchPath(org, project, branch));
         return branchResource(org, project, b, accountId, hostOf(b.connectionString));
       }
       if (typeId === "xata-project") {
-        const [org, project] = p as [string, string];
-        const proj = await xata<XProject>(this.ctx, "GET", this.projectPath(org, project));
+        const [org = "", project] = p;
+        const proj = await this.api.get(this.projectPath(org, project));
         return projectResource(
           org,
           proj,
@@ -413,12 +375,12 @@ export class XataClient implements PluginClient {
 
   // ---- outputs -------------------------------------------------------------------
 
-  private async credentials(org: string, project: string, branch: string): Promise<XCredentials> {
-    return xata<XCredentials>(
-      this.ctx,
-      "GET",
-      `${this.branchPath(org, project, branch)}/credentials`,
-    );
+  private async credentials(
+    org: string | undefined,
+    project: string | undefined,
+    branch: string | undefined,
+  ): Promise<XCredentials> {
+    return this.api.get(`${this.branchPath(org, project, branch)}/credentials`);
   }
 
   resolveOutput(
@@ -432,7 +394,7 @@ export class XataClient implements PluginClient {
       if (typeId === "xata-organization" && outputKey === "organizationId") return p[0]!;
       if (typeId === "xata-project" && outputKey === "projectId") return p[1]!;
       if (typeId === "xata-branch") {
-        const creds = await this.credentials(p[0]!, p[1]!, p[2]!);
+        const creds = await this.credentials(p[0], p[1], p[2]);
         if (outputKey === "connectionString") return withSsl(creds.connectionString);
         if (outputKey === "host") return creds.hostname;
         if (outputKey === "username") return creds.username;
@@ -462,10 +424,10 @@ export class XataClient implements PluginClient {
   }
 
   private async rotate(resourceId: string): Promise<void> {
-    const [org, project, branch] = parts(externalIdOf(resourceId)) as [string, string, string];
+    const [org, project, branch] = parts(externalIdOf(resourceId));
     const creds = await this.credentials(org, project, branch).catch(() => undefined);
-    await xata(this.ctx, "POST", `${this.branchPath(org, project, branch)}/credentials/rotate`, {
-      username: creds?.username ?? "xata",
+    await this.api.post(`${this.branchPath(org, project, branch)}/credentials/rotate`, {
+      body: { username: creds?.username ?? "xata" },
     });
   }
 
@@ -476,40 +438,24 @@ export class XataClient implements PluginClient {
       const fields = { ...resource.fields };
       const p = parts(String(resource.externalId ?? ""));
       if (resource.resourceTypeId === "xata-branch") {
-        const [org, project] = p as [string, string];
+        const [org, project] = p;
         const region = String(resource.fields["region"] ?? "");
         const [types, images, limits] = await Promise.all([
-          xata<{ instanceTypes?: XInstanceType[] }>(
-            this.ctx,
-            "GET",
-            `${this.orgPath(org)}/instanceTypes`,
-            undefined,
-            {
-              region,
-            },
-          ).catch(() => undefined),
-          xata<{ images?: Array<{ name: string; fullVersion: string }> }>(
-            this.ctx,
-            "GET",
-            `${this.orgPath(org)}/images`,
-            undefined,
-            {
-              region,
-            },
-          ).catch(() => undefined),
-          xata(this.ctx, "GET", `${this.projectPath(org, project)}/limits`).catch(() => undefined),
+          this.api
+            .get(`${this.orgPath(org)}/instanceTypes`, { query: { region } })
+            .catch(() => undefined),
+          this.api.get(`${this.orgPath(org)}/images`, { query: { region } }).catch(() => undefined),
+          this.api.get(`${this.projectPath(org, project)}/limits`).catch(() => undefined),
         ]);
         if (types?.instanceTypes) fields["_instanceTypes"] = JSON.stringify(types.instanceTypes);
         if (images?.images) fields["_images"] = JSON.stringify(images.images);
         if (limits) fields["_limits"] = JSON.stringify(limits);
       }
       if (resource.resourceTypeId === "xata-organization") {
-        const org = p[0]!;
+        const org = p[0];
         const [upcoming, limits] = await Promise.all([
-          xata(this.ctx, "GET", `${this.orgPath(org)}/billing/invoices/upcoming`).catch(
-            () => undefined,
-          ),
-          xata(this.ctx, "GET", `${this.orgPath(org)}/limits`).catch(() => undefined),
+          this.api.get(`${this.orgPath(org)}/billing/invoices/upcoming`).catch(() => undefined),
+          this.api.get(`${this.orgPath(org)}/limits`).catch(() => undefined),
         ]);
         if (upcoming) fields["_upcoming"] = JSON.stringify(upcoming);
         if (limits) fields["_limits"] = JSON.stringify(limits);
@@ -556,22 +502,18 @@ export class XataClient implements PluginClient {
 
   getManifest(resourceId: string, _accountId: string): PluginEffect<string> {
     return attempt(async () => {
-      const [org, project, branch] = parts(externalIdOf(resourceId)) as [string, string, string];
-      const res = await xata<{ parameters?: XPgParameter[] }>(
-        this.ctx,
-        "GET",
-        `${this.branchPath(org, project, branch)}/postgres-config`,
-      );
+      const [org, project, branch] = parts(externalIdOf(resourceId));
+      const res = await this.api.get(`${this.branchPath(org, project, branch)}/postgres-config`);
       return JSON.stringify({ settings: (res?.parameters ?? []).map(pgDescriptor) });
     });
   }
 
   applyManifest(resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
     return attempt(async () => {
-      const [org, project, branch] = parts(externalIdOf(resourceId)) as [string, string, string];
-      const changes = JSON.parse(manifest) as Array<{ id: string; value: string }>;
+      const [org, project, branch] = parts(externalIdOf(resourceId));
+      const changes: Array<{ id: string; value: string }> = JSON.parse(manifest);
       if (!Array.isArray(changes)) throw new Error("Settings must be a list of {id, value} pairs.");
-      const current = await xata<XBranch>(this.ctx, "GET", this.branchPath(org, project, branch));
+      const current = await this.api.get(this.branchPath(org, project, branch));
       const params: Record<string, string> = {
         ...(current.configuration.postgresConfigurationParameters ?? {}),
       };
@@ -580,8 +522,8 @@ export class XataClient implements PluginClient {
         if (value === "") delete params[c.id];
         else params[c.id] = value;
       }
-      await xata(this.ctx, "PATCH", this.branchPath(org, project, branch), {
-        postgresConfigurationParameters: params,
+      await this.api.patch(this.branchPath(org, project, branch), {
+        body: { postgresConfigurationParameters: params },
       });
     });
   }
@@ -594,18 +536,13 @@ export class XataClient implements PluginClient {
     sql: string,
   ): PluginEffect<{ rows: Record<string, unknown>[]; durationMs: number }> {
     return attempt(async () => {
-      const [org, project, branch] = parts(externalIdOf(resourceId)) as [string, string, string];
+      const [org, project, branch] = parts(externalIdOf(resourceId));
       const creds = await this.credentials(org, project, branch);
       const host = creds.hostname || hostOf(creds.connectionString);
       const start = Date.now();
-      const res = (await send(
-        this.ctx,
-        "POST",
-        `https://${host}/sql`,
-        { "Connection-String": creds.connectionString },
-        { query: sql },
-        "/sql",
-      )) as { rows?: Record<string, unknown>[] } | undefined;
+      const res = await createGatewayApi(this.ctx, host, creds.connectionString).post("/sql", {
+        body: { query: sql },
+      });
       return { rows: Array.isArray(res?.rows) ? res.rows : [], durationMs: Date.now() - start };
     });
   }
@@ -637,7 +574,7 @@ export class XataClient implements PluginClient {
 
   getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
     return attempt(async () => {
-      return getCreateConfig(this.ctx, this, typeId, parentResourceId);
+      return getCreateConfig(this, typeId, parentResourceId);
     });
   }
 
@@ -652,8 +589,8 @@ export class XataClient implements PluginClient {
       switch (typeId) {
         case "xata-project": {
           const org = parent[0] || required(fields["organizationId"], "an organization");
-          const proj = await xata<XProject>(this.ctx, "POST", `${this.orgPath(org)}/projects`, {
-            name: required(fields["name"], "a project name"),
+          const proj = await this.api.post(`${this.orgPath(org)}/projects`, {
+            body: { name: required(fields["name"], "a project name") },
           });
           return projectResource(org, proj, accountId, 0);
         }
@@ -662,60 +599,55 @@ export class XataClient implements PluginClient {
             parent.length >= 2
               ? `${parent[0]}/${parent[1]}`
               : required(fields["projectRef"], "a project");
-          const [org, project] = ref.split("/") as [string, string];
+          const [org = "", project] = ref.split("/");
           const mode = fields["mode"] || "custom";
+          const scaleToZero = bool(fields["scaleToZero"]);
           const common = {
             name: required(fields["name"], "a branch name"),
             ...(fields["description"] ? { description: fields["description"] } : {}),
-            ...(bool(fields["scaleToZero"]) !== undefined
+            ...(scaleToZero !== undefined
               ? {
                   scaleToZero: {
-                    enabled: bool(fields["scaleToZero"]),
+                    enabled: scaleToZero,
                     inactivityPeriodMinutes: num(fields["inactivityMinutes"]) ?? 30,
                   },
                 }
               : {}),
           };
-          let created: XBranchSummary;
+          let created: XBranchShort;
           if (mode === "inherit") {
-            created = await xata<XBranchSummary>(
-              this.ctx,
-              "POST",
-              `${this.projectPath(org, project)}/branches`,
-              {
+            created = await this.api.post(`${this.projectPath(org, project)}/branches`, {
+              body: {
                 ...common,
                 mode: "inherit",
                 parentID: required(fields["parentId"], "a parent branch"),
               },
-            );
+            });
           } else if (mode === "restore") {
             const source = required(fields["parentId"], "a branch to restore");
-            const src = await xata<XBranch>(this.ctx, "GET", this.branchPath(org, project, source));
-            created = await xata<XBranchSummary>(
-              this.ctx,
-              "POST",
-              `${this.branchPath(org, project, source)}/restore`,
-              { ...common, configuration: { ...src.configuration, replicas: 0 } },
-            );
+            const src = await this.api.get(this.branchPath(org, project, source));
+            created = await this.api.post(`${this.branchPath(org, project, source)}/restore`, {
+              body: { ...common, configuration: { ...src.configuration, replicas: 0 } },
+            });
           } else {
-            created = await xata<XBranchSummary>(
-              this.ctx,
-              "POST",
-              `${this.projectPath(org, project)}/branches`,
-              {
+            const region = required(fields["region"], "a region");
+            const instanceType = required(fields["instanceType"], "an instance type");
+            const image = required(fields["image"], "a Postgres image");
+            const replicas = num(fields["replicas"]) ?? 0;
+            const storage = num(fields["storageGb"]);
+            created = await this.api.post(`${this.projectPath(org, project)}/branches`, {
+              body: {
                 ...common,
                 mode: "custom",
                 configuration: {
-                  region: required(fields["region"], "a region"),
-                  instanceType: required(fields["instanceType"], "an instance type"),
-                  image: required(fields["image"], "a Postgres image"),
-                  replicas: num(fields["replicas"]) ?? 0,
-                  ...(num(fields["storageGb"]) !== undefined
-                    ? { storage: num(fields["storageGb"]) }
-                    : {}),
+                  region,
+                  instanceType,
+                  image,
+                  replicas,
+                  ...(storage !== undefined ? { storage } : {}),
                 },
               },
-            );
+            });
           }
           return runPluginEffect(
             this.getResource(
@@ -723,23 +655,20 @@ export class XataClient implements PluginClient {
               `${accountId}:${typeId}:${org}/${project}/${created.id}`,
               accountId,
             ),
-          ).catch(() => branchResource(org, project, created as XBranch, accountId, ""));
+          ).catch(() => branchResource(org, project, created, accountId, ""));
         }
         case "xata-api-key": {
           const org = parent[0] || required(fields["organizationId"], "an organization");
           const scopes = listValue(fields["scopes"]);
           const projects = listValue(fields["projects"]);
-          const res = await xata<{ key: XApiKey }>(
-            this.ctx,
-            "POST",
-            `${this.orgPath(org)}/api-keys`,
-            {
+          const res = await this.api.post(`${this.orgPath(org)}/api-keys`, {
+            body: {
               name: required(fields["name"], "a name"),
               ...(fields["expiresAt"] ? { expiry: fields["expiresAt"] } : {}),
               ...(scopes.length ? { scopes } : {}),
               ...(projects.length ? { projects } : {}),
             },
-          );
+          });
           const r = apiKeyResource(org, res.key, accountId);
           if (res.key.token) r.resolvedOutputs["token"] = res.key.token;
           return r;
@@ -747,19 +676,12 @@ export class XataClient implements PluginClient {
         case "xata-invitation": {
           const org = parent[0] || required(fields["organizationId"], "an organization");
           const email = required(fields["email"], "an email");
-          await xata(this.ctx, "POST", `${this.orgPath(org)}/invitations`, {
-            email,
-            role: fields["role"] === "admin" ? "admin" : "editor",
+          await this.api.post(`${this.orgPath(org)}/invitations`, {
+            body: { email, role: fields["role"] === "admin" ? "admin" : "editor" },
           });
-          const res = await xata<{ invitations?: XInvitation[] }>(
-            this.ctx,
-            "GET",
-            `${this.orgPath(org)}/invitations`,
-            undefined,
-            {
-              email,
-            },
-          );
+          const res = await this.api.get(`${this.orgPath(org)}/invitations`, {
+            query: { email },
+          });
           const inv = res?.invitations?.[0];
           return instance(
             accountId,
@@ -792,44 +714,39 @@ export class XataClient implements PluginClient {
       switch (typeId) {
         case "xata-organization":
           if (fields["name"])
-            await xata(this.ctx, "PUT", this.orgPath(p[0]!), { name: fields["name"] });
+            await this.api.put(this.orgPath(p[0]), { body: { name: fields["name"] } });
           break;
         case "xata-project": {
-          const [org, project] = p as [string, string];
-          const current = await xata<XProject>(this.ctx, "GET", this.projectPath(org, project));
+          const [org, project] = p;
+          const current = await this.api.get(this.projectPath(org, project));
           const body = projectPatch(current, fields);
-          await xata(this.ctx, "PATCH", this.projectPath(org, project), body);
+          await this.api.patch(this.projectPath(org, project), { body });
           break;
         }
         case "xata-branch": {
-          const [org, project, branch] = p as [string, string, string];
-          const body: Record<string, unknown> = {};
+          const [org, project, branch] = p;
+          const body: XBranchPatch = {};
           if (fields["name"]) body["name"] = fields["name"];
           if (fields["description"] !== undefined) body["description"] = fields["description"];
           if (num(fields["replicas"]) !== undefined) body["replicas"] = num(fields["replicas"]);
           if (num(fields["storageGb"]) !== undefined) body["storage"] = num(fields["storageGb"]);
-          if (num(fields["backupRetentionDays"]) !== undefined) {
-            body["backupConfiguration"] = { retentionPeriod: num(fields["backupRetentionDays"]) };
-          }
+          const retentionPeriod = num(fields["backupRetentionDays"]);
+          if (retentionPeriod !== undefined) body["backupConfiguration"] = { retentionPeriod };
           if (fields["scaleToZero"] !== undefined || fields["inactivityMinutes"] !== undefined) {
-            const current = await xata<XBranch>(
-              this.ctx,
-              "GET",
-              this.branchPath(org, project, branch),
-            );
+            const current = await this.api.get(this.branchPath(org, project, branch));
             body["scaleToZero"] = {
               enabled: bool(fields["scaleToZero"]) ?? current.scaleToZero.enabled,
               inactivityPeriodMinutes:
                 num(fields["inactivityMinutes"]) ?? current.scaleToZero.inactivityPeriodMinutes,
             };
           }
-          await xata(this.ctx, "PATCH", this.branchPath(org, project, branch), body);
+          await this.api.patch(this.branchPath(org, project, branch), { body });
           break;
         }
         case "xata-member":
           if (fields["role"]) {
-            await xata(this.ctx, "PUT", `${this.orgPath(p[0]!)}/members/${enc(p[1]!)}/role`, {
-              role: fields["role"],
+            await this.api.put(`${this.orgPath(p[0])}/members/${enc(p[1])}/role`, {
+              body: { role: fields["role"] },
             });
           }
           break;
@@ -845,19 +762,19 @@ export class XataClient implements PluginClient {
       const p = parts(externalIdOf(resourceId));
       switch (typeId) {
         case "xata-project":
-          await xata(this.ctx, "DELETE", this.projectPath(p[0]!, p[1]!));
+          await this.api.delete(this.projectPath(p[0], p[1]));
           return;
         case "xata-branch":
-          await xata(this.ctx, "DELETE", this.branchPath(p[0]!, p[1]!, p[2]!));
+          await this.api.delete(this.branchPath(p[0], p[1], p[2]));
           return;
         case "xata-api-key":
-          await xata(this.ctx, "DELETE", `${this.orgPath(p[0]!)}/api-keys`, { ids: [p[1]] });
+          await this.api.delete(`${this.orgPath(p[0])}/api-keys`, { body: { ids: [p[1]!] } });
           return;
         case "xata-member":
-          await xata(this.ctx, "DELETE", `${this.orgPath(p[0]!)}/members/${enc(p[1]!)}`);
+          await this.api.delete(`${this.orgPath(p[0])}/members/${enc(p[1])}`);
           return;
         case "xata-invitation":
-          await xata(this.ctx, "DELETE", `${this.orgPath(p[0]!)}/invitations/${enc(p[1]!)}`);
+          await this.api.delete(`${this.orgPath(p[0])}/invitations/${enc(p[1])}`);
           return;
         default:
           throw new Error(`Xata plugin: "${typeId}" cannot be deleted.`);
@@ -874,9 +791,9 @@ export class XataClient implements PluginClient {
     return attempt(async () => {
       const p = parts(externalIdOf(resourceId));
       if (typeId === "xata-branch") {
-        const path = this.branchPath(p[0]!, p[1]!, p[2]!);
+        const path = this.branchPath(p[0], p[1], p[2]);
         if (actionId === "hibernate" || actionId === "wake") {
-          await xata(this.ctx, "PATCH", path, { hibernate: actionId === "hibernate" });
+          await this.api.patch(path, { body: { hibernate: actionId === "hibernate" } });
           return;
         }
         if (actionId === "rotate-credentials") {
@@ -885,7 +802,7 @@ export class XataClient implements PluginClient {
         }
       }
       if (typeId === "xata-invitation" && actionId === "resend") {
-        await xata(this.ctx, "POST", `${this.orgPath(p[0]!)}/invitations/${enc(p[1]!)}/resend`);
+        await this.api.post(`${this.orgPath(p[0])}/invitations/${enc(p[1])}/resend`);
         return;
       }
       throw new Error(`Xata plugin: unknown action "${actionId}" for "${typeId}".`);
@@ -905,19 +822,19 @@ export class XataClient implements PluginClient {
       const p = parts(externalIdOf(resourceId));
       let values: Record<string, string> = {};
       try {
-        values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+        values = JSON.parse(String(args[0] ?? "{}"));
       } catch {
         values = {};
       }
-      const path = this.branchPath(p[0]!, p[1]!, p[2]!);
+      const path = this.branchPath(p[0], p[1], p[2]);
       if (command === "set-instance-type") {
-        await xata(this.ctx, "PATCH", path, {
-          instanceType: required(values["instanceType"], "an instance type"),
+        await this.api.patch(path, {
+          body: { instanceType: required(values["instanceType"], "an instance type") },
         });
         return { ok: true };
       }
       if (command === "set-image") {
-        await xata(this.ctx, "PATCH", path, { image: required(values["image"], "an image") });
+        await this.api.patch(path, { body: { image: required(values["image"], "an image") } });
         return { ok: true };
       }
       throw new Error(`Xata plugin: unknown command "${command}".`);
@@ -934,26 +851,18 @@ export class XataClient implements PluginClient {
   ): PluginEffect<MetricSeries[]> {
     return attempt(async () => {
       if (typeId !== "xata-branch") return [];
-      const [org, project, branch] = parts(externalIdOf(resourceId)) as [string, string, string];
+      const [org, project, branch] = parts(externalIdOf(resourceId));
       const end = timeRange?.endMs ?? Date.now();
       const start = timeRange?.startMs ?? end - DEFAULT_METRICS_WINDOW_MS;
-      const res = await xata<{
-        results?: Array<{
-          metric: string;
-          unit: string;
-          series: Array<{
-            instanceID: string;
-            aggregation: string;
-            values: Array<{ timestamp: string; value: number }>;
-          }>;
-        }>;
-      }>(this.ctx, "POST", `${this.branchPath(org, project, branch)}/metrics`, {
-        start: new Date(start).toISOString(),
-        end: new Date(end).toISOString(),
-        metrics: METRICS.map(([id]) => id),
-        aggregations: ["avg"],
+      const res = await this.api.post(`${this.branchPath(org, project, branch)}/metrics`, {
+        body: {
+          start: new Date(start).toISOString(),
+          end: new Date(end).toISOString(),
+          metrics: METRICS.map(([id]) => id),
+          aggregations: ["avg"],
+        },
       });
-      const labels = new Map(METRICS);
+      const labels = new Map<string, string>(METRICS);
       const out: MetricSeries[] = [];
       for (const result of res?.results ?? []) {
         const several = result.series.length > 1;
@@ -982,27 +891,21 @@ export class XataClient implements PluginClient {
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
       if (typeId !== "xata-branch") return { text: "", containers: [], activeContainer: "" };
-      const [org, project, branch] = parts(externalIdOf(resourceId)) as [string, string, string];
+      const [org, project, branch] = parts(externalIdOf(resourceId));
       const containers = ["all", "warnings and errors"];
       const active =
         params.container && containers.includes(params.container) ? params.container : "all";
       const end = new Date();
       const start = new Date(end.getTime() - 24 * 3_600_000);
-      const res = await xata<{
-        logs?: Array<{
-          timestamp: string;
-          instanceID: string;
-          level?: string;
-          message: string;
-          process?: string;
-        }>;
-      }>(this.ctx, "POST", `${this.branchPath(org, project, branch)}/logs`, {
-        start: start.toISOString(),
-        end: end.toISOString(),
-        limit: Math.min(Math.max(params.tailLines ?? 200, 1), 1000),
-        ...(active === "warnings and errors"
-          ? { filters: [{ field: "level", op: "in", values: ["warning", "error"] }] }
-          : {}),
+      const res = await this.api.post(`${this.branchPath(org, project, branch)}/logs`, {
+        body: {
+          start: start.toISOString(),
+          end: end.toISOString(),
+          limit: Math.min(Math.max(params.tailLines ?? 200, 1), 1000),
+          ...(active === "warnings and errors"
+            ? { filters: [{ field: "level", op: "in", values: ["warning", "error"] }] }
+            : {}),
+        },
       });
       const logs = [...(res?.logs ?? [])].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
       const text = logs
@@ -1021,31 +924,21 @@ export class XataClient implements PluginClient {
       const lists = await Promise.all(
         orgs.map(async (o) => {
           const invoices: XInvoice[] = [];
-          let cursor: string | undefined;
+          let cursor: string | null | undefined;
           for (let page = 0; page < 50; page++) {
-            const res = await xata<{
-              data?: XInvoice[];
-              pagination_metadata?: { has_more?: boolean; next_cursor?: string };
-            }>(this.ctx, "GET", `${this.orgPath(o.id)}/billing/invoices`, undefined, {
-              limit: 100,
-              ...(cursor ? { cursor } : {}),
+            const res = await this.api.get(`${this.orgPath(o.id)}/billing/invoices`, {
+              query: { limit: 100, ...(cursor ? { cursor } : {}) },
             });
             invoices.push(...(res?.data ?? []));
             cursor = res?.pagination_metadata?.next_cursor;
             if (!res?.pagination_metadata?.has_more || !cursor) break;
           }
-          const upcoming = await xata<{
-            amount_due?: number;
-            total?: number;
-            currency?: string;
-            target_date?: string;
-            created_at?: string;
-          }>(this.ctx, "GET", `${this.orgPath(o.id)}/billing/invoices/upcoming`).catch(
-            (err: unknown) => {
+          const upcoming = await this.api
+            .get(`${this.orgPath(o.id)}/billing/invoices/upcoming`)
+            .catch((err: unknown) => {
               if ([402, 403, 404].includes(statusOf(err))) return undefined;
               throw err;
-            },
-          );
+            });
           return fetchXataCostData(o, invoices, upcoming, range);
         }),
       );
@@ -1064,38 +957,19 @@ export class XataClient implements PluginClient {
       const lists = await Promise.all(
         orgs.map(async (o) => {
           const [limits, membership, projects, members, invites] = await Promise.all([
-            xata<{
-              maxProjects?: number;
-              maxBranchesPerOrg?: number;
-              maxBranchesPerProject?: number;
-            }>(this.ctx, "GET", `${this.orgPath(o.id)}/limits`),
-            xata<{ maxMembers?: number; maxInvites?: number }>(
-              this.ctx,
-              "GET",
-              `${this.orgPath(o.id)}/membership-limits`,
-            ),
+            this.api.get(`${this.orgPath(o.id)}/limits`),
+            this.api.get(`${this.orgPath(o.id)}/membership-limits`),
             this.projects(o.id),
-            xata<{ members?: XMember[] }>(this.ctx, "GET", `${this.orgPath(o.id)}/members`),
-            xata<{ invitations?: XInvitation[] }>(
-              this.ctx,
-              "GET",
-              `${this.orgPath(o.id)}/invitations`,
-              undefined,
-              {
-                status: "pending",
-                max: 100,
-              },
-            ),
+            this.api.get(`${this.orgPath(o.id)}/members`),
+            this.api.get(`${this.orgPath(o.id)}/invitations`, {
+              query: { status: "pending", max: 100 },
+            }),
           ]);
           const perProject = await Promise.all(
             projects.map(async (p) => ({
               project: p,
               branches: (await this.branchSummaries(o.id, p.id)).length,
-              limits: await xata<{ maxBranchesPerProject?: number }>(
-                this.ctx,
-                "GET",
-                `${this.projectPath(o.id, p.id)}/limits`,
-              ),
+              limits: await this.api.get(`${this.projectPath(o.id, p.id)}/limits`),
             })),
           );
           const totalBranches = perProject.reduce((s, x) => s + x.branches, 0);
@@ -1196,15 +1070,12 @@ export function projectResource(
   );
 }
 
-export function projectPatch(
-  current: XProject,
-  fields: Record<string, string>,
-): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
+export function projectPatch(current: XProject, fields: Record<string, string>): XProjectPatch {
+  const body: XProjectPatch = {};
   if (fields["name"]) body["name"] = fields["name"];
   const s2z = current.configuration.scaleToZero;
   const touches = (keys: string[]) => keys.some((k) => fields[k] !== undefined);
-  const configuration: Record<string, unknown> = {};
+  const configuration: XProjectConfigPatch = {};
   if (
     touches([
       "baseScaleToZero",
@@ -1242,8 +1113,8 @@ export function projectPatch(
 
 export function branchResource(
   org: string,
-  project: string,
-  b: XBranch,
+  project: string | undefined,
+  b: XBranchRow,
   accountId: string,
   host: string,
 ): ResourceInstance {

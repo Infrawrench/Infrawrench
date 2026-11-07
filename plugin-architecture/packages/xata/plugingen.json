@@ -1,0 +1,67 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.xata.tech/openapi.json",
+  "patches": [
+    {
+      "pointer": "/components/schemas/SetOrganizationMemberRoleRequest/properties/role",
+      "value": {
+        "type": "string"
+      },
+      "why": "The role field's text goes through as typed and Xata validates it, so a value outside this enum stays Xata's error."
+    },
+    {
+      "pointer": "/paths/~1sql/post/responses/200/content/application~1json/schema",
+      "value": {
+        "$ref": "#/components/schemas/QueryResult"
+      },
+      "why": "The plugin only ever sends a single `query`; `BatchResponse` answers `queries`, which it never sends."
+    },
+    {
+      "pointer": "/components/schemas/QueryResult/properties/rows/items",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "Rows are objects unless `arrayMode` is set, and the plugin never sets it."
+    }
+  ],
+  "paths": {
+    "/organizations": ["get"],
+    "/organizations/{organizationID}": ["put"],
+    "/organizations/{organizationID}/api-keys": ["get", "post", "delete"],
+    "/organizations/{organizationID}/members": ["get"],
+    "/organizations/{organizationID}/members/{userID}": ["delete"],
+    "/organizations/{organizationID}/members/{userID}/role": ["put"],
+    "/organizations/{organizationID}/invitations": ["get", "post"],
+    "/organizations/{organizationID}/invitations/{invitationID}": ["delete"],
+    "/organizations/{organizationID}/invitations/{invitationID}/resend": ["post"],
+    "/organizations/{organizationID}/membership-limits": ["get"],
+    "/organizations/{organizationID}/billing/invoices": ["get"],
+    "/organizations/{organizationID}/billing/invoices/upcoming": ["get"],
+    "/organizations/{organizationID}/regions": ["get"],
+    "/organizations/{organizationID}/instanceTypes": ["get"],
+    "/organizations/{organizationID}/images": ["get"],
+    "/organizations/{organizationID}/limits": ["get"],
+    "/organizations/{organizationID}/projects": ["get", "post"],
+    "/organizations/{organizationID}/projects/{projectID}": ["get", "patch", "delete"],
+    "/organizations/{organizationID}/projects/{projectID}/limits": ["get"],
+    "/organizations/{organizationID}/projects/{projectID}/backups": ["get"],
+    "/organizations/{organizationID}/projects/{projectID}/branches": ["get", "post"],
+    "/organizations/{organizationID}/projects/{projectID}/branches/{branchID}": [
+      "get",
+      "patch",
+      "delete"
+    ],
+    "/organizations/{organizationID}/projects/{projectID}/branches/{branchID}/credentials": ["get"],
+    "/organizations/{organizationID}/projects/{projectID}/branches/{branchID}/credentials/rotate": [
+      "post"
+    ],
+    "/organizations/{organizationID}/projects/{projectID}/branches/{branchID}/metrics": ["post"],
+    "/organizations/{organizationID}/projects/{projectID}/branches/{branchID}/restore": ["post"],
+    "/organizations/{organizationID}/projects/{projectID}/branches/{branchID}/logs": ["post"],
+    "/organizations/{organizationID}/projects/{projectID}/branches/{branchID}/postgres-config": [
+      "get"
+    ],
+    "/sql": ["post"]
+  }
+}
