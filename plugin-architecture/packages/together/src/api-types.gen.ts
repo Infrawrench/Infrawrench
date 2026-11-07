@@ -578,6 +578,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v2/organizations/{organizationId}/endpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["EndpointService_ListOrganizationEndpoints"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v2/projects/{projectId}/endpoints": {
         parameters: {
             query?: never;
@@ -666,6 +682,54 @@ export interface paths {
             cookie?: never;
         };
         get: operations["EndpointService_ListEndpointEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/public/inference-instance-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["InstanceTypeService_ListInferenceInstanceTypes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/supported-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["SupportedModelsService_ListSupportedModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v3/whoami": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["whoami"];
         put?: never;
         post?: never;
         delete?: never;
@@ -893,6 +957,10 @@ export interface components {
             scalingMetrics?: components["schemas"]["DE.ScalingMetric"][];
         };
         "DE.AutoscalingResponse": components["schemas"]["DE.Autoscaling"] & Record<string, never>;
+        "DE.ComplianceAvailability": {
+            headroom: components["schemas"]["DE.Headroom"];
+            policy: components["schemas"]["DE.CompliancePolicy"];
+        };
         "DE.CompliancePolicy": {
             hipaa?: boolean;
         };
@@ -1037,6 +1105,21 @@ export interface components {
                 [key: string]: string;
             };
         };
+        "DE.Headroom": {
+            /** @enum {string} */
+            relation: "RELATION_EQ" | "RELATION_GTE";
+            value?: number;
+        };
+        "DE.InferenceInstanceType": {
+            description: string;
+            gpuCount: number;
+            gpuMemoryGib: number;
+            gpuType: string;
+            id: string;
+            name: string;
+            priceCentsPerHour: number;
+            regions: components["schemas"]["DE.Region"][];
+        };
         "DE.InlinePlacement": {
             compliancePolicy?: components["schemas"]["DE.CompliancePolicy"];
             /** @enum {string} */
@@ -1072,6 +1155,18 @@ export interface components {
             /** @constant */
             object: "list";
         };
+        "DE.ListInferenceInstanceTypesResponse": {
+            data: components["schemas"]["DE.InferenceInstanceType"][];
+            next_cursor?: string;
+            /** @constant */
+            object: "list";
+        };
+        "DE.ListSupportedModelsResponse": {
+            data: components["schemas"]["DE.SupportedModel"][];
+            next_cursor?: string;
+            /** @constant */
+            object: "list";
+        };
         "DE.MetricsTimeRange": {
             /** Format: date-time */
             endTime?: string;
@@ -1082,6 +1177,11 @@ export interface components {
             inline: components["schemas"]["DE.InlinePlacement"];
         } | {
             profile: string;
+        };
+        "DE.Region": {
+            compliance?: components["schemas"]["DE.ComplianceAvailability"][];
+            headroom?: components["schemas"]["DE.Headroom"];
+            name: string;
         };
         "DE.RegionStatus": {
             readyReplicas: number;
@@ -1131,6 +1231,65 @@ export interface components {
         };
         "DE.StatusDetails": {
             region: components["schemas"]["DE.RegionStatus"][];
+        };
+        "DE.SupportedModel": {
+            architecture?: string;
+            baseModel: string;
+            baseModelId: string;
+            capabilities: ("CAPABILITY_CHAT" | "CAPABILITY_EMBEDDING" | "CAPABILITY_RERANKING" | "CAPABILITY_IMAGE_GENERATION" | "CAPABILITY_VIDEO_GENERATION")[];
+            contextLength?: string;
+            /** Format: date-time */
+            createdAt: string;
+            deploymentProfiles: components["schemas"]["DE.SupportedModelDeploymentProfile"][];
+            description?: string;
+            displayName: string;
+            displayType: string;
+            familyId?: string;
+            features?: ("FEATURE_TOOL_CALLING" | "FEATURE_STRUCTURED_OUTPUT" | "FEATURE_REASONING")[];
+            id: string;
+            inputFormat?: string;
+            inputModalities: ("MODALITY_TEXT" | "MODALITY_IMAGE" | "MODALITY_AUDIO" | "MODALITY_VIDEO")[];
+            name: string;
+            outputFormat?: string;
+            outputModalities: ("MODALITY_TEXT" | "MODALITY_IMAGE" | "MODALITY_AUDIO" | "MODALITY_VIDEO")[];
+            pricing?: components["schemas"]["DE.SupportedModelPricing"];
+            products: ("PRODUCT_SERVERLESS" | "PRODUCT_DEDICATED" | "PRODUCT_FINE_TUNING" | "PRODUCT_RESERVED")[];
+            publisher: string;
+            serverlessEndpoint?: string;
+            /** @enum {string} */
+            status: "SUPPORTED_MODEL_STATUS_RECOMMENDED" | "SUPPORTED_MODEL_STATUS_SUPPORTED" | "SUPPORTED_MODEL_STATUS_DEPRECATED" | "SUPPORTED_MODEL_STATUS_HIDDEN";
+            tags?: string[];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        "DE.SupportedModelDeploymentProfile": {
+            /** @enum {string} */
+            adapterMode?: "ADAPTER_MODE_FIXED" | "ADAPTER_MODE_DYNAMIC" | "ADAPTER_MODE_DISABLED";
+            certifiedConfigRevisionId: string;
+            certifiedModelRevisionId: string;
+            config: string;
+            gpuCount: number;
+            gpuType: string;
+            model: string;
+            modelName: string;
+            parallelism: string;
+            performanceBenchmarks: components["schemas"]["DE.SupportedModelPerformanceBenchmarks"];
+            profileId: string;
+            quantization: string;
+        };
+        "DE.SupportedModelPerformanceBenchmarks": {
+            /** Format: double */
+            decodingSpeedTps?: number;
+            maxContextLength?: string;
+            timeToFirstTokenMs?: number;
+        };
+        "DE.SupportedModelPricing": {
+            /** Format: double */
+            cachedInput?: number;
+            /** Format: double */
+            input?: number;
+            /** Format: double */
+            output?: number;
         };
         "DE.ThroughputMetrics": {
             avgBatchDepth?: number;
@@ -1766,6 +1925,68 @@ export interface components {
             /** @default auto */
             train_on_inputs: boolean & (boolean | "auto");
         };
+        WhoamiApiKey: {
+            id: string;
+        };
+        WhoamiOrganization: {
+            id: string;
+            name: string;
+        };
+        WhoamiOrgApiKey: {
+            api_key: components["schemas"]["WhoamiApiKey"];
+            organization: components["schemas"]["WhoamiOrganization"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "org_api_key";
+        };
+        WhoamiProject: {
+            id: string;
+            name: string;
+            slug: string;
+        };
+        WhoamiProjectApiKey: {
+            api_key: components["schemas"]["WhoamiApiKey"];
+            organization: components["schemas"]["WhoamiOrganization"];
+            project: components["schemas"]["WhoamiProject"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "project_api_key";
+        };
+        WhoamiResponse: components["schemas"]["WhoamiProjectApiKey"] | components["schemas"]["WhoamiOrgApiKey"] | components["schemas"]["WhoamiUserJwt"] | components["schemas"]["WhoamiUserOrgJwt"] | components["schemas"]["WhoamiUserOrgProjectJwt"];
+        WhoamiUser: {
+            id: string;
+        };
+        WhoamiUserJwt: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "user_jwt";
+            user: components["schemas"]["WhoamiUser"];
+        };
+        WhoamiUserOrgJwt: {
+            organization: components["schemas"]["WhoamiOrganization"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "user_org_jwt";
+            user: components["schemas"]["WhoamiUser"];
+        };
+        WhoamiUserOrgProjectJwt: {
+            organization: components["schemas"]["WhoamiOrganization"];
+            project: components["schemas"]["WhoamiProject"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "user_org_project_jwt";
+            user: components["schemas"]["WhoamiUser"];
+        };
         XidDetail: {
             readonly events: components["schemas"]["XidEvent"][];
         };
@@ -2132,6 +2353,32 @@ export interface operations {
             };
         };
     };
+    EndpointService_ListOrganizationEndpoints: {
+        parameters: {
+            query?: {
+                after?: string;
+                filter?: string;
+                limit?: number;
+                orderBy?: string;
+            };
+            header?: never;
+            path: {
+                organizationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DE.ListEndpointsResponse"];
+                };
+            };
+        };
+    };
     EndpointService_ListEndpoints: {
         parameters: {
             query?: {
@@ -2290,6 +2537,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DE.ListEndpointEventsResponse"];
+                };
+            };
+        };
+    };
+    InstanceTypeService_ListInferenceInstanceTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DE.ListInferenceInstanceTypesResponse"];
+                };
+            };
+        };
+    };
+    SupportedModelsService_ListSupportedModels: {
+        parameters: {
+            query?: {
+                adapterMode?: "ADAPTER_MODE_FIXED" | "ADAPTER_MODE_DYNAMIC" | "ADAPTER_MODE_DISABLED";
+                after?: string;
+                limit?: number;
+                modality?: "MODALITY_TEXT" | "MODALITY_IMAGE" | "MODALITY_AUDIO" | "MODALITY_VIDEO";
+                product?: "PRODUCT_SERVERLESS" | "PRODUCT_DEDICATED" | "PRODUCT_FINE_TUNING";
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DE.ListSupportedModelsResponse"];
+                };
+            };
+        };
+    };
+    whoami: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WhoamiResponse"];
                 };
             };
         };

@@ -94,8 +94,8 @@ describe("v1 listing", () => {
 describe("v2 DMI endpoints", () => {
   it("discovers the project from /whoami and follows the next_cursor", async () => {
     installFetch((url) => {
-      if (url.endsWith("/v1/whoami")) {
-        return jsonResponse({ project_id: "proj-1", project_slug: "acme" });
+      if (url.endsWith("/v3/whoami")) {
+        return jsonResponse({ project: { id: "proj-1", name: "Acme", slug: "acme" } });
       }
       if (url.includes("/v2/projects/proj-1/endpoints") && !url.includes("after=")) {
         return jsonResponse({ data: [{ id: "e1", name: "acme/one" }], next_cursor: "cur-2" });
@@ -117,7 +117,7 @@ describe("v2 DMI endpoints", () => {
 
   it("deletes deployments before the endpoint itself", async () => {
     installFetch((url, init) => {
-      if (url.endsWith("/v1/whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ project: { id: "proj-1" } });
       if (url.includes("/endpoints/e1/deployments?limit=500")) {
         return jsonResponse({ data: [{ id: "d1" }, { id: "d2" }] });
       }
@@ -388,6 +388,245 @@ describe("host HTTP", () => {
   });
 });
 
+describe("whoami", () => {
+  it("reads the project from /v3/whoami", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v3/whoami")) {
+        return jsonResponse({
+          type: "project_api_key",
+          api_key: { id: "k1" },
+          organization: { id: "org-1", name: "Acme" },
+          project: { id: "proj-1", name: "Acme", slug: "acme" },
+        });
+      }
+      if (url.includes("/v2/projects/proj-1/endpoints")) {
+        return jsonResponse({ data: [{ id: "e1" }], next_cursor: null });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const items = await client().listResources("managed-endpoint", ACCOUNT);
+    expect(items.map((item) => item.externalId)).toEqual(["e1"]);
+    expect(calls.some((call) => call.url.endsWith("/v1/whoami"))).toBe(false);
+  });
+
+  it.each([403, 404, 405, 410])("falls back to /v1/whoami when v3 answers %i", async (status) => {
+    installFetch((url) => {
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ error: {} }, status);
+      if (url.endsWith("/v1/whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.includes("/v2/projects/proj-1/endpoints")) {
+        return jsonResponse({ data: [{ id: "e1" }] });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const items = await client().listResources("managed-endpoint", ACCOUNT);
+    expect(items.map((item) => item.externalId)).toEqual(["e1"]);
+  });
+
+  it("fails on a server error rather than trying the old route", async () => {
+    installFetch(() => jsonResponse({ error: {} }, 500));
+    await expect(client().listResources("managed-endpoint", ACCOUNT)).rejects.toThrow(/500/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("fails rather than reading no project as no endpoints", async () => {
+    installFetch(() => jsonResponse({ type: "user_jwt", user: { id: "u1" } }));
+    await expect(client().listResources("managed-endpoint", ACCOUNT)).rejects.toThrow(
+      "names no project",
+    );
+  });
+
+  describe("with an organization key, which has no project", () => {
+    const orgKey = { type: "org_api_key", api_key: { id: "k" }, organization: { id: "org-1" } };
+
+    function installOrg() {
+      installFetch((url, init) => {
+        if (url.endsWith("/v3/whoami")) return jsonResponse(orgKey);
+        if (url.includes("/v2/organizations/org-1/endpoints")) {
+          return jsonResponse({ data: [{ id: "e1", projectId: "proj-9" }], next_cursor: null });
+        }
+        if (url.endsWith("/deployments?limit=500")) return jsonResponse({ data: [] });
+        if (init?.method === "DELETE") return jsonResponse({}, 204);
+        throw new Error(`unrouted: ${url}`);
+      });
+    }
+
+    it("lists the organization's endpoints", async () => {
+      installOrg();
+      const items = await client().listResources("managed-endpoint", ACCOUNT);
+      expect(items.map((item) => item.externalId)).toEqual(["e1"]);
+      expect(items[0]?.fields["projectId"]).toBe("proj-9");
+    });
+
+    it("deletes an endpoint under the project that holds it", async () => {
+      installOrg();
+      await client().deleteResource("managed-endpoint", `${ACCOUNT}:managed-endpoint:e1`, ACCOUNT);
+      expect(
+        calls.filter((call) => call.init?.method === "DELETE").map((call) => call.url),
+      ).toEqual(["https://api.together.ai/v2/projects/proj-9/endpoints/e1"]);
+    });
+
+    it("refuses to act on an endpoint the organization does not list", async () => {
+      installOrg();
+      await expect(
+        client().deleteResource("managed-endpoint", `${ACCOUNT}:managed-endpoint:e2`, ACCOUNT),
+      ).rejects.toThrow("does not list");
+      expect(calls.some((call) => call.init?.method === "DELETE")).toBe(false);
+    });
+  });
+});
+
+describe("catalogues that have left the document", () => {
+  const supported = {
+    id: "arch_abc123",
+    name: "meta-llama/Llama-3",
+    serverlessEndpoint: "meta-llama/Llama-3-Turbo",
+    displayName: "Llama 3",
+    publisher: "Meta",
+    status: "SUPPORTED_MODEL_STATUS_SUPPORTED",
+    capabilities: ["CAPABILITY_CHAT"],
+    contextLength: "8192",
+    createdAt: "2026-01-01T00:00:00Z",
+    pricing: { input: 0.2, output: 0.6, cachedInput: 0.1 },
+  };
+
+  it("keeps reading /v1/models while it answers", async () => {
+    installFetch(() => jsonResponse([{ id: "meta/llama", type: "chat" }]));
+    await client().listResources("model", ACCOUNT);
+    expect(calls.map((call) => call.url)).toEqual(["https://api.together.ai/v1/models"]);
+  });
+
+  it.each([404, 410])("reads /v2/supported-models when /v1/models answers %i", async (status) => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/models")) return jsonResponse({ error: {} }, status);
+      if (url.includes("after=cur-2")) {
+        return jsonResponse({
+          data: [{ ...supported, name: "acme/two", serverlessEndpoint: undefined }],
+          next_cursor: null,
+        });
+      }
+      if (url.includes("/v2/supported-models")) {
+        return jsonResponse({
+          data: [
+            supported,
+            { ...supported, name: "acme/hidden", status: "SUPPORTED_MODEL_STATUS_HIDDEN" },
+          ],
+          next_cursor: "cur-2",
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const items = await client().listResources("model", ACCOUNT);
+    const ids = items.map((item) => item.externalId);
+    expect(calls[1]?.url).toContain("product=PRODUCT_SERVERLESS");
+    // The opaque catalogue id is not what inference takes.
+    expect(ids).not.toContain("arch_abc123");
+    expect(ids).not.toContain("acme/hidden");
+    expect(ids).toContain("acme/two");
+    const model = items.find((item) => item.externalId === "meta-llama/Llama-3-Turbo");
+    expect(model?.displayName).toBe("Llama 3");
+    expect(model?.fields).toMatchObject({
+      type: "chat",
+      organization: "Meta",
+      contextLength: 8192,
+      inputPrice: 0.2,
+      outputPrice: 0.6,
+    });
+  });
+
+  it("does not read a /v1/models failure as a retired route", async () => {
+    installFetch(() => jsonResponse({ error: {} }, 500));
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow(/500/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reads the instance types when /v1/hardware has gone", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/hardware")) return jsonResponse({ error: {} }, 404);
+      if (url.endsWith("/v2/public/inference-instance-types")) {
+        return jsonResponse({
+          data: [
+            {
+              id: "it-1",
+              name: "1x H100",
+              gpuType: "H100",
+              gpuCount: 1,
+              gpuMemoryGib: 80,
+              priceCentsPerHour: 300,
+            },
+          ],
+        });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const items = await client().listResources("hardware", ACCOUNT);
+    expect(items[0]?.externalId).toBe("it-1");
+    expect(items[0]?.fields).toMatchObject({
+      gpuType: "H100",
+      gpuCount: 1,
+      gpuMemoryGb: 80,
+      centsPerMinute: 5,
+    });
+  });
+
+  it("fails if the instance types turn out to have another page", async () => {
+    installFetch((url) =>
+      url.endsWith("/v1/hardware")
+        ? jsonResponse({ error: {} }, 404)
+        : jsonResponse({ data: [], next_cursor: "cur-2" }),
+    );
+    await expect(client().listResources("hardware", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("offers dedicated models from the new catalogue on the create form", async () => {
+    installFetch((url) => {
+      if (url.includes("/v1/models") || url.endsWith("/v1/hardware")) {
+        return jsonResponse({ error: {} }, 404);
+      }
+      if (url.includes("/v2/supported-models")) return jsonResponse({ data: [supported] });
+      if (url.endsWith("/v2/public/inference-instance-types")) {
+        return jsonResponse({ data: [{ id: "it-1", gpuType: "H100" }] });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    const form = await client().getCreateConfig("endpoint");
+    expect(calls.some((call) => call.url.includes("product=PRODUCT_DEDICATED"))).toBe(true);
+    const json = JSON.stringify(form);
+    expect(json).toContain("meta-llama/Llama-3");
+    expect(json).toContain("it-1");
+  });
+});
+
+describe("v1 endpoints Together has closed to new work", () => {
+  const closed = {
+    error: { code: "endpoints_v1_create_access_disabled", message: "disabled" },
+  };
+
+  it("says what to do when a create is refused", async () => {
+    installFetch(() => jsonResponse(closed, 403));
+    await expect(
+      client().createResource("endpoint", ACCOUNT, { model: "m", hardware: "h" }),
+    ).rejects.toThrow("no longer lets this account");
+  });
+
+  it("says what to do when a restart is refused", async () => {
+    installFetch((_url, init) =>
+      init?.method === "PATCH" ? jsonResponse(closed, 403) : jsonResponse({ id: "e1" }),
+    );
+    await expect(
+      client().invokeAction("endpoint", `${ACCOUNT}:endpoint:e1`, "start", ACCOUNT),
+    ).rejects.toThrow("no longer lets this account");
+  });
+
+  it("leaves any other refusal as Together wrote it", async () => {
+    installFetch(() => jsonResponse({ error: { code: "quota_exceeded" } }, 403));
+    await expect(
+      client().createResource("endpoint", ACCOUNT, { model: "m", hardware: "h" }),
+    ).rejects.toThrow("quota_exceeded");
+  });
+});
+
 describe("reading a whole list or failing", () => {
   const LISTS: Array<[string, string]> = [
     ["fine-tune", "data"],
@@ -419,7 +658,7 @@ describe("reading a whole list or failing", () => {
   it("fails a managed endpoint list that never ends, after exactly 100 pages", async () => {
     let pages = 0;
     installFetch((url) => {
-      if (url.includes("whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.includes("whoami")) return jsonResponse({ project: { id: "proj-1" } });
       pages += 1;
       return jsonResponse({ data: [{ id: `e${pages}` }], next_cursor: `cur-${pages}` });
     });
@@ -432,7 +671,7 @@ describe("reading a whole list or failing", () => {
   it("fails a managed endpoint page that is not a list, first or later", async () => {
     let pages = 0;
     installFetch((url) => {
-      if (url.includes("whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.includes("whoami")) return jsonResponse({ project: { id: "proj-1" } });
       pages += 1;
       return pages === 1
         ? jsonResponse({ data: [{ id: "e1" }], next_cursor: "cur-2" })
@@ -503,7 +742,7 @@ describe("deleting a managed endpoint", () => {
 
   it("deletes the deployments on every page, at the documented page size", async () => {
     installFetch((url, init) => {
-      if (url.includes("whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.includes("whoami")) return jsonResponse({ project: { id: "proj-1" } });
       if (init?.method === "DELETE") return jsonResponse({}, 204);
       if (url.endsWith("/deployments?limit=500")) {
         return jsonResponse({ data: [{ id: "d1" }], next_cursor: "cur-2" });
@@ -523,7 +762,7 @@ describe("deleting a managed endpoint", () => {
 
   it("deletes nothing when the deployments cannot be read", async () => {
     installFetch((url) => {
-      if (url.includes("whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.includes("whoami")) return jsonResponse({ project: { id: "proj-1" } });
       return jsonResponse({ error: { message: "try later" } }, 500);
     });
     await expect(client().deleteResource("managed-endpoint", resourceId, ACCOUNT)).rejects.toThrow(
@@ -535,7 +774,7 @@ describe("deleting a managed endpoint", () => {
   it("deletes nothing when the deployments never end", async () => {
     let pages = 0;
     installFetch((url) => {
-      if (url.includes("whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.includes("whoami")) return jsonResponse({ project: { id: "proj-1" } });
       pages += 1;
       return jsonResponse({ data: [{ id: `d${pages}` }], next_cursor: `cur-${pages}` });
     });
@@ -650,7 +889,7 @@ describe("billing usage costs", () => {
 describe("managed endpoint analytics", () => {
   it("requests a time series and emits one series per metric key", async () => {
     installFetch((url) => {
-      if (url.endsWith("/v1/whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ project: { id: "proj-1" } });
       if (url.includes("/analytics")) {
         return jsonResponse({
           timeSeries: [
@@ -683,7 +922,7 @@ describe("managed endpoint analytics", () => {
 
   it("renders the 24-hour aggregate on the detail page and advertises metrics", async () => {
     installFetch((url) => {
-      if (url.endsWith("/v1/whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ project: { id: "proj-1" } });
       if (url.includes("/analytics")) {
         expect(url).not.toContain("includeTimeSeries");
         return jsonResponse({
@@ -717,7 +956,7 @@ describe("managed endpoint analytics", () => {
 describe("managed endpoint events", () => {
   it("renders the event feed oldest first as the Logs tab", async () => {
     installFetch((url) => {
-      if (url.endsWith("/v1/whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (url.endsWith("/v3/whoami")) return jsonResponse({ project: { id: "proj-1" } });
       if (url.includes("/events")) {
         return jsonResponse({
           object: "list",

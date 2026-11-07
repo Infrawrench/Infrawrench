@@ -25,6 +25,7 @@
     }
   ],
   "paths": {
+    "/v3/whoami": ["get"],
     "/v1/fine-tunes": ["get"],
     "/v1/fine-tunes/{id}": ["get", "delete"],
     "/v1/fine-tunes/{id}/events": ["get"],
@@ -45,6 +46,9 @@
     "/v1/voices": ["get"],
     "/v1/audio/transcriptions": ["post"],
     "/v1/billing/usage": ["get"],
+    "/v2/supported-models": ["get"],
+    "/v2/public/inference-instance-types": ["get"],
+    "/v2/organizations/{organizationId}/endpoints": ["get"],
     "/v2/projects/{projectId}/endpoints": ["get"],
     "/v2/projects/{projectId}/endpoints/{id}": ["delete"],
     "/v2/projects/{projectId}/endpoints/{endpointId}/deployments": ["get"],

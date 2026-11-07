@@ -59,10 +59,18 @@ export function withDmiPagination(api: ReturnType<typeof createTogetherApi>) {
   });
 }
 
+/** The status of a failed call, from the message both request paths here write. */
+export function apiErrorStatus(error: unknown): number | undefined {
+  const match = error instanceof Error ? /^Together API error (\d+)/.exec(error.message) : null;
+  return match ? Number(match[1]) : undefined;
+}
+
 /**
- * A call to a v1 route the document no longer describes: `/whoami`, `/models`,
- * `/hardware` and `/endpoints` (the document has `/v3/whoami` and the v2 endpoints).
- * The types below stand in for it, so nothing but the plugin's use of them checks these.
+ * A call to a v1 route the document no longer describes: `/whoami`, `/models`, `/hardware`
+ * and `/endpoints`. The types below stand in for it, so nothing but the plugin's use of
+ * them checks these. Together's migration guide still has v1 endpoints listed, stopped and
+ * deleted here "until further notice":
+ * https://docs.together.ai/docs/dedicated-endpoints/migrate-from-v1
  */
 export function undocumentedRequest<T>(
   { apiKey, caCert, http }: TogetherConnection,
@@ -85,14 +93,13 @@ export function undocumentedRequest<T>(
 // Routes the document does not cover
 // ---------------------------------------------------------------------------
 
+/** `GET /v3/whoami` nests the ids; `GET /v1/whoami` has them at the top level. */
 export interface WhoAmI {
-  api_key_id?: string;
+  type?: string;
+  project?: { id?: string };
+  organization?: { id?: string };
   project_id?: string;
-  project_name?: string;
-  project_slug?: string;
   organization_id?: string;
-  organization_name?: string;
-  user_id?: string;
 }
 
 export interface TogetherModel {
@@ -179,6 +186,8 @@ export type BatchJob = Schemas["BatchJob"];
 export type CreatedBatch = BatchJob & Schemas["BatchJobWithWarning"];
 export type EvaluationJob = Schemas["EvaluationJob"];
 export type DmiEndpoint = Schemas["DE.Endpoint"];
+export type SupportedModel = Schemas["DE.SupportedModel"];
+export type InstanceType = Schemas["DE.InferenceInstanceType"];
 export type DmiEndpointEvent = Schemas["DE.EndpointEvent"];
 export type DmiEndpointMetrics = Schemas["DE.EndpointMetrics"];
 export type DmiAnalytics = Schemas["DE.AnalyticsData"];

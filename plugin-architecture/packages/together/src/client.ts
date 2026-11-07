@@ -42,6 +42,7 @@ import {
 } from "@infrawrench/plugin-base";
 import {
   API_BASE,
+  apiErrorStatus,
   createTogetherApi,
   undocumentedRequest,
   withDmiPagination,
@@ -64,8 +65,10 @@ import {
   type FineTuneEvent,
   type FineTuneJob,
   type GpuCluster,
+  type InstanceType,
   type ListEndpoint,
   type SharedVolume,
+  type SupportedModel,
   type TogetherFile,
   type TogetherConnection,
   type TogetherHardware,
@@ -185,6 +188,65 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const EVALUATIONS_FIRST_ASK = 100;
 const EVALUATIONS_MOST = 10_000;
 const MAX_BILLING_PAGES = 50;
+
+/** What Together answers a create or restart of a v1 endpoint with, per its migration guide. */
+const NO_IDENTITY =
+  "Together plugin: this API key names no project or organization, so its managed endpoints cannot be read";
+
+const V1_ENDPOINTS_CLOSED = "endpoints_v1_create_access_disabled";
+
+interface TogetherIdentity {
+  projectId: string | undefined;
+  organizationId: string | undefined;
+}
+
+/** A route that is not there any more, as opposed to one that failed this time. */
+function routeHasGone(error: unknown): boolean {
+  const status = apiErrorStatus(error);
+  return status === 404 || status === 405 || status === 410;
+}
+
+/** `/v1/models` calls each of these by a plain `type`, which the batch picker filters on. */
+const MODEL_TYPES: Array<[SupportedModel["capabilities"][number], string]> = [
+  ["CAPABILITY_CHAT", "chat"],
+  ["CAPABILITY_EMBEDDING", "embedding"],
+  ["CAPABILITY_RERANKING", "rerank"],
+  ["CAPABILITY_IMAGE_GENERATION", "image"],
+  ["CAPABILITY_VIDEO_GENERATION", "video"],
+];
+
+/** The shape of a `/v1/models` row, from `/v2/supported-models`. */
+function modelFromCatalogue(model: SupportedModel): TogetherModel {
+  const created = Date.parse(model.createdAt);
+  const contextLength = Number(model.contextLength);
+  const type = MODEL_TYPES.find(([capability]) => model.capabilities.includes(capability))?.[1];
+  const { input, output, cachedInput } = model.pricing ?? {};
+  return {
+    // `id` is opaque. These two are the document's names for what inference takes.
+    id: model.serverlessEndpoint || model.name,
+    display_name: model.displayName,
+    organization: model.publisher,
+    ...(type ? { type } : {}),
+    ...(Number.isFinite(created) ? { created: Math.floor(created / 1000) } : {}),
+    ...(model.contextLength && Number.isFinite(contextLength)
+      ? { context_length: contextLength }
+      : {}),
+    pricing: {
+      ...(input != null ? { input } : {}),
+      ...(output != null ? { output } : {}),
+      ...(cachedInput != null ? { cached_input: cachedInput } : {}),
+    },
+  };
+}
+
+/** The shape of a `/v1/hardware` row, from `/v2/public/inference-instance-types`. */
+function hardwareFromInstanceType(type: InstanceType): TogetherHardware {
+  return {
+    id: type.id,
+    pricing: { cents_per_minute: type.priceCentsPerHour / 60 },
+    specs: { gpu_type: type.gpuType, gpu_count: type.gpuCount, gpu_memory: type.gpuMemoryGib },
+  };
+}
 
 /** The list a page holds, or a throw: a sync reads an empty list as everything deleted. */
 function listAt<T>(list: readonly T[] | null | undefined, path: string, key: string | null): T[] {
@@ -560,7 +622,7 @@ export class TogetherClient implements PluginClient {
   private readonly connection: TogetherConnection;
   private readonly api: ReturnType<typeof createTogetherApi>;
   private readonly dmi: ReturnType<typeof withDmiPagination>;
-  private whoamiCache: WhoAmI | null = null;
+  private whoamiCache: TogetherIdentity | null = null;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
@@ -576,16 +638,46 @@ export class TogetherClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/whoami` validates the key and hands back the project the key
-   * belongs to. The v2 DMI paths need `project_id`, so we discover it here
-   * instead of asking the user to paste it.
+   * `GET /v3/whoami` hands back what the key belongs to. The v2 DMI paths need the
+   * project, so it is discovered here instead of asking the user to paste it. A key
+   * that v3 turns away may still be answered by `/v1/whoami`, which has only left the
+   * document.
    * https://docs.together.ai/reference/whoami
    */
-  private async whoami(): Promise<WhoAmI> {
+  private async whoami(): Promise<TogetherIdentity> {
     if (this.whoamiCache) return this.whoamiCache;
-    const identity = await this.undocumented<WhoAmI>("/whoami");
+    const answer: WhoAmI = await this.api
+      .get("/v3/whoami")
+      .catch(async (error: unknown): Promise<WhoAmI> => {
+        if (!routeHasGone(error) && apiErrorStatus(error) !== 403) throw error;
+        return this.undocumented<WhoAmI>("/whoami");
+      });
+    const identity = {
+      projectId: answer.project?.id || answer.project_id,
+      organizationId: answer.organization?.id || answer.organization_id,
+    };
     this.whoamiCache = identity;
     return identity;
+  }
+
+  /**
+   * The project an endpoint's own routes need. An organization key has none of its own,
+   * so the endpoint's row in the organization's list says which.
+   */
+  private async projectOf(endpointId: string): Promise<string> {
+    const { projectId, organizationId } = await this.whoami();
+    if (projectId) return projectId;
+    if (!organizationId) throw new Error(NO_IDENTITY);
+    const endpoints = await this.organizationEndpoints(organizationId);
+    const owner = endpoints.find((endpoint) => endpoint.id === endpointId)?.projectId;
+    if (!owner) {
+      throw new Error(`Together plugin: the organization does not list endpoint ${endpointId}`);
+    }
+    return owner;
+  }
+
+  private organizationEndpoints(organizationId: string): Promise<DmiEndpoint[]> {
+    return this.dmi.getAll(`/v2/organizations/${pathEncode(organizationId)}/endpoints`, "data");
   }
 
   // -------------------------------------------------------------------------
@@ -622,10 +714,8 @@ export class TogetherClient implements PluginClient {
         case "managed-endpoint":
           return this.listManagedEndpoints(accountId);
         case "hardware": {
-          const data = await this.undocumented<{ data?: TogetherHardware[] }>("/hardware");
-          return listAt(data.data, "/v1/hardware", "data").map((hardware) =>
-            this.mapHardware(hardware, accountId),
-          );
+          const hardware = await this.fetchHardware();
+          return hardware.map((entry) => this.mapHardware(entry, accountId));
         }
         case "batch": {
           // Bare array, not a `{ data }` envelope: the one v1 list that differs.
@@ -668,8 +758,7 @@ export class TogetherClient implements PluginClient {
    * return keeps its own metadata untouched.
    */
   private async fetchModels(): Promise<TogetherModel[]> {
-    const models = await this.undocumented<TogetherModel[]>("/models");
-    const list = [...listAt(models, "/v1/models", null)];
+    const list = [...(await this.fetchCatalogue())];
     const present = new Set(list.map((model) => model.id));
     for (const id of SPEECH_MODEL_IDS) {
       if (!present.has(id)) {
@@ -683,6 +772,61 @@ export class TogetherClient implements PluginClient {
       }
     }
     return list;
+  }
+
+  /**
+   * `/v1/models` has left the document with no notice of an end date, and
+   * `/v2/supported-models` has not been compared with it on a live account, so the new
+   * one is only read once the old one has gone.
+   */
+  private async fetchCatalogue(dedicated = false): Promise<TogetherModel[]> {
+    try {
+      const query = dedicated ? "?dedicated=true" : "";
+      const models = await this.undocumented<TogetherModel[]>(`/models${query}`);
+      return listAt(models, "/v1/models", null);
+    } catch (error) {
+      if (!routeHasGone(error)) throw error;
+    }
+    const models = await this.dmi.getAll("/v2/supported-models", "data", {
+      query: { product: dedicated ? "PRODUCT_DEDICATED" : "PRODUCT_SERVERLESS" },
+    });
+    return models
+      .filter((model) => model.status !== "SUPPORTED_MODEL_STATUS_HIDDEN")
+      .map(modelFromCatalogue);
+  }
+
+  /** As with the models: the documented catalogue is only read once `/v1/hardware` has gone. */
+  private async fetchHardware(): Promise<TogetherHardware[]> {
+    try {
+      const data = await this.undocumented<{ data?: TogetherHardware[] }>("/hardware");
+      return listAt(data.data, "/v1/hardware", "data");
+    } catch (error) {
+      if (!routeHasGone(error)) throw error;
+    }
+    const path = "/v2/public/inference-instance-types";
+    const page = await this.api.get(path);
+    const types = listAt(page.data, path, "data");
+    // The document has this "always null today", and the route takes no cursor to follow.
+    if (page.next_cursor) {
+      throw new ListTruncatedError({ vendor: "Together", path, items: types.length, maxPages: 1 });
+    }
+    return types.map(hardwareFromInstanceType);
+  }
+
+  /**
+   * Together's migration guide has it refuse new v1 endpoints and restarts with a 403, while
+   * listing, stopping and deleting them still work, so the refusal says where to go instead.
+   */
+  private async writeEndpoint<T>(path: string, init: RequestInit): Promise<T> {
+    try {
+      return await this.undocumented<T>(path, init);
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes(V1_ENDPOINTS_CLOSED)) throw error;
+      throw new Error(
+        "Together no longer lets this account create or restart v1 dedicated endpoints. Deploy the model as a managed endpoint from the Together dashboard instead.",
+        { cause: error },
+      );
+    }
   }
 
   /**
@@ -712,15 +856,19 @@ export class TogetherClient implements PluginClient {
   /**
    * v2 Dedicated Managed Inference. Unlike every v1 list, this one paginates:
    * `limit` + `after`, with the next cursor in `next_cursor` (null at the end).
-   * The project id comes from `/v1/whoami`.
+   * The project comes from whoami; an organization key lists the whole organization.
+   * https://docs.together.ai/reference/dmi/endpoints-list-organization
    */
   private async listManagedEndpoints(accountId: string): Promise<ResourceInstance[]> {
-    const { project_id: projectId } = await this.whoami();
-    if (!projectId) return [];
-    const endpoints = await this.dmi.getAll(
-      `/v2/projects/${pathEncode(projectId)}/endpoints`,
-      "data",
-    );
+    const { projectId, organizationId } = await this.whoami();
+    let endpoints: DmiEndpoint[];
+    if (projectId) {
+      endpoints = await this.dmi.getAll(`/v2/projects/${pathEncode(projectId)}/endpoints`, "data");
+    } else if (organizationId) {
+      endpoints = await this.organizationEndpoints(organizationId);
+    } else {
+      throw new Error(NO_IDENTITY);
+    }
     return endpoints.map((endpoint) => this.mapManagedEndpoint(endpoint, accountId));
   }
 
@@ -1202,18 +1350,14 @@ export class TogetherClient implements PluginClient {
         // `?dedicated=true` narrows the catalogue to models that can actually be
         // pinned to reserved hardware, so the picker can't offer an invalid one.
         const [models, hardware] = await Promise.all([
-          this.undocumented<TogetherModel[]>("/models?dedicated=true").catch(
-            (): TogetherModel[] => [],
-          ),
-          this.undocumented<{ data?: TogetherHardware[] }>("/hardware").catch(
-            (): { data?: TogetherHardware[] } => ({}),
-          ),
+          this.fetchCatalogue(true).catch((): TogetherModel[] => []),
+          this.fetchHardware().catch((): TogetherHardware[] => []),
         ]);
-        const modelOptions = (Array.isArray(models) ? models : []).map((model) => ({
+        const modelOptions = models.map((model) => ({
           id: model.id,
           label: model.display_name ? `${model.display_name} (${model.id})` : model.id,
         }));
-        const hardwareOptions = (hardware.data ?? [])
+        const hardwareOptions = hardware
           .filter((entry) => Boolean(entry.id))
           .map((entry) => {
             const specs = entry.specs ?? {};
@@ -1309,12 +1453,12 @@ export class TogetherClient implements PluginClient {
       if (typeId === "batch") {
         const [files, models] = await Promise.all([
           this.api.get("/v1/files").catch((): { data?: TogetherFile[] } => ({})),
-          this.undocumented<TogetherModel[]>("/models").catch((): TogetherModel[] => []),
+          this.fetchCatalogue().catch((): TogetherModel[] => []),
         ]);
         const fileOptions = (files.data ?? [])
           .filter((file) => file.purpose === "batch-api" || !file.purpose)
           .map((file) => ({ id: file.id ?? "", label: file.filename ?? file.id ?? "" }));
-        const modelOptions = (Array.isArray(models) ? models : [])
+        const modelOptions = models
           .filter((model) => model.type === "chat" || model.type === "language")
           .map((model) => ({ id: model.id, label: model.display_name ?? model.id }));
 
@@ -1673,7 +1817,7 @@ export class TogetherClient implements PluginClient {
           state: fields["state"] === "STOPPED" ? "STOPPED" : "STARTED",
           ...(Number.isFinite(timeout) && timeout > 0 ? { inactive_timeout: timeout } : {}),
         };
-        const created = await this.undocumented<DedicatedEndpoint>("/endpoints", {
+        const created = await this.writeEndpoint<DedicatedEndpoint>("/endpoints", {
           method: "POST",
           body: JSON.stringify(body),
         });
@@ -1758,7 +1902,7 @@ export class TogetherClient implements PluginClient {
         };
       }
       if (Object.keys(body).length === 0) return this.mapEndpoint(current, accountId);
-      const updated = await this.undocumented<DedicatedEndpoint>(
+      const updated = await this.writeEndpoint<DedicatedEndpoint>(
         `/endpoints/${encodeURIComponent(id)}`,
         {
           method: "PATCH",
@@ -1899,11 +2043,7 @@ export class TogetherClient implements PluginClient {
    * 409 they'd have to decode.
    */
   private async deleteManagedEndpoint(endpointId: string): Promise<void> {
-    const { project_id: projectId } = await this.whoami();
-    if (!projectId) {
-      throw new Error("Together plugin: could not resolve project id from /v1/whoami");
-    }
-    const project = pathEncode(projectId);
+    const project = pathEncode(await this.projectOf(endpointId));
     const endpoint = pathEncode(endpointId);
     // All of them or none: this deletes what it reads, and the endpoint cannot go while
     // one is left. 500 is the document's largest page.
@@ -2094,14 +2234,12 @@ export class TogetherClient implements PluginClient {
       if (typeId !== "managed-endpoint") {
         throw new Error(`Together plugin: logs not supported for type "${typeId}"`);
       }
-      const { project_id: projectId } = await this.whoami();
-      if (!projectId) {
-        throw new Error("Together plugin: could not resolve project id from /v1/whoami");
-      }
+      const endpointId = externalIdOf(resourceId);
+      const projectId = await this.projectOf(endpointId);
       // The API caps a page at 10000 events and defaults to 50.
       const limit = Math.min(Math.max(params.tailLines ?? 500, 1), 10000);
       const page = await this.api.get(
-        `/v2/projects/${pathEncode(projectId)}/endpoints/${pathEncode(externalIdOf(resourceId))}/events`,
+        `/v2/projects/${pathEncode(projectId)}/endpoints/${pathEncode(endpointId)}/events`,
         { query: { limit } },
       );
       const lines = (page.data ?? []).map(formatEndpointEvent).reverse();
@@ -2120,10 +2258,7 @@ export class TogetherClient implements PluginClient {
     endMs: number,
     includeTimeSeries: boolean,
   ): Promise<DmiAnalytics> {
-    const { project_id: projectId } = await this.whoami();
-    if (!projectId) {
-      throw new Error("Together plugin: could not resolve project id from /v1/whoami");
-    }
+    const projectId = await this.projectOf(endpointId);
     return this.api.get(
       `/v2/projects/${pathEncode(projectId)}/endpoints/${pathEncode(endpointId)}/analytics`,
       {
