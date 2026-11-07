@@ -140,17 +140,14 @@ export async function fetchCostAttribution(
 
   const entries: DdAttributionEntry[] = [];
   let truncated = false;
-  if (tagKeys.length === 0) {
-    entries.push(...(probe.data ?? []));
-  } else {
-    let cursor: string | undefined;
-    for (let i = 0; i < MAX_PAGES; i++) {
-      const res = await page(ctx, month, tagKeys, cursor);
-      entries.push(...(res.data ?? []));
-      cursor = res.meta?.pagination?.next_record_id ?? undefined;
-      if (!cursor) break;
-      if (i === MAX_PAGES - 1) truncated = true;
-    }
+  let cursor: string | undefined;
+  for (let i = 0; i < MAX_PAGES; i++) {
+    // With no keys to break down by, the totals already read are the report's first page.
+    const res = i === 0 && tagKeys.length === 0 ? probe : await page(ctx, month, tagKeys, cursor);
+    entries.push(...(res.data ?? []));
+    cursor = res.meta?.pagination?.next_record_id ?? undefined;
+    if (!cursor) break;
+    if (i === MAX_PAGES - 1) truncated = true;
   }
 
   const rows = entries

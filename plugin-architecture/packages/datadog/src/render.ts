@@ -129,6 +129,9 @@ function renderOrganization(r: ResourceInstance, appUrl: string): DetailViewSche
     ]),
   ];
   if (attribution) {
+    const partial = attribution.truncated
+      ? " Showing the first pages only; open Datadog for the full report."
+      : "";
     sections.push(
       section(`Cost attribution by tag (${attribution.month})`, [
         ...(attribution.tagKeys.length === 0
@@ -136,15 +139,14 @@ function renderOrganization(r: ResourceInstance, appUrl: string): DetailViewSche
               {
                 kind: "text" as const,
                 variant: "muted" as const,
-                content:
-                  "No tag keys are configured for usage attribution, so cost is not broken down by tag. Choose up to three tag keys in Datadog under Plan & Usage, Usage Attribution; the breakdown appears here from the next finalised month.",
+                content: `No tag keys are configured for usage attribution, so cost is not broken down by tag. Choose up to three tag keys in Datadog under Plan & Usage, Usage Attribution; the breakdown appears here from the next finalised month.${partial}`,
               },
             ]
           : [
               {
                 kind: "text" as const,
                 variant: "muted" as const,
-                content: `Broken down by ${attribution.tagKeys.join(", ")}, as configured for usage attribution in Datadog.${attribution.truncated ? " Showing the first pages only; open Datadog for the full report." : ""}`,
+                content: `Broken down by ${attribution.tagKeys.join(", ")}, as configured for usage attribution in Datadog.${partial}`,
               },
             ]),
         ...(attribution.rows.length > 0
