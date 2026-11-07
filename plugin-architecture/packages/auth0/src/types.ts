@@ -28,6 +28,8 @@ export type A0Connection = (
   | Answer<"patch_connections_by_id">
 ) & { enabled_clients?: string[] };
 
+export type A0EnabledClient = Answer<"get_connection_clients">["clients"][number];
+
 export type A0User =
   | ApiListItem<operations["get_users"], "users">
   | Answer<"get_users_by_id">

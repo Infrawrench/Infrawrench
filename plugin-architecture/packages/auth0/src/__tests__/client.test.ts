@@ -309,6 +309,81 @@ describe("list limits", () => {
   });
 });
 
+describe("paged reads of custom domains and enabled applications", () => {
+  const domain = (id: string) => ({ custom_domain_id: id, domain: `${id}.example.com` });
+
+  it("follows next through the paginated form of custom domains", async () => {
+    const c = client((call) => {
+      const from = new URL(call.url).searchParams.get("from");
+      return from
+        ? { body: { custom_domains: [domain("b")] } }
+        : { body: { custom_domains: [domain("a")], next: "cursor-2" } };
+    });
+    const rows = await c.listResources("custom-domain", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["a", "b"]);
+    const urls = apiCalls().map((x) => new URL(x.url).searchParams);
+    expect(urls[0]!.get("take")).toBe("100");
+    expect(urls[1]!.get("from")).toBe("cursor-2");
+  });
+
+  it("refuses a full array of custom domains, which has no way to the rest", async () => {
+    const c = client(() => ({
+      body: Array.from({ length: 100 }, (_, i) => domain(`d${i}`)),
+    }));
+    await expect(c.listResources("custom-domain", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("refuses custom domains that never end, or come back under another key", async () => {
+    const endless = client(() => ({ body: { custom_domains: [domain("a")], next: "again" } }));
+    await expect(endless.listResources("custom-domain", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    const renamed = client(() => ({ body: { domains: [domain("a")] } }));
+    await expect(renamed.listResources("custom-domain", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("marks every enabled application in a connection's detail, past the first page", async () => {
+    const c = client((call) => {
+      const url = new URL(call.url);
+      if (url.pathname.endsWith("/connections/con_1/clients")) {
+        return url.searchParams.get("from")
+          ? { body: { clients: [{ client_id: "app-2" }] } }
+          : { body: { clients: [{ client_id: "app-1" }], next: "cursor-2" } };
+      }
+      if (url.pathname.endsWith("/clients")) {
+        return {
+          body: {
+            total: 3,
+            clients: ["app-1", "app-2", "app-3"].map((client_id) => ({
+              client_id,
+              name: client_id,
+            })),
+          },
+        };
+      }
+      return { body: {} };
+    });
+    const resource = await c.enrichDetail({
+      id: `${ACCOUNT}:connection:con_1`,
+      pluginId: "auth0",
+      resourceTypeId: "connection",
+      accountId: ACCOUNT,
+      displayName: "db",
+      externalId: "con_1",
+      fields: {},
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "",
+      updatedAt: "",
+    });
+    expect(JSON.parse(resource.resolvedOutputs["__enabledClients__"]!)).toEqual(["app-1", "app-2"]);
+    const first = apiCalls().find((x) => x.url.includes("/connections/con_1/clients"))!;
+    expect(new URL(first.url).searchParams.get("take")).toBe("1000");
+  });
+});
+
 describe("mutations", () => {
   it("appends an action to its trigger's flow, keeping existing bindings", async () => {
     const c = client((call) => {

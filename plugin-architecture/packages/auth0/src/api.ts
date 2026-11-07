@@ -2,7 +2,6 @@ import {
   createApiClient,
   ListTruncatedError,
   requireListPage,
-  withCursorPagination,
   type ApiClient,
   type HostServices,
   type HttpHostServices,
@@ -150,18 +149,47 @@ export async function pages<Key extends string, Item>(
   throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
 }
 
+/** What a checkpoint-paged list asks for. */
+export interface Checkpoint {
+  take: number;
+  from?: string;
+}
+
 /**
- * Checkpoint paging (`from`/`take`, ended by `next` going away), which the document
- * requires for reading past 1000 rows of the routes it describes that way.
+ * One page of a checkpoint list. The document also allows the bare array, without
+ * saying whether it answers `take` with one or whether one is complete.
  */
-function withCheckpoints(rest: ApiClient<paths>) {
-  return withCursorPagination(rest, {
-    cursorParam: "from",
-    sizeParam: "take",
-    pageSize: 100,
-    next: "next",
-    maxPages: MAX_PAGES,
-  });
+type CheckpointPage<Key extends string, Item> =
+  Item[] | ({ next?: string } & { [K in Key]?: Item[] });
+
+/**
+ * Page by checkpoint (`from`/`take`, ended by `next` going away), which the document
+ * requires for reading past 1000 rows of the routes it describes that way. A hand loop
+ * because `withCursorPagination` reads no bare array, and its types do not reach
+ * `/connections/{id}/clients`. A full array has no cursor to carry on from, so it is
+ * refused rather than read as the end.
+ */
+export async function checkpoints<Key extends string, Item>(
+  path: string,
+  key: Key,
+  fetchPage: (checkpoint: Checkpoint) => Promise<CheckpointPage<Key, Item>>,
+  { take = 100, maxPages = MAX_PAGES }: { take?: number; maxPages?: number } = {},
+): Promise<Item[]> {
+  const out: Item[] = [];
+  let from: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const body = await fetchPage({ take, ...(from ? { from } : {}) });
+    if (Array.isArray(body)) {
+      out.push(...body);
+      if (body.length < take) return out;
+      throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxItems: take });
+    }
+    const keyed: { [K in Key]?: Item[] } = body;
+    out.push(...requireListPage(keyed[key], { vendor: VENDOR, path, key, page: body }));
+    if (!body.next) return out;
+    from = body.next;
+  }
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
 }
 
 export class Auth0Api {
@@ -171,8 +199,6 @@ export class Auth0Api {
   lastRateLimit: { limit: number; remaining: number; resetAt: number } | null = null;
   /** The Management API, through {@link send}. */
   readonly rest: ApiClient<paths>;
-  /** The same client, with `getAll` for the routes that page by checkpoint. */
-  readonly checkpoints: ReturnType<typeof withCheckpoints>;
 
   constructor(
     readonly creds: Auth0Credentials,
@@ -187,7 +213,6 @@ export class Auth0Api {
       emptyBodyIsUndefined: true,
       httpError: ({ status, path, body }) => apiError(status, path, body),
     });
-    this.checkpoints = withCheckpoints(this.rest);
   }
 
   get domain(): string {

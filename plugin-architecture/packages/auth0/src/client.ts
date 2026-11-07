@@ -22,7 +22,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { operations, paths } from "./api-types.gen.js";
-import { Auth0Api, pages, readCredentials, regionOfDomain } from "./api.js";
+import { Auth0Api, checkpoints, pages, readCredentials, regionOfDomain } from "./api.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
 import type {
   A0Action,
@@ -44,6 +44,9 @@ export const METRICS_DEFAULT_RANGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** What a picker or a detail view reads: part of a list is fine, and nothing is stored from it. */
 const PICKER = { maxPages: 10, partial: true };
+
+/** 10,000 custom domains at the 100 a page the document allows. */
+const MAX_CUSTOM_DOMAIN_PAGES = 100;
 
 /** Starter code for a new Action, per trigger family. */
 const ACTION_TEMPLATE = `/**
@@ -117,12 +120,10 @@ type ActionBindingUpdate = NonNullable<ApiBody<operations["patch_bindings"]>["bi
 export class Auth0Client implements PluginClient {
   readonly api: Auth0Api;
   private readonly rest: ApiClient<paths>;
-  private readonly checkpoints: Auth0Api["checkpoints"];
 
   constructor(credentials: Credentials, services?: HostServices) {
     this.api = new Auth0Api(readCredentials(credentials), services);
     this.rest = this.api.rest;
-    this.checkpoints = this.api.checkpoints;
   }
 
   // -------------------------------------------------------------------------
@@ -147,7 +148,9 @@ export class Auth0Client implements PluginClient {
             )
           ).map((r) => this.mapApi(accountId, r));
         case "connection": {
-          const connections = await this.checkpoints.getAll("/connections", "connections");
+          const connections = await checkpoints("/connections", "connections", (query) =>
+            this.rest.get("/connections", { query }),
+          );
           return connections.map((c) => this.mapConnection(accountId, c));
         }
         case "user":
@@ -166,9 +169,11 @@ export class Auth0Client implements PluginClient {
             await pages("/roles", "roles", (paging) => this.rest.get("/roles", { query: paging }))
           ).map((r) => this.mapRole(accountId, r));
         case "organization":
-          return (await this.checkpoints.getAll("/organizations", "organizations")).map((o) =>
-            this.mapOrganization(accountId, o),
-          );
+          return (
+            await checkpoints("/organizations", "organizations", (query) =>
+              this.rest.get("/organizations", { query }),
+            )
+          ).map((o) => this.mapOrganization(accountId, o));
         case "action": {
           const [actions, bound] = await Promise.all([
             pages("/actions/actions", "actions", (paging) =>
@@ -180,11 +185,15 @@ export class Auth0Client implements PluginClient {
         }
         case "log-stream":
           return (await this.rest.get("/log-streams")).map((s) => this.mapLogStream(accountId, s));
-        case "custom-domain": {
-          const body = await this.rest.get("/custom-domains");
-          const domains = Array.isArray(body) ? body : (body.custom_domains ?? []);
-          return domains.map((d) => this.mapCustomDomain(accountId, d));
-        }
+        case "custom-domain":
+          return (
+            await checkpoints(
+              "/custom-domains",
+              "custom_domains",
+              (query) => this.rest.get("/custom-domains", { query }),
+              { maxPages: MAX_CUSTOM_DOMAIN_PAGES },
+            )
+          ).map((d) => this.mapCustomDomain(accountId, d));
         default:
           throw new Error(`Auth0 plugin: unknown resource type "${typeId}"`);
       }
@@ -272,6 +281,16 @@ export class Auth0Client implements PluginClient {
       }
       throw new Error(`Auth0 plugin: cannot reissue "${outputKey}"`);
     });
+  }
+
+  /** The applications a connection is enabled for, at the route's largest page. */
+  private async enabledClientIds(connectionId: string): Promise<string[]> {
+    const path = `/connections/${pathEncode(connectionId)}/clients` as const;
+    const clients = await checkpoints(path, "clients", (query) => this.rest.get(path, { query }), {
+      take: 1000,
+      maxPages: 10,
+    });
+    return clients.map((c) => str(c.client_id));
   }
 
   private async rolePermissions(roleId: string) {
@@ -1920,10 +1939,7 @@ export class Auth0Client implements PluginClient {
         }
         case "connection": {
           const [enabled, clients, status] = await Promise.all([
-            this.rest
-              .get(`/connections/${id}/clients`)
-              .then((b) => (b.clients ?? []).map((c) => str(c.client_id)))
-              .catch((): string[] => []),
+            this.enabledClientIds(raw).catch((): string[] => []),
             this.clientPolicies(),
             this.rest
               .get(`/connections/${id}/status`)
