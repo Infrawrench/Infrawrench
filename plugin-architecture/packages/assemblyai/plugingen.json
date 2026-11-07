@@ -1,0 +1,122 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "transcripts",
+      "specUrl": "https://www.assemblyai.com/docs/openapi.json",
+      "paths": {
+        "/v2/upload": ["post"],
+        "/v2/transcript": ["get", "post"],
+        "/v2/transcript/{transcript_id}": ["get", "delete"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/ActionItemsResponse",
+          "value": {
+            "type": "object",
+            "properties": {
+              "action_items": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "why": "The document writes `required` under `properties`, which stops generation. The plugin never reads this schema; it is only reachable through Transcript."
+        },
+        {
+          "pointer": "/components/schemas/SummarizationResponse",
+          "value": {
+            "type": "object",
+            "properties": {
+              "summarization": {
+                "type": "object",
+                "properties": {
+                  "summary": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "status": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "why": "The document writes `required` under `properties`, which stops generation. The plugin never reads this schema; it is only reachable through Transcript."
+        },
+        {
+          "pointer": "/components/schemas/TranscriptOptionalParams/properties/speech_models/items",
+          "value": {
+            "type": "string"
+          },
+          "why": "The Speech panel's model id goes through as chosen, and AssemblyAI validates it, so a value outside this enum stays AssemblyAI's error."
+        }
+      ]
+    },
+    {
+      "name": "agents",
+      "specUrl": "https://www.assemblyai.com/docs/api-reference/specs/agents.yaml",
+      "pathPrefix": "/v1",
+      "paths": {
+        "/agents": ["get", "post"],
+        "/agents/{agent_id}": ["get", "put", "delete"],
+        "/sessions": ["get"],
+        "/sessions/{session_id}": ["get", "delete"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/Agent/required",
+          "value": ["id"],
+          "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+        },
+        {
+          "pointer": "/components/schemas/AgentListItem/required",
+          "value": ["id"],
+          "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+        }
+      ]
+    },
+    {
+      "name": "webhooks",
+      "specUrl": "https://www.assemblyai.com/docs/api-reference/specs/webhooks.yaml",
+      "pathPrefix": "/v1",
+      "paths": {
+        "/webhook-subscriptions": ["get", "post"],
+        "/webhook-subscriptions/{subscription_id}": ["patch", "delete"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/WebhookSubscription/required",
+          "value": ["id"],
+          "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+        }
+      ]
+    },
+    {
+      "name": "llm",
+      "specUrl": "https://www.assemblyai.com/docs/api-reference/specs/llm-gateway.yaml",
+      "paths": {
+        "/models": ["get"]
+      },
+      "patches": [
+        {
+          "pointer": "/components/schemas/ModelDetails/required",
+          "value": ["id"],
+          "why": "The document marks nothing required; this is what identifies the object, and the plugin has always read it as present."
+        }
+      ]
+    }
+  ]
+}

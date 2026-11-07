@@ -17,7 +17,15 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, pathEncode, restRequest, type ApiResponse } from "@infrawrench/plugin-base";
+import {
+  createAssemblyAIApis,
+  HOSTS,
+  type AssemblyAIApis,
+  type Transcript,
+  type TranscriptListItem,
+} from "./api.js";
+import type { operations as TranscriptOperations } from "./api-types.transcripts.gen.js";
 import { VOICE_AGENT_TYPE, VOICE_AGENT_TYPES, VoiceAgentSurface } from "./voice-agents.js";
 
 const PLUGIN_ID = "assemblyai";
@@ -33,12 +41,6 @@ const TRANSCRIPT_TYPE = "transcript";
  */
 const ACCOUNT_TYPE = "account";
 const ACCOUNT_ID = "default";
-
-/** Hosts. https://www.assemblyai.com/docs/faq/do-you-offer-servers-in-the-eu */
-const HOSTS: Record<string, string> = {
-  us: "https://api.assemblyai.com",
-  eu: "https://api.eu.assemblyai.com",
-};
 
 /**
  * How many transcripts a sync pulls. `limit` is capped at 200 by the API, and
@@ -76,56 +78,13 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // AssemblyAI accepts 2.2 GB; our tran
 // Wire shapes
 // ---------------------------------------------------------------------------
 
-/** https://www.assemblyai.com/docs/api-reference/transcripts/list */
-interface TranscriptListItem {
-  id: string;
-  resource_url?: string;
-  status?: string;
-  created?: string;
-  completed?: string | null;
-  audio_url?: string;
-  error?: string | null;
-}
-
-interface TranscriptListResponse {
-  page_details?: {
-    limit?: number;
-    result_count?: number;
-    current_url?: string;
-    prev_url?: string | null;
-    next_url?: string | null;
-  };
-  transcripts?: TranscriptListItem[];
-}
-
-/** https://www.assemblyai.com/docs/api-reference/transcripts/get */
-interface TranscriptWordWire {
-  text?: string;
-  /** Milliseconds from the start of the clip, not seconds. */
-  start?: number;
-  end?: number;
-  confidence?: number;
-  speaker?: string | null;
-}
-
-interface Transcript extends TranscriptListItem {
-  text?: string | null;
-  words?: TranscriptWordWire[] | null;
-  confidence?: number | null;
-  audio_duration?: number | null;
-  language_code?: string | null;
-  language_detection?: boolean;
-  speaker_labels?: boolean;
-  punctuate?: boolean;
-  format_text?: boolean;
-  speech_model?: string | null;
-  speech_models?: string[] | null;
-}
-
-/** https://www.assemblyai.com/docs/api-reference/files/upload */
-interface UploadResponse {
-  upload_url?: string;
-}
+/**
+ * What the mapper reads: a full record, or a list row where hydration failed. The
+ * document only gives `created`, `completed` and `resource_url` to the list row.
+ */
+type TranscriptRecord = Pick<Transcript, "id"> &
+  Partial<Omit<Transcript, "error">> &
+  Partial<Pick<TranscriptListItem, "created" | "completed" | "resource_url" | "error">>;
 
 // ---------------------------------------------------------------------------
 // Speech panel option lists
@@ -214,6 +173,7 @@ export class AssemblyAIClient implements PluginClient {
   private readonly region: string;
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  private readonly api: AssemblyAIApis;
   /** Voice agents, their sessions and webhooks, and the LLM Gateway catalogue. */
   private readonly voice: VoiceAgentSurface;
 
@@ -225,76 +185,55 @@ export class AssemblyAIClient implements PluginClient {
     this.region = region in HOSTS ? region : "us";
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
-    this.voice = new VoiceAgentSurface({
+    this.api = createAssemblyAIApis({
       apiKey,
       region: this.region,
       caCert: this.caCert,
-      services,
+      http: services?.http,
     });
+    this.voice = new VoiceAgentSurface(this.api);
   }
 
   private get baseUrl(): string {
     return HOSTS[this.region] ?? HOSTS["us"]!;
   }
 
-  /** Bare key, no `Bearer`. */
-  private get authHeaders(): Record<string, string> {
-    return { authorization: this.apiKey, Accept: "application/json" };
+  /** Newest first. The one account-wide record there is: see {@link transcriptJobSeries}. */
+  private recentTranscripts() {
+    return annotated(() =>
+      this.api.transcripts.get("/v2/transcript", { query: { limit: LIST_LIMIT } }),
+    );
   }
 
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    try {
-      return await jsonRestFetch<T>({
-        vendor: "AssemblyAI",
-        url: `${this.baseUrl}${path}`,
-        errorPath: path,
-        headers: this.authHeaders,
-        ...(options ? { init: options } : {}),
-        ...(this.services?.http
-          ? { http: this.services.http, ...(this.caCert ? { caCert: this.caCert } : {}) }
-          : {}),
-      });
-    } catch (err) {
-      throw annotateError(err);
-    }
+  private getTranscript(id: string) {
+    return annotated(() => this.api.transcripts.get(`/v2/transcript/${pathEncode(id)}`));
   }
 
   /**
    * Upload raw audio bytes. https://www.assemblyai.com/docs/api-reference/files/upload
    *
-   * Deliberately not routed through `jsonRestFetch`: the body is the raw file
-   * with `Content-Type: application/octet-stream` (**not** multipart), and the
-   * shared helper's JSON defaults would fight that. It still prefers
-   * `services.http` when the host provides one, so bastion egress routing and
-   * a custom CA keep working: that transport accepts a `Uint8Array` body and
-   * hands back the (small, JSON) response as a string.
+   * Not on the typed client: the body is the raw file with
+   * `Content-Type: application/octet-stream` (**not** multipart). It still prefers
+   * `services.http` when the host provides one, so bastion egress routing and a
+   * custom CA keep working: that transport accepts a `Uint8Array` body and hands
+   * back the (small, JSON) response as a string.
    */
-  private async uploadAudio(bytes: Uint8Array): Promise<string> {
-    const url = `${this.baseUrl}/v2/upload`;
-    const headers = { ...this.authHeaders, "Content-Type": "application/octet-stream" };
-
-    let status: number;
-    let body: string;
-    if (this.services?.http) {
-      const res = await this.services.http.request({
-        url,
-        method: "POST",
-        headers,
-        body: bytes,
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-      });
-      status = res.status;
-      body = res.body;
-    } else {
-      const res = await fetch(url, { method: "POST", headers, body: bytes as BodyInit });
-      status = res.status;
-      body = await res.text();
-    }
-
-    if (status < 200 || status >= 300) {
-      throw annotateError(new Error(`AssemblyAI API error ${status} for /v2/upload: ${body}`));
-    }
-    const parsed = JSON.parse(body) as UploadResponse;
+  private async uploadAudio(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+    const http = this.services?.http;
+    const { body } = await restRequest<string>({
+      vendor: "AssemblyAI",
+      url: `${this.baseUrl}/v2/upload`,
+      errorPath: "/v2/upload",
+      headers: { authorization: this.apiKey, Accept: "application/json" },
+      init: { method: "POST", body: bytes },
+      contentType: "with-body",
+      bodyType: "application/octet-stream",
+      responseAs: "text",
+      httpError: ({ status, body: text }) =>
+        annotateError(new Error(`AssemblyAI API error ${status} for /v2/upload: ${text}`)),
+      ...(http ? { http, ...(this.caCert ? { caCert: this.caCert } : {}) } : {}),
+    });
+    const parsed: ApiResponse<TranscriptOperations["uploadFile"]> = JSON.parse(body);
     if (!parsed.upload_url) {
       throw new Error("AssemblyAI plugin: /v2/upload returned no upload_url");
     }
@@ -314,20 +253,24 @@ export class AssemblyAIClient implements PluginClient {
       if (typeId !== TRANSCRIPT_TYPE) {
         throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
       }
-      const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?limit=${LIST_LIMIT}`);
+      const data = await this.recentTranscripts();
       const items = data.transcripts ?? [];
 
       // The list endpoint only returns id/status/created/completed/audio_url/error.
       // Model, duration, language and confidence live on the full record, so
       // hydrate each one: bounded, and tolerant of individual failures so one
       // purged transcript doesn't blank the whole listing.
-      const hydrated = await mapWithConcurrency(items, HYDRATE_CONCURRENCY, async (item) => {
-        try {
-          return await this.fetch<Transcript>(`/v2/transcript/${encodeURIComponent(item.id)}`);
-        } catch {
-          return item as Transcript;
-        }
-      });
+      const hydrated = await mapWithConcurrency(
+        items,
+        HYDRATE_CONCURRENCY,
+        async (item): Promise<TranscriptRecord> => {
+          try {
+            return await this.getTranscript(item.id);
+          } catch {
+            return item;
+          }
+        },
+      );
 
       return hydrated.map((t) => this.mapTranscript(t, accountId));
     });
@@ -345,7 +288,7 @@ export class AssemblyAIClient implements PluginClient {
         throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
       }
       const id = transcriptIdOf(resourceId);
-      const data = await this.fetch<Transcript>(`/v2/transcript/${encodeURIComponent(id)}`);
+      const data = await this.getTranscript(id);
       return this.mapTranscript(data, accountId);
     });
   }
@@ -383,9 +326,7 @@ export class AssemblyAIClient implements PluginClient {
         throw new Error(`AssemblyAI plugin: deleteResource not supported for type "${typeId}"`);
       }
       const id = transcriptIdOf(resourceId);
-      await this.fetch<Transcript>(`/v2/transcript/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
+      await annotated(() => this.api.transcripts.delete(`/v2/transcript/${pathEncode(id)}`));
     });
   }
 
@@ -443,7 +384,7 @@ export class AssemblyAIClient implements PluginClient {
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (resource.resourceTypeId !== TRANSCRIPT_TYPE) return resource;
-      const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?limit=${LIST_LIMIT}`);
+      const data = await this.recentTranscripts();
       const items = data.transcripts ?? [];
       // The list endpoint doesn't carry audio_duration, so the only honest
       // cheap number here is how many jobs are in the retention window and how
@@ -513,7 +454,7 @@ export class AssemblyAIClient implements PluginClient {
           this.transcriptJobSeries(timeRange),
           // Voice Agent API access is separate from transcription; a key
           // without it still gets the transcript charts.
-          this.voice.accountMetrics(timeRange).catch(() => [] as MetricSeries[]),
+          this.voice.accountMetrics(timeRange).catch((): MetricSeries[] => []),
         ]);
         return [...jobs, ...sessions.filter((s) => s.points.some((p) => p.value !== 0))];
       }
@@ -541,9 +482,12 @@ export class AssemblyAIClient implements PluginClient {
     const items: TranscriptListItem[] = [];
     let beforeId = "";
     for (let page = 0; page < MAX_JOB_PAGES; page++) {
-      const params = new URLSearchParams({ limit: String(JOB_PAGE_SIZE) });
-      if (beforeId) params.set("before_id", beforeId);
-      const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?${params.toString()}`);
+      const before = beforeId;
+      const data = await annotated(() =>
+        this.api.transcripts.get("/v2/transcript", {
+          query: { limit: JOB_PAGE_SIZE, ...(before ? { before_id: before } : {}) },
+        }),
+      );
       const batch = data.transcripts ?? [];
       items.push(...batch);
       const last = batch[batch.length - 1];
@@ -861,30 +805,28 @@ export class AssemblyAIClient implements PluginClient {
       const audioUrl = await this.uploadAudio(bytes);
 
       const model = payload.modelId ?? DEFAULT_MODEL;
-      const body: Record<string, unknown> = {
-        audio_url: audioUrl,
-        // `speech_models` is an array of models in priority order, replacing the
-        // deprecated singular `speech_model`. Asking for Universal-3.5 Pro also
-        // lists Universal-2 behind it (matching AssemblyAI's own default) so a
-        // language outside 3.5 Pro's 18 still transcribes instead of erroring.
-        speech_models: model === DEFAULT_MODEL ? [DEFAULT_MODEL, "universal-2"] : [model],
-        punctuate: true,
-        format_text: true,
-        // Diarization requires punctuate: true, which is set above.
-        speaker_labels: true,
-      };
       const language = payload.language ?? AUTO_LANGUAGE;
-      if (language === AUTO_LANGUAGE) {
-        body["language_detection"] = true;
-      } else {
-        // ISO-639-1 with an underscored region (`en_us`), not `en-US`.
-        body["language_code"] = language;
-      }
 
-      const submitted = await this.fetch<Transcript>("/v2/transcript", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      const submitted = await annotated(() =>
+        this.api.transcripts.post("/v2/transcript", {
+          body: {
+            audio_url: audioUrl,
+            // `speech_models` is an array of models in priority order, replacing the
+            // deprecated singular `speech_model`. Asking for Universal-3.5 Pro also
+            // lists Universal-2 behind it (matching AssemblyAI's own default) so a
+            // language outside 3.5 Pro's 18 still transcribes instead of erroring.
+            speech_models: model === DEFAULT_MODEL ? [DEFAULT_MODEL, "universal-2"] : [model],
+            punctuate: true,
+            format_text: true,
+            // Diarization requires punctuate: true, which is set above.
+            speaker_labels: true,
+            ...(language === AUTO_LANGUAGE
+              ? { language_detection: true }
+              : // ISO-639-1 with an underscored region (`en_us`), not `en-US`.
+                { language_code: language }),
+          },
+        }),
+      );
       if (!submitted.id) throw new Error("AssemblyAI plugin: /v2/transcript returned no job id");
 
       const finished = await this.pollTranscript(submitted.id);
@@ -930,7 +872,7 @@ export class AssemblyAIClient implements PluginClient {
   private async pollTranscript(id: string): Promise<Transcript> {
     const deadline = Date.now() + POLL_TIMEOUT_MS;
     for (;;) {
-      const current = await this.fetch<Transcript>(`/v2/transcript/${encodeURIComponent(id)}`);
+      const current = await this.getTranscript(id);
       if (current.status === "completed") return current;
       if (current.status === "error") {
         throw new Error(
@@ -967,7 +909,7 @@ export class AssemblyAIClient implements PluginClient {
     // for both auth failures and rate limiting.
     let reachable = true;
     try {
-      const data = await this.fetch<TranscriptListResponse>(`/v2/transcript?limit=${LIST_LIMIT}`);
+      const data = await this.recentTranscripts();
       items = data.transcripts ?? [];
     } catch {
       items = [];
@@ -1011,7 +953,7 @@ export class AssemblyAIClient implements PluginClient {
     };
   }
 
-  private mapTranscript(t: Transcript, accountId: string): ResourceInstance {
+  private mapTranscript(t: TranscriptRecord, accountId: string): ResourceInstance {
     const status = t.status ?? "queued";
     const text = t.text ?? "";
     const created = t.created ?? new Date().toISOString();
@@ -1070,6 +1012,14 @@ function annotateError(err: unknown): Error {
   );
 }
 
+async function annotated<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (err) {
+    throw annotateError(err);
+  }
+}
+
 function transcriptIdOf(resourceId: string): string {
   // `{accountId}:transcript:{id}`: ids are UUIDs, so the tail is unambiguous.
   const parts = resourceId.split(":");
@@ -1078,14 +1028,14 @@ function transcriptIdOf(resourceId: string): string {
   return id;
 }
 
-function modelOf(t: Transcript): string {
+function modelOf(t: TranscriptRecord): string {
   // Submissions use the `speech_models` array; older records and some
   // responses still carry the deprecated singular `speech_model`.
   const first = t.speech_models?.[0];
   return first ?? t.speech_model ?? "";
 }
 
-function buildDisplayName(t: Transcript, text: string): string {
+function buildDisplayName(t: TranscriptRecord, text: string): string {
   const snippet = text.trim().split(/\s+/).slice(0, 8).join(" ");
   if (snippet) return snippet.length > 60 ? `${snippet.slice(0, 60)}…` : snippet;
   const created = t.created ? t.created.slice(0, 19).replace("T", " ") : "";
@@ -1131,7 +1081,7 @@ interface RecentActivity {
 function parseRecentActivity(raw: string | undefined): RecentActivity | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Partial<RecentActivity>;
+    const parsed: Partial<RecentActivity> = JSON.parse(raw);
     return {
       sampled: parsed.sampled ?? 0,
       completed: parsed.completed ?? 0,
