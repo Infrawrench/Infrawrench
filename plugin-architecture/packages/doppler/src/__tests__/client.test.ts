@@ -601,15 +601,23 @@ describe("a list that cannot be read whole", () => {
       ).rejects.toThrow(/You do not have access/);
     });
 
-    it("shows what it read where no host tracks it and only some parents refused", async () => {
+    it("shows the refusal where no host tracks it and only some parents refused", async () => {
       const { c } = client(
         withConfigs(["dev", "stg"], (call) =>
           call.url.searchParams.get("config") === "dev" ? REFUSED : { tokens: [{ slug: "t" }] },
         ),
       );
-      expect(
-        (await c.listResources("doppler-service-token", ACCOUNT)).map((r) => r.externalId),
-      ).toEqual(["backend.stg.t"]);
+      await expect(c.listResources("doppler-service-token", ACCOUNT)).rejects.toThrow(
+        /You do not have access/,
+      );
+    });
+
+    it("reads every config where no host keeps track of the rest", async () => {
+      const names = Array.from({ length: 150 }, (_, i) => `c${i}`);
+      const { c, calls } = client(withConfigs(names, () => ({ tokens: [{ slug: "t" }] })));
+      const rows = await c.listResources("doppler-service-token", ACCOUNT);
+      expect(count(calls, "/v3/configs/config/tokens")).toBe(150);
+      expect(rows).toHaveLength(150);
     });
   });
 

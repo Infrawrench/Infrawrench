@@ -16,6 +16,7 @@ import {
   decodePromptArgs,
   externalIdOf,
   ListPageError,
+  ListTruncatedError,
   reportUnreadListPart,
 } from "@infrawrench/plugin-base";
 import type { DopplerContext } from "./api.js";
@@ -106,8 +107,8 @@ const EXPIRY_OPTIONS = [
  * One list per parent. A parent the credential is refused, or one past the budget, keeps
  * its stored children rather than reading as having none, and anything else fails the
  * whole type. Past `maxReads` it reads a run from a random start, so every parent gets
- * read over time. A host that keeps no track answers false, and there a credential
- * refused for every parent still shows.
+ * read over time. A host that keeps no track answers false, and there a refusal shows and
+ * the parents past the budget are read too, up to `maxRows`.
  */
 async function readPerParent<P, R>(
   parents: readonly P[],
@@ -116,23 +117,21 @@ async function readPerParent<P, R>(
   options: {
     isRefusal?: (status: number) => boolean;
     maxReads?: number;
-    maxRows?: number;
+    maxRows?: { count: number; path: string };
   } = {},
 ): Promise<R[]> {
-  const {
-    isRefusal = (status) => status === 403,
-    maxReads = Infinity,
-    maxRows = Infinity,
-  } = options;
+  const { isRefusal = (status) => status === 403, maxReads = Infinity } = options;
+  const maxRows = options.maxRows?.count ?? Infinity;
   const start = parents.length > maxReads ? Math.floor(Math.random() * parents.length) : 0;
   const out: R[] = [];
   const unread: string[] = [];
+  const skipped: P[] = [];
   let reads = 0;
-  let refusals = 0;
   let refusal: unknown;
   for (const item of [...parents.slice(start), ...parents.slice(0, start)]) {
     if (reads >= maxReads || out.length >= maxRows) {
       unread.push(parentId(item));
+      skipped.push(item);
       continue;
     }
     reads++;
@@ -141,13 +140,21 @@ async function readPerParent<P, R>(
     } catch (err) {
       if (!isRefusal(statusOf(err))) throw err;
       unread.push(parentId(item));
-      refusals++;
-      refusal = err;
+      refusal ??= err;
     }
   }
-  if (unread.length > 0) {
-    const tracked = reportUnreadListPart({ parentResourceIds: unread });
-    if (!tracked && refusals > 0 && refusals === reads) throw refusal;
+  if (unread.length === 0 || reportUnreadListPart({ parentResourceIds: unread })) return out;
+  if (refusal !== undefined) throw refusal;
+  for (const item of skipped) {
+    if (out.length >= maxRows) {
+      throw new ListTruncatedError({
+        vendor: "Doppler",
+        path: options.maxRows?.path ?? "",
+        items: out.length,
+        maxItems: maxRows,
+      });
+    }
+    for (const row of await read(item)) out.push(row);
   }
   return out;
 }
@@ -315,7 +322,10 @@ export class DopplerClient implements PluginClient {
               mapSecret(accountId, project, config.name, name, v),
             );
           },
-          { maxReads: MAX_CONFIG_READS, maxRows: MAX_SECRETS },
+          {
+            maxReads: MAX_CONFIG_READS,
+            maxRows: { count: MAX_SECRETS, path: "/v3/configs/config/secrets" },
+          },
         );
       case "doppler-service-token":
         return readPerParent(
