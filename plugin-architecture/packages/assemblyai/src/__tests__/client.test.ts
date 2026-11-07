@@ -215,6 +215,45 @@ describe("transcript times, which the document only gives to the list row", () =
   });
 });
 
+describe("speech model", () => {
+  const requested = { speech_models: ["universal-3-5-pro", "universal-2"] };
+
+  it("reports the model that was used, not the first one asked for", async () => {
+    installFetch(() =>
+      jsonResponse(completedTranscript({ ...requested, speech_model_used: "universal-2" })),
+    );
+
+    const resource = await client().getResource("transcript", JOB_ID, ACCOUNT);
+
+    expect(resource.fields["speechModel"]).toBe("universal-2");
+  });
+
+  it("says so in the Speech panel summary", async () => {
+    installFetch((url, init) => {
+      if (url.endsWith("/v2/upload")) {
+        return jsonResponse({ upload_url: "https://cdn.assemblyai.com/upload/abc" });
+      }
+      if (init.method === "POST") return jsonResponse({ id: JOB_ID, status: "queued" });
+      return jsonResponse(completedTranscript({ ...requested, speech_model_used: "universal-2" }));
+    });
+
+    const result = await client().transcribeAudio("account", "default", ACCOUNT, {
+      audioBase64: "AAAA",
+      mimeType: "audio/webm",
+    });
+
+    expect(result.summary).toContain("Model universal-2");
+  });
+
+  it("falls back to what was asked for while no model has been used yet", async () => {
+    installFetch(() => jsonResponse(completedTranscript({ ...requested, status: "processing" })));
+
+    const resource = await client().getResource("transcript", JOB_ID, ACCOUNT);
+
+    expect(resource.fields["speechModel"]).toBe("universal-3-5-pro");
+  });
+});
+
 describe("listResources", () => {
   it("lists then hydrates each transcript, since the list endpoint omits model/duration", async () => {
     installFetch((url) => {

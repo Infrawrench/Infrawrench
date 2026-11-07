@@ -1091,10 +1091,10 @@ function withListRow(
 }
 
 function modelOf(t: TranscriptRecord): string {
-  // Submissions use the `speech_models` array; older records and some
-  // responses still carry the deprecated singular `speech_model`.
-  const first = t.speech_models?.[0];
-  return first ?? t.speech_model ?? "";
+  // `speech_models` is the priority list asked for, so its first entry is only the
+  // best guess until a model has been used. Older records and some responses still
+  // carry the deprecated singular `speech_model`.
+  return t.speech_model_used ?? t.speech_models?.[0] ?? t.speech_model ?? "";
 }
 
 function buildDisplayName(t: TranscriptRecord, text: string): string {
