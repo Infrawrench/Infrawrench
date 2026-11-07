@@ -1,8 +1,13 @@
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import { cfFetch } from "./shared.js";
 import type { ResourceInstance, StorageObject } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord } from "./shared.js";
-import type { BucketCreateParams } from "cloudflare/resources/r2/buckets/buckets";
+import type {
+  Bucket,
+  BucketCreateParams,
+  BucketListResponse,
+} from "cloudflare/resources/r2/buckets/buckets";
 
 /**
  * R2 bucket CRUD uses the official SDK (`cf.r2.buckets.*`). The R2 *object*
@@ -75,13 +80,50 @@ function mapR2Bucket(
   };
 }
 
+/** The largest page Cloudflare documents for listing buckets. */
+const BUCKETS_PER_PAGE = 1000;
+/** 100,000 buckets, the most one sync reads. */
+const BUCKETS_MAX_PAGES = 100;
+
+interface BucketPage {
+  result?: BucketListResponse | null;
+  result_info?: { cursor?: string };
+}
+
+/**
+ * Every R2 bucket on the account. `cf.r2.buckets.list` unwraps `result`, which drops the
+ * `result_info.cursor` that names the next page, so this reads the envelope itself.
+ */
+export async function listAllR2Buckets(api: CloudflareApi): Promise<Bucket[]> {
+  const account_id = await api.getAccountId();
+  const path = `/accounts/${account_id}/r2/buckets`;
+  const out: Bucket[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < BUCKETS_MAX_PAGES; page++) {
+    const query = { per_page: BUCKETS_PER_PAGE, ...(cursor ? { cursor } : {}) };
+    const body = await api.cf.get<typeof query, BucketPage>(path, { query });
+    // The document marks `buckets` optional within `result`, so only a missing `result` is wrong.
+    const list = body.result ? (body.result.buckets ?? []) : undefined;
+    const buckets = requireListPage(list, { vendor: "Cloudflare", path, key: "buckets" });
+    out.push(...buckets);
+    cursor = body.result_info?.cursor;
+    if (!cursor || buckets.length === 0) return out;
+  }
+  throw new ListTruncatedError({
+    vendor: "Cloudflare",
+    path,
+    items: out.length,
+    maxPages: BUCKETS_MAX_PAGES,
+  });
+}
+
 export async function listR2Buckets(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const account_id = await api.getAccountId();
-  const response = await api.cf.r2.buckets.list({ account_id });
-  return (response.buckets ?? []).map((b) => mapR2Bucket(asRecord(b), accountId, account_id));
+  const buckets = await listAllR2Buckets(api);
+  return buckets.map((b) => mapR2Bucket(asRecord(b), accountId, account_id));
 }
 
 export async function getR2Bucket(

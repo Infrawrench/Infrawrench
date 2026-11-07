@@ -47,9 +47,7 @@ function api() {
           },
         },
       },
-      r2: {
-        buckets: { list: vi.fn(async () => ({ buckets: [{ name: "lake" }, { name: "b2" }] })) },
-      },
+      get: vi.fn(async () => ({ result: { buckets: [{ name: "lake" }, { name: "b2" }] } })),
     },
   });
 }

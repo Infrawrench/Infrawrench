@@ -24,6 +24,7 @@ import { cfFetch } from "./shared.js";
 import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { ResourceInstance, SqlTableMeta } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { listAllR2Buckets } from "./r2-client.js";
 import { asRecord, collectPerParent, withAuthErrorHint } from "./shared.js";
 
 const SCOPE = "Account · Workers R2 Data Catalog:Read";
@@ -274,7 +275,7 @@ export async function getUncatalogedBucketOptions(
   api: CloudflareApi,
 ): Promise<Array<{ id: string; label: string }>> {
   const account_id = await api.getAccountId();
-  const res = await api.cf.r2.buckets.list({ account_id });
+  const buckets = await listAllR2Buckets(api);
   let enabled = new Set<string>();
   try {
     const cats = await api.cf.r2DataCatalog.list({ account_id });
@@ -284,7 +285,7 @@ export async function getUncatalogedBucketOptions(
   } catch {
     /* show every bucket */
   }
-  return (res.buckets ?? [])
+  return buckets
     .map((b) => b.name ?? "")
     .filter((n) => n && !enabled.has(n))
     .map((n) => ({ id: n, label: n }));
@@ -305,9 +306,8 @@ export async function getCatalogBucketOptions(
 export async function getBucketOptions(
   api: CloudflareApi,
 ): Promise<Array<{ id: string; label: string }>> {
-  const account_id = await api.getAccountId();
-  const res = await api.cf.r2.buckets.list({ account_id });
-  return (res.buckets ?? [])
+  const buckets = await listAllR2Buckets(api);
+  return buckets
     .map((b) => b.name ?? "")
     .filter(Boolean)
     .map((n) => ({ id: n, label: n }));

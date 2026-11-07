@@ -19,14 +19,15 @@ import { makeApi } from "./_helpers.js";
 
 function r2Api(over: Record<string, unknown> = {}) {
   const buckets = {
-    list: vi.fn(async () => ({
-      buckets: [{ name: "b1", location: "wnam", creation_date: "2020" }],
-    })),
     get: vi.fn(async () => ({ name: "b1", location: "wnam" })),
     create: vi.fn(async () => ({ name: "b2" })),
     delete: vi.fn(async () => undefined),
   };
-  return makeApi({ cf: { r2: { buckets } }, ...over });
+  const get = vi.fn(async () => ({
+    result: { buckets: [{ name: "b1", location: "wnam", creation_date: "2020" }] },
+    result_info: { per_page: 1000, total_count: 1 },
+  }));
+  return makeApi({ cf: { get, r2: { buckets } }, ...over });
 }
 
 describe("r2-client buckets", () => {
@@ -39,8 +40,40 @@ describe("r2-client buckets", () => {
   });
 
   it("listR2Buckets handles missing buckets array", async () => {
-    const api = makeApi({ cf: { r2: { buckets: { list: vi.fn(async () => ({})) } } } });
+    const api = makeApi({ cf: { get: vi.fn(async () => ({ result: {} })) } });
     expect(await listR2Buckets(api, "acct")).toEqual([]);
+  });
+
+  it("listR2Buckets follows the cursor at the largest page size", async () => {
+    const get = vi.fn(async (_path: string, opts: { query: { cursor?: string } }) =>
+      opts.query.cursor
+        ? { result: { buckets: [{ name: "b2" }] }, result_info: {} }
+        : { result: { buckets: [{ name: "b1" }] }, result_info: { cursor: "next" } },
+    );
+    const out = await listR2Buckets(makeApi({ cf: { get } }), "acct");
+    expect(out.map((b) => b.externalId)).toEqual(["b1", "b2"]);
+    expect(get).toHaveBeenNthCalledWith(1, "/accounts/acct-cf/r2/buckets", {
+      query: { per_page: 1000 },
+    });
+    expect(get).toHaveBeenNthCalledWith(2, "/accounts/acct-cf/r2/buckets", {
+      query: { per_page: 1000, cursor: "next" },
+    });
+  });
+
+  it("listR2Buckets throws at its cap rather than returning part", async () => {
+    const get = vi.fn(async () => ({
+      result: { buckets: [{ name: "b1" }] },
+      result_info: { cursor: "more" },
+    }));
+    await expect(listR2Buckets(makeApi({ cf: { get } }), "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(get).toHaveBeenCalledTimes(100);
+  });
+
+  it("listR2Buckets refuses an answer with no result", async () => {
+    const api = makeApi({ cf: { get: vi.fn(async () => ({ success: true })) } });
+    await expect(listR2Buckets(api, "acct")).rejects.toThrow("is not a list");
   });
 
   it("getR2Bucket fetches one bucket", async () => {

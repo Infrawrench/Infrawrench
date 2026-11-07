@@ -71,10 +71,8 @@ function catalogApi() {
       },
     },
   };
-  const r2 = {
-    buckets: { list: vi.fn(async () => ({ buckets: [{ name: "lake" }, { name: "raw" }] })) },
-  };
-  return makeApi({ apiToken: "secret-token", cf: { r2DataCatalog, r2 } });
+  const get = vi.fn(async () => ({ result: { buckets: [{ name: "lake" }, { name: "raw" }] } }));
+  return makeApi({ apiToken: "secret-token", cf: { get, r2DataCatalog } });
 }
 
 function pagedCatalogApi(namespaces: unknown, tables: unknown) {

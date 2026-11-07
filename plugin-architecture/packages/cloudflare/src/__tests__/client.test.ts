@@ -35,11 +35,12 @@ function makeClient(apiOver: Record<string, unknown> = {}) {
     },
     cf: {
       put: ok({}),
+      get: ok({ result: { buckets: [] } }),
       zones: { list: iter([{ id: "z1", name: "a.com", account: { id: "acct-cf" } }]) },
       dns: { records: { list: iter([]) } },
       workers: { scripts: { list: iter([]) }, routes: { list: iter([]) } },
       pages: { projects: { list: iter([]) } },
-      r2: { buckets: { list: ok({ buckets: [] }), get: ok({ name: "b1", location: "wnam" }) } },
+      r2: { buckets: { get: ok({ name: "b1", location: "wnam" }) } },
       kv: { namespaces: { list: iter([]) } },
       d1: { database: { list: iter([]), query: iter([]) } },
       queues: { list: iter([]) },
