@@ -15,13 +15,22 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  decodePromptArgs,
+  externalIdOf,
+  ListPageError,
+  reportUnreadListPart,
+  requireListPage,
+  rethrowIncompleteList,
+  withinListCap,
+} from "@infrawrench/plugin-base";
 import type { ConsulContext, Query } from "./api.js";
 import {
   buildContext,
   ConsulApiError,
   consulFetch,
   encodeKey,
+  isPermissionRefused,
   joinId,
   splitId,
   statusOf,
@@ -56,7 +65,11 @@ import {
 import { COMMANDS, renderConsulDetail, renderConsulSidebar } from "./render.js";
 import { CONFIG_KINDS } from "./resource-types.js";
 
-const MAX_CHECKS = 3000;
+const MAX_CHECKS = 100_000;
+/** Rules come one request per policy, so past this many a policy is listed without them and the detail view reads them. */
+const MAX_POLICY_RULE_READS = 1000;
+/** An agent drops a client past `limits.http_max_conns_per_client` (200 by default), and a dropped read now fails the type. */
+const POLICY_READ_BATCH = 20;
 const KV_PAGE = 200;
 const BUILTIN_TOKENS = new Set(["00000000-0000-0000-0000-000000000002"]);
 
@@ -205,7 +218,10 @@ export class ConsulClient implements PluginClient {
   }
 
   private soft<T>(p: Promise<T>): Promise<T | undefined> {
-    return p.catch(() => undefined);
+    return p.catch((err: unknown) => {
+      rethrowIncompleteList(err);
+      return undefined;
+    });
   }
 
   /** Enterprise-only or optional lists: a 404 (and the CE "not supported" 400/501) reads as empty; ACLs off reads as empty. */
@@ -226,8 +242,23 @@ export class ConsulClient implements PluginClient {
     }
   }
 
+  /** One read: Consul's lists have no pages. Go encodes a nil slice as a bare null, which is empty. */
+  private async rows<T>(path: string): Promise<T[]> {
+    const body = await this.get<T[] | null | undefined>(path);
+    return body === null ? [] : requireListPage(body, { vendor: "Consul", path, key: null });
+  }
+
+  private async serviceTags(): Promise<Record<string, string[]>> {
+    const path = "/catalog/services";
+    const body = await this.get<Record<string, string[]> | null | undefined>(path);
+    if (body === null) return {};
+    if (typeof body !== "object" || Array.isArray(body))
+      throw new ListPageError({ vendor: "Consul", path, key: null, found: body });
+    return body;
+  }
+
   private checks(): Promise<Check[]> {
-    return this.get<Check[]>("/health/state/any").then((c) => c ?? []);
+    return this.rows<Check>("/health/state/any");
   }
 
   private async cluster(accountId: string): Promise<ResourceInstance> {
@@ -276,13 +307,47 @@ export class ConsulClient implements PluginClient {
     return r;
   }
 
-  private async configEntries(): Promise<ConfigEntry[]> {
+  private async configEntries(accountId: string): Promise<ConfigEntry[]> {
     const lists = await Promise.all(
-      CONFIG_KINDS.map((k) =>
-        this.optional(this.get<ConfigEntry[]>(`/config/${k}`)).catch(() => [] as ConfigEntry[]),
-      ),
+      CONFIG_KINDS.map(async (k) => {
+        try {
+          return await this.optional(this.rows<ConfigEntry>(`/config/${k}`));
+        } catch (err) {
+          // Consul answers a kind it does not know with a plain 500. Community Edition does
+          // for control-plane-request-limit, and an older server for any newer kind.
+          if (err instanceof Error && /invalid config entry kind/i.test(err.message)) return [];
+          if (
+            isPermissionRefused(err) &&
+            reportUnreadListPart({ idPrefixes: [`${accountId}:consul-config-entry:${k}/`] })
+          )
+            return [];
+          throw err;
+        }
+      }),
     );
     return lists.flat();
+  }
+
+  /** The list leaves out rules, so each comes from its own read. Read once the list has answered, a 403 or 404 means the policy has gone. */
+  private async withRules(p: AclPolicy): Promise<AclPolicy> {
+    if (!p.ID) return p;
+    try {
+      return await this.get<AclPolicy>(`/acl/policy/${encodeURIComponent(p.ID)}`);
+    } catch (err) {
+      if (statusOf(err) === 403 || statusOf(err) === 404) return p;
+      throw err;
+    }
+  }
+
+  private async policies(accountId: string): Promise<ResourceInstance[]> {
+    const listed = await this.optional(this.rows<AclPolicy>("/acl/policies"));
+    const out: AclPolicy[] = [];
+    const reads = Math.min(listed.length, MAX_POLICY_RULE_READS);
+    for (let i = 0; i < reads; i += POLICY_READ_BATCH) {
+      const batch = listed.slice(i, Math.min(i + POLICY_READ_BATCH, reads));
+      out.push(...(await Promise.all(batch.map((p) => this.withRules(p)))));
+    }
+    return [...out, ...listed.slice(reads)].map((p) => mapPolicy(accountId, p));
   }
 
   // -------------------------------------------------------------------------
@@ -291,111 +356,105 @@ export class ConsulClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      switch (typeId) {
-        case "consul-cluster":
-          return [await this.cluster(accountId)];
-        case "consul-node": {
-          const [nodes, checks] = await Promise.all([
-            this.get<CatalogNode[]>("/catalog/nodes"),
-            this.soft(this.checks()),
-          ]);
-          return (nodes ?? []).map((n) =>
-            mapNode(
-              accountId,
-              n,
-              (checks ?? []).filter((c) => c.Node === n.Node),
-            ),
-          );
-        }
-        case "consul-service": {
-          const [services, checks] = await Promise.all([
-            this.get<Record<string, string[]>>("/catalog/services"),
-            this.soft(this.checks()),
-          ]);
-          return Object.entries(services ?? {}).map(([name, tags]) =>
-            mapService(
-              accountId,
-              name,
-              tags ?? [],
-              (checks ?? []).filter((c) => c.ServiceName === name),
-              {
-                ...(name === "consul" ? { kind: "consul servers" } : {}),
-              },
-            ),
-          );
-        }
-        case "consul-check":
-          return (await this.checks()).slice(0, MAX_CHECKS).map((c) => mapCheck(accountId, c));
-        case "consul-intention":
-          return (await this.optional(this.get<Intention[]>("/connect/intentions"))).map((i) =>
-            mapIntention(accountId, i),
-          );
-        case "consul-config-entry":
-          return (await this.configEntries()).map((e) => mapConfigEntry(accountId, e));
-        case "consul-acl-policy": {
-          // The list omits rules; read each (policies are few) so the detail and Terraform have them.
-          const policies = await this.optional(this.get<AclPolicy[]>("/acl/policies"));
-          return Promise.all(
-            policies
-              .slice(0, 300)
-              .map(async (p) =>
-                mapPolicy(
-                  accountId,
-                  (await this.soft(
-                    this.get<AclPolicy>(`/acl/policy/${encodeURIComponent(p.ID ?? "")}`),
-                  )) ?? p,
-                ),
-              ),
-          );
-        }
-        case "consul-acl-role":
-          return (await this.optional(this.get<AclRole[]>("/acl/roles"))).map((r) =>
-            mapRole(accountId, r),
-          );
-        case "consul-acl-token":
-          return (await this.optional(this.get<AclToken[]>("/acl/tokens"))).map((t) =>
-            mapToken(accountId, t),
-          );
-        case "consul-session":
-          return ((await this.get<Session[]>("/session/list")) ?? []).map((s) =>
-            mapSession(accountId, s),
-          );
-        case "consul-peering":
-          return (await this.optional(this.get<Peering[]>("/peerings"))).map((p) =>
-            mapPeering(accountId, p),
-          );
-        case "consul-namespace":
-          return (
-            await this.optional(
-              this.get<
-                Array<{
-                  Name?: string;
-                  Description?: string;
-                  Partition?: string;
-                  Meta?: Record<string, string>;
-                }>
-              >("/namespaces"),
-            )
-          ).map((n) => this.mapNamespace(accountId, n));
-        case "consul-partition":
-          return (
-            await this.optional(
-              this.get<Array<{ Name?: string; Description?: string }>>("/partitions"),
-            )
-          ).map((p) =>
-            instance(
-              accountId,
-              "consul-partition",
-              joinId(p.Name ?? ""),
-              p.Name ?? "",
-              { name: p.Name, description: p.Description },
-              { resolvedOutputs: { name: p.Name ?? "" } },
-            ),
-          );
-        default:
-          return [];
+      try {
+        return await this.listType(typeId, accountId);
+      } catch (err) {
+        // A narrow token is normal, so this type's stored rows stay. A host that keeps no
+        // track (the desktop) answers false, and there the refusal should still show.
+        if (isPermissionRefused(err) && reportUnreadListPart({ idPrefixes: [""] })) return [];
+        throw err;
       }
     });
+  }
+
+  private async listType(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "consul-cluster":
+        return [await this.cluster(accountId)];
+      case "consul-node": {
+        const [nodes, checks] = await Promise.all([
+          this.rows<CatalogNode>("/catalog/nodes"),
+          this.soft(this.checks()),
+        ]);
+        return nodes.map((n) =>
+          mapNode(
+            accountId,
+            n,
+            (checks ?? []).filter((c) => c.Node === n.Node),
+          ),
+        );
+      }
+      case "consul-service": {
+        const [services, checks] = await Promise.all([
+          this.serviceTags(),
+          this.soft(this.checks()),
+        ]);
+        return Object.entries(services).map(([name, tags]) =>
+          mapService(
+            accountId,
+            name,
+            tags ?? [],
+            (checks ?? []).filter((c) => c.ServiceName === name),
+            {
+              ...(name === "consul" ? { kind: "consul servers" } : {}),
+            },
+          ),
+        );
+      }
+      case "consul-check":
+        return withinListCap(await this.checks(), MAX_CHECKS, {
+          vendor: "Consul",
+          path: "/health/state/any",
+        }).map((c) => mapCheck(accountId, c));
+      case "consul-intention":
+        return (await this.optional(this.rows<Intention>("/connect/intentions"))).map((i) =>
+          mapIntention(accountId, i),
+        );
+      case "consul-config-entry":
+        return (await this.configEntries(accountId)).map((e) => mapConfigEntry(accountId, e));
+      case "consul-acl-policy":
+        return this.policies(accountId);
+      case "consul-acl-role":
+        return (await this.optional(this.rows<AclRole>("/acl/roles"))).map((r) =>
+          mapRole(accountId, r),
+        );
+      case "consul-acl-token":
+        return (await this.optional(this.rows<AclToken>("/acl/tokens"))).map((t) =>
+          mapToken(accountId, t),
+        );
+      case "consul-session":
+        return (await this.rows<Session>("/session/list")).map((s) => mapSession(accountId, s));
+      case "consul-peering":
+        return (await this.optional(this.rows<Peering>("/peerings"))).map((p) =>
+          mapPeering(accountId, p),
+        );
+      case "consul-namespace":
+        return (
+          await this.optional(
+            this.rows<{
+              Name?: string;
+              Description?: string;
+              Partition?: string;
+              Meta?: Record<string, string>;
+            }>("/namespaces"),
+          )
+        ).map((n) => this.mapNamespace(accountId, n));
+      case "consul-partition":
+        return (
+          await this.optional(this.rows<{ Name?: string; Description?: string }>("/partitions"))
+        ).map((p) =>
+          instance(
+            accountId,
+            "consul-partition",
+            joinId(p.Name ?? ""),
+            p.Name ?? "",
+            { name: p.Name, description: p.Description },
+            { resolvedOutputs: { name: p.Name ?? "" } },
+          ),
+        );
+      default:
+        return [];
+    }
   }
 
   private mapNamespace(
@@ -606,6 +665,12 @@ export class ConsulClient implements PluginClient {
               tags: (s.Tags ?? []).join(", "),
             })),
           );
+        } else if (
+          resource.resourceTypeId === "consul-acl-policy" &&
+          resource.resolvedOutputs["rules"] === undefined
+        ) {
+          const { Rules } = await this.get<AclPolicy>(`/acl/policy/${encodeURIComponent(id)}`);
+          if (Rules !== undefined) extra["rules"] = Rules;
         }
       } catch {
         return resource;

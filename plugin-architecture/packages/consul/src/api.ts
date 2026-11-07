@@ -31,6 +31,14 @@ export function statusOf(err: unknown): number {
   return err instanceof ConsulApiError ? err.status : 0;
 }
 
+/**
+ * A token Consul knows, refused this read. A token it does not know is also a 403, with
+ * the body "ACL not found", and that is a bad credential rather than a narrow one.
+ */
+export function isPermissionRefused(err: unknown): boolean {
+  return statusOf(err) === 403 && err instanceof Error && /permission ?denied/i.test(err.message);
+}
+
 /** `consul.internal:8500/ui/` → `http://consul.internal:8500`. Without a scheme, 8500 is HTTP and anything else HTTPS. */
 export function normaliseAddress(raw: string): string {
   let value = raw.trim();

@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { ConsulApiError, normaliseAddress } from "../api.js";
 import { ConsulClient, configTemplate, pickerList } from "../client.js";
 import { consulTerraformExport } from "../terraform.js";
@@ -152,6 +152,259 @@ describe("requests", () => {
     expect(r.secretStates[0]).toEqual({
       fieldKey: "peeringToken",
       resolution: { kind: "plaintext", value: "tok123" },
+    });
+  });
+});
+
+describe("lists a sync prunes against", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+  const trackUnread = () => {
+    const parts: Array<{ idPrefixes?: readonly string[] }> = [];
+    Reflect.set(globalThis, UNREAD_HOOK, (part: { idPrefixes?: readonly string[] }) =>
+      parts.push(part),
+    );
+    return parts;
+  };
+  const denied = {
+    status: 403,
+    text: "Permission denied: token with AccessorID 'x' lacks permission 'acl:read'",
+  };
+  const badToken = { status: 403, text: "ACL not found" };
+
+  const checks = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ Node: "n1", CheckID: `c${i}`, Status: "passing" }));
+  const policies = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ ID: `p${i}`, Name: `policy-${i}` }));
+
+  describe("checks", () => {
+    it("reads past the old cap of 3,000", async () => {
+      const { c } = client(() => checks(3001));
+      expect(await c.listResources("consul-check", ACCOUNT)).toHaveLength(3001);
+    });
+
+    it("throws past the row ceiling rather than return part of the list", async () => {
+      const { c } = client(() => checks(100_001));
+      await expect(c.listResources("consul-check", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+  });
+
+  describe("ACL policies", () => {
+    const route = (n: number) => (call: Call) =>
+      call.url.pathname === "/v1/acl/policies"
+        ? policies(n)
+        : { ID: call.url.pathname.split("/").pop(), Name: "x", Rules: "node_prefix {}" };
+
+    it("keeps every policy past the old cap of 300, each with its rules", async () => {
+      const { c } = client(route(301));
+      const rows = await c.listResources("consul-acl-policy", ACCOUNT);
+      expect(rows).toHaveLength(301);
+      expect(rows[300]!.resolvedOutputs["rules"]).toBe("node_prefix {}");
+    });
+
+    it("keeps a policy past the rules budget, without its rules, and reads no further", async () => {
+      const { c, calls } = client(route(1001));
+      const rows = await c.listResources("consul-acl-policy", ACCOUNT);
+      expect(rows).toHaveLength(1001);
+      expect(rows[999]!.resolvedOutputs["rules"]).toBe("node_prefix {}");
+      expect(rows[1000]!.externalId).toBe("p1000");
+      expect(rows[1000]!.resolvedOutputs["rules"]).toBeUndefined();
+      expect(calls.filter((x) => x.url.pathname.startsWith("/v1/acl/policy/"))).toHaveLength(1000);
+    });
+
+    it("does not open more connections than an agent allows one client", async () => {
+      const { http } = makeHttp(route(300));
+      let open = 0;
+      let peak = 0;
+      const request: typeof http.request = async (req) => {
+        open++;
+        peak = Math.max(peak, open);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        open--;
+        return http.request(req);
+      };
+      const c = hostClient(
+        new ConsulClient({ address: "consul.internal:8500", token: "tok" }, {
+          http: { request },
+        } as never),
+      );
+      await c.listResources("consul-acl-policy", ACCOUNT);
+      expect(peak).toBeLessThanOrEqual(20);
+    });
+
+    it("fails the type when reading a policy's rules fails, so its stored rules stay", async () => {
+      const { c } = client((call) =>
+        call.url.pathname === "/v1/acl/policies" ? policies(2) : { status: 500, text: "boom" },
+      );
+      await expect(c.listResources("consul-acl-policy", ACCOUNT)).rejects.toThrow("500");
+    });
+
+    it.each([404, 403])(
+      "keeps the listed row when a policy went away between the two reads (%i)",
+      async (status) => {
+        const { c } = client((call) =>
+          call.url.pathname === "/v1/acl/policies"
+            ? policies(1)
+            : { status, text: "ACL not found" },
+        );
+        const rows = await c.listResources("consul-acl-policy", ACCOUNT);
+        expect(rows.map((r) => r.externalId)).toEqual(["p0"]);
+      },
+    );
+
+    it("reads the rules on the detail view when the listed row has none", async () => {
+      const { c } = client(() => ({ ID: "p1", Name: "x", Rules: "node_prefix {}" }));
+      const row = (await c.enrichDetail!({
+        id: `${ACCOUNT}:consul-acl-policy:p1`,
+        pluginId: "consul",
+        resourceTypeId: "consul-acl-policy",
+        accountId: ACCOUNT,
+        displayName: "x",
+        externalId: "p1",
+        fields: {},
+        resolvedOutputs: { id: "p1" },
+        secretStates: [],
+        createdAt: "",
+        updatedAt: "",
+      }))!;
+      expect(row.resolvedOutputs["rules"]).toBe("node_prefix {}");
+    });
+  });
+
+  describe("config entries", () => {
+    const kindOf = (call: Call) => call.url.pathname.replace("/v1/config/", "");
+
+    it("fails the type when one kind's read fails, rather than read that kind as none", async () => {
+      const { c } = client((call) =>
+        kindOf(call) === "service-router"
+          ? { status: 500, text: "rpc error making call: No cluster leader" }
+          : [],
+      );
+      await expect(c.listResources("consul-config-entry", ACCOUNT)).rejects.toThrow("500");
+    });
+
+    it("fails the type on a throttle", async () => {
+      const { c } = client((call) =>
+        kindOf(call) === "mesh" ? { status: 429, text: "rate limit exceeded" } : [],
+      );
+      await expect(c.listResources("consul-config-entry", ACCOUNT)).rejects.toThrow("429");
+    });
+
+    it("reads a kind this server does not know as none", async () => {
+      // Community Edition has no control-plane-request-limit, and answers 500 for it.
+      const { c } = client((call) =>
+        kindOf(call) === "control-plane-request-limit"
+          ? { status: 500, text: "invalid config entry kind: control-plane-request-limit" }
+          : kindOf(call) === "service-defaults"
+            ? [{ Kind: "service-defaults", Name: "web" }]
+            : [],
+      );
+      const rows = await c.listResources("consul-config-entry", ACCOUNT);
+      expect(rows.map((r) => r.externalId)).toEqual(["service-defaults/web"]);
+    });
+
+    it("keeps a refused kind's rows and reads the others", async () => {
+      const parts = trackUnread();
+      const { c } = client((call) =>
+        kindOf(call) === "exported-services"
+          ? denied
+          : kindOf(call) === "service-defaults"
+            ? [{ Kind: "service-defaults", Name: "web" }]
+            : [],
+      );
+      const rows = await c.listResources("consul-config-entry", ACCOUNT);
+      expect(rows.map((r) => r.externalId)).toEqual(["service-defaults/web"]);
+      expect(parts).toEqual([
+        { idPrefixes: [`${ACCOUNT}:consul-config-entry:exported-services/`] },
+      ]);
+    });
+
+    it("shows a refused kind where the host keeps no track", async () => {
+      const { c } = client((call) => (kindOf(call) === "exported-services" ? denied : []));
+      await expect(c.listResources("consul-config-entry", ACCOUNT)).rejects.toThrow("403");
+    });
+
+    it("fails on a token that does not exist", async () => {
+      trackUnread();
+      const { c } = client(() => badToken);
+      await expect(c.listResources("consul-config-entry", ACCOUNT)).rejects.toThrow("403");
+    });
+  });
+
+  describe("a token refused a whole type", () => {
+    it("keeps the rows without an error", async () => {
+      const parts = trackUnread();
+      const { c } = client(() => denied);
+      expect(await c.listResources("consul-acl-token", ACCOUNT)).toEqual([]);
+      expect(parts).toEqual([{ idPrefixes: [""] }]);
+    });
+
+    it("still shows where the host keeps no track", async () => {
+      const { c } = client(() => denied);
+      await expect(c.listResources("consul-acl-token", ACCOUNT)).rejects.toThrow("403");
+    });
+
+    it("does not cover a token Consul does not recognise", async () => {
+      const parts = trackUnread();
+      const { c } = client(() => badToken);
+      await expect(c.listResources("consul-acl-token", ACCOUNT)).rejects.toThrow("403");
+      expect(parts).toEqual([]);
+    });
+  });
+
+  describe("an answer that is not a list", () => {
+    const LISTS: Array<[string, string]> = [
+      ["consul-node", "/v1/catalog/nodes"],
+      ["consul-check", "/v1/health/state/any"],
+      ["consul-intention", "/v1/connect/intentions"],
+      ["consul-acl-policy", "/v1/acl/policies"],
+      ["consul-acl-role", "/v1/acl/roles"],
+      ["consul-acl-token", "/v1/acl/tokens"],
+      ["consul-session", "/v1/session/list"],
+      ["consul-peering", "/v1/peerings"],
+      ["consul-namespace", "/v1/namespaces"],
+      ["consul-partition", "/v1/partitions"],
+    ];
+
+    it.each(LISTS)("%s rejects an object, HTML and no body", async (typeId, path) => {
+      for (const reply of [
+        { body: { error: "wrapped" } },
+        { text: "<html>sign in</html>" },
+        { text: "" },
+      ]) {
+        const { c } = client((call) => (call.url.pathname === path ? reply : []));
+        await expect(c.listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+      }
+    });
+
+    it.each(LISTS)("%s reads a bare null as empty, how Go encodes a nil slice", async (typeId) => {
+      const { c } = client(() => ({ text: "null" }));
+      expect(await c.listResources(typeId, ACCOUNT)).toEqual([]);
+    });
+
+    it("a config kind rejects one too", async () => {
+      const { c } = client((call) =>
+        call.url.pathname === "/v1/config/mesh" ? { text: "<html>sign in</html>" } : [],
+      );
+      await expect(c.listResources("consul-config-entry", ACCOUNT)).rejects.toThrow(
+        "is not a list",
+      );
+    });
+
+    it("the service map rejects HTML, which would read as one row per character", async () => {
+      for (const reply of [{ text: "<html>" }, { text: "" }, { body: ["web"] }]) {
+        const { c } = client((call) => (call.url.pathname === "/v1/catalog/services" ? reply : []));
+        await expect(c.listResources("consul-service", ACCOUNT)).rejects.toThrow("is not a list");
+      }
+    });
+
+    it("the service map reads a bare null as empty", async () => {
+      const { c } = client(() => ({ text: "null" }));
+      expect(await c.listResources("consul-service", ACCOUNT)).toEqual([]);
     });
   });
 });
