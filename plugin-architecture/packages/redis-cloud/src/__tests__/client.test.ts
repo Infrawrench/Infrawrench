@@ -274,3 +274,80 @@ describe("RedisCloudClient", () => {
     expect(detail.metricsCapability).toBeDefined();
   });
 });
+
+describe("database pages (#746)", () => {
+  const dbs = (from: number, n: number) =>
+    Array.from({ length: n }, (_, i) => ({ ...PRO_DB, databaseId: from + i }));
+
+  it("throws past the cap on Pro databases instead of returning part", async () => {
+    const { calls } = mockFetch({
+      ...baseRoutes(),
+      "GET /subscriptions/1206/databases": (url: URL) => ({
+        subscription: [
+          { subscriptionId: 1206, databases: dbs(Number(url.searchParams.get("offset")), 100) },
+        ],
+      }),
+    });
+    await expect(client().listResources("rc-database", "acc")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => c.path === "/subscriptions/1206/databases")).toHaveLength(100);
+  });
+
+  it("throws past the cap on Essentials databases instead of returning part", async () => {
+    const { calls } = mockFetch({
+      ...baseRoutes(),
+      "GET /fixed/subscriptions/77/databases": (url: URL) => ({
+        subscription: {
+          subscriptionId: 77,
+          databases: dbs(Number(url.searchParams.get("offset")), 100),
+        },
+      }),
+    });
+    await expect(client().listResources("rc-database", "acc")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => c.path === "/fixed/subscriptions/77/databases")).toHaveLength(100);
+  });
+
+  it("reads past a short page while the subscription says more databases remain", async () => {
+    const { calls } = mockFetch({
+      ...baseRoutes(),
+      "GET /subscriptions/1206/databases": (url: URL) => {
+        const offset = Number(url.searchParams.get("offset"));
+        return {
+          subscription: [
+            {
+              subscriptionId: 1206,
+              numberOfDatabases: 120,
+              databases: dbs(1000 + offset, Math.min(50, 120 - offset)),
+            },
+          ],
+        };
+      },
+    });
+    const listed = await client().listResources("rc-database", "acc");
+    expect(
+      listed.filter((d) => d.parentResourceId === "acc:rc-subscription:pro-1206"),
+    ).toHaveLength(120);
+    expect(calls.filter((c) => c.path === "/subscriptions/1206/databases")).toHaveLength(3);
+  });
+
+  it("reads 10,000 databases in a subscription", async () => {
+    mockFetch({
+      ...baseRoutes(),
+      "GET /subscriptions/1206/databases": (url: URL) => {
+        const offset = Number(url.searchParams.get("offset"));
+        return {
+          subscription: [
+            { subscriptionId: 1206, databases: dbs(offset, offset >= 9_900 ? 99 : 100) },
+          ],
+        };
+      },
+    });
+    const listed = await client().listResources("rc-database", "acc");
+    expect(
+      listed.filter((d) => d.parentResourceId === "acc:rc-subscription:pro-1206"),
+    ).toHaveLength(9_999);
+  });
+});

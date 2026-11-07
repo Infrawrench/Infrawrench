@@ -16,7 +16,12 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf, withMetricsCapability } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  decodePromptArgs,
+  externalIdOf,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
 import type { RcTask, RedisCloudContext } from "./api.js";
 import { rcFetch, readViaTask, statusOf, submitTask } from "./api.js";
 import { fetchRedisCloudCostData } from "./cost-data.js";
@@ -72,9 +77,15 @@ import type {
 } from "./types.js";
 
 const DB_PAGE = 100;
-const MAX_DB_PAGES = 50;
+/** 10,000 databases in one subscription. */
+const MAX_DB_PAGES = 100;
 /** List results are reused for this long within one client, so a sync does not re-list per type. */
 const CACHE_MS = 20_000;
+
+interface SubscriptionDatabasesEntry {
+  numberOfDatabases?: number | undefined;
+  databases?: RcDatabase[] | undefined;
+}
 
 interface DbRef extends DatabaseContext {
   databaseId: string;
@@ -168,34 +179,47 @@ export class RedisCloudClient implements PluginClient {
   }
 
   private async proDatabases(subscriptionId: number): Promise<RcDatabase[]> {
-    return this.cached(`pro-dbs-${subscriptionId}`, async () => {
-      const out: RcDatabase[] = [];
-      for (let page = 0; page < MAX_DB_PAGES; page++) {
-        const res = await this.get<RcProSubscriptionDatabases>(
-          `/subscriptions/${subscriptionId}/databases`,
-          { offset: page * DB_PAGE, limit: DB_PAGE },
-        );
-        const batch = asArray(res?.subscription).flatMap((s) => s.databases ?? []);
-        out.push(...batch);
-        if (batch.length < DB_PAGE) break;
-      }
-      return out;
-    });
+    return this.cached(`pro-dbs-${subscriptionId}`, () =>
+      this.databasePages<RcProSubscriptionDatabases>(`/subscriptions/${subscriptionId}/databases`),
+    );
   }
 
   private async essentialsDatabases(subscriptionId: number): Promise<RcDatabase[]> {
-    return this.cached(`ess-dbs-${subscriptionId}`, async () => {
-      const out: RcDatabase[] = [];
-      for (let page = 0; page < MAX_DB_PAGES; page++) {
-        const res = await this.get<RcEssentialsSubscriptionDatabases>(
-          `/fixed/subscriptions/${subscriptionId}/databases`,
-          { offset: page * DB_PAGE, limit: DB_PAGE },
-        );
-        const batch = asArray(res?.subscription).flatMap((s) => s.databases ?? []);
-        out.push(...batch);
-        if (batch.length < DB_PAGE) break;
+    return this.cached(`ess-dbs-${subscriptionId}`, () =>
+      this.databasePages<RcEssentialsSubscriptionDatabases>(
+        `/fixed/subscriptions/${subscriptionId}/databases`,
+      ),
+    );
+  }
+
+  /**
+   * Every database of one subscription, by offset. The document gives `limit` no
+   * maximum, so a page shorter than asked only ends the list when the subscription's
+   * `numberOfDatabases` (when it is sent) agrees nothing is left.
+   */
+  private async databasePages<
+    P extends { subscription?: SubscriptionDatabasesEntry | SubscriptionDatabasesEntry[] },
+  >(path: string): Promise<RcDatabase[]> {
+    const out: RcDatabase[] = [];
+    for (let page = 0; page < MAX_DB_PAGES; page++) {
+      const res = await this.get<P>(path, { offset: out.length, limit: DB_PAGE });
+      const entries = asArray(res?.subscription);
+      const batch = entries.flatMap((s) => s.databases ?? []);
+      out.push(...batch);
+      if (batch.length === 0) return out;
+      if (batch.length < DB_PAGE) {
+        const totals = entries
+          .map((s) => s.numberOfDatabases)
+          .filter((n): n is number => typeof n === "number");
+        const total = totals.length ? Math.max(...totals) : undefined;
+        if (total === undefined || out.length >= total) return out;
       }
-      return out;
+    }
+    throw new ListTruncatedError({
+      vendor: "Redis Cloud",
+      path,
+      items: out.length,
+      maxPages: MAX_DB_PAGES,
     });
   }
 
