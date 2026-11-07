@@ -83,6 +83,7 @@ export function mapIndex(
   settings: AlSettings | undefined,
   accountId: string,
 ): ResourceInstance {
+  const abTestId = i.abTest?.id ?? i.abTest?.abTestId;
   const fields: Fields = {
     name: i.name,
     entries: i.entries ?? 0,
@@ -91,7 +92,7 @@ export function mapIndex(
     lastBuildTimeS: i.lastBuildTimeS ?? 0,
     primary: i.primary ?? "",
     role: i.primary ? (i.virtual ? "virtual replica" : "replica") : "primary",
-    abTest: i.abTest?.abTestId !== undefined ? String(i.abTest.abTestId) : "",
+    abTest: abTestId !== undefined ? String(abTestId) : "",
     ...settingsFields(settings),
   };
   if (!settings && i.replicas?.length) fields["replicas"] = i.replicas.join(", ");

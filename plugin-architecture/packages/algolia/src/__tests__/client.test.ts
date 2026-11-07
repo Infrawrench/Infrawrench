@@ -2,7 +2,7 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { AlgoliaApiError, keyFingerprint } from "../api.js";
 import { AlgoliaClient, parseAcl, settingsPatch, usageSeries } from "../client.js";
-import { mapApiKey, mapIndex } from "../mappers.js";
+import { mapApiKey, mapCrawler, mapIndex } from "../mappers.js";
 import { RESOURCE_TYPES } from "../resource-types.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { algoliaTerraformExport } from "../terraform.js";
@@ -238,5 +238,18 @@ describe("terraform", () => {
     )!;
     expect(JSON.stringify(out)).not.toContain("zzz");
     expect(out.resource.importId).toBeUndefined();
+  });
+});
+
+describe("documented field names", () => {
+  it("reads an index's A/B test from `id`, and still from `abTestId`", () => {
+    const test = { id: 42, variants: [] };
+    expect(mapIndex({ name: "prod", abTest: test }, undefined, ACCOUNT).fields["abTest"]).toBe(
+      "42",
+    );
+    expect(
+      mapIndex({ name: "prod", abTest: { abTestId: 7 } }, undefined, ACCOUNT).fields["abTest"],
+    ).toBe("7");
+    expect(mapIndex({ name: "prod" }, undefined, ACCOUNT).fields["abTest"]).toBe("");
   });
 });

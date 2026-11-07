@@ -9,12 +9,13 @@ import type { components as Search, operations as SearchOps } from "./api-types.
 
 /**
  * Only `name` is certain: a created index is mapped before it has been listed.
- * `abTestId` is what the mapper reads, where the document names the field `id`.
+ * The document names a test's id `id`. `abTestId` is what was read before that was
+ * noticed, and is still read because no live answer has ruled it out.
  */
 type FetchedIndex = ApiListItem<SearchOps["listIndices"], "items">;
 export type AlIndex = Pick<FetchedIndex, "name"> &
   Partial<Omit<FetchedIndex, "abTest">> & {
-    abTest?: FetchedIndex["abTest"] & { abTestId?: number };
+    abTest?: Partial<NonNullable<FetchedIndex["abTest"]>> & { abTestId?: number };
   };
 
 /** Index settings (`GET /1/indexes/{name}/settings`); open-ended, only some are mapped. */
