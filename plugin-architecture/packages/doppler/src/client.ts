@@ -12,9 +12,21 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  decodePromptArgs,
+  externalIdOf,
+  ListPageError,
+  reportUnreadListPart,
+} from "@infrawrench/plugin-base";
 import type { DopplerContext } from "./api.js";
-import { DopplerApiError, dopplerFetch, dopplerPaged, statusOf, tokenKind } from "./api.js";
+import {
+  DopplerApiError,
+  dopplerFetch,
+  dopplerList,
+  dopplerPaged,
+  statusOf,
+  tokenKind,
+} from "./api.js";
 import type {
   DopplerApiToken,
   DopplerConfig,
@@ -45,13 +57,21 @@ import {
   mapUser,
   mapWebhook,
   mapWorkplace,
+  parent,
   projectKey,
   splitId,
 } from "./mappers.js";
 import { COMMANDS, ROLES_KEY, renderDopplerDetail, renderDopplerSidebar } from "./render.js";
 
+/**
+ * Configs whose secrets one poll reads, at a request each. Doppler allows 120 secret reads
+ * a minute on its Developer plan, 240 on Team and 480 on Enterprise.
+ */
 const MAX_SECRET_CONFIGS = 100;
-const MAX_SECRETS = 3000;
+/** The most rows one poll can read and write. */
+const MAX_SECRETS = 100_000;
+/** The document does not say how long a page is. 10,000 rows at the 20 its other lists default to. */
+const MAX_USER_PAGES = 500;
 
 const list = (raw: string | undefined): string[] =>
   (raw ?? "")
@@ -81,6 +101,56 @@ const EXPIRY_OPTIONS = [
   { id: "90", label: "90 days" },
   { id: "365", label: "1 year" },
 ];
+
+/**
+ * One list per parent. A parent the credential is refused, or one past the budget, keeps
+ * its stored children rather than reading as having none, and anything else fails the
+ * whole type. Past `maxReads` it reads a run from a random start, so every parent gets
+ * read over time. A host that keeps no track answers false, and there a credential
+ * refused for every parent still shows.
+ */
+async function readPerParent<P, R>(
+  parents: readonly P[],
+  parentId: (item: P) => string,
+  read: (item: P) => Promise<readonly R[]>,
+  options: {
+    isRefusal?: (status: number) => boolean;
+    maxReads?: number;
+    maxRows?: number;
+  } = {},
+): Promise<R[]> {
+  const {
+    isRefusal = (status) => status === 403,
+    maxReads = Infinity,
+    maxRows = Infinity,
+  } = options;
+  const start = parents.length > maxReads ? Math.floor(Math.random() * parents.length) : 0;
+  const out: R[] = [];
+  const unread: string[] = [];
+  let reads = 0;
+  let refusals = 0;
+  let refusal: unknown;
+  for (const item of [...parents.slice(start), ...parents.slice(0, start)]) {
+    if (reads >= maxReads || out.length >= maxRows) {
+      unread.push(parentId(item));
+      continue;
+    }
+    reads++;
+    try {
+      for (const row of await read(item)) out.push(row);
+    } catch (err) {
+      if (!isRefusal(statusOf(err))) throw err;
+      unread.push(parentId(item));
+      refusals++;
+      refusal = err;
+    }
+  }
+  if (unread.length > 0) {
+    const tracked = reportUnreadListPart({ parentResourceIds: unread });
+    if (!tracked && refusals > 0 && refusals === reads) throw refusal;
+  }
+  return out;
+}
 
 function logText(logs: DopplerLog[]): string {
   return logs
@@ -124,19 +194,24 @@ export class DopplerClient implements PluginClient {
   }
 
   private environments(project: string): Promise<DopplerEnvironment[]> {
-    return dopplerFetch<{ environments?: DopplerEnvironment[] }>(this.ctx, "/v3/environments", {
-      query: { project },
-    }).then((r) => r?.environments ?? []);
+    return dopplerList<DopplerEnvironment>(this.ctx, "/v3/environments", "environments", {
+      project,
+    });
   }
 
-  private secrets(project: string, config: string): Promise<Record<string, DopplerSecretValue>> {
-    return dopplerFetch<{ secrets?: Record<string, DopplerSecretValue> }>(
-      this.ctx,
-      "/v3/configs/config/secrets",
-      {
-        query: { project, config },
-      },
-    ).then((r) => r?.secrets ?? {});
+  private async secrets(
+    project: string,
+    config: string,
+  ): Promise<Record<string, DopplerSecretValue>> {
+    const path = "/v3/configs/config/secrets";
+    const page = await dopplerFetch<
+      { secrets?: Record<string, DopplerSecretValue> | null } | undefined
+    >(this.ctx, path, { query: { project, config } });
+    const secrets = page?.secrets;
+    if (secrets === null) return {};
+    if (typeof secrets !== "object" || Array.isArray(secrets))
+      throw new ListPageError({ vendor: "Doppler", path, key: "secrets", found: secrets, page });
+    return secrets;
   }
 
   private async users(): Promise<DopplerWorkplaceUser[]> {
@@ -145,12 +220,12 @@ export class DopplerClient implements PluginClient {
       "/v3/workplace/users",
       "workplace_users",
       {},
-      50,
+      MAX_USER_PAGES,
       0,
     );
   }
 
-  /** Map over every project, every project's configs, bounded. */
+  /** Every config of every project, for a form's picker. */
   private async allConfigs(): Promise<Array<{ project: string; config: DopplerConfig }>> {
     const out: Array<{ project: string; config: DopplerConfig }> = [];
     for (const p of await this.projects()) {
@@ -164,148 +239,177 @@ export class DopplerClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
+  /** Every config a list can read, with a refused project keeping what hangs off it. */
+  private async listedConfigs(
+    accountId: string,
+  ): Promise<Array<{ project: string; config: DopplerConfig }>> {
+    return readPerParent(
+      await this.projects(),
+      (p) => parent(accountId, "doppler-project", projectKey(p)),
+      async (p) => {
+        const project = projectKey(p);
+        return (await this.configs(project)).map((config) => ({ project, config }));
+      },
+    );
+  }
+
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      switch (typeId) {
-        case "doppler-workplace": {
-          const r = await dopplerFetch<{ workplace?: DopplerWorkplace }>(this.ctx, "/v3/workplace");
-          return r?.workplace ? [mapWorkplace(accountId, r.workplace)] : [];
-        }
-        case "doppler-project": {
-          this.projectsCache = undefined;
-          return (await this.projects()).map((p) => mapProject(accountId, p));
-        }
-        case "doppler-environment": {
-          const out: ResourceInstance[] = [];
-          for (const p of await this.projects()) {
+      try {
+        return await this.readResources(typeId, accountId);
+      } catch (err) {
+        if (statusOf(err) !== 403) throw err;
+        // A service account's role can refuse a whole type. This type's stored rows stay. A
+        // host that keeps no track (the desktop) answers false, and there the refusal shows.
+        if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+        return [];
+      }
+    });
+  }
+
+  private async readResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "doppler-workplace": {
+        const path = "/v3/workplace";
+        const page = await dopplerFetch<{ workplace?: DopplerWorkplace } | undefined>(
+          this.ctx,
+          path,
+        );
+        if (!page?.workplace)
+          throw new ListPageError({
+            vendor: "Doppler",
+            path,
+            key: "workplace",
+            found: page?.workplace,
+            page,
+          });
+        return [mapWorkplace(accountId, page.workplace)];
+      }
+      case "doppler-project": {
+        this.projectsCache = undefined;
+        return (await this.projects()).map((p) => mapProject(accountId, p));
+      }
+      case "doppler-environment":
+        return readPerParent(
+          await this.projects(),
+          (p) => parent(accountId, "doppler-project", projectKey(p)),
+          async (p) => {
             const key = projectKey(p);
-            out.push(
-              ...(await this.environments(key)).map((e) => mapEnvironment(accountId, key, e)),
-            );
-          }
-          return out;
-        }
-        case "doppler-config":
-          return (await this.allConfigs()).map(({ project, config }) =>
-            mapConfig(accountId, project, config),
-          );
-        case "doppler-secret": {
-          const out: ResourceInstance[] = [];
-          for (const { project, config } of (await this.allConfigs()).slice(
-            0,
-            MAX_SECRET_CONFIGS,
-          )) {
+            return (await this.environments(key)).map((e) => mapEnvironment(accountId, key, e));
+          },
+        );
+      case "doppler-config":
+        return (await this.listedConfigs(accountId)).map(({ project, config }) =>
+          mapConfig(accountId, project, config),
+        );
+      case "doppler-secret":
+        return readPerParent(
+          await this.listedConfigs(accountId),
+          ({ project, config }) =>
+            parent(accountId, "doppler-config", joinId(project, config.name)),
+          async ({ project, config }) => {
             // Values come back on the wire (Doppler has no metadata-only listing that includes
             // visibility); only names, visibility and notes are kept.
-            const secrets = await this.secrets(project, config.name).catch((err: unknown) => {
-              if (statusOf(err) === 403) return {} as Record<string, DopplerSecretValue>;
+            const secrets = await this.secrets(project, config.name);
+            return Object.entries(secrets).map(([name, v]) =>
+              mapSecret(accountId, project, config.name, name, v),
+            );
+          },
+          { maxReads: MAX_SECRET_CONFIGS, maxRows: MAX_SECRETS },
+        );
+      case "doppler-service-token":
+        return readPerParent(
+          await this.listedConfigs(accountId),
+          ({ project, config }) =>
+            parent(accountId, "doppler-config", joinId(project, config.name)),
+          async ({ project, config }) =>
+            (
+              await dopplerList<DopplerServiceToken>(
+                this.ctx,
+                "/v3/configs/config/tokens",
+                "tokens",
+                { project, config: config.name },
+              )
+            ).map((t) => mapServiceToken(accountId, project, config.name, t)),
+        );
+      case "doppler-integration":
+        return (
+          await dopplerList<DopplerIntegration>(this.ctx, "/v3/integrations", "integrations")
+        ).map((i) => mapIntegration(accountId, i));
+      case "doppler-sync":
+        return (
+          await dopplerList<DopplerIntegration>(this.ctx, "/v3/integrations", "integrations")
+        ).flatMap((i) =>
+          (i.syncs ?? []).map((s) =>
+            mapSync(accountId, { ...s, integration: s.integration ?? i.slug }, i),
+          ),
+        );
+      case "doppler-webhook":
+        return readPerParent(
+          await this.projects(),
+          (p) => parent(accountId, "doppler-project", projectKey(p)),
+          async (p) => {
+            const key = projectKey(p);
+            return (
+              await dopplerList<DopplerWebhook>(this.ctx, "/v3/webhooks", "webhooks", {
+                project: key,
+              })
+            ).map((w) => mapWebhook(accountId, key, w));
+          },
+          // The document's only error for this route is a 400 it does not describe.
+          { isRefusal: (status) => status === 403 || status === 400 },
+        );
+      case "doppler-user":
+        return (await this.users()).map((u) => mapUser(accountId, u));
+      case "doppler-group": {
+        const groups = await dopplerPaged<DopplerGroup>(this.ctx, "/v3/workplace/groups", "groups");
+        const emails = await this.userEmails().catch((err: unknown) => {
+          if (statusOf(err) === 403) return new Map<string, string>();
+          throw err;
+        });
+        const out: ResourceInstance[] = [];
+        for (const g of groups) {
+          const full = await dopplerFetch<{ group?: DopplerGroup }>(
+            this.ctx,
+            `/v3/workplace/groups/group/${encodeURIComponent(g.slug)}`,
+          )
+            .then((r) => r?.group ?? g)
+            .catch((err: unknown) => {
+              if (statusOf(err) === 403 || statusOf(err) === 404) return g;
               throw err;
             });
-            for (const [name, v] of Object.entries(secrets)) {
-              if (out.length >= MAX_SECRETS) return out;
-              out.push(mapSecret(accountId, project, config.name, name, v));
-            }
-          }
-          return out;
+          out.push(mapGroup(accountId, full, emails));
         }
-        case "doppler-service-token": {
-          const out: ResourceInstance[] = [];
-          for (const { project, config } of await this.allConfigs()) {
-            const r = await dopplerFetch<{ tokens?: DopplerServiceToken[] }>(
-              this.ctx,
-              "/v3/configs/config/tokens",
-              {
-                query: { project, config: config.name },
-              },
-            ).catch(() => undefined);
-            out.push(
-              ...(r?.tokens ?? []).map((t) => mapServiceToken(accountId, project, config.name, t)),
-            );
-          }
-          return out;
-        }
-        case "doppler-integration": {
-          const r = await dopplerFetch<{ integrations?: DopplerIntegration[] }>(
-            this.ctx,
-            "/v3/integrations",
-          );
-          return (r?.integrations ?? []).map((i) => mapIntegration(accountId, i));
-        }
-        case "doppler-sync": {
-          const r = await dopplerFetch<{ integrations?: DopplerIntegration[] }>(
-            this.ctx,
-            "/v3/integrations",
-          );
-          return (r?.integrations ?? []).flatMap((i) =>
-            (i.syncs ?? []).map((s) =>
-              mapSync(accountId, { ...s, integration: s.integration ?? i.slug }, i),
-            ),
-          );
-        }
-        case "doppler-webhook": {
-          const out: ResourceInstance[] = [];
-          for (const p of await this.projects()) {
-            const key = projectKey(p);
-            const r = await dopplerFetch<{ webhooks?: DopplerWebhook[] }>(
-              this.ctx,
-              "/v3/webhooks",
-              {
-                query: { project: key },
-              },
-            ).catch(() => undefined);
-            out.push(...(r?.webhooks ?? []).map((w) => mapWebhook(accountId, key, w)));
-          }
-          return out;
-        }
-        case "doppler-user":
-          return (await this.users()).map((u) => mapUser(accountId, u));
-        case "doppler-group": {
-          const groups = await dopplerPaged<DopplerGroup>(
-            this.ctx,
-            "/v3/workplace/groups",
-            "groups",
-          );
-          const emails = await this.userEmails().catch(() => new Map<string, string>());
-          const out: ResourceInstance[] = [];
-          for (const g of groups) {
-            const full = await dopplerFetch<{ group?: DopplerGroup }>(
-              this.ctx,
-              `/v3/workplace/groups/group/${encodeURIComponent(g.slug)}`,
-            )
-              .then((r) => r?.group ?? g)
-              .catch(() => g);
-            out.push(mapGroup(accountId, full, emails));
-          }
-          return out;
-        }
-        case "doppler-service-account":
-          return (
-            await dopplerPaged<DopplerServiceAccount>(
-              this.ctx,
-              "/v3/workplace/service_accounts",
-              "service_accounts",
-            )
-          ).map((s) => mapServiceAccount(accountId, s));
-        case "doppler-service-account-token": {
-          const out: ResourceInstance[] = [];
-          for (const sa of await dopplerPaged<DopplerServiceAccount>(
+        return out;
+      }
+      case "doppler-service-account":
+        return (
+          await dopplerPaged<DopplerServiceAccount>(
             this.ctx,
             "/v3/workplace/service_accounts",
             "service_accounts",
-          )) {
-            const tokens = await dopplerPaged<DopplerApiToken>(
-              this.ctx,
-              `/v3/workplace/service_accounts/service_account/${encodeURIComponent(sa.slug)}/tokens`,
-              "api_tokens",
-            ).catch(() => [] as DopplerApiToken[]);
-            out.push(...tokens.map((t) => mapApiToken(accountId, sa, t)));
-          }
-          return out;
-        }
-        default:
-          throw new Error(`Doppler plugin: unknown resource type "${typeId}"`);
-      }
-    });
+          )
+        ).map((s) => mapServiceAccount(accountId, s));
+      case "doppler-service-account-token":
+        return readPerParent(
+          await dopplerPaged<DopplerServiceAccount>(
+            this.ctx,
+            "/v3/workplace/service_accounts",
+            "service_accounts",
+          ),
+          (sa) => parent(accountId, "doppler-service-account", sa.slug),
+          async (sa) =>
+            (
+              await dopplerPaged<DopplerApiToken>(
+                this.ctx,
+                `/v3/workplace/service_accounts/service_account/${encodeURIComponent(sa.slug)}/tokens`,
+                "api_tokens",
+              )
+            ).map((t) => mapApiToken(accountId, sa, t)),
+        );
+      default:
+        throw new Error(`Doppler plugin: unknown resource type "${typeId}"`);
+    }
   }
 
   private async userEmails(): Promise<Map<string, string>> {
@@ -326,7 +430,7 @@ export class DopplerClient implements PluginClient {
       const missing = () => new DopplerApiError(404, `Doppler plugin: ${typeId} "${id}" not found`);
       switch (typeId) {
         case "doppler-workplace": {
-          const [w] = await runPluginEffect(this.listResources(typeId, accountId));
+          const [w] = await this.readResources(typeId, accountId);
           if (!w) throw missing();
           return w;
         }
@@ -469,7 +573,7 @@ export class DopplerClient implements PluginClient {
           return mapServiceAccount(accountId, r.service_account);
         }
         case "doppler-service-account-token": {
-          const all = await runPluginEffect(this.listResources(typeId, accountId));
+          const all = await this.readResources(typeId, accountId);
           const hit = all.find((t) => t.externalId === id);
           if (!hit) throw missing();
           return hit;

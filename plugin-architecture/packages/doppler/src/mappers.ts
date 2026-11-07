@@ -177,7 +177,8 @@ function instance(
   };
 }
 
-const parent = (accountId: string, typeId: string, id: string) => `${accountId}:${typeId}:${id}`;
+export const parent = (accountId: string, typeId: string, id: string) =>
+  `${accountId}:${typeId}:${id}`;
 
 export function mapWorkplace(accountId: string, w: DopplerWorkplace): ResourceInstance {
   return instance(accountId, "doppler-workplace", w.id, w.name || w.id, {

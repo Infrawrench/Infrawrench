@@ -1,6 +1,8 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 
 export const API = "https://api.doppler.com";
+const VENDOR = "Doppler";
 
 /** Everything one Doppler API request needs. */
 export interface DopplerContext {
@@ -97,28 +99,43 @@ export async function dopplerFetch<T>(
   return JSON.parse(text) as T;
 }
 
+/** A list answered whole, which refuses an answer without one rather than read it as empty. */
+export async function dopplerList<T>(
+  ctx: DopplerContext,
+  path: string,
+  key: string,
+  query: Query = {},
+): Promise<T[]> {
+  const page = await dopplerFetch<Record<string, T[] | null | undefined> | undefined>(ctx, path, {
+    query,
+  });
+  return requireListPage(page?.[key], { vendor: VENDOR, path, key, page });
+}
+
 /**
  * Every page of a `page`/`per_page` list. Doppler returns no total or next
- * link, so a short page ends the walk; bounded so a misbehaving server cannot
- * spin forever.
+ * link, so a short page ends the walk. Past `maxPages` it throws, since a sync
+ * prunes whatever a list stops returning.
  */
 export async function dopplerPaged<T>(
   ctx: DopplerContext,
   path: string,
   key: string,
   query: Query = {},
-  maxPages = 20,
+  /** 10,000 rows. The document gives no maximum `per_page`, so this keeps the 100 it always sent. */
+  maxPages = 100,
   /** 0 for endpoints without `per_page` (workplace users): then only an empty page ends the walk. */
   perPage = 100,
 ): Promise<T[]> {
   const out: T[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    const res = await dopplerFetch<Record<string, unknown>>(ctx, path, {
-      query: { ...query, page, ...(perPage ? { per_page: perPage } : {}) },
+    const items = await dopplerList<T>(ctx, path, key, {
+      ...query,
+      page,
+      ...(perPage ? { per_page: perPage } : {}),
     });
-    const items = Array.isArray(res?.[key]) ? (res[key] as T[]) : [];
     out.push(...items);
-    if (perPage ? items.length < perPage : items.length === 0) break;
+    if (perPage ? items.length < perPage : items.length === 0) return out;
   }
-  return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
 }
