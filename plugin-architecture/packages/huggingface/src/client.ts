@@ -202,6 +202,15 @@ export class HuggingFaceClient implements PluginClient {
     return value;
   }
 
+  /**
+   * A 401 on a listing can mean the feature is off for this namespace or that the
+   * token is dead, and a dead token reading as nothing there would prune every row.
+   * So ask the Hub, past the cache, and let its own failure throw.
+   */
+  private async confirmTokenIfRejected(err: unknown): Promise<void> {
+    if (statusOf(err) === 401) await this.api.hub.get("/api/whoami-v2");
+  }
+
   // ------------------------------------------------------------- listing
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
@@ -244,8 +253,9 @@ export class HuggingFaceClient implements PluginClient {
     try {
       items = await this.api.endpoints.getAll(`/v2/endpoint/${pathEncode(ns)}`, "items");
     } catch (err) {
-      if (statusOf(err) === 401 || statusOf(err) === 403) return [];
-      throw err;
+      if (statusOf(err) !== 401 && statusOf(err) !== 403) throw err;
+      await this.confirmTokenIfRejected(err);
+      return [];
     }
     const vendors = await this.vendors().catch(() => undefined);
     return items.filter((e) => e.name).map((e) => mapEndpoint(accountId, e, vendors, ns));
@@ -331,8 +341,9 @@ export class HuggingFaceClient implements PluginClient {
       );
       return list.filter((s) => s._id).map((s) => mapServiceAccount(accountId, s));
     } catch (err) {
-      if ([401, 402, 403, 404].includes(statusOf(err) ?? 0)) return [];
-      throw err;
+      if (![401, 402, 403, 404].includes(statusOf(err) ?? 0)) throw err;
+      await this.confirmTokenIfRejected(err);
+      return [];
     }
   }
 
@@ -349,8 +360,9 @@ export class HuggingFaceClient implements PluginClient {
       );
       return list.filter((t) => t._id).map((t) => mapMemberToken(accountId, t));
     } catch (err) {
-      if ([401, 402, 403, 404].includes(statusOf(err) ?? 0)) return [];
-      throw err;
+      if (![401, 402, 403, 404].includes(statusOf(err) ?? 0)) throw err;
+      await this.confirmTokenIfRejected(err);
+      return [];
     }
   }
 

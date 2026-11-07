@@ -446,6 +446,28 @@ describe("the endpoint list", () => {
   });
 });
 
+describe("a token the API rejects", () => {
+  it.each([["hf-inference-endpoint"], ["hf-service-account"], ["hf-member-token"]])(
+    "fails %s rather than read a dead token as nothing there",
+    async (type) => {
+      let whoamis = 0;
+      const { http } = host((req) => {
+        if (req.url.endsWith("/api/whoami-v2")) {
+          whoamis += 1;
+          // The first read is cached, which is how a token dies inside the cache window.
+          return whoamis === 1 ? { body: WHOAMI } : { status: 401, body: { error: "revoked" } };
+        }
+        return { status: 401, body: { error: "revoked" } };
+      });
+      const client = new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http });
+      await client.whoami();
+      await expect(hostClient(client).listResources(type, ACCOUNT)).rejects.toMatchObject({
+        status: 401,
+      });
+    },
+  );
+});
+
 describe("mutations", () => {
   it("creates a custom endpoint from the picked compute", async () => {
     const { http, calls } = host((req) => {
