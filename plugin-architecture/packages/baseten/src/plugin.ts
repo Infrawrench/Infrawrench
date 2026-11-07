@@ -31,7 +31,8 @@ export const manifest = {
   ]),
   /**
    * Billed spend from `GET /v1/billing/usage_summary`: dedicated inference per
-   * deployment and chainlet, training per job and Model APIs per model, daily.
+   * deployment and chainlet, training per job, Model APIs per model and serverless
+   * Loops per base model, daily.
    * Baseten serves this from 2026-01-01 (the collector clamps earlier ranges)
    * in windows of at most 31 days. Amounts are usage before credits; credits
    * are only reported as an undated window total.

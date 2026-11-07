@@ -2,19 +2,25 @@ import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { isStatus, type BasetenApi } from "./api.js";
 import { money, round, type DeploymentUsage } from "./mappers.js";
-import type { BillableResource, UsageSummary } from "./types.js";
+import type { BillableResource, LoopsMeter, UsageSummary } from "./types.js";
 
 /**
  * Billed spend from `GET /v1/billing/usage_summary` (Baseten management API,
- * verified against the published spec 2026-10). One call covers all three
- * billed products:
+ * verified against the published spec 2026-10). One call covers every billed
+ * product:
  *
- * - `dedicated_usage`: per billable resource (model deployment, chainlet,
- *   Loops sampler/trainer) with daily subtotal, compute and surcharge cost,
- *   billed minutes and inference requests.
- * - `training_usage`: per training job, daily subtotal and minutes.
+ * - `dedicated_usage`: per billable resource (model deployment, chainlet)
+ *   with daily subtotal, compute and surcharge cost, billed minutes and
+ *   inference requests.
+ * - `training_usage`: per training job and dedicated Loops sampler or trainer,
+ *   daily subtotal and minutes.
  * - `model_apis_usage`: per Model API model, daily subtotal and input,
  *   output and cached-input tokens.
+ * - `loops_usage`: serverless Loops per base model, billed per token, with a
+ *   daily subtotal and tokens for each meter (sample, train, cached and
+ *   uncached prefill). Each base model also carries a breakdown by resource,
+ *   and reading both would count the spend twice, so only the base model is
+ *   read.
  *
  * Constraints: a window may not exceed 31 days and nothing before
  * 2026-01-01 is queryable, so the range is clamped and split into 30-day
@@ -77,6 +83,7 @@ function compactTags(tags: Record<string, string | null | undefined>): Record<st
 const SERVICE_BY_KIND: Record<string, string> = {
   MODEL_DEPLOYMENT: "Dedicated Inference",
   CHAINLET: "Chains",
+  LOOPS_RUN: "Loops",
   LOOPS_SAMPLER: "Loops",
   LOOPS_TRAINER: "Loops",
   TRAINING_JOB: "Training",
@@ -105,6 +112,12 @@ function resourceTags(r: BillableResource): Record<string, string> {
     training_job: r.kind === "TRAINING_JOB" ? r.name : undefined,
     team: r.team_name,
   });
+}
+
+const LOOPS_METERS = ["sample", "train", "cached_prefill", "uncached_prefill"] as const;
+
+function loopsTokens(usage: Partial<Record<(typeof LOOPS_METERS)[number], LoopsMeter>>): number {
+  return LOOPS_METERS.reduce((sum, meter) => sum + (usage[meter]?.tokens ?? 0), 0);
 }
 
 interface Converted {
@@ -192,6 +205,31 @@ export function summaryToRows(summary: UsageSummary, from: string, to: string): 
       });
     }
   }
+
+  for (const item of summary.loops_usage?.breakdown ?? []) {
+    if (!item.daily) {
+      if (money(item.subtotal) !== 0) missingDaily = true;
+      continue;
+    }
+    const tags = compactTags({ base_model: item.base_model });
+    for (const day of item.daily) {
+      const date = String(day.date).slice(0, 10);
+      if (!inRange(date)) continue;
+      const amount = money(day.subtotal);
+      const tokens = loopsTokens(day);
+      if (amount === 0 && tokens === 0) continue;
+      rows.push({
+        date,
+        service: "Loops",
+        // Prefixed because a Model API of the same name would otherwise take this spend.
+        resourceId: `loops/${item.base_model}`,
+        tags,
+        currency: "USD",
+        amount: round(amount, 6),
+        ...(tokens ? { usageAmount: tokens, usageUnit: "tokens" } : {}),
+      });
+    }
+  }
   return { rows, missingDaily };
 }
 
@@ -248,6 +286,24 @@ function singleDayRows(summary: UsageSummary, date: string): CostRow[] {
                 ...(i.cached_input_tokens !== undefined
                   ? { cached_input_tokens: i.cached_input_tokens }
                   : {}),
+              },
+            ],
+          })),
+        }
+      : null,
+    loops_usage: summary.loops_usage
+      ? {
+          ...summary.loops_usage,
+          breakdown: (summary.loops_usage.breakdown ?? []).map((i) => ({
+            ...i,
+            daily: i.daily ?? [
+              {
+                date,
+                subtotal: i.subtotal,
+                ...(i.sample ? { sample: i.sample } : {}),
+                ...(i.train ? { train: i.train } : {}),
+                ...(i.cached_prefill ? { cached_prefill: i.cached_prefill } : {}),
+                ...(i.uncached_prefill ? { uncached_prefill: i.uncached_prefill } : {}),
               },
             ],
           })),

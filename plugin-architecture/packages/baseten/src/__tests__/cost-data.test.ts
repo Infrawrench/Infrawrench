@@ -132,6 +132,99 @@ describe("summaryToRows", () => {
   });
 });
 
+describe("serverless Loops", () => {
+  const meter = (subtotal: number, tokens: number) => ({ subtotal, tokens });
+  const day = {
+    date: "2026-09-01",
+    subtotal: 3.5,
+    sample: meter(1, 100),
+    train: meter(2, 200),
+    cached_prefill: meter(0.25, 30),
+    uncached_prefill: meter(0.25, 40),
+  };
+  const usage = (item: Record<string, unknown>) => ({
+    loops_usage: {
+      subtotal: 3.5,
+      credits_used: 0,
+      total: 3.5,
+      breakdown: [{ base_model: "llama-4", subtotal: 3.5, ...item }],
+    },
+  });
+
+  it("bills each base model per day, with every meter in the token count", () => {
+    const { rows, missingDaily } = summaryToRows(
+      usage({ daily: [day] }),
+      "2026-09-01",
+      "2026-09-02",
+    );
+    expect(missingDaily).toBe(false);
+    expect(rows).toEqual([
+      {
+        date: "2026-09-01",
+        service: "Loops",
+        resourceId: "loops/llama-4",
+        tags: { base_model: "llama-4" },
+        currency: "USD",
+        amount: 3.5,
+        usageAmount: 370,
+        usageUnit: "tokens",
+      },
+    ]);
+  });
+
+  it("does not count a base model's runs on top of it", () => {
+    const { rows } = summaryToRows(
+      usage({
+        daily: [day],
+        breakdown: [
+          {
+            billable_resource: { id: "run-1", kind: "LOOPS_RUN" },
+            subtotal: 3.5,
+            daily: [day],
+          },
+        ],
+      }),
+      "2026-09-01",
+      "2026-09-02",
+    );
+    expect(rows.reduce((sum, r) => sum + r.amount, 0)).toBe(3.5);
+  });
+
+  it("re-asks one day at a time when a base model has spend and no daily rows", async () => {
+    route("GET", "/v1/billing/usage_summary", () =>
+      usage({ sample: meter(3.5, 100), train: meter(0, 0) }),
+    );
+    const rows = await fetchBasetenCostData(api(), {
+      fromDate: "2026-09-01",
+      toDate: "2026-09-02",
+    });
+    expect(state.calls).toHaveLength(3);
+    expect(rows.map((r) => [r.date, r.service, r.amount, r.usageAmount])).toEqual([
+      ["2026-09-01", "Loops", 3.5, 100],
+      ["2026-09-02", "Loops", 3.5, 100],
+    ]);
+  });
+
+  it("files a Loops run billed through dedicated usage under Loops", () => {
+    const { rows } = summaryToRows(
+      {
+        dedicated_usage: {
+          breakdown: [
+            {
+              billable_resource: { id: "run-1", kind: "LOOPS_RUN", is_deleted: false },
+              subtotal: 1,
+              daily: [{ date: "2026-09-01", subtotal: 1, minutes: 5 }],
+            },
+          ],
+        },
+      },
+      "2026-09-01",
+      "2026-09-01",
+    );
+    expect(rows[0]!.service).toBe("Loops");
+  });
+});
+
 describe("fetchBasetenCostData", () => {
   it("chunks to at most 30 days and clamps to the earliest queryable date", async () => {
     route("GET", "/v1/billing/usage_summary", {});

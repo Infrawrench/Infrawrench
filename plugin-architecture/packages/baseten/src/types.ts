@@ -67,6 +67,15 @@ type ModelApiItem = Some<Omit<Schemas["ModelApiItemV1"], "daily">, "model_name" 
   daily?: Some<Schemas["DailyModelApiUsageV1"], "date" | "subtotal">[];
 };
 
+export type LoopsMeter = Schemas["LoopsMeterUsageV1"];
+
+type LoopsItem = Some<
+  Omit<Schemas["LoopsBaseModelItemV1"], "daily" | "breakdown">,
+  "base_model" | "subtotal"
+> & {
+  daily?: Some<Schemas["DailyLoopsUsageV1"], "date" | "subtotal">[];
+};
+
 /**
  * A usage summary as the cost conversion reads it. An item's own totals can stand
  * in for its daily rows, so a day holds only what both have.
@@ -75,6 +84,7 @@ export interface UsageSummary {
   dedicated_usage?: UsageBlock<Schemas["DedicatedUsageV1"], DedicatedItem> | null;
   training_usage?: UsageBlock<Schemas["TrainingUsageV1"], TrainingItem> | null;
   model_apis_usage?: UsageBlock<Schemas["ModelApisUsageV1"], ModelApiItem> | null;
+  loops_usage?: UsageBlock<Schemas["LoopsUsageV1"], LoopsItem> | null;
 }
 
 // ── Metrics ─────────────────────────────────────────────────────────────
