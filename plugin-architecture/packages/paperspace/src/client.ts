@@ -268,7 +268,7 @@ export class PaperspaceClient implements PluginClient {
         }
         case "shared-drive": {
           const networkId = str(fields["networkId"]);
-          const networks = await this.raw.networks().catch(() => []);
+          const networks = await this.raw.networks();
           const region = networks.find((n) => n.id === networkId)?.region;
           if (!region) throw new Error("Paperspace plugin: choose a private network");
           return mapSharedDrive(

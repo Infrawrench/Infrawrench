@@ -324,6 +324,18 @@ describe("other resources", () => {
     expect(calls[1]!.body).toEqual({ name: "x", size: 250, region: "ams1", networkId: "net1" });
   });
 
+  it("says why when the networks cannot be read for a new shared drive", async () => {
+    route(
+      "GET",
+      "/private-networks",
+      () => new Response(JSON.stringify({ message: "Upstream down" }), { status: 500 }),
+    );
+    await expect(
+      client().createResource("shared-drive", "acct", { name: "x", networkId: "net1" }),
+    ).rejects.toMatchObject({ status: 500 });
+    expect(calls.map((c) => c.method)).toEqual(["GET"]);
+  });
+
   it("assigns public IPs and startup scripts by attaching them to a machine", async () => {
     route("PUT", "/public-ips/5.6.7.8", { ip: "5.6.7.8" });
     route("POST", "/startup-scripts/s1/assign", { id: "s1" });
