@@ -581,6 +581,20 @@ describe("budgets", () => {
     expect(calls.filter((x) => x.method === "PATCH")).toHaveLength(0);
   });
 
+  it.each([
+    ["removes an expiry that is set", { expires_at: "2027-01-01" }, { expires_at: null }],
+    ["sends nothing when there is none to remove", {}, {}],
+  ])("clearing the date %s", async (_name, budget, sent) => {
+    const { c, calls } = client((url, method) => {
+      if (method === "PATCH") return { body: {} };
+      if (url.pathname.endsWith("/budgets/b1")) return { body: { id: "b1", ...budget } };
+      if (url.pathname.endsWith("/budgets")) return { body: { budgets: [{ id: "b1" }] } };
+      return { body: { usageItems: [] } };
+    });
+    await c.updateResource!("budget", "acc:budget:b1", "acc", { expiresAt: "" });
+    expect(calls.find((x) => x.method === "PATCH")!.body).toEqual(sent);
+  });
+
   it("leaves a budget's spend unknown when the cost centres cannot be read", async () => {
     const { c } = client((url) => {
       if (url.pathname.endsWith("/cost-centers")) return { status: 500, body: {} };

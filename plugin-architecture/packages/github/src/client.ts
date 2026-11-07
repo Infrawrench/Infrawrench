@@ -1137,8 +1137,9 @@ export class GitHubClient implements PluginClient {
         const budgetId = pathEncode(id);
         // Alerting goes as a whole, so keeping one half means reading it. If that read
         // fails the edit must too: going on would blank what the user did not change.
-        const current =
-          "willAlert" in fields !== "alertRecipients" in fields
+        const clearsExpiry = "expiresAt" in fields && !fields["expiresAt"];
+        const current: GhBudget | undefined =
+          "willAlert" in fields !== "alertRecipients" in fields || clearsExpiry
             ? await byOwner(this.ctx, {
                 org: (api, org) =>
                   api.get(`/organizations/${org}/settings/billing/budgets/${budgetId}`),
@@ -1170,6 +1171,8 @@ export class GitHubClient implements PluginClient {
           ...("expiresAt" in fields && fields["expiresAt"]
             ? { expires_at: fields["expiresAt"].slice(0, 10) }
             : {}),
+          // Only a budget that has an expiry can lose one: the rest cannot take the field.
+          ...(clearsExpiry && current?.expires_at ? { expires_at: null } : {}),
         };
         await byOwner(this.ctx, {
           org: (api, org) =>
