@@ -1,4 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { reportUnreadListPart } from "@infrawrench/plugin-base";
+import { isAccessRefusal, isGone } from "./api-errors.js";
 
 export interface ListerContext {
   api<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T>;
@@ -20,6 +22,26 @@ function hostWithoutScheme(ctx: ListerContext): string {
 function lastPathSegment(path: string): string {
   const parts = path.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? path;
+}
+
+/**
+ * One parent's children, for a list that fans out. A parent gone since it was listed has
+ * none. A parent this principal may not read keeps its stored rows: its catalog grants
+ * can be narrower than the token's. Anything else fails the type, or a sync would prune
+ * those rows on one bad answer.
+ */
+export async function readChildren(
+  parentResourceId: string,
+  read: () => Promise<ResourceInstance[]>,
+): Promise<ResourceInstance[]> {
+  try {
+    return await read();
+  } catch (err) {
+    if (isGone(err)) return [];
+    if (!isAccessRefusal(err)) throw err;
+    reportUnreadListPart({ parentResourceIds: [parentResourceId] });
+    return [];
+  }
 }
 
 async function listPaginated(
@@ -522,8 +544,13 @@ export async function listWorkspaceObjects(
         `/api/2.0/workspace/list?path=${encodeURIComponent(root)}`,
       );
       objects.push(...(data.objects ?? []));
-    } catch {
-      // Some workspaces do not expose every root to every principal.
+    } catch (err) {
+      // The document's answer for a path that does not exist, as /Repos can be.
+      if (isGone(err)) continue;
+      if (!isAccessRefusal(err)) throw err;
+      // These rows have no parent, and ids are object ids, so nothing can name only the
+      // refused root's. Every row stays rather than that root's being pruned.
+      reportUnreadListPart({ idPrefixes: [""] });
     }
   }
   return objects.map((o) => {

@@ -30,9 +30,11 @@ import {
   hostFetch,
   labeledFieldItems,
   labeledOutputItems,
+  reportUnreadListPart,
   streamOpenAiSseChat,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
+import { DatabricksApiError, isAccessRefusal } from "./api-errors.js";
 import { fetchDatabricksCostData } from "./cost-data.js";
 import {
   databricksPrincipal,
@@ -68,6 +70,7 @@ import {
   lakebaseProjectToResource,
   listLakebaseBranches,
   listLakebaseProjects,
+  readChildren,
 } from "./resource-listers.js";
 import { WAREHOUSE_SIZES } from "./resources/sql-warehouse.js";
 import {
@@ -163,7 +166,7 @@ export class DatabricksClient implements PluginClient {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`Databricks ${method} ${path} failed: ${res.status} ${text}`);
+      throw new DatabricksApiError(method, path, res.status, text);
     }
     return res.text();
   }
@@ -284,128 +287,115 @@ export class DatabricksClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      // Child resource types need parent context
-      if (typeId === "databricks-schema") {
-        // List schemas for all catalogs
-        const catalogs = await listCatalogs(this.ctx, accountId);
-        const results: ResourceInstance[] = [];
-        for (const cat of catalogs) {
-          try {
-            const schemas = await listSchemas(this.ctx, accountId, String(cat.fields["name"]));
-            results.push(...schemas);
-          } catch {
-            // Skip catalogs we can't access
-          }
-        }
-        return results;
+      try {
+        return await this.readResources(typeId, accountId);
+      } catch (err) {
+        // A token scoped away from a whole type is normal, and failing it on every poll
+        // would page someone. Its stored rows stay, with no error.
+        if (!isAccessRefusal(err)) throw err;
+        reportUnreadListPart({ idPrefixes: [""] });
+        return [];
       }
-
-      if (typeId === "databricks-table") {
-        // List tables for all schemas in all catalogs
-        const catalogs = await listCatalogs(this.ctx, accountId);
-        const results: ResourceInstance[] = [];
-        for (const cat of catalogs) {
-          try {
-            const schemas = await listSchemas(this.ctx, accountId, String(cat.fields["name"]));
-            for (const schema of schemas) {
-              try {
-                const tables = await listTables(
-                  this.ctx,
-                  accountId,
-                  String(schema.fields["catalogName"]),
-                  String(schema.fields["name"]),
-                );
-                results.push(...tables);
-              } catch {
-                // Skip schemas we can't access
-              }
-            }
-          } catch {
-            // Skip catalogs we can't access
-          }
-        }
-        return results;
-      }
-
-      if (typeId === "databricks-volume" || typeId === "databricks-function") {
-        const catalogs = await listCatalogs(this.ctx, accountId);
-        const results: ResourceInstance[] = [];
-        for (const cat of catalogs) {
-          try {
-            const schemas = await listSchemas(this.ctx, accountId, String(cat.fields["name"]));
-            for (const schema of schemas) {
-              try {
-                const catalogName = String(schema.fields["catalogName"]);
-                const schemaName = String(schema.fields["name"]);
-                const resources =
-                  typeId === "databricks-volume"
-                    ? await listVolumes(this.ctx, accountId, catalogName, schemaName)
-                    : await listFunctions(this.ctx, accountId, catalogName, schemaName);
-                results.push(...resources);
-              } catch {
-                // Skip schemas where this principal cannot browse the child object type.
-              }
-            }
-          } catch {
-            // Skip catalogs we can't access.
-          }
-        }
-        return results;
-      }
-
-      if (typeId === "databricks-vector-search-index") {
-        const endpoints = await listVectorSearchEndpoints(this.ctx, accountId);
-        const results: ResourceInstance[] = [];
-        for (const endpoint of endpoints) {
-          try {
-            results.push(
-              ...(await listVectorSearchIndexes(
-                this.ctx,
-                accountId,
-                String(endpoint.fields["name"]),
-              )),
-            );
-          } catch {
-            // Skip endpoints where index listing is not allowed.
-          }
-        }
-        return results;
-      }
-
-      if (typeId === "databricks-lakebase-branch") {
-        const projects = await listLakebaseProjects(this.ctx, accountId);
-        const perProject = await Promise.all(
-          projects.map(async (project) => {
-            try {
-              return await listLakebaseBranches(this.ctx, accountId, String(project.externalId));
-            } catch {
-              // Skip projects whose branches this principal cannot read.
-              return [];
-            }
-          }),
-        );
-        return perProject.flat();
-      }
-
-      if (typeId === "databricks-model-version") {
-        const models = await listRegisteredModels(this.ctx, accountId);
-        const results: ResourceInstance[] = [];
-        for (const model of models) {
-          try {
-            results.push(
-              ...(await listModelVersions(this.ctx, accountId, String(model.externalId))),
-            );
-          } catch {
-            // Skip models where version listing is not allowed.
-          }
-        }
-        return results;
-      }
-
-      const lister = DatabricksClient.LISTERS[typeId];
-      if (!lister) throw new Error(`Databricks plugin: unknown resource type "${typeId}"`);
-      return lister(this.ctx, accountId);
     });
+  }
+
+  private async readResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    // Child resource types need parent context
+    if (typeId === "databricks-schema") {
+      const catalogs = await listCatalogs(this.ctx, accountId);
+      const results: ResourceInstance[] = [];
+      for (const cat of catalogs) {
+        results.push(
+          ...(await readChildren(cat.id, () =>
+            listSchemas(this.ctx, accountId, String(cat.fields["name"])),
+          )),
+        );
+      }
+      return results;
+    }
+
+    if (typeId === "databricks-table") {
+      return this.readInEverySchema(accountId, listTables);
+    }
+    if (typeId === "databricks-volume") {
+      return this.readInEverySchema(accountId, listVolumes);
+    }
+    if (typeId === "databricks-function") {
+      return this.readInEverySchema(accountId, listFunctions);
+    }
+
+    if (typeId === "databricks-vector-search-index") {
+      const endpoints = await listVectorSearchEndpoints(this.ctx, accountId);
+      const results: ResourceInstance[] = [];
+      for (const endpoint of endpoints) {
+        results.push(
+          ...(await readChildren(endpoint.id, () =>
+            listVectorSearchIndexes(this.ctx, accountId, String(endpoint.fields["name"])),
+          )),
+        );
+      }
+      return results;
+    }
+
+    if (typeId === "databricks-lakebase-branch") {
+      const projects = await listLakebaseProjects(this.ctx, accountId);
+      const perProject = await Promise.all(
+        projects.map((project) =>
+          readChildren(project.id, () =>
+            listLakebaseBranches(this.ctx, accountId, String(project.externalId)),
+          ),
+        ),
+      );
+      return perProject.flat();
+    }
+
+    if (typeId === "databricks-model-version") {
+      const models = await listRegisteredModels(this.ctx, accountId);
+      const results: ResourceInstance[] = [];
+      for (const model of models) {
+        results.push(
+          ...(await readChildren(model.id, () =>
+            listModelVersions(this.ctx, accountId, String(model.externalId)),
+          )),
+        );
+      }
+      return results;
+    }
+
+    const lister = DatabricksClient.LISTERS[typeId];
+    if (!lister) throw new Error(`Databricks plugin: unknown resource type "${typeId}"`);
+    return lister(this.ctx, accountId);
+  }
+
+  private async readInEverySchema(
+    accountId: string,
+    read: (
+      ctx: ListerContext,
+      accountId: string,
+      catalogName: string,
+      schemaName: string,
+    ) => Promise<ResourceInstance[]>,
+  ): Promise<ResourceInstance[]> {
+    const catalogs = await listCatalogs(this.ctx, accountId);
+    const results: ResourceInstance[] = [];
+    for (const cat of catalogs) {
+      const schemas = await readChildren(cat.id, () =>
+        listSchemas(this.ctx, accountId, String(cat.fields["name"])),
+      );
+      for (const schema of schemas) {
+        results.push(
+          ...(await readChildren(schema.id, () =>
+            read(
+              this.ctx,
+              accountId,
+              String(schema.fields["catalogName"]),
+              String(schema.fields["name"]),
+            ),
+          )),
+        );
+      }
+    }
+    return results;
   }
 
   getResource(

@@ -97,15 +97,20 @@ describe("api error + empty handling", () => {
   });
 });
 
+const REFUSED = {
+  ok: false,
+  status: 403,
+  text: async () => JSON.stringify({ error_code: "PERMISSION_DENIED", message: "denied" }),
+} as unknown as Response;
+
 describe("listResources routing", () => {
-  it("lists schemas across catalogs and skips failing catalogs", async () => {
-    // 1: catalogs, 2: schemas for cat1 ok, 3: schemas for cat2 throws
+  it("lists schemas across catalogs and skips refused catalogs", async () => {
+    // 1: catalogs, 2: schemas for cat1 ok, 3: schemas for cat2 refused
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes("/catalogs"))
         return jsonResp({ catalogs: [{ name: "cat1" }, { name: "cat2" }] });
       if (url.includes("catalog_name=cat1")) return jsonResp({ schemas: [{ name: "s1" }] });
-      // cat2 fails
-      return { ok: false, status: 500, text: async () => "boom" } as unknown as Response;
+      return REFUSED;
     });
     const client = makeClient();
     const res = await client.listResources("databricks-schema", ACCOUNT);
@@ -113,18 +118,16 @@ describe("listResources routing", () => {
     expect(res[0]!.fields.catalogName).toBe("cat1");
   });
 
-  it("lists tables across catalogs/schemas with skips", async () => {
+  it("lists tables across catalogs/schemas, skipping refused ones", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes("/catalogs"))
         return jsonResp({ catalogs: [{ name: "cat1" }, { name: "catX" }] });
       if (url.includes("/schemas") && url.includes("cat1"))
         return jsonResp({ schemas: [{ name: "s1" }, { name: "s2" }] });
-      if (url.includes("/schemas") && url.includes("catX"))
-        return { ok: false, status: 500, text: async () => "x" } as unknown as Response;
+      if (url.includes("/schemas") && url.includes("catX")) return REFUSED;
       if (url.includes("/tables") && url.includes("schema_name=s1"))
         return jsonResp({ tables: [{ name: "t1" }] });
-      // s2 tables fail
-      return { ok: false, status: 500, text: async () => "x" } as unknown as Response;
+      return REFUSED;
     });
     const client = makeClient();
     const res = await client.listResources("databricks-table", ACCOUNT);
