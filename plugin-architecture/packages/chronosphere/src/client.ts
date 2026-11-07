@@ -125,6 +125,14 @@ function editNameAndDescription<O extends { name?: string }>(o: O, fields: Field
   };
 }
 
+function slugOf(resourceId: string): string {
+  const slug = externalIdOf(resourceId) || resourceId;
+  if (!slug.trim() || slug.endsWith(":")) {
+    throw new Error("Chronosphere plugin: this resource has no id to act on");
+  }
+  return slug;
+}
+
 export class ChronosphereClient implements PluginClient {
   private readonly ctx: ChronoContext;
   private readonly routes: ConfigRoutes;
@@ -181,6 +189,10 @@ export class ChronosphereClient implements PluginClient {
     change: (o: ConfigObjects[T]) => ConfigObjects[T],
   ): Promise<ConfigObjects[T]> {
     const current = await this.read(typeId, slug);
+    // An update replaces the whole object, so this would write back little but the slug.
+    if (Object.keys(current).length === 0) {
+      throw new Error(`Chronosphere plugin: reading ${typeId} "${slug}" did not return it`);
+    }
     return this.write(typeId, slug, change({ ...withoutTimestamps(current), slug }));
   }
 
@@ -246,7 +258,7 @@ export class ChronosphereClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (typeId === "tenant") return this.tenant(accountId);
-      const slug = externalIdOf(resourceId) || resourceId;
+      const slug = slugOf(resourceId);
       const configType = this.configType(typeId);
       return this.map(accountId, configType, await this.read(configType, slug));
     });
@@ -569,7 +581,7 @@ export class ChronosphereClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const slug = externalIdOf(resourceId) || resourceId;
+      const slug = slugOf(resourceId);
       const configType = this.configType(typeId);
       return this.map(accountId, configType, await this.edit(configType, slug, fields));
     });
@@ -586,14 +598,14 @@ export class ChronosphereClient implements PluginClient {
         throw new Error(`Chronosphere plugin: "${typeId}" cannot be deleted from Infrawrench`);
       }
       const route = this.routes[this.configType(typeId)];
-      const slug = externalIdOf(resourceId) || resourceId;
+      const slug = slugOf(resourceId);
       if (route.delete) await guarded(route.delete(pathEncode(slug)));
     });
   }
 
   invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
     return attempt(async () => {
-      const slug = externalIdOf(resourceId) || resourceId;
+      const slug = slugOf(resourceId);
       if (typeId === "drop-rule" && actionId.startsWith("mode-")) {
         const mode = actionId.slice(5).toUpperCase();
         if (!isMode(DROP_MODES, mode))

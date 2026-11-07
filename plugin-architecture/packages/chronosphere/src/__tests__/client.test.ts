@@ -293,6 +293,31 @@ describe("reading a whole list", () => {
   });
 });
 
+describe("edits and deletes", () => {
+  it("does not write back an object the read did not return", async () => {
+    const { http, calls } = makeHttp((_url, method) => (method === "GET" ? { body: {} } : {}));
+    await expect(
+      hostClient(new ChronosphereClient(CREDS, { http })).invokeAction(
+        "drop-rule",
+        "acct:drop-rule:d1",
+        "mode-disabled",
+      ),
+    ).rejects.toThrow("did not return");
+    expect(calls.map((c) => c.method)).toEqual(["GET"]);
+  });
+
+  it("refuses a blank id instead of calling the API", async () => {
+    const { http, calls } = makeHttp(() => ({ body: {} }));
+    const client = hostClient(new ChronosphereClient(CREDS, { http }));
+    await expect(client.deleteResource("monitor", "")).rejects.toThrow("no id");
+    await expect(client.invokeAction("drop-rule", "", "mode-disabled")).rejects.toThrow("no id");
+    await expect(
+      client.updateResource("team", "acct:team:", "acct", { name: "x" }),
+    ).rejects.toThrow("no id");
+    expect(calls).toEqual([]);
+  });
+});
+
 describe("helpers", () => {
   it("describes conditions and parses matchers", () => {
     expect(
