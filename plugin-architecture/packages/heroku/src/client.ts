@@ -165,7 +165,8 @@ export class HerokuClient implements PluginClient {
         return await load(parent);
       } catch (e) {
         if (isStatus(e, 403)) {
-          reportUnreadListPart(unreadPart(parent));
+          // A host that keeps no track answers false, and there the refusal shows.
+          if (!reportUnreadListPart(unreadPart(parent))) throw e;
           return [];
         }
         if (isStatus(e, 404)) return [];

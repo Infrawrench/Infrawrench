@@ -454,6 +454,14 @@ describe("a parent whose children are refused", () => {
     expect(unread).toHaveBeenCalledWith({ parentResourceIds: ["acct:pipeline:p1"] });
   });
 
+  it("shows the refusal where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    routes["GET /apps"] = [APP, { ...APP, id: "a2", name: "two" }];
+    routes["GET /apps/a1/domains"] = () => reply({ id: "forbidden" }, 403);
+    routes["GET /apps/a2/domains"] = [{ id: "d2", hostname: "two.example", kind: "custom" }];
+    await expect(client().listResources("domain", ACCOUNT)).rejects.toThrow("403");
+  });
+
   it("reads an app that has gone as having no children", async () => {
     routes["GET /apps"] = [APP];
     expect(await client().listResources("domain", ACCOUNT)).toEqual([]);
