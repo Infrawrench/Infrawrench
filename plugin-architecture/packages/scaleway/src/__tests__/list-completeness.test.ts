@@ -23,7 +23,7 @@ type Route = (url: URL, method: string) => Answer | undefined;
 const seen: string[] = [];
 let route: Route = () => undefined;
 
-const request = vi.fn(async (call: { url: string; method: string; body?: string }) => {
+const request = vi.fn(async (call: { url: string; method: string; body?: string | Uint8Array }) => {
   seen.push(call.url);
   const answer = route(new URL(call.url), call.method);
   if (!answer) throw new Error(`Unexpected request: ${call.method} ${call.url}`);
