@@ -1,3 +1,4 @@
+import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MistralClient } from "../client.js";
@@ -413,6 +414,52 @@ describe("transcribeAudio", () => {
       mimeType: "audio/webm",
     });
     expect(result.words?.[0]?.speaker).toBe("Speaker 3");
+  });
+
+  it("uploads through the host's HTTP service, so a bastion carries it", async () => {
+    const fetchStub = installFetch(() => {
+      throw new Error("the host's service should have carried this");
+    });
+    const request = vi.fn(async (_req: Parameters<HttpHostServices["request"]>[0]) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ text: "bonjour", model: "voxtral-mini-latest", usage: {} }),
+    }));
+
+    const result = await hostClient(
+      new MistralClient({ apiKey: "test-key" }, { http: { request } }),
+    ).transcribeAudio("mistral-voice", "id", ACCOUNT, {
+      audioBase64: Buffer.from("fake-opus").toString("base64"),
+      mimeType: "audio/webm",
+    });
+
+    expect(result.text).toBe("bonjour");
+    expect(fetchStub).not.toHaveBeenCalled();
+    const sent = request.mock.calls[0]?.[0];
+    expect(sent?.url).toBe("https://api.mistral.ai/v1/audio/transcriptions");
+    expect(sent?.method).toBe("POST");
+    expect(sent).not.toHaveProperty("caCert");
+    expect(sent?.headers["authorization"]).toBe("Bearer test-key");
+    expect(sent?.headers["content-type"]).toMatch(/^multipart\/form-data; boundary=/);
+    expect(Buffer.from(sent?.body ?? "").toString()).toContain("fake-opus");
+  });
+
+  it("hands a custom CA to the host for the upload", async () => {
+    installFetch(() => {
+      throw new Error("the host's service should have carried this");
+    });
+    const request = vi.fn(async (_req: Parameters<HttpHostServices["request"]>[0]) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ text: "", model: "voxtral-mini-latest", usage: {} }),
+    }));
+    await hostClient(
+      new MistralClient({ apiKey: "test-key", caCert: "PEM" }, { http: { request } }),
+    ).transcribeAudio("mistral-voice", "id", ACCOUNT, {
+      audioBase64: Buffer.from("x").toString("base64"),
+      mimeType: "audio/webm",
+    });
+    expect(request.mock.calls[0]?.[0].caCert).toBe("PEM");
   });
 
   it("falls back to a transcription model when the shared picker holds a TTS model", async () => {

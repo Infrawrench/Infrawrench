@@ -8,6 +8,7 @@ import type {
   CreateResourceConfig,
   DetailViewSchema,
   HostServices,
+  HttpHostServices,
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
@@ -25,6 +26,7 @@ import {
   CostSetupError,
   base64ToBytes,
   formatBytes,
+  hostFetch,
   joinSubtitle,
   pathEncode,
   withAiCostTags,
@@ -188,17 +190,18 @@ export class MistralClient implements PluginClient {
   private readonly adminApiKey: string;
   private readonly api: MistralApi;
   private readonly enterpriseApi: MistralApi;
+  private readonly transport: { http: HttpHostServices | undefined; caCert: string };
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Mistral plugin: missing apiKey credential");
     this.apiKey = apiKey;
     this.adminApiKey = credentials["adminApiKey"] ?? "";
+    this.transport = { http: services?.http, caCert: credentials["caCert"] ?? "" };
     const { data, admin } = createMistralApis({
       apiKey,
       adminApiKey: this.adminApiKey,
-      caCert: credentials["caCert"] ?? "",
-      http: services?.http,
+      ...this.transport,
     });
     this.api = data;
     this.enterpriseApi = admin;
@@ -1094,8 +1097,8 @@ export class MistralClient implements PluginClient {
    * https://docs.mistral.ai/api/endpoint/audio/transcriptions:
    * `POST /v1/audio/transcriptions`
    *
-   * Multipart, so this uses global `fetch` with a real `FormData`: the host-http
-   * path of `restRequest` stringifies `FormData` instead of encoding it. The trade-off is that this call bypasses bastion routing.
+   * Multipart, so this goes through `hostFetch`, which encodes a real `FormData`
+   * for the host's service; the typed client would stringify it.
    *
    * Diarisation is on, which is what puts a `speaker_id` on each segment. The
    * document's response has only segments; `words` is still read first, in case
@@ -1131,7 +1134,7 @@ export class MistralClient implements PluginClient {
       if (payload.language) form.append("language", payload.language);
 
       const started = Date.now();
-      const response = await fetch(`${BASE}/audio/transcriptions`, {
+      const response = await hostFetch(this.transport, `${BASE}/audio/transcriptions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${this.apiKey}` },
         body: form,
