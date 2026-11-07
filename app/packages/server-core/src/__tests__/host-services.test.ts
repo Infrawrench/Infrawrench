@@ -474,6 +474,68 @@ describe("http.request — bastion routing", () => {
   });
 });
 
+describe("http.requestStream", () => {
+  const stream = () => new Response("data: x\n\n").body;
+
+  it("throws rather than go direct when the bastion is down", async () => {
+    resolveDispatcher.mockResolvedValue(null);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("direct"));
+    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    await expect(
+      out!.http!.requestStream!({ url: "https://x", method: "POST", headers: {} }),
+    ).rejects.toThrow(/disconnected bx/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("goes through the bastion's dispatcher, handing back the body unread", async () => {
+    const dispatcher = { id: "disp" };
+    resolveDispatcher.mockResolvedValue(dispatcher);
+    const body = stream();
+    undiciFetch.mockResolvedValueOnce({
+      status: 200,
+      headers: { entries: () => [["x-via", "bastion"]][Symbol.iterator]() },
+      body,
+    } as never);
+    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    const resp = await out!.http!.requestStream!({
+      url: "https://api/x",
+      method: "POST",
+      headers: { a: "b" },
+      body: "payload",
+    });
+    expect(undiciFetch.mock.calls[0]![1]).toMatchObject({
+      dispatcher,
+      method: "POST",
+      body: "payload",
+    });
+    expect(resp).toEqual({ status: 200, headers: { "x-via": "bastion" }, body });
+  });
+
+  it("hands bastion traffic on, recorded, inside a session-handoff scope", async () => {
+    const { runInRequestScope } = await import("../runtime/request-scope");
+    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    await runInRequestScope({ sessionHandoff: true, gatewayOnly: {} }, async () => {
+      await expect(
+        out!.http!.requestStream!({ url: "https://x", method: "POST", headers: {} }),
+      ).rejects.toThrow(/\[gateway-only\] Routing through a bastion agent/);
+    });
+  });
+
+  it("uses fetch for an account with no bastion", async () => {
+    const body = stream();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(body, { status: 200 }));
+    const out = await hs.buildPluginHostServices({} as never, {}, {});
+    const resp = await out!.http!.requestStream!({ url: "https://x", method: "GET", headers: {} });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(resp.status).toBe(200);
+    expect(undiciFetch).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+});
+
 describe("http.request — direct fetch", () => {
   it("uses global fetch when unbound and no caCert", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({

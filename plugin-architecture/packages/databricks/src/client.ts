@@ -27,6 +27,7 @@ import type {
   WarehouseSetupGuide,
 } from "@infrawrench/plugin-base";
 import {
+  hostFetch,
   labeledFieldItems,
   labeledOutputItems,
   streamOpenAiSseChat,
@@ -155,28 +156,11 @@ export class DatabricksClient implements PluginClient {
         ? JSON.stringify(body)
         : undefined;
 
-    // Route through the host's HTTPS agent when a custom CA is configured.
-    // Self-hosted Databricks workspaces commonly sit behind private TLS CAs.
-    if (this.caCert && this.services?.http) {
-      const result = await this.services.http.request({
-        url,
-        method,
-        headers,
-        ...(requestBody !== undefined ? { body: requestBody } : {}),
-        caCert: this.caCert,
-      });
-      if (result.status < 200 || result.status >= 300) {
-        throw new Error(`Databricks ${method} ${path} failed: ${result.status} ${result.body}`);
-      }
-      return result.body ?? "";
-    }
-
-    const init: RequestInit = { method, headers };
-    if (requestBody !== undefined) {
-      init.body = requestBody;
-    }
-
-    const res = await fetch(url, init);
+    const res = await hostFetch({ http: this.services?.http, caCert: this.caCert }, url, {
+      method,
+      headers,
+      ...(requestBody !== undefined ? { body: requestBody } : {}),
+    });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(`Databricks ${method} ${path} failed: ${res.status} ${text}`);
@@ -1417,7 +1401,8 @@ export class DatabricksClient implements PluginClient {
 
     let res: Response;
     try {
-      res = await fetch(endpoint, {
+      const transport = { http: this.services?.http, caCert: this.caCert, stream: true };
+      res = await hostFetch(transport, endpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.token}`,

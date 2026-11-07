@@ -1300,6 +1300,49 @@ describe("attachResource", () => {
   });
 });
 
+describe("bastion routing", () => {
+  it("sends every call through the host service, with no CA and no direct fetch", async () => {
+    const request = vi.fn(async () => ({ status: 200, body: JSON.stringify({ clusters: [] }) }));
+    const client = makeClient({}, { http: { request } });
+    await client.listResources("databricks-cluster", ACCOUNT);
+    expect(request).toHaveBeenCalled();
+    expect(request.mock.calls[0]).not.toEqual([
+      expect.objectContaining({ caCert: expect.anything() }),
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to fetch only when there is no host", async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ clusters: [] })));
+    await makeClient().listResources("databricks-cluster", ACCOUNT);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("streams chat through the host service when it can", async () => {
+    const sse = 'data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n';
+    const requestStream = vi.fn(async () => ({
+      status: 200,
+      headers: {},
+      body: new Response(sse).body,
+    }));
+    const request = vi.fn();
+    const client = makeClient({}, { http: { request, requestStream } });
+    const events = [];
+    for await (const event of client.streamChatMessage!(
+      "databricks-serving-endpoint",
+      `${ACCOUNT}:databricks-serving-endpoint:m`,
+      ACCOUNT,
+      [{ role: "user", content: "hello" }],
+    )) {
+      events.push(event);
+    }
+    expect(events[0]).toEqual({ kind: "delta", text: "hi" });
+    expect(requestStream).toHaveBeenCalledOnce();
+    expect(request).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("caCert host http routing", () => {
   it("exposes caCert and passes host services through the plugin factory", async () => {
     expect(plugin.manifest.credentialFields.map((field) => field.key)).toContain("caCert");

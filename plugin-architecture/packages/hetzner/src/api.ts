@@ -46,7 +46,8 @@ export function createHetznerApis(options: {
   const shared = {
     vendor: "Hetzner",
     headers: { Authorization: `Bearer ${token}` },
-    ...(caCert && http ? { caCert, http } : {}),
+    http,
+    caCert,
   };
   return {
     cloud: paged(

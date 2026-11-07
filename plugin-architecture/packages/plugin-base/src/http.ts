@@ -158,13 +158,16 @@ export async function restRequest<T>(opts: RestRequestOptions): Promise<RestResp
   // no host (browser/renderer paths, tests).
   if (http) {
     const body = bodyForHostHttp(init?.body);
-    const result = await http.request({
-      url,
-      method: init?.method ?? "GET",
-      headers: mergedHeaders,
-      ...(body !== undefined ? { body } : {}),
-      ...(caCert ? { caCert } : {}),
-    });
+    const result = await untilAborted(
+      http.request({
+        url,
+        method: init?.method ?? "GET",
+        headers: mergedHeaders,
+        ...(body !== undefined ? { body } : {}),
+        ...(caCert ? { caCert } : {}),
+      }),
+      init?.signal,
+    );
     if (result.status < 200 || result.status >= 300) throw failed(result.status, result.body);
     const answer = { status: result.status, headers: lowerCaseKeys(result.headers) };
     if (responseAs === "text") return { ...answer, body: result.body as T };
@@ -193,6 +196,104 @@ export async function restRequest<T>(opts: RestRequestOptions): Promise<RestResp
  */
 export async function jsonRestFetch<T>(opts: JsonRestFetchOptions): Promise<T> {
   return (await restRequest<T>(opts)).body;
+}
+
+/** How a plugin reaches its provider, from `services?.http` and its `caCert` credential. */
+export interface HostTransport {
+  http?: HttpHostServices | undefined;
+  /** An empty string means none. */
+  caCert?: string | undefined;
+}
+
+/**
+ * The transport as `restRequest` and `jsonRestFetch` take it. Every provider call goes
+ * through the host's service when there is one, because that is the only path with
+ * bastion routing, and `caCert` only goes along when it is set:
+ *
+ *   jsonRestFetch({ vendor, url, headers, ...hostTransport(services?.http, caCert) });
+ *
+ * `createApiClient` takes `http` and `caCert` as they are, empty or not.
+ */
+export function hostTransport(
+  http: HttpHostServices | undefined,
+  caCert?: string,
+): { http?: HttpHostServices; caCert?: string } {
+  return { ...(http ? { http } : {}), ...(caCert ? { caCert } : {}) };
+}
+
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal | null | undefined): Promise<T> {
+  if (!signal) return work;
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      if (signal.aborted) reject(signal.reason);
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }),
+  ]);
+}
+
+/** What `HttpHostServices` carries: a text or byte body, and a type a `FormData` chose for itself. */
+async function encodedBody(
+  body: BodyInit | null | undefined,
+): Promise<{ body?: string | Uint8Array; contentType?: string }> {
+  if (body == null) return {};
+  if (typeof body === "string") return { body };
+  if (body instanceof Uint8Array) return { body };
+  const encoded = new Request("https://encode.invalid", { method: "POST", body });
+  const contentType = encoded.headers.get("content-type");
+  return {
+    body: new Uint8Array(await encoded.arrayBuffer()),
+    ...(contentType ? { contentType } : {}),
+  };
+}
+
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
+
+/**
+ * `fetch`, through the host's service when there is one, so a binary answer, a
+ * multipart upload or a signed URL still gets bastion routing and a custom CA:
+ *
+ *   const res = await hostFetch({ http: services?.http, caCert }, url, init);
+ *   const audio = await res.arrayBuffer();
+ *
+ * It answers a real `Response`, so what follows does not change. Global `fetch` is
+ * only for when there is no host. `stream: true` is for an answer that must arrive as
+ * it is written (`res.body`): a host that cannot stream one falls back to `fetch`,
+ * unless a custom CA needs the host, which then buffers it.
+ */
+export async function hostFetch(
+  transport: HostTransport & { stream?: boolean },
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const { http, caCert, stream } = transport;
+  const streams = stream && http?.requestStream;
+  if (!http || (stream && !streams && !caCert)) return fetch(url, init);
+
+  const { body, contentType } = await encodedBody(init.body);
+  const headers = Object.fromEntries(new Headers(init.headers).entries());
+  if (contentType && !headers["content-type"]) headers["content-type"] = contentType;
+  const request = {
+    url,
+    method: init.method ?? "GET",
+    headers,
+    ...(body !== undefined ? { body } : {}),
+    ...(caCert ? { caCert } : {}),
+  };
+  if (streams && http.requestStream) {
+    const answer = await untilAborted(http.requestStream(request), init.signal);
+    return new Response(answer.body, { status: answer.status, headers: answer.headers });
+  }
+  const answer = await untilAborted(
+    http.request({ ...request, responseEncoding: "binary" }),
+    init.signal,
+  );
+  // `slice` for the type: `Response` will not take a view that may be over shared memory.
+  const payload = answer.rawBody?.slice() ?? answer.body;
+  return new Response(NULL_BODY_STATUSES.has(answer.status) ? null : payload, {
+    status: answer.status,
+    headers: answer.headers,
+  });
 }
 
 /**

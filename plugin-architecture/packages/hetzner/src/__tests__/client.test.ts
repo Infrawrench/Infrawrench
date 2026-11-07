@@ -1485,6 +1485,29 @@ describe("getCreateSizePricing (per-location server type prices)", () => {
   });
 });
 
+describe("bastion routing", () => {
+  it("sends every call through the host service, with no CA and no direct fetch", async () => {
+    const request = vi.fn(async (_req: { caCert?: string }) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ servers: [] }),
+    }));
+    const client = hostClient(
+      new HetznerClient({ apiToken: "tok" }, resourceTypes, { http: { request } }),
+    );
+    await client.listResources("server", ACCOUNT);
+    expect(request).toHaveBeenCalled();
+    expect(request.mock.calls[0]![0]).not.toHaveProperty("caCert");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("names every host it calls, so a bastion's allowlist lets them through", () => {
+    expect(plugin.manifest.egressHosts).toEqual(
+      expect.arrayContaining(["api.hetzner.cloud", "api.hetzner.com"]),
+    );
+  });
+});
+
 describe("caCert routing via host http service", () => {
   it("uses services.http.request when caCert provided", async () => {
     const request = vi.fn<HttpHostServices["request"]>(async () => ({

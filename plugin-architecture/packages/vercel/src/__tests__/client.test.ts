@@ -456,6 +456,36 @@ describe("listResources dispatch + mappers", () => {
   });
 });
 
+describe("bastion routing", () => {
+  it("sends every call through the host service, with no CA and no direct fetch", async () => {
+    const request = vi.fn(async (_req: { caCert?: string }) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ domains: [], pagination: { next: null } }),
+    }));
+    const fetchSpy = installFetch(() => jsonResponse({}));
+    const hosted = hostClient(new VercelClient({ accessToken: "t" }, { http: { request } }));
+    await hosted.listResources("vercel-domain", ACCOUNT);
+    expect(request).toHaveBeenCalledOnce();
+    expect(request.mock.calls[0]![0]).not.toHaveProperty("caCert");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reads cost data through the host service too", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {},
+      body: "",
+      rawBody: new TextEncoder().encode(""),
+    }));
+    const fetchSpy = installFetch(() => jsonResponse({}));
+    const hosted = hostClient(new VercelClient({ accessToken: "t" }, { http: { request } }));
+    await hosted.fetchCostData!(ACCOUNT, { fromDate: "2026-01-01", toDate: "2026-01-02" });
+    expect(request).toHaveBeenCalledOnce();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("getResource", () => {
   it("fetches a single project directly", async () => {
     installFetch(() => jsonResponse({ id: "p1", name: "proj", createdAt: 1 }));

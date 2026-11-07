@@ -671,7 +671,14 @@ export type { DnsRecordDetailOptions } from "./dns.js";
 export { dnsContentField, PICKABLE_DNS_TYPES } from "./dns-helpers.js";
 export type { DnsContentFieldOptions } from "./dns-helpers.js";
 
-export { jsonRestFetch, restRequest, formatBytes, caCertCredentialField } from "./http.js";
+export {
+  jsonRestFetch,
+  restRequest,
+  formatBytes,
+  caCertCredentialField,
+  hostFetch,
+  hostTransport,
+} from "./http.js";
 export {
   buildResourceShowcase,
   omitLiveShowcaseStats,
@@ -684,7 +691,12 @@ export {
 export type { ResourceShowcase, ShowcaseField, ShowcaseStat, ShowcaseTone } from "./showcase.js";
 export { buildMultipartBody } from "./multipart.js";
 export type { MultipartBody, MultipartPart } from "./multipart.js";
-export type { JsonRestFetchOptions, RestRequestOptions, RestResponse } from "./http.js";
+export type {
+  HostTransport,
+  JsonRestFetchOptions,
+  RestRequestOptions,
+  RestResponse,
+} from "./http.js";
 
 export { streamOpenAiSseChat } from "./chat-stream.js";
 export { decodePromptArgs } from "./prompt-args.js";

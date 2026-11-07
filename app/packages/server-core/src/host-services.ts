@@ -193,21 +193,58 @@ function buildHttpHostServices(
   bastionId: string | null | undefined,
   scope: DialScope,
 ): HttpHostServices {
+  // A Worker cannot drive the agent's streams (undici, node:stream) nor
+  // trust a per-request CA, so both hand the call to the gateway. Plain
+  // requests need no guard there: Workers egress cannot reach private or
+  // loopback addresses. The web Lambda is Node and reaches the agent
+  // through the realtime relay; without the relay it holds no agent
+  // connection and hands bastion traffic to the session gateway.
+  const refuseWhatThisRuntimeCannotDo = (caCert: string | undefined) => {
+    if (bastionId && (isEdgeRuntime() || (sessionHandoffInScope() && !realtimeEnabled()))) {
+      throw new GatewayOnlyError("Routing through a bastion agent");
+    }
+    if (isEdgeRuntime() && caCert) {
+      throw new GatewayOnlyError("A request trusting a custom CA certificate");
+    }
+  };
+  // undici's and the runtime's `ReadableStream` are the same thing under two types.
+  const streamOf = (resp: { body: unknown }) => resp.body as ReadableStream<Uint8Array> | null;
   return {
+    requestStream: async (req) => {
+      refuseWhatThisRuntimeCannotDo(req.caCert);
+      const init = {
+        method: req.method,
+        headers: req.headers,
+        ...(req.body != null ? { body: req.body as string | Uint8Array<ArrayBuffer> } : {}),
+      };
+      if (bastionId) {
+        const dispatcher = await resolveDispatcher(bastionId);
+        if (!dispatcher) throw new BastionDisconnectedError(bastionId);
+        const resp = await undiciFetch(req.url, { ...init, dispatcher });
+        return {
+          status: resp.status,
+          headers: Object.fromEntries(resp.headers.entries()),
+          body: streamOf(resp),
+        };
+      }
+      // `nodeHttpsRequest` is the only path that takes a per-request CA, and it buffers.
+      if (req.caCert) {
+        const { status, headers, rawBody } = await nodeHttpsRequest(
+          { ...req, responseEncoding: "binary" },
+          scope,
+        );
+        return { status, headers, body: streamOf(new Response(rawBody?.slice() ?? null)) };
+      }
+      const resp = await runInEgressScope(scope, () => fetch(req.url, init));
+      return {
+        status: resp.status,
+        headers: Object.fromEntries(resp.headers.entries()),
+        body: streamOf(resp),
+      };
+    },
     request: async (req) => {
       const binary = req.responseEncoding === "binary";
-      // A Worker cannot drive the agent's streams (undici, node:stream) nor
-      // trust a per-request CA, so both hand the call to the gateway. Plain
-      // requests need no guard there: Workers egress cannot reach private or
-      // loopback addresses. The web Lambda is Node and reaches the agent
-      // through the realtime relay; without the relay it holds no agent
-      // connection and hands bastion traffic to the session gateway.
-      if (bastionId && (isEdgeRuntime() || (sessionHandoffInScope() && !realtimeEnabled()))) {
-        throw new GatewayOnlyError("Routing through a bastion agent");
-      }
-      if (isEdgeRuntime() && req.caCert) {
-        throw new GatewayOnlyError("A request trusting a custom CA certificate");
-      }
+      refuseWhatThisRuntimeCannotDo(req.caCert);
       if (bastionId) {
         const dispatcher = await resolveDispatcher(bastionId);
         if (!dispatcher) throw new BastionDisconnectedError(bastionId);

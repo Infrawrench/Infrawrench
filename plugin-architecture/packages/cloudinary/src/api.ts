@@ -61,7 +61,8 @@ export function createCloudinaryApis(options: {
     vendor: "Cloudinary",
     baseUrl: `https://api.cloudinary.com/v1_1/${cloudName}`,
     headers: async () => ({ Authorization: await authorization() }),
-    ...(caCert && http ? { caCert, http } : {}),
+    http,
+    caCert,
   };
   return {
     api: createApiClient<paths>({ ...shared, encodeQuery: encodeURIComponent }),

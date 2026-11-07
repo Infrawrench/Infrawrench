@@ -612,3 +612,23 @@ describe("fetchMetricSeries", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe("bastion routing", () => {
+  it("sends every call through the host service, with no CA and no direct fetch", async () => {
+    const direct = installFetch(() => jsonResponse({}));
+    const request = vi.fn(async (_req: { caCert?: string }) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ folders: [] }),
+    }));
+    const hosted = hostClient(
+      new CloudinaryClient({ cloudName: "demo", apiKey: "key", apiSecret: "secret" }, {
+        http: { request },
+      } as never),
+    );
+    await hosted.listResources("folder", "acct");
+    expect(request).toHaveBeenCalled();
+    expect(request.mock.calls[0]![0]).not.toHaveProperty("caCert");
+    expect(direct).not.toHaveBeenCalled();
+  });
+});

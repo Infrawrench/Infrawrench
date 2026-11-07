@@ -17,7 +17,12 @@ import type {
   RegionOption,
   SelectOption,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, joinSubtitle, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  decodePromptArgs,
+  hostTransport,
+  joinSubtitle,
+  jsonRestFetch,
+} from "@infrawrench/plugin-base";
 import { fetchPlanetScaleCostData } from "./cost-data.js";
 import { fetchBranchMetrics, PS_METRICS_CAPABILITY } from "./metrics.js";
 import { fetchInsightsLog } from "./insights-log.js";
@@ -270,9 +275,7 @@ export class PlanetScaleClient implements PluginClient {
         Accept: "application/json",
       },
       ...(options ? { init: options } : {}),
-      ...(this.caCert && this.services?.http
-        ? { caCert: this.caCert, http: this.services.http }
-        : {}),
+      ...hostTransport(this.services?.http, this.caCert),
     });
   }
 

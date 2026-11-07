@@ -898,6 +898,22 @@ describe("deleteResource", () => {
   });
 });
 
+describe("bastion routing", () => {
+  it("sends every call through the host service, with no CA and no direct fetch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const request = vi.fn(async (_req: { caCert?: string }) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ data: [], next_page: null }),
+    }));
+    const hosted = hostClient(new PlanetScaleClient(creds, { http: { request } } as never));
+    await hosted.listResources("ps-database", "acct");
+    expect(request).toHaveBeenCalled();
+    expect(request.mock.calls[0]![0]).not.toHaveProperty("caCert");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("caCert + host http path", () => {
   it("routes via host http service when caCert+http present", async () => {
     const request = vi.fn(async () => ({

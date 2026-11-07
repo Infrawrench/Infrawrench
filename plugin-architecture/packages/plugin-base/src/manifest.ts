@@ -452,6 +452,22 @@ export interface HttpHostServices {
     /** Set when `responseEncoding` was `"binary"`. */
     rawBody?: Uint8Array;
   }>;
+  /**
+   * The same request, answered as it arrives: chat tokens over SSE. Reach it through
+   * `hostFetch` with `stream: true`. A host that has no bastion to route through
+   * (the desktop) leaves it out, and the plugin's own `fetch` streams fine there.
+   */
+  requestStream?(req: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body?: string | Uint8Array;
+    caCert?: string;
+  }): Promise<{
+    status: number;
+    headers: Record<string, string>;
+    body: ReadableStream<Uint8Array> | null;
+  }>;
 }
 
 /**

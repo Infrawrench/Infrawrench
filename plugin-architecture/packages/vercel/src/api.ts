@@ -59,7 +59,8 @@ export function createVercelApi(options: {
     headers: { Authorization: `Bearer ${accessToken}` },
     scopeQuery: { teamId },
     encodeQuery: encodeURIComponent,
-    ...(caCert && http ? { caCert, http } : {}),
+    http,
+    caCert,
   });
   return {
     /** Most lists take the previous page's `pagination.next` timestamp as `until`. */

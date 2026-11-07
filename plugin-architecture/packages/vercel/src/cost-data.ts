@@ -13,7 +13,12 @@
  * Enterprise Viewer team roles (no extra token scope to mint).
  */
 
-import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  hostFetch,
+  type CostFetchRange,
+  type CostRow,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
 import type { operations } from "./api-types.gen.js";
 
 /** A FOCUS v1.3 charge row. `Partial` because a row is read leniently, not validated. */
@@ -30,34 +35,17 @@ export interface VercelCostFetchOptions {
 }
 
 /**
- * Fetch the raw JSONL body. `jsonRestFetch` can't be used here because it
- * JSON-parses the whole body, so this mirrors its dual path: route through
- * the host's HTTP service when a custom CA is configured (bastion routing +
- * trust anchor), plain `fetch` otherwise. `Accept-Encoding: identity` keeps
- * the body uncompressed: the host HTTP service doesn't gunzip for us.
+ * Fetch the raw JSONL body, which `jsonRestFetch` would try to parse whole.
+ * `Accept-Encoding: identity` keeps it uncompressed: the host HTTP service doesn't
+ * gunzip for us.
  */
 async function fetchJsonlBody(url: string, opts: VercelCostFetchOptions): Promise<string> {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${opts.accessToken}`,
-    "Accept-Encoding": "identity",
-  };
-
-  if (opts.caCert && opts.http) {
-    const result = await opts.http.request({
-      url,
-      method: "GET",
-      headers,
-      caCert: opts.caCert,
-    });
-    if (result.status < 200 || result.status >= 300) {
-      throw new Error(
-        `Vercel API error ${result.status} for /v1/billing/charges: ${result.body.slice(0, 500)}`,
-      );
-    }
-    return result.body;
-  }
-
-  const res = await fetch(url, { headers });
+  const res = await hostFetch(opts, url, {
+    headers: {
+      Authorization: `Bearer ${opts.accessToken}`,
+      "Accept-Encoding": "identity",
+    },
+  });
   if (!res.ok) {
     const body = await res.text();
     throw new Error(

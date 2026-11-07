@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach, beforeEach, type Mock } from "vitest";
-import { jsonRestFetch, formatBytes, caCertCredentialField } from "../http.js";
+import {
+  jsonRestFetch,
+  formatBytes,
+  caCertCredentialField,
+  hostFetch,
+  hostTransport,
+  restRequest,
+} from "../http.js";
 import type { HttpHostServices } from "../manifest.js";
 
 describe("formatBytes", () => {
@@ -234,5 +241,175 @@ describe("jsonRestFetch via host http service", () => {
       init: { body: new URLSearchParams({ a: "1" }) },
     });
     expect(request.mock.calls[0]![0]!.body).toBe("a=1");
+  });
+});
+
+describe("hostTransport", () => {
+  const http = { request: vi.fn() };
+
+  it("always carries the host's service, and a CA only when there is one", () => {
+    expect(hostTransport(http)).toEqual({ http });
+    expect(hostTransport(http, "")).toEqual({ http });
+    expect(hostTransport(http, "PEM")).toEqual({ http, caCert: "PEM" });
+  });
+
+  it("carries nothing without a host", () => {
+    expect(hostTransport(undefined)).toEqual({});
+  });
+});
+
+describe("hostFetch", () => {
+  const ok = { status: 200, headers: { "content-type": "audio/mpeg" }, body: "" };
+  const bytes = new Uint8Array([1, 2, 3]);
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  function directFetch(answer?: Response) {
+    const direct = answer
+      ? vi.fn(async () => answer)
+      : vi.fn(async () => {
+          throw new Error("reached a real provider");
+        });
+    vi.stubGlobal("fetch", direct);
+    return direct;
+  }
+  const noDirectFetch = () => directFetch();
+
+  it("goes through the host when there is one, answering a real Response", async () => {
+    const direct = noDirectFetch();
+    const request = vi.fn(async () => ({ ...ok, rawBody: bytes }));
+    const res = await hostFetch({ http: { request } }, "https://a/x", {
+      method: "POST",
+      headers: { Authorization: "Bearer t" },
+      body: "payload",
+    });
+    expect(direct).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledExactlyOnceWith({
+      url: "https://a/x",
+      method: "POST",
+      headers: { authorization: "Bearer t" },
+      body: "payload",
+      responseEncoding: "binary",
+    });
+    expect(res.ok).toBe(true);
+    expect(res.headers.get("content-type")).toBe("audio/mpeg");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+  });
+
+  it("takes the CA only when it is set", async () => {
+    noDirectFetch();
+    const request = vi.fn(async () => ok);
+    await hostFetch({ http: { request }, caCert: "" }, "https://a/x");
+    expect(request.mock.calls[0]).not.toEqual([
+      expect.objectContaining({ caCert: expect.anything() }),
+    ]);
+    await hostFetch({ http: { request }, caCert: "PEM" }, "https://a/x");
+    expect(request.mock.calls[1]).toEqual([expect.objectContaining({ caCert: "PEM" })]);
+  });
+
+  it("uses fetch only when there is no host", async () => {
+    const direct = directFetch(new Response("hi"));
+    const res = await hostFetch({}, "https://a/x", { method: "PUT" });
+    expect(direct).toHaveBeenCalledExactlyOnceWith("https://a/x", { method: "PUT" });
+    expect(await res.text()).toBe("hi");
+  });
+
+  it("reports a failure as a Response, as fetch does", async () => {
+    noDirectFetch();
+    const request = vi.fn(async () => ({ status: 503, headers: {}, body: "down" }));
+    const res = await hostFetch({ http: { request } }, "https://a/x");
+    expect(res.ok).toBe(false);
+    expect(res.status).toBe(503);
+    expect(await res.text()).toBe("down");
+  });
+
+  it("copes with an answer that has no body", async () => {
+    noDirectFetch();
+    const request = vi.fn(async () => ({ status: 204, headers: {}, body: "" }));
+    const res = await hostFetch({ http: { request } }, "https://a/x");
+    expect(res.status).toBe(204);
+  });
+
+  it("encodes a FormData, keeping the boundary it chose", async () => {
+    noDirectFetch();
+    const request = vi.fn(async (_req: { headers: Record<string, string>; body?: unknown }) => ok);
+    const form = new FormData();
+    form.set("file", new Blob([bytes]), "a.mp3");
+    await hostFetch({ http: { request } }, "https://a/x", { method: "POST", body: form });
+    const sent = request.mock.calls[0]![0];
+    expect(sent.headers["content-type"]).toMatch(/^multipart\/form-data; boundary=/);
+    expect(new TextDecoder().decode(sent.body as Uint8Array)).toContain('filename="a.mp3"');
+  });
+
+  it("keeps the type the caller set over the one a body would choose", async () => {
+    noDirectFetch();
+    const request = vi.fn(async (_req: { headers: Record<string, string> }) => ok);
+    await hostFetch({ http: { request } }, "https://a/x", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-custom" },
+      body: new URLSearchParams({ a: "b" }),
+    });
+    expect(request.mock.calls[0]![0].headers["content-type"]).toBe("application/x-custom");
+  });
+
+  it("stops waiting for the host when the caller aborts", async () => {
+    noDirectFetch();
+    const controller = new AbortController();
+    const request = vi.fn(() => new Promise<typeof ok>(() => {}));
+    const pending = hostFetch({ http: { request } }, "https://a/x", { signal: controller.signal });
+    controller.abort(new Error("gave up"));
+    await expect(pending).rejects.toThrow("gave up");
+  });
+
+  describe("with stream", () => {
+    const sse = () => new Response("data: x\n\n").body;
+
+    it("streams through the host when it can, and never buffers", async () => {
+      const direct = noDirectFetch();
+      const requestStream = vi.fn(async () => ({ status: 200, headers: {}, body: sse() }));
+      const request = vi.fn();
+      const res = await hostFetch(
+        { http: { request, requestStream }, stream: true },
+        "https://a/x",
+      );
+      expect(await res.text()).toBe("data: x\n\n");
+      expect(request).not.toHaveBeenCalled();
+      expect(direct).not.toHaveBeenCalled();
+    });
+
+    it("uses fetch on a host that cannot stream, so the renderer keeps streaming", async () => {
+      const direct = directFetch(new Response("hi"));
+      const request = vi.fn();
+      await hostFetch({ http: { request }, stream: true }, "https://a/x");
+      expect(direct).toHaveBeenCalledOnce();
+      expect(request).not.toHaveBeenCalled();
+    });
+
+    it("buffers through the host when a custom CA needs it and it cannot stream", async () => {
+      const direct = noDirectFetch();
+      const request = vi.fn(async () => ({ ...ok, body: "buffered" }));
+      const res = await hostFetch(
+        { http: { request }, caCert: "PEM", stream: true },
+        "https://a/x",
+      );
+      expect(await res.text()).toBe("buffered");
+      expect(direct).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("restRequest through the host", () => {
+  it("stops waiting when the caller aborts, as fetch would", async () => {
+    const controller = new AbortController();
+    const request = vi.fn(() => new Promise<never>(() => {}));
+    const pending = restRequest({
+      vendor: "Test",
+      url: "https://a/x",
+      headers: {},
+      http: { request },
+      init: { signal: controller.signal },
+    });
+    controller.abort(new Error("gave up"));
+    await expect(pending).rejects.toThrow("gave up");
   });
 });

@@ -27,7 +27,7 @@ import { StorageBoxResourceType } from "./resources/storage-box.js";
 
 export const manifest = {
   id: "hetzner",
-  egressHosts: ["api.hetzner.cloud", "robot-ws.your-server.de"],
+  egressHosts: ["api.hetzner.cloud", "api.hetzner.com", "robot-ws.your-server.de"],
   displayName: "Hetzner Cloud",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#D50C2D"/>
