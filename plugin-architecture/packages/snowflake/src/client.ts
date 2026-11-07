@@ -84,6 +84,8 @@ import {
 import type { AccountSummary, WarehouseInsights } from "./render.js";
 import { OUT, renderSnowflakeDetail, renderSnowflakeSidebar } from "./render.js";
 import { TYPE } from "./resource-types.js";
+import type { ShowExec } from "./show.js";
+import { SHOW_RECORD_LIMIT, showAcrossAccount, unreadUnder, whole } from "./show.js";
 import {
   listSnowflakeTargetOptions,
   loadSnowflakeRows,
@@ -113,19 +115,22 @@ function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   return value;
 }
 
-/**
- * SHOW WAREHOUSES and SHOW PIPES document that "any records above the ten thousand
- * records limit aren't returned", with no error, so an answer this long may be missing rows.
- */
-const SHOW_RECORD_LIMIT = 10_000;
-
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** `snowflake-task` etc. carry `DB.SCHEMA.NAME` external ids. */
-const SCHEMA_OBJECTS: Record<string, { show: string; sql: string; map: typeof mapTask }> = {
-  [TYPE.task]: { show: "TASKS", sql: "TASK", map: mapTask },
-  [TYPE.pipe]: { show: "PIPES", sql: "PIPE", map: (a, r) => mapPipe(a, r) },
-  [TYPE.dynamicTable]: { show: "DYNAMIC TABLES", sql: "DYNAMIC TABLE", map: mapDynamicTable },
+const SCHEMA_OBJECTS: Record<
+  string,
+  { show: string; sql: string; map: typeof mapTask; pageable: boolean }
+> = {
+  [TYPE.task]: { show: "TASKS", sql: "TASK", map: mapTask, pageable: true },
+  // SHOW PIPES takes no LIMIT and drops what is past 10,000 even in a narrower scope.
+  [TYPE.pipe]: { show: "PIPES", sql: "PIPE", map: (a, r) => mapPipe(a, r), pageable: false },
+  [TYPE.dynamicTable]: {
+    show: "DYNAMIC TABLES",
+    sql: "DYNAMIC TABLE",
+    map: mapDynamicTable,
+    pageable: true,
+  },
 };
 
 export class SnowflakeClient implements PluginClient {
@@ -159,6 +164,15 @@ export class SnowflakeClient implements PluginClient {
     return runSql(this.ctx, statement, opts);
   }
 
+  /** Every row of one SHOW, as many as it returned. */
+  private readonly show: ShowExec = async (statement) =>
+    (await this.sql(statement, { everyRow: true })).rows;
+
+  /**
+   * One SHOW with no paging. SHOW WAREHOUSES, SHOW PIPES and SHOW RESOURCE MONITORS
+   * document that "any records above the ten thousand records limit aren't returned",
+   * with no error, so an answer this long may be missing rows.
+   */
   private async rows(statement: string): Promise<Record<string, unknown>[]> {
     const { rows } = await this.sql(statement, { everyRow: true });
     if (rows.length >= SHOW_RECORD_LIMIT) {
@@ -224,9 +238,9 @@ export class SnowflakeClient implements PluginClient {
         case TYPE.warehouse:
           return (await this.rows("SHOW WAREHOUSES")).map((r) => mapWarehouse(accountId, r));
         case TYPE.database:
-          return (await this.rows("SHOW DATABASES")).map((r) => mapDatabase(accountId, r));
+          return (await whole(this.show, "SHOW DATABASES")).map((r) => mapDatabase(accountId, r));
         case TYPE.schema:
-          return (await this.rows("SHOW SCHEMAS IN ACCOUNT"))
+          return (await this.acrossAccount(accountId, typeId, "SCHEMAS", 1))
             .filter((r) => str(r["name"]).toUpperCase() !== "INFORMATION_SCHEMA")
             .map((r) => mapSchema(accountId, r));
         case TYPE.resourceMonitor: {
@@ -241,15 +255,31 @@ export class SnowflakeClient implements PluginClient {
         }
         case TYPE.user:
           // SHOW USERS needs ownership or MANAGE GRANTS; without it the list is empty.
-          return (await this.optional("SHOW USERS")).map((r) => mapUser(accountId, r));
+          return (await whole(this.show, "SHOW USERS", { deniedIsEmpty: true })).map((r) =>
+            mapUser(accountId, r),
+          );
         case TYPE.role:
-          return (await this.rows("SHOW ROLES")).map((r) => mapRole(accountId, r));
+          return (await whole(this.show, "SHOW ROLES")).map((r) => mapRole(accountId, r));
         default: {
           const obj = SCHEMA_OBJECTS[typeId];
           if (!obj) throw new Error(`Snowflake plugin: unknown resource type "${typeId}"`);
-          return (await this.rows(`SHOW ${obj.show} IN ACCOUNT`)).map((r) => obj.map(accountId, r));
+          const rows = obj.pageable
+            ? await this.acrossAccount(accountId, typeId, obj.show, 2)
+            : await this.rows(`SHOW ${obj.show} IN ACCOUNT`);
+          return rows.map((r) => obj.map(accountId, r));
         }
       }
+    });
+  }
+
+  /** `SHOW <object> IN ACCOUNT`, one scope down at a time past 10,000 rows. */
+  private acrossAccount(accountId: string, typeId: string, object: string, depth: 1 | 2) {
+    return showAcrossAccount(this.show, {
+      object,
+      depth,
+      // External ids are the encoded name parts joined with dots, so a scope's rows
+      // are the ids under its own parts and a dot.
+      unread: unreadUnder((scope) => `${accountId}:${typeId}:${encodeId(...scope)}.`),
     });
   }
 
