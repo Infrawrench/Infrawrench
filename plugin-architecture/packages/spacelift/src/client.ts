@@ -375,10 +375,9 @@ export class SpaceliftClient implements PluginClient {
             }
             for (const o of res?.stack?.outputs ?? []) out.push(this.outputDoc(accountId, s, o));
           }
-          if (unread.length > 0) {
-            const reported = reportUnreadListPart({ parentResourceIds: unread });
-            // Where a host keeps no track (the desktop), a key refused every stack should show.
-            if (!reported && refusal !== undefined && out.length === 0) throw refusal;
+          // Where a host keeps no track (the desktop), the refusal shows.
+          if (unread.length > 0 && !reportUnreadListPart({ parentResourceIds: unread })) {
+            throw refusal;
           }
           return out;
         }
@@ -504,7 +503,7 @@ export class SpaceliftClient implements PluginClient {
     const unread = later.map((s) => `${accountId}:stack:${s.id}`);
     let refusal: unknown;
     const out: ResourceInstance[] = [];
-    for (const s of now) {
+    const readStack = async (s: (typeof sorted)[number]) => {
       let res: { stack?: { runs?: SlRun[] } | null };
       try {
         res = await this.q<{ stack?: { runs?: SlRun[] } | null }>(
@@ -515,11 +514,11 @@ export class SpaceliftClient implements PluginClient {
       } catch (err) {
         const status = statusOf(err);
         // Listed a moment ago and gone now: so are its runs.
-        if (status === 404) continue;
+        if (status === 404) return;
         if (status !== 403) throw err;
         unread.push(`${accountId}:stack:${s.id}`);
         refusal ??= err;
-        continue;
+        return;
       }
       // Rolling window: the newest 5 per stack. Older rows falling off is what this type means.
       out.push(
@@ -527,11 +526,14 @@ export class SpaceliftClient implements PluginClient {
           .slice(0, RUNS_PER_STACK)
           .map((r) => mapRun(accountId, s.id, s.name, r, this.runUrl(s.id, r.id))),
       );
-    }
-    if (unread.length > 0) {
-      const reported = reportUnreadListPart({ parentResourceIds: unread });
-      // Where a host keeps no track (the desktop), a key refused every stack should show.
-      if (!reported && refusal !== undefined && out.length === 0) throw refusal;
+    };
+    for (const s of now) await readStack(s);
+    // Where a host keeps no track (the desktop), a refusal shows, and with no poll to outlast
+    // the stacks past the budget are read too.
+    if (unread.length > 0 && !reportUnreadListPart({ parentResourceIds: unread })) {
+      if (refusal !== undefined) throw refusal;
+      for (const s of later) await readStack(s);
+      if (refusal !== undefined) throw refusal;
     }
     return out.sort((a, b) =>
       String(b.fields["createdAt"]).localeCompare(String(a.fields["createdAt"])),

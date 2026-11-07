@@ -202,6 +202,16 @@ describe("listing", () => {
       });
     });
 
+    it("reads every stack, and shows a refusal, where the host keeps no track", async () => {
+      const all = fanOut();
+      await expect(all.c.listResources("run", ACC)).resolves.toHaveLength(100);
+      expect(readStacks(all.calls)).toHaveLength(20);
+      const refused = fanOut((id) =>
+        id === "s00" ? { errors: [{ message: "Forbidden: permission denied" }] } : runsOf(id),
+      );
+      await expect(refused.c.listResources("run", ACC)).rejects.toThrow("Forbidden");
+    });
+
     it("fails the type when a stack's runs are throttled, so the stored runs stay", async () => {
       Reflect.set(globalThis, UNREAD_HOOK, vi.fn());
       const { c } = fanOut(() => ({ errors: [{ message: "rate limit exceeded" }] }));
@@ -243,6 +253,16 @@ describe("listing", () => {
       const rows = await c.listResources("stack-output", ACC);
       expect(rows.map((r) => r.externalId)).toEqual(["net/vpc_id"]);
       expect(unread).toHaveBeenCalledWith({ parentResourceIds: [`${ACC}:stack:app`] });
+    });
+
+    it("shows one stack's refusal where the host keeps no track", async () => {
+      const { c } = client((q, vars) => {
+        if (q.includes("outputs")) {
+          return vars["id"] === "app" ? { errors: [{ message: "Forbidden" }] } : outputs;
+        }
+        return { stacks };
+      });
+      await expect(c.listResources("stack-output", ACC)).rejects.toThrow("Forbidden");
     });
   });
 
