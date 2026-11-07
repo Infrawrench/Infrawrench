@@ -67,7 +67,7 @@ const httpHostServices = {
  * `literal` rows carry a value we can decrypt; an output-ref row resolves
  * through the owning plugin instead, so it correctly reads as absent here.
  */
-const secretHostServices: SecretHostServices = {
+export const secretHostServices: SecretHostServices = {
   async getPlaintext(resourceId: string, fieldKey: string): Promise<string | null> {
     try {
       const db = await getSqlite();
@@ -85,7 +85,7 @@ const secretHostServices: SecretHostServices = {
         ciphertext,
         iv,
         getEncryptionKey(),
-        buildAad("secret_field", resourceId, fieldKey),
+        buildAad("secretField", `${resourceId}:${fieldKey}`, "value"),
       );
     } catch {
       return null;
