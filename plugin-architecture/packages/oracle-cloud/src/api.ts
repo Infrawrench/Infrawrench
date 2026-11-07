@@ -1,4 +1,8 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  requireListPage,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
 import { serviceHost, type OciService } from "./regions.js";
 import { importPrivateKey, signRequest, type OciSigningCredentials } from "./signer.js";
 
@@ -38,6 +42,9 @@ export interface OciResponse<T> {
   data: T;
   headers: Record<string, string>;
 }
+
+const VENDOR = "Oracle Cloud";
+const DEFAULT_MAX_PAGES = 100;
 
 /** Retry budget for throttling and transient 5xx. */
 const MAX_ATTEMPTS = 4;
@@ -238,21 +245,33 @@ export class OciApi {
    * itself (most list operations return a bare array) or under `items`
    * (Object Storage, Monitoring, Usage, OKE collections). A page can be empty
    * while more remain, so the header, not the item count, decides when to stop.
+   *
+   * A sync prunes whatever a list stops returning, so a page that is neither
+   * shape, and a list still going at `maxPages`, throw rather than read as
+   * the end. 100 pages of the 1,000 rows the listers ask for is the resource
+   * sync's ceiling of 100,000 rows.
    */
-  async listAll<T>(req: OciRequest, maxPages = 50): Promise<T[]> {
+  async listAll<T>(req: OciRequest, maxPages = DEFAULT_MAX_PAGES): Promise<T[]> {
     const out: T[] = [];
     let page: string | undefined;
     for (let i = 0; i < maxPages; i++) {
-      const res = await this.request<T[] | { items?: T[] }>({
+      const res = await this.request<T[] | { items?: T[] | null } | undefined>({
         ...req,
         query: { ...(req.query ?? {}), ...(page ? { page } : {}) },
       });
-      const items = Array.isArray(res.data) ? res.data : (res.data?.items ?? []);
+      const items = Array.isArray(res.data)
+        ? res.data
+        : requireListPage(res.data?.items, {
+            vendor: VENDOR,
+            path: req.path,
+            key: "items",
+            page: res.data,
+          });
       out.push(...items);
       page = res.headers["opc-next-page"];
-      if (!page) break;
+      if (!page) return out;
     }
-    return out;
+    throw new ListTruncatedError({ vendor: VENDOR, path: req.path, items: out.length, maxPages });
   }
 }
 

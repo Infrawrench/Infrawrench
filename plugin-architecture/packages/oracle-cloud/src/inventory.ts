@@ -47,6 +47,12 @@ export const SEARCH_TYPES = [
 export type SearchType = (typeof SEARCH_TYPES)[number];
 
 const CACHE_MS = 60_000;
+const SEARCH_MAX_PAGES = 100;
+
+interface SearchHit {
+  resourceType?: string;
+  compartmentId?: string;
+}
 
 interface Cached<T> {
   at: number;
@@ -276,34 +282,44 @@ export class OciInventory {
     const slot = this.searchCache.get(region);
     if (slot && Date.now() - slot.at < CACHE_MS) return slot.value;
     const value = (async () => {
+      const items: SearchHit[] = [];
       try {
-        const items = await this.api.listAll<{ resourceType?: string; compartmentId?: string }>(
-          {
+        // A hand loop rather than `listAll`, whose errors the host counts as a failed
+        // list even when caught: an index that cannot be read whole is not used, and
+        // the listers visit every compartment instead, which is complete either way.
+        let page: string | undefined;
+        for (let i = 0; ; i++) {
+          if (i === SEARCH_MAX_PAGES) return null;
+          const res = await this.api.request<{ items?: SearchHit[] | null } | undefined>({
             service: "query",
             region,
             method: "POST",
             path: "/20180409/resources",
-            query: { limit: 1000 },
+            query: { limit: 1000, ...(page ? { page } : {}) },
             body: {
               type: "Structured",
               query: `query ${SEARCH_TYPES.join(", ")} resources`,
             },
-          },
-          100,
-        );
-        const index = new Map<string, Set<string>>();
-        for (const item of items) {
-          if (!item.resourceType || !item.compartmentId) continue;
-          const key = item.resourceType.toLowerCase();
-          if (!index.has(key)) index.set(key, new Set());
-          index.get(key)!.add(item.compartmentId);
+          });
+          const pageItems = res.data?.items;
+          if (!Array.isArray(pageItems)) return null;
+          items.push(...pageItems);
+          page = res.headers["opc-next-page"];
+          if (!page) break;
         }
-        return index;
       } catch {
         // A refused or failing Search should not take listing down: fall
         // back to the full fan-out for this pass.
         return null;
       }
+      const index = new Map<string, Set<string>>();
+      for (const item of items) {
+        if (!item.resourceType || !item.compartmentId) continue;
+        const key = item.resourceType.toLowerCase();
+        if (!index.has(key)) index.set(key, new Set());
+        index.get(key)!.add(item.compartmentId);
+      }
+      return index;
     })();
     this.searchCache.set(region, { at: Date.now(), value });
     return value;
