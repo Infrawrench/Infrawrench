@@ -257,24 +257,22 @@ export class BitbucketClient implements PluginClient {
       .catch((): BbRepository[] => []);
   }
 
-  private async fanout(): Promise<string[]> {
-    return (await this.repos()).slice(0, FANOUT_LIMIT).map(slugOf);
-  }
-
   /** Every repository-scoped list, skipping repositories that refuse (no admin, Pipelines off). */
   private async perRepo(
     accountId: string,
     fn: (slug: string) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
     const out: ResourceInstance[] = [];
-    // A sync must not read a repository past the cap as having no children.
-    const past = (await this.repos()).slice(FANOUT_LIMIT).map(slugOf);
-    if (past.length > 0) {
+    // A sync must not read a repository past the cap as having no children. A host that
+    // keeps no track answers false, and there only every repository is the whole list.
+    const repos = (await this.repos()).map(slugOf);
+    const past = repos.slice(FANOUT_LIMIT);
+    const tracked =
+      past.length === 0 ||
       reportUnreadListPart({
         parentResourceIds: past.map((slug) => `${accountId}:repository:${slug}`),
       });
-    }
-    for (const slug of await this.fanout()) {
+    for (const slug of tracked ? repos.slice(0, FANOUT_LIMIT) : repos) {
       try {
         out.push(...(await fn(slug)));
       } catch (err) {

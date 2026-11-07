@@ -518,6 +518,17 @@ describe("reading a whole list", () => {
     ]);
   });
 
+  it("reads every repository's children where the host keeps no track of the rest", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === REPOS
+        ? { values: Array.from({ length: 32 }, (_, i) => ({ ...REPO, slug: `r${i}` })) }
+        : none(),
+    );
+    Reflect.deleteProperty(globalThis, Symbol.for("infrawrench.unreadListPart"));
+    await c.listResources("repository-webhook", ACC);
+    expect(calls.filter((x) => x.url.pathname.endsWith("/hooks"))).toHaveLength(32);
+  });
+
   it("names a repository the way its children name their parent", async () => {
     const { c } = client((call) => {
       if (call.url.pathname === REPOS) return { values: [{ ...REPO, slug: "r0" }] };
