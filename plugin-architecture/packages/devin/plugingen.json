@@ -1,0 +1,48 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs.devin.ai/v3-openapi.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1v3~1organizations~1{org_id}~1sessions/get/parameters",
+      "value": [
+        {
+          "name": "org_id",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        { "name": "first", "in": "query", "schema": { "type": "integer" } },
+        { "name": "after", "in": "query", "schema": { "type": "string" } },
+        { "name": "updated_after", "in": "query", "schema": { "type": "integer" } }
+      ],
+      "why": "The document writes the route's query model as one object parameter, `qs`. With OpenAPI's default form style and explode that means each field is its own parameter and `qs` is never on the wire, but this client writes an object as `qs[first]=200`. So the fields the plugin sends are listed here, as it has always sent them."
+    }
+  ],
+  "paths": {
+    "/v3/self": ["get"],
+    "/v3/enterprise/organizations": ["get"],
+    "/v3beta1/organizations/{org_id}/members/users": ["get"],
+    "/v3beta1/organizations/{org_id}/members/users/{user_id}": ["get"],
+    "/v3/organizations/{org_id}/sessions": ["get"],
+    "/v3/organizations/{org_id}/sessions/{devin_id}": ["get", "delete"],
+    "/v3/organizations/{org_id}/sessions/{devin_id}/tags": ["put"],
+    "/v3/organizations/{org_id}/sessions/{devin_id}/archive": ["post"],
+    "/v3/organizations/{org_id}/sessions/{devin_id}/unarchive": ["post"],
+    "/v3/organizations/{org_id}/playbooks": ["get", "post"],
+    "/v3/organizations/{org_id}/playbooks/{playbook_id}": ["get", "put", "delete"],
+    "/v3/organizations/{org_id}/knowledge/notes": ["get", "post"],
+    "/v3/organizations/{org_id}/knowledge/notes/{note_id}": ["get", "put", "delete"],
+    "/v3/organizations/{org_id}/secrets": ["get", "post"],
+    "/v3/organizations/{org_id}/secrets/{secret_id}": ["delete"],
+    "/v3/organizations/{org_id}/automations": ["get"],
+    "/v3/organizations/{org_id}/automations/{automation_id}": ["get", "patch", "delete"],
+    "/v3/organizations/{org_id}/consumption/daily": ["get"],
+    "/v3/organizations/{org_id}/consumption/daily/users/{user_id}": ["get"],
+    "/v3/organizations/{org_id}/consumption/daily/service-users/{service_user_id}": ["get"],
+    "/v3/organizations/{org_id}/consumption/daily/sessions/{session_id}": ["get"],
+    "/v3/organizations/{org_id}/metrics/usage": ["get"],
+    "/v3/organizations/{org_id}/metrics/sessions": ["get"],
+    "/v3/organizations/{org_id}/metrics/prs": ["get"],
+    "/v3/organizations/{org_id}/metrics/dau": ["get"]
+  }
+}

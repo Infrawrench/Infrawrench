@@ -35,22 +35,26 @@ import type { CostFetchRange, CostFetchResult, CostRow } from "@infrawrench/plug
 import { CostSetupError } from "@infrawrench/plugin-base";
 import type {
   ConsumptionDay,
-  DevinContext,
+  DevinApi,
   DevinOrg,
   DevinPlaybook,
   DevinSelf,
   DevinSession,
-  DevinUser,
 } from "./api.js";
 import {
   billingDay,
   dayStartSeconds,
   fetchConsumption,
   isPermissionError,
+  listPlaybooks,
+  listSessions,
+  listUsers,
   mapLimit,
-  orgPath,
-  paginate,
+  orgConsumption,
+  serviceUserConsumption,
+  sessionConsumption,
   statusOf,
+  userConsumption,
 } from "./api.js";
 import { orgLabel, scopedId, userLabel } from "./mappers.js";
 import type { AcusByProduct, ProductKey } from "./pricing.js";
@@ -63,8 +67,13 @@ const EPSILON = 1e-9;
 
 type ProductSplit = Record<ProductKey, number>;
 
-const emptySplit = (): ProductSplit =>
-  Object.fromEntries(PRODUCT_KEYS.map((k) => [k, 0])) as ProductSplit;
+const emptySplit = (): ProductSplit => ({
+  devin: 0,
+  automation: 0,
+  cascade: 0,
+  terminal: 0,
+  review: 0,
+});
 
 /**
  * A day's ACUs per product. The buckets are documented to sum to `acus`;
@@ -95,8 +104,17 @@ interface Principal {
   label: string;
 }
 
+/** What attribution reads of a session. */
+type AllocatedSession = Pick<DevinSession, "session_id"> &
+  Partial<
+    Pick<
+      DevinSession,
+      "user_id" | "service_user_id" | "playbook_id" | "tags" | "origin" | "category"
+    >
+  >;
+
 interface SessionShare {
-  session: DevinSession;
+  session: AllocatedSession;
   acus: number;
 }
 
@@ -119,7 +137,7 @@ function cubeCell<T>(
   return cell;
 }
 
-const principalKeyOf = (s: DevinSession) =>
+const principalKeyOf = (s: AllocatedSession) =>
   s.user_id ? `user:${s.user_id}` : s.service_user_id ? `service-user:${s.service_user_id}` : "";
 
 export interface OrgCostInput {
@@ -129,14 +147,14 @@ export interface OrgCostInput {
   /** Daily consumption per principal key; absent when it could not be read. */
   principalDays: Map<string, ConsumptionDay[]>;
   sessions: SessionShareInput[];
-  playbooks: Map<string, DevinPlaybook>;
+  playbooks: Map<string, Pick<DevinPlaybook, "title">>;
   acuPrice: number;
   range: CostFetchRange;
 }
 
 /** One session's consumption, per billing day and product. */
 export interface SessionShareInput {
-  session: DevinSession;
+  session: AllocatedSession;
   days: Array<{ day: string; split: ProductSplit }>;
 }
 
@@ -184,7 +202,7 @@ export function allocateOrgRows(input: OrgCostInput): CostRow[] {
       if (!inRange(day)) continue;
       for (const k of PRODUCT_KEYS) {
         if (split[k] <= EPSILON) continue;
-        cubeCell(sessionCells, day, key, k, () => [] as SessionShare[]).push({
+        cubeCell<SessionShare[]>(sessionCells, day, key, k, () => []).push({
           session: share.session,
           acus: split[k],
         });
@@ -288,15 +306,14 @@ function singleDayShare(s: DevinSession): SessionShareInput | undefined {
 }
 
 async function collectOrg(
-  ctx: DevinContext,
+  api: DevinApi,
   org: DevinOrg,
   self: DevinSelf,
   acuPrice: number,
   range: CostFetchRange,
 ): Promise<{ rows: CostRow[]; degraded: boolean }> {
   const orgDays = await fetchConsumption(
-    ctx,
-    orgPath(org.org_id, "/consumption/daily"),
+    orgConsumption(api, org.org_id),
     range.fromDate,
     range.toDate,
   );
@@ -316,22 +333,12 @@ async function collectOrg(
   };
 
   const [users, sessions, playbookList] = await Promise.all([
+    soft(() => listUsers(api, org.org_id), []),
     soft(
-      () =>
-        paginate<DevinUser>(
-          ctx,
-          `/v3beta1/organizations/${encodeURIComponent(org.org_id)}/members/users`,
-        ),
+      () => listSessions(api, org.org_id, { updated_after: dayStartSeconds(range.fromDate) }),
       [],
     ),
-    soft(
-      () =>
-        paginate<DevinSession>(ctx, orgPath(org.org_id, "/sessions"), {
-          updated_after: dayStartSeconds(range.fromDate),
-        }),
-      [] as DevinSession[],
-    ),
-    soft(() => paginate<DevinPlaybook>(ctx, orgPath(org.org_id, "/playbooks")), []),
+    soft(() => listPlaybooks(api, org.org_id), []),
   ]);
 
   const principals = new Map<string, Principal>();
@@ -369,14 +376,11 @@ async function collectOrg(
   const principalList = [...principals.values()];
   const principalDays = new Map<string, ConsumptionDay[]>();
   await mapLimit(principalList, CONCURRENCY, async (p) => {
-    const path = orgPath(
-      org.org_id,
-      `/consumption/daily/${p.kind === "user" ? "users" : "service-users"}/${encodeURIComponent(p.id)}`,
-    );
-    const days = await soft(
-      () => fetchConsumption(ctx, path, range.fromDate, range.toDate),
-      undefined,
-    );
+    const read =
+      p.kind === "user"
+        ? userConsumption(api, org.org_id, p.id)
+        : serviceUserConsumption(api, org.org_id, p.id);
+    const days = await soft(() => fetchConsumption(read, range.fromDate, range.toDate), undefined);
     if (days) principalDays.set(p.key, days);
   });
 
@@ -393,14 +397,8 @@ async function collectOrg(
   multiDay.sort((a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0));
   if (multiDay.length > MAX_SESSION_LOOKUPS) degraded = true;
   const looked = await mapLimit(multiDay.slice(0, MAX_SESSION_LOOKUPS), CONCURRENCY, async (s) => {
-    const path = orgPath(
-      org.org_id,
-      `/consumption/daily/sessions/${encodeURIComponent(s.session_id)}`,
-    );
-    const days = await soft(
-      () => fetchConsumption(ctx, path, range.fromDate, range.toDate),
-      undefined,
-    );
+    const read = sessionConsumption(api, org.org_id, s.session_id);
+    const days = await soft(() => fetchConsumption(read, range.fromDate, range.toDate), undefined);
     if (!days) return undefined;
     return { session: s, days: days.map((d) => ({ day: billingDay(d.date), split: splitDay(d) })) };
   });
@@ -420,7 +418,7 @@ async function collectOrg(
 }
 
 export async function fetchDevinCostData(
-  ctx: DevinContext,
+  api: DevinApi,
   orgs: DevinOrg[],
   self: DevinSelf,
   acuPrice: number,
@@ -431,7 +429,7 @@ export async function fetchDevinCostData(
   let denied = 0;
   for (const org of orgs) {
     try {
-      const out = await collectOrg(ctx, org, self, acuPrice, range);
+      const out = await collectOrg(api, org, self, acuPrice, range);
       rows.push(...out.rows);
       degraded ||= out.degraded;
     } catch (err) {

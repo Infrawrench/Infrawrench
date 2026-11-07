@@ -8,9 +8,10 @@
  * which answers per day natively.
  */
 
+import { pathEncode } from "@infrawrench/plugin-base";
 import type { MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
-import type { ConsumptionDay, DevinContext, UsageMetrics } from "./api.js";
-import { billingDay, devinFetch, fetchConsumption, mapLimit, orgPath } from "./api.js";
+import type { ConsumptionDay, ConsumptionRead, DevinApi, UsageMetrics } from "./api.js";
+import { billingDay, fetchConsumption, mapLimit, orgConsumption } from "./api.js";
 import { splitDay } from "./cost-data.js";
 import { PRODUCT_KEYS, PRODUCT_LABELS, roundMoney } from "./pricing.js";
 
@@ -87,34 +88,31 @@ async function soft<T>(load: () => Promise<T>): Promise<T | undefined> {
 }
 
 export async function orgSeries(
-  ctx: DevinContext,
+  api: DevinApi,
   orgId: string,
   acuPrice: number,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
   const { from, to } = rangeDays(range);
   const windows = buckets(range);
+  const org = pathEncode(orgId);
   const [days, usage, dau] = await Promise.all([
-    soft(() => fetchConsumption(ctx, orgPath(orgId, "/consumption/daily"), from, to)),
+    soft(() => fetchConsumption(orgConsumption(api, orgId), from, to)),
     soft(() =>
       mapLimit(windows, 4, async (w) => ({
         w,
-        m: await devinFetch<UsageMetrics>(ctx, orgPath(orgId, "/metrics/usage"), {
+        m: await api.get(`/v3/organizations/${org}/metrics/usage`, {
           query: { time_after: w.after, time_before: w.before },
         }),
       })),
     ),
     soft(() =>
-      devinFetch<Array<{ start_time: number; end_time: number; active_users: number }>>(
-        ctx,
-        orgPath(orgId, "/metrics/dau"),
-        {
-          query: {
-            time_after: Math.floor(range.startMs / 1000),
-            time_before: Math.ceil(range.endMs / 1000),
-          },
+      api.get(`/v3/organizations/${org}/metrics/dau`, {
+        query: {
+          time_after: Math.floor(range.startMs / 1000),
+          time_before: Math.ceil(range.endMs / 1000),
         },
-      ),
+      }),
     ),
   ]);
   const out: MetricSeries[] = days ? consumptionSeries(days, acuPrice) : [];
@@ -140,35 +138,29 @@ export async function orgSeries(
 }
 
 export async function consumptionAt(
-  ctx: DevinContext,
-  path: string,
+  read: ConsumptionRead,
   acuPrice: number,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
   const { from, to } = rangeDays(range);
-  const days = await fetchConsumption(ctx, path, from, to);
+  const days = await fetchConsumption(read, from, to);
   return consumptionSeries(days, acuPrice);
 }
 
 /** Sessions that ran a playbook, and their merged pull requests, per bucket. */
 export async function playbookSeries(
-  ctx: DevinContext,
+  api: DevinApi,
   orgId: string,
   playbookId: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
   const windows = buckets(range);
+  const org = pathEncode(orgId);
   const rows = await mapLimit(windows, 4, async (w) => {
     const query = { time_after: w.after, time_before: w.before, playbook_id: playbookId };
     const [sessions, prs] = await Promise.all([
-      soft(() =>
-        devinFetch<{ sessions_created_count?: number }>(ctx, orgPath(orgId, "/metrics/sessions"), {
-          query,
-        }),
-      ),
-      soft(() =>
-        devinFetch<{ prs_merged_count?: number }>(ctx, orgPath(orgId, "/metrics/prs"), { query }),
-      ),
+      soft(() => api.get(`/v3/organizations/${org}/metrics/sessions`, { query })),
+      soft(() => api.get(`/v3/organizations/${org}/metrics/prs`, { query })),
     ]);
     return { w, sessions, prs };
   });

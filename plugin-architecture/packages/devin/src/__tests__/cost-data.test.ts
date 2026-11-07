@@ -63,7 +63,7 @@ describe("allocateOrgRows", () => {
     user_id: "u1",
     playbook_id: "p1",
     tags: ["b", "a"],
-    origin: "slack",
+    origin: "slack" as const,
   };
   const s2 = { session_id: "s2", user_id: "u1" };
 
