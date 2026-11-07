@@ -1192,3 +1192,196 @@ describe("speech through the host's HTTP service (#370)", () => {
     ).rejects.toThrow(/OpenAI API error 401 for \/audio\/speech/);
   });
 });
+
+describe("lists that cannot say they have every row (#384)", () => {
+  const COST_RANGE = { fromDate: "2026-03-01", toDate: "2026-03-03" };
+  const PROJECTS = { data: [{ id: "proj_1", name: "prod" }], has_more: false };
+
+  /** Every page says there is more, each with a fresh cursor. */
+  function endless(url: string): Response {
+    const after = new URL(url).searchParams.get("after") ?? "0";
+    return jsonResponse({ data: [{ id: `${after}x` }], has_more: true });
+  }
+
+  it.each([
+    ["model", "/models"],
+    ["batch", "/batches"],
+    ["file", "/files"],
+    ["vector-store", "/vector_stores"],
+    ["project", "/organization/projects"],
+  ])("rejects %s when the first page is not a list", async (type, path) => {
+    installFetch(() => jsonResponse({ items: [], has_more: false }));
+    await expect(client().listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    expect(new URL(calls[0]!.url).pathname).toBe(`/v1${path}`);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("rejects a later page that is not a list", async () => {
+    installFetch((url) =>
+      url.includes("after=")
+        ? jsonResponse({ error: { message: "try later" } })
+        : jsonResponse({ data: [{ id: "a" }], has_more: true }),
+    );
+    await expect(client().listResources("batch", ACCOUNT)).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("reads a null list as empty", async () => {
+    installFetch(() => jsonResponse({ data: null, has_more: false }));
+    await expect(client().listResources("batch", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("reads 50,000 rows of a top-level list, and throws past that", async () => {
+    installFetch(endless);
+    await expect(client().listResources("batch", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(500);
+    expect(new URL(calls[0]!.url).searchParams.get("limit")).toBe("100");
+  });
+
+  it("reads files at the documented largest page, and throws past 50,000", async () => {
+    installFetch(endless);
+    await expect(client().listResources("file", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(5);
+    expect(new URL(calls[0]!.url).searchParams.get("limit")).toBe("10000");
+  });
+
+  it("throws on a project's child list that does not end", async () => {
+    installFetch((url) =>
+      new URL(url).pathname === "/v1/organization/projects" ? jsonResponse(PROJECTS) : endless(url),
+    );
+    await expect(client().listResources("project-user", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(501);
+  });
+
+  it("follows last_id past an empty page that says there is more", async () => {
+    installFetch((url) =>
+      url.includes("after=")
+        ? jsonResponse({ data: [{ id: "b" }], has_more: false })
+        : jsonResponse({ data: [], has_more: true, last_id: "a" }),
+    );
+    const rows = await client().listResources("vector-store", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["b"]);
+    expect(calls[1]!.url).toContain("after=a");
+  });
+
+  it("rejects a page that says there is more and gives no way to it", async () => {
+    installFetch(() => jsonResponse({ data: [], has_more: true }));
+    await expect(client().listResources("vector-store", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("lets a create form's file picker stop at its cap", async () => {
+    installFetch(endless);
+    const config = await client().getCreateConfig("batch");
+    expect(calls).toHaveLength(3);
+    expect(new URL(calls[0]!.url).searchParams.get("limit")).toBe("1000");
+    expect(config.fields[0]!.options).toHaveLength(3);
+  });
+
+  it("rejects a cost page that is not a list", async () => {
+    installFetch(() => jsonResponse({ buckets: [], has_more: false, next_page: null }));
+    await expect(client().fetchCostData(ACCOUNT, COST_RANGE)).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("throws on costs that do not end, without falling back to the ungrouped read", async () => {
+    let page = 0;
+    installFetch(() => jsonResponse({ data: [], has_more: true, next_page: `page_${++page}` }));
+    await expect(client().fetchCostData(ACCOUNT, COST_RANGE)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(400);
+    expect(calls.every((call) => call.url.includes("group_by="))).toBe(true);
+  });
+
+  it("follows a cost page that is empty with more to come", async () => {
+    const bucket = {
+      start_time: 1772323200,
+      results: [{ amount: { value: 2, currency: "usd" }, line_item: "x" }],
+    };
+    installFetch((url) =>
+      url.includes("page=p2")
+        ? jsonResponse({ data: [bucket], has_more: false, next_page: null })
+        : jsonResponse({ data: [], has_more: true, next_page: "p2" }),
+    );
+    const rows = await client().fetchCostData(ACCOUNT, COST_RANGE);
+    expect(rows.map((row) => row.amount)).toEqual([2]);
+  });
+
+  it("rejects costs that say there is more and give no next page", async () => {
+    installFetch(() => jsonResponse({ data: [], has_more: true, next_page: null }));
+    await expect(client().fetchCostData(ACCOUNT, COST_RANGE)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it.each([429, 500])("does not swap grouped costs for a lump sum on a %d", async (status) => {
+    installFetch(() => jsonResponse({ error: "busy" }, status));
+    await expect(client().fetchCostData(ACCOUNT, COST_RANGE)).rejects.toThrow(
+      `OpenAI API error ${status}`,
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it("falls back to ungrouped costs when the grouped request is refused", async () => {
+    installFetch((url) =>
+      url.includes("group_by=")
+        ? jsonResponse({ error: "cannot group" }, 400)
+        : jsonResponse({
+            data: [{ start_time: 1772323200, results: [{ amount: { value: 3 } }] }],
+            has_more: false,
+            next_page: null,
+          }),
+    );
+    const rows = await client().fetchCostData(ACCOUNT, COST_RANGE);
+    expect(rows.map((row) => row.amount)).toEqual([3]);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("lets a usage chart keep what it read at its cap", async () => {
+    let page = 0;
+    const bucket = { start_time: 100, results: [{ input_tokens: 1, output_tokens: 1 }] };
+    installFetch(() => jsonResponse({ data: [bucket], has_more: true, next_page: `p${++page}` }));
+    const series = await client().fetchMetricSeries(
+      "vector-store",
+      `${ACCOUNT}:vector-store:vs_1`,
+      ACCOUNT,
+    );
+    expect(calls).toHaveLength(10);
+    expect(series.length).toBeGreaterThan(0);
+  });
+
+  it("does not read a failed spend limit read as no limit", async () => {
+    installFetch((url) =>
+      new URL(url).pathname === "/v1/organization/projects"
+        ? jsonResponse(PROJECTS)
+        : jsonResponse("upstream answered 404 upstream", 500),
+    );
+    await expect(client().listResources("spend-limit", ACCOUNT)).rejects.toThrow(
+      "OpenAI API error 500",
+    );
+  });
+
+  it("does not read an audit log answer without its list as no events", async () => {
+    installFetch(() => jsonResponse({ error: { message: "try later" } }));
+    await expect(
+      client().getLogs("project", `${ACCOUNT}:project:proj_1`, ACCOUNT, {}),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("does not offer an empty model picker for an answer without its list", async () => {
+    installFetch((url) =>
+      url.includes("/models")
+        ? jsonResponse({ error: { message: "try later" } })
+        : jsonResponse({ data: [], has_more: false }),
+    );
+    await expect(client().getCreateConfig("fine-tuning-job")).rejects.toThrow("is not a list");
+  });
+});

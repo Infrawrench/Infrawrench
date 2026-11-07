@@ -37,14 +37,15 @@ import {
   formatBytes,
   hostFetch,
   pathEncode,
+  requireListPage,
   withAiCostTags,
 } from "@infrawrench/plugin-base";
 import {
   ADMIN_KEY_REQUIRED,
   API_BASE,
+  CHART_PAGES,
+  FILE_PAGES,
   createOpenAIApi,
-  listPages,
-  listUsagePages,
   type AdminApiKey,
   type AuditLogEntry,
   type AuditLogPage,
@@ -55,12 +56,10 @@ import {
   type EvalObject,
   type FineTuningJob,
   type Invite,
-  type ListPage,
   type OpenAIApi,
   type OpenAIFile,
   type OpenAIModel,
   type OrganizationUser,
-  type PageQuery,
   type Project,
   type ProjectApiKey,
   type ProjectRateLimit,
@@ -99,6 +98,9 @@ import {
 } from "./speech.js";
 
 const PLUGIN_ID = "openai";
+
+/** A picker's newest files: part of a long list is fine in a dropdown. */
+const PICKER_FILE_PAGES = { pageSize: 1000, maxPages: 3, partial: true };
 
 /**
  * `verbose_json` has a string `language`, `json` has `languages` of `{ code }`, and
@@ -200,7 +202,12 @@ function centsToDollars(value: unknown): number {
 }
 
 function isNotFound(err: unknown): boolean {
-  return err instanceof Error && / 404 /.test(err.message);
+  return err instanceof Error && /API error 404 /.test(err.message);
+}
+
+/** A 4xx that asking again would not change. */
+function isRefusedRequest(err: unknown): boolean {
+  return err instanceof Error && /API error 4(?!08|25|29)\d\d /.test(err.message);
 }
 
 /** Comma/newline separated emails → a de-duplicated array. */
@@ -469,20 +476,19 @@ export class OpenAIClient implements PluginClient {
           return this.listInvites(accountId);
         case "project-user":
           return this.listPerProject(
-            (id, query) => this.admin.get(`/organization/projects/${id}/users`, { query }),
+            (id) => this.admin.getAll(`/organization/projects/${id}/users`, "data"),
             (project, u, now) =>
               this.mapProjectUser(accountId, project.id, str(project.name), u, now),
           );
         case "project-service-account":
           return this.listPerProject(
-            (id, query) =>
-              this.admin.get(`/organization/projects/${id}/service_accounts`, { query }),
+            (id) => this.admin.getAll(`/organization/projects/${id}/service_accounts`, "data"),
             (project, sa, now) =>
               this.mapProjectServiceAccount(accountId, project.id, str(project.name), sa, now),
           );
         case "project-rate-limit":
           return this.listPerProject(
-            (id, query) => this.admin.get(`/organization/projects/${id}/rate_limits`, { query }),
+            (id) => this.admin.getAll(`/organization/projects/${id}/rate_limits`, "data"),
             (project, rl, now) =>
               this.mapProjectRateLimit(accountId, project.id, str(project.name), rl, now),
           );
@@ -503,10 +509,14 @@ export class OpenAIClient implements PluginClient {
    * (`listModels`). Unpaginated; the whole catalogue arrives in one flat list.
    */
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
-    const body = await this.data.get("/models");
-    const models = [...(body.data ?? [])].sort((a, b) => a.id.localeCompare(b.id));
+    const models = (await this.fetchModels()).sort((a, b) => a.id.localeCompare(b.id));
     const now = new Date().toISOString();
     return models.map((model) => this.mapModel(accountId, model, now));
+  }
+
+  private async fetchModels(): Promise<OpenAIModel[]> {
+    const page = await this.data.get("/models");
+    return requireListPage(page.data, { vendor: "OpenAI", path: "/models", key: "data", page });
   }
 
   private mapModel(accountId: string, model: OpenAIModel, now: string): ResourceInstance {
@@ -539,7 +549,7 @@ export class OpenAIClient implements PluginClient {
    * no `last_id`, so the cursor comes off the final element.
    */
   private async listFineTuningJobs(accountId: string): Promise<ResourceInstance[]> {
-    const jobs = await listPages((query) => this.data.get("/fine_tuning/jobs", { query }));
+    const jobs = await this.data.getAll("/fine_tuning/jobs", "data");
     const now = new Date().toISOString();
     return jobs.map((job) => this.mapFineTuningJob(accountId, job, now));
   }
@@ -579,7 +589,7 @@ export class OpenAIClient implements PluginClient {
    * (`listBatches`). `limit` caps at 100.
    */
   private async listBatches(accountId: string): Promise<ResourceInstance[]> {
-    const batches = await listPages((query) => this.data.get("/batches", { query }));
+    const batches = await this.data.getAll("/batches", "data");
     const now = new Date().toISOString();
     return batches.map((batch) => this.mapBatch(accountId, batch, now));
   }
@@ -617,14 +627,13 @@ export class OpenAIClient implements PluginClient {
 
   /**
    * `GET /v1/files`: verified 2026-07-29 against openapi.yaml v2.3.0
-   * (`listFiles`). `limit` accepts up to 10,000; 1,000 per page keeps
-   * individual responses small without needing many round-trips.
+   * (`listFiles`).
    */
   private async listFiles(accountId: string): Promise<ResourceInstance[]> {
-    const files = await listPages(
-      (paging) => this.data.get("/files", { query: { order: "desc", ...paging } }),
-      { pageSize: 1000 },
-    );
+    const files = await this.data.getAll("/files", "data", {
+      query: { order: "desc" },
+      ...FILE_PAGES,
+    });
     const now = new Date().toISOString();
     return files.map((file) => this.mapFile(accountId, file, now));
   }
@@ -654,9 +663,7 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/vector_stores`: verified 2026-07-29 (`listVectorStores`). */
   private async listVectorStores(accountId: string): Promise<ResourceInstance[]> {
-    const stores = await listPages((paging) =>
-      this.data.get("/vector_stores", { query: { order: "desc", ...paging } }),
-    );
+    const stores = await this.data.getAll("/vector_stores", "data", { query: { order: "desc" } });
     const now = new Date().toISOString();
     return stores.map((store) => this.mapVectorStore(accountId, store, now));
   }
@@ -691,9 +698,9 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/containers`: verified 2026-07-29 (`ListContainers`). */
   private async listContainers(accountId: string): Promise<ResourceInstance[]> {
-    const containers = await listPages((paging) =>
-      this.data.get("/containers", { query: { order: "desc", ...paging } }),
-    );
+    const containers = await this.data.getAll("/containers", "data", {
+      query: { order: "desc" },
+    });
     const now = new Date().toISOString();
     return containers.map((container) => this.mapContainer(accountId, container, now));
   }
@@ -729,9 +736,7 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/evals`: verified 2026-07-29 (`listEvals`). */
   private async listEvals(accountId: string): Promise<ResourceInstance[]> {
-    const evals = await listPages((paging) =>
-      this.data.get("/evals", { query: { order: "desc", ...paging } }),
-    );
+    const evals = await this.data.getAll("/evals", "data", { query: { order: "desc" } });
     const now = new Date().toISOString();
     return evals.map((item) => this.mapEval(accountId, item, now));
   }
@@ -770,9 +775,9 @@ export class OpenAIClient implements PluginClient {
   }
 
   private async fetchProjects(): Promise<Project[]> {
-    return listPages((paging) =>
-      this.admin.get("/organization/projects", { query: { include_archived: true, ...paging } }),
-    );
+    return this.admin.getAll("/organization/projects", "data", {
+      query: { include_archived: true },
+    });
   }
 
   private mapProject(accountId: string, project: Project, now: string): ResourceInstance {
@@ -810,8 +815,9 @@ export class OpenAIClient implements PluginClient {
 
     const pages = await Promise.all(
       projects.map(async (project) => {
-        const keys = await listPages((query) =>
-          this.admin.get(`/organization/projects/${pathEncode(project.id)}/api_keys`, { query }),
+        const keys = await this.admin.getAll(
+          `/organization/projects/${pathEncode(project.id)}/api_keys`,
+          "data",
         );
         return keys.map((key) =>
           this.mapProjectApiKey(accountId, project.id, str(project.name), key, now),
@@ -870,7 +876,7 @@ export class OpenAIClient implements PluginClient {
   }
 
   private fetchOrganizationUsers(): Promise<OrganizationUser[]> {
-    return listPages((query) => this.admin.get("/organization/users", { query }));
+    return this.admin.getAll("/organization/users", "data");
   }
 
   private mapOrganizationUser(
@@ -904,7 +910,7 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/organization/invites`: verified 2026-07-29 (`list-invites`). */
   private async listInvites(accountId: string): Promise<ResourceInstance[]> {
-    const invites = await listPages((query) => this.admin.get("/organization/invites", { query }));
+    const invites = await this.admin.getAll("/organization/invites", "data");
     const now = new Date().toISOString();
     return invites.map((invite) => this.mapInvite(accountId, invite, now));
   }
@@ -939,15 +945,14 @@ export class OpenAIClient implements PluginClient {
    * `rate_limits`) out over every non-archived project.
    */
   private async listPerProject<T extends { id: string }>(
-    getPage: (projectId: NoSlashString, paging: PageQuery) => Promise<ListPage<T>>,
+    getAll: (projectId: NoSlashString) => Promise<T[]>,
     map: (project: Project, item: T, now: string) => ResourceInstance,
   ): Promise<ResourceInstance[]> {
     const projects = (await this.fetchProjects()).filter((p) => p.status !== "archived");
     const now = new Date().toISOString();
     const pages = await Promise.all(
       projects.map(async (project) => {
-        const id = pathEncode(project.id);
-        const items = await listPages((paging) => getPage(id, paging));
+        const items = await getAll(pathEncode(project.id));
         return items.map((item) => map(project, item, now));
       }),
     );
@@ -1124,9 +1129,7 @@ export class OpenAIClient implements PluginClient {
     ];
     const rows = await Promise.all(
       scopes.map(async ({ scope, name }) => {
-        const alerts = await listPages<SpendAlert>((query) =>
-          this.admin.get(spendAlertsPath(scope), { query }),
-        );
+        const alerts: SpendAlert[] = await this.admin.getAll(spendAlertsPath(scope), "data");
         return alerts.map((alert) => this.mapSpendAlert(accountId, scope, name, alert, now));
       }),
     );
@@ -1167,9 +1170,9 @@ export class OpenAIClient implements PluginClient {
 
   /** `GET /v1/organization/admin_api_keys`: verified 2026-10-03 (`admin-api-keys-list`). */
   private async listAdminApiKeys(accountId: string): Promise<ResourceInstance[]> {
-    const keys = await listPages((paging) =>
-      this.admin.get("/organization/admin_api_keys", { query: { order: "desc", ...paging } }),
-    );
+    const keys = await this.admin.getAll("/organization/admin_api_keys", "data", {
+      query: { order: "desc" },
+    });
     const now = new Date().toISOString();
     return keys.map((key) => this.mapAdminApiKey(accountId, key, now));
   }
@@ -1285,10 +1288,9 @@ export class OpenAIClient implements PluginClient {
           // No single-limit GET exists; read the project's list and pick the row.
           const { projectId, keyId: rlId } = splitApiKeyId(externalId);
           const [limits, project] = await Promise.all([
-            listPages((query) =>
-              this.admin.get(`/organization/projects/${pathEncode(projectId)}/rate_limits`, {
-                query,
-              }),
+            this.admin.getAll(
+              `/organization/projects/${pathEncode(projectId)}/rate_limits`,
+              "data",
             ),
             this.admin.get(`/organization/projects/${pathEncode(projectId)}`),
           ]);
@@ -2144,17 +2146,14 @@ export class OpenAIClient implements PluginClient {
       switch (typeId) {
         case "fine-tuning-job": {
           const [models, files] = await Promise.all([
-            this.data.get("/models"),
-            listPages(
-              (paging) =>
-                this.data.get("/files", {
-                  query: { purpose: "fine-tune", order: "desc", ...paging },
-                }),
-              { pageSize: 1000, maxPages: 3 },
-            ),
+            this.fetchModels(),
+            this.data.getAll("/files", "data", {
+              query: { purpose: "fine-tune", order: "desc" },
+              ...PICKER_FILE_PAGES,
+            }),
           ]);
           // Only base models can be fine-tuned; a fine-tuned snapshot is `ft:…`.
-          const baseModels = (models.data ?? [])
+          const baseModels = models
             .filter((m) => !m.id.startsWith("ft:"))
             .map((m) => ({ id: m.id, label: m.id }))
             .sort((a, b) => a.id.localeCompare(b.id));
@@ -2211,11 +2210,10 @@ export class OpenAIClient implements PluginClient {
         }
 
         case "batch": {
-          const files = await listPages(
-            (paging) =>
-              this.data.get("/files", { query: { purpose: "batch", order: "desc", ...paging } }),
-            { pageSize: 1000, maxPages: 3 },
-          );
+          const files = await this.data.getAll("/files", "data", {
+            query: { purpose: "batch", order: "desc" },
+            ...PICKER_FILE_PAGES,
+          });
           const fileOptions = files.map((f) => ({
             id: f.id,
             label: `${f.filename ?? f.id} (${formatByteValue(f.bytes)})`,
@@ -3070,11 +3068,10 @@ export class OpenAIClient implements PluginClient {
           // The completions call (or, for a vector store, the only call) is
           // the tab's baseline and surfaces its error; the rest are extras.
           const primary = endpoint.core === true || endpoints.length === 1;
-          const load = listUsagePages((paging) =>
-            this.admin.get(`/organization/usage/${endpoint.path}`, {
-              query: { ...query, ...paging },
-            }),
-          );
+          const load = this.admin.buckets.getAll(`/organization/usage/${endpoint.path}`, "data", {
+            query,
+            ...CHART_PAGES,
+          });
           const buckets = primary ? await load : await load.catch(() => null);
           return buckets ? usageSeries(endpoint, buckets, primary) : [];
         }),
@@ -3083,13 +3080,20 @@ export class OpenAIClient implements PluginClient {
 
       if (resourceTypeId === "project") {
         // /organization/costs only accepts 1d buckets, limit 1–180.
-        const costBuckets = await this.listCosts({
-          start_time: startTime,
-          end_time: endTime,
-          bucket_width: "1d",
-          limit: Math.min(180, spanDays),
-          project_ids: [externalId],
-        });
+        const costBuckets: UsageBucket[] = await this.admin.buckets.getAll(
+          "/organization/costs",
+          "data",
+          {
+            query: {
+              start_time: startTime,
+              end_time: endTime,
+              bucket_width: "1d",
+              limit: Math.min(180, spanDays),
+              project_ids: [externalId],
+            },
+            ...CHART_PAGES,
+          },
+        );
         const points: MetricSeriesPoint[] = costBuckets.map((bucket) => {
           let total = 0;
           for (const result of bucket.results ?? []) total += result.amount?.value ?? 0;
@@ -3166,7 +3170,13 @@ export class OpenAIClient implements PluginClient {
       }
 
       // Newest first from the API; reverse into reading order.
-      const lines = (page.data ?? []).reverse().map(formatAuditLog);
+      const events = requireListPage(page.data, {
+        vendor: "OpenAI",
+        path: "/organization/audit_logs",
+        key: "data",
+        page,
+      });
+      const lines = events.reverse().map(formatAuditLog);
       return wrap(lines.length > 0 ? lines : ["No audit log events for this resource."]);
     });
   }
@@ -3183,11 +3193,8 @@ export class OpenAIClient implements PluginClient {
     });
   }
 
-  private listCosts(query: CostQuery, maxPages?: number): Promise<UsageBucket[]> {
-    return listUsagePages(
-      (paging) => this.admin.get("/organization/costs", { query: { ...query, ...paging } }),
-      maxPages,
-    );
+  private listCosts(query: CostQuery): Promise<UsageBucket[]> {
+    return this.admin.buckets.getAll("/organization/costs", "data", { query });
   }
 
   private async fetchUntaggedCostRows(
@@ -3215,14 +3222,15 @@ export class OpenAIClient implements PluginClient {
       limit: Math.min(180, days),
     };
 
-    // Grouping turns one lump sum into a per-product breakdown. If the account
-    // can't group for any reason, an ungrouped total is still worth having, so
-    // fall back rather than losing the whole day's collection.
+    // Grouping turns one lump sum into a per-product breakdown. If OpenAI refuses
+    // to group for this account, an ungrouped total is still worth having. Only
+    // then: on a failed read, lump sums would replace the breakdown already stored.
     let buckets: UsageBucket[];
     try {
-      buckets = await this.listCosts({ ...base, group_by: ["line_item", "project_id"] }, 20);
-    } catch {
-      buckets = await this.listCosts(base, 20);
+      buckets = await this.listCosts({ ...base, group_by: ["line_item", "project_id"] });
+    } catch (err) {
+      if (!isRefusedRequest(err)) throw err;
+      buckets = await this.listCosts(base);
     }
 
     const rows: CostRow[] = [];
