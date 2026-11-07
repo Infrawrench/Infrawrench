@@ -232,6 +232,22 @@ describe("Oracle Cloud lists that cannot be read whole", () => {
     expect(rules.map((r) => r.externalId)).toEqual(["ocid1.budget.oc1.iad.a/rule1"]);
     expect(parts).toEqual([{ parentResourceIds: ["acct:budget:ocid1.budget.oc1.iad.b"] }]);
   });
+
+  it("shows a budget whose alert rules were refused where the host keeps no track", async () => {
+    const { client } = makeClient((url) => {
+      if (url.pathname === "/20190111/budgets") {
+        return {
+          body: [
+            { id: "ocid1.budget.oc1.iad.a", displayName: "a", amount: 1, lifecycleState: "ACTIVE" },
+          ],
+        };
+      }
+      return identityRoute(url);
+    });
+    await expect(client.listResources("budget-alert-rule", "acct")).rejects.toThrow(
+      "NotAuthorizedOrNotFound",
+    );
+  });
 });
 
 describe("Oracle Cloud folder delete", () => {

@@ -1358,8 +1358,9 @@ export async function listAlertRules(ctx: ListContext): Promise<ResourceInstance
       .then((rows) => rows.map((r) => ({ ...r, budgetId: r.budgetId || b.externalId! })))
       .catch((err: unknown): OciAlertRule[] => {
         if (!isAuthorizationGap(err)) throw err;
-        // This budget's rules stay rather than read as deleted.
-        reportUnreadListPart({ parentResourceIds: [b.id] });
+        // This budget's rules stay rather than read as deleted. A host that keeps no track
+        // (the desktop) answers false, and there the refusal shows.
+        if (!reportUnreadListPart({ parentResourceIds: [b.id] })) throw err;
         return [];
       }),
   );
