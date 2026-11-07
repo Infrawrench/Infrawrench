@@ -20,6 +20,7 @@ import type {
   SectionNode,
 } from "@infrawrench/plugin-base";
 import {
+  ListTruncatedError,
   joinSubtitle,
   labeledFieldItems,
   pathEncode,
@@ -29,6 +30,7 @@ import {
 import {
   MACHINES_API,
   createFlyApi,
+  flyList,
   type FlyApi,
   type FlyApp,
   type FlyAppSecret,
@@ -90,6 +92,9 @@ const IP_TYPES: Array<{ id: string; label: string; description: string }> = [
     description: "Fixed outbound addresses for one region",
   },
 ];
+
+/** Of 500 each, the document's largest: 10,000 hostnames on one app. */
+const MAX_CERTIFICATE_PAGES = 20;
 
 /** `GET https://api.fly.io/api/v1/apps/{app}/logs`: a JSON:API document. */
 interface FlyLogsResponse {
@@ -1699,7 +1704,7 @@ export class FlyClient implements PluginClient {
     const data = await this.api.get(`/v1/apps`, { query: { org_slug: this.orgSlug } });
     // Older list responses omit `status`; treat a listed app as deployed
     // rather than flagging every row as pending.
-    return (data.apps ?? []).map((app) =>
+    return flyList(data.apps, { path: `/v1/apps`, key: "apps", page: data }).map((app) =>
       this.mapApp({ ...app, status: app.status ?? "deployed" }, accountId),
     );
   }
@@ -1729,36 +1734,50 @@ export class FlyClient implements PluginClient {
   private async listAllMachines(accountId: string): Promise<ResourceInstance[]> {
     return this.perApp(accountId, async (appName) => {
       const machines = await this.api.get(`/v1/apps/${unencodedSegment(appName)}/machines`);
-      return (machines ?? []).map((m) => this.mapMachine(m, appName, accountId));
+      return flyList(machines, { path: `/v1/apps/${appName}/machines`, key: null }).map((m) =>
+        this.mapMachine(m, appName, accountId),
+      );
     });
   }
 
   private async listAllVolumes(accountId: string): Promise<ResourceInstance[]> {
     return this.perApp(accountId, async (appName) => {
       const volumes = await this.api.get(`/v1/apps/${unencodedSegment(appName)}/volumes`);
-      return (volumes ?? []).map((v) => this.mapVolume(v, appName, accountId));
+      return flyList(volumes, { path: `/v1/apps/${appName}/volumes`, key: null }).map((v) =>
+        this.mapVolume(v, appName, accountId),
+      );
     });
   }
 
   private async listAllCertificates(accountId: string): Promise<ResourceInstance[]> {
-    return this.perApp(accountId, async (appName) => {
-      const certs: FlyCertificate[] = [];
-      let cursor = "";
-      // `limit` caps at 500; follow `next_cursor` for apps with more hostnames.
-      for (let page = 0; page < 20; page++) {
-        // By hand for the reason `getLogs` gives, and for the bare array.
-        const qs = `limit=500${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
-        const path = `/v1/apps/${appName}/certificates?${qs}`;
-        const data = await this.api.rest<FlyCertificateList>(`${MACHINES_API}${path}`, path);
-        if (Array.isArray(data)) {
-          certs.push(...data);
-          break;
-        }
-        certs.push(...(data.certificates ?? []));
-        if (!data.next_cursor) break;
-        cursor = data.next_cursor;
-      }
-      return certs.map((cert) => this.mapCertificate(cert, appName, accountId));
+    return this.perApp(accountId, async (appName) =>
+      (await this.readCertificates(appName)).map((cert) =>
+        this.mapCertificate(cert, appName, accountId),
+      ),
+    );
+  }
+
+  private async readCertificates(appName: string): Promise<FlyCertificate[]> {
+    const certs: FlyCertificate[] = [];
+    const path = `/v1/apps/${appName}/certificates`;
+    let cursor = "";
+    for (let page = 0; page < MAX_CERTIFICATE_PAGES; page++) {
+      // By hand for the reason `getLogs` gives, and for the bare array.
+      const qs = `limit=500${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+      const data = await this.api.rest<FlyCertificateList>(
+        `${MACHINES_API}${path}?${qs}`,
+        `${path}?${qs}`,
+      );
+      if (Array.isArray(data)) return [...certs, ...data];
+      certs.push(...flyList(data.certificates, { path, key: "certificates", page: data }));
+      if (!data.next_cursor) return certs;
+      cursor = data.next_cursor;
+    }
+    throw new ListTruncatedError({
+      vendor: "Fly",
+      path,
+      items: certs.length,
+      maxPages: MAX_CERTIFICATE_PAGES,
     });
   }
 
@@ -1767,7 +1786,11 @@ export class FlyClient implements PluginClient {
     accountId: string,
   ): Promise<ResourceInstance[]> {
     const data = await this.api.get(`/v1/apps/${unencodedSegment(appName)}/ip_assignments`);
-    return (data.ips ?? []).map((ip) => this.mapIpAllocation(ip, appName, accountId));
+    return flyList(data.ips, {
+      path: `/v1/apps/${appName}/ip_assignments`,
+      key: "ips",
+      page: data,
+    }).map((ip) => this.mapIpAllocation(ip, appName, accountId));
   }
 
   private async listAllIpAllocations(accountId: string): Promise<ResourceInstance[]> {
@@ -1778,13 +1801,19 @@ export class FlyClient implements PluginClient {
     // Values are never requested (`show_secrets` stays off): only names and digests.
     return this.perApp(accountId, async (appName) => {
       const data = await this.api.get(`/v1/apps/${unencodedSegment(appName)}/secrets`);
-      return (data.secrets ?? []).map((sec) => this.mapSecret(sec, appName, accountId));
+      return flyList(data.secrets, {
+        path: `/v1/apps/${appName}/secrets`,
+        key: "secrets",
+        page: data,
+      }).map((sec) => this.mapSecret(sec, appName, accountId));
     });
   }
 
   private async listPostgresClusters(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.api.get(`/v1/postgres`, { query: { org_slug: this.orgSlug } });
-    return (data.data ?? []).map((c) => mapPostgresCluster(c, accountId));
+    return flyList(data.data, { path: `/v1/postgres`, key: "data", page: data }).map((c) =>
+      mapPostgresCluster(c, accountId),
+    );
   }
 
   /* ------------------------------------------------------------------ */

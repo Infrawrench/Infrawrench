@@ -1,6 +1,7 @@
 import {
   createApiClient,
   jsonRestFetch,
+  requireListPage,
   type ApiBody,
   type ApiClient,
   type ApiListItem,
@@ -45,6 +46,23 @@ export function createFlyApi(options: {
     rest: (url, errorPath) =>
       jsonRestFetch({ vendor: "Fly", url, errorPath, headers, ...transport }),
   };
+}
+
+/**
+ * The list in one answer. A sync prunes what a list stops returning, so what is not a
+ * list throws. The document requires no field here and is silent on an empty list, so
+ * JSON `null`, which a Go nil slice marshals to, and a `page` with nothing in it stay
+ * "none". Pass `page` for a list under a key, not for an answer that is the array.
+ */
+export function flyList<T>(
+  list: readonly T[] | null | undefined,
+  where: { path: string; key: string | null; page?: object },
+): T[] {
+  if (list === null) return [];
+  if (list === undefined && where.page && Object.values(where.page).every((value) => !value)) {
+    return [];
+  }
+  return requireListPage(list, { vendor: "Fly", ...where });
 }
 
 /** An operation's JSON body, by its `operationId`. */

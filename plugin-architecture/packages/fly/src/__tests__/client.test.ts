@@ -191,6 +191,44 @@ describe("listResources", () => {
     });
   });
 
+  // What the sync prunes on: an answer that says something other than "none" throws.
+  describe.each([
+    ["app", "/v1/apps?", "apps", {}],
+    ["postgres-cluster", "/v1/postgres?", "data", {}],
+    ["machine", "/machines", null, APP_LIST],
+    ["volume", "/volumes", null, APP_LIST],
+    ["certificate", "/certificates", "certificates", APP_LIST],
+    ["ip-allocation", "/ip_assignments", "ips", APP_LIST],
+    ["app-secret", "/secrets", "secrets", APP_LIST],
+  ])("reading a %s list", (typeId, route, key, apps) => {
+    const answering = (page: unknown) =>
+      router([
+        [(u) => u.includes(route), page],
+        [(u) => u.includes("/v1/apps?"), apps],
+      ]);
+    const none = () => client().listResources(typeId, ACCOUNT);
+
+    it("reads a null list as none, as a Go nil slice marshals", async () => {
+      answering(key === null ? null : { [key]: null });
+      expect(await none()).toEqual([]);
+    });
+
+    it("refuses a wrapped error or a renamed key", async () => {
+      answering(key === null ? { error: "busy" } : { error: "busy", rows: [{ id: "x" }] });
+      await expect(none()).rejects.toThrow("is not a list");
+    });
+
+    it("refuses a value that is not an array", async () => {
+      answering(key === null ? "busy" : { [key]: { id: "x" } });
+      await expect(none()).rejects.toThrow("is not a list");
+    });
+  });
+
+  it("refuses an app list with no apps that reports some", async () => {
+    router([[(u) => u.includes("/v1/apps?"), { total_apps: 3 }]]);
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
   it("machine maps image from image_ref fallback and null machines", async () => {
     router([
       [(u) => u.includes("/v1/apps?"), { apps: [{ id: "a1", name: "app-one" }], total_apps: 1 }],
@@ -1217,6 +1255,44 @@ describe("certificates (Machines API shapes)", () => {
     const res = await client().listResources("certificate", ACCOUNT);
     expect(res.map((r) => r.displayName)).toEqual(["a.example.com", "b.example.com"]);
     expect(calls.some((c) => c.url.includes("cursor=c2"))).toBe(true);
+  });
+
+  it("stops at 20 pages of 500 with more to read, rather than return part of an app's list", async () => {
+    let certPages = 0;
+    installFetch((url) => {
+      if (url.includes("/v1/apps?")) {
+        return jsonResponse({ apps: [{ id: "a1", name: "app-one" }], total_apps: 1 });
+      }
+      certPages += 1;
+      return jsonResponse({
+        certificates: [{ hostname: `h${certPages}.example.com` }],
+        next_cursor: `c${certPages}`,
+      });
+    });
+    await expect(client().listResources("certificate", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(certPages).toBe(20);
+    expect(calls.filter((c) => c.url.includes("limit=500"))).toHaveLength(20);
+  });
+
+  it.each([
+    ["the first page", 1],
+    ["a later page", 2],
+  ])("refuses a renamed list key on %s", async (_where, badPage) => {
+    let certPages = 0;
+    installFetch((url) => {
+      if (url.includes("/v1/apps?")) {
+        return jsonResponse({ apps: [{ id: "a1", name: "app-one" }], total_apps: 1 });
+      }
+      certPages += 1;
+      return jsonResponse(
+        certPages === badPage
+          ? { items: [{ hostname: "x.example.com" }] }
+          : { certificates: [{ hostname: "a.example.com" }], next_cursor: "c2" },
+      );
+    });
+    await expect(client().listResources("certificate", ACCOUNT)).rejects.toThrow("is not a list");
   });
 
   it("check action re-validates DNS", async () => {
