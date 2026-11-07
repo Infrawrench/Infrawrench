@@ -830,11 +830,16 @@ export class ConvexClient implements PluginClient {
               ...(fields["expiresAt"] ? { expiresAt: isoToMs(fields["expiresAt"]) } : {}),
             },
           });
-          const keys =
-            (await this.api.get(`/deployments/${pathEncode(dep)}/list_deploy_keys`)) ?? [];
-          const key = keys
-            .filter((k) => k.name === name)
-            .sort((a, b) => b.creationTime - a.creationTime)[0];
+          // The create call holds the only copy of the secret, so a failed read can't lose it.
+          const key = await this.api
+            .get(`/deployments/${pathEncode(dep)}/list_deploy_keys`)
+            .then((keys) =>
+              newestNamed(
+                rowsOf(keys, "/deployments/{deployment_name}/list_deploy_keys", null),
+                name,
+              ),
+            )
+            .catch(() => undefined);
           const resource = key
             ? toDeployKey(key, dep, accountId)
             : instance(accountId, typeId, `${dep}/${name}`, name, { name, deploymentName: dep });
@@ -853,10 +858,21 @@ export class ConvexClient implements PluginClient {
               },
             },
           );
-          const list = await this.api.get(`/projects/${pathEncode(pid)}/list_preview_deploy_keys`);
-          const key = (list?.items ?? [])
-            .filter((k) => k.name === name)
-            .sort((a, b) => b.creationTime - a.creationTime)[0];
+          // The create call holds the only copy of the secret, so a failed read can't lose it.
+          const key = await this.api
+            .get(`/projects/${pathEncode(pid)}/list_preview_deploy_keys`)
+            .then((list) =>
+              newestNamed(
+                rowsOf(
+                  list?.items,
+                  "/projects/{project_id}/list_preview_deploy_keys",
+                  "items",
+                  list,
+                ),
+                name,
+              ),
+            )
+            .catch(() => undefined);
           const resource = key
             ? toPreviewKey(key, Number(pid), accountId)
             : instance(accountId, typeId, `${pid}/${name}`, name, { name, projectId: Number(pid) });
@@ -1230,6 +1246,11 @@ export class ConvexClient implements PluginClient {
       throw new Error(`Convex plugin: unknown action "${actionId}" for "${typeId}".`);
     });
   }
+}
+
+/** The key just created: names can repeat, so the most recent one with that name. */
+function newestNamed(keys: CvDeployKey[], name: string): CvDeployKey | undefined {
+  return keys.filter((k) => k.name === name).sort((a, b) => b.creationTime - a.creationTime)[0];
 }
 
 /** Deploy keys are deleted by name (or secret); our ids are numeric. */

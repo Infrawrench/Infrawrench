@@ -250,6 +250,61 @@ describe("ConvexClient", () => {
   });
 });
 
+describe("creating a key whose secret is shown once", () => {
+  const down = { code: "Unavailable", message: "try later" };
+
+  it("keeps a deploy key's secret when the list read after it fails", async () => {
+    const { client } = fake([
+      on("POST", `${API}/deployments/happy-otter-123/create_deploy_key`, {
+        deployKey: "prod:happy-otter-123|secret",
+      }),
+      on("GET", `${API}/deployments/happy-otter-123/list_deploy_keys`, down, 503),
+    ]);
+    const created = await client.createResource(
+      "convex-deploy-key",
+      ACCOUNT,
+      { name: "ci" },
+      `${ACCOUNT}:convex-deployment:happy-otter-123`,
+    );
+    const resource = "resource" in created ? created.resource : created;
+    expect(resource.externalId).toBe("happy-otter-123/ci");
+    expect(resource.resolvedOutputs["deployKey"]).toBe("prod:happy-otter-123|secret");
+  });
+
+  it("keeps a deploy key's secret when that list comes back in the wrong shape", async () => {
+    const { client } = fake([
+      on("POST", `${API}/deployments/happy-otter-123/create_deploy_key`, {
+        deployKey: "prod:happy-otter-123|secret",
+      }),
+      on("GET", `${API}/deployments/happy-otter-123/list_deploy_keys`, { keys: [] }),
+    ]);
+    const created = await client.createResource(
+      "convex-deploy-key",
+      ACCOUNT,
+      { name: "ci" },
+      `${ACCOUNT}:convex-deployment:happy-otter-123`,
+    );
+    const resource = "resource" in created ? created.resource : created;
+    expect(resource.resolvedOutputs["deployKey"]).toBe("prod:happy-otter-123|secret");
+  });
+
+  it("keeps a preview deploy key's secret when the list read after it fails", async () => {
+    const { client } = fake([
+      on("POST", `${API}/projects/9/create_preview_deploy_key`, { previewDeployKey: "preview|s" }),
+      on("GET", `${API}/projects/9/list_preview_deploy_keys`, down, 503),
+    ]);
+    const created = await client.createResource(
+      "convex-preview-deploy-key",
+      ACCOUNT,
+      { name: "ci" },
+      `${ACCOUNT}:convex-project:9`,
+    );
+    const resource = "resource" in created ? created.resource : created;
+    expect(resource.externalId).toBe("9/ci");
+    expect(resource.resolvedOutputs["previewDeployKey"]).toBe("preview|s");
+  });
+});
+
 describe("lists that cannot say they are complete", () => {
   const PROJECTS = `${API}/teams/42/projects`;
   const project = { id: 1, name: "A", slug: "a", teamId: 42, teamSlug: "acme", createTime: 1 };
