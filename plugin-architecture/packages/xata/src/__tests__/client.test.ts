@@ -402,3 +402,27 @@ describe("getLogs", () => {
     expect(res.text.trim().split("\n")).toHaveLength(bodies.length);
   });
 });
+
+describe("xata-organization", () => {
+  it("fills Billed Through from the single-organization answer", async () => {
+    const { client } = fake([
+      on("GET", `${API}/organizations`, { organizations: [org] }),
+      on("GET", `${API}/organizations/org1`, { ...org, marketplace: "aws" }),
+      on("GET", `${API}/organizations/org1/members`, { members: [] }),
+    ]);
+    const [o] = await client.listResources("xata-organization", ACCOUNT);
+    expect(o!.fields["marketplace"]).toBe("aws");
+    expect(o!.fields["memberCount"]).toBe(0);
+  });
+
+  it("still lists an organization whose detail cannot be read", async () => {
+    const { client } = fake([
+      on("GET", `${API}/organizations`, { organizations: [org] }),
+      on("GET", `${API}/organizations/org1`, { message: "denied" }, 403),
+      on("GET", `${API}/organizations/org1/members`, { members: [] }),
+    ]);
+    const [o] = await client.listResources("xata-organization", ACCOUNT);
+    expect(o).toMatchObject({ externalId: "org1", displayName: "Acme" });
+    expect(o!.fields["marketplace"]).toBe("");
+  });
+});

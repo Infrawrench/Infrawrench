@@ -27,7 +27,7 @@
   ],
   "paths": {
     "/organizations": ["get"],
-    "/organizations/{organizationID}": ["put"],
+    "/organizations/{organizationID}": ["get", "put"],
     "/organizations/{organizationID}/api-keys": ["get", "post", "delete"],
     "/organizations/{organizationID}/members": ["get"],
     "/organizations/{organizationID}/members/{userID}": ["delete"],

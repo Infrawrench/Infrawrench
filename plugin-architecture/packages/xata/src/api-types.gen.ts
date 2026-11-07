@@ -27,7 +27,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        get: operations["getOrganization"];
         put: operations["updateOrganization"];
         post?: never;
         delete?: never;
@@ -1097,6 +1097,27 @@ export interface operations {
                             status: components["schemas"]["OrganizationStatus"];
                         }[];
                     };
+                };
+            };
+        };
+    };
+    getOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationID: components["parameters"]["OrganizationIDParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
                 };
             };
         };

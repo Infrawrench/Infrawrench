@@ -226,10 +226,12 @@ export class XataClient implements PluginClient {
           const orgs = await this.orgs();
           return Promise.all(
             orgs.map(async (o) => {
-              const members = await this.api
-                .get(`${this.orgPath(o.id)}/members`)
-                .catch(() => undefined);
-              return orgResource(o, accountId, members?.members?.length);
+              // Neither is a list of what this type stores, so a failure only leaves a field blank.
+              const [detail, members] = await Promise.all([
+                this.api.get(this.orgPath(o.id)).catch(() => undefined),
+                this.api.get(`${this.orgPath(o.id)}/members`).catch(() => undefined),
+              ]);
+              return orgResource({ ...o, ...detail }, accountId, members?.members?.length);
             }),
           );
         }

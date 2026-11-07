@@ -158,7 +158,7 @@ export type BranchPath = `${ProjectPath}/branches/${NoSlashString}`;
 
 type Schemas = components["schemas"];
 
-/** The listing has no `marketplace`; the single-organization answer does. */
+/** The listing has no `marketplace`; only `GET /organizations/{id}` does. */
 export type XOrg = ApiListItem<operations["getOrganizationsList"], "organizations"> &
   Partial<Pick<Schemas["Organization"], "marketplace">>;
 export type XProject = Schemas["Project"];
