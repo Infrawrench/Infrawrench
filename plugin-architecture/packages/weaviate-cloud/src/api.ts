@@ -7,7 +7,9 @@ import type { HostServices } from "@infrawrench/plugin-base";
  * (listing and creating Weaviate Cloud clusters) is `cloud.ts`.
  *
  * Requests carry a cluster API key as `Authorization: Bearer <key>`, so the
- * same code drives a self-hosted Weaviate. Errors are `{error: [{message}]}`;
+ * same code drives a self-hosted Weaviate. A self-hosted cluster's host is the
+ * customer's own: a bastion lets it through when it is the REST Endpoint or is
+ * picked in the `clusterHosts` credential field. Errors are `{error: [{message}]}`;
  * the HTTP status rides on the thrown error for the poller.
  */
 
@@ -79,6 +81,38 @@ export function clusterKeyOf(endpoint: string): string {
   }
 }
 
+/** The credential field holding the self-hosted cluster hosts a bastion should let through. */
+export const CLUSTER_HOSTS_LABEL = "Self-Hosted Cluster Hosts";
+
+/** The host of an endpoint, lowercased, without brackets or a trailing dot. */
+export function endpointHost(endpoint: string): string {
+  try {
+    return new URL(normalizeEndpoint(endpoint)).hostname
+      .replace(/^\[(.*)\]$/, "$1")
+      .replace(/\.$/, "")
+      .toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/** Whether `host` is under the manifest's `*.weaviate.cloud` or `*.weaviate.network`. */
+export function isWeaviateCloudHost(host: string): boolean {
+  return /(^|\.)weaviate\.(cloud|network)$/.test(host.toLowerCase().replace(/\.$/, ""));
+}
+
+/** Whether a failed request was a bastion refusing its destination, in it or its causes. */
+function bastionRefusal(err: unknown): string | undefined {
+  let current: unknown = err;
+  for (let depth = 0; depth < 6 && current instanceof Error; depth++) {
+    if (/not allowed for this account|not allowlisted/.test(current.message)) {
+      return current.message;
+    }
+    current = current.cause;
+  }
+  return undefined;
+}
+
 export type QueryValue = string | number | boolean | undefined | null;
 
 export interface RequestOptions {
@@ -107,14 +141,26 @@ export class WeaviateApi {
   ): Promise<{ status: number; body: string }> {
     const http = this.services?.http;
     if (http) {
-      const res = await http.request({
-        url,
-        method,
-        headers,
-        ...(body !== undefined ? { body } : {}),
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-      });
-      return { status: res.status, body: res.body ?? "" };
+      try {
+        const res = await http.request({
+          url,
+          method,
+          headers,
+          ...(body !== undefined ? { body } : {}),
+          ...(this.caCert ? { caCert: this.caCert } : {}),
+        });
+        return { status: res.status, body: res.body ?? "" };
+      } catch (e) {
+        // Weaviate Cloud's hosts are in the manifest; a self-hosted one is let through
+        // once it is the REST Endpoint or is picked under CLUSTER_HOSTS_LABEL.
+        const host = endpointHost(url);
+        const refusal = bastionRefusal(e);
+        if (!refusal || !host || isWeaviateCloudHost(host)) throw e;
+        throw new Error(
+          `The bastion refused Weaviate cluster ${host}: ${refusal}. A bastion lets through Weaviate Cloud's own hosts, the REST Endpoint's host and the hosts picked under ${CLUSTER_HOSTS_LABEL} (Advanced options on the account), so pick ${host} there.`,
+          { cause: e },
+        );
+      }
     }
     const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
     return { status: res.status, body: await res.text() };

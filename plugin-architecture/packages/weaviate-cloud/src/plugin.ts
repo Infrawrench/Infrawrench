@@ -1,7 +1,10 @@
 import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
 import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
+import type { CredentialFieldOption } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
-import { WeaviateClient } from "./client.js";
+import { attempt } from "@infrawrench/plugin-base/effect";
+import { CLUSTER_HOSTS_LABEL, endpointHost, isWeaviateCloudHost } from "./api.js";
+import { parseClusterLines, WeaviateClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
@@ -15,7 +18,8 @@ import { RESOURCE_TYPES } from "./resource-types.js";
  */
 export const manifest = {
   id: "weaviate-cloud",
-  // Weaviate Cloud clusters and its provisioning API (api-cloud, auth) live under weaviate.cloud, older clusters under weaviate.network; self-hosted endpoints are user-supplied
+  // Weaviate Cloud clusters and its provisioning API (api-cloud, auth) live under weaviate.cloud, older clusters under weaviate.network; self-hosted endpoints are user-supplied,
+  // and a bastion allows them from endpoint and the hosts picked in clusterHosts
   egressHosts: ["*.weaviate.cloud", "*.weaviate.network"],
   displayName: "Weaviate Cloud",
   description:
@@ -63,11 +67,24 @@ export const manifest = {
       key: "clusters",
       label: "More Clusters",
       description:
-        "Further clusters on this account, one per line: the REST endpoint, a space, then its API key. Clusters connected from Infrawrench are added here, and removing a line disconnects that cluster.",
+        "Further clusters on this account, one per line: the REST endpoint, a space, then its API key. Clusters connected from Infrawrench are added here, and removing a line disconnects that cluster. Behind a bastion, pick self-hosted ones under Self-Hosted Cluster Hosts too.",
       sensitive: true,
       optional: true,
       multiline: true,
       placeholder: "https://<cluster-host> <api-key>",
+    },
+    {
+      // Its own field because More Clusters holds the keys too, and the bastion
+      // allowlist reads only non-sensitive host fields.
+      key: "clusterHosts",
+      providerHost: true,
+      label: CLUSTER_HOSTS_LABEL,
+      description:
+        "Only needed behind a bastion, for self-hosted clusters listed under More Clusters, whose hosts are your own rather than weaviate.cloud. Pick those hosts so the bastion lets them through. Public addresses only.",
+      sensitive: false,
+      optional: true,
+      advanced: true,
+      providerOptions: { dependsOn: ["clusters"], multiple: true },
     },
     caCertCredentialField,
   ]),
@@ -75,11 +92,34 @@ export const manifest = {
 
 export type Credentials = CredentialsOf<typeof manifest>;
 
+/**
+ * Each More Clusters host a bastion does not already allow, with the endpoints on it.
+ * Read from the field itself, with no request; only hosts leave it, never a key.
+ */
+export function clusterHostOptions(credentials: Record<string, string>): CredentialFieldOption[] {
+  const primary = endpointHost(credentials["endpoint"] ?? "");
+  const byHost = new Map<string, string[]>();
+  for (const { endpoint } of parseClusterLines(credentials["clusters"])) {
+    const host = endpointHost(endpoint);
+    if (!host || host === primary || isWeaviateCloudHost(host)) continue;
+    const seen = byHost.get(host) ?? [];
+    if (!seen.includes(endpoint)) byHost.set(host, [...seen, endpoint]);
+  }
+  return [...byHost]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([host, endpoints]) => ({ id: host, label: host, description: endpoints.join(", ") }));
+}
+
 export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) =>
     new WeaviateClient(credentials, RESOURCE_TYPES, services),
+  listCredentialOptions: (fieldKey, credentials) =>
+    attempt(async () => {
+      if (fieldKey !== "clusterHosts") return [];
+      return clusterHostOptions(credentials);
+    }),
   testCredentials: {
     endpoint: "https://test.c0.europe-west3.gcp.weaviate.cloud",
     apiKey: "test-weaviate-key",
