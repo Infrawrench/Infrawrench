@@ -10,6 +10,7 @@ import {
   validateBucketName,
 } from "../client.js";
 import { bucketFields } from "../mappers.js";
+import { manifest } from "../plugin.js";
 import { b2TerraformExport } from "../terraform.js";
 import type { B2Bucket } from "../types.js";
 
@@ -790,5 +791,11 @@ describe("a refused or failed read", () => {
     await expect(
       down.c.fetchMetricSeries!("account", "a1:account:x", "a1", range),
     ).rejects.toMatchObject({ status: 500 });
+  });
+});
+
+describe("manifest", () => {
+  it("allows the host b2_get_upload_url answers with", () => {
+    expect(manifest.egressHosts).toContain("*.backblaze.com");
   });
 });

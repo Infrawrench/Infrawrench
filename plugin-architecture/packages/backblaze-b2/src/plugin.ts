@@ -10,8 +10,9 @@ import { b2TerraformExport } from "./terraform.js";
 
 export const manifest = {
   id: "backblaze-b2",
-  // B2 hands out a per-cluster apiNNN/fNNN/podNNN host at authorize time
-  egressHosts: ["api.backblazeb2.com", "*.backblazeb2.com"],
+  // B2 hands out a per-cluster apiNNN/fNNN host at authorize time, and b2_get_upload_url
+  // answers with an upload host on the other domain, pod-000-1005-03.backblaze.com.
+  egressHosts: ["api.backblazeb2.com", "*.backblazeb2.com", "*.backblaze.com"],
   displayName: "Backblaze B2",
   description:
     "Object storage. Browse and upload files, manage buckets with lifecycle, CORS, replication and event notification rules, default encryption and Object Lock, mint bucket-scoped keys, and chart usage and estimated spend from the daily usage reports.",
