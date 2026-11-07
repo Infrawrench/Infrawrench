@@ -200,8 +200,11 @@ export class SupabaseClient implements PluginClient {
         found = (await listOrganizations(this.ctx, accountId)).find((r) => r.id === resourceId);
       } else if (typeId === "supabase-project") {
         const project = await fetchProject(this.ctx, externalId);
-        const index = await fetchOrgProjectIndex(this.ctx, [project.organization_slug]);
-        found = await toProjectResource(this.ctx, project, accountId, index.get(project.ref));
+        // One project's detail can do without its compute size and disk.
+        const index = await fetchOrgProjectIndex(this.ctx, [project.organization_slug]).catch(
+          () => undefined,
+        );
+        found = await toProjectResource(this.ctx, project, accountId, index?.get(project.ref));
       } else {
         // Children are scoped to one project: list just that project's.
         const { ref } = splitScoped(externalId);

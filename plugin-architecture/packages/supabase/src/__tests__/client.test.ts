@@ -574,3 +574,67 @@ describe("editing a project's compute size", () => {
     expect(written(calls)).toEqual([]);
   });
 });
+
+describe("the organization project index", () => {
+  const ORG_PROJECTS = "/v1/organizations/acme/projects";
+  const withReplica = {
+    projects: [
+      {
+        ref: REF,
+        is_branch: false,
+        databases: [
+          {
+            identifier: `${REF}-rr`,
+            type: "READ_REPLICA",
+            region: "us-east-1",
+            status: "ACTIVE_HEALTHY",
+          },
+        ],
+      },
+    ],
+    pagination: { count: 1, limit: 100, offset: 0 },
+  };
+  const base = [on("GET", "/v1/projects", [project])];
+
+  it.each([429, 500, 503])(
+    "fails the replica list on a %i rather than listing none",
+    async (status) => {
+      const { c } = client([...base, on("GET", ORG_PROJECTS, { message: "busy" }, status)]);
+      await expect(c.listResources("supabase-read-replica", ACCOUNT)).rejects.toThrow(
+        String(status),
+      );
+    },
+  );
+
+  it("fails the project list on a 500 rather than listing branches as projects", async () => {
+    const { c } = client([...base, on("GET", ORG_PROJECTS, { message: "busy" }, 500)]);
+    await expect(c.listResources("supabase-project", ACCOUNT)).rejects.toThrow("500");
+  });
+
+  it.each([403, 404])(
+    "reads a %i as no replicas, since the token cannot see them",
+    async (status) => {
+      const { c } = client([...base, on("GET", ORG_PROJECTS, { message: "no" }, status)]);
+      expect(await c.listResources("supabase-read-replica", ACCOUNT)).toEqual([]);
+    },
+  );
+
+  it("still lists replicas from a good answer", async () => {
+    const { c } = client([...base, on("GET", ORG_PROJECTS, withReplica)]);
+    const replicas = await c.listResources("supabase-read-replica", ACCOUNT);
+    expect(replicas.map((r) => r.fields["region"])).toEqual(["us-east-1"]);
+  });
+
+  it("still opens a project's detail when the index cannot be read", async () => {
+    const { c } = client([
+      on("GET", `/v1/projects/${REF}`, project),
+      on("GET", ORG_PROJECTS, { message: "busy" }, 500),
+    ]);
+    const found = await c.getResource!(
+      "supabase-project",
+      `${ACCOUNT}:supabase-project:${REF}`,
+      ACCOUNT,
+    );
+    expect(found.externalId).toBe(REF);
+  });
+});

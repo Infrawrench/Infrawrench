@@ -128,16 +128,26 @@ export async function listOrganizations(
   );
 }
 
-/** Index every database (primary and replicas) across organizations by project ref. */
+/**
+ * Index every database (primary and replicas) across organizations by project ref.
+ *
+ * Read replicas exist only in this index, so a failure must throw or they all read
+ * as deleted. Only a token that cannot see the organization reads as nothing.
+ */
 export async function fetchOrgProjectIndex(
   ctx: SupabaseContext,
   slugs: string[],
 ): Promise<Map<string, SbOrgProject>> {
   const index = new Map<string, SbOrgProject>();
   const pages = await Promise.all(
-    [...new Set(slugs)].map((slug) => settle(fetchOrgProjects(ctx, slug))),
+    [...new Set(slugs)].map((slug) =>
+      fetchOrgProjects(ctx, slug).catch((err: unknown): SbOrgProject[] => {
+        if (statusOf(err) === 403 || statusOf(err) === 404) return [];
+        throw err;
+      }),
+    ),
   );
-  for (const page of pages) for (const p of page ?? []) index.set(p.ref, p);
+  for (const page of pages) for (const p of page) index.set(p.ref, p);
   return index;
 }
 
