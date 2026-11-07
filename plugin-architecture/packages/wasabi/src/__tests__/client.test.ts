@@ -228,6 +228,16 @@ describe("lists that must be whole", () => {
     expect(calls.filter((x) => String(x.body).includes("ListUserPolicies")).length).toBe(2);
   });
 
+  it("does not read a refused IAM key as no users", async () => {
+    const { c } = client(() => ({
+      status: 403,
+      body: "<ErrorResponse><Error><Code>AccessDenied</Code><Message>no</Message></Error></ErrorResponse>",
+    }));
+    // A host that tracks nothing (this test, the desktop) still sees the refusal.
+    await expect(c.listResources("iam-user", "a1")).rejects.toThrow();
+    await expect(c.listResources("access-key", "a1")).rejects.toThrow();
+  });
+
   const statsPage = (n: number, pageCount?: number) =>
     JSON.stringify({
       ...(pageCount === undefined ? {} : { PageInfo: { PageCount: pageCount } }),

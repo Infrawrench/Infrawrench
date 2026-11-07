@@ -16,7 +16,7 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, externalIdOf } from "@infrawrench/plugin-base";
+import { CostSetupError, externalIdOf, reportUnreadListPart } from "@infrawrench/plugin-base";
 import type { SubAccount, Utilization, WasabiContext } from "./api.js";
 import { WasabiApiError, statsPaged, statusOf, wacFetch } from "./api.js";
 import type { IamAccessKey } from "./iam.js";
@@ -271,7 +271,7 @@ export class WasabiClient implements PluginClient {
         case "iam-user": {
           try {
             const users = await this.iam.listUsers();
-            return this.mapLimit(users, async (u) => {
+            return await this.mapLimit(users, async (u) => {
               const [keys, attached, inline, groups] = await Promise.all([
                 this.iam.listAccessKeys(u.userName),
                 this.iam.attachedPolicies(u.userName),
@@ -291,8 +291,7 @@ export class WasabiClient implements PluginClient {
               });
             });
           } catch (err) {
-            if (statusOf(err) === 403) return [];
-            throw err;
+            return keepRowsOfRefusedType(err);
           }
         }
         case "access-key": {
@@ -300,8 +299,7 @@ export class WasabiClient implements PluginClient {
           try {
             users = await this.iam.listUsers();
           } catch (err) {
-            if (statusOf(err) === 403) return [];
-            throw err;
+            return keepRowsOfRefusedType(err);
           }
           const keys = (
             await this.mapLimit(users, (u) => this.iam.listAccessKeys(u.userName))
@@ -1260,6 +1258,16 @@ export class WasabiClient implements PluginClient {
       return [];
     });
   }
+}
+
+/**
+ * A key without IAM permissions is normal, and its 403 says nothing about what
+ * exists: the type's stored rows stay. A host that keeps no track (the desktop)
+ * answers false, and there the refusal still shows.
+ */
+function keepRowsOfRefusedType(err: unknown): never[] {
+  if (statusOf(err) !== 403 || !reportUnreadListPart({ idPrefixes: [""] })) throw err;
+  return [];
 }
 
 // ── Mappers ─────────────────────────────────────────────────────────────────
