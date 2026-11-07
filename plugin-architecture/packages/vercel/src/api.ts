@@ -27,7 +27,9 @@ export type VercelWebhook =
   | VercelResponse<"getWebhook">
   | VercelResponse<"createWebhook">;
 /** The build-output fields of an event; other kinds have none, and read as undefined. */
-export type VercelDeploymentEvent = ApiListItem<operations["getDeploymentEvents"], null> & {
+export type VercelDeploymentEvent = NonNullable<
+  ApiListItem<operations["getDeploymentEvents"], null>
+> & {
   created?: number;
   text?: string;
   payload?: { text?: string; date?: number };

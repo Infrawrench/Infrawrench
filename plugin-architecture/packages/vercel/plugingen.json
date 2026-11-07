@@ -10,20 +10,6 @@
       "why": "A recursive union with no object around it is TS2502 once it is a property of `components`, and nothing reads a flag option's value."
     },
     {
-      "pointer": "/components/schemas/Team/properties/name",
-      "value": {
-        "type": "string"
-      },
-      "why": "Nullable in the document; the plugin has always used it as a display name without a fallback. Remove this when it gets one."
-    },
-    {
-      "pointer": "/components/schemas/TeamLimited/properties/name",
-      "value": {
-        "type": "string"
-      },
-      "why": "Nullable in the document; the plugin has always used it as a display name without a fallback. Remove this when it gets one."
-    },
-    {
       "pointer": "/paths/~1v11~1projects/post/requestBody/content/application~1json/schema/properties/framework",
       "value": {
         "type": "string"
@@ -138,11 +124,6 @@
         }
       },
       "why": "As for visits: the document's rows have no counts, and the rows of a non-time `by` are never asked for."
-    },
-    {
-      "pointer": "/paths/~1v3~1deployments~1{idOrUrl}~1events/get/responses/200/content/application~1json/schema/items/nullable",
-      "value": false,
-      "why": "The plugin has never handled a null entry, so one fails the logs call. Remove this when it does."
     }
   ],
   "paths": {

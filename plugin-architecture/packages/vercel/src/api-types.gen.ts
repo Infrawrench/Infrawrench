@@ -704,7 +704,7 @@ export interface components {
             /** @enum {boolean} */
             limited: false;
             membership?: membership_e333c188;
-            name: string;
+            name: string | null;
             nsnbConfig?: {
                 /** @enum {string} */
                 preference: "auto-approval" | "block" | "manual-approval";
@@ -810,7 +810,7 @@ export interface components {
             limited: true;
             limitedBy: ("invalidated" | "mfa" | "scope")[];
             membership?: membership_e333c188;
-            name: string;
+            name: string | null;
             orgRootTeamId?: string;
             parentId?: string;
             saml?: {
@@ -1491,7 +1491,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": (Shared_923613af)[] | null;
+                    "application/json": ((Shared_923613af) | null)[] | null;
                     "application/stream+json": Shared_923613af;
                 };
             };

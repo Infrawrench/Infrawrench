@@ -439,6 +439,18 @@ describe("listResources dispatch + mappers", () => {
     expect(res[0]!.fields["slug"]).toBe("team");
   });
 
+  it("names a team with no name by its slug", async () => {
+    installFetch(() =>
+      jsonResponse({
+        teams: [{ id: "t1", name: null, slug: "team", createdAt: 1 }],
+        pagination: { next: null },
+      }),
+    );
+    const [team] = await client().listResources("vercel-team", ACCOUNT);
+    expect(team!.displayName).toBe("team");
+    expect(team!.fields["name"]).toBeUndefined();
+  });
+
   it("returns empty teams when request fails", async () => {
     installFetch(() => jsonResponse("nope", 403));
     const res = await client().listResources("vercel-team", ACCOUNT);
@@ -1508,6 +1520,17 @@ describe("deployment actions", () => {
       fields: { state: "BUILDING" },
     } as never);
     expect((building.headerActions ?? []).map((a) => a.label)).toContain("Cancel");
+  });
+
+  it("skips a null log event rather than fail the whole call", async () => {
+    installFetch(() => jsonResponse([null, { type: "stdout", created: 1000, text: "Compiled" }]));
+    const logs = await client().getLogs(
+      "vercel-deployment",
+      "acct-1:vercel-deployment:dpl_1",
+      ACCOUNT,
+      { tailLines: 100 },
+    );
+    expect(logs.text).toContain("Compiled");
   });
 
   it("reads build output from the events endpoint", async () => {

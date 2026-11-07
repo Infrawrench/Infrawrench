@@ -1063,13 +1063,14 @@ export class VercelClient implements PluginClient {
       });
       const lines = (Array.isArray(events) ? events : [])
         .filter(
-          (e: VercelDeploymentEvent) =>
-            e.type === "stdout" ||
-            e.type === "stderr" ||
-            e.type === "command" ||
-            e.type === "fatal",
+          (e): e is VercelDeploymentEvent =>
+            e != null &&
+            (e.type === "stdout" ||
+              e.type === "stderr" ||
+              e.type === "command" ||
+              e.type === "fatal"),
         )
-        .map((e: VercelDeploymentEvent) => ({
+        .map((e) => ({
           at: e.created ?? e.payload?.date ?? 0,
           text: e.text ?? e.payload?.text ?? "",
         }))
@@ -1429,13 +1430,14 @@ export class VercelClient implements PluginClient {
       pluginId: "vercel",
       resourceTypeId: "vercel-team",
       accountId,
-      displayName: t.name,
-      fields: {
+      // The document lets `name` be null; every team has a slug.
+      displayName: t.name ?? t.slug,
+      fields: fields({
         name: t.name,
         slug: t.slug,
         createdAt: formatTimestamp(t.createdAt),
         updatedAt: formatTimestamp(t.updatedAt),
-      },
+      }),
       resolvedOutputs: {},
       secretStates: [],
       externalId: t.id,
