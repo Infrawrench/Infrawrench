@@ -13,12 +13,7 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import {
-  externalIdOf,
-  pathEncode,
-  unencodedSegment,
-  type ApiResponse,
-} from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, type ApiResponse } from "@infrawrench/plugin-base";
 import { IbmApi, isPermissionGap } from "./api.js";
 import type { operations as DatabaseOperations } from "./api-types.databases.gen.js";
 import { fetchCostData, fetchCredits, monthToDate } from "./billing.js";
@@ -45,15 +40,18 @@ import {
   listVolumes,
   listVpcs,
   listWorkerPools,
+  malformedId,
   mapApp,
   mapServiceInstance,
   notFound,
   poolsOf,
+  splitApp,
+  splitPool,
   splitRegional,
   xmlValue,
   type ListContext,
 } from "./listers.js";
-import { DEFAULT_REGION, VPC_QUERY, cosEndpoint } from "./regions.js";
+import { DEFAULT_REGION, VPC_QUERY, cosEndpoint, hostRegion } from "./regions.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
@@ -97,9 +95,16 @@ function isInstanceAction(action: string): action is (typeof INSTANCE_ACTIONS)[n
   return INSTANCE_ACTIONS.some((known) => known === action);
 }
 
-/** A Code Engine app, from the parts of its external id (`region/project/name`). */
-function appPath(projectId: string | undefined, name: string | undefined) {
-  return `/projects/${unencodedSegment(`${projectId}`)}/apps/${unencodedSegment(`${name}`)}` as const;
+/** A Code Engine app, from the parts of its external id. */
+function appPath(projectId: string, name: string) {
+  return `/projects/${pathEncode(projectId)}/apps/${pathEncode(name)}` as const;
+}
+
+/** The id an edit or a delete acts on. A blank one would address the whole collection. */
+function targetId(resourceId: string): string {
+  const ext = externalIdOf(resourceId);
+  if (!ext) throw malformedId(ext);
+  return ext;
 }
 
 function decodeXml(s: string): string {
@@ -206,10 +211,10 @@ export class IbmCloudClient implements PluginClient {
       case "kubernetes-cluster":
         return getCluster(ctx, ext);
       case "worker-pool":
-        return find(await poolsOf(ctx, ext.split("/")[0]!));
+        return find(await poolsOf(ctx, splitPool(ext).cluster));
       case "code-engine-app": {
-        const [region, projectId, name] = ext.split("/");
-        const app = await this.api.codeEngine(`${region}`).get(appPath(projectId, name));
+        const { region, projectId, name } = splitApp(ext);
+        const app = await this.api.codeEngine(region).get(appPath(projectId, name));
         return mapApp(accountId, region, projectId, app);
       }
       case "code-engine-project":
@@ -237,7 +242,7 @@ export class IbmCloudClient implements PluginClient {
 
   private async databaseHost(crn: string): Promise<ConnectionHost | undefined> {
     const r = await this.api.resourceController.get(`/v2/resource_instances/${pathEncode(crn)}`);
-    const databases = this.api.databases(r.region_id ?? DEFAULT_REGION);
+    const databases = this.api.databases(r.region_id || DEFAULT_REGION);
     const info = await databases.get(`/deployments/${pathEncode(crn)}`);
     const user = info.deployment?.admin_usernames?.["database"] ?? "admin";
     for (const endpoint of ["public", "private"]) {
@@ -343,7 +348,7 @@ export class IbmCloudClient implements PluginClient {
     fields: Record<string, string>,
   ): Promise<void> {
     const vpc = this.api.vpc(region);
-    const segment = unencodedSegment(id);
+    const segment = pathEncode(id);
     const request = { query: VPC_QUERY, headers: MERGE_PATCH };
     const name = fields["name"] ? { name: fields["name"] } : {};
     if (typeId === "instance") {
@@ -391,7 +396,7 @@ export class IbmCloudClient implements PluginClient {
     { region, id }: { region: string; id: string },
   ): Promise<void> {
     const vpc = this.api.vpc(region);
-    const segment = unencodedSegment(id);
+    const segment = pathEncode(id);
     const request = { query: VPC_QUERY };
     switch (typeId) {
       case "instance":
@@ -428,14 +433,14 @@ export class IbmCloudClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const ext = externalIdOf(resourceId);
+      const ext = targetId(resourceId);
       if (typeId in VPC_LISTERS || typeId === "instance") {
         await this.patchVpcResource(typeId, splitRegional(ext), fields);
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
       switch (typeId) {
         case "resource-group":
-          await this.api.resourceManager.patch(`/v2/resource_groups/${unencodedSegment(ext)}`, {
+          await this.api.resourceManager.patch(`/v2/resource_groups/${pathEncode(ext)}`, {
             body: { name: fields["name"] },
           });
           break;
@@ -447,7 +452,7 @@ export class IbmCloudClient implements PluginClient {
           }
           break;
         case "worker-pool": {
-          const [cluster, pool] = ext.split("/");
+          const { cluster, pool } = splitPool(ext);
           if (fields["sizePerZone"]) {
             await this.api.containers.post("/v2/resizeWorkerPool", {
               body: { cluster, workerpool: pool, size: Number(fields["sizePerZone"]) },
@@ -456,9 +461,9 @@ export class IbmCloudClient implements PluginClient {
           break;
         }
         case "code-engine-app": {
-          const [region, projectId, name] = ext.split("/");
+          const { region, projectId, name } = splitApp(ext);
           const path = appPath(projectId, name);
-          const codeEngine = this.api.codeEngine(`${region}`);
+          const codeEngine = this.api.codeEngine(region);
           const current = await codeEngine.getResponse(path);
           const etag = current.headers["etag"] ?? current.body.entity_tag ?? "*";
           await codeEngine.patch(path, {
@@ -515,41 +520,37 @@ export class IbmCloudClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const ext = externalIdOf(resourceId);
+      const ext = targetId(resourceId);
       if (typeId in VPC_LISTERS || typeId === "instance") {
         await this.deleteVpcResource(typeId, splitRegional(ext));
         return;
       }
       switch (typeId) {
         case "resource-group":
-          await this.api.resourceManager.delete(`/v2/resource_groups/${unencodedSegment(ext)}`);
+          await this.api.resourceManager.delete(`/v2/resource_groups/${pathEncode(ext)}`);
           return;
         case "kubernetes-cluster":
-          await this.api.containers.delete(`/v1/clusters/${unencodedSegment(ext)}`);
+          await this.api.containers.delete(`/v1/clusters/${pathEncode(ext)}`);
           return;
         case "worker-pool": {
-          const [cluster, pool] = ext.split("/");
+          const { cluster, pool } = splitPool(ext);
           await this.api.containers.delete(
-            `/v1/clusters/${unencodedSegment(`${cluster}`)}/workerpools/${unencodedSegment(`${pool}`)}`,
+            `/v1/clusters/${pathEncode(cluster)}/workerpools/${pathEncode(pool)}`,
           );
           return;
         }
         case "code-engine-project": {
           const { region, id } = splitRegional(ext);
-          await this.api.codeEngine(region).delete(`/projects/${unencodedSegment(id)}`);
+          await this.api.codeEngine(region).delete(`/projects/${pathEncode(id)}`);
           return;
         }
         case "code-engine-app": {
-          const [region, projectId, name] = ext.split("/");
-          await this.api.codeEngine(`${region}`).delete(appPath(projectId, name));
+          const { region, projectId, name } = splitApp(ext);
+          await this.api.codeEngine(region).delete(appPath(projectId, name));
           return;
         }
         case "cos-bucket": {
-          const { region: location, id: bucket } = splitRegional(ext);
-          await this.api.requestXml({
-            url: `https://${cosEndpoint(location)}/${encodeURIComponent(bucket)}`,
-            method: "DELETE",
-          });
+          await this.api.requestXml({ url: this.bucketUrl(ext), method: "DELETE" });
           return;
         }
         case "database":
@@ -573,7 +574,7 @@ export class IbmCloudClient implements PluginClient {
         throw badRequest(`IBM Cloud plugin: action "${actionId}" is not supported for "${typeId}"`);
       }
       const { region, id } = splitRegional(externalIdOf(resourceId));
-      await this.api.vpc(region).post(`/instances/${unencodedSegment(id)}/actions`, {
+      await this.api.vpc(region).post(`/instances/${pathEncode(id)}/actions`, {
         query: VPC_QUERY,
         body: {
           type: actionId === "stop-force" ? "stop" : actionId,
@@ -598,7 +599,7 @@ export class IbmCloudClient implements PluginClient {
       if (sourceTypeId === "volume") {
         await this.api
           .vpc(target.region)
-          .post(`/instances/${unencodedSegment(target.id)}/volume_attachments`, {
+          .post(`/instances/${pathEncode(target.id)}/volume_attachments`, {
             query: VPC_QUERY,
             body: { volume: { id: source.id }, delete_volume_on_instance_delete: false },
           });
@@ -607,10 +608,10 @@ export class IbmCloudClient implements PluginClient {
       if (sourceTypeId === "floating-ip") {
         const instance = await this.api
           .vpc(target.region)
-          .get(`/instances/${unencodedSegment(target.id)}`, { query: VPC_QUERY });
+          .get(`/instances/${pathEncode(target.id)}`, { query: VPC_QUERY });
         const nic = instance.primary_network_interface?.id;
         if (!nic) throw badRequest("The server has no primary network interface to bind to");
-        await this.api.vpc(source.region).patch(`/floating_ips/${unencodedSegment(source.id)}`, {
+        await this.api.vpc(source.region).patch(`/floating_ips/${pathEncode(source.id)}`, {
           query: VPC_QUERY,
           headers: MERGE_PATCH,
           body: { target: { id: nic } },
@@ -642,7 +643,7 @@ export class IbmCloudClient implements PluginClient {
   private bucketUrl(bucket: string, key = ""): string {
     const { region: location, id: name } = splitRegional(bucket);
     const path = key ? `/${key.split("/").map(encodeURIComponent).join("/")}` : "";
-    return `https://${cosEndpoint(location)}/${encodeURIComponent(name)}${path}`;
+    return `https://${cosEndpoint(hostRegion(location))}/${encodeURIComponent(name)}${path}`;
   }
 
   private async listPage(

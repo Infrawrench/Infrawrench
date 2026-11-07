@@ -1,5 +1,5 @@
 import {
-  unencodedSegment,
+  pathEncode,
   type ApiListItem,
   type CreateFieldConfig,
   type CreateResourceConfig,
@@ -23,7 +23,14 @@ import {
   vpcList,
   type ListContext,
 } from "./listers.js";
-import { CODE_ENGINE_REGIONS, VPC_QUERY, cosEndpoint, crnService, regionInfo } from "./regions.js";
+import {
+  CODE_ENGINE_REGIONS,
+  VPC_QUERY,
+  cosEndpoint,
+  crnService,
+  hostRegion,
+  regionInfo,
+} from "./regions.js";
 
 /**
  * Create forms and handlers. Regions come from the VPC region list, zones
@@ -78,7 +85,7 @@ async function zoneField(ctx: ListContext): Promise<CreateFieldConfig> {
       (
         await ctx.api
           .vpc(region)
-          .get(`/regions/${unencodedSegment(region)}/zones`, { query: VPC_QUERY })
+          .get(`/regions/${pathEncode(region)}/zones`, { query: VPC_QUERY })
           .catch(() => ({ zones: [] }))
       ).zones?.map((z) => ({ id: z.name, label: z.name, availableFor: [region] })) ?? [],
   );
@@ -588,7 +595,7 @@ export async function createResource(
       const name = required(fields, "name", "Name");
       const subnet = await ctx.api
         .vpc(region)
-        .get(`/subnets/${unencodedSegment(required(fields, "subnetId", "Subnet"))}`, {
+        .get(`/subnets/${pathEncode(required(fields, "subnetId", "Subnet"))}`, {
           query: VPC_QUERY,
         });
       const keyId = await ensureKey(
@@ -736,7 +743,7 @@ export async function createResource(
       const [cpu, memory] = (fields["resources"] || "1|4G").split("|");
       const app = await ctx.api
         .codeEngine(appRegion)
-        .post(`/projects/${unencodedSegment(projectId)}/apps`, {
+        .post(`/projects/${pathEncode(projectId)}/apps`, {
           body: {
             name: required(fields, "name", "Name"),
             image_reference: required(fields, "image", "Image"),
@@ -751,7 +758,7 @@ export async function createResource(
     }
     case "cos-bucket": {
       const name = required(fields, "name", "Bucket name").toLowerCase();
-      const location = required(fields, "location", "Location");
+      const location = hostRegion(required(fields, "location", "Location"));
       const storageClass = fields["storageClass"] || "smart";
       await ctx.api.requestXml({
         url: `https://${cosEndpoint(location)}/${encodeURIComponent(name)}`,

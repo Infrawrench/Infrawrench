@@ -63,11 +63,23 @@ export const VPC_QUERY: { version: string; generation: 2 } = {
   generation: 2,
 };
 
-export const vpcBase = (region: string) => `https://${region}.iaas.cloud.ibm.com/v1`;
+const HOST_LABEL = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
+
+/** A region goes into an API host name, where anything but one label moves the token elsewhere. */
+export function hostRegion(region: string): string {
+  if (!HOST_LABEL.test(region)) {
+    throw Object.assign(new Error(`IBM Cloud plugin: "${region}" is not a region`), {
+      status: 400,
+    });
+  }
+  return region;
+}
+
+export const vpcBase = (region: string) => `https://${hostRegion(region)}.iaas.cloud.ibm.com/v1`;
 export const codeEngineBase = (region: string) =>
-  `https://api.${region}.codeengine.cloud.ibm.com/v2`;
+  `https://api.${hostRegion(region)}.codeengine.cloud.ibm.com/v2`;
 export const databasesBase = (region: string) =>
-  `https://api.${region}.databases.cloud.ibm.com/v5/ibm`;
+  `https://api.${hostRegion(region)}.databases.cloud.ibm.com/v5/ibm`;
 export const RESOURCE_CONTROLLER = "https://resource-controller.cloud.ibm.com";
 export const CONTAINERS = "https://containers.cloud.ibm.com/global";
 export const BILLING = "https://billing.cloud.ibm.com";

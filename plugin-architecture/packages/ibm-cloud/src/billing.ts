@@ -4,7 +4,7 @@ import {
   type CostFetchRange,
   type CostRow,
   type CreditBalance,
-  unencodedSegment,
+  pathEncode,
 } from "@infrawrench/plugin-base";
 import { isPermissionGap, type IbmApi } from "./api.js";
 import type { components } from "./api-types.usage.gen.js";
@@ -111,7 +111,7 @@ export async function fetchCostData(api: IbmApi, range: CostFetchRange): Promise
       let res;
       try {
         res = await api.usage.get(
-          `/v4/accounts/${unencodedSegment(accountId)}/resource_instances/usage/${unencodedSegment(month)}`,
+          `/v4/accounts/${pathEncode(accountId)}/resource_instances/usage/${pathEncode(month)}`,
           {
             query: {
               _names: true,
@@ -139,9 +139,7 @@ export async function fetchCostData(api: IbmApi, range: CostFetchRange): Promise
 
 async function summary(api: IbmApi, month: string) {
   const accountId = await api.accountId();
-  return api.usage.get(
-    `/v4/accounts/${unencodedSegment(accountId)}/summary/${unencodedSegment(month)}`,
-  );
+  return api.usage.get(`/v4/accounts/${pathEncode(accountId)}/summary/${pathEncode(month)}`);
 }
 
 export async function fetchCredits(api: IbmApi, now = new Date()): Promise<CreditBalance[]> {

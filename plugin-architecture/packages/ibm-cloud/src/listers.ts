@@ -1,6 +1,5 @@
 import {
   pathEncode,
-  unencodedSegment,
   type ApiListItem,
   type ApiResponse,
   type ResourceInstance,
@@ -112,13 +111,30 @@ export function makeResource(
   };
 }
 
+export function malformedId(externalId: string): Error {
+  return Object.assign(new Error(`IBM Cloud plugin: malformed id "${externalId}"`), {
+    status: 400,
+  });
+}
+
 export function splitRegional(externalId: string): { region: string; id: string } {
   const i = externalId.indexOf("/");
-  if (i < 0)
-    throw Object.assign(new Error(`IBM Cloud plugin: malformed id "${externalId}"`), {
-      status: 400,
-    });
+  if (i <= 0 || i === externalId.length - 1) throw malformedId(externalId);
   return { region: externalId.slice(0, i), id: externalId.slice(i + 1) };
+}
+
+/** A worker pool's external id, `cluster/pool`. */
+export function splitPool(externalId: string): { cluster: string; pool: string } {
+  const [cluster, pool, ...rest] = externalId.split("/");
+  if (!cluster || !pool || rest.length) throw malformedId(externalId);
+  return { cluster, pool };
+}
+
+/** A Code Engine app's external id, `region/project/name`. */
+export function splitApp(externalId: string): { region: string; projectId: string; name: string } {
+  const [region, projectId, name, ...rest] = externalId.split("/");
+  if (!region || !projectId || !name || rest.length) throw malformedId(externalId);
+  return { region, projectId, name };
 }
 
 export function notFound(typeId: string, id: string): Error {
@@ -317,7 +333,7 @@ export async function getInstance(
   id: string,
 ): Promise<ResourceInstance> {
   const [i, floating] = await Promise.all([
-    ctx.api.vpc(region).get(`/instances/${unencodedSegment(id)}`, { query: VPC_QUERY }),
+    ctx.api.vpc(region).get(`/instances/${pathEncode(id)}`, { query: VPC_QUERY }),
     floatingByNic(ctx.api, region),
   ]);
   return mapInstance(ctx.accountId, region, i, floating);
@@ -757,8 +773,8 @@ export type CeApp = ApiResponse<CodeEngineOperations["get_app"]>;
 
 export function mapApp(
   accountId: string,
-  region: string | undefined,
-  projectId: string | undefined,
+  region: string,
+  projectId: string,
   a: CeApp,
 ): ResourceInstance {
   return makeResource(
@@ -794,7 +810,7 @@ export async function listApps(ctx: ListContext): Promise<ResourceInstance[]> {
       (
         await ceList(
           (query) =>
-            ctx.api.codeEngine(region).get(`/projects/${unencodedSegment(p.id)}/apps`, { query }),
+            ctx.api.codeEngine(region).get(`/projects/${pathEncode(p.id)}/apps`, { query }),
           (page) => page.apps,
         )
       ).map((a) => mapApp(ctx.accountId, region, p.id, a)),
@@ -871,7 +887,7 @@ export async function databaseResource(
   r: ResourceInstanceRc,
 ): Promise<ResourceInstance> {
   const crn = r.crn ?? r.id;
-  const region = r.region_id ?? DEFAULT_REGION;
+  const region = r.region_id || DEFAULT_REGION;
   const [info, groups] = await Promise.all([
     ctx.api
       .databases(region)

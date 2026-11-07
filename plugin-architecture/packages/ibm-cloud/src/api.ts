@@ -150,26 +150,6 @@ export function withQuery(url: string, query: Query | undefined): string {
   return `${url}${url.includes("?") ? "&" : "?"}${written}`;
 }
 
-/**
- * Where a client's query begins. `createApiClient` picks `?` or `&` from the
- * path alone, but these URLs were always joined by looking at the whole URL for
- * a read, and with a plain `?` for a write (only VPC writes have a query). The
- * two differ for a region or an id holding a `?`, so the client marks the spot
- * and {@link placeQuery} joins it. Encoded query text can never hold this.
- */
-const QUERY_MARK = "\0";
-
-const MARKED_QUERY = /[?&]\0([^\0]*)$/;
-
-function placeQuery(url: string, method: string): string {
-  const marked = MARKED_QUERY.exec(url);
-  if (!marked) return url;
-  const before = url.slice(0, marked.index);
-  const written = marked[1];
-  if (!written) return before;
-  return `${before}${method === "GET" && before.includes("?") ? "&" : "?"}${written}`;
-}
-
 /** IAM's answer to the API key grant. */
 type IamToken = ApiResponse<IamOperations["getToken_ApiKey"]>;
 
@@ -209,7 +189,7 @@ export class IbmApi {
       headers: JSON_ACCEPT,
       http: this.transport,
       contentType: "with-body",
-      serializeQuery: (query) => `${QUERY_MARK}${queryString(query)}`,
+      serializeQuery: queryString,
     });
   }
 
@@ -303,8 +283,7 @@ export class IbmApi {
   }
 
   private async authorized(req: Parameters<HttpHostServices["request"]>[0]) {
-    const { method, body } = req;
-    const url = placeQuery(req.url, method);
+    const { url, method, body } = req;
     const lower: Record<string, string> = {};
     for (const [k, v] of Object.entries(req.headers)) lower[k.toLowerCase()] = v;
     let refreshed = false;
