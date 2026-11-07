@@ -141,6 +141,122 @@ describe("fal client", () => {
   });
 });
 
+describe("reading every row of a list", () => {
+  const client = (http: HttpHostServices) => hostClient(new FalClient({ apiKey: "k" }, { http }));
+  const COST_RANGE = { fromDate: "2026-10-01", toDate: "2026-10-31" };
+
+  it.each([
+    ["fal-compute-instance", "instances", { id: "i" }, 100],
+    ["fal-api-key", "keys", { key_id: "k" }, 100],
+    ["fal-workflow", "workflows", { name: "w" }, 100],
+  ])("throws when %s never ends, after its cap", async (type, key, row, pages) => {
+    const { http, calls } = host(() => ({ body: { [key]: [row], next_cursor: "more" } }));
+    await expect(client(http).listResources(type, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(pages);
+  });
+
+  it("throws when the model usage summary never ends, past the 403 catch", async () => {
+    const { http, calls } = host(() => ({
+      body: { summary: [{ endpoint_id: "a/b" }], next_cursor: "more" },
+    }));
+    await expect(client(http).listResources("fal-model", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(200);
+  });
+
+  it("throws when either usage report never ends, past the serverless catch", async () => {
+    const endless = (never: string) =>
+      host((url) => ({
+        body: { time_series: [], next_cursor: url.includes(never) ? "more" : null, apps: [] },
+      }));
+    const models = endless("/models/usage");
+    await expect(client(models.http).fetchCostData(ACCOUNT, COST_RANGE)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(models.calls.filter((c) => c.url.includes("/models/usage"))).toHaveLength(50);
+    const serverless = endless("/serverless/usage");
+    await expect(client(serverless.http).fetchCostData(ACCOUNT, COST_RANGE)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(serverless.calls.filter((c) => c.url.includes("/serverless/usage"))).toHaveLength(50);
+  });
+
+  it("keeps what it read of a chart window instead of failing at the cap", async () => {
+    const { http, calls } = host(() => ({
+      body: {
+        time_series: [
+          { bucket: "2026-10-01T00:00:00Z", results: [{ endpoint_id: "a/b", request_count: 1 }] },
+        ],
+        next_cursor: "more",
+      },
+    }));
+    const series = await client(http).fetchMetricSeries(
+      "fal-model",
+      `${ACCOUNT}:fal-model:a/b`,
+      ACCOUNT,
+    );
+    expect(series.map((x) => x.label)).toEqual(["Request"]);
+    expect(calls).toHaveLength(10);
+  });
+
+  it.each([
+    ["fal-compute-instance", { instances: [{ id: "i" }], next_cursor: "2" }],
+    ["fal-api-key", { keys: [{ key_id: "k" }], next_cursor: "2" }],
+    ["fal-workflow", { workflows: [{ name: "w" }], next_cursor: "2" }],
+    ["fal-model", { summary: [], next_cursor: "2" }],
+  ])("refuses a renamed list for %s, on the first page and a later one", async (type, first) => {
+    const renamed = { rows: [], next_cursor: null };
+    const atOnce = host(() => ({ body: renamed }));
+    await expect(client(atOnce.http).listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    const later = host((url) => ({ body: url.includes("cursor=2") ? renamed : first }));
+    await expect(client(later.http).listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a Serverless app list and a usage report that are not lists", async () => {
+    const apps = host(() => ({ body: { items: [] } }));
+    await expect(client(apps.http).listResources("fal-app", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+    const usage = host((url) => ({
+      body: url.includes("/serverless/usage")
+        ? { rows: [], next_cursor: null }
+        : { time_series: [], next_cursor: null, apps: [] },
+    }));
+    await expect(client(usage.http).fetchCostData(ACCOUNT, COST_RANGE)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("goes on past an empty page that names a next cursor", async () => {
+    const { http } = host((url) =>
+      url.includes("cursor=2")
+        ? { body: { keys: [{ key_id: "k" }], next_cursor: null } }
+        : { body: { keys: [], next_cursor: "2" } },
+    );
+    const keys = await client(http).listResources("fal-api-key", ACCOUNT);
+    expect(keys.map((k) => k.externalId)).toEqual(["k"]);
+  });
+
+  it("goes through the host and never fetch", async () => {
+    const stub = vi.fn(async () => {
+      throw new Error("fetch must not be called");
+    });
+    vi.stubGlobal("fetch", stub);
+    try {
+      const { http } = host(() => ({ body: { instances: [], next_cursor: null } }));
+      await client(http).listResources("fal-compute-instance", ACCOUNT);
+      expect(http.request).toHaveBeenCalled();
+      expect(vi.mocked(http.request).mock.calls[0]?.[0]).not.toHaveProperty("caCert");
+      expect(stub).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 type ModelLine = NonNullable<ModelUsagePage["time_series"]>[number]["results"][number];
 type ServerlessLine = NonNullable<ServerlessUsagePage["time_series"]>[number]["results"][number];
 

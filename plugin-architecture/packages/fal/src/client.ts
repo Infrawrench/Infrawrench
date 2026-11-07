@@ -20,7 +20,12 @@ import type {
   SidebarItemSchema,
   StatusDotNode,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle, pathEncode, withMetricsCapability } from "@infrawrench/plugin-base";
+import {
+  joinSubtitle,
+  pathEncode,
+  requireListPage,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
 import {
   afterCursor,
   allPages,
@@ -46,6 +51,11 @@ const QUEUE_BASE = "https://queue.fal.run";
 const DASHBOARD = "https://fal.ai/dashboard";
 const METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
 const USAGE_LOOKBACK_DAYS = 30;
+/** The summary route takes no page size from us, and the document's example page is 50. */
+const USAGE_SUMMARY_MAX_PAGES = 200;
+/** 50,000 rows at the 1,000 a cost page asks for. */
+const COST_MAX_PAGES = 50;
+const ANALYTICS_MAX_PAGES = 10;
 
 const ANALYTICS_METRICS: Array<Exclude<keyof AnalyticsRow, "endpoint_id">> = [
   "request_count",
@@ -283,7 +293,7 @@ export class FalClient implements PluginClient {
           this.api.get("/models/usage", {
             query: { expand: "summary", start, timezone: "UTC", ...afterCursor(cursor) },
           }),
-        10,
+        { path: "/models/usage", key: "summary", maxPages: USAGE_SUMMARY_MAX_PAGES },
       );
     } catch (err) {
       if (statusOf(err) === 403) return [];
@@ -351,7 +361,9 @@ export class FalClient implements PluginClient {
       if (statusOf(err) === 403 || statusOf(err) === 404) return [];
       throw err;
     }
-    return (res.apps ?? []).filter((a) => a.endpoint_id).map((a) => this.mapApp(accountId, a));
+    return requireListPage(res.apps, { vendor: "fal", path: "/serverless/apps", key: "apps" })
+      .filter((a) => a.endpoint_id)
+      .map((a) => this.mapApp(accountId, a));
   }
 
   private mapApp(accountId: string, a: App): ResourceInstance {
@@ -383,13 +395,8 @@ export class FalClient implements PluginClient {
 
   /** `GET /compute/instances?limit=&cursor=` */
   private async listInstances(accountId: string): Promise<ResourceInstance[]> {
-    const pages = await allPages((cursor) =>
-      this.api.get("/compute/instances", { query: { limit: 100, ...afterCursor(cursor) } }),
-    );
-    return pages
-      .flatMap((p) => p.instances ?? [])
-      .filter((i) => i.id)
-      .map((i) => this.mapInstance(accountId, i));
+    const instances = await call(() => this.api.getAll("/compute/instances", "instances"));
+    return instances.filter((i) => i.id).map((i) => this.mapInstance(accountId, i));
   }
 
   private mapInstance(accountId: string, i: Instance): ResourceInstance {
@@ -414,11 +421,8 @@ export class FalClient implements PluginClient {
 
   /** `GET /keys?limit=&cursor=` */
   private async listKeys(accountId: string): Promise<ResourceInstance[]> {
-    const pages = await allPages((cursor) =>
-      this.api.get("/keys", { query: { limit: 100, ...afterCursor(cursor) } }),
-    );
-    return pages
-      .flatMap((p) => p.keys ?? [])
+    const keys = await call(() => this.api.getAll("/keys", "keys"));
+    return keys
       .filter((k) => k.key_id)
       .map((k) =>
         this.instance(
@@ -440,11 +444,8 @@ export class FalClient implements PluginClient {
 
   /** `GET /workflows?limit=&cursor=` */
   private async listWorkflows(accountId: string): Promise<ResourceInstance[]> {
-    const pages = await allPages((cursor) =>
-      this.api.get("/workflows", { query: { limit: 100, ...afterCursor(cursor) } }),
-    );
-    return pages
-      .flatMap((p) => p.workflows ?? [])
+    const workflows = await call(() => this.api.getAll("/workflows", "workflows"));
+    return workflows
       .filter((w) => w.name)
       .map((w) => {
         const id = `${s(w.user_nickname)}/${s(w.name)}`;
@@ -639,7 +640,12 @@ export class FalClient implements PluginClient {
               : this.api.get("/serverless/analytics", {
                   query: { ...query, ...afterCursor(cursor) },
                 }),
-          10,
+          {
+            path: `/${resourceTypeId === "fal-model" ? "models" : "serverless"}/analytics`,
+            key: "time_series",
+            maxPages: ANALYTICS_MAX_PAGES,
+            partial: true,
+          },
         );
         return analyticsSeries(pages);
       } catch (err) {
@@ -698,7 +704,7 @@ export class FalClient implements PluginClient {
                 ...afterCursor(cursor),
               },
             }),
-          50,
+          { path: "/models/usage", key: "time_series", maxPages: COST_MAX_PAGES },
         ),
         allPages(
           (cursor) =>
@@ -711,7 +717,7 @@ export class FalClient implements PluginClient {
                 ...afterCursor(cursor),
               },
             }),
-          50,
+          { path: "/serverless/usage", key: "time_series", maxPages: COST_MAX_PAGES },
         ).catch((err): ServerlessUsagePage[] => {
           if (statusOf(err) === 403 || statusOf(err) === 404) return [];
           throw err;

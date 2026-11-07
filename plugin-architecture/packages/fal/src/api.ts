@@ -1,6 +1,8 @@
 import {
   createApiClient,
-  type ApiClient,
+  ListTruncatedError,
+  requireListPage,
+  withCursorPagination,
   type ApiListItem,
   type ApiResponse,
   type HttpHostServices,
@@ -23,7 +25,7 @@ export type Instance = ApiResponse<operations["getComputeInstance"]>;
 export type RequestItem = ApiListItem<operations["listRequestsByEndpoint"], "items">;
 export type Revision = ApiListItem<operations["serverlessListAppRevisions"], "revisions">;
 
-export type FalApi = ApiClient<paths>;
+export type FalApi = ReturnType<typeof createFalApi>;
 
 /**
  * The query as fal has always been sent it: an empty string is left out, which
@@ -38,12 +40,8 @@ function writeQuery(query: Record<string, ParamValue>): string {
   return out.toString();
 }
 
-export function createFalApi(
-  apiKey: string,
-  caCert: string,
-  http: HttpHostServices | undefined,
-): FalApi {
-  return createApiClient<paths>({
+export function createFalApi(apiKey: string, caCert: string, http: HttpHostServices | undefined) {
+  const client = createApiClient<paths>({
     vendor: "fal",
     baseUrl: API_BASE,
     // fal uses `Key`, not `Bearer`.
@@ -54,6 +52,15 @@ export function createFalApi(
     // The message names the path without its query, which the default would add.
     httpError: ({ status, path, body }) =>
       new Error(`fal API error ${status} for ${path}: ${body}`),
+  });
+  return withCursorPagination(client, {
+    cursorParam: "cursor",
+    next: "next_cursor",
+    sizeParam: "limit",
+    pageSize: 100,
+    maxPages: 100,
+    // The document: next_cursor is "null if no more pages", so only that ends a list.
+    continueOnEmptyPage: true,
   });
 }
 
@@ -90,22 +97,43 @@ export function afterCursor(cursor: string | undefined): { cursor?: string } {
   return cursor ? { cursor } : {};
 }
 
+/** A usage or analytics report: its rows sit under whichever `expand` asked for them. */
+interface ReportPage {
+  next_cursor?: string | null;
+  time_series?: readonly object[];
+  summary?: readonly object[];
+}
+
 /**
- * Follow `next_cursor` on any paged route. A hand loop because the callers read
- * lists nested inside each page, and because an empty page with a cursor goes on.
+ * Every page of a report, which callers read whole because its rows are nested in
+ * buckets. `partial` keeps what was read at the cap, for a chart.
  */
-export async function allPages<T extends { next_cursor?: string | null }>(
+export async function allPages<T extends ReportPage>(
   fetchPage: (cursor: string | undefined) => Promise<T>,
-  maxPages = 20,
+  read: { path: string; key: "time_series" | "summary"; maxPages: number; partial?: boolean },
 ): Promise<T[]> {
   const out: T[] = [];
+  let items = 0;
   let cursor: string | undefined;
-  for (let i = 0; i < maxPages; i++) {
+  for (let i = 0; i < read.maxPages; i++) {
     const at = cursor;
     const page = await call(() => fetchPage(at));
+    const rows = requireListPage(page[read.key], {
+      vendor: "fal",
+      path: read.path,
+      key: read.key,
+      page,
+    });
+    items += rows.length;
     out.push(page);
-    if (!page.next_cursor) break;
+    if (!page.next_cursor) return out;
     cursor = page.next_cursor;
   }
-  return out;
+  if (read.partial) return out;
+  throw new ListTruncatedError({
+    vendor: "fal",
+    path: read.path,
+    items,
+    maxPages: read.maxPages,
+  });
 }
