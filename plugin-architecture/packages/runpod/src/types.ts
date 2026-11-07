@@ -1,31 +1,28 @@
+import type { ApiListItem, ApiResponse } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
+
 /**
- * The slice of Runpod payloads this plugin reads. REST field names are from
- * the published OpenAPI document (`https://rest.runpod.io/v1/openapi.json`),
- * GraphQL names from the public schema reference
- * (`https://graphql-spec.runpod.io`), both checked 2026-10. Everything is
- * optional because the spec marks almost nothing required.
+ * REST payloads come from the published OpenAPI document
+ * (`https://rest.runpod.io/v1/openapi.json`, see `plugingen.json`). GraphQL has
+ * no document the generator can read, so those are the slice this plugin reads,
+ * with names from the public schema reference (`https://graphql-spec.runpod.io`,
+ * checked 2026-10) and everything optional.
  */
 
-export interface RpGpuInfo {
-  id?: string;
-  count?: number;
-  displayName?: string;
-}
+/** `imageName` and `networkVolumeId` are read as fallbacks; the document lists neither on a pod. */
+export type RpPod = ApiResponse<operations["GetPod"]> & {
+  imageName?: string;
+  networkVolumeId?: string;
+};
 
-export interface RpMachine {
-  gpuTypeId?: string;
-  gpuType?: RpGpuInfo;
-  cpuTypeId?: string;
-  cpuType?: { id?: string; displayName?: string };
-  location?: string;
-  dataCenterId?: string;
-  secureCloud?: boolean;
-  supportPublicIp?: boolean;
-  maintenanceStart?: string;
-  maintenanceEnd?: string;
-  maintenanceNote?: string;
-  gpuDisplayName?: string;
-}
+/** The document lists `flashboot` as an input only. */
+export type RpEndpoint = ApiResponse<operations["GetEndpoint"]> & { flashboot?: boolean };
+
+export type RpTemplate = ApiResponse<operations["GetTemplate"]>;
+export type RpNetworkVolume = ApiResponse<operations["CreateNetworkVolume"]>;
+export type RpRegistryAuth = ApiResponse<operations["CreateContainerRegistryAuth"]>;
+export type RpBillingRecord = ApiListItem<operations["PodBilling"], null>;
+export type RpVolumeBillingRecord = ApiListItem<operations["NetworkVolumeBilling"], null>;
 
 export interface RpSavingsPlan {
   id?: string;
@@ -34,40 +31,6 @@ export interface RpSavingsPlan {
   endTime?: string;
   gpuTypeId?: string;
   podId?: string;
-}
-
-export interface RpPod {
-  id: string;
-  name?: string;
-  desiredStatus?: "RUNNING" | "EXITED" | "TERMINATED" | string;
-  image?: string;
-  imageName?: string;
-  costPerHr?: number;
-  adjustedCostPerHr?: number;
-  containerDiskInGb?: number;
-  volumeInGb?: number;
-  volumeMountPath?: string;
-  memoryInGb?: number;
-  vcpuCount?: number;
-  gpu?: RpGpuInfo;
-  cpuFlavorId?: string;
-  interruptible?: boolean;
-  locked?: boolean;
-  templateId?: string;
-  containerRegistryAuthId?: string;
-  networkVolumeId?: string;
-  networkVolume?: { id?: string; name?: string; size?: number; dataCenterId?: string };
-  endpointId?: string;
-  machineId?: string;
-  machine?: RpMachine;
-  publicIp?: string;
-  portMappings?: Record<string, number>;
-  ports?: string[];
-  env?: Record<string, string>;
-  lastStartedAt?: string;
-  lastStatusChange?: string;
-  savingsPlans?: RpSavingsPlan[];
-  volumeEncrypted?: boolean;
 }
 
 /** GraphQL extras merged into each pod: runtime telemetry and the SSH proxy host id. */
@@ -80,51 +43,6 @@ export interface RpPodExtras {
     container?: { cpuPercent?: number; memoryPercent?: number };
     gpus?: Array<{ id?: string; gpuUtilPercent?: number; memoryUtilPercent?: number }>;
   } | null;
-}
-
-export interface RpTemplate {
-  id: string;
-  name?: string;
-  imageName?: string;
-  category?: string;
-  isServerless?: boolean;
-  isPublic?: boolean;
-  isRunpod?: boolean;
-  containerDiskInGb?: number;
-  volumeInGb?: number;
-  volumeMountPath?: string;
-  ports?: string[];
-  env?: Record<string, string>;
-  dockerStartCmd?: string[];
-  dockerEntrypoint?: string[];
-  containerRegistryAuthId?: string;
-  readme?: string;
-  earned?: number;
-  runtimeInMin?: number;
-}
-
-export interface RpEndpoint {
-  id: string;
-  name?: string;
-  templateId?: string;
-  template?: RpTemplate;
-  computeType?: "GPU" | "CPU" | string;
-  gpuTypeIds?: string[];
-  gpuCount?: number;
-  instanceIds?: string[];
-  dataCenterIds?: string[];
-  workersMin?: number;
-  workersMax?: number;
-  idleTimeout?: number;
-  scalerType?: string;
-  scalerValue?: number;
-  executionTimeoutMs?: number;
-  flashboot?: boolean;
-  networkVolumeId?: string;
-  networkVolumeIds?: string[];
-  allowedCudaVersions?: string[];
-  version?: number;
-  createdAt?: string;
 }
 
 export interface RpEndpointHealth {
@@ -143,30 +61,6 @@ export interface RpEndpointHealth {
     throttled?: number;
     unhealthy?: number;
   };
-}
-
-export interface RpNetworkVolume {
-  id: string;
-  name?: string;
-  size?: number;
-  dataCenterId?: string;
-}
-
-export interface RpRegistryAuth {
-  id: string;
-  name?: string;
-}
-
-export interface RpBillingRecord {
-  amount?: number;
-  time?: string;
-  podId?: string;
-  endpointId?: string;
-  gpuTypeId?: string;
-  timeBilledMs?: number;
-  diskSpaceBilledGb?: number;
-  highPerformanceStorageAmount?: number;
-  highPerformanceStorageDiskSpaceBilledGb?: number;
 }
 
 export interface RpGpuType {

@@ -1,7 +1,7 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { isStatus, type RunpodApi } from "./api.js";
-import type { RpBillingRecord } from "./types.js";
+import type { RpBillingRecord, RpVolumeBillingRecord } from "./types.js";
 
 /**
  * Billed spend from Runpod's REST billing history (verified in the OpenAPI
@@ -78,7 +78,7 @@ export function mapComputeRecords(
 }
 
 export function mapVolumeRecords(
-  records: RpBillingRecord[] | undefined,
+  records: RpVolumeBillingRecord[] | undefined,
   range: CostFetchRange,
 ): CostRow[] {
   const rows: CostRow[] = [];
@@ -144,15 +144,13 @@ export async function fetchRunpodCostData(
   ctx: CostContext,
 ): Promise<CostRow[]> {
   const window = {
-    bucketSize: "day",
+    bucketSize: "day" as const,
     startTime: `${range.fromDate}T00:00:00Z`,
     endTime: `${nextDay(range.toDate)}T00:00:00Z`,
   };
   let pods: RpBillingRecord[];
   try {
-    pods = await api.rest<RpBillingRecord[]>("/billing/pods", {
-      query: { ...window, grouping: "podId" },
-    });
+    pods = await api.rest.get("/billing/pods", { query: { ...window, grouping: "podId" } });
   } catch (e) {
     if (isStatus(e, 401, 403)) {
       throw new CostSetupError(
@@ -163,10 +161,8 @@ export async function fetchRunpodCostData(
     throw e;
   }
   const [endpoints, volumes] = await Promise.all([
-    api.rest<RpBillingRecord[]>("/billing/endpoints", {
-      query: { ...window, grouping: "endpointId" },
-    }),
-    api.rest<RpBillingRecord[]>("/billing/networkvolumes", { query: window }),
+    api.rest.get("/billing/endpoints", { query: { ...window, grouping: "endpointId" } }),
+    api.rest.get("/billing/networkvolumes", { query: window }),
   ]);
   return aggregateRows([
     ...mapComputeRecords(pods, "Pods", "podId", range, ctx),

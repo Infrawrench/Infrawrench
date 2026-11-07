@@ -42,7 +42,7 @@ export async function sshFingerprint(blob: string): Promise<string> {
   } catch {
     return `SHA256:invalid-${blob.slice(0, 12)}`;
   }
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes as BufferSource));
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)));
   return `SHA256:${bytesToBase64(digest).replace(/=+$/, "")}`;
 }
 
