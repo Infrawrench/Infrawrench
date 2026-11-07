@@ -851,25 +851,29 @@ export class ClerkClient implements PluginClient {
   applyManifest(_resourceId: string, _accountId: string, manifest: string): PluginEffect<void> {
     return attempt(async () => {
       const changes: Array<{ id: string; value: string }> = JSON.parse(manifest);
-      const groups: Record<string, Record<string, boolean | number>> = {
-        restrictions: {},
-        org: {},
-        protect: {},
-      };
+      // A Map because the ids come from the request: a plain object would find `__proto__`.
+      const restrictions: Record<string, boolean | number> = {};
+      const org: Record<string, boolean | number> = {};
+      const protect: Record<string, boolean | number> = {};
+      const groups = new Map([
+        ["restrictions", restrictions],
+        ["org", org],
+        ["protect", protect],
+      ]);
       for (const { id, value } of changes) {
         const [group = "", key = ""] = id.split(".");
-        const target = groups[group];
+        const target = groups.get(group);
         if (!target || !key) continue;
         target[key] = key === "max_allowed_memberships" ? Number(value) : bool(value) === true;
       }
-      if (Object.keys(groups["restrictions"]!).length > 0) {
-        await this.api.patch("/instance/restrictions", { body: groups["restrictions"]! });
+      if (Object.keys(restrictions).length > 0) {
+        await this.api.patch("/instance/restrictions", { body: restrictions });
       }
-      if (Object.keys(groups["org"]!).length > 0) {
-        await this.api.patch("/instance/organization_settings", { body: groups["org"]! });
+      if (Object.keys(org).length > 0) {
+        await this.api.patch("/instance/organization_settings", { body: org });
       }
-      if (Object.keys(groups["protect"]!).length > 0) {
-        await this.api.patch("/instance/protect", { body: groups["protect"]! });
+      if (Object.keys(protect).length > 0) {
+        await this.api.patch("/instance/protect", { body: protect });
       }
     });
   }

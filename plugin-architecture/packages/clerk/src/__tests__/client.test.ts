@@ -220,6 +220,40 @@ describe("mutations", () => {
   });
 });
 
+describe("settings groups", () => {
+  it.each(["__proto__", "constructor", "toString", "hasOwnProperty"])(
+    "skips the group %j without writing to what it inherits",
+    async (group) => {
+      const c = client(() => ({ body: {} }));
+      try {
+        await c.applyManifest(
+          "r",
+          ACCOUNT,
+          JSON.stringify([{ id: `${group}.polluted`, value: "on" }]),
+        );
+        expect(Object.getOwnPropertyDescriptor(Object.prototype, "polluted")).toBeUndefined();
+        expect(Object.getOwnPropertyDescriptor(Object, "polluted")).toBeUndefined();
+        expect(
+          Object.getOwnPropertyDescriptor(Object.prototype.toString, "polluted"),
+        ).toBeUndefined();
+        expect(
+          Object.getOwnPropertyDescriptor(Object.prototype.hasOwnProperty, "polluted"),
+        ).toBeUndefined();
+        expect(calls).toHaveLength(0);
+      } finally {
+        for (const shared of [
+          Object.prototype,
+          Object,
+          Object.prototype.toString,
+          Object.prototype.hasOwnProperty,
+        ]) {
+          Reflect.deleteProperty(shared, "polluted");
+        }
+      }
+    },
+  );
+});
+
 describe("lists", () => {
   const pathOf = (call: Call) => new URL(call.url).pathname;
   const offsetOf = (call: Call) => Number(new URL(call.url).searchParams.get("offset"));
