@@ -30,16 +30,19 @@
  *   A platform set up with the subdomain method pulls as
  *   `<repo>.<host>/<image>`, which this module does not produce.
  *
- * **Bounds.** Every scannable artifact of every repository with `xrayIndex` on.
+ * **Bounds.** Every scannable artifact of every repository whose configuration
+ * does not turn `xrayIndex` off.
  * Past {@link MAX_REPOS} repositories or {@link MAX_ARTIFACTS} artifacts the read
  * refuses, because the host replaces its stored findings with what this returns
  * and a finding on an artifact not read would count as fixed.
  */
 
 import {
+  ListPageError,
   ListTruncatedError,
   normalizeVulnerabilityFindings,
   normalizeVulnerabilitySeverity,
+  requireListPage,
   VulnerabilityAccessError,
   type VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
@@ -347,11 +350,23 @@ async function readSummary(
   version: "v2" | "v1",
   paths: string[],
 ): Promise<SummaryResponse> {
+  const path = `/xray/api/${version}/summary/artifact`;
   try {
-    return await jfrogFetch<SummaryResponse>(ctx, `/xray/api/${version}/summary/artifact`, {
+    const res = await jfrogFetch<SummaryResponse>(ctx, path, {
       method: "POST",
       body: { paths },
     });
+    // Paths Xray has no scan for come back under `errors`, so `artifacts` alone may be absent.
+    if (res?.artifacts === undefined && res?.errors === undefined) {
+      throw new ListPageError({
+        vendor: "JFrog Xray",
+        path,
+        key: "artifacts",
+        found: res?.artifacts,
+        page: res,
+      });
+    }
+    return res;
   } catch (err) {
     if (statusOf(err) === 404 && version === "v1") {
       throw new VulnerabilityAccessError(
@@ -401,7 +416,12 @@ export async function fetchJfrogVulnerabilityFindings(
     } catch (err) {
       accessError(err, `artifact search in ${repo.key}`);
     }
-    for (const item of res?.results ?? []) {
+    const rows = requireListPage(res?.results, {
+      vendor: "JFrog Xray",
+      path: "/artifactory/api/search/aql",
+      key: "results",
+    });
+    for (const item of rows) {
       const t = targetFor(ctx.baseUrl, repo, item);
       if (t) targets.set(t.xrayPath, t);
     }

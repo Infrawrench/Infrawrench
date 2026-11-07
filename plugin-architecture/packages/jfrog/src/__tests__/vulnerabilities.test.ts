@@ -404,3 +404,66 @@ describe("JFrog Xray vulnerability findings", () => {
     );
   });
 });
+
+describe("repositories whose Xray setting cannot be read", () => {
+  const SUMMARY_PATH = "/xray/api/v2/summary/artifact";
+  const FOUND = {
+    results: [
+      { repo: "npm-local", path: "a/-", name: "a-1.0.0.tgz", sha256: NPM_SHA, type: "file" },
+    ],
+  };
+
+  function read(repoConfig: () => unknown, aql: unknown = FOUND) {
+    const { http, calls } = makeHttp((call: Call) => {
+      if (call.url.pathname === "/artifactory/api/repositories")
+        return [{ key: "npm-local", type: "LOCAL", packageType: "Npm" }];
+      if (call.url.pathname === "/artifactory/api/repositories/configurations")
+        return { status: 403, body: { errors: [{ message: "admin only" }] } };
+      if (call.url.pathname === "/artifactory/api/repositories/npm-local") return repoConfig();
+      if (call.url.pathname === "/artifactory/api/search/aql") return aql;
+      if (call.url.pathname === SUMMARY_PATH) return { artifacts: [], errors: [] };
+      throw new Error(`Unexpected request to ${call.url.pathname}`);
+    });
+    const c = hostClient(new JfrogClient(creds, { http } as never));
+    return { run: c.listVulnerabilityFindings!("acct"), calls };
+  }
+
+  const asked = (calls: Call[]) => calls.filter((x) => x.url.pathname === SUMMARY_PATH).length;
+
+  it.each<[string, () => unknown]>([
+    ["a refused read", () => ({ status: 403, body: { errors: [{ message: "no" }] } })],
+    ["a failed read", () => ({ status: 500, body: { errors: [{ message: "down" }] } })],
+    ["a partial configuration", () => ({ key: "npm-local", packageType: "npm", rclass: "local" })],
+  ])("asks Xray about the artifacts after %s", async (_what, repoConfig) => {
+    const { run, calls } = read(repoConfig);
+    await run;
+    expect(asked(calls)).toBe(1);
+  });
+
+  it("skips only a repository whose configuration says indexing is off", async () => {
+    const { run, calls } = read(() => ({ key: "npm-local", packageType: "npm", xrayIndex: false }));
+    await run;
+    expect(calls.filter((x) => x.url.pathname === "/artifactory/api/search/aql")).toHaveLength(0);
+  });
+
+  it("does not read a search answer with no results as no artifacts", async () => {
+    const { run } = read(() => ({ key: "npm-local", packageType: "npm", xrayIndex: true }), {
+      range: { total: 0 },
+    });
+    await expect(run).rejects.toThrow("is not a list");
+  });
+
+  it("does not read a summary with neither artifacts nor errors as clean", async () => {
+    const { http } = makeHttp((call: Call) => {
+      if (call.url.pathname === "/artifactory/api/repositories")
+        return [{ key: "npm-local", type: "LOCAL", packageType: "Npm" }];
+      if (call.url.pathname === "/artifactory/api/repositories/configurations")
+        return { LOCAL: [{ key: "npm-local", packageType: "npm", xrayIndex: true }] };
+      if (call.url.pathname === "/artifactory/api/search/aql") return FOUND;
+      if (call.url.pathname === SUMMARY_PATH) return { status_message: "ok" };
+      throw new Error(`Unexpected request to ${call.url.pathname}`);
+    });
+    const c = hostClient(new JfrogClient(creds, { http } as never));
+    await expect(c.listVulnerabilityFindings!("acct")).rejects.toThrow("is not a list");
+  });
+});

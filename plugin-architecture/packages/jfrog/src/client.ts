@@ -15,7 +15,12 @@ import type {
   StorageObject,
   VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
-import { base64ToUtf8, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  base64ToUtf8,
+  externalIdOf,
+  reportUnreadListPart,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import type { JfrogContext } from "./api.js";
 import {
   accessPaged,
@@ -124,10 +129,17 @@ const TOKEN_LIFETIMES = [
   { id: "0", label: "Never expires", description: "Admin only, and not recommended" },
 ];
 
-const MAX_BUILDS = 50;
+/** Rolling window: the newest N. Older rows falling off is what this type means. */
 const RUNS_PER_BUILD = 25;
+/**
+ * Rows one poll makes a request each for, per type. JFrog publishes no rate limit, and the
+ * manifest's 5 requests a second has to cover every type inside the 300 seconds of a poll.
+ */
 const MAX_DETAIL_LOOKUPS = 200;
+/** Rolling window: the newest N. Older rows falling off is what this type means. */
 const VIOLATIONS_LIMIT = 100;
+/** What a create form's picker reads; a picker with part of a very long list still works. */
+const PICKER_PAGES = { maxPages: 20, partial: true };
 
 /** Run `fn` over `items` with at most `limit` in flight. */
 async function mapLimit<T, R>(
@@ -145,6 +157,34 @@ async function mapLimit<T, R>(
   });
   await Promise.all(workers);
   return out;
+}
+
+/**
+ * `read` over `items`, at most {@link MAX_DETAIL_LOOKUPS} a poll from a random start, so
+ * everything is read over time and a long list cannot use up the poll. The rest is named as
+ * unread and its stored rows stay. A host that keeps no track prunes nothing and has no poll
+ * to outlast, so it gets everything.
+ */
+async function readWithinBudget<T, R>(
+  items: T[],
+  unread: (rest: T[]) => Parameters<typeof reportUnreadListPart>[0],
+  read: (item: T) => Promise<R>,
+): Promise<R[]> {
+  if (items.length <= MAX_DETAIL_LOOKUPS) return mapLimit(items, 8, read);
+  const start = Math.floor(Math.random() * items.length);
+  const rotated = [...items.slice(start), ...items.slice(0, start)];
+  const tracked = reportUnreadListPart(unread(rotated.slice(MAX_DETAIL_LOOKUPS)));
+  return mapLimit(tracked ? rotated.slice(0, MAX_DETAIL_LOOKUPS) : rotated, 8, read);
+}
+
+/** Xray lists answer 404 when Xray is not part of the subscription: that is "none", not an error. */
+async function noneWithoutXray<T>(read: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await read();
+  } catch (err) {
+    if (statusOf(err) === 404) return [];
+    throw err;
+  }
 }
 
 const list = (raw: string | undefined): string[] =>
@@ -259,15 +299,17 @@ export class JfrogClient implements PluginClient {
   }
 
   private async repoSummaries(): Promise<JfrogRepoSummary[]> {
-    const res = await jfrogFetch<JfrogRepoSummary[]>(this.ctx, "/artifactory/api/repositories");
-    return Array.isArray(res) ? res : [];
+    const path = "/artifactory/api/repositories";
+    const res = await jfrogFetch<JfrogRepoSummary[]>(this.ctx, path);
+    return requireListPage(res, { vendor: "JFrog", path, key: null });
   }
 
   /** Builds are a Pro feature; a platform without any answers 404. */
   private async buildNames(): Promise<Array<{ name: string; lastStarted?: string }>> {
     try {
-      const res = await jfrogFetch<JfrogBuildsList>(this.ctx, "/artifactory/api/build");
-      return (res?.builds ?? [])
+      const path = "/artifactory/api/build";
+      const res = await jfrogFetch<JfrogBuildsList>(this.ctx, path);
+      return requireListPage(res?.builds, { vendor: "JFrog", path, key: "builds" })
         .map((b) => ({
           name: lastSegment(b.uri),
           ...(b.lastStarted ? { lastStarted: b.lastStarted } : {}),
@@ -281,8 +323,9 @@ export class JfrogClient implements PluginClient {
 
   private async buildRuns(name: string): Promise<Array<{ number: string; started?: string }>> {
     try {
-      const res = await jfrogFetch<JfrogBuildRuns>(this.ctx, `/artifactory/api/build/${enc(name)}`);
-      return (res?.buildsNumbers ?? [])
+      const path = `/artifactory/api/build/${enc(name)}`;
+      const res = await jfrogFetch<JfrogBuildRuns>(this.ctx, path);
+      return requireListPage(res?.buildsNumbers, { vendor: "JFrog", path, key: "buildsNumbers" })
         .map((b) => ({ number: lastSegment(b.uri), ...(b.started ? { started: b.started } : {}) }))
         .filter((b) => b.number)
         .sort((a, b) => (b.started ?? "").localeCompare(a.started ?? ""));
@@ -292,28 +335,35 @@ export class JfrogClient implements PluginClient {
     }
   }
 
-  /** Xray lists answer 404 when Xray is not part of the subscription: that is "none", not an error. */
-  private async xray<T>(
-    path: string,
-    init: Parameters<typeof jfrogFetch>[2] = {},
-  ): Promise<T | undefined> {
-    try {
-      return await jfrogFetch<T>(this.ctx, path, init);
-    } catch (err) {
-      if (statusOf(err) === 404) return undefined;
-      throw err;
-    }
+  /** A bare array from Xray. Xray is a Go service, which writes an empty slice as `null`. */
+  private xrayList<T>(path: string): Promise<T[]> {
+    return noneWithoutXray(async () => {
+      const res = await jfrogFetch<T[] | null | undefined>(this.ctx, path);
+      return res === null ? [] : requireListPage(res, { vendor: "JFrog Xray", path, key: null });
+    });
   }
 
-  private async violations(filters: Record<string, string> = {}): Promise<XrayViolation[]> {
-    const res = await this.xray<{ violations?: XrayViolation[] }>("/xray/api/v1/violations", {
-      method: "POST",
-      body: {
-        filters,
-        pagination: { order_by: "created", direction: "desc", limit: VIOLATIONS_LIMIT, offset: 1 },
-      },
+  private violations(filters: Record<string, string> = {}): Promise<XrayViolation[]> {
+    const path = "/xray/api/v1/violations";
+    return noneWithoutXray(async () => {
+      const res = await jfrogFetch<{ violations?: XrayViolation[] }>(this.ctx, path, {
+        method: "POST",
+        body: {
+          filters,
+          pagination: {
+            order_by: "created",
+            direction: "desc",
+            limit: VIOLATIONS_LIMIT,
+            offset: 1,
+          },
+        },
+      });
+      return requireListPage(res?.violations, {
+        vendor: "JFrog Xray",
+        path,
+        key: "violations",
+      });
     });
-    return res?.violations ?? [];
   }
 
   private user(name: string): Promise<AccessUser> {
@@ -341,15 +391,17 @@ export class JfrogClient implements PluginClient {
       this.ctx,
       "/access/api/v2/users",
       "users",
+      PICKER_PAGES,
     );
     return users.map((u) => u.username).filter(Boolean);
   }
 
-  private async groupNames(): Promise<string[]> {
+  private async groupNames(options?: { maxPages: number; partial: boolean }): Promise<string[]> {
     const groups = await accessPaged<{ group_name?: string; name?: string }>(
       this.ctx,
       "/access/api/v2/groups",
       "groups",
+      options,
     );
     return groups.map((g) => g.group_name ?? g.name ?? "").filter(Boolean);
   }
@@ -377,30 +429,34 @@ export class JfrogClient implements PluginClient {
         case "jfrog-build":
           return (await this.buildNames()).map((b) => mapBuild(accountId, b.name, b.lastStarted));
         case "jfrog-build-run": {
-          const builds = (await this.buildNames()).slice(0, MAX_BUILDS);
-          const runs = await mapLimit(builds, 6, async (b) =>
-            (await this.buildRuns(b.name))
-              .slice(0, RUNS_PER_BUILD)
-              .map((r) => mapBuildRun(accountId, b.name, r.number, r.started)),
+          const runs = await readWithinBudget(
+            await this.buildNames(),
+            (rest) => ({
+              parentResourceIds: rest.map((b) => `${accountId}:jfrog-build:${b.name}`),
+            }),
+            async (b) =>
+              (await this.buildRuns(b.name))
+                .slice(0, RUNS_PER_BUILD)
+                .map((r) => mapBuildRun(accountId, b.name, r.number, r.started)),
           );
           return runs.flat();
         }
         case "jfrog-xray-watch":
-          return ((await this.xray<XrayWatch[]>("/xray/api/v2/watches")) ?? [])
+          return (await this.xrayList<XrayWatch>("/xray/api/v2/watches"))
             .filter((w) => w.general_data?.name)
             .map((w) => mapWatch(accountId, w));
         case "jfrog-xray-policy":
-          return ((await this.xray<XrayPolicy[]>("/xray/api/v1/policies")) ?? []).map((p) =>
+          return (await this.xrayList<XrayPolicy>("/xray/api/v1/policies")).map((p) =>
             this.withRules(mapPolicy(accountId, p), p),
           );
         case "jfrog-xray-violation":
           return (await this.violations()).map((v) => mapViolation(accountId, v));
         case "jfrog-access-token": {
-          const res = await jfrogFetch<{ tokens?: AccessToken[] }>(
-            this.ctx,
-            "/access/api/v1/tokens",
-          );
-          return (res?.tokens ?? []).filter((t) => t.token_id).map((t) => mapToken(accountId, t));
+          const path = "/access/api/v1/tokens";
+          const res = await jfrogFetch<{ tokens?: AccessToken[] }>(this.ctx, path);
+          return requireListPage(res?.tokens, { vendor: "JFrog", path, key: "tokens" })
+            .filter((t) => t.token_id)
+            .map((t) => mapToken(accountId, t));
         }
         case "jfrog-user": {
           const users = await accessPaged<AccessUser>(this.ctx, "/access/api/v2/users", "users");
@@ -670,7 +726,10 @@ export class JfrogClient implements PluginClient {
           key: s.key,
           rclass: repoClass(config?.rclass ?? s.type),
           packageType: (config?.packageType ?? s.packageType ?? "").toLowerCase(),
-          xrayIndex: config?.xrayIndex === true,
+          // Only a configuration that says so rules a repository out. A token that is not an
+          // admin gets part of one or none, and a repository wrongly left out reads as clean,
+          // while asking Xray about an artifact it does not scan reports nothing.
+          xrayIndex: config?.xrayIndex !== false,
         };
       });
       return fetchJfrogVulnerabilityFindings(this.ctx, repos);
@@ -878,7 +937,7 @@ export class JfrogClient implements PluginClient {
         case "jfrog-access-token": {
           const [users, groups] = await Promise.all([
             this.userNames().catch(() => [] as string[]),
-            this.groupNames().catch(() => [] as string[]),
+            this.groupNames(PICKER_PAGES).catch(() => [] as string[]),
           ]);
           return {
             fields: [
@@ -948,7 +1007,7 @@ export class JfrogClient implements PluginClient {
           };
         }
         case "jfrog-user": {
-          const groups = await this.groupNames().catch(() => [] as string[]);
+          const groups = await this.groupNames(PICKER_PAGES).catch(() => [] as string[]);
           return {
             fields: [
               {

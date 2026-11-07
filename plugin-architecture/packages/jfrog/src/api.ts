@@ -1,4 +1,8 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
+
+/** 100,000 rows at the 500 a page {@link accessPaged} asks for: what one poll can read and write. */
+const ACCESS_MAX_PAGES = 200;
 
 /**
  * Everything one JFrog Platform request needs. Split out of the client so the
@@ -170,29 +174,46 @@ export async function jfrogFetch<T>(
 
 /**
  * Every page of an Access `v2` list (`users`, `groups`, `permissions`), which
- * pages with an opaque `cursor` echoed back in the body. Bounded so a server
- * that keeps returning the same cursor cannot spin forever.
+ * pages with an opaque `cursor` echoed back in the body. Past the cap it throws,
+ * unless the caller says part of the list will do.
  */
 export async function accessPaged<T>(
   ctx: JfrogContext,
   path: string,
   listKey: string,
-  query: Query = {},
-  maxPages = 20,
+  options: { maxPages?: number; partial?: boolean } = {},
 ): Promise<T[]> {
+  const { maxPages = ACCESS_MAX_PAGES, partial = false } = options;
   const out: T[] = [];
   let cursor: string | undefined;
+  let previous: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const res = await jfrogFetch<Record<string, unknown>>(ctx, path, {
-      query: { limit: 500, ...query, ...(cursor ? { cursor } : {}) },
+    const res = await jfrogFetch<Record<string, T[] | string | null | undefined> | undefined>(
+      ctx,
+      path,
+      { query: { limit: 500, ...(cursor ? { cursor } : {}) } },
+    );
+    const list = res?.[listKey];
+    const rows = requireListPage(typeof list === "string" ? undefined : list, {
+      vendor: "JFrog",
+      path,
+      key: listKey,
     });
-    const items = Array.isArray(res?.[listKey]) ? (res[listKey] as T[]) : [];
-    out.push(...items);
-    const next = typeof res?.["cursor"] === "string" ? (res["cursor"] as string) : undefined;
-    if (!next || next === cursor || items.length === 0) break;
+    out.push(...rows);
+    const next = res?.["cursor"];
+    if (typeof next !== "string" || !next || rows.length === 0) return out;
+    const written = JSON.stringify(rows);
+    if (next === cursor) {
+      // Access does not document how a list ends, so a last page may hand back its own
+      // cursor. The same rows again mean the cursor is stuck, with the rest unread.
+      if (written !== previous) return out;
+      break;
+    }
     cursor = next;
+    previous = written;
   }
-  return out;
+  if (partial) return out;
+  throw new ListTruncatedError({ vendor: "JFrog", path, items: out.length, maxPages });
 }
 
 /** Encode each segment of a repository path, keeping the slashes. */
