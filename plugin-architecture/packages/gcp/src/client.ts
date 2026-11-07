@@ -289,8 +289,15 @@ export class GcpClient implements PluginClient {
   private listerCtx(typeId: string, accountId: string): ListerContext {
     const get = async <T>(url: string): Promise<T> => {
       const body = await this.get<T>(url);
-      if (saysPartWentUnread(body)) {
-        reportUnreadListPart({ idPrefixes: [this.id(accountId, typeId, "")] });
+      if (
+        saysPartWentUnread(body) &&
+        !reportUnreadListPart({ idPrefixes: [this.id(accountId, typeId, "")] })
+      ) {
+        // Nobody keeps the rows it left out (the desktop, a read outside a sync), and
+        // the part that came back is not the whole list.
+        throw new Error(
+          `GCP answered part of this list, naming locations it could not reach: ${url}`,
+        );
       }
       return body;
     };

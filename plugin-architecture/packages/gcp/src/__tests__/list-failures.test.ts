@@ -167,6 +167,12 @@ describe.each(PARENT_LISTS)("$name when one parent's children fail", (list) => {
     expect(unread).toHaveBeenCalledWith({ parentResourceIds: [list.unreadParent] });
   });
 
+  it("fails on a parent's 403 where nobody keeps its rows", async () => {
+    Reflect.set(globalThis, unreadHook, () => false);
+    const err = apiError(403, "PERMISSION_DENIED");
+    await expect(list.run(whenSecondAnswers(err))).rejects.toBe(err);
+  });
+
   it("says so when every parent refuses, rather than listing nothing", async () => {
     const err = apiError(403, "PERMISSION_DENIED");
     const ctx = makeCtx((url) => {
@@ -272,6 +278,18 @@ describe.each(REGION_LISTS)("$name when one region's read fails", (list) => {
     const rows = await list.run(whenRefusingAnswers(err));
     expect(rows).toHaveLength(list.survivors);
     expect(unread).toHaveBeenCalledWith({ idPrefixes: [list.unreadPrefix] });
+  });
+
+  it("fails on a region's 403 where nobody keeps its rows", async () => {
+    Reflect.set(globalThis, unreadHook, () => false);
+    const err = apiError(403, "PERMISSION_DENIED");
+    await expect(list.run(whenRefusingAnswers(err))).rejects.toBe(err);
+  });
+
+  it("still reads a region without the service as none where nobody keeps rows", async () => {
+    Reflect.set(globalThis, unreadHook, () => false);
+    const rows = await list.run(whenRefusingAnswers(apiError(400, "location is not supported")));
+    expect(rows).toHaveLength(list.survivors);
   });
 
   it("says so when every region refuses, rather than listing nothing", async () => {

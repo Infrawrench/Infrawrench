@@ -116,8 +116,7 @@ async function listKmsLocations(
       "locations",
     );
   } catch (err) {
-    if (!isApiDisabled(err)) throw err;
-    reportUnreadListPart({ idPrefixes: [idPrefix] });
+    if (!isApiDisabled(err) || !reportUnreadListPart({ idPrefixes: [idPrefix] })) throw err;
     return [];
   }
 }

@@ -203,7 +203,10 @@ async function readFanOut<P, T>(
       if (answer === "failed") throw err;
       if (answer === "refused") {
         if (!isApiDisabled(err)) refusal ??= { err };
-        reportUnreadListPart(options.unread(parent));
+        const kept = reportUnreadListPart(options.unread(parent));
+        // Nobody keeps this parent's rows, so leaving them out would be part of the
+        // list. A region without the service holds none, and still reads as that.
+        if (!kept && (isPermissionRefusal(err) || isApiDisabled(err))) throw err;
       }
       return [];
     }

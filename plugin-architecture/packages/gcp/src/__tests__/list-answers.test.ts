@@ -228,6 +228,12 @@ describe("an answer that says part of the list did not come back", () => {
     expect(unread).toHaveBeenCalledWith({ idPrefixes: [`${ACCT}:${typeId}:`] });
   });
 
+  it("fails where nobody keeps the rows it left out", async () => {
+    Reflect.set(globalThis, unreadHook, () => false);
+    const { client } = clientFor(() => ({ functions: [{ name: "f/g" }], unreachable: ["us-b"] }));
+    await expect(client.listResources("cloud-function", ACCT)).rejects.toThrow(/could not reach/);
+  });
+
   it("Redis drops the placeholder it sends for a location it could not reach", async () => {
     const { client } = clientFor(() => ({
       instances: [
@@ -304,6 +310,12 @@ describe("an API switched off in the project", () => {
       const prefixes = unread.mock.calls.flatMap(([part]) => part.idPrefixes ?? []);
       expect(prefixes.length).toBeGreaterThan(0);
       for (const prefix of prefixes) expect(prefix).toContain(`${ACCT}:${typeId}:`);
+    });
+
+    it("fails with Google's message where nobody keeps the rows", async () => {
+      Reflect.set(globalThis, unreadHook, () => false);
+      const { client } = clientFor(() => disabled);
+      await expect(client.listResources(typeId, ACCT)).rejects.toThrow("not enabled");
     });
 
     it.each([
