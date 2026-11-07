@@ -582,6 +582,26 @@ describe("invokeAction — cancel", () => {
   });
 });
 
+describe("a blank id", () => {
+  it.each([
+    ["dataset", `${ACCOUNT}:dataset:`],
+    ["finetuned-model", `${ACCOUNT}:finetuned-model:`],
+  ])("refuses to delete a %s without sending anything", async (type, id) => {
+    installFetch(() => jsonResponse({}));
+    await expect(client().deleteResource(type, id, ACCOUNT)).rejects.toThrow(/no id/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it.each([
+    ["embed-job", `${ACCOUNT}:embed-job:`],
+    ["batch", `${ACCOUNT}:batch:`],
+  ])("refuses to cancel a %s without sending anything", async (type, id) => {
+    installFetch(() => jsonResponse({}));
+    await expect(client().invokeAction(type, id, "cancel", ACCOUNT)).rejects.toThrow(/no id/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("transcribeAudio", () => {
   const wavBytes = Uint8Array.from([0x52, 0x49, 0x46, 0x46, 0x01, 0x02, 0x03, 0x04]);
   const wavBase64 = Buffer.from(wavBytes).toString("base64");

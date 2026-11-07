@@ -852,7 +852,7 @@ export class CohereClient implements PluginClient {
    */
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const externalId = externalIdOf(resourceId);
+      const externalId = requireExternalId(resourceId);
       if (typeId === "dataset") {
         await this.api.delete(`/v1/datasets/${pathEncode(externalId)}`);
         return;
@@ -879,7 +879,7 @@ export class CohereClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const externalId = externalIdOf(resourceId);
+      const externalId = requireExternalId(resourceId);
 
       if (typeId === "embed-job" && actionId === "cancel") {
         await this.api.post(`/v1/embed-jobs/${pathEncode(externalId)}/cancel`);
@@ -1730,6 +1730,13 @@ function defaultTranscribeOption(): SpeechPanelOption {
     label: TRANSCRIBE_MODEL,
     description: "Cohere's speech-to-text model",
   };
+}
+
+/** The id a delete or a cancel acts on: a blank one must not reach the API. */
+function requireExternalId(resourceId: string): string {
+  const externalId = externalIdOf(resourceId);
+  if (!externalId) throw new Error(`Cohere plugin: ${resourceId} has no id to act on`);
+  return externalId;
 }
 
 /** How a detail tab's read went, so a failure and a long run do not read as a short one. */
