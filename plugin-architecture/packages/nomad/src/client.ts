@@ -20,6 +20,8 @@ import {
   decodePromptArgs,
   externalIdOf,
   pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
   unencodedSegment,
   utf8ToBase64,
   withinListCap,
@@ -203,6 +205,11 @@ const PROBES: Array<{ capability: PreflightCapability; probe: (api: NomadApi) =>
 
 export const NOMAD_PREFLIGHT = { capabilities: PROBES.map((p) => p.capability) };
 
+/** Go writes an empty slice as `null`, so that alone means none: nothing else may prune a list. */
+function rows<T>(path: string, body: readonly T[] | null | undefined): T[] {
+  return requireListPage(body === null ? [] : body, { vendor: "Nomad", path, key: null });
+}
+
 export class NomadClient implements PluginClient {
   private readonly ctx: NomadContext;
   private readonly api: NomadApi;
@@ -213,13 +220,16 @@ export class NomadClient implements PluginClient {
   }
 
   private soft<T>(p: Promise<T>): Promise<T | undefined> {
-    return p.catch(() => undefined);
+    return p.catch((err: unknown) => {
+      rethrowIncompleteList(err);
+      return undefined;
+    });
   }
 
   /** A list that is empty rather than failing when ACL support is off or the feature is absent. */
-  private async optional<T>(p: Promise<T[]>): Promise<T[]> {
+  private async optional<T>(path: string, p: Promise<T[] | null | undefined>): Promise<T[]> {
     try {
-      return (await p) ?? [];
+      return rows(path, await p);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       if (
@@ -284,7 +294,7 @@ export class NomadClient implements PluginClient {
   }
 
   private async variables() {
-    return this.api.get("/vars", { query: ALL }).then((v) => v ?? []);
+    return rows("/vars", await this.api.get("/vars", { query: ALL }));
   }
 
   private variable(ns: string, path: string) {
@@ -323,26 +333,31 @@ export class NomadClient implements PluginClient {
         case "nomad-cluster":
           return [await this.cluster(accountId)];
         case "nomad-namespace":
-          return (await this.api.get("/namespaces")).map((n) => this.mapNamespace(accountId, n));
+          return rows("/namespaces", await this.api.get("/namespaces")).map((n) =>
+            this.mapNamespace(accountId, n),
+          );
         case "nomad-node-pool": {
           const [pools, nodes] = await Promise.all([
             this.api.get("/node/pools"),
             this.soft(this.api.get("/nodes")),
           ]);
-          return pools.map((p) =>
+          return rows("/node/pools", pools).map((p) =>
             this.mapPool(accountId, p, nodes?.filter((n) => n.NodePool === p.Name).length),
           );
         }
         case "nomad-node":
-          return (await this.api.get("/nodes", { query: { resources: true } })).map((n) =>
-            mapNode(accountId, n),
+          return rows("/nodes", await this.api.get("/nodes", { query: { resources: true } })).map(
+            (n) => mapNode(accountId, n),
           );
         case "nomad-job": {
           const [jobs, versions] = await Promise.all([
             this.api.get("/jobs", { query: ALL }),
             this.jobVersions(),
           ]);
-          return withinListCap(jobs, MAX_LISTED, { vendor: "Nomad", path: "/jobs" }).map((j) => {
+          return withinListCap(rows("/jobs", jobs), MAX_LISTED, {
+            vendor: "Nomad",
+            path: "/jobs",
+          }).map((j) => {
             const version = versions.get(joinId(j.Namespace ?? "default", j.ID ?? ""));
             return mapJob(accountId, {
               ...j,
@@ -351,8 +366,10 @@ export class NomadClient implements PluginClient {
           });
         }
         case "nomad-allocation": {
-          const allocs =
-            (await this.api.get("/allocations", { query: { ...ALL, resources: false } })) ?? [];
+          const allocs = rows(
+            "/allocations",
+            await this.api.get("/allocations", { query: { ...ALL, resources: false } }),
+          );
           const live = (a: AllocStub) =>
             a.ClientStatus === "running" || a.ClientStatus === "pending" ? 1 : 0;
           return withinListCap(allocs, MAX_LISTED, { vendor: "Nomad", path: "/allocations" })
@@ -361,7 +378,7 @@ export class NomadClient implements PluginClient {
         }
         case "nomad-deployment":
           return withinListCap(
-            (await this.api.get("/deployments", { query: ALL })) ?? [],
+            rows("/deployments", await this.api.get("/deployments", { query: ALL })),
             MAX_LISTED,
             { vendor: "Nomad", path: "/deployments" },
           ).map((d) => mapDeployment(accountId, d));
@@ -370,7 +387,7 @@ export class NomadClient implements PluginClient {
         case "nomad-acl-policy": {
           // The list omits the rules; read them (policies are few) so Terraform export has them.
           const list = withinListCap(
-            await this.optional(this.api.get("/acl/policies")),
+            await this.optional("/acl/policies", this.api.get("/acl/policies")),
             MAX_POLICY_READS,
             { vendor: "Nomad", path: "/acl/policies" },
           );
@@ -389,13 +406,17 @@ export class NomadClient implements PluginClient {
           return policies;
         }
         case "nomad-acl-token":
-          return (await this.optional(this.api.get("/acl/tokens"))).map((t) =>
+          return (await this.optional("/acl/tokens", this.api.get("/acl/tokens"))).map((t) =>
             mapToken(accountId, t),
           );
         case "nomad-volume": {
           const [csi, host] = await Promise.all([
-            this.optional(this.api.get("/volumes", { query: { ...ALL, type: "csi" } })),
-            this.optional(this.api.get("/volumes", { query: { ...ALL, type: "host" } })),
+            this.optional("/volumes", this.api.get("/volumes", { query: { ...ALL, type: "csi" } })),
+            // Before Nomad 1.10 this is a 200 with no body (csi_endpoint.go: `return nil, nil`).
+            this.optional(
+              "/volumes",
+              this.api.get("/volumes", { query: { ...ALL, type: "host" } }).then((v) => v ?? []),
+            ),
           ]);
           return [
             ...csi.map((v) => mapVolume(accountId, v, "csi")),
@@ -403,11 +424,11 @@ export class NomadClient implements PluginClient {
           ];
         }
         case "nomad-csi-plugin":
-          return (await this.optional(this.api.get("/plugins", { query: { type: "csi" } }))).map(
-            (p) => mapCsiPlugin(accountId, p),
-          );
+          return (
+            await this.optional("/plugins", this.api.get("/plugins", { query: { type: "csi" } }))
+          ).map((p) => mapCsiPlugin(accountId, p));
         case "nomad-service": {
-          const groups = (await this.api.get("/services", { query: ALL })) ?? [];
+          const groups = rows("/services", await this.api.get("/services", { query: ALL }));
           return groups.flatMap((g) =>
             (g.Services ?? []).map((s) =>
               mapService(accountId, g.Namespace ?? "default", s.ServiceName ?? "", s.Tags ?? []),

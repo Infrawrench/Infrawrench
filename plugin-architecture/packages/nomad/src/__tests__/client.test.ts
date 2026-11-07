@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NomadApiError, normaliseAddress } from "../api.js";
 import { durationNs, NomadClient, parseItems, parsePolicyList } from "../client.js";
 import { nomadTerraformExport } from "../terraform.js";
@@ -352,5 +352,86 @@ describe("list caps", () => {
       "has more than Infrawrench reads",
     );
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("an answer that is not a list", () => {
+  const lists: Array<[string, string]> = [
+    ["nomad-namespace", "/v1/namespaces"],
+    ["nomad-node-pool", "/v1/node/pools"],
+    ["nomad-node", "/v1/nodes"],
+    ["nomad-job", "/v1/jobs"],
+    ["nomad-allocation", "/v1/allocations"],
+    ["nomad-deployment", "/v1/deployments"],
+    ["nomad-variable", "/v1/vars"],
+    ["nomad-acl-policy", "/v1/acl/policies"],
+    ["nomad-acl-token", "/v1/acl/tokens"],
+    ["nomad-volume", "/v1/volumes"],
+    ["nomad-csi-plugin", "/v1/plugins"],
+    ["nomad-service", "/v1/services"],
+  ];
+
+  it.each(lists)("%s rejects an object instead of a list", async (type, path) => {
+    const { c } = client((call) => (call.url.pathname === path ? { Items: [] } : []));
+    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each(lists)("%s rejects a page from something that is not Nomad", async (type, path) => {
+    const { c } = client((call) =>
+      call.url.pathname === path ? { text: "<html>sign in</html>" } : [],
+    );
+    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each(lists)("%s rejects an empty answer", async (type, path) => {
+    const { c } = client((call) =>
+      call.url.pathname === path && call.url.searchParams.get("type") !== "host"
+        ? { status: 200 }
+        : [],
+    );
+    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each(lists)("%s reads null as none, which is how Go writes a nil list", async (type, path) => {
+    const { c } = client((call) => (call.url.pathname === path ? null : []));
+    expect(await c.listResources(type, ACCOUNT)).toEqual([]);
+  });
+
+  it("takes no answer to type=host as no host volumes, as Nomad before 1.10 does", async () => {
+    const { c } = client((call) =>
+      call.url.searchParams.get("type") === "host"
+        ? { status: 200 }
+        : [{ ID: "v1", Namespace: "prod" }],
+    );
+    const volumes = await c.listResources("nomad-volume", ACCOUNT);
+    expect(volumes.map((v) => v.fields["id"])).toEqual(["v1"]);
+  });
+});
+
+describe("transport", () => {
+  it("goes through the host's service with no CA, and never fetch", async () => {
+    const fetchStub = vi.fn(() => {
+      throw new Error("unexpected fetch");
+    });
+    vi.stubGlobal("fetch", fetchStub);
+    try {
+      const seen: Array<Record<string, unknown>> = [];
+      const c = hostClient(
+        new NomadClient({ address: "https://nomad.example.com:4646", token: "tok" }, {
+          http: {
+            request: async (req: Record<string, unknown>) => {
+              seen.push(req);
+              return { status: 200, headers: {}, body: "[]" };
+            },
+          },
+        } as never),
+      );
+      await c.listResources("nomad-namespace", ACCOUNT);
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).not.toHaveProperty("caCert");
+      expect(fetchStub).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
