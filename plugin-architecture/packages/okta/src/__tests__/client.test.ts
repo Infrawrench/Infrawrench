@@ -388,6 +388,32 @@ describe("list reads", () => {
   });
 });
 
+describe("a blank id", () => {
+  const blank = `${ACCOUNT}:group:`;
+  const refusal = "refusing to change a resource with no id";
+  const client = () =>
+    ssws(() => {
+      throw new Error("no request should be sent");
+    });
+
+  it("is refused by every write, before any request", async () => {
+    await expect(client().deleteResource("group", blank)).rejects.toThrow(refusal);
+    await expect(client().updateResource("group", blank, ACCOUNT, {})).rejects.toThrow(refusal);
+    await expect(client().invokeAction("user", blank, "suspend")).rejects.toThrow(refusal);
+    await expect(
+      client().executeNoSqlCommand("group", blank, ACCOUNT, "add-member", ['{"userId":"u1"}']),
+    ).rejects.toThrow(refusal);
+    await expect(client().removeSeat(ACCOUNT, { memberId: " " })).rejects.toThrow(refusal);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("does not stop an org edit, whose route has no id", async () => {
+    const org = ssws(() => ({ body: { id: "o1", companyName: "New" } }));
+    const updated = await org.updateResource("org", "bare", ACCOUNT, { companyName: "New" });
+    expect(updated.displayName).toBe("New");
+  });
+});
+
 describe("editing an authorization server", () => {
   const A = `${ACCOUNT}:authorization-server:as1`;
   const jwks = {

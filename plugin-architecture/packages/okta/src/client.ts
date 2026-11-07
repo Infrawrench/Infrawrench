@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { ApiAnswer, PluginEffect } from "@infrawrench/plugin-base";
+import type { ApiAnswer, NoSlashString, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DashboardStat,
@@ -103,6 +103,12 @@ function statusOf(error: unknown): number | undefined {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** The id to write to, or an error: a blank one would address the collection instead. */
+function targetId(id: string): NoSlashString {
+  if (!id.trim()) throw new Error("Okta plugin: refusing to change a resource with no id");
+  return pathEncode(id);
 }
 
 /** For a list a picker or detail view can do without: only a refused list still says so. */
@@ -1404,29 +1410,30 @@ export class OktaClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = pathEncode(externalIdOf(resourceId));
+      // There is one org, and its route takes no id.
+      if (typeId === "org") {
+        this.orgCache = null;
+        return this.mapOrg(
+          accountId,
+          // POST /api/v1/org is a partial update; PUT would replace every field.
+          await this.api.rest.post("/api/v1/org", {
+            body: {
+              ...given("companyName", fields["companyName"]),
+              ...given("website", fields["website"]),
+              ...given("phoneNumber", fields["phoneNumber"]),
+              ...given("supportPhoneNumber", fields["supportPhoneNumber"]),
+              ...given("endUserSupportHelpURL", fields["endUserSupportHelpURL"]),
+              ...given("address1", fields["address1"]),
+              ...given("city", fields["city"]),
+              ...given("state", fields["state"]),
+              ...given("postalCode", fields["postalCode"]),
+              ...given("country", fields["country"]),
+            },
+          }),
+        );
+      }
+      const id = targetId(externalIdOf(resourceId));
       switch (typeId) {
-        case "org": {
-          this.orgCache = null;
-          return this.mapOrg(
-            accountId,
-            // POST /api/v1/org is a partial update; PUT would replace every field.
-            await this.api.rest.post("/api/v1/org", {
-              body: {
-                ...given("companyName", fields["companyName"]),
-                ...given("website", fields["website"]),
-                ...given("phoneNumber", fields["phoneNumber"]),
-                ...given("supportPhoneNumber", fields["supportPhoneNumber"]),
-                ...given("endUserSupportHelpURL", fields["endUserSupportHelpURL"]),
-                ...given("address1", fields["address1"]),
-                ...given("city", fields["city"]),
-                ...given("state", fields["state"]),
-                ...given("postalCode", fields["postalCode"]),
-                ...given("country", fields["country"]),
-              },
-            }),
-          );
-        }
         case "user": {
           return this.mapUser(
             accountId,
@@ -1629,7 +1636,7 @@ export class OktaClient implements PluginClient {
    */
   removeSeat(_accountId: string, seat: SeatRef): PluginEffect<SeatRemovalResult> {
     return attempt(async () => {
-      const id = pathEncode(seat.memberId);
+      const id = targetId(seat.memberId);
       const user = await this.api.rest.get(`/api/v1/users/${id}`);
       if (user.status === "DEPROVISIONED") {
         return { effective: "immediate", message: "The user was already deactivated in Okta." };
@@ -1652,7 +1659,7 @@ export class OktaClient implements PluginClient {
   /** Apps, authorization servers, zones and event hooks must be deactivated before deleting. */
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = pathEncode(externalIdOf(resourceId));
+      const id = targetId(externalIdOf(resourceId));
       const { rest } = this.api;
       switch (typeId) {
         case "user": {
@@ -1719,7 +1726,7 @@ export class OktaClient implements PluginClient {
 
   invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = pathEncode(externalIdOf(resourceId));
+      const id = targetId(externalIdOf(resourceId));
       const { rest } = this.api;
       const sendEmail = { query: { sendEmail: true } };
       switch (`${typeId}:${actionId}`) {
@@ -1814,7 +1821,7 @@ export class OktaClient implements PluginClient {
   ): PluginEffect<unknown> {
     return attempt(async () => {
       const values: Record<string, string> = JSON.parse(String(args[0] ?? "{}"));
-      const id = pathEncode(externalIdOf(resourceId));
+      const id = targetId(externalIdOf(resourceId));
       const pick = (key: string, what: string) => {
         const value = values[key];
         if (!value) throw new Error(`Okta plugin: choose ${what}`);
