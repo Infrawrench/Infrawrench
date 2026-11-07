@@ -354,3 +354,112 @@ describe("basin sql", () => {
     );
   });
 });
+
+describe("nested Basin namespaces", () => {
+  type ListParams = { parent?: string; page_token?: string };
+  const SEP = "\u001f";
+
+  function tree(children: Record<string, string[][]>, failFor: Record<string, unknown> = {}) {
+    return vi.fn(async (_b: string, p: ListParams) => {
+      const key = p.parent ?? "";
+      if (key in failFor) throw failFor[key];
+      return { namespaces: children[key] ?? [], next_page_token: null };
+    });
+  }
+
+  const tablesByNs = vi.fn(async (_b: string, ns: string) => ({
+    identifiers: [{ name: `t_${decodeURIComponent(ns).split(SEP).join("_")}`, namespace: [] }],
+  }));
+
+  it("walks child namespaces and lists their tables", async () => {
+    const namespaces = tree({
+      "": [["bronze"], ["gold"]],
+      bronze: [["bronze", "analytics"]],
+      [`bronze${SEP}analytics`]: [["bronze", "analytics", "daily"]],
+    });
+    const out = await listTables(pagedCatalogApi(namespaces, tablesByNs), "acct");
+    expect(out.map((t) => t.displayName).sort()).toEqual([
+      "bronze.analytics.daily.t_bronze_analytics_daily",
+      "bronze.analytics.t_bronze_analytics",
+      "bronze.t_bronze",
+      "gold.t_gold",
+    ]);
+    expect(namespaces).toHaveBeenCalledWith("lake", expect.objectContaining({ parent: "bronze" }));
+    expect(namespaces).toHaveBeenCalledWith(
+      "lake",
+      expect.objectContaining({ parent: `bronze${SEP}analytics` }),
+    );
+  });
+
+  it("reads a leaf that refuses a parent filter as having no children", async () => {
+    const namespaces = tree({ "": [["a"], ["b"]] }, { a: { status: 404 }, b: { status: 400 } });
+    const out = await listTables(pagedCatalogApi(namespaces, tablesByNs), "acct");
+    expect(out.map((t) => t.displayName)).toEqual(["a.t_a", "b.t_b"]);
+  });
+
+  it("a throttle on a child list fails the type, so the stored tables stay", async () => {
+    const namespaces = tree({ "": [["a"]] }, { a: { status: 429 } });
+    await expect(listTables(pagedCatalogApi(namespaces, tablesByNs), "acct")).rejects.toMatchObject(
+      { cause: { status: 429 } },
+    );
+  });
+
+  it("ignores children that do not sit under the parent asked for", async () => {
+    // A server that ignored `parent` would answer the top level again on every call.
+    const namespaces = vi.fn(async () => ({ namespaces: [["a"], ["b"]], next_page_token: null }));
+    const out = await listTables(pagedCatalogApi(namespaces, tablesByNs), "acct");
+    expect(out.map((t) => t.displayName)).toEqual(["a.t_a", "b.t_b"]);
+    expect(namespaces).toHaveBeenCalledTimes(3);
+  });
+
+  describe("request budget", () => {
+    const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    });
+
+    function manyCatalogs(count: number, namespacesEach: number) {
+      const warehouses = Array.from({ length: count }, (_, i) => ({
+        ...WAREHOUSE,
+        bucket: `c${i}`,
+        name: `acct-cf_c${i}`,
+      }));
+      const namespaces = vi.fn(async (_b: string, p: ListParams) => ({
+        namespaces: p.parent ? [] : Array.from({ length: namespacesEach }, (_, i) => [`n${i}`]),
+        next_page_token: null,
+      }));
+      const tables = vi.fn(async () => ({ identifiers: [] }));
+      const r2DataCatalog = {
+        list: vi.fn(async () => ({ warehouses })),
+        namespaces: { list: namespaces, tables: { list: tables } },
+      };
+      return { api: makeApi({ cf: { r2DataCatalog } }), namespaces, tables };
+    }
+
+    it("reads what fits, names the other catalogs, and starts after them next poll", async () => {
+      const unread = vi.fn(() => true);
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      // 100 namespaces a catalog: 1 + 100 child lists + 100 table lists each.
+      const { api, namespaces } = manyCatalogs(5, 100);
+      await listTables(api, "acct-budget");
+      expect(unread).toHaveBeenCalledTimes(1);
+      const first = unread.mock.calls[0]! as unknown as [{ parentResourceIds: string[] }];
+      const named = first[0].parentResourceIds;
+      expect(named.length).toBeGreaterThan(0);
+      expect(named.length).toBeLessThan(5);
+      const readFirst = new Set(namespaces.mock.calls.map((c) => c[0]));
+      for (const id of named) expect(readFirst.has(id.split(":").pop()!)).toBe(false);
+
+      namespaces.mockClear();
+      await listTables(api, "acct-budget");
+      const readSecond = new Set(namespaces.mock.calls.map((c) => c[0]));
+      expect(readSecond.has(named[0]!.split(":").pop()!)).toBe(true);
+    });
+
+    it("reads every catalog where nobody keeps the rows", async () => {
+      const { api, namespaces } = manyCatalogs(5, 100);
+      await listTables(api, "acct-desktop");
+      expect(new Set(namespaces.mock.calls.map((c) => c[0])).size).toBe(5);
+    });
+  });
+});

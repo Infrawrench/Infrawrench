@@ -21,11 +21,16 @@
  * query is billed on bytes scanned (10 MB minimum).
  */
 import { cfFetch } from "./shared.js";
-import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  reportUnreadListPart,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { ResourceInstance, SqlTableMeta } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { listAllR2Buckets } from "./r2-client.js";
-import { asRecord, collectPerParent, withAuthErrorHint } from "./shared.js";
+import { asRecord, collectPerParent, refusedBesideAnswer, withAuthErrorHint } from "./shared.js";
 
 const SCOPE = "Account · Workers R2 Data Catalog:Read";
 
@@ -33,6 +38,21 @@ const VENDOR = "Cloudflare";
 /** Catalog lists cap at 1,000 a page, so this reads 50,000 namespaces, or tables per namespace. */
 const CATALOG_MAX_PAGES = 50;
 const CATALOG_PAGE_SIZE = 1000;
+/** The most namespaces one catalog's walk reads, across every level. */
+const MAX_NAMESPACES = 50_000;
+/**
+ * Catalog requests one poll of Basin tables starts before leaving the remaining catalogs for the
+ * next, a quarter of Cloudflare's 1,200 requests per five minutes. Every namespace costs a child
+ * list and a table list.
+ */
+const TABLE_REQUEST_BUDGET = 300;
+/** Where each account's next Basin tables poll starts, so every catalog is read in turn. */
+const tableRotation = new Map<string, number>();
+
+/** Requests a walk has made, for the poll's budget. */
+interface RequestCount {
+  requests: number;
+}
 export const BASIN_SQL_HOST = "https://api.sql.cloudflarestorage.com";
 const CATALOG_HOST = "https://catalog.cloudflarestorage.com";
 
@@ -326,20 +346,28 @@ export interface CatalogTableRef {
   updatedAt: string;
 }
 
-/** Every namespace in a catalog (top level, following `next_page_token`). */
-export async function listNamespaces(api: CloudflareApi, bucket: string): Promise<string[]> {
-  const account_id = await api.getAccountId();
+/** One level of namespaces: the top level, or the direct children of `parent`. */
+async function listNamespaceLevel(
+  api: CloudflareApi,
+  account_id: string,
+  bucket: string,
+  parent: string[] | undefined,
+  count?: RequestCount,
+): Promise<string[][]> {
   const path = `/accounts/${account_id}/r2-catalog/${bucket}/namespaces`;
-  const out: string[] = [];
+  const out: string[][] = [];
   let page_token: string | undefined;
   for (let i = 0; i < CATALOG_MAX_PAGES; i++) {
+    if (count) count.requests++;
     const res = await api.cf.r2DataCatalog.namespaces.list(bucket, {
       account_id,
       page_size: CATALOG_PAGE_SIZE,
+      // Levels join with U+001F, which the query string carries as %1F.
+      ...(parent ? { parent: parent.join("\u001f") } : {}),
       ...(page_token ? { page_token } : {}),
     });
     const namespaces = requireListPage(res.namespaces, { vendor: VENDOR, path, key: "namespaces" });
-    for (const ns of namespaces) out.push(ns.join("."));
+    for (const ns of namespaces) out.push(ns);
     page_token = res.next_page_token ?? undefined;
     if (!page_token) return out;
   }
@@ -351,17 +379,67 @@ export async function listNamespaces(api: CloudflareApi, bucket: string): Promis
   });
 }
 
+/** Whether `child` is a namespace directly under `parent`, as an Iceberg REST catalog names it. */
+function isChildOf(child: readonly string[], parent: readonly string[]): boolean {
+  return child.length === parent.length + 1 && parent.every((level, i) => child[i] === level);
+}
+
+/**
+ * Every namespace in a catalog, nested ones included. A list without `parent` answers only the
+ * top level, so each namespace's children take their own list, breadth first. With the top level
+ * answered, a namespace that refuses a `parent` filter has no children to read; a throttle, an
+ * outage or a rejected token fails the walk. Only a child that sits directly under the namespace
+ * asked for is taken, so a server that ignored the filter would not loop.
+ */
+export async function listNamespaces(
+  api: CloudflareApi,
+  bucket: string,
+  count?: RequestCount,
+): Promise<string[]> {
+  const account_id = await api.getAccountId();
+  const path = `/accounts/${account_id}/r2-catalog/${bucket}/namespaces`;
+  const queue = await listNamespaceLevel(api, account_id, bucket, undefined, count);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let next = queue.shift(); next; next = queue.shift()) {
+    const key = next.join("\u001f");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(next.join("."));
+    if (out.length > MAX_NAMESPACES) {
+      throw new ListTruncatedError({
+        vendor: VENDOR,
+        path,
+        items: out.length,
+        maxItems: MAX_NAMESPACES,
+      });
+    }
+    let children: string[][];
+    try {
+      children = await listNamespaceLevel(api, account_id, bucket, next, count);
+    } catch (err) {
+      rethrowIncompleteList(err);
+      if (!refusedBesideAnswer(err)) throw err;
+      continue;
+    }
+    for (const child of children) if (isChildOf(child, next)) queue.push(child);
+  }
+  return out;
+}
+
 /** Every table in one namespace, with details (uuid, location, timestamps). */
 export async function listNamespaceTables(
   api: CloudflareApi,
   bucket: string,
   namespace: string,
+  count?: RequestCount,
 ): Promise<CatalogTableRef[]> {
   const account_id = await api.getAccountId();
   const path = `/accounts/${account_id}/r2-catalog/${bucket}/namespaces/${namespace}/tables`;
   const out: CatalogTableRef[] = [];
   let page_token: string | undefined;
   for (let i = 0; i < CATALOG_MAX_PAGES; i++) {
+    if (count) count.requests++;
     const res = await api.cf.r2DataCatalog.namespaces.tables.list(
       bucket,
       namespacePath(namespace),
@@ -420,11 +498,12 @@ export async function listNamespaceTables(
 export async function listCatalogTables(
   api: CloudflareApi,
   bucket: string,
+  count?: RequestCount,
 ): Promise<CatalogTableRef[]> {
-  const namespaces = await listNamespaces(api, bucket);
+  const namespaces = await listNamespaces(api, bucket, count);
   return collectPerParent(
     namespaces,
-    (namespace) => listNamespaceTables(api, bucket, namespace),
+    (namespace) => listNamespaceTables(api, bucket, namespace, count),
     "Basin tables",
     SCOPE,
   );
@@ -481,7 +560,12 @@ export function mapTable(
   };
 }
 
-/** Tables across every active catalog on the account. */
+/**
+ * Tables across every active catalog on the account. A catalog costs a request per namespace and
+ * level, so once a poll has spent {@link TABLE_REQUEST_BUDGET} the catalogs left are named as
+ * unread (their tables go stale rather than being deleted) and the next poll starts with them.
+ * Where nobody keeps the rows, every catalog is read.
+ */
 export async function listTables(
   api: CloudflareApi,
   accountId: string,
@@ -489,10 +573,24 @@ export async function listTables(
   return withAuthErrorHint(
     async () => {
       const account_id = await api.getAccountId();
+      const active = (await listWarehouses(api, account_id)).filter((w) => w.status === "active");
+      const start = active.length ? (tableRotation.get(accountId) ?? 0) % active.length : 0;
+      const ordered = [...active.slice(start), ...active.slice(0, start)];
+      const count: RequestCount = { requests: 0 };
+      let budgeted = true;
       const out: ResourceInstance[] = [];
-      for (const w of await listWarehouses(api, account_id)) {
-        if (w.status !== "active") continue;
-        for (const t of await listCatalogTables(api, w.bucket)) out.push(mapTable(t, accountId));
+      for (const [i, w] of ordered.entries()) {
+        if (budgeted && i > 0 && count.requests >= TABLE_REQUEST_BUDGET) {
+          const rest = ordered.slice(i).map((c) => `${accountId}:basin-catalog:${c.bucket}`);
+          if (reportUnreadListPart({ parentResourceIds: rest })) {
+            tableRotation.set(accountId, (start + i) % ordered.length);
+            return out;
+          }
+          budgeted = false;
+        }
+        for (const t of await listCatalogTables(api, w.bucket, count)) {
+          out.push(mapTable(t, accountId));
+        }
       }
       return out;
     },
