@@ -1,0 +1,137 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/workos/openapi-spec/main/spec/open-api-spec.yaml",
+  "patches": [
+    {
+      "pointer": "/paths/~1events/get/parameters/6",
+      "value": {
+        "name": "order",
+        "required": false,
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": ["asc", "desc", "normal"]
+        }
+      },
+      "why": "Absent from this operation, whose description says events come oldest first. The plugin has always sent order=desc and read the answer as newest first; #479 is finding out whether that works."
+    },
+    {
+      "pointer": "/paths/~1user_management~1invitations~1{id}~1resend/post/requestBody/required",
+      "value": false,
+      "why": "Marked required, but every field of the body is optional, and the plugin has always sent none."
+    },
+    {
+      "pointer": "/components/schemas/CreateUserlandUserDto/allOf/1",
+      "value": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": ["string", "null"]
+          }
+        }
+      },
+      "why": "A oneOf of password variants, one of them meaning none, which reaches the types as Record<string, never> and makes a user with no password unwritable. The plugin only ever sends `password`, or nothing."
+    },
+    {
+      "pointer": "/components/schemas/CreateUserlandUserOrganizationMembershipDto/allOf/1",
+      "value": {
+        "type": "object",
+        "properties": {
+          "role_slug": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "A oneOf the document's own x-mutually-exclusive-body-groups calls optional; its empty member reaches the types as Record<string, never>, which makes a membership with the default role unwritable. The plugin only ever sends `role_slug`, or nothing."
+    },
+    {
+      "pointer": "/components/schemas/PatchConnectionDto/allOf/1",
+      "value": {
+        "type": "object",
+        "properties": {
+          "saml_options": {
+            "$ref": "#/components/schemas/PatchConnectionSamlOptionsDto"
+          },
+          "oidc_options": {
+            "$ref": "#/components/schemas/PatchConnectionOidcOptionsDto"
+          }
+        }
+      },
+      "why": "A oneOf the document's own x-mutually-exclusive-body-groups calls optional; as generated it requires one of the two, and the plugin only ever renames a connection."
+    },
+    {
+      "pointer": "/components/schemas/CreateWebhookEndpointDto/properties/events/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "The picker's values go through as typed and WorkOS validates them, so an event outside this enum stays WorkOS's error."
+    },
+    {
+      "pointer": "/components/schemas/UpdateWebhookEndpointDto/properties/events/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Checked against the plugin's own WEBHOOK_EVENTS, a list of its own that can run ahead of or behind this enum, and WorkOS validates the rest."
+    },
+    {
+      "pointer": "/components/schemas/UpdateWebhookEndpointDto/properties/status",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and WorkOS validates whatever else arrives."
+    }
+  ],
+  "paths": {
+    "/organizations": ["get", "post"],
+    "/organizations/{id}": ["get", "put", "delete"],
+    "/user_management/users": ["get", "post"],
+    "/user_management/users/{id}": ["get", "put", "delete"],
+    "/user_management/users/{id}/email_verification/send": ["post"],
+    "/user_management/users/{id}/sessions": ["get"],
+    "/user_management/sessions/revoke": ["post"],
+    "/user_management/organization_memberships": ["get", "post"],
+    "/user_management/organization_memberships/{id}": ["get", "put", "delete"],
+    "/user_management/organization_memberships/{id}/deactivate": ["put"],
+    "/user_management/organization_memberships/{id}/reactivate": ["put"],
+    "/user_management/invitations": ["get", "post"],
+    "/user_management/invitations/{id}": ["get"],
+    "/user_management/invitations/{id}/revoke": ["post"],
+    "/user_management/invitations/{id}/resend": ["post"],
+    "/connections": ["get"],
+    "/connections/{id}": ["get", "patch", "delete"],
+    "/directories": ["get"],
+    "/directories/{id}": ["get", "delete"],
+    "/directories/{id}/sync": ["post"],
+    "/directory_users": ["get"],
+    "/directory_users/{id}": ["get"],
+    "/directory_groups": ["get"],
+    "/directory_groups/{id}": ["get"],
+    "/authorization/roles": ["get", "post"],
+    "/authorization/roles/{slug}": ["get", "patch"],
+    "/authorization/roles/{slug}/permissions": ["put"],
+    "/webhook_endpoints": ["get", "post"],
+    "/webhook_endpoints/{id}": ["patch", "delete"],
+    "/organization_domains": ["post"],
+    "/organization_domains/{id}": ["get", "delete"],
+    "/organization_domains/{id}/verify": ["post"],
+    "/authorization/organizations/{organizationId}/roles": ["get", "post"],
+    "/authorization/organizations/{organizationId}/roles/{slug}": ["get", "patch", "delete"],
+    "/authorization/organizations/{organizationId}/roles/{slug}/permissions": ["put"],
+    "/authorization/permissions": ["get", "post"],
+    "/authorization/permissions/{slug}": ["get", "patch", "delete"],
+    "/organizations/{organizationId}/api_keys": ["get", "post"],
+    "/api_keys/{id}": ["delete"],
+    "/api_keys/{id}/expire": ["post"],
+    "/feature-flags": ["get"],
+    "/feature-flags/{slug}": ["get"],
+    "/feature-flags/{slug}/enable": ["put"],
+    "/feature-flags/{slug}/disable": ["put"],
+    "/feature-flags/{slug}/targets/{resourceId}": ["post", "delete"],
+    "/organizations/{organizationId}/groups": ["get", "post"],
+    "/organizations/{organizationId}/groups/{groupId}": ["get", "patch", "delete"],
+    "/organizations/{organizationId}/groups/{groupId}/organization-memberships": ["get", "post"],
+    "/organizations/{organizationId}/groups/{groupId}/organization-memberships/{omId}": ["delete"],
+    "/portal/generate_link": ["post"],
+    "/events": ["get"]
+  }
+}
