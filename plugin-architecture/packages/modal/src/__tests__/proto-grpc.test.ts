@@ -133,18 +133,25 @@ describe("gRPC status in trailers", () => {
     ).rejects.toMatchObject({ name: "ModalApiError", code: 14, grpcMessage: "upstream reset" });
   });
 
-  it("throws on a stream whose trailers carry no grpc-status: it was cut off", async () => {
+  it("accepts a stream whose trailers carry no grpc-status, as before trailers were read", async () => {
     const { http } = makeHttp(() => ({ stream: [item()], trailers: {} }));
-    await expect(
-      serverStream(ctxWith(http), "WorkspaceBillingReport", new Uint8Array()),
-    ).rejects.toThrow(/ended without a gRPC status/);
+    expect(
+      await serverStream(ctxWith(http), "WorkspaceBillingReport", new Uint8Array()),
+    ).toHaveLength(1);
   });
 
-  it("throws on a stream when the host cannot read trailers, rather than guess it ended", async () => {
+  it("accepts a stream from a host that cannot read trailers", async () => {
     const { http } = makeHttp(() => ({ stream: [item()], trailers: null }));
+    expect(
+      await serverStream(ctxWith(http), "WorkspaceBillingReport", new Uint8Array()),
+    ).toHaveLength(1);
+  });
+
+  it("throws on a trailers-only failure carried in the headers", async () => {
+    const { http } = makeHttp(() => ({ grpcStatus: 8, message: "slow down" }));
     await expect(
       serverStream(ctxWith(http), "WorkspaceBillingReport", new Uint8Array()),
-    ).rejects.toThrow(/cannot read response trailers/);
+    ).rejects.toMatchObject({ name: "ModalApiError", code: 8, grpcMessage: "slow down" });
   });
 
   it("still reads an empty stream as an empty report when it closes with status 0", async () => {
