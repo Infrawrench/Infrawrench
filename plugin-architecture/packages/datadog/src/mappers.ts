@@ -1,164 +1,28 @@
 /**
- * Datadog API response shapes (the fields this plugin reads; verified against
- * Datadog's published v1/v2 OpenAPI documents, 2026-10) and their mapping to
- * `ResourceInstance`s.
+ * Datadog API response shapes, named from its published v1/v2 OpenAPI documents,
+ * and their mapping to `ResourceInstance`s.
  */
 
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ApiBody, ResourceInstance } from "@infrawrench/plugin-base";
+import type { components as V1, operations as V1Operations } from "./api-types.v1.gen.js";
+import type { components as V2 } from "./api-types.v2.gen.js";
 import type { DatadogSite } from "./sites.js";
 
 export const PLUGIN_ID = "datadog";
 
-export interface DdMonitor {
-  id?: number;
-  name?: string;
-  type?: string;
-  query?: string;
-  message?: string;
-  priority?: number | null;
-  tags?: string[];
-  overall_state?: string;
-  created?: string;
-  modified?: string;
-  creator?: { email?: string; handle?: string; name?: string };
-  options?: {
-    silenced?: Record<string, number | null> | null;
-    thresholds?: Record<string, number | null> | null;
-  };
-  matching_downtimes?: Array<{ id?: number; start?: number | null; end?: number | null }>;
-}
-
-export interface DdDowntime {
-  id?: string;
-  attributes?: {
-    scope?: string;
-    message?: string | null;
-    status?: string;
-    created?: string;
-    canceled?: string | null;
-    monitor_identifier?: { monitor_id?: number; monitor_tags?: string[] };
-    schedule?: {
-      start?: string | null;
-      end?: string | null;
-      current_downtime?: { start?: string | null; end?: string | null };
-      recurrences?: unknown[];
-    };
-  };
-  relationships?: { monitor?: { data?: { id?: string | number } | null } };
-}
-
-export interface DdDashboardSummary {
-  id?: string;
-  title?: string;
-  description?: string | null;
-  layout_type?: string;
-  author_handle?: string;
-  is_read_only?: boolean;
-  url?: string;
-  created_at?: string;
-  modified_at?: string;
-}
-
-export interface DdSlo {
-  id?: string;
-  name?: string;
-  description?: string | null;
-  type?: string;
-  target_threshold?: number;
-  warning_threshold?: number | null;
-  timeframe?: string;
-  tags?: string[];
-  monitor_ids?: number[];
-  created_at?: number;
-  creator?: { email?: string; name?: string; handle?: string };
-  thresholds?: Array<{ target?: number; warning?: number; timeframe?: string }>;
-}
-
-export interface DdSyntheticsTest {
-  public_id?: string;
-  name?: string;
-  type?: string;
-  subtype?: string;
-  status?: string;
-  locations?: string[];
-  tags?: string[];
-  monitor_id?: number;
-  creator?: { email?: string; handle?: string; name?: string };
-  config?: { request?: { url?: string; host?: string; port?: number | string } };
-}
-
-export interface DdHost {
-  id?: number;
-  name?: string;
-  host_name?: string;
-  aliases?: string[];
-  apps?: string[];
-  sources?: string[];
-  up?: boolean;
-  is_muted?: boolean;
-  last_reported_time?: number;
-  meta?: { agent_version?: string; platform?: string; cpuCores?: number };
-  metrics?: { cpu?: number; iowait?: number; load?: number };
-}
-
-export interface DdUserAttributes {
-  name?: string | null;
-  email?: string;
-  handle?: string;
-  status?: string;
-  title?: string | null;
-  disabled?: boolean;
-  mfa_enabled?: boolean;
-  service_account?: boolean;
-  last_login_time?: string | null;
-  created_at?: string;
-}
-
-export interface DdUser {
-  id?: string;
-  attributes?: DdUserAttributes;
-  relationships?: { roles?: { data?: Array<{ id?: string; type?: string }> } };
-}
-
-export interface DdIncluded {
-  id?: string | number;
-  type?: string;
-  attributes?: { name?: string; email?: string; handle?: string };
-}
-
-export interface DdApiKey {
-  id?: string;
-  attributes?: {
-    name?: string;
-    last4?: string;
-    category?: string;
-    created_at?: string;
-    date_last_used?: string | null;
-    remote_config_read_enabled?: boolean;
-  };
-  relationships?: { created_by?: { data?: { id?: string } | null } };
-}
-
-export interface DdApplicationKey {
-  id?: string;
-  attributes?: {
-    name?: string;
-    last4?: string;
-    created_at?: string;
-    last_used_at?: string | null;
-    scopes?: string[] | null;
-  };
-  relationships?: { owned_by?: { data?: { id?: string } | null } };
-}
-
-export interface DdOrg {
-  public_id?: string;
-  name?: string;
-  created?: string;
-  description?: string;
-  subscription?: { type?: string };
-  billing?: { type?: string };
-}
+export type DdMonitor = V1["schemas"]["Monitor"];
+export type DdMonitorUpdate = ApiBody<V1Operations["UpdateMonitor"]>;
+export type DdDowntime = V2["schemas"]["DowntimeResponseData"];
+export type DdDowntimeUpdate = V2["schemas"]["DowntimeUpdateRequestAttributes"];
+export type DdDashboardSummary = V1["schemas"]["DashboardSummaryDefinition"];
+export type DdSloListItem = V1["schemas"]["ServiceLevelObjective"];
+export type DdSlo = DdSloListItem | V1["schemas"]["SLOResponseData"];
+export type DdSyntheticsTest = V1["schemas"]["SyntheticsTestDetailsWithoutSteps"];
+export type DdHost = V1["schemas"]["Host"];
+export type DdUser = V2["schemas"]["User"];
+export type DdApiKey = V2["schemas"]["PartialAPIKey"];
+export type DdApplicationKey = V2["schemas"]["PartialApplicationKey"];
+export type DdOrg = V1["schemas"]["Organization"];
 
 function instance(
   accountId: string,
@@ -197,9 +61,18 @@ const epochToIso = (seconds: number | null | undefined): string | undefined =>
   typeof seconds === "number" && seconds > 0 ? new Date(seconds * 1000).toISOString() : undefined;
 
 /** Monitor thresholds as "critical 90 · warning 80". */
-export function describeThresholds(t: Record<string, number | null> | null | undefined): string {
+export function describeThresholds(
+  t: NonNullable<DdMonitor["options"]>["thresholds"] | null,
+): string {
   if (!t) return "";
-  const order = ["critical", "critical_recovery", "warning", "warning_recovery", "ok", "unknown"];
+  const order = [
+    "critical",
+    "critical_recovery",
+    "warning",
+    "warning_recovery",
+    "ok",
+    "unknown",
+  ] as const;
   return order
     .filter((k) => typeof t[k] === "number")
     .map((k) => `${k.replace("_", " ")} ${t[k]}`)
@@ -243,20 +116,30 @@ export function mapDowntime(
 ): ResourceInstance {
   const id = d.id ?? "";
   const a = d.attributes ?? {};
+  // Each is a union of shapes holding one or the other, and this reads across them.
+  const identifier: { monitor_id?: number; monitor_tags?: string[] } | undefined =
+    a.monitor_identifier;
+  const schedule:
+    | {
+        start?: string | null;
+        end?: string | null;
+        current_downtime?: { start?: string | null; end?: string | null };
+      }
+    | undefined = a.schedule;
   const monitorId =
-    a.monitor_identifier?.monitor_id !== undefined
-      ? String(a.monitor_identifier.monitor_id)
+    identifier?.monitor_id !== undefined
+      ? String(identifier.monitor_id)
       : d.relationships?.monitor?.data?.id !== undefined
         ? String(d.relationships.monitor.data.id)
         : "";
-  const monitorTags = join(a.monitor_identifier?.monitor_tags);
+  const monitorTags = join(identifier?.monitor_tags);
   const monitorName = monitorId
     ? (monitorNames.get(monitorId) ?? `Monitor ${monitorId}`)
     : monitorTags
       ? `Monitors tagged ${monitorTags}`
       : "";
-  const start = a.schedule?.current_downtime?.start ?? a.schedule?.start ?? undefined;
-  const end = a.schedule?.current_downtime?.end ?? a.schedule?.end ?? undefined;
+  const start = schedule?.current_downtime?.start ?? schedule?.start ?? undefined;
+  const end = schedule?.current_downtime?.end ?? schedule?.end ?? undefined;
   const label = [monitorName || "All monitors", a.scope && a.scope !== "*" ? a.scope : ""]
     .filter(Boolean)
     .join(" · ");
@@ -421,9 +304,14 @@ export function mapUser(
 }
 
 /** id → "name <email>" lookup over a JSON:API `included` array of users. */
-export function includedUsers(included: unknown[]): Map<string, string> {
+export function includedUsers(
+  included: Array<
+    | V2["schemas"]["APIKeyResponseIncludedItem"]
+    | V2["schemas"]["ApplicationKeyResponseIncludedItem"]
+  >,
+): Map<string, string> {
   const out = new Map<string, string>();
-  for (const raw of included as DdIncluded[]) {
+  for (const raw of included) {
     if (raw?.type !== "users" || raw.id === undefined) continue;
     const a = raw.attributes ?? {};
     out.set(String(raw.id), a.email || a.name || a.handle || String(raw.id));
@@ -432,9 +320,11 @@ export function includedUsers(included: unknown[]): Map<string, string> {
 }
 
 /** id → name lookup over a JSON:API `included` array of roles. */
-export function includedRoles(included: unknown[]): Map<string, string> {
+export function includedRoles(
+  included: Array<V2["schemas"]["UserResponseIncludedItem"]>,
+): Map<string, string> {
   const out = new Map<string, string>();
-  for (const raw of included as DdIncluded[]) {
+  for (const raw of included) {
     if (raw?.type !== "roles" || raw.id === undefined) continue;
     out.set(String(raw.id), raw.attributes?.name ?? String(raw.id));
   }

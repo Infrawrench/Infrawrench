@@ -1,0 +1,77 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "v1",
+      "specUrl": "https://raw.githubusercontent.com/DataDog/datadog-api-client-go/master/.generator/schemas/v1/openapi.yaml",
+      "patches": [
+        {
+          "pointer": "/paths/~1api~1v1~1host~1{host_name}~1unmute/post/requestBody",
+          "value": {
+            "content": { "application/json": { "schema": { "type": "object" } } }
+          },
+          "why": "The document gives this POST no body. The plugin sends an empty JSON object."
+        }
+      ],
+      "paths": {
+        "/api/v1/dashboard": ["get"],
+        "/api/v1/dashboard/{dashboard_id}": ["delete"],
+        "/api/v1/host/{host_name}/mute": ["post"],
+        "/api/v1/host/{host_name}/unmute": ["post"],
+        "/api/v1/hosts": ["get"],
+        "/api/v1/metrics": ["get"],
+        "/api/v1/monitor": ["get"],
+        "/api/v1/monitor/{monitor_id}": ["get", "put", "delete"],
+        "/api/v1/org": ["get"],
+        "/api/v1/query": ["get"],
+        "/api/v1/slo": ["get"],
+        "/api/v1/slo/{slo_id}": ["get", "delete"],
+        "/api/v1/slo/{slo_id}/history": ["get"],
+        "/api/v1/synthetics/tests": ["get"],
+        "/api/v1/synthetics/tests/browser/{public_id}/results": ["get"],
+        "/api/v1/synthetics/tests/delete": ["post"],
+        "/api/v1/synthetics/tests/trigger": ["post"],
+        "/api/v1/synthetics/tests/{public_id}": ["get"],
+        "/api/v1/synthetics/tests/{public_id}/results": ["get"],
+        "/api/v1/synthetics/tests/{public_id}/status": ["put"],
+        "/api/v1/validate": ["get"]
+      }
+    },
+    {
+      "name": "v2",
+      "specUrl": "https://raw.githubusercontent.com/DataDog/datadog-api-client-go/master/.generator/schemas/v2/openapi.yaml",
+      "patches": [
+        {
+          "pointer": "/paths/~1api~1v2~1users/get/parameters/6",
+          "value": {
+            "description": "Related resources to include. Not in the document; the plugin has always sent include=roles.",
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          "why": "The plugin sends include=roles, which the document does not list. Requests must not change, so the parameter is added."
+        }
+      ],
+      "paths": {
+        "/api/v2/api_keys": ["get"],
+        "/api/v2/api_keys/{api_key_id}": ["delete"],
+        "/api/v2/application_keys": ["get"],
+        "/api/v2/application_keys/{app_key_id}": ["delete"],
+        "/api/v2/cost_by_tag/monthly_cost_attribution": ["get"],
+        "/api/v2/current_user": ["get"],
+        "/api/v2/downtime": ["get", "post"],
+        "/api/v2/downtime/{downtime_id}": ["get", "patch", "delete"],
+        "/api/v2/metrics": ["get"],
+        "/api/v2/metrics/{metric_name}/all-tags": ["get"],
+        "/api/v2/query/timeseries": ["post"],
+        "/api/v2/usage/estimated_cost": ["get"],
+        "/api/v2/usage/historical_cost": ["get"],
+        "/api/v2/usage/hourly_usage": ["get"],
+        "/api/v2/usage/projected_cost": ["get"],
+        "/api/v2/users": ["get"],
+        "/api/v2/users/{user_id}": ["get", "delete"]
+      }
+    }
+  ]
+}

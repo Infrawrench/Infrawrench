@@ -13,25 +13,12 @@
  * - Organizations: `GET /api/v2/usage/hourly_usage` by product family.
  */
 
-import type { MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
+import { pathEncode, type MetricSeries, type MetricSeriesPoint } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
-import { ddFetch } from "./api.js";
 import { productLabel } from "./products.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const USAGE_METRICS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-
-interface DdQueryResponse {
-  status?: string;
-  error?: string;
-  series?: Array<{
-    display_name?: string;
-    expression?: string;
-    scope?: string;
-    pointlist?: Array<[number | null, number | null]>;
-    unit?: Array<{ short_name?: string; name?: string } | null> | null;
-  }>;
-}
 
 export interface TimeRange {
   startMs: number;
@@ -52,7 +39,7 @@ export async function querySeries(
   range: TimeRange,
   unit?: string,
 ): Promise<MetricSeries[]> {
-  const res = await ddFetch<DdQueryResponse>(ctx, "/api/v1/query", {
+  const res = await ctx.v1.get("/api/v1/query", {
     query: {
       from: Math.floor(range.startMs / 1000),
       to: Math.floor(range.endMs / 1000),
@@ -107,7 +94,7 @@ export async function hostSeries(
   // (no `timeseries_query`), surface the first error rather than "no data".
   const ok = settled.filter((s) => s.status === "fulfilled");
   if (ok.length === 0 && settled[0]?.status === "rejected") throw settled[0].reason;
-  return ok.flatMap((s) => (s as PromiseFulfilledResult<MetricSeries[]>).value);
+  return ok.flatMap((s) => s.value);
 }
 
 const COMPARATOR = /\s*(>=|<=|>|<|==|!=)\s*-?\d+(?:\.\d+)?\s*$/;
@@ -138,7 +125,7 @@ export async function monitorSeries(
   if (series.length === 0) return series;
   let thresholds: Record<string, number | null> = {};
   try {
-    thresholds = JSON.parse(thresholdsJson || "{}") as Record<string, number | null>;
+    thresholds = JSON.parse(thresholdsJson || "{}");
   } catch {
     thresholds = {};
   }
@@ -162,23 +149,12 @@ export async function monitorSeries(
   ];
 }
 
-interface DdSloHistory {
-  data?: {
-    overall?: { sli_value?: number; history?: Array<[number, number]> };
-    series?: {
-      times?: number[];
-      numerator?: { values?: number[] };
-      denominator?: { values?: number[] };
-    };
-  };
-}
-
 export async function sloSeries(
   ctx: DatadogContext,
   sloId: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
-  const res = await ddFetch<DdSloHistory>(ctx, `/api/v1/slo/${encodeURIComponent(sloId)}/history`, {
+  const res = await ctx.v1.get(`/api/v1/slo/${pathEncode(sloId)}/history`, {
     query: {
       from_ts: Math.floor(range.startMs / 1000),
       to_ts: Math.floor(range.endMs / 1000),
@@ -216,20 +192,14 @@ export async function sloSeries(
     out.push({
       label: "Up",
       unit: "%",
-      points: history
-        .filter(([t, v]) => typeof t === "number" && (v === 0 || v === 1))
-        .map(([t, v]) => ({ timestamp: t * 1000, value: v === 0 ? 100 : 0 })),
+      points: history.flatMap(([t, v]) =>
+        typeof t === "number" && (v === 0 || v === 1)
+          ? [{ timestamp: t * 1000, value: v === 0 ? 100 : 0 }]
+          : [],
+      ),
     });
   }
   return out;
-}
-
-interface DdSyntheticsResults {
-  results?: Array<{
-    check_time?: number;
-    probe_dc?: string;
-    result?: { passed?: boolean; timings?: { total?: number } };
-  }>;
 }
 
 export async function syntheticsSeries(
@@ -238,26 +208,32 @@ export async function syntheticsSeries(
   type: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
+  const query = { from_ts: range.startMs, to_ts: range.endMs };
   // Browser tests read results from their own route.
-  const base =
+  const res =
     type === "browser"
-      ? `/api/v1/synthetics/tests/browser/${encodeURIComponent(publicId)}/results`
-      : `/api/v1/synthetics/tests/${encodeURIComponent(publicId)}/results`;
-  const res = await ddFetch<DdSyntheticsResults>(ctx, base, {
-    query: { from_ts: range.startMs, to_ts: range.endMs },
-  });
+      ? await ctx.v1.get(`/api/v1/synthetics/tests/browser/${pathEncode(publicId)}/results`, {
+          query,
+        })
+      : await ctx.v1.get(`/api/v1/synthetics/tests/${pathEncode(publicId)}/results`, { query });
   const byLocation = new Map<string, MetricSeriesPoint[]>();
   const failures: MetricSeriesPoint[] = [];
   for (const r of res.results ?? []) {
     if (typeof r.check_time !== "number") continue;
-    const total = r.result?.timings?.total;
+    // Only an API test's result says these; a browser test's has neither (#459).
+    const { result } = r;
+    const outcome =
+      typeof result === "object" && result !== null && ("timings" in result || "passed" in result)
+        ? result
+        : undefined;
+    const total = outcome?.timings?.total;
     if (typeof total === "number") {
       const loc = r.probe_dc ?? "all";
       const list = byLocation.get(loc) ?? [];
       list.push({ timestamp: r.check_time, value: total });
       byLocation.set(loc, list);
     }
-    failures.push({ timestamp: r.check_time, value: r.result?.passed === false ? 1 : 0 });
+    failures.push({ timestamp: r.check_time, value: outcome?.passed === false ? 1 : 0 });
   }
   const out: MetricSeries[] = [];
   for (const [loc, points] of byLocation) {
@@ -287,18 +263,6 @@ const USAGE_FAMILIES = [
   "serverless",
 ];
 
-interface DdHourlyUsage {
-  data?: Array<{
-    attributes?: {
-      public_id?: string;
-      product_family?: string;
-      timestamp?: string;
-      measurements?: Array<{ usage_type?: string; value?: number | null }>;
-    };
-  }>;
-  meta?: { pagination?: { next_record_id?: string | null } };
-}
-
 const MAX_USAGE_SERIES = 16;
 const MAX_USAGE_PAGES = 10;
 
@@ -311,7 +275,7 @@ export async function usageSeries(
   const byType = new Map<string, Map<number, number>>();
   let cursor: string | undefined;
   for (let page = 0; page < MAX_USAGE_PAGES; page++) {
-    const res = await ddFetch<DdHourlyUsage>(ctx, "/api/v2/usage/hourly_usage", {
+    const res = await ctx.v2.get("/api/v2/usage/hourly_usage", {
       query: {
         "filter[timestamp][start]": hour(range.startMs),
         "filter[timestamp][end]": hour(range.endMs),

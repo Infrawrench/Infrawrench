@@ -31,7 +31,8 @@ import type {
 } from "@infrawrench/plugin-base";
 import { IdleFindingAccessError } from "@infrawrench/plugin-base";
 
-import { ddFetch, statusOf, type DatadogContext } from "./api.js";
+import { statusOf, type DatadogContext } from "./api.js";
+import type { components, operations } from "./api-types.v2.gen.js";
 
 /** List price per indexed custom metric per month: $5 per 100. */
 export const CUSTOM_METRIC_MONTHLY_USD = 0.05;
@@ -73,15 +74,8 @@ export const DATADOG_IDLE_FINDINGS: IdleFindingsCapabilityDeclaration = {
   ],
 };
 
-interface MetricListPage {
-  data?: Array<{ id?: string; type?: string }>;
-  included?: Array<{
-    id?: string;
-    type?: string;
-    attributes?: { indexed_volume?: number; ingested_volume?: number };
-  }>;
-  meta?: { pagination?: { next_cursor?: string | null } };
-}
+type MetricListPage = components["schemas"]["MetricsAndMetricTagConfigurationsResponse"];
+type MetricListQuery = NonNullable<operations["ListTagConfigurations"]["parameters"]["query"]>;
 
 export interface MetricVolume {
   name: string;
@@ -90,14 +84,12 @@ export interface MetricVolume {
 }
 
 /** Seam for tests: one page of `GET /api/v2/metrics`. */
-export type MetricListFetch = (
-  query: Record<string, string | number | boolean>,
-) => Promise<MetricListPage>;
+export type MetricListFetch = (query: MetricListQuery) => Promise<MetricListPage>;
 
 /** Every metric a filter set matches, with volumes, following the cursor. */
 export async function listMetrics(
   fetchPage: MetricListFetch,
-  filters: Record<string, string | number | boolean>,
+  filters: MetricListQuery,
 ): Promise<Map<string, MetricVolume>> {
   const out = new Map<string, MetricVolume>();
   let cursor: string | undefined;
@@ -131,7 +123,7 @@ export async function listMetrics(
 export function datadogMetricListFetch(ctx: DatadogContext): MetricListFetch {
   return async (query) => {
     try {
-      return await ddFetch<MetricListPage>(ctx, "/api/v2/metrics", { query });
+      return await ctx.v2.get("/api/v2/metrics", { query });
     } catch (err) {
       if (statusOf(err) === 403) {
         throw new IdleFindingAccessError(

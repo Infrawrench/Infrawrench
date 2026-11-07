@@ -24,19 +24,21 @@ import type {
   PreflightResult,
 } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
-import { ddFetch, statusOf } from "./api.js";
+import { statusOf } from "./api.js";
 
 interface CapabilityProbe {
   capability: PreflightCapability;
-  path: string;
-  query?: Record<string, string | number | boolean>;
+  /** A read the capability depends on; how it fails is the answer. */
+  probe: (ctx: DatadogContext) => Promise<object | undefined>;
 }
 
 const perm = (id: string, label: string) => ({ id, label });
 
-function currentMonth(): string {
-  return new Date().toISOString().slice(0, 7);
-}
+// Worked out once, when this module loads, not per probe (#461).
+const LOADED_AT = Date.now();
+const LOADED_AT_S = Math.floor(LOADED_AT / 1000);
+const LOADED_MONTH = new Date(LOADED_AT).toISOString().slice(0, 7);
+const LOADED_HOUR_MINUS_2 = new Date(LOADED_AT - 2 * 3600_000).toISOString().slice(0, 13);
 
 const PROBES: CapabilityProbe[] = [
   {
@@ -47,8 +49,8 @@ const PROBES: CapabilityProbe[] = [
         "Estimated, projected and historical cost by product and organization, and cost attribution by tag. Both keys must belong to the parent organization.",
       requiredPermissions: [perm("usage_read", "Usage Read"), perm("billing_read", "Billing Read")],
     },
-    path: "/api/v2/usage/estimated_cost",
-    query: { start_month: currentMonth() },
+    probe: (ctx) =>
+      ctx.v2.get("/api/v2/usage/estimated_cost", { query: { start_month: LOADED_MONTH } }),
   },
   {
     capability: {
@@ -57,12 +59,14 @@ const PROBES: CapabilityProbe[] = [
       description: "Hourly usage by product on each organization's Metrics tab.",
       requiredPermissions: [perm("usage_read", "Usage Read")],
     },
-    path: "/api/v2/usage/hourly_usage",
-    query: {
-      "filter[timestamp][start]": new Date(Date.now() - 2 * 3600_000).toISOString().slice(0, 13),
-      "filter[product_families]": "infra_hosts",
-      "page[limit]": 1,
-    },
+    probe: (ctx) =>
+      ctx.v2.get("/api/v2/usage/hourly_usage", {
+        query: {
+          "filter[timestamp][start]": LOADED_HOUR_MINUS_2,
+          "filter[product_families]": "infra_hosts",
+          "page[limit]": 1,
+        },
+      }),
   },
   {
     capability: {
@@ -75,8 +79,7 @@ const PROBES: CapabilityProbe[] = [
         perm("monitors_downtime", "Manage Downtimes"),
       ],
     },
-    path: "/api/v1/monitor",
-    query: { page: 0, page_size: 1 },
+    probe: (ctx) => ctx.v1.get("/api/v1/monitor", { query: { page: 0, page_size: 1 } }),
   },
   {
     capability: {
@@ -87,8 +90,7 @@ const PROBES: CapabilityProbe[] = [
         perm("dashboards_write", "Dashboards Write"),
       ],
     },
-    path: "/api/v1/dashboard",
-    query: { count: 1 },
+    probe: (ctx) => ctx.v1.get("/api/v1/dashboard", { query: { count: 1 } }),
   },
   {
     capability: {
@@ -96,8 +98,7 @@ const PROBES: CapabilityProbe[] = [
       label: "SLOs",
       requiredPermissions: [perm("slos_read", "SLOs Read"), perm("slos_write", "SLOs Write")],
     },
-    path: "/api/v1/slo",
-    query: { limit: 1 },
+    probe: (ctx) => ctx.v1.get("/api/v1/slo", { query: { limit: 1 } }),
   },
   {
     capability: {
@@ -109,8 +110,7 @@ const PROBES: CapabilityProbe[] = [
         perm("synthetics_write", "Synthetics Write"),
       ],
     },
-    path: "/api/v1/synthetics/tests",
-    query: { page_size: 1 },
+    probe: (ctx) => ctx.v1.get("/api/v1/synthetics/tests", { query: { page_size: 1 } }),
   },
   {
     capability: {
@@ -118,8 +118,7 @@ const PROBES: CapabilityProbe[] = [
       label: "Hosts",
       requiredPermissions: [perm("hosts_read", "Hosts Read")],
     },
-    path: "/api/v1/hosts",
-    query: { count: 1 },
+    probe: (ctx) => ctx.v1.get("/api/v1/hosts", { query: { count: 1 } }),
   },
   {
     capability: {
@@ -128,12 +127,14 @@ const PROBES: CapabilityProbe[] = [
       description: "Metric queries behind the host and monitor Metrics tabs.",
       requiredPermissions: [perm("timeseries_query", "Timeseries Query")],
     },
-    path: "/api/v1/query",
-    query: {
-      from: Math.floor(Date.now() / 1000) - 300,
-      to: Math.floor(Date.now() / 1000),
-      query: "avg:datadog.agent.running{*}",
-    },
+    probe: (ctx) =>
+      ctx.v1.get("/api/v1/query", {
+        query: {
+          from: LOADED_AT_S - 300,
+          to: LOADED_AT_S,
+          query: "avg:datadog.agent.running{*}",
+        },
+      }),
   },
   {
     capability: {
@@ -146,8 +147,7 @@ const PROBES: CapabilityProbe[] = [
         perm("timeseries_query", "Timeseries Query"),
       ],
     },
-    path: "/api/v1/metrics",
-    query: { from: Math.floor(Date.now() / 1000) - 300 },
+    probe: (ctx) => ctx.v1.get("/api/v1/metrics", { query: { from: LOADED_AT_S - 300 } }),
   },
   {
     capability: {
@@ -159,8 +159,7 @@ const PROBES: CapabilityProbe[] = [
         perm("user_access_manage", "User Access Manage"),
       ],
     },
-    path: "/api/v2/users",
-    query: { "page[size]": 1 },
+    probe: (ctx) => ctx.v2.get("/api/v2/users", { query: { "page[size]": 1 } }),
   },
   {
     capability: {
@@ -170,8 +169,8 @@ const PROBES: CapabilityProbe[] = [
         "Lists custom metrics nobody queries and no dashboard, monitor, notebook or SLO uses, with their indexed volume.",
       requiredPermissions: [perm("metrics_read", "Metrics Read")],
     },
-    path: "/api/v2/metrics",
-    query: { "page[size]": 1, "window[seconds]": 3600 },
+    probe: (ctx) =>
+      ctx.v2.get("/api/v2/metrics", { query: { "page[size]": 1, "window[seconds]": 3600 } }),
   },
   {
     capability: {
@@ -182,8 +181,7 @@ const PROBES: CapabilityProbe[] = [
         perm("api_keys_delete", "API Keys Delete"),
       ],
     },
-    path: "/api/v2/api_keys",
-    query: { "page[size]": 1 },
+    probe: (ctx) => ctx.v2.get("/api/v2/api_keys", { query: { "page[size]": 1 } }),
   },
   {
     capability: {
@@ -194,8 +192,7 @@ const PROBES: CapabilityProbe[] = [
         perm("org_app_keys_write", "Org App Keys Write"),
       ],
     },
-    path: "/api/v2/application_keys",
-    query: { "page[size]": 1 },
+    probe: (ctx) => ctx.v2.get("/api/v2/application_keys", { query: { "page[size]": 1 } }),
   },
 ];
 
@@ -212,7 +209,7 @@ const SCOPES_HELP = {
 export async function verifyDatadogCredentials(ctx: DatadogContext): Promise<PreflightResult> {
   // The API key alone: `GET /api/v1/validate` needs no application key.
   try {
-    const res = await ddFetch<{ valid?: boolean }>(ctx, "/api/v1/validate");
+    const res = await ctx.v1.get("/api/v1/validate");
     if (res?.valid === false) throw Object.assign(new Error("invalid"), { status: 403 });
   } catch (err) {
     const status = statusOf(err);
@@ -231,9 +228,7 @@ export async function verifyDatadogCredentials(ctx: DatadogContext): Promise<Pre
 
   let identity: string | undefined;
   try {
-    const me = await ddFetch<{
-      data?: { attributes?: { email?: string; handle?: string; name?: string } };
-    }>(ctx, "/api/v2/current_user");
+    const me = await ctx.v2.get("/api/v2/current_user");
     const a = me.data?.attributes;
     identity = a?.email || a?.handle || a?.name || undefined;
   } catch {
@@ -243,7 +238,7 @@ export async function verifyDatadogCredentials(ctx: DatadogContext): Promise<Pre
   const checks = await Promise.all(
     PROBES.map(async (probe): Promise<PreflightCapabilityCheck> => {
       try {
-        await ddFetch<unknown>(ctx, probe.path, { query: probe.query ?? {} });
+        await probe.probe(ctx);
         return { capabilityId: probe.capability.id, status: "ok" };
       } catch (err) {
         const status = statusOf(err);
