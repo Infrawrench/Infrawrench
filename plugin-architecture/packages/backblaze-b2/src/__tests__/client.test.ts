@@ -550,6 +550,50 @@ describe("asking for buckets", () => {
   });
 });
 
+describe("every kind of bucket", () => {
+  const SHARED = { ...BUCKET, bucketType: "shared" };
+
+  it("asks for every bucket type on every bucket read", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) {
+        return { body: { buckets: [{ ...BUCKET, bucketName: "b2-reports-acct1" }, BUCKET] } };
+      }
+      if (url.pathname.endsWith("b2_update_bucket")) return { body: BUCKET };
+      return { body: { files: [], nextFileName: null } };
+    });
+    await c.listResources("bucket", "a1");
+    await c.updateResource("bucket", "a1:bucket:b1", "a1", { bucketInfo: "{}" });
+    await c.listStorageObjects("photos-bucket", "a/");
+    await c.fetchCostData("a1", { fromDate: "2026-09-01", toDate: "2026-09-30" });
+    const reads = calls.filter((x) => x.url.pathname.endsWith("b2_list_buckets"));
+    expect(reads.length).toBeGreaterThanOrEqual(4);
+    for (const read of reads) expect(read.body).toMatchObject({ bucketTypes: ["all"] });
+  });
+
+  it("does not send a visibility back that the edit form cannot hold", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname.endsWith("b2_update_bucket")) return { body: SHARED };
+      return { body: { buckets: [SHARED] } };
+    });
+    await c.updateResource("bucket", "a1:bucket:b1", "a1", {
+      bucketType: "shared",
+      bucketInfo: "{}",
+    });
+    const update = calls.find((x) => x.url.pathname.endsWith("b2_update_bucket"))!;
+    expect(update.body).not.toHaveProperty("bucketType");
+  });
+
+  it("still changes the visibility when it was changed", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname.endsWith("b2_update_bucket")) return { body: BUCKET };
+      return { body: { buckets: [BUCKET] } };
+    });
+    await c.updateResource("bucket", "a1:bucket:b1", "a1", { bucketType: "allPublic" });
+    const update = calls.find((x) => x.url.pathname.endsWith("b2_update_bucket"))!;
+    expect(update.body).toMatchObject({ bucketType: "allPublic" });
+  });
+});
+
 describe("deleting from the file browser", () => {
   it("deletes nothing and throws when a folder has more versions than it reads", async () => {
     const { c, calls } = client((url) => {

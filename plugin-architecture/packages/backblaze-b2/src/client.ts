@@ -27,6 +27,7 @@ import {
 } from "@infrawrench/plugin-base";
 import type { B2Session } from "./api.js";
 import {
+  ALL_BUCKET_TYPES,
   B2Api,
   B2ApiError,
   coarseRegionOf,
@@ -161,7 +162,7 @@ export class BackblazeB2Client implements PluginClient {
       const out: B2Bucket[] = [];
       for (const ask of asks) {
         const res = await this.api.call<{ buckets?: B2Bucket[] }>("b2_list_buckets", {
-          body: { accountId: s.accountId, ...ask },
+          body: { accountId: s.accountId, bucketTypes: ALL_BUCKET_TYPES, ...ask },
         });
         out.push(
           ...requireListPage(res?.buckets, {
@@ -183,7 +184,7 @@ export class BackblazeB2Client implements PluginClient {
   private async getBucket(bucketId: string): Promise<B2Bucket> {
     const s = await this.api.getSession();
     const res = await this.api.call<{ buckets?: B2Bucket[] }>("b2_list_buckets", {
-      body: { accountId: s.accountId, bucketId },
+      body: { accountId: s.accountId, bucketTypes: ALL_BUCKET_TYPES, bucketId },
     });
     const bucket = res?.buckets?.find((b) => b.bucketId === bucketId);
     if (!bucket)
@@ -1100,7 +1101,10 @@ export class BackblazeB2Client implements PluginClient {
         case "bucket": {
           const bucket = await this.updateBucket(externalId, (b) => {
             const changes: Record<string, unknown> = {};
-            if (fields["bucketType"]) changes["bucketType"] = fields["bucketType"];
+            // Only when changed: the form's select cannot hold `shared` or `restricted`.
+            if (fields["bucketType"] && fields["bucketType"] !== b.bucketType) {
+              changes["bucketType"] = fields["bucketType"];
+            }
             if (fields["encryption"] !== undefined) {
               changes["defaultServerSideEncryption"] =
                 fields["encryption"] === "SSE-B2"

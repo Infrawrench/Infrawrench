@@ -1,7 +1,7 @@
 import type { StorageObject } from "@infrawrench/plugin-base";
 import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { B2Api } from "./api.js";
-import { B2ApiError, VENDOR } from "./api.js";
+import { ALL_BUCKET_TYPES, B2ApiError, VENDOR } from "./api.js";
 import type { B2File } from "./types.js";
 
 /**
@@ -29,7 +29,7 @@ export class B2Storage {
     const s = await this.api.getSession();
     const res = await this.api.call<{ buckets?: Array<{ bucketId: string; bucketName: string }> }>(
       "b2_list_buckets",
-      { body: { accountId: s.accountId, bucketName } },
+      { body: { accountId: s.accountId, bucketTypes: ALL_BUCKET_TYPES, bucketName } },
     );
     const id = res?.buckets?.find((b) => b.bucketName === bucketName)?.bucketId;
     if (!id)

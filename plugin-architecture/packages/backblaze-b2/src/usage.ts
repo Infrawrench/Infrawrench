@@ -6,7 +6,7 @@ import {
   withinListCap,
 } from "@infrawrench/plugin-base";
 import type { B2Api } from "./api.js";
-import { isCapabilityRefusal, VENDOR } from "./api.js";
+import { ALL_BUCKET_TYPES, isCapabilityRefusal, VENDOR } from "./api.js";
 import type { B2File } from "./types.js";
 
 /**
@@ -177,7 +177,9 @@ export class UsageReports {
     try {
       const res = await this.api.call<{
         buckets?: Array<{ bucketId: string; bucketName: string }>;
-      }>("b2_list_buckets", { body: { accountId: s.accountId, bucketName: name } });
+      }>("b2_list_buckets", {
+        body: { accountId: s.accountId, bucketTypes: ALL_BUCKET_TYPES, bucketName: name },
+      });
       found = requireListPage(res?.buckets, {
         vendor: VENDOR,
         path: "b2_list_buckets",

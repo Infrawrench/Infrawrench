@@ -16,6 +16,8 @@ import { utf8ToBase64 } from "@infrawrench/plugin-base";
 export const AUTHORIZE_URL = "https://api.backblazeb2.com/b2api/v4/b2_authorize_account";
 export const API_VERSION_PATH = "/b2api/v4";
 export const VENDOR = "Backblaze B2";
+/** Without this, b2_list_buckets leaves out `restricted` and `shared` buckets. */
+export const ALL_BUCKET_TYPES = ["all"];
 
 export interface B2Context {
   keyId: string;
