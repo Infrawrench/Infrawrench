@@ -15,7 +15,8 @@
  *   without the token: they authorize themselves.
  */
 
-import type { HttpHostServices, MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
+import type { MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
+import { hostFetch } from "@infrawrench/plugin-base";
 import type { GitHubContext } from "./api.js";
 import { byOwner } from "./api.js";
 import { normalizeId, runnerOs } from "./products.js";
@@ -128,14 +129,8 @@ export function parseCopilotReport(bodies: string[]): CopilotDayTotals[] {
   return [...days.values()];
 }
 
-async function download(url: string, http: HttpHostServices | undefined): Promise<string> {
-  if (http) {
-    const res = await http.request({ url, method: "GET", headers: {} });
-    if (res.status < 200 || res.status >= 300)
-      throw new Error(`Copilot report download ${res.status}`);
-    return res.body;
-  }
-  const res = await fetch(url);
+async function download(url: string, ctx: GitHubContext): Promise<string> {
+  const res = await hostFetch({ http: ctx.http, caCert: ctx.caCert }, url);
   if (!res.ok) throw new Error(`Copilot report download ${res.status}`);
   return res.text();
 }
@@ -151,7 +146,7 @@ export async function copilotActiveUserSeries(
   });
   const bodies: string[] = [];
   for (const link of res.download_links ?? []) {
-    bodies.push(await download(link, ctx.http));
+    bodies.push(await download(link, ctx));
   }
   const from = dayIso(range.startMs);
   const to = dayIso(range.endMs);
