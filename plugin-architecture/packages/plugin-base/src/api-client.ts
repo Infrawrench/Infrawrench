@@ -496,11 +496,12 @@ interface ListPageTolerance {
    */
   emptyBodyEndsList?: boolean;
   /**
-   * Read a body whose list key is absent or null as an empty page, for a provider
-   * documented to leave the key out of an empty answer, as proto3 JSON does. Say so
-   * in a comment. Off by default, so it throws a `ListPageError`: that is also what a
-   * renamed key or an error wrapped in a 200 looks like. A value that is there but
-   * is not an array throws either way.
+   * Read a body whose list key is absent as an empty page, for a provider documented
+   * to leave the key out of an empty answer, as proto3 JSON does. Say so in a comment.
+   * Off by default, so it throws a `ListPageError`: that is also what a renamed key or
+   * an error wrapped in a 200 looks like. A key set to `null` is always empty, because
+   * that is how Go serialises a nil slice, and a value that is there but is not an
+   * array always throws.
    */
   missingListIsEmpty?: boolean;
 }
@@ -842,7 +843,8 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
       if (noBody && config.emptyBodyEndsList) return items;
       const batch = listAt(body, key);
       const absent = !noBody && (batch === null || batch === undefined);
-      if (!Array.isArray(batch) && !(absent && config.missingListIsEmpty)) {
+      const nullList = !noBody && batch === null;
+      if (!Array.isArray(batch) && !nullList && !(absent && config.missingListIsEmpty)) {
         throw new ListPageError({ vendor: client.vendor, path, key, found: batch, page: body });
       }
       const list: unknown[] = Array.isArray(batch) ? batch : [];

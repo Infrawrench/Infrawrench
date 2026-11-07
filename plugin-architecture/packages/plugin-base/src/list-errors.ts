@@ -86,6 +86,9 @@ export function requireListPage<T>(
   list: readonly T[] | null | undefined,
   where: Omit<ListPageProblem, "found">,
 ): T[] {
+  // A named key set to null is how Go serialises a nil slice. A whole answer of null
+  // can't be told from no answer, so it needs `emptyBodyEndsList` or a check of its own.
+  if (list === null && where.key !== null) return [];
   if (!Array.isArray(list)) throw new ListPageError({ ...where, found: list });
   return list;
 }

@@ -741,6 +741,18 @@ describe("withPagination", () => {
     await expect(api.getAll("/items", "items")).resolves.toEqual([]);
   });
 
+  it("reads a list key set to null as an empty list, because Go serialises a nil slice that way", async () => {
+    fetchMock.mockImplementation(async () => response({ items: null }));
+    const api = withPagination(client(), { pageParam: "page", sizeParam: "limit", pageSize: 2 });
+    await expect(api.getAll("/items", "items")).resolves.toEqual([]);
+  });
+
+  it("still refuses a page with the list key missing, which is what a renamed key looks like", async () => {
+    fetchMock.mockImplementation(async () => response({ error: "nope" }));
+    const api = withPagination(client(), { pageParam: "page", sizeParam: "limit", pageSize: 2 });
+    await expect(api.getAll("/items", "items")).rejects.toThrow(ListPageError);
+  });
+
   it("throws at its page cap with a page still full, and only then", async () => {
     fetchMock.mockImplementation(async () => response({ items: items(2) }));
     const capped = withPagination(client(), {
@@ -2519,7 +2531,15 @@ describe("requireListPage", () => {
     expect(requireListPage([], where)).toEqual([]);
   });
 
-  it.each([[undefined], [null]])("refuses %s", (value) => {
+  it("reads a named key set to null as empty", () => {
+    expect(requireListPage<number>(null, where)).toEqual([]);
+  });
+
+  it("refuses a whole answer of null, which can't be told from no answer", () => {
+    expect(() => requireListPage<number>(null, { ...where, key: null })).toThrow(ListPageError);
+  });
+
+  it.each([[undefined]])("refuses %s", (value) => {
     expect(() => requireListPage<number>(value, where)).toThrow(ListPageError);
   });
 });
