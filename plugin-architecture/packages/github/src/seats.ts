@@ -1,6 +1,6 @@
 import type { SeatPrice, SeatRecord } from "@infrawrench/plugin-base";
 import type { GitHubContext, GitHubOwner } from "./api.js";
-import { byOwner, statusOf } from "./api.js";
+import { byOwner, ghPaged, ownerBase, statusOf } from "./api.js";
 import type { GhCopilotSeat } from "./mappers.js";
 
 /**
@@ -27,44 +27,42 @@ const SEAT_TYPE: Record<string, string> = {
   enterprise: "Copilot Enterprise",
 };
 
-/** Hard stop for the seat listing; reaching it fails the read rather than truncating it. */
-const MAX_PAGES = 500;
-
 /**
- * Every Copilot seat object for the owner.
+ * Every seat object the owner's listing returns, throwing at the cap. The document
+ * does not promise `seats`, so a subscription that reports none need not have it.
  *
  * GET /orgs/{org}/copilot/billing/seats
  * https://docs.github.com/en/rest/copilot/copilot-user-management#list-all-copilot-seat-assignments-for-an-organization
  * GET /enterprises/{enterprise}/copilot/billing/seats
  * https://docs.github.com/en/enterprise-cloud@latest/rest/copilot/copilot-user-management#list-all-copilot-seat-assignments-for-an-enterprise
- *
- * `per_page` is at most 100. Any failed page fails the whole read. A 404 means
- * the owner has no Copilot subscription (or the owner is gone), which is an
- * empty inventory rather than an error; 401/403 still throw so a token that
- * lost its permission is reported instead of reading as "no seats".
  */
-export async function fetchCopilotSeatObjects(ctx: GitHubContext): Promise<GhCopilotSeat[]> {
-  const out: GhCopilotSeat[] = [];
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    let res: { seats?: readonly GhCopilotSeat[] };
-    try {
-      const query = { per_page: 100, page };
-      res = await byOwner(ctx, {
+export function pagedCopilotSeats(ctx: GitHubContext): Promise<GhCopilotSeat[]> {
+  return ghPaged<GhCopilotSeat, { seats?: readonly GhCopilotSeat[]; total_seats?: number }>(
+    (query) =>
+      byOwner(ctx, {
         org: (api, org) => api.get(`/orgs/${org}/copilot/billing/seats`, { query }),
         enterprise: (api, enterprise) =>
           api.get(`/enterprises/${enterprise}/copilot/billing/seats`, { query }),
-      });
-    } catch (err) {
-      if (page === 1 && statusOf(err) === 404) return [];
-      throw err;
-    }
-    const batch = res?.seats ?? [];
-    out.push(...batch);
-    if (batch.length < 100) return out;
-  }
-  throw new Error(
-    `GitHub plugin: more than ${MAX_PAGES * 100} Copilot seat assignments; refusing to report a partial list.`,
+      }),
+    (r) => (r.total_seats === 0 ? (r.seats ?? []) : r.seats),
+    { path: `${ownerBase(ctx.owner)}/copilot/billing/seats`, key: "seats" },
   );
+}
+
+/**
+ * Every Copilot seat object for the owner, for the Seats findings. Any failed page
+ * fails the whole read. A 404 on the first means the owner has no Copilot subscription
+ * (or the owner is gone), which is an empty inventory rather than an error; 401/403
+ * still throw so a token that lost its permission is reported instead of reading as
+ * "no seats".
+ */
+export async function fetchCopilotSeatObjects(ctx: GitHubContext): Promise<GhCopilotSeat[]> {
+  try {
+    return await pagedCopilotSeats(ctx);
+  } catch (err) {
+    if (statusOf(err) === 404) return [];
+    throw err;
+  }
 }
 
 function latest(values: Array<string | null | undefined>): string | null {

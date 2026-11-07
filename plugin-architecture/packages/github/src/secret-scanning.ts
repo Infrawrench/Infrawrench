@@ -28,7 +28,12 @@ import type {
   LeakedSecretQuery,
   LeakedSecretResolution,
 } from "@infrawrench/plugin-base";
-import { pathEncode, unencodedSegment, type ApiListItem } from "@infrawrench/plugin-base";
+import {
+  pathEncode,
+  requireListPage,
+  unencodedSegment,
+  type ApiListItem,
+} from "@infrawrench/plugin-base";
 import type { operations } from "./api-types.dotcom.gen.js";
 import { type GitHubContext, dotcomApi, ownerSegment, statusOf } from "./api.js";
 
@@ -79,18 +84,21 @@ export async function listSecretScanningAlerts(
   const maxPages = Math.max(1, Math.ceil(query.limit / 100));
   let truncated = false;
   for (let page = 1; page <= maxPages; page++) {
-    const batch = await dotcomApi(ctx).get(
-      `/orgs/${ownerSegment(ctx.owner)}/secret-scanning/alerts`,
-      {
-        query: {
-          per_page: 100,
-          page,
-          sort: "updated",
-          direction: "desc",
-          ...(query.includeResolved ? {} : { state: "open" }),
-        },
+    const org = ownerSegment(ctx.owner);
+    const answer = await dotcomApi(ctx).get(`/orgs/${org}/secret-scanning/alerts`, {
+      query: {
+        per_page: 100,
+        page,
+        sort: "updated",
+        direction: "desc",
+        ...(query.includeResolved ? {} : { state: "open" }),
       },
-    );
+    });
+    const batch = requireListPage(answer, {
+      vendor: "GitHub",
+      path: `/orgs/${org}/secret-scanning/alerts`,
+      key: null,
+    });
     for (const alert of batch) {
       const f = toFinding(alert);
       if (f) findings.push(f);

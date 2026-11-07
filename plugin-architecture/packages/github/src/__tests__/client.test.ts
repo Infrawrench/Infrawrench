@@ -804,3 +804,178 @@ describe("metrics", () => {
     expect(days).toEqual([{ day: "2026-09-01", daily_active_users: 4, weekly_active_users: 9 }]);
   });
 });
+
+describe("list reads that cannot say they have every row", () => {
+  const TRUNCATED = "has more than Infrawrench reads";
+  const NOT_A_LIST = "is not a list";
+  const full = (make: (i: number) => object) => Array.from({ length: 100 }, (_, i) => make(i));
+  const LISTS = [
+    ["runner", "/actions/runners", "runners"],
+    ["actions-cache", "/actions/cache/usage-by-repository", "repository_cache_usages"],
+    ["codespace", "/codespaces", "codespaces"],
+    ["hosted-runner", "/actions/hosted-runners", "runners"],
+    ["copilot-seat", "/copilot/billing/seats", "seats"],
+  ] as const;
+
+  it.each(LISTS)("%s throws at the cap, after exactly 500 pages", async (type, path, key) => {
+    const row = (i: number) => ({
+      id: i,
+      name: `n${i}`,
+      full_name: `o/r${i}`,
+      assignee: { login: `u${i}` },
+    });
+    const { c, calls } = client((url) =>
+      url.pathname.endsWith(path) ? { body: { [key]: full(row) } } : { status: 404, body: {} },
+    );
+    await expect(c.listResources(type, "acc")).rejects.toThrow(TRUNCATED);
+    expect(calls.filter((x) => x.url.pathname.endsWith(path))).toHaveLength(500);
+  });
+
+  it.each(LISTS)("%s throws on a page with its key renamed", async (type, path) => {
+    const { c } = client((url) =>
+      url.pathname.endsWith(path) ? { body: { items: [] } } : { status: 404, body: {} },
+    );
+    await expect(c.listResources(type, "acc")).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("throws on a later page with its key renamed", async () => {
+    const { c } = client((url) =>
+      url.searchParams.get("page") === "1"
+        ? { body: { runners: full((i) => ({ id: i, name: `r${i}` })) } }
+        : { body: { items: [] } },
+    );
+    await expect(c.listResources("runner", "acc")).rejects.toThrow(NOT_A_LIST);
+  });
+
+  describe("budgets", () => {
+    const budgets = (body: (page: number) => object, status?: (page: number) => number) =>
+      client((url) => {
+        if (!url.pathname.endsWith("/budgets")) return { status: 404, body: {} };
+        const page = Number(url.searchParams.get("page"));
+        return { status: status?.(page) ?? 200, body: body(page) };
+      });
+
+    it("throws at the cap", async () => {
+      const { c, calls } = budgets(() => ({ budgets: [{ id: "b" }], has_next_page: true }));
+      await expect(c.listResources("budget", "acc")).rejects.toThrow(TRUNCATED);
+      expect(calls.filter((x) => x.url.pathname.endsWith("/budgets"))).toHaveLength(500);
+    });
+
+    it("throws on a page with its key renamed", async () => {
+      const { c } = budgets(() => ({ items: [] }));
+      await expect(c.listResources("budget", "acc")).rejects.toThrow(NOT_A_LIST);
+    });
+
+    it("reads on past a full page that does not say whether it is the last", async () => {
+      const { c } = budgets((page) =>
+        page === 1 ? { budgets: full((i) => ({ id: `b${i}` })) } : { budgets: [{ id: "last" }] },
+      );
+      expect(await c.listResources("budget", "acc")).toHaveLength(101);
+    });
+
+    it("stops where GitHub says the last page is", async () => {
+      const { c, calls } = budgets(() => ({
+        budgets: full((i) => ({ id: `b${i}` })),
+        has_next_page: false,
+      }));
+      expect(await c.listResources("budget", "acc")).toHaveLength(100);
+      expect(calls.filter((x) => x.url.pathname.endsWith("/budgets"))).toHaveLength(1);
+    });
+
+    it("throws when a later page is refused", async () => {
+      const { c } = budgets(
+        (page) =>
+          page === 1 ? { budgets: [{ id: "b" }], has_next_page: true } : { message: "Forbidden" },
+        (page) => (page === 1 ? 200 : 403),
+      );
+      await expect(c.listResources("budget", "acc")).rejects.toThrow("403");
+    });
+  });
+
+  describe("Copilot seats", () => {
+    it("throws at the cap and on a renamed key", async () => {
+      const seat = (i: number) => ({ assignee: { login: `u${i}` } });
+      const endless = client((url) =>
+        url.pathname.endsWith("/seats") ? { body: { seats: full(seat) } } : { status: 404 },
+      );
+      await expect(endless.c.fetchSeats("acc", { lookbackDays: 30 })).rejects.toThrow(TRUNCATED);
+
+      const renamed = client((url) =>
+        url.pathname.endsWith("/seats") ? { body: { total_seats: 3, items: [] } } : { status: 404 },
+      );
+      await expect(renamed.c.fetchSeats("acc", { lookbackDays: 30 })).rejects.toThrow(NOT_A_LIST);
+    });
+
+    it("reads a subscription with no seats as none, with or without the key", async () => {
+      const { c } = client((url) =>
+        url.pathname.endsWith("/seats") ? { body: { total_seats: 0 } } : { status: 404 },
+      );
+      expect(await c.fetchSeats("acc", { lookbackDays: 30 })).toEqual([]);
+    });
+  });
+
+  describe("cost centres", () => {
+    it("throws on an answer with its key renamed", async () => {
+      const { c } = client(
+        (url) => (url.pathname.endsWith("/cost-centers") ? { body: { items: [] } } : { body: {} }),
+        "enterprise:big",
+      );
+      await expect(c.listResources("cost-center", "acc")).rejects.toThrow(NOT_A_LIST);
+    });
+
+    it("reads an answer holding nothing as no cost centres", async () => {
+      const { c } = client(() => ({ body: {} }), "enterprise:big");
+      expect(await c.listResources("cost-center", "acc")).toEqual([]);
+    });
+  });
+
+  describe("create form pickers", () => {
+    it("offers the members it read rather than fail past the cap", async () => {
+      const { c, calls } = client((url) =>
+        url.pathname.endsWith("/members")
+          ? { body: full((i) => ({ login: `u${i}` })) }
+          : { status: 404, body: {} },
+      );
+      const { fields } = await c.getCreateConfig!("copilot-seat");
+      expect(fields[0]!.options!.length).toBeGreaterThan(0);
+      expect(calls.filter((x) => x.url.pathname.endsWith("/members"))).toHaveLength(100);
+    });
+
+    it("offers the repositories it read rather than fail past the cap", async () => {
+      const { c, calls } = client((url) =>
+        url.pathname.endsWith("/repos")
+          ? { body: full((i) => ({ full_name: `o/r${i}` })) }
+          : { status: 404, body: {} },
+      );
+      const { fields } = await c.getCreateConfig!("budget");
+      const repos = fields.find((f) => f.key === "repository");
+      expect(repos!.options!.length).toBeGreaterThan(0);
+      expect(calls.filter((x) => x.url.pathname.endsWith("/repos"))).toHaveLength(100);
+    });
+  });
+
+  describe("deleting every cache", () => {
+    const delete_ = (c: ReturnType<typeof client>["c"]) =>
+      c.invokeAction!("actions-cache", "acc:actions-cache:o/r", "delete-all-caches", "acc");
+
+    it("fails, saying so, if caches are left at the cap", async () => {
+      const { c, calls } = client((_url, method) =>
+        method === "GET" ? { body: { actions_caches: [{ id: 1 }] } } : { body: {} },
+      );
+      await expect(delete_(c)).rejects.toThrow(/deleted 500 caches .* more remain/i);
+      expect(calls.filter((x) => x.method === "DELETE")).toHaveLength(500);
+    });
+
+    it("fails on a page with its key renamed", async () => {
+      const { c, calls } = client(() => ({ body: { items: [{ id: 1 }] } }));
+      await expect(delete_(c)).rejects.toThrow(NOT_A_LIST);
+      expect(calls.filter((x) => x.method === "DELETE")).toHaveLength(0);
+    });
+
+    it("fails if the caches listed have no ids to delete", async () => {
+      const { c, calls } = client(() => ({ body: { actions_caches: [{ key: "k" }] } }));
+      await expect(delete_(c)).rejects.toThrow(/no id/);
+      expect(calls.filter((x) => x.method === "DELETE")).toHaveLength(0);
+    });
+  });
+});

@@ -24,7 +24,7 @@ import { pathEncode } from "@infrawrench/plugin-base";
 import type { operations as DotcomOps } from "./api-types.dotcom.gen.js";
 import type { operations as GhecOps } from "./api-types.ghec.gen.js";
 import type { GitHubContext, Sparse } from "./api.js";
-import { byOwner, ghecApi } from "./api.js";
+import { billingBase, byOwner, ghecApi, listOrNothing } from "./api.js";
 
 type Row<Answer> = Answer extends { usageItems?: readonly (infer Item)[] } ? Item : never;
 
@@ -62,7 +62,6 @@ export function monthsBetween(fromDate: string, toDate: string): YearMonth[] {
       m = 1;
       y++;
     }
-    if (out.length > 60) break;
   }
   return out;
 }
@@ -91,7 +90,8 @@ export async function fetchUsageItems(
         query: { ...query, ...(costCenterId ? { cost_center_id: costCenterId } : {}) },
       }),
   });
-  return res.usageItems ?? [];
+  const path = `${billingBase(ctx.owner)}/usage`;
+  return [...listOrNothing<UsageItem>(res, res.usageItems, { path, key: "usageItems" })];
 }
 
 export async function fetchUsageSummary(
@@ -146,7 +146,10 @@ export async function fetchCostCenters(ctx: GitHubContext): Promise<CostCenter[]
   const res = await ghecApi(ctx).get(`/enterprises/${enterprise}/settings/billing/cost-centers`, {
     query: { state: "active" },
   });
-  return (res.costCenters ?? []).filter((c) => c.id && c.state !== "deleted");
+  const path = `/enterprises/${enterprise}/settings/billing/cost-centers`;
+  return listOrNothing<CostCenter>(res, res.costCenters, { path, key: "costCenters" }).filter(
+    (c) => c.id && c.state !== "deleted",
+  );
 }
 
 /**

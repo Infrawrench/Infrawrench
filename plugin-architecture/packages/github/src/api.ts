@@ -1,6 +1,8 @@
 import {
+  ListTruncatedError,
   createApiClient,
   pathEncode,
+  requireListPage,
   restRequest,
   type ApiClient,
   type ApiClientOptions,
@@ -248,15 +250,10 @@ export function dependabotAlertsPage(ctx: GitHubContext, query: { after?: string
       });
 }
 
-/** The `rel="next"` URL of a `Link` header, if there is one. */
-export function nextLink(link: string | undefined): URL | undefined {
+/** The `rel="next"` URL of a `Link` header, if there is one. A relative one is under `base`. */
+export function nextLink(link: string | undefined, base: string): URL | undefined {
   const next = findNextLink(link);
-  if (!next) return undefined;
-  try {
-    return new URL(next);
-  } catch {
-    return undefined;
-  }
+  return next === undefined ? undefined : new URL(next, base);
 }
 
 /** POST a GraphQL query. Returns `data` and any field errors; never throws on partial data. */
@@ -286,16 +283,34 @@ export interface PageQuery {
   page: number;
 }
 
+/** 50,000 rows at 100 a page: the most the resource sync can take from one list. */
+export const MAX_LIST_PAGES = 500;
+
+/** Which list a {@link ghPaged} reads, and how it ends. */
+export interface PagedRead<R> {
+  /** Names the list when it cannot be read. */
+  path: string;
+  /** The key holding the rows, or null when the answer is the array. */
+  key: string | null;
+  maxPages?: number;
+  /** Return what was read at the cap, for a picker. A list that gets stored must throw. */
+  partial?: boolean;
+  /** Whether more pages follow, for a list that says. Otherwise a full page means so. */
+  hasMore?: (res: R) => boolean | undefined;
+}
+
 /**
- * Page through a list endpoint (`per_page` / `page`, 100 a page at most).
- * `pick` extracts the array from GitHub's `{ total_count, <things>: [] }`
- * wrapper. Stops on a short page and hard-stops at `maxPages`.
+ * Page through a list endpoint (`per_page` / `page`, 100 a page at most). `pick`
+ * extracts the array from GitHub's `{ total_count, <things>: [] }` wrapper. Ends on a
+ * short page, and throws at the cap and on a page that is not a list: a sync prunes
+ * whatever a list stops returning.
  */
 export async function ghPaged<T, R>(
   fetchPage: (query: PageQuery) => Promise<R>,
-  pick: (res: R) => readonly T[] | undefined,
-  maxPages = 50,
+  pick: (res: R) => readonly T[] | null | undefined,
+  read: PagedRead<R>,
 ): Promise<T[]> {
+  const { path, key, maxPages = MAX_LIST_PAGES, partial, hasMore } = read;
   const out: T[] = [];
   for (let page = 1; page <= maxPages; page++) {
     let res: R;
@@ -307,11 +322,25 @@ export async function ghPaged<T, R>(
       if (page > 1 && err instanceof GitHubApiError) throw new Error(err.message, { cause: err });
       throw err;
     }
-    const batch = pick(res) ?? [];
+    const batch = requireListPage(pick(res), { vendor: "GitHub", path, key });
     out.push(...batch);
-    if (batch.length < 100) break;
+    if (batch.length === 0 || !(hasMore?.(res) ?? batch.length >= 100)) return out;
   }
-  return out;
+  if (partial) return out;
+  throw new ListTruncatedError({ vendor: "GitHub", path, items: out.length, maxPages });
+}
+
+/**
+ * The rows of an answer whose document does not promise the key. An answer holding
+ * nothing at all is an empty list, and one holding something else is not a list.
+ */
+export function listOrNothing<T>(
+  answer: object,
+  rows: readonly T[] | null | undefined,
+  where: { path: string; key: string },
+): readonly T[] {
+  if (Object.keys(answer).length === 0) return [];
+  return requireListPage(rows, { vendor: "GitHub", ...where });
 }
 
 /** HTTP status of a failed call, or 0 for a transport error. */

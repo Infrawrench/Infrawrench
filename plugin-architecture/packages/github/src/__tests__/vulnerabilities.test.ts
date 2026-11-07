@@ -2,7 +2,11 @@ import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { VulnerabilityAccessError } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { plugin } from "../plugin.js";
-import { fetchDependabotFindings, mapDependabotAlert } from "../vulnerabilities.js";
+import {
+  DEPENDABOT_MAX_PAGES,
+  fetchDependabotFindings,
+  mapDependabotAlert,
+} from "../vulnerabilities.js";
 import type { GhDependabotAlert } from "../vulnerabilities.js";
 import { ctxWith } from "./helpers.js";
 
@@ -188,6 +192,57 @@ describe("fetchDependabotFindings", () => {
     const findings = await fetchDependabotFindings(ctxWith(http));
     expect(calls).toHaveLength(2);
     expect(findings).toHaveLength(2);
+  });
+
+  it("throws at the cap rather than read the rest as fixed", async () => {
+    const calls: string[] = [];
+    const http = {
+      async request(req: { url: string }) {
+        calls.push(req.url);
+        return {
+          status: 200,
+          headers: {
+            Link: `<https://api.github.com/x?after=c${calls.length}>; rel="next"`,
+          },
+          body: JSON.stringify([]),
+        };
+      },
+    };
+    await expect(fetchDependabotFindings(ctxWith(http))).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(DEPENDABOT_MAX_PAGES);
+    expect(DEPENDABOT_MAX_PAGES).toBeGreaterThanOrEqual(500);
+  });
+
+  it("throws on a page that is not a list, first or later", async () => {
+    const first = linkedHttp({ "": { body: { items: [] } } });
+    await expect(fetchDependabotFindings(ctxWith(first.http))).rejects.toThrow("is not a list");
+    const later = linkedHttp({
+      "": { body: [ALERT], link: '<https://api.github.com/x?after=next>; rel="next"' },
+      next: { body: { items: [] } },
+    });
+    await expect(fetchDependabotFindings(ctxWith(later.http))).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["names no cursor", '<https://api.github.com/x?page=2>; rel="next"'],
+    ["repeats the cursor", '<https://api.github.com/x?after=same>; rel="next"'],
+  ])("throws when a next link %s, rather than stop there", async (_name, link) => {
+    const { http } = linkedHttp({
+      "": { body: [ALERT], link: '<https://api.github.com/x?after=same>; rel="next"' },
+      same: { body: [NO_PATCH], link },
+    });
+    await expect(fetchDependabotFindings(ctxWith(http))).rejects.toThrow(/next page/);
+  });
+
+  it("reads the cursor out of a relative next link", async () => {
+    const { http, calls } = linkedHttp({
+      "": { body: [ALERT], link: '</organizations/1/dependabot/alerts?after=next>; rel="next"' },
+      next: { body: [NO_PATCH] },
+    });
+    expect(await fetchDependabotFindings(ctxWith(http))).toHaveLength(2);
+    expect(calls[1]!.url.origin).toBe("https://api.github.com");
   });
 
   it("uses the enterprise route for an enterprise account", async () => {

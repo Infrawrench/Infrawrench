@@ -68,6 +68,13 @@ describe("secret scanning", () => {
     expect(page.truncated).toBe(true);
   });
 
+  it("throws on a page that is not a list", async () => {
+    const { http } = makeHttp(() => ({ body: { items: [] } }));
+    await expect(
+      listSecretScanningAlerts(ctxWith(http), { limit: 10, includeResolved: true }),
+    ).rejects.toThrow("is not a list");
+  });
+
   it("returns nothing for an enterprise account without calling GitHub", async () => {
     const { http, calls } = makeHttp(() => ({ body: [] }));
     const page = await listSecretScanningAlerts(ctxWith(http, "enterprise:big"), {

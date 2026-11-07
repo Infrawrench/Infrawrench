@@ -23,15 +23,23 @@ import type {
   SidebarItemSchema,
   VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, unencodedSegment } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  pathEncode,
+  requireListPage,
+  unencodedSegment,
+} from "@infrawrench/plugin-base";
 import type { ApiBody } from "@infrawrench/plugin-base";
 import type { operations as GhecOps } from "./api-types.ghec.gen.js";
 import type { GitHubContext } from "./api.js";
 import {
+  MAX_LIST_PAGES,
+  billingBase,
   byOwner,
   dotcomApi,
   ghPaged,
   isRateLimited,
+  ownerBase,
   ownerSegment,
   parseOwner,
   repoApi,
@@ -39,7 +47,7 @@ import {
   statusOf,
 } from "./api.js";
 import { fetchGitHubCostData } from "./cost-data.js";
-import { fetchCopilotSeatObjects, mapCopilotSeatRecords } from "./seats.js";
+import { fetchCopilotSeatObjects, mapCopilotSeatRecords, pagedCopilotSeats } from "./seats.js";
 import type { GhBudget, GhCopilotSeat } from "./mappers.js";
 import {
   costCenterMembers,
@@ -91,6 +99,9 @@ import {
 
 /** How long one listing pass reuses this month's usage and summary. */
 const MEMO_TTL_MS = 60_000;
+
+/** A form's list: 10,000 choices is more than anyone scrolls, and missing some is harmless. */
+const PICKER_MAX_PAGES = 100;
 
 const ORG_ONLY = new Set(["runner", "actions-cache", "codespace"]);
 const ENTERPRISE_ONLY = new Set(["cost-center"]);
@@ -234,6 +245,7 @@ export class GitHubClient implements PluginClient {
                     query,
                   }),
                 (r) => r.runners,
+                { path: `${ownerBase(this.ctx.owner)}/actions/runners`, key: "runners" },
               )
             ).map((r) => mapRunner(accountId, r)),
           );
@@ -247,6 +259,10 @@ export class GitHubClient implements PluginClient {
                     { query },
                   ),
                 (r) => r.repository_cache_usages,
+                {
+                  path: `${ownerBase(this.ctx.owner)}/actions/cache/usage-by-repository`,
+                  key: "repository_cache_usages",
+                },
               )
             )
               .filter((u) => u.full_name)
@@ -261,6 +277,7 @@ export class GitHubClient implements PluginClient {
                     query,
                   }),
                 (r) => r.codespaces,
+                { path: `${ownerBase(this.ctx.owner)}/codespaces`, key: "codespaces" },
               )
             ).map((c) => mapCodespace(accountId, c)),
           );
@@ -316,22 +333,10 @@ export class GitHubClient implements PluginClient {
   }
 
   private async listSeats(accountId: string): Promise<ResourceInstance[]> {
-    const [seats, price] = await Promise.all([this.pagedSeats(), this.seatPrices()]);
+    const [seats, price] = await Promise.all([pagedCopilotSeats(this.ctx), this.seatPrices()]);
     return seats
       .filter((s) => s.assignee?.login)
       .map((s) => mapCopilotSeat(accountId, s, price(s.plan_type)));
-  }
-
-  private pagedSeats(): Promise<GhCopilotSeat[]> {
-    return ghPaged<GhCopilotSeat, { seats?: readonly GhCopilotSeat[] }>(
-      (query) =>
-        byOwner(this.ctx, {
-          org: (api, org) => api.get(`/orgs/${org}/copilot/billing/seats`, { query }),
-          enterprise: (api, enterprise) =>
-            api.get(`/enterprises/${enterprise}/copilot/billing/seats`, { query }),
-        }),
-      (r) => r.seats,
-    );
   }
 
   /** This month's unit price per Copilot plan, from the bill; undefined when it has none. */
@@ -412,25 +417,28 @@ export class GitHubClient implements PluginClient {
               api.get(`/enterprises/${enterprise}/actions/hosted-runners`, { query }),
           }),
         (r) => r.runners,
+        { path: `${ownerBase(this.ctx.owner)}/actions/hosted-runners`, key: "runners" },
       ),
       this.skuSpend(),
     ]);
     return runners.map((r) => mapHostedRunner(accountId, r, spend));
   }
 
-  private async fetchBudgets(): Promise<GhBudget[]> {
-    const out: GhBudget[] = [];
-    for (let page = 1; page <= 20; page++) {
-      const query = { per_page: 100, page };
-      const res = await byOwner(this.ctx, {
-        org: (api, org) => api.get(`/organizations/${org}/settings/billing/budgets`, { query }),
-        enterprise: (api, enterprise) =>
-          api.get(`/enterprises/${enterprise}/settings/billing/budgets`, { query }),
-      });
-      out.push(...(res.budgets ?? []));
-      if (!res.has_next_page || (res.budgets ?? []).length === 0) break;
-    }
-    return out;
+  private fetchBudgets(): Promise<GhBudget[]> {
+    return ghPaged<GhBudget, { budgets?: readonly GhBudget[]; has_next_page?: boolean }>(
+      (query) =>
+        byOwner(this.ctx, {
+          org: (api, org) => api.get(`/organizations/${org}/settings/billing/budgets`, { query }),
+          enterprise: (api, enterprise) =>
+            api.get(`/enterprises/${enterprise}/settings/billing/budgets`, { query }),
+        }),
+      (r) => r.budgets,
+      {
+        path: `${billingBase(this.ctx.owner)}/budgets`,
+        key: "budgets",
+        hasMore: (r) => r.has_next_page,
+      },
+    );
   }
 
   /** This month's net spend that falls under a budget, from the usage line items. */
@@ -714,8 +722,14 @@ export class GitHubClient implements PluginClient {
         (query) =>
           dotcomApi(this.ctx).get(`/orgs/${ownerSegment(this.ctx.owner)}/members`, { query }),
         (r) => r,
+        {
+          path: `${ownerBase(this.ctx.owner)}/members`,
+          key: null,
+          maxPages: PICKER_MAX_PAGES,
+          partial: true,
+        },
       ).catch(() => []),
-      this.pagedSeats().catch((): GhCopilotSeat[] => []),
+      pagedCopilotSeats(this.ctx).catch((): GhCopilotSeat[] => []),
     ]);
     const seated = new Set(seats.map((s) => s.assignee?.login?.toLowerCase()).filter(Boolean));
     const options = members
@@ -845,7 +859,12 @@ export class GitHubClient implements PluginClient {
               query: { sort: "full_name", ...query },
             }),
           (r) => r,
-          10,
+          {
+            path: `${ownerBase(this.ctx.owner)}/repos`,
+            key: null,
+            maxPages: PICKER_MAX_PAGES,
+            partial: true,
+          },
         ).catch(() => [])
       : [];
     const scopes = this.isOrg
@@ -1292,15 +1311,27 @@ export class GitHubClient implements PluginClient {
         }
         if (actionId === "delete-all-caches") {
           // There is no "delete everything" call; page through and delete by id.
-          for (let round = 0; round < 50; round++) {
+          let deleted = 0;
+          for (let round = 0; round < MAX_LIST_PAGES; round++) {
             const res = await repo.get("/actions/caches", { query: { per_page: 100 } });
-            const batch = (res.actions_caches ?? []).filter((c) => c.id !== undefined);
-            if (batch.length === 0) return;
+            const page = requireListPage(res.actions_caches, {
+              vendor: "GitHub",
+              path: `/repos/${id}/actions/caches`,
+              key: "actions_caches",
+            });
+            if (page.length === 0) return;
+            const batch = page.filter((c) => c.id !== undefined);
+            if (batch.length === 0) {
+              throw new Error(`GitHub listed caches for ${id} with no id to delete them by.`);
+            }
             for (const c of batch) {
               await repo.delete(`/actions/caches/${unencodedSegment(String(c.id))}`);
+              deleted++;
             }
           }
-          return;
+          throw new Error(
+            `GitHub plugin: deleted ${deleted} caches from ${id} and more remain. Run this again to delete the rest.`,
+          );
         }
       }
       if (typeId === "codespace" && actionId === "stop") {

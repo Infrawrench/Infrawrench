@@ -1,6 +1,7 @@
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { fetchGitHubCostData, toCostRows } from "../cost-data.js";
+import { monthsBetween } from "../usage.js";
 import { ctxWith, makeHttp } from "./helpers.js";
 
 const range = { fromDate: "2026-09-01", toDate: "2026-09-30" };
@@ -170,6 +171,22 @@ describe("fetchGitHubCostData", () => {
       [1, undefined],
       [2, "Platform"],
     ]);
+  });
+
+  it("throws on a usage answer with its key renamed, rather than read an empty bill", async () => {
+    const { http } = makeHttp(() => ({ body: { items: [] } }));
+    await expect(fetchGitHubCostData(ctxWith(http), range)).rejects.toThrow("is not a list");
+  });
+
+  it("reads a usage answer holding nothing as an empty month", async () => {
+    const { http } = makeHttp(() => ({ body: {} }));
+    expect(await fetchGitHubCostData(ctxWith(http), range)).toEqual([]);
+  });
+
+  it("keeps the newest months of a very long range", () => {
+    const months = monthsBetween("2015-01-01", "2026-03-15");
+    expect(months).toHaveLength(135);
+    expect(months.at(-1)).toEqual({ year: 2026, month: 3 });
   });
 
   it("skips months before the billing history starts but not the newest", async () => {

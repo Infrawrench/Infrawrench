@@ -28,17 +28,19 @@
 
 import type { ApiListItem, VulnerabilityFinding } from "@infrawrench/plugin-base";
 import {
+  ListTruncatedError,
   VulnerabilityAccessError,
   normalizeVulnerabilityFindings,
   normalizeVulnerabilitySeverity,
+  requireListPage,
 } from "@infrawrench/plugin-base";
 import type { operations as DotcomOps } from "./api-types.dotcom.gen.js";
 import type { operations as GhecOps } from "./api-types.ghec.gen.js";
 import type { GitHubContext, Sparse } from "./api.js";
-import { dependabotAlertsPage, nextLink, statusOf } from "./api.js";
+import { dependabotAlertsPage, nextLink, ownerBase, statusOf } from "./api.js";
 
-/** Pages of 100 read at most: 5,000 open alerts. Beyond that the read is partial. */
-export const DEPENDABOT_MAX_PAGES = 50;
+/** Pages of 100 read at most: 100,000 open alerts. Beyond that the read fails. */
+export const DEPENDABOT_MAX_PAGES = 1000;
 
 /** One alert, as the org / enterprise list returns it. */
 export type GhDependabotAlert = Sparse<
@@ -112,11 +114,12 @@ export function mapDependabotAlert(alert: GhDependabotAlert): VulnerabilityFindi
 }
 
 /**
- * Every open Dependabot alert the owner's listing returns, up to
- * {@link DEPENDABOT_MAX_PAGES} pages. Any failure part-way through throws:
- * a short list would read as alerts having been fixed.
+ * Every open Dependabot alert the owner's listing returns. Any failure part-way
+ * through throws, and so does a list longer than {@link DEPENDABOT_MAX_PAGES} pages or
+ * a next page it cannot follow: a short list would read as alerts having been fixed.
  */
 export async function fetchDependabotFindings(ctx: GitHubContext): Promise<VulnerabilityFinding[]> {
+  const path = `${ownerBase(ctx.owner)}/dependabot/alerts`;
   const out: VulnerabilityFinding[] = [];
   let after: string | undefined;
   for (let page = 0; page < DEPENDABOT_MAX_PAGES; page++) {
@@ -126,17 +129,28 @@ export async function fetchDependabotFindings(ctx: GitHubContext): Promise<Vulne
     } catch (err) {
       throw accessError(ctx, err) ?? err;
     }
-    for (const alert of Array.isArray(res.body) ? res.body : []) {
+    for (const alert of requireListPage(res.body, { vendor: "GitHub", path, key: null })) {
       const f = mapDependabotAlert(alert);
       if (f) out.push(f);
     }
     // Follow only the cursor out of the `Link` URL, never the URL itself, so
     // the next request goes to the same host and path with the same filters.
-    const next = nextLink(res.headers["link"])?.searchParams.get("after");
-    if (!next || next === after) break;
+    const link = nextLink(res.headers["link"], ctx.host.apiUrl);
+    if (!link) return normalizeVulnerabilityFindings(out);
+    const next = link.searchParams.get("after");
+    if (!next || next === after) {
+      throw new Error(
+        `GitHub named a next page of ${path} that gives no new cursor, so the rest cannot be read.`,
+      );
+    }
     after = next;
   }
-  return normalizeVulnerabilityFindings(out);
+  throw new ListTruncatedError({
+    vendor: "GitHub",
+    path,
+    items: out.length,
+    maxPages: DEPENDABOT_MAX_PAGES,
+  });
 }
 
 function accessError(ctx: GitHubContext, err: unknown): VulnerabilityAccessError | undefined {
