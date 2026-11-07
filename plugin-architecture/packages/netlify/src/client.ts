@@ -470,6 +470,54 @@ export class NetlifyClient implements PluginClient {
               required: false,
               description: "Time to live; leave blank for default (3600)",
             },
+            {
+              key: "priority",
+              label: "Priority",
+              kind: "number",
+              required: true,
+              defaultValue: "10",
+              description: "Lower numbers are tried first",
+              showWhen: { fieldKey: "type", fieldValues: ["MX", "SRV"] },
+            },
+            {
+              key: "weight",
+              label: "Weight",
+              kind: "number",
+              required: true,
+              defaultValue: "0",
+              description: "How to share traffic between records of the same priority",
+              showWhen: { fieldKey: "type", fieldValue: "SRV" },
+            },
+            {
+              key: "port",
+              label: "Port",
+              kind: "number",
+              required: true,
+              description: "The port the service listens on",
+              showWhen: { fieldKey: "type", fieldValue: "SRV" },
+            },
+            {
+              key: "flag",
+              label: "Flag",
+              kind: "number",
+              required: true,
+              defaultValue: "0",
+              description: "128 tells a certificate authority not to skip a tag it does not know",
+              showWhen: { fieldKey: "type", fieldValue: "CAA" },
+            },
+            {
+              key: "tag",
+              label: "Tag",
+              kind: "select",
+              required: true,
+              defaultValue: "issue",
+              options: [
+                { id: "issue", label: "issue: may issue certificates" },
+                { id: "issuewild", label: "issuewild: may issue wildcard certificates" },
+                { id: "iodef", label: "iodef: where to report a violation" },
+              ],
+              showWhen: { fieldKey: "type", fieldValue: "CAA" },
+            },
           ],
         };
       }
@@ -709,12 +757,22 @@ export class NetlifyClient implements PluginClient {
       if (typeId === "netlify-dns-record") {
         const zoneId = fields["zoneId"] || parentExternalId;
         if (!zoneId) throw new Error("Netlify plugin: zoneId is required to create a DNS record");
+        const ttl = wholeNumber(fields, "ttl");
+        const priority = wholeNumber(fields, "priority");
+        const weight = wholeNumber(fields, "weight");
+        const port = wholeNumber(fields, "port");
+        const flag = wholeNumber(fields, "flag");
         const record = await this.api.post(`/dns_zones/${pathEncode(zoneId)}/dns_records`, {
           body: {
             type: fields["type"] ?? "",
             hostname: fields["hostname"] ?? "",
             value: fields["value"] ?? "",
-            ...(fields["ttl"] ? { ttl: Number(fields["ttl"]) } : {}),
+            ...(ttl !== undefined ? { ttl } : {}),
+            ...(priority !== undefined ? { priority } : {}),
+            ...(weight !== undefined ? { weight } : {}),
+            ...(port !== undefined ? { port } : {}),
+            ...(flag !== undefined ? { flag } : {}),
+            ...(fields["tag"] ? { tag: fields["tag"] } : {}),
           },
         });
         return this.mapDnsRecord(record, accountId, zoneId);
@@ -2281,6 +2339,17 @@ function mapDbState(state: string): ResourceStatus {
     default:
       return "info";
   }
+}
+
+/** A form's number, undefined when blank. `Number()` alone would send junk as `null`. */
+function wholeNumber(fields: Record<string, string>, key: string): number | undefined {
+  const raw = fields[key]?.trim();
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value)) {
+    throw new Error(`Netlify plugin: ${key} must be a whole number, got "${raw}"`);
+  }
+  return value;
 }
 
 /** `{accountId}:{typeId}:{siteId}/{childId}` → its site and child ids. */

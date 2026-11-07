@@ -1146,6 +1146,29 @@ describe("getCreateConfig", () => {
     expect(cfg.fields[0]!.key).toBe("type");
   });
 
+  it("dns record config asks for what each record type needs, only for that type", async () => {
+    const cfg = await client().getCreateConfig(
+      "netlify-dns-record",
+      "acct-1:netlify-dns-zone:zone1",
+    );
+    const shownFor = (key: string) => cfg.fields.find((f) => f.key === key);
+    expect(shownFor("priority")?.showWhen).toEqual({
+      fieldKey: "type",
+      fieldValues: ["MX", "SRV"],
+    });
+    expect(shownFor("priority")?.required).toBe(true);
+    for (const key of ["weight", "port"]) {
+      expect(shownFor(key)?.showWhen).toEqual({ fieldKey: "type", fieldValue: "SRV" });
+      expect(shownFor(key)?.required).toBe(true);
+    }
+    for (const key of ["flag", "tag"]) {
+      expect(shownFor(key)?.showWhen).toEqual({ fieldKey: "type", fieldValue: "CAA" });
+      expect(shownFor(key)?.required).toBe(true);
+    }
+    expect(shownFor("tag")?.kind).toBe("select");
+    expect(shownFor("tag")?.options?.map((o) => o.id)).toEqual(["issue", "issuewild", "iodef"]);
+  });
+
   it("dns record config handles null zones", async () => {
     router([[(u) => u.includes("/dns_zones"), null]]);
     const cfg = await client().getCreateConfig("netlify-dns-record");
@@ -1218,6 +1241,68 @@ describe("createResource", () => {
     expect(r.externalId).toBe("rec1");
     const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body.ttl).toBe(300);
+  });
+
+  describe("record types with more than a value", () => {
+    const created = () =>
+      router([
+        [
+          (u, i) => method(i) === "POST" && u.includes("/dns_records"),
+          { id: "rec1", hostname: "@", type: "MX" },
+        ],
+      ]);
+    const send = async (fields: Record<string, string>) => {
+      created();
+      await client().createResource(
+        "netlify-dns-record",
+        ACCOUNT,
+        { hostname: "@", value: "v", ...fields },
+        "acct-1:netlify-dns-zone:zone9",
+      );
+      return JSON.parse(calls[0]!.init?.body as string);
+    };
+
+    it("sends an MX record's priority, zero included", async () => {
+      expect(await send({ type: "MX", priority: "10" })).toMatchObject({ priority: 10 });
+      calls = [];
+      expect(await send({ type: "MX", priority: "0" })).toMatchObject({ priority: 0 });
+    });
+
+    it("sends an SRV record's priority, weight and port", async () => {
+      expect(await send({ type: "SRV", priority: "1", weight: "5", port: "443" })).toMatchObject({
+        priority: 1,
+        weight: 5,
+        port: 443,
+      });
+    });
+
+    it("sends a CAA record's flag and tag", async () => {
+      expect(await send({ type: "CAA", flag: "128", tag: "issue" })).toMatchObject({
+        flag: 128,
+        tag: "issue",
+      });
+    });
+
+    it("leaves out what the form did not show", async () => {
+      const body = await send({ type: "A" });
+      expect(Object.keys(body).sort()).toEqual(["hostname", "type", "value"]);
+    });
+
+    it.each(["ttl", "priority", "weight", "port", "flag"])(
+      "refuses a %s that is not a whole number, without sending anything",
+      async (key) => {
+        created();
+        await expect(
+          client().createResource(
+            "netlify-dns-record",
+            ACCOUNT,
+            { type: "MX", hostname: "@", value: "v", [key]: "soon" },
+            "acct-1:netlify-dns-zone:zone9",
+          ),
+        ).rejects.toThrow(`${key} must be a whole number`);
+        expect(calls).toEqual([]);
+      },
+    );
   });
 
   it("creates a dns record using parent zoneId, no ttl", async () => {
