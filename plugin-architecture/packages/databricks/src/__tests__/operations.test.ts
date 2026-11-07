@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 import { DatabricksClient } from "../client.js";
@@ -29,9 +30,11 @@ function route(routes: Array<[string, string, unknown]>) {
 }
 
 function client() {
-  return new DatabricksClient(
-    { host: "dbc-test.cloud.databricks.com", token: "dapi123" },
-    plugin.resourceTypes,
+  return hostClient(
+    new DatabricksClient(
+      { host: "dbc-test.cloud.databricks.com", token: "dapi123" },
+      plugin.resourceTypes,
+    ),
   );
 }
 

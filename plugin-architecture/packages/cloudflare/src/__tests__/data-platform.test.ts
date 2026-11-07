@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { CloudflareClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -54,7 +55,7 @@ function api() {
 }
 
 function client() {
-  const c = new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes);
+  const c = hostClient(new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes));
   const a = api();
   (c as unknown as { api: unknown }).api = a;
   return { c, api: a };

@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { StripeClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,15 +8,13 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { stripeTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "stripe",
-  version: "0.1.0",
+  egressHosts: ["api.stripe.com"],
   displayName: "Stripe",
   description:
     "Stripe as infrastructure: webhook endpoints and event destinations with an event picker and kept signing secrets, products, prices and billing meters, Connect accounts, payouts, balance, a subscriptions overview, Reporting and Sigma runs, failing webhook deliveries, and Stripe's own fees as cost.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -36,7 +35,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://dashboard.stripe.com/apikeys",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -47,7 +46,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Create a restricted key", url: "https://dashboard.stripe.com/apikeys" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Stripe's fees from balance transactions: per product (Payments,
     // Billing, Radar, Connect, currency conversion…) and fee type.
@@ -61,13 +60,16 @@ const manifest: PluginManifest = {
   preflight,
   // Stripe allows 100 read requests a second in live mode and 25 in test mode.
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new StripeClient(credentials, services),
+  testCredentials: { apiKey: "rk_test_123" },
   parseStatusFeed,
   terraformExport: stripeTerraformExport,
   policyTemplate,
-};
+});

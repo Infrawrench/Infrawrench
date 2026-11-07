@@ -81,7 +81,7 @@ export const RDSInstanceResourceType = rt({
     }),
   ],
   outputs: [
-    o("endpoint", "Endpoint"),
+    o("endpoint", "Endpoint", { dnsValue: "hostname" }),
     o("port", "Port"),
     o("masterUsername", "Master Username"),
     o("connectionString", "Connection String", {

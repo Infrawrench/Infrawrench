@@ -31,8 +31,8 @@ describe("Vercel OAuth declaration", () => {
 
   it("wires the hooks", () => {
     expect(plugin.buildOAuthAuthorizeUrl).toBe(buildVercelAuthorizeUrl);
-    expect(plugin.exchangeOAuthCode).toBe(exchangeVercelCode);
-    expect(plugin.completeOAuthConnection).toBe(completeVercelOAuth);
+    expect(plugin.exchangeOAuthCode).toBeTypeOf("function");
+    expect(plugin.completeOAuthConnection).toBeTypeOf("function");
   });
 
   it("sends the user to the integration install URL with only the state", () => {

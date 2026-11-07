@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.94.0",
+    "version": "1.95.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5106,6 +5106,43 @@
           },
           "oauth": {
             "$ref": "#/components/schemas/PluginOAuthSummary"
+          },
+          "sshTunnel": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "defaultPort": {
+                "type": "integer"
+              },
+              "credentials": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "What an account tunneled to this service stores; `{port}` stands for the local end of the tunnel."
+              }
+            },
+            "required": [
+              "label",
+              "defaultPort",
+              "credentials"
+            ],
+            "additionalProperties": false,
+            "description": "Present when the plugin can be reached through an SSH tunnel to a remote host."
+          },
+          "jumpHost": {
+            "type": "boolean",
+            "description": "This plugin's accounts are SSH hosts that other accounts can connect through."
+          },
+          "kvBrowser": {
+            "type": "string",
+            "enum": [
+              "keys",
+              "documents"
+            ],
+            "description": "Which browser the plugin's connections open: `documents` for collections of JSON documents, `keys` for the key-value console. Absent means `keys`, or that the plugin has no key-value driver."
           }
         },
         "required": [

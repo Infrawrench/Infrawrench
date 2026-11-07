@@ -26,8 +26,8 @@
  * table whose only job is to hold numbers the providers already host.
  */
 import type {
-  Plugin,
-  PluginClient,
+  HostPlugin,
+  HostPluginClient,
   PriceCatalogDeclaration,
   PriceCatalogProduct,
   PriceCatalogResult,
@@ -57,15 +57,15 @@ import {
 
 /** What the service needs from the rest of the server; injected for tests. */
 export interface PriceCatalogDeps {
-  listPlugins(): Promise<Plugin[]>;
+  listPlugins(): Promise<HostPlugin[]>;
   /** The org's live (not deleted) account ids on a plugin, oldest first. */
   listAccountIds(organizationId: string, pluginId: string): Promise<string[]>;
-  getClient(accountId: string, organizationId: string): Promise<PluginClient | null>;
+  getClient(accountId: string, organizationId: string): Promise<HostPluginClient | null>;
   /** Run a public fetch with the host's HTTP plumbing and egress guard. */
   runPublicFetch(
-    plugin: Plugin,
+    plugin: HostPlugin,
     organizationId: string,
-    fn: (plugin: Plugin) => Promise<PriceCatalogResult>,
+    fn: (plugin: HostPlugin) => Promise<PriceCatalogResult>,
   ): Promise<PriceCatalogResult>;
   /** The org's comparison currency and converter. */
   loadConverter(
@@ -88,11 +88,11 @@ const ERROR_TTL_MS = 5 * 60_000;
 const COLD_WAIT_MS = 20_000;
 const MAX_CACHE_ENTRIES = 2_000;
 
-type CatalogPlugin = Plugin & {
-  manifest: Plugin["manifest"] & { priceCatalog: PriceCatalogDeclaration };
+type CatalogPlugin = HostPlugin & {
+  manifest: HostPlugin["manifest"] & { priceCatalog: PriceCatalogDeclaration };
 };
 
-function hasCatalog(plugin: Plugin): plugin is CatalogPlugin {
+function hasCatalog(plugin: HostPlugin): plugin is CatalogPlugin {
   return Boolean(plugin.manifest.priceCatalog);
 }
 

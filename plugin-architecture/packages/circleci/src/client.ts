@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -182,7 +185,7 @@ export class CircleCIClient implements PluginClient {
   private projectsCache: Promise<ProjectRef[]> | undefined;
   private pipelinesCache: Promise<CirclePipeline[]> | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["apiToken"] ?? "").trim();
     if (!token) throw new Error("CircleCI plugin: missing apiToken credential");
     this.ctx = { token, ...(services?.http ? { http: services.http } : {}) };
@@ -415,356 +418,374 @@ export class CircleCIClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    const price = this.rates.pricePerCredit;
-    switch (typeId) {
-      case "organization": {
-        const [org, summary] = await Promise.all([this.org(), this.orgSummary()]);
-        return [mapOrganization(accountId, org, summary, price)];
-      }
-      case "project": {
-        this.projectsCache = undefined;
-        const [projects, summary] = await Promise.all([this.projects(), this.orgSummary()]);
-        const metrics = new Map(
-          (summary?.org_project_data ?? []).map((p) => [p.project_name, p.metrics]),
-        );
-        return projects.map((p) =>
-          mapProject(
-            accountId,
-            { slug: p.slug, name: p.name, ...(p.id ? { id: p.id } : {}) },
-            metrics.get(p.name),
-            price,
-          ),
-        );
-      }
-      case "workflow":
-        return this.perProject(async (p) =>
-          (await this.workflowMetrics(p.slug)).map((w) => mapWorkflow(accountId, p.slug, w)),
-        );
-      case "pipeline": {
-        this.pipelinesCache = undefined;
-        return (await this.recentPipelines())
-          .slice(0, PIPELINE_LIMIT)
-          .map((p) => mapPipeline(accountId, p));
-      }
-      case "context": {
-        const contexts = await this.contexts();
-        const out: ResourceInstance[] = [];
-        for (const c of contexts) {
-          const vars = await this.contextVariables(c.id).catch(() => undefined);
-          out.push(mapContext(accountId, c, vars));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      const price = this.rates.pricePerCredit;
+      switch (typeId) {
+        case "organization": {
+          const [org, summary] = await Promise.all([this.org(), this.orgSummary()]);
+          return [mapOrganization(accountId, org, summary, price)];
         }
-        return out;
-      }
-      case "context-variable": {
-        const out: ResourceInstance[] = [];
-        for (const c of await this.contexts()) {
-          const vars = await this.contextVariables(c.id).catch(() => [] as ContextVariable[]);
-          out.push(...vars.map((v) => mapContextVariable(accountId, c, v)));
-        }
-        return out;
-      }
-      case "project-variable":
-        return this.perProject(async (p) =>
-          (await circlePaged<ProjectVariable>(this.ctx, `/project/${p.slug}/envvar`)).map((v) =>
-            mapProjectVariable(accountId, p.slug, v),
-          ),
-        );
-      case "schedule":
-        return this.perProject(async (p) =>
-          (await circlePaged<CircleSchedule>(this.ctx, `/project/${p.slug}/schedule`)).map((s) =>
-            mapSchedule(accountId, { ...s, "project-slug": s["project-slug"] ?? p.slug }),
-          ),
-        );
-      case "trigger":
-        return this.perProject(async (p) => {
-          const id = p.id ?? (await this.projectId(p.slug));
-          return this.triggersFor(accountId, { ...p, id });
-        });
-      case "runner-resource-class": {
-        let classes: RunnerResourceClass[];
-        try {
-          classes = await this.runnerClasses();
-        } catch (err) {
-          // No runner namespace, or a plan without runners: nothing to list.
-          if (statusOf(err) === 403 || statusOf(err) === 404) return [];
-          throw err;
-        }
-        const agents = await this.runnerAgents().catch(() => undefined);
-        const out: ResourceInstance[] = [];
-        for (const rc of classes) {
-          const name = rc.attributes?.resource_class ?? "";
-          const count = agents?.filter((a) => runnerClassOf(a).id === rc.id).length;
-          out.push(
-            mapRunnerResourceClass(accountId, rc, count, name ? await this.runnerTasks(name) : {}),
+        case "project": {
+          this.projectsCache = undefined;
+          const [projects, summary] = await Promise.all([this.projects(), this.orgSummary()]);
+          const metrics = new Map(
+            (summary?.org_project_data ?? []).map((p) => [p.project_name, p.metrics]),
+          );
+          return projects.map((p) =>
+            mapProject(
+              accountId,
+              { slug: p.slug, name: p.name, ...(p.id ? { id: p.id } : {}) },
+              metrics.get(p.name),
+              price,
+            ),
           );
         }
-        return out;
-      }
-      case "runner":
-        try {
-          return (await this.runnerAgents()).map((r) => mapRunner(accountId, r));
-        } catch (err) {
-          if (statusOf(err) === 403 || statusOf(err) === 404) return [];
-          throw err;
+        case "workflow":
+          return this.perProject(async (p) =>
+            (await this.workflowMetrics(p.slug)).map((w) => mapWorkflow(accountId, p.slug, w)),
+          );
+        case "pipeline": {
+          this.pipelinesCache = undefined;
+          return (await this.recentPipelines())
+            .slice(0, PIPELINE_LIMIT)
+            .map((p) => mapPipeline(accountId, p));
         }
-      default:
-        throw new Error(`CircleCI plugin: unknown resource type "${typeId}"`);
-    }
+        case "context": {
+          const contexts = await this.contexts();
+          const out: ResourceInstance[] = [];
+          for (const c of contexts) {
+            const vars = await this.contextVariables(c.id).catch(() => undefined);
+            out.push(mapContext(accountId, c, vars));
+          }
+          return out;
+        }
+        case "context-variable": {
+          const out: ResourceInstance[] = [];
+          for (const c of await this.contexts()) {
+            const vars = await this.contextVariables(c.id).catch(() => [] as ContextVariable[]);
+            out.push(...vars.map((v) => mapContextVariable(accountId, c, v)));
+          }
+          return out;
+        }
+        case "project-variable":
+          return this.perProject(async (p) =>
+            (await circlePaged<ProjectVariable>(this.ctx, `/project/${p.slug}/envvar`)).map((v) =>
+              mapProjectVariable(accountId, p.slug, v),
+            ),
+          );
+        case "schedule":
+          return this.perProject(async (p) =>
+            (await circlePaged<CircleSchedule>(this.ctx, `/project/${p.slug}/schedule`)).map((s) =>
+              mapSchedule(accountId, { ...s, "project-slug": s["project-slug"] ?? p.slug }),
+            ),
+          );
+        case "trigger":
+          return this.perProject(async (p) => {
+            const id = p.id ?? (await this.projectId(p.slug));
+            return this.triggersFor(accountId, { ...p, id });
+          });
+        case "runner-resource-class": {
+          let classes: RunnerResourceClass[];
+          try {
+            classes = await this.runnerClasses();
+          } catch (err) {
+            // No runner namespace, or a plan without runners: nothing to list.
+            if (statusOf(err) === 403 || statusOf(err) === 404) return [];
+            throw err;
+          }
+          const agents = await this.runnerAgents().catch(() => undefined);
+          const out: ResourceInstance[] = [];
+          for (const rc of classes) {
+            const name = rc.attributes?.resource_class ?? "";
+            const count = agents?.filter((a) => runnerClassOf(a).id === rc.id).length;
+            out.push(
+              mapRunnerResourceClass(
+                accountId,
+                rc,
+                count,
+                name ? await this.runnerTasks(name) : {},
+              ),
+            );
+          }
+          return out;
+        }
+        case "runner":
+          try {
+            return (await this.runnerAgents()).map((r) => mapRunner(accountId, r));
+          } catch (err) {
+            if (statusOf(err) === 403 || statusOf(err) === 404) return [];
+            throw err;
+          }
+        default:
+          throw new Error(`CircleCI plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    const price = this.rates.pricePerCredit;
-    switch (typeId) {
-      case "organization": {
-        const [org, summary] = await Promise.all([this.org(), this.orgSummary()]);
-        const r = mapOrganization(accountId, org, summary, price);
-        return summary ? stash(r, { [DETAIL_KEYS.orgSummary]: summary }) : r;
-      }
-      case "project": {
-        const p = await circleFetch<CircleProject>(this.ctx, `/project/${id}`);
-        const [summary, workflows, flaky] = await Promise.all([
-          this.orgSummary([p.name]),
-          this.workflowMetrics(p.slug).catch(() => undefined),
-          circleFetch<{ "flaky-tests"?: FlakyTest[] }>(
-            this.ctx,
-            `/insights/${p.slug}/flaky-tests`,
-          ).catch(() => undefined),
-        ]);
-        const metrics: SummaryMetrics | undefined = summary?.org_project_data?.find(
-          (x) => x.project_name === p.name,
-        )?.metrics;
-        return stash(mapProject(accountId, p, metrics, price), {
-          ...(workflows ? { [DETAIL_KEYS.workflows]: workflows } : {}),
-          ...(flaky ? { [DETAIL_KEYS.flakyTests]: flaky["flaky-tests"] ?? [] } : {}),
-        });
-      }
-      case "workflow": {
-        const { projectSlug, rest: name } = splitScoped(id);
-        const [workflows, jobs, runs] = await Promise.all([
-          this.workflowMetrics(projectSlug),
-          circlePaged<JobMetrics>(
-            this.ctx,
-            `/insights/${projectSlug}/workflows/${enc(name)}/jobs`,
-            {
-              "all-branches": true,
-              "reporting-window": REPORTING_WINDOW,
-            },
-            3,
-          ).catch(() => undefined),
-          circleFetch<{ items?: WorkflowRun[] }>(
-            this.ctx,
-            `/insights/${projectSlug}/workflows/${enc(name)}`,
-            {
-              query: { "all-branches": true },
-            },
-          ).catch(() => undefined),
-        ]);
-        const w = workflows.find((x) => x.name === name);
-        if (!w)
-          throw new Error(`CircleCI plugin: workflow "${name}" has no runs in the last 30 days`);
-        return stash(mapWorkflow(accountId, projectSlug, w), {
-          ...(jobs ? { [DETAIL_KEYS.jobs]: jobs } : {}),
-          ...(runs?.items ? { [DETAIL_KEYS.runs]: runs.items.slice(0, 20) } : {}),
-        });
-      }
-      case "pipeline": {
-        const p = await circleFetch<CirclePipeline>(this.ctx, `/pipeline/${enc(id)}`);
-        const workflows = await circlePaged<CircleWorkflow>(
-          this.ctx,
-          `/pipeline/${enc(id)}/workflow`,
-        );
-        const detailed: PipelineWorkflowDetail[] = [];
-        for (const w of workflows) {
-          const jobs = await circlePaged<CircleJob>(this.ctx, `/workflow/${enc(w.id)}/job`).catch(
-            () => undefined,
-          );
-          detailed.push({ ...w, ...(jobs ? { jobs } : {}) });
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const price = this.rates.pricePerCredit;
+      switch (typeId) {
+        case "organization": {
+          const [org, summary] = await Promise.all([this.org(), this.orgSummary()]);
+          const r = mapOrganization(accountId, org, summary, price);
+          return summary ? stash(r, { [DETAIL_KEYS.orgSummary]: summary }) : r;
         }
-        return stash(mapPipeline(accountId, p), { [DETAIL_KEYS.pipelineWorkflows]: detailed });
+        case "project": {
+          const p = await circleFetch<CircleProject>(this.ctx, `/project/${id}`);
+          const [summary, workflows, flaky] = await Promise.all([
+            this.orgSummary([p.name]),
+            this.workflowMetrics(p.slug).catch(() => undefined),
+            circleFetch<{ "flaky-tests"?: FlakyTest[] }>(
+              this.ctx,
+              `/insights/${p.slug}/flaky-tests`,
+            ).catch(() => undefined),
+          ]);
+          const metrics: SummaryMetrics | undefined = summary?.org_project_data?.find(
+            (x) => x.project_name === p.name,
+          )?.metrics;
+          return stash(mapProject(accountId, p, metrics, price), {
+            ...(workflows ? { [DETAIL_KEYS.workflows]: workflows } : {}),
+            ...(flaky ? { [DETAIL_KEYS.flakyTests]: flaky["flaky-tests"] ?? [] } : {}),
+          });
+        }
+        case "workflow": {
+          const { projectSlug, rest: name } = splitScoped(id);
+          const [workflows, jobs, runs] = await Promise.all([
+            this.workflowMetrics(projectSlug),
+            circlePaged<JobMetrics>(
+              this.ctx,
+              `/insights/${projectSlug}/workflows/${enc(name)}/jobs`,
+              {
+                "all-branches": true,
+                "reporting-window": REPORTING_WINDOW,
+              },
+              3,
+            ).catch(() => undefined),
+            circleFetch<{ items?: WorkflowRun[] }>(
+              this.ctx,
+              `/insights/${projectSlug}/workflows/${enc(name)}`,
+              {
+                query: { "all-branches": true },
+              },
+            ).catch(() => undefined),
+          ]);
+          const w = workflows.find((x) => x.name === name);
+          if (!w)
+            throw new Error(`CircleCI plugin: workflow "${name}" has no runs in the last 30 days`);
+          return stash(mapWorkflow(accountId, projectSlug, w), {
+            ...(jobs ? { [DETAIL_KEYS.jobs]: jobs } : {}),
+            ...(runs?.items ? { [DETAIL_KEYS.runs]: runs.items.slice(0, 20) } : {}),
+          });
+        }
+        case "pipeline": {
+          const p = await circleFetch<CirclePipeline>(this.ctx, `/pipeline/${enc(id)}`);
+          const workflows = await circlePaged<CircleWorkflow>(
+            this.ctx,
+            `/pipeline/${enc(id)}/workflow`,
+          );
+          const detailed: PipelineWorkflowDetail[] = [];
+          for (const w of workflows) {
+            const jobs = await circlePaged<CircleJob>(this.ctx, `/workflow/${enc(w.id)}/job`).catch(
+              () => undefined,
+            );
+            detailed.push({ ...w, ...(jobs ? { jobs } : {}) });
+          }
+          return stash(mapPipeline(accountId, p), { [DETAIL_KEYS.pipelineWorkflows]: detailed });
+        }
+        case "context": {
+          const c = await circleFetch<CircleContextItem>(this.ctx, `/context/${enc(id)}`);
+          const [vars, restrictions] = await Promise.all([
+            this.contextVariables(id).catch(() => undefined),
+            circlePaged<ContextRestriction>(this.ctx, `/context/${enc(id)}/restrictions`).catch(
+              () => undefined,
+            ),
+          ]);
+          const r = mapContext(accountId, c, vars, restrictions);
+          return restrictions ? stash(r, { [DETAIL_KEYS.restrictions]: restrictions }) : r;
+        }
+        case "context-variable": {
+          const [contextId, ...nameParts] = id.split("/");
+          const name = nameParts.join("/");
+          const c = await circleFetch<CircleContextItem>(
+            this.ctx,
+            `/context/${enc(contextId ?? "")}`,
+          );
+          const v = (await this.contextVariables(c.id)).find((x) => x.variable === name);
+          if (!v) throw new Error(`CircleCI plugin: context variable "${name}" not found`);
+          return mapContextVariable(accountId, c, v);
+        }
+        case "project-variable": {
+          const { projectSlug, rest: name } = splitScoped(id);
+          const v = await circleFetch<ProjectVariable>(
+            this.ctx,
+            `/project/${projectSlug}/envvar/${enc(name)}`,
+          );
+          return mapProjectVariable(accountId, projectSlug, v);
+        }
+        case "schedule":
+          return mapSchedule(
+            accountId,
+            await circleFetch<CircleSchedule>(this.ctx, `/schedule/${enc(id)}`),
+          );
+        case "trigger": {
+          const { projectSlug, rest } = splitScoped(id);
+          const [projectId, triggerId] = rest.split("/");
+          const t = await circleFetch<CircleTrigger>(
+            this.ctx,
+            `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
+          );
+          return mapTrigger(accountId, projectSlug, projectId ?? "", {} as PipelineDefinition, t);
+        }
+        case "runner-resource-class": {
+          const rc = await circleV3<RunnerResourceClass>(
+            this.ctx,
+            `/runner/resource-classes/${enc(id)}`,
+          );
+          if (!rc) throw new Error(`CircleCI plugin: runner resource class "${id}" not found`);
+          const name = rc.attributes?.resource_class ?? "";
+          const agents = await circleV3Paged<CircleRunner>(this.ctx, "/runner/agents", {
+            "filter[resource_class]": name,
+            "page[limit]": 250,
+          }).catch(() => undefined);
+          return mapRunnerResourceClass(
+            accountId,
+            rc,
+            agents?.length,
+            name ? await this.runnerTasks(name) : {},
+          );
+        }
+        case "runner": {
+          const agent = (await this.runnerAgents()).find((a) => a.id === id);
+          if (!agent) throw new Error(`CircleCI plugin: runner "${id}" not found`);
+          return mapRunner(accountId, agent);
+        }
+        default:
+          throw new Error(`CircleCI plugin: unknown resource type "${typeId}"`);
       }
-      case "context": {
-        const c = await circleFetch<CircleContextItem>(this.ctx, `/context/${enc(id)}`);
-        const [vars, restrictions] = await Promise.all([
-          this.contextVariables(id).catch(() => undefined),
-          circlePaged<ContextRestriction>(this.ctx, `/context/${enc(id)}/restrictions`).catch(
-            () => undefined,
-          ),
-        ]);
-        const r = mapContext(accountId, c, vars, restrictions);
-        return restrictions ? stash(r, { [DETAIL_KEYS.restrictions]: restrictions }) : r;
-      }
-      case "context-variable": {
-        const [contextId, ...nameParts] = id.split("/");
-        const name = nameParts.join("/");
-        const c = await circleFetch<CircleContextItem>(
-          this.ctx,
-          `/context/${enc(contextId ?? "")}`,
-        );
-        const v = (await this.contextVariables(c.id)).find((x) => x.variable === name);
-        if (!v) throw new Error(`CircleCI plugin: context variable "${name}" not found`);
-        return mapContextVariable(accountId, c, v);
-      }
-      case "project-variable": {
-        const { projectSlug, rest: name } = splitScoped(id);
-        const v = await circleFetch<ProjectVariable>(
-          this.ctx,
-          `/project/${projectSlug}/envvar/${enc(name)}`,
-        );
-        return mapProjectVariable(accountId, projectSlug, v);
-      }
-      case "schedule":
-        return mapSchedule(
-          accountId,
-          await circleFetch<CircleSchedule>(this.ctx, `/schedule/${enc(id)}`),
-        );
-      case "trigger": {
-        const { projectSlug, rest } = splitScoped(id);
-        const [projectId, triggerId] = rest.split("/");
-        const t = await circleFetch<CircleTrigger>(
-          this.ctx,
-          `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
-        );
-        return mapTrigger(accountId, projectSlug, projectId ?? "", {} as PipelineDefinition, t);
-      }
-      case "runner-resource-class": {
-        const rc = await circleV3<RunnerResourceClass>(
-          this.ctx,
-          `/runner/resource-classes/${enc(id)}`,
-        );
-        if (!rc) throw new Error(`CircleCI plugin: runner resource class "${id}" not found`);
-        const name = rc.attributes?.resource_class ?? "";
-        const agents = await circleV3Paged<CircleRunner>(this.ctx, "/runner/agents", {
-          "filter[resource_class]": name,
-          "page[limit]": 250,
-        }).catch(() => undefined);
-        return mapRunnerResourceClass(
-          accountId,
-          rc,
-          agents?.length,
-          name ? await this.runnerTasks(name) : {},
-        );
-      }
-      case "runner": {
-        const agent = (await this.runnerAgents()).find((a) => a.id === id);
-        if (!agent) throw new Error(`CircleCI plugin: runner "${id}" not found`);
-        return mapRunner(accountId, agent);
-      }
-      default:
-        throw new Error(`CircleCI plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(`CircleCI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
+      throw new Error(`CircleCI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics, costs
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    const n = (v: unknown, suffix = "") =>
-      typeof v === "number"
-        ? `${v.toLocaleString("en-US", { maximumFractionDigits: 1 })}${suffix}`
-        : "—";
-    const rateVariant = (v: unknown): NonNullable<DashboardStat["variant"]> =>
-      typeof v !== "number"
-        ? "default"
-        : v >= 90
-          ? "status-healthy"
-          : v >= 70
-            ? "status-degraded"
-            : "status-error";
-    switch (resourceTypeId) {
-      case "organization":
-      case "project":
-        return [
-          { label: "Credits (30d)", value: n(f["credits30d"]) },
-          {
-            label: "Est. cost (30d)",
-            value: typeof f["estimatedCost30d"] === "number" ? `$${n(f["estimatedCost30d"])}` : "—",
-          },
-          {
-            label: "Success rate",
-            value: n(f["successRate30d"], "%"),
-            variant: rateVariant(f["successRate30d"]),
-          },
-        ];
-      case "workflow":
-        return [
-          {
-            label: "Success rate",
-            value: n(f["successRate"], "%"),
-            variant: rateVariant(f["successRate"]),
-          },
-          { label: "p95", value: n(f["durationP95Secs"], " s") },
-          { label: "Credits (30d)", value: n(f["credits"]) },
-        ];
-      case "runner-resource-class": {
-        const waiting = f["unclaimedTasks"];
-        return [
-          { label: "Runners", value: n(f["runnerCount"]) },
-          {
-            label: "Waiting",
-            value: n(waiting),
-            variant: typeof waiting === "number" && waiting > 0 ? "status-degraded" : "default",
-          },
-        ];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      const n = (v: unknown, suffix = "") =>
+        typeof v === "number"
+          ? `${v.toLocaleString("en-US", { maximumFractionDigits: 1 })}${suffix}`
+          : "—";
+      const rateVariant = (v: unknown): NonNullable<DashboardStat["variant"]> =>
+        typeof v !== "number"
+          ? "default"
+          : v >= 90
+            ? "status-healthy"
+            : v >= 70
+              ? "status-degraded"
+              : "status-error";
+      switch (resourceTypeId) {
+        case "organization":
+        case "project":
+          return [
+            { label: "Credits (30d)", value: n(f["credits30d"]) },
+            {
+              label: "Est. cost (30d)",
+              value:
+                typeof f["estimatedCost30d"] === "number" ? `$${n(f["estimatedCost30d"])}` : "—",
+            },
+            {
+              label: "Success rate",
+              value: n(f["successRate30d"], "%"),
+              variant: rateVariant(f["successRate30d"]),
+            },
+          ];
+        case "workflow":
+          return [
+            {
+              label: "Success rate",
+              value: n(f["successRate"], "%"),
+              variant: rateVariant(f["successRate"]),
+            },
+            { label: "p95", value: n(f["durationP95Secs"], " s") },
+            { label: "Credits (30d)", value: n(f["credits"]) },
+          ];
+        case "runner-resource-class": {
+          const waiting = f["unclaimedTasks"];
+          return [
+            { label: "Runners", value: n(f["runnerCount"]) },
+            {
+              label: "Waiting",
+              value: n(waiting),
+              variant: typeof waiting === "number" && waiting > 0 ? "status-degraded" : "default",
+            },
+          ];
+        }
+        default:
+          return [];
       }
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const id = externalIdOf(resourceId);
-    const range = rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS);
-    switch (resourceTypeId) {
-      case "project":
-        return projectSeries(this.ctx, id, range);
-      case "workflow": {
-        const { projectSlug, rest } = splitScoped(id);
-        return workflowSeries(this.ctx, projectSlug, rest, range);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const range = rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS);
+      switch (resourceTypeId) {
+        case "project":
+          return projectSeries(this.ctx, id, range);
+        case "workflow": {
+          const { projectSlug, rest } = splitScoped(id);
+          return workflowSeries(this.ctx, projectSlug, rest, range);
+        }
+        default:
+          return [];
       }
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    const org = await this.org();
-    return fetchCircleCostData(this.ctx, org.id, this.rates, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      const org = await this.org();
+      return fetchCircleCostData(this.ctx, org.id, this.rates, range);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -786,683 +807,714 @@ export class CircleCIClient implements PluginClient {
     ];
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    const parent = parentResourceId ? externalIdOf(parentResourceId) : undefined;
-    switch (typeId) {
-      case "pipeline": {
-        const defs = parent
-          ? await this.projectId(parent)
-              .then((pid) => this.pipelineDefinitions(pid))
-              .catch(() => [] as PipelineDefinition[])
-          : [];
-        return {
-          fields: [
-            ...(await this.projectField(parentResourceId)),
-            ...(defs.length > 1
-              ? [
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      const parent = parentResourceId ? externalIdOf(parentResourceId) : undefined;
+      switch (typeId) {
+        case "pipeline": {
+          const defs = parent
+            ? await this.projectId(parent)
+                .then((pid) => this.pipelineDefinitions(pid))
+                .catch(() => [] as PipelineDefinition[])
+            : [];
+          return {
+            fields: [
+              ...(await this.projectField(parentResourceId)),
+              ...(defs.length > 1
+                ? [
+                    {
+                      key: "definition",
+                      label: "Pipeline definition",
+                      kind: "select" as const,
+                      required: false,
+                      defaultValue: defs[0]!.id,
+                      options: defs.map((d) => ({
+                        id: d.id,
+                        label: d.name ?? d.id,
+                        ...(d.config_source?.file_path
+                          ? { description: d.config_source.file_path }
+                          : {}),
+                      })),
+                    },
+                  ]
+                : []),
+              {
+                key: "branch",
+                label: "Branch",
+                kind: "text",
+                required: false,
+                placeholder: "main",
+                description:
+                  "The branch to build. Leave empty for the project's default branch, or enter a tag instead.",
+              },
+              { key: "tag", label: "Tag", kind: "text", required: false, placeholder: "v1.2.3" },
+              {
+                key: "parameters",
+                label: "Pipeline parameters (JSON)",
+                kind: "text",
+                multiline: true,
+                required: false,
+                placeholder: '{"deploy": true}',
+                description: "Values for the parameters your config declares.",
+              },
+            ],
+          };
+        }
+        case "context":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "aws-production",
+              },
+            ],
+          };
+        case "context-variable": {
+          const contexts = parent
+            ? []
+            : await this.contexts().catch(() => [] as CircleContextItem[]);
+          return {
+            fields: [
+              ...(parent
+                ? []
+                : [
+                    {
+                      key: "context",
+                      label: "Context",
+                      kind: "select" as const,
+                      required: true,
+                      ...(contexts[0] ? { defaultValue: contexts[0].id } : {}),
+                      options: contexts.map((c) => ({ id: c.id, label: c.name })),
+                    },
+                  ]),
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "AWS_ACCESS_KEY_ID",
+              },
+              { key: "value", label: "Value", kind: "password", required: true },
+            ],
+          };
+        }
+        case "project-variable":
+          return {
+            fields: [
+              ...(await this.projectField(parentResourceId)),
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "NPM_TOKEN",
+              },
+              { key: "value", label: "Value", kind: "password", required: true },
+            ],
+          };
+        case "schedule":
+          return {
+            fields: [
+              ...(await this.projectField(parentResourceId)),
+              { key: "name", label: "Name", kind: "text", required: true, placeholder: "nightly" },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "perHour",
+                label: "Runs per hour",
+                kind: "number",
+                required: true,
+                defaultValue: "1",
+                minValue: 1,
+                maxValue: 60,
+              },
+              {
+                key: "hoursOfDay",
+                label: "Hours of day (UTC)",
+                kind: "text",
+                required: false,
+                placeholder: "2",
+                description: "Comma-separated hours from 0 to 23. Leave empty for every hour.",
+              },
+              {
+                key: "daysOfWeek",
+                label: "Days of week",
+                kind: "text",
+                required: false,
+                placeholder: "MON,TUE,WED,THU,FRI",
+                description:
+                  "Comma-separated. Leave empty for every day, or use days of month instead.",
+              },
+              {
+                key: "daysOfMonth",
+                label: "Days of month",
+                kind: "text",
+                required: false,
+                placeholder: "1,15",
+              },
+              {
+                key: "months",
+                label: "Months",
+                kind: "text",
+                required: false,
+                placeholder: "JAN,APR,JUL,OCT",
+                description: "Leave empty for every month.",
+              },
+              { key: "branch", label: "Branch", kind: "text", required: true, placeholder: "main" },
+              {
+                key: "parameters",
+                label: "Pipeline parameters (JSON)",
+                kind: "text",
+                multiline: true,
+                required: false,
+                placeholder: '{"nightly": true}',
+              },
+              {
+                key: "actor",
+                label: "Run as",
+                kind: "select",
+                required: true,
+                defaultValue: "current",
+                options: [
                   {
-                    key: "definition",
-                    label: "Pipeline definition",
-                    kind: "select" as const,
-                    required: false,
-                    defaultValue: defs[0]!.id,
-                    options: defs.map((d) => ({
-                      id: d.id,
-                      label: d.name ?? d.id,
-                      ...(d.config_source?.file_path
-                        ? { description: d.config_source.file_path }
-                        : {}),
-                    })),
+                    id: "current",
+                    label: "You",
+                    description: "Pipelines are attributed to your user.",
                   },
-                ]
-              : []),
-            {
-              key: "branch",
-              label: "Branch",
-              kind: "text",
-              required: false,
-              placeholder: "main",
-              description:
-                "The branch to build. Leave empty for the project's default branch, or enter a tag instead.",
-            },
-            { key: "tag", label: "Tag", kind: "text", required: false, placeholder: "v1.2.3" },
-            {
-              key: "parameters",
-              label: "Pipeline parameters (JSON)",
-              kind: "text",
-              multiline: true,
-              required: false,
-              placeholder: '{"deploy": true}',
-              description: "Values for the parameters your config declares.",
-            },
-          ],
-        };
-      }
-      case "context":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "aws-production",
-            },
-          ],
-        };
-      case "context-variable": {
-        const contexts = parent ? [] : await this.contexts().catch(() => [] as CircleContextItem[]);
-        return {
-          fields: [
-            ...(parent
-              ? []
-              : [
                   {
-                    key: "context",
-                    label: "Context",
-                    kind: "select" as const,
-                    required: true,
-                    ...(contexts[0] ? { defaultValue: contexts[0].id } : {}),
-                    options: contexts.map((c) => ({ id: c.id, label: c.name })),
+                    id: "system",
+                    label: "Scheduling system",
+                    description: "Pipelines are attributed to CircleCI's scheduler.",
                   },
-                ]),
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "AWS_ACCESS_KEY_ID",
-            },
-            { key: "value", label: "Value", kind: "password", required: true },
-          ],
-        };
+                ],
+              },
+            ],
+          };
+        case "trigger": {
+          const defs = parent
+            ? await this.projectId(parent)
+                .then((pid) => this.pipelineDefinitions(pid))
+                .catch(() => [] as PipelineDefinition[])
+            : [];
+          return {
+            fields: [
+              ...(await this.projectField(parentResourceId)),
+              ...(defs.length > 0
+                ? [
+                    {
+                      key: "definition",
+                      label: "Pipeline definition",
+                      kind: "select" as const,
+                      required: true,
+                      defaultValue: defs[0]!.id,
+                      options: defs.map((d) => ({ id: d.id, label: d.name ?? d.id })),
+                    },
+                  ]
+                : []),
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "Nightly build",
+              },
+              {
+                key: "cronExpression",
+                label: "Cron schedule (UTC)",
+                kind: "text",
+                required: true,
+                placeholder: "0 3 * * 1-5",
+                description: "Five fields: minute, hour, day of month, month, day of week.",
+              },
+              {
+                key: "checkoutRef",
+                label: "Checkout ref",
+                kind: "text",
+                required: true,
+                placeholder: "main",
+              },
+              {
+                key: "configRef",
+                label: "Config ref",
+                kind: "text",
+                required: false,
+                placeholder: "main",
+                description: "Where to read the config from. Defaults to the checkout ref.",
+              },
+              {
+                key: "actor",
+                label: "Run as",
+                kind: "select",
+                required: true,
+                defaultValue: "current",
+                options: [
+                  { id: "current", label: "You" },
+                  { id: "system", label: "Scheduling system" },
+                ],
+              },
+            ],
+          };
+        }
+        case "runner-resource-class": {
+          const classes = await this.runnerClasses().catch(() => [] as RunnerResourceClass[]);
+          const namespace = classes[0]?.attributes?.resource_class?.split("/")[0];
+          return {
+            fields: [
+              {
+                key: "resourceClass",
+                label: "Resource class",
+                kind: "text",
+                required: true,
+                placeholder: namespace ? `${namespace}/linux-large` : "my-namespace/linux-large",
+                description:
+                  "namespace/name. The namespace is your organization's (the same as its orb namespace) and must exist before the first resource class.",
+              },
+              {
+                key: "description",
+                label: "Description",
+                kind: "text",
+                required: true,
+                placeholder: "Linux runners in the build VPC",
+              },
+            ],
+          };
+        }
+        default:
+          throw new Error(`CircleCI plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      case "project-variable":
-        return {
-          fields: [
-            ...(await this.projectField(parentResourceId)),
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "NPM_TOKEN" },
-            { key: "value", label: "Value", kind: "password", required: true },
-          ],
-        };
-      case "schedule":
-        return {
-          fields: [
-            ...(await this.projectField(parentResourceId)),
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "nightly" },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "perHour",
-              label: "Runs per hour",
-              kind: "number",
-              required: true,
-              defaultValue: "1",
-              minValue: 1,
-              maxValue: 60,
-            },
-            {
-              key: "hoursOfDay",
-              label: "Hours of day (UTC)",
-              kind: "text",
-              required: false,
-              placeholder: "2",
-              description: "Comma-separated hours from 0 to 23. Leave empty for every hour.",
-            },
-            {
-              key: "daysOfWeek",
-              label: "Days of week",
-              kind: "text",
-              required: false,
-              placeholder: "MON,TUE,WED,THU,FRI",
-              description:
-                "Comma-separated. Leave empty for every day, or use days of month instead.",
-            },
-            {
-              key: "daysOfMonth",
-              label: "Days of month",
-              kind: "text",
-              required: false,
-              placeholder: "1,15",
-            },
-            {
-              key: "months",
-              label: "Months",
-              kind: "text",
-              required: false,
-              placeholder: "JAN,APR,JUL,OCT",
-              description: "Leave empty for every month.",
-            },
-            { key: "branch", label: "Branch", kind: "text", required: true, placeholder: "main" },
-            {
-              key: "parameters",
-              label: "Pipeline parameters (JSON)",
-              kind: "text",
-              multiline: true,
-              required: false,
-              placeholder: '{"nightly": true}',
-            },
-            {
-              key: "actor",
-              label: "Run as",
-              kind: "select",
-              required: true,
-              defaultValue: "current",
-              options: [
-                {
-                  id: "current",
-                  label: "You",
-                  description: "Pipelines are attributed to your user.",
-                },
-                {
-                  id: "system",
-                  label: "Scheduling system",
-                  description: "Pipelines are attributed to CircleCI's scheduler.",
-                },
-              ],
-            },
-          ],
-        };
-      case "trigger": {
-        const defs = parent
-          ? await this.projectId(parent)
-              .then((pid) => this.pipelineDefinitions(pid))
-              .catch(() => [] as PipelineDefinition[])
-          : [];
-        return {
-          fields: [
-            ...(await this.projectField(parentResourceId)),
-            ...(defs.length > 0
-              ? [
-                  {
-                    key: "definition",
-                    label: "Pipeline definition",
-                    kind: "select" as const,
-                    required: true,
-                    defaultValue: defs[0]!.id,
-                    options: defs.map((d) => ({ id: d.id, label: d.name ?? d.id })),
-                  },
-                ]
-              : []),
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "Nightly build",
-            },
-            {
-              key: "cronExpression",
-              label: "Cron schedule (UTC)",
-              kind: "text",
-              required: true,
-              placeholder: "0 3 * * 1-5",
-              description: "Five fields: minute, hour, day of month, month, day of week.",
-            },
-            {
-              key: "checkoutRef",
-              label: "Checkout ref",
-              kind: "text",
-              required: true,
-              placeholder: "main",
-            },
-            {
-              key: "configRef",
-              label: "Config ref",
-              kind: "text",
-              required: false,
-              placeholder: "main",
-              description: "Where to read the config from. Defaults to the checkout ref.",
-            },
-            {
-              key: "actor",
-              label: "Run as",
-              kind: "select",
-              required: true,
-              defaultValue: "current",
-              options: [
-                { id: "current", label: "You" },
-                { id: "system", label: "Scheduling system" },
-              ],
-            },
-          ],
-        };
-      }
-      case "runner-resource-class": {
-        const classes = await this.runnerClasses().catch(() => [] as RunnerResourceClass[]);
-        const namespace = classes[0]?.attributes?.resource_class?.split("/")[0];
-        return {
-          fields: [
-            {
-              key: "resourceClass",
-              label: "Resource class",
-              kind: "text",
-              required: true,
-              placeholder: namespace ? `${namespace}/linux-large` : "my-namespace/linux-large",
-              description:
-                "namespace/name. The namespace is your organization's (the same as its orb namespace) and must exist before the first resource class.",
-            },
-            {
-              key: "description",
-              label: "Description",
-              kind: "text",
-              required: true,
-              placeholder: "Linux runners in the build VPC",
-            },
-          ],
-        };
-      }
-      default:
-        throw new Error(`CircleCI plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    const parent = parentResourceId ? externalIdOf(parentResourceId) : undefined;
-    const project = (fields["project"] ?? "").trim() || parent || "";
-    const need = (key: string, label: string) => {
-      const v = (fields[key] ?? "").trim();
-      if (!v) throw new Error(`CircleCI plugin: "${label}" is required`);
-      return v;
-    };
-    switch (typeId) {
-      case "pipeline": {
-        if (!project) throw new Error('CircleCI plugin: "Project" is required');
-        const branch = (fields["branch"] ?? "").trim();
-        const tag = (fields["tag"] ?? "").trim();
-        if (branch && tag) throw new Error("CircleCI plugin: enter a branch or a tag, not both");
-        const params = buildParameters(fields["parameters"], undefined);
-        const ref = branch ? { branch } : tag ? { tag } : undefined;
-        const [provider, orgName, ...rest] = project.split("/");
-        let created: { id?: string; message?: string } | undefined;
-        try {
-          created = await circleFetch(
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const parent = parentResourceId ? externalIdOf(parentResourceId) : undefined;
+      const project = (fields["project"] ?? "").trim() || parent || "";
+      const need = (key: string, label: string) => {
+        const v = (fields[key] ?? "").trim();
+        if (!v) throw new Error(`CircleCI plugin: "${label}" is required`);
+        return v;
+      };
+      switch (typeId) {
+        case "pipeline": {
+          if (!project) throw new Error('CircleCI plugin: "Project" is required');
+          const branch = (fields["branch"] ?? "").trim();
+          const tag = (fields["tag"] ?? "").trim();
+          if (branch && tag) throw new Error("CircleCI plugin: enter a branch or a tag, not both");
+          const params = buildParameters(fields["parameters"], undefined);
+          const ref = branch ? { branch } : tag ? { tag } : undefined;
+          const [provider, orgName, ...rest] = project.split("/");
+          let created: { id?: string; message?: string } | undefined;
+          try {
+            created = await circleFetch(
+              this.ctx,
+              `/project/${provider}/${orgName}/${rest.join("/")}/pipeline/run`,
+              {
+                method: "POST",
+                body: {
+                  ...(fields["definition"] ? { definition_id: fields["definition"] } : {}),
+                  ...(ref ? { config: ref, checkout: ref } : {}),
+                  ...(Object.keys(params).length > 0 ? { parameters: params } : {}),
+                },
+              },
+            );
+          } catch (err) {
+            // Organizations the newer endpoint does not cover still take the
+            // original trigger.
+            const status = statusOf(err);
+            if (status !== 400 && status !== 404) throw err;
+            created = await circleFetch(this.ctx, `/project/${project}/pipeline`, {
+              method: "POST",
+              body: {
+                ...(ref ?? {}),
+                ...(Object.keys(params).length > 0 ? { parameters: params } : {}),
+              },
+            });
+          }
+          if (!created?.id) {
+            throw new Error(
+              `CircleCI did not start a pipeline${created?.message ? `: ${created.message}` : ""}`,
+            );
+          }
+          return runPluginEffect(
+            this.getResource("pipeline", `${accountId}:pipeline:${created.id}`, accountId),
+          );
+        }
+        case "context": {
+          const org = await this.org();
+          const c = await circleFetch<CircleContextItem>(this.ctx, "/context", {
+            method: "POST",
+            body: {
+              name: need("name", "Name"),
+              owner: org.id
+                ? { id: org.id, type: "organization" }
+                : { slug: org.slug, type: "organization" },
+            },
+          });
+          return mapContext(accountId, c, []);
+        }
+        case "context-variable": {
+          const contextId = (fields["context"] ?? "").trim() || parent || "";
+          if (!contextId) throw new Error('CircleCI plugin: "Context" is required');
+          const name = need("name", "Name");
+          await circleFetch(
             this.ctx,
-            `/project/${provider}/${orgName}/${rest.join("/")}/pipeline/run`,
+            `/context/${enc(contextId)}/environment-variable/${enc(name)}`,
+            {
+              method: "PUT",
+              body: { value: fields["value"] ?? "" },
+            },
+          );
+          return runPluginEffect(
+            this.getResource(
+              "context-variable",
+              `${accountId}:context-variable:${contextId}/${name}`,
+              accountId,
+            ),
+          );
+        }
+        case "project-variable": {
+          if (!project) throw new Error('CircleCI plugin: "Project" is required');
+          const v = await circleFetch<ProjectVariable>(this.ctx, `/project/${project}/envvar`, {
+            method: "POST",
+            body: { name: need("name", "Name"), value: fields["value"] ?? "" },
+          });
+          return mapProjectVariable(accountId, project, v);
+        }
+        case "schedule": {
+          if (!project) throw new Error('CircleCI plugin: "Project" is required');
+          const description = (fields["description"] ?? "").trim();
+          const s = await circleFetch<CircleSchedule>(this.ctx, `/project/${project}/schedule`, {
+            method: "POST",
+            body: {
+              name: need("name", "Name"),
+              ...(description ? { description } : {}),
+              timetable: buildTimetable(fields),
+              "attribution-actor": fields["actor"] === "system" ? "system" : "current",
+              parameters: buildParameters(fields["parameters"], need("branch", "Branch")),
+            },
+          });
+          return mapSchedule(accountId, { ...s, "project-slug": s["project-slug"] ?? project });
+        }
+        case "trigger": {
+          if (!project) throw new Error('CircleCI plugin: "Project" is required');
+          const projectId = await this.projectId(project);
+          const defs = await this.pipelineDefinitions(projectId);
+          const def = defs.find((d) => d.id === fields["definition"]) ?? defs[0];
+          if (!def) {
+            throw new Error(
+              "CircleCI plugin: this project has no pipeline definition to attach a trigger to. GitHub OAuth and Bitbucket projects use Schedules instead.",
+            );
+          }
+          const checkout = need("checkoutRef", "Checkout ref");
+          const t = await circleFetch<CircleTrigger>(
+            this.ctx,
+            `/projects/${enc(projectId)}/pipeline-definitions/${enc(def.id)}/triggers`,
             {
               method: "POST",
               body: {
-                ...(fields["definition"] ? { definition_id: fields["definition"] } : {}),
-                ...(ref ? { config: ref, checkout: ref } : {}),
-                ...(Object.keys(params).length > 0 ? { parameters: params } : {}),
+                event_name: need("name", "Name"),
+                event_source: {
+                  provider: "schedule",
+                  schedule: {
+                    cron_expression: need("cronExpression", "Cron schedule"),
+                    attribution_actor: fields["actor"] === "system" ? "system" : "current",
+                  },
+                },
+                checkout_ref: checkout,
+                config_ref: (fields["configRef"] ?? "").trim() || checkout,
               },
             },
           );
-        } catch (err) {
-          // Organizations the newer endpoint does not cover still take the
-          // original trigger.
-          const status = statusOf(err);
-          if (status !== 400 && status !== 404) throw err;
-          created = await circleFetch(this.ctx, `/project/${project}/pipeline`, {
+          return mapTrigger(accountId, project, projectId, def, t);
+        }
+        case "runner-resource-class": {
+          const org = await this.org();
+          const name = need("resourceClass", "Resource class");
+          if (!/^[^/\s]+\/[^/\s]+$/.test(name)) {
+            throw new Error('CircleCI plugin: the resource class must be "namespace/name"');
+          }
+          const rc = await circleV3<RunnerResourceClass>(this.ctx, "/runner/resource-classes", {
             method: "POST",
             body: {
-              ...(ref ?? {}),
-              ...(Object.keys(params).length > 0 ? { parameters: params } : {}),
+              data: {
+                attributes: {
+                  resource_class: name,
+                  description: need("description", "Description"),
+                },
+                references: { org: { id: org.id } },
+              },
             },
           });
+          if (!rc) throw new Error("CircleCI did not return the new resource class");
+          return mapRunnerResourceClass(accountId, rc, 0, {});
         }
-        if (!created?.id) {
-          throw new Error(
-            `CircleCI did not start a pipeline${created?.message ? `: ${created.message}` : ""}`,
-          );
-        }
-        return this.getResource("pipeline", `${accountId}:pipeline:${created.id}`, accountId);
+        default:
+          throw new Error(`CircleCI plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      case "context": {
-        const org = await this.org();
-        const c = await circleFetch<CircleContextItem>(this.ctx, "/context", {
-          method: "POST",
-          body: {
-            name: need("name", "Name"),
-            owner: org.id
-              ? { id: org.id, type: "organization" }
-              : { slug: org.slug, type: "organization" },
-          },
-        });
-        return mapContext(accountId, c, []);
-      }
-      case "context-variable": {
-        const contextId = (fields["context"] ?? "").trim() || parent || "";
-        if (!contextId) throw new Error('CircleCI plugin: "Context" is required');
-        const name = need("name", "Name");
-        await circleFetch(
-          this.ctx,
-          `/context/${enc(contextId)}/environment-variable/${enc(name)}`,
-          {
-            method: "PUT",
-            body: { value: fields["value"] ?? "" },
-          },
-        );
-        return this.getResource(
-          "context-variable",
-          `${accountId}:context-variable:${contextId}/${name}`,
-          accountId,
-        );
-      }
-      case "project-variable": {
-        if (!project) throw new Error('CircleCI plugin: "Project" is required');
-        const v = await circleFetch<ProjectVariable>(this.ctx, `/project/${project}/envvar`, {
-          method: "POST",
-          body: { name: need("name", "Name"), value: fields["value"] ?? "" },
-        });
-        return mapProjectVariable(accountId, project, v);
-      }
-      case "schedule": {
-        if (!project) throw new Error('CircleCI plugin: "Project" is required');
-        const description = (fields["description"] ?? "").trim();
-        const s = await circleFetch<CircleSchedule>(this.ctx, `/project/${project}/schedule`, {
-          method: "POST",
-          body: {
-            name: need("name", "Name"),
-            ...(description ? { description } : {}),
-            timetable: buildTimetable(fields),
-            "attribution-actor": fields["actor"] === "system" ? "system" : "current",
-            parameters: buildParameters(fields["parameters"], need("branch", "Branch")),
-          },
-        });
-        return mapSchedule(accountId, { ...s, "project-slug": s["project-slug"] ?? project });
-      }
-      case "trigger": {
-        if (!project) throw new Error('CircleCI plugin: "Project" is required');
-        const projectId = await this.projectId(project);
-        const defs = await this.pipelineDefinitions(projectId);
-        const def = defs.find((d) => d.id === fields["definition"]) ?? defs[0];
-        if (!def) {
-          throw new Error(
-            "CircleCI plugin: this project has no pipeline definition to attach a trigger to. GitHub OAuth and Bitbucket projects use Schedules instead.",
-          );
-        }
-        const checkout = need("checkoutRef", "Checkout ref");
-        const t = await circleFetch<CircleTrigger>(
-          this.ctx,
-          `/projects/${enc(projectId)}/pipeline-definitions/${enc(def.id)}/triggers`,
-          {
-            method: "POST",
-            body: {
-              event_name: need("name", "Name"),
-              event_source: {
-                provider: "schedule",
-                schedule: {
-                  cron_expression: need("cronExpression", "Cron schedule"),
-                  attribution_actor: fields["actor"] === "system" ? "system" : "current",
-                },
-              },
-              checkout_ref: checkout,
-              config_ref: (fields["configRef"] ?? "").trim() || checkout,
-            },
-          },
-        );
-        return mapTrigger(accountId, project, projectId, def, t);
-      }
-      case "runner-resource-class": {
-        const org = await this.org();
-        const name = need("resourceClass", "Resource class");
-        if (!/^[^/\s]+\/[^/\s]+$/.test(name)) {
-          throw new Error('CircleCI plugin: the resource class must be "namespace/name"');
-        }
-        const rc = await circleV3<RunnerResourceClass>(this.ctx, "/runner/resource-classes", {
-          method: "POST",
-          body: {
-            data: {
-              attributes: { resource_class: name, description: need("description", "Description") },
-              references: { org: { id: org.id } },
-            },
-          },
-        });
-        if (!rc) throw new Error("CircleCI did not return the new resource class");
-        return mapRunnerResourceClass(accountId, rc, 0, {});
-      }
-      default:
-        throw new Error(`CircleCI plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "context-variable": {
-        const value = fields["value"] ?? "";
-        if (value) {
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "context-variable": {
+          const value = fields["value"] ?? "";
+          if (value) {
+            const [contextId, ...nameParts] = id.split("/");
+            await circleFetch(
+              this.ctx,
+              `/context/${enc(contextId ?? "")}/environment-variable/${enc(nameParts.join("/"))}`,
+              {
+                method: "PUT",
+                body: { value },
+              },
+            );
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "project-variable": {
+          const value = fields["value"] ?? "";
+          const { projectSlug, rest: name } = splitScoped(id);
+          if (value) {
+            await circleFetch(this.ctx, `/project/${projectSlug}/envvar`, {
+              method: "POST",
+              body: { name, value },
+            });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "schedule": {
+          const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          const merged: Record<string, string> = {};
+          for (const [k, v] of Object.entries(current.fields)) merged[k] = String(v);
+          Object.assign(merged, fields);
+          const body: Record<string, unknown> = {};
+          if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
+          if ("description" in fields) body["description"] = (fields["description"] ?? "").trim();
+          if (
+            ["perHour", "hoursOfDay", "daysOfWeek", "daysOfMonth", "months"].some(
+              (k) => k in fields,
+            )
+          ) {
+            body["timetable"] = buildTimetable(merged);
+          }
+          if ("branch" in fields || "parameters" in fields) {
+            body["parameters"] = buildParameters(merged["parameters"], merged["branch"]);
+          }
+          if (Object.keys(body).length > 0) {
+            await circleFetch(this.ctx, `/schedule/${enc(id)}`, { method: "PATCH", body });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "trigger": {
+          const { rest } = splitScoped(id);
+          const [projectId, triggerId] = rest.split("/");
+          const body: Record<string, unknown> = {};
+          if ("checkoutRef" in fields) body["checkout_ref"] = (fields["checkoutRef"] ?? "").trim();
+          if ("configRef" in fields) body["config_ref"] = (fields["configRef"] ?? "").trim();
+          if ("cronExpression" in fields) {
+            body["event_source"] = {
+              schedule: { cron_expression: (fields["cronExpression"] ?? "").trim() },
+            };
+          }
+          if (Object.keys(body).length > 0) {
+            await circleFetch(
+              this.ctx,
+              `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
+              {
+                method: "PATCH",
+                body,
+              },
+            );
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "runner-resource-class": {
+          if ("description" in fields) {
+            await circleFetch(this.ctx, `/runner/resource-classes/${enc(id)}/update`, {
+              baseUrl: API_V3_BASE,
+              method: "POST",
+              body: { description: (fields["description"] ?? "").trim() },
+            });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        default:
+          throw new Error(`CircleCI plugin: cannot edit "${typeId}" from Infrawrench`);
+      }
+    });
+  }
+
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "context":
+          await circleFetch(this.ctx, `/context/${enc(id)}`, { method: "DELETE" });
+          return;
+        case "context-variable": {
           const [contextId, ...nameParts] = id.split("/");
           await circleFetch(
             this.ctx,
             `/context/${enc(contextId ?? "")}/environment-variable/${enc(nameParts.join("/"))}`,
             {
-              method: "PUT",
-              body: { value },
+              method: "DELETE",
             },
           );
+          return;
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "project-variable": {
-        const value = fields["value"] ?? "";
-        const { projectSlug, rest: name } = splitScoped(id);
-        if (value) {
-          await circleFetch(this.ctx, `/project/${projectSlug}/envvar`, {
-            method: "POST",
-            body: { name, value },
+        case "project-variable": {
+          const { projectSlug, rest } = splitScoped(id);
+          await circleFetch(this.ctx, `/project/${projectSlug}/envvar/${enc(rest)}`, {
+            method: "DELETE",
           });
+          return;
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "schedule": {
-        const current = await this.getResource(typeId, resourceId, accountId);
-        const merged: Record<string, string> = {};
-        for (const [k, v] of Object.entries(current.fields)) merged[k] = String(v);
-        Object.assign(merged, fields);
-        const body: Record<string, unknown> = {};
-        if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
-        if ("description" in fields) body["description"] = (fields["description"] ?? "").trim();
-        if (
-          ["perHour", "hoursOfDay", "daysOfWeek", "daysOfMonth", "months"].some((k) => k in fields)
-        ) {
-          body["timetable"] = buildTimetable(merged);
-        }
-        if ("branch" in fields || "parameters" in fields) {
-          body["parameters"] = buildParameters(merged["parameters"], merged["branch"]);
-        }
-        if (Object.keys(body).length > 0) {
-          await circleFetch(this.ctx, `/schedule/${enc(id)}`, { method: "PATCH", body });
-        }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "trigger": {
-        const { rest } = splitScoped(id);
-        const [projectId, triggerId] = rest.split("/");
-        const body: Record<string, unknown> = {};
-        if ("checkoutRef" in fields) body["checkout_ref"] = (fields["checkoutRef"] ?? "").trim();
-        if ("configRef" in fields) body["config_ref"] = (fields["configRef"] ?? "").trim();
-        if ("cronExpression" in fields) {
-          body["event_source"] = {
-            schedule: { cron_expression: (fields["cronExpression"] ?? "").trim() },
-          };
-        }
-        if (Object.keys(body).length > 0) {
+        case "schedule":
+          await circleFetch(this.ctx, `/schedule/${enc(id)}`, { method: "DELETE" });
+          return;
+        case "trigger": {
+          const { rest } = splitScoped(id);
+          const [projectId, triggerId] = rest.split("/");
           await circleFetch(
             this.ctx,
             `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
             {
-              method: "PATCH",
-              body,
+              method: "DELETE",
             },
           );
+          return;
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "runner-resource-class": {
-        if ("description" in fields) {
-          await circleFetch(this.ctx, `/runner/resource-classes/${enc(id)}/update`, {
+        case "runner-resource-class":
+          // `force` also revokes the class's runner tokens; without it a class
+          // that still has tokens cannot be deleted at all.
+          await circleFetch(this.ctx, `/runner/resource-classes/${enc(id)}`, {
             baseUrl: API_V3_BASE,
-            method: "POST",
-            body: { description: (fields["description"] ?? "").trim() },
+            method: "DELETE",
+            query: { force: true },
           });
-        }
-        return this.getResource(typeId, resourceId, accountId);
+          return;
+        default:
+          throw new Error(`CircleCI plugin: cannot delete "${typeId}" from Infrawrench`);
       }
-      default:
-        throw new Error(`CircleCI plugin: cannot edit "${typeId}" from Infrawrench`);
-    }
-  }
-
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "context":
-        await circleFetch(this.ctx, `/context/${enc(id)}`, { method: "DELETE" });
-        return;
-      case "context-variable": {
-        const [contextId, ...nameParts] = id.split("/");
-        await circleFetch(
-          this.ctx,
-          `/context/${enc(contextId ?? "")}/environment-variable/${enc(nameParts.join("/"))}`,
-          {
-            method: "DELETE",
-          },
-        );
-        return;
-      }
-      case "project-variable": {
-        const { projectSlug, rest } = splitScoped(id);
-        await circleFetch(this.ctx, `/project/${projectSlug}/envvar/${enc(rest)}`, {
-          method: "DELETE",
-        });
-        return;
-      }
-      case "schedule":
-        await circleFetch(this.ctx, `/schedule/${enc(id)}`, { method: "DELETE" });
-        return;
-      case "trigger": {
-        const { rest } = splitScoped(id);
-        const [projectId, triggerId] = rest.split("/");
-        await circleFetch(
-          this.ctx,
-          `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
-          {
-            method: "DELETE",
-          },
-        );
-        return;
-      }
-      case "runner-resource-class":
-        // `force` also revokes the class's runner tokens; without it a class
-        // that still has tokens cannot be deleted at all.
-        await circleFetch(this.ctx, `/runner/resource-classes/${enc(id)}`, {
-          baseUrl: API_V3_BASE,
-          method: "DELETE",
-          query: { force: true },
-        });
-        return;
-      default:
-        throw new Error(`CircleCI plugin: cannot delete "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Actions and credentials
   // -------------------------------------------------------------------------
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "pipeline" || typeId === "workflow") {
-      const [verb, workflowId, approvalId] = actionId.split(":");
-      if (workflowId) {
-        switch (verb) {
-          case "rerun":
-            await circleFetch(this.ctx, `/workflow/${enc(workflowId)}/rerun`, {
-              method: "POST",
-              body: {},
-            });
-            return;
-          case "rerun-failed":
-            await circleFetch(this.ctx, `/workflow/${enc(workflowId)}/rerun`, {
-              method: "POST",
-              body: { from_failed: true },
-            });
-            return;
-          case "cancel":
-            await circleFetch(this.ctx, `/workflow/${enc(workflowId)}/cancel`, { method: "POST" });
-            return;
-          case "approve":
-            if (approvalId) {
-              await circleFetch(
-                this.ctx,
-                `/workflow/${enc(workflowId)}/approve/${enc(approvalId)}`,
-                {
-                  method: "POST",
-                },
-              );
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "pipeline" || typeId === "workflow") {
+        const [verb, workflowId, approvalId] = actionId.split(":");
+        if (workflowId) {
+          switch (verb) {
+            case "rerun":
+              await circleFetch(this.ctx, `/workflow/${enc(workflowId)}/rerun`, {
+                method: "POST",
+                body: {},
+              });
               return;
-            }
+            case "rerun-failed":
+              await circleFetch(this.ctx, `/workflow/${enc(workflowId)}/rerun`, {
+                method: "POST",
+                body: { from_failed: true },
+              });
+              return;
+            case "cancel":
+              await circleFetch(this.ctx, `/workflow/${enc(workflowId)}/cancel`, {
+                method: "POST",
+              });
+              return;
+            case "approve":
+              if (approvalId) {
+                await circleFetch(
+                  this.ctx,
+                  `/workflow/${enc(workflowId)}/approve/${enc(approvalId)}`,
+                  {
+                    method: "POST",
+                  },
+                );
+                return;
+              }
+          }
         }
       }
-    }
-    if (typeId === "trigger" && (actionId === "enable" || actionId === "disable")) {
-      const { rest } = splitScoped(id);
-      const [projectId, triggerId] = rest.split("/");
-      await circleFetch(
-        this.ctx,
-        `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
-        {
-          method: "PATCH",
-          body: { disabled: actionId === "disable" },
-        },
-      );
-      return;
-    }
-    throw new Error(`CircleCI plugin: unknown action "${actionId}" for "${typeId}"`);
+      if (typeId === "trigger" && (actionId === "enable" || actionId === "disable")) {
+        const { rest } = splitScoped(id);
+        const [projectId, triggerId] = rest.split("/");
+        await circleFetch(
+          this.ctx,
+          `/projects/${enc(projectId ?? "")}/triggers/${enc(triggerId ?? "")}`,
+          {
+            method: "PATCH",
+            body: { disabled: actionId === "disable" },
+          },
+        );
+        return;
+      }
+      throw new Error(`CircleCI plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     _accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    if (typeId !== "runner-resource-class" || formatId !== "runner-token") {
-      throw new Error(`CircleCI plugin: cannot export "${formatId}" for "${typeId}"`);
-    }
-    const id = externalIdOf(resourceId);
-    const token = await circleV3<{ attributes?: { token?: string; nickname?: string } }>(
-      this.ctx,
-      "/runner/tokens",
-      {
-        method: "POST",
-        body: {
-          data: {
-            attributes: { nickname: `infrawrench-${new Date().toISOString().slice(0, 10)}` },
-            references: { resource_class: { id } },
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      if (typeId !== "runner-resource-class" || formatId !== "runner-token") {
+        throw new Error(`CircleCI plugin: cannot export "${formatId}" for "${typeId}"`);
+      }
+      const id = externalIdOf(resourceId);
+      const token = await circleV3<{ attributes?: { token?: string; nickname?: string } }>(
+        this.ctx,
+        "/runner/tokens",
+        {
+          method: "POST",
+          body: {
+            data: {
+              attributes: { nickname: `infrawrench-${new Date().toISOString().slice(0, 10)}` },
+              references: { resource_class: { id } },
+            },
           },
         },
-      },
-    );
-    const value = token?.attributes?.token;
-    if (!value) throw new Error("CircleCI did not return a runner token");
-    return {
-      content: value,
-      filename: "circleci-runner-token.txt",
-      mimeType: "text/plain",
-      fields: [
-        { label: "Token", value, sensitive: true, hint: "Only shown once" },
-        { label: "Nickname", value: token.attributes?.nickname ?? "" },
-      ],
-      warning:
-        "Save this token now: CircleCI does not show it again. Use it as the runner agent's auth token.",
-    };
+      );
+      const value = token?.attributes?.token;
+      if (!value) throw new Error("CircleCI did not return a runner token");
+      return {
+        content: value,
+        filename: "circleci-runner-token.txt",
+        mimeType: "text/plain",
+        fields: [
+          { label: "Token", value, sensitive: true, hint: "Only shown once" },
+          { label: "Nickname", value: token.attributes?.nickname ?? "" },
+        ],
+        warning:
+          "Save this token now: CircleCI does not show it again. Use it as the runner agent's auth token.",
+      };
+    });
   }
 
   // -------------------------------------------------------------------------

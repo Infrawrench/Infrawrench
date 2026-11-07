@@ -4,11 +4,12 @@
  *
  * These are the "server-side" counterparts to the browser-side PluginClient.
  * Plugins that need native Node.js capabilities (native DB clients, Docker SDK,
- * storage downloads, etc.) export one of these from their `./node-driver` path.
+ * storage downloads, etc.) export `nodeDrivers` from their `./driver` path.
  *
- * The host (Electron main) registers them and dispatches generic IPC calls:
- * it never contains plugin-specific logic.
+ * The host registers them with `collectNodeDrivers` and dispatches generic
+ * calls: it never contains plugin-specific logic.
  */
+import type { PluginEffect } from "./contract-effect.js";
 import type { DialTarget } from "./dial-targets.js";
 
 /**
@@ -28,7 +29,7 @@ export interface SqlNodeDriver {
     connectionString: string,
     sql: string,
     options?: SqlNodeDriverOptions,
-  ): Promise<Record<string, unknown>[]>;
+  ): PluginEffect<Record<string, unknown>[]>;
   /**
    * Like {@link query}, but the database itself refuses any change: the
    * statement runs inside a read-only transaction that is rolled back, and
@@ -45,13 +46,13 @@ export interface SqlNodeDriver {
     connectionString: string,
     sql: string,
     options?: SqlNodeDriverOptions,
-  ): Promise<Record<string, unknown>[]>;
+  ): PluginEffect<Record<string, unknown>[]>;
   execute(
     connectionString: string,
     sql: string,
     params: unknown[],
     options?: SqlNodeDriverOptions,
-  ): Promise<number>;
+  ): PluginEffect<number>;
   /**
    * Every network destination `connectionString` makes this driver dial, so a
    * shared cloud server can vet them first. Optional: the desktop never calls
@@ -63,7 +64,7 @@ export interface SqlNodeDriver {
 /** Key-value / Redis-compatible driver. */
 export interface KvNodeDriver {
   readonly id: string;
-  command(connectionString: string, cmd: string, args: (string | number)[]): Promise<unknown>;
+  command(connectionString: string, cmd: string, args: (string | number)[]): PluginEffect<unknown>;
   /**
    * Every network destination `connectionString` makes this driver dial, so a
    * shared cloud server can vet them first. Optional: the desktop never calls
@@ -75,7 +76,7 @@ export interface KvNodeDriver {
 /** Docker daemon driver. */
 export interface DockerNodeDriver {
   readonly id: string;
-  command(dockerHost: string, op: string, params?: Record<string, unknown>): Promise<unknown>;
+  command(dockerHost: string, op: string, params?: Record<string, unknown>): PluginEffect<unknown>;
   /**
    * Every network destination `dockerHost` makes this driver dial, so a
    * shared cloud server can vet them first. Optional: the desktop never calls
@@ -93,7 +94,7 @@ export interface DockerNodeDriver {
  */
 export interface K8sNodeDriver {
   readonly id: string;
-  command(kubeconfig: string, op: string, params?: Record<string, unknown>): Promise<unknown>;
+  command(kubeconfig: string, op: string, params?: Record<string, unknown>): PluginEffect<unknown>;
   /**
    * Every network destination `kubeconfig` makes this driver dial, so a
    * shared cloud server can vet them first. Optional: the desktop never calls
@@ -128,17 +129,25 @@ export interface StorageNodeDriver {
     accessToken: string,
     destPath: string,
     options?: StorageDownloadOptions,
-  ): Promise<void>;
+  ): PluginEffect<void>;
 }
 
-/**
- * Aggregate of all node drivers a plugin can contribute.
- * Plugins export this from `./node-driver`.
- */
+/** The drivers a plugin contributes to one kind of host. */
 export interface PluginNodeDriver {
   sql?: SqlNodeDriver;
   kv?: KvNodeDriver;
   docker?: DockerNodeDriver;
   k8s?: K8sNodeDriver;
   storage?: StorageNodeDriver;
+}
+
+/**
+ * Every driver a plugin contributes, per host. The plugin decides what is safe
+ * where, so a host never has to know that this plugin's connection strings can
+ * read local files: `server` runs in a pod shared between tenants, `desktop` on
+ * the user's own machine. Plugins export this as `nodeDrivers` from `./driver`.
+ */
+export interface PluginNodeDrivers {
+  desktop: PluginNodeDriver;
+  server: PluginNodeDriver;
 }

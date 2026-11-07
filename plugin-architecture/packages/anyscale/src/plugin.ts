@@ -1,19 +1,18 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { AnyscaleClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { anyscaleRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "anyscale",
-  version: "0.1.0",
+  egressHosts: ["console.anyscale.com"],
   displayName: "Anyscale",
   description:
     "Managed Ray platform. Track Anyscale spend by project, workload type, user and workload, follow credit balances, chart cluster node counts and utilization per cloud, find idle workspaces, start and terminate workspaces, terminate jobs and services, roll back service rollouts, and manage projects, compute configs and budgets.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -26,7 +25,7 @@ const manifest: PluginManifest = {
         url: "https://docs.anyscale.com/auth/service-accounts",
       },
     },
-  ],
+  ]),
   costs: {
     // Usage dashboard data, per cluster per day: workload type → service,
     // the cloud's region → region, the workspace/job/service → resource, and
@@ -43,11 +42,14 @@ const manifest: PluginManifest = {
     topUpUrl: "https://www.anyscale.com/contact-sales",
   },
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new AnyscaleClient(credentials, services),
+  testCredentials: { apiKey: "test-anyscale-key" },
   remediationCommands: anyscaleRemediationCommands,
-};
+});

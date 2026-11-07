@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 const encodePromptArgs = (o: Record<string, string>) => [JSON.stringify(o)];
 import { TemporalCloudClient } from "../client.js";
@@ -27,7 +28,7 @@ const NS = {
 
 function client(route: Parameters<typeof makeHttp>[0]) {
   const { http, calls } = makeHttp(route);
-  const c = new TemporalCloudClient({ apiKey: "k" }, { http } as never);
+  const c = hostClient(new TemporalCloudClient({ apiKey: "k" }, { http } as never));
   return { c, calls };
 }
 

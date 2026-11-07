@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HuggingFaceClient } from "./client.js";
@@ -31,15 +33,20 @@ const LOGO = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill
   </g>
 </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "huggingface",
-  version: "0.1.0",
+  // huggingface.co is the Hub API; api.endpoints.huggingface.cloud manages Inference Endpoints; endpoints.huggingface.co serves the Inference Catalog; router.huggingface.co is Inference Providers; *.endpoints.huggingface.cloud are the endpoints themselves (Playground).
+  egressHosts: [
+    "huggingface.co",
+    "api.endpoints.huggingface.cloud",
+    "endpoints.huggingface.co",
+    "router.huggingface.co",
+    "*.endpoints.huggingface.cloud",
+  ],
   displayName: "Hugging Face",
   description:
     "Inference Endpoints, Spaces, Jobs, model and dataset repositories, Inference Providers, service accounts and usage on Hugging Face.",
   logoSvg: LOGO,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -52,7 +59,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://huggingface.co/settings/tokens",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "Access Token",
@@ -76,7 +83,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiToken"], emptyLabel: "My user" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Organizations: Inference Providers usage by model (resource), provider
     // and member (tags). Users: Jobs usage per job (resource) and hardware
@@ -95,7 +102,9 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   oauth: HUGGINGFACE_OAUTH,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 /**
  * Namespace picker: the token's user plus every organization it belongs to,
@@ -142,12 +151,13 @@ async function listCredentialOptions(
   return options;
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new HuggingFaceClient(credentials, services),
+  testCredentials: { apiToken: "hf_test_token" },
   parseStatusFeed,
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   remediationCommands: huggingfaceRemediationCommands,
-  completeOAuthConnection: completeHuggingFaceOAuth,
-};
+  completeOAuthConnection: attemptFn(completeHuggingFaceOAuth),
+});

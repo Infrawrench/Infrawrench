@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { HostServices, ResourceInstance, SqlHostServices } from "@infrawrench/plugin-base";
 import { MSSQLClient } from "../client.js";
@@ -34,14 +35,14 @@ describe("MSSQLClient", () => {
 
   describe("constructor", () => {
     it("throws when connectionString missing", () => {
-      expect(() => new MSSQLClient({})).toThrow(/missing connectionString/);
+      expect(() => hostClient(new MSSQLClient({}))).toThrow(/missing connectionString/);
     });
   });
 
   describe("listResources", () => {
     it("queries sys.databases", async () => {
       sql.query.mockResolvedValue([{ name: "appdb" }, { name: "shop" }]);
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       const res = await c.listResources("mssql-database", "acct");
       expect(res.map((r) => r.displayName)).toEqual(["appdb", "shop"]);
       expect(res[0]!.fields["host"]).toBe("db.example.com");
@@ -50,39 +51,39 @@ describe("MSSQLClient", () => {
 
     it("catalog branch host unknown on bad CS", async () => {
       sql.query.mockResolvedValue([{ name: "appdb" }]);
-      const c = new MSSQLClient({ connectionString: "garbage" }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: "garbage" }, services(sql)));
       const res = await c.listResources("mssql-database", "acct");
       expect(res[0]!.fields["host"]).toBe("unknown");
     });
 
     it("falls back to URL parsing on query error", async () => {
       sql.query.mockRejectedValue(new Error("boom"));
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       const res = await c.listResources("mssql-database", "acct");
       expect(res[0]!.displayName).toBe("appdb");
     });
 
     it("falls back without sql service", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       const res = await c.listResources("mssql-database", "acct");
       expect(res[0]!.fields["database"]).toBe("appdb");
     });
 
     it("uses defaults on unparseable CS", async () => {
-      const c = new MSSQLClient({ connectionString: "garbage" });
+      const c = hostClient(new MSSQLClient({ connectionString: "garbage" }));
       const res = await c.listResources("mssql-database", "acct");
       expect(res[0]!.displayName).toBe("master");
       expect(res[0]!.fields["host"]).toBe("unknown");
     });
 
     it("defaults to master when path empty", async () => {
-      const c = new MSSQLClient({ connectionString: "mssql://u:p@host/" });
+      const c = hostClient(new MSSQLClient({ connectionString: "mssql://u:p@host/" }));
       const res = await c.listResources("mssql-database", "acct");
       expect(res[0]!.displayName).toBe("master");
     });
 
     it("throws on unknown type", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       await expect(c.listResources("nope", "acct")).rejects.toThrow(/unknown resource type/);
     });
   });
@@ -90,13 +91,13 @@ describe("MSSQLClient", () => {
   describe("getResource", () => {
     it("returns matching", async () => {
       sql.query.mockResolvedValue([{ name: "appdb" }]);
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       const r = await c.getResource("mssql-database", "acct:mssql-database:appdb", "acct");
       expect(r.displayName).toBe("appdb");
     });
     it("throws when not found", async () => {
       sql.query.mockResolvedValue([{ name: "appdb" }]);
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await expect(
         c.getResource("mssql-database", "acct:mssql-database:x", "acct"),
       ).rejects.toThrow(/not found/);
@@ -105,7 +106,7 @@ describe("MSSQLClient", () => {
 
   describe("resolveOutput", () => {
     it("resolves connection string for selected database", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       await expect(
         c.resolveOutput("mssql-database", "acct:mssql-database:shop", "connectionString"),
       ).resolves.toBe("mssql://sa:pass@db.example.com:1433/shop");
@@ -113,7 +114,7 @@ describe("MSSQLClient", () => {
 
     it("resolves server version first line", async () => {
       sql.query.mockResolvedValue([{ version: "Microsoft SQL Server 2022\nbuild info" }]);
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await expect(c.resolveOutput("mssql-database", "x", "serverVersion")).resolves.toBe(
         "Microsoft SQL Server 2022",
       );
@@ -121,12 +122,12 @@ describe("MSSQLClient", () => {
     });
 
     it("returns empty version without sql service", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       await expect(c.resolveOutput("mssql-database", "x", "serverVersion")).resolves.toBe("");
     });
 
     it("throws for unsupported output", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       await expect(c.resolveOutput("mssql-database", "x", "x")).rejects.toThrow(
         /cannot resolve output/,
       );
@@ -135,20 +136,20 @@ describe("MSSQLClient", () => {
 
   describe("getCreateConfig", () => {
     it("returns database create fields", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       const cfg = await c.getCreateConfig("mssql-database");
       expect(cfg.fields.map((f) => f.key)).toEqual(["name", "collation"]);
     });
 
     it("throws for unsupported type", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       await expect(c.getCreateConfig("x")).rejects.toThrow(/no create config/);
     });
   });
 
   describe("createResource", () => {
     it("creates a database", async () => {
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       const res = await c.createResource("mssql-database", "acct", { name: "shop" });
       expect(sql.execute).toHaveBeenCalledWith("CREATE DATABASE [shop]", []);
       expect(res).toMatchObject({
@@ -160,7 +161,7 @@ describe("MSSQLClient", () => {
     });
 
     it("creates with collation", async () => {
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await c.createResource("mssql-database", "acct", {
         name: "shop",
         collation: "SQL_Latin1_General_CP1_CI_AS",
@@ -172,14 +173,14 @@ describe("MSSQLClient", () => {
     });
 
     it("throws when sql service missing", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       await expect(c.createResource("mssql-database", "acct", { name: "shop" })).rejects.toThrow(
         /SQL service not available/,
       );
     });
 
     it("rejects invalid names and collation", async () => {
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await expect(
         c.createResource("mssql-database", "acct", { name: "bad]name" }),
       ).rejects.toThrow(/Invalid database name/);
@@ -192,14 +193,14 @@ describe("MSSQLClient", () => {
     });
 
     it("refuses system database names", async () => {
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await expect(c.createResource("mssql-database", "acct", { name: "master" })).rejects.toThrow(
         /system database/,
       );
     });
 
     it("throws on unsupported type", async () => {
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await expect(c.createResource("x", "acct", { name: "shop" })).rejects.toThrow(
         /not supported/,
       );
@@ -208,34 +209,34 @@ describe("MSSQLClient", () => {
 
   describe("deleteResource", () => {
     it("drops a database", async () => {
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await c.deleteResource("mssql-database", "acct:mssql-database:shop", "acct");
       expect(sql.execute).toHaveBeenCalledWith("DROP DATABASE [shop]", []);
     });
     it("throws on unsupported type", async () => {
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await expect(c.deleteResource("x", "a:x:y", "acct")).rejects.toThrow(/not supported/);
     });
     it("throws when sql service missing", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       await expect(
         c.deleteResource("mssql-database", "a:mssql-database:x", "acct"),
       ).rejects.toThrow(/SQL service not available/);
     });
     it("throws when name unparseable", async () => {
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await expect(c.deleteResource("mssql-database", "", "acct")).rejects.toThrow(
         /Cannot parse database name/,
       );
     });
     it("refuses system database", async () => {
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await expect(
         c.deleteResource("mssql-database", "a:mssql-database:master", "acct"),
       ).rejects.toThrow(/system database/);
     });
     it("rejects bracket in name", async () => {
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       await expect(
         c.deleteResource("mssql-database", "a:mssql-database:bad]name", "acct"),
       ).rejects.toThrow(/Invalid database name/);
@@ -244,13 +245,13 @@ describe("MSSQLClient", () => {
 
   describe("renderDetail", () => {
     it("renders connection section and sqlEditor", () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       const schema = c.renderDetail(makeResource());
       expect(schema.title).toBe("appdb");
       expect(schema.sqlEditor?.connectionStringOutputKey).toBe("connectionString");
     });
     it("parses __tables__", () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       const tables = [{ name: "dbo.t", columns: [{ name: "id", type: "int" }] }];
       const schema = c.renderDetail(
         makeResource({ resolvedOutputs: { __tables__: JSON.stringify(tables) } }),
@@ -258,12 +259,12 @@ describe("MSSQLClient", () => {
       expect(schema.sqlEditor?.tables).toEqual(tables);
     });
     it("ignores invalid __tables__", () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       const schema = c.renderDetail(makeResource({ resolvedOutputs: { __tables__: "{bad" } }));
       expect(schema.sqlEditor?.tables).toEqual([]);
     });
     it("uses fallback labels", () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       const schema = c.renderDetail(makeResource({ fields: {} }));
       expect(schema.subtitle).toContain("SQL Server");
     });
@@ -271,14 +272,14 @@ describe("MSSQLClient", () => {
 
   describe("renderSidebarItem", () => {
     it("returns item", () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       expect(c.renderSidebarItem(makeResource())).toMatchObject({ label: "appdb" });
     });
   });
 
   describe("introspect", () => {
     it("returns empty without sql service", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       expect(await c.introspect()).toEqual([]);
     });
     it("maps tables/columns/pks", async () => {
@@ -289,7 +290,7 @@ describe("MSSQLClient", () => {
           { table_name: "dbo.orders", column_name: "id", data_type: "int" },
         ])
         .mockResolvedValueOnce([{ table_name: "dbo.users", column_name: "id" }]);
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       const meta = await c.introspect();
       expect(meta).toEqual([
         { name: "dbo.users", columns: [{ name: "id", type: "int" }], pkColumns: ["id"] },
@@ -304,7 +305,7 @@ describe("MSSQLClient", () => {
 
   describe("fetchDashboardStats", () => {
     it("placeholder without sql service", async () => {
-      const c = new MSSQLClient({ connectionString: CS });
+      const c = hostClient(new MSSQLClient({ connectionString: CS }));
       const stats = await c.fetchDashboardStats("mssql-database", "x", "acct");
       expect(stats).toEqual([
         { label: "Version", value: "" },
@@ -315,7 +316,7 @@ describe("MSSQLClient", () => {
       sql.query
         .mockResolvedValueOnce([{ version: "Microsoft SQL Server 2022\nbuild info\nmore" }])
         .mockResolvedValueOnce([{ n: 9 }]);
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       const stats = await c.fetchDashboardStats("mssql-database", "x", "acct");
       expect(stats).toEqual([
         { label: "Version", value: "Microsoft SQL Server 2022" },
@@ -324,7 +325,7 @@ describe("MSSQLClient", () => {
     });
     it("handles empty rows", async () => {
       sql.query.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new MSSQLClient({ connectionString: CS }, services(sql)));
       const stats = await c.fetchDashboardStats("mssql-database", "x", "acct");
       expect(stats).toEqual([
         { label: "Version", value: "" },

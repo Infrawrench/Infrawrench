@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { NatsApiError, normaliseUrl } from "../api.js";
 import { NatsClient } from "../client.js";
@@ -65,7 +66,10 @@ const JSZ = {
 
 function client(route: (call: Call) => unknown) {
   const { http, calls } = makeHttp(route);
-  return { c: new NatsClient({ url: "nats.internal:8222/varz" }, { http } as never), calls };
+  return {
+    c: hostClient(new NatsClient({ url: "nats.internal:8222/varz" }, { http } as never)),
+    calls,
+  };
 }
 
 describe("helpers", () => {

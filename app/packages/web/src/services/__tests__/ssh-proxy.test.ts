@@ -135,12 +135,13 @@ vi.mock("@infrawrench/server-core/permissions", () => ({
 
 const mockResolveSshChain = vi.fn();
 const mockForwardOutHop = vi.fn();
-vi.mock("@infrawrench/plugin-ssh", () => ({
+vi.mock("@infrawrench/ssh-tunnel-core/chain", () => ({
   resolveSshChain: (...a: unknown[]) => mockResolveSshChain(...a),
   forwardOutHop: (...a: unknown[]) => mockForwardOutHop(...a),
 }));
 
 const { handleSshSession } = await import("@/services/ssh-proxy");
+const { getPlugin } = await import("@/plugins/loader");
 
 const KEY_ROW = { id: "k1", encryptedPrivateKey: "enc", privateKeyIv: "iv" };
 
@@ -237,6 +238,28 @@ describe("handleSshSession", () => {
       expect.anything(),
       "ssh-proxy",
     );
+  });
+
+  it("refuses a jump hop whose plugin does not declare jump hosts", async () => {
+    selectRows([KEY_ROW]);
+    vi.mocked(getPlugin).mockResolvedValue({ plugin: { manifest: { id: "other" } } } as never);
+    mockResolveSshChain.mockImplementation(
+      async (id: string, load: (accountId: string) => Promise<unknown>) => {
+        selectRows([{ id, pluginId: "other" }]);
+        return load(id);
+      },
+    );
+    const ws = fakeWs();
+
+    await handleSshSession(ws as never, "org-1", "acct-1", undefined, {
+      ...DIRECT,
+      connectThroughAccountId: "jump-1",
+    });
+
+    expect(ws.sent).toContainEqual({
+      type: "ssh:error",
+      error: expect.stringMatching(/is not an SSH account/),
+    });
   });
 
   it("vets only the first jump hop, and dials it by the vetted address", async () => {

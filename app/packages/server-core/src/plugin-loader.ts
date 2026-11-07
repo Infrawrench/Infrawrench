@@ -1,5 +1,7 @@
-import type { Plugin } from "@infrawrench/plugin-base";
-import { pluginManifestSchema, validatePreflightContract } from "@infrawrench/plugin-base";
+import type { HostPlugin, Plugin } from "@infrawrench/plugin-base";
+import { validatePluginContract } from "@infrawrench/plugin-base";
+import { hostPlugins } from "@infrawrench/plugin-base/effect";
+import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
 
 declare global {
   /**
@@ -37,7 +39,8 @@ export function pluginCodeAvailable(): boolean {
 }
 
 export interface LoadedPlugin {
-  plugin: Plugin;
+  /** Contract methods run on call and return Promises; see `hostPlugin`. */
+  plugin: HostPlugin;
 }
 
 let _loaded: LoadedPlugin[] | null = null;
@@ -49,29 +52,27 @@ let _loaded: LoadedPlugin[] | null = null;
 export async function loadPlugins(): Promise<LoadedPlugin[]> {
   if (_loaded) return _loaded;
 
-  const loaded: LoadedPlugin[] = [];
+  const valid: Plugin[] = [];
 
   for (const plugin of await bundledPlugins()) {
-    const result = pluginManifestSchema.safeParse(plugin.manifest);
+    const result = validate(pluginManifestSchema, plugin.manifest);
     if (!result.success) {
       console.error(
         `[plugin-loader] Invalid manifest for "${plugin.manifest?.id ?? "unknown"}":`,
-        result.error.flatten(),
+        result.issues,
       );
       continue;
     }
-    const contractProblem = validatePreflightContract(plugin);
-    if (contractProblem) {
-      console.error(
-        `[plugin-loader] Invalid preflight contract for "${plugin.manifest.id}": ${contractProblem}`,
-      );
+    const problems = validatePluginContract(plugin);
+    if (problems.length > 0) {
+      console.error(`[plugin-loader] "${plugin.manifest.id}" breaks the contract:`, problems);
       continue;
     }
-    loaded.push({ plugin });
+    valid.push(plugin);
   }
 
-  _loaded = loaded;
-  return loaded;
+  _loaded = hostPlugins(valid).map((plugin) => ({ plugin }));
+  return _loaded;
 }
 
 /** Get a single loaded plugin by its manifest id */

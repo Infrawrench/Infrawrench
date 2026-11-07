@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { resolveHost, statusOf } from "../api.js";
@@ -59,7 +60,10 @@ describe("PostHogClient", () => {
       }
       return undefined;
     });
-    const flags = await new PostHogClient(CREDS, { http }).listResources("feature-flag", "acct");
+    const flags = await hostClient(new PostHogClient(CREDS, { http })).listResources(
+      "feature-flag",
+      "acct",
+    );
     expect(flags.map((f) => f.externalId)).toEqual(["7/1", "7/3"]);
     expect(flags[0]?.fields["rolloutPercentage"]).toBe(30);
     expect(flags[0]?.parentResourceId).toBe("acct:project:7");
@@ -72,7 +76,7 @@ describe("PostHogClient", () => {
       status: 429,
       body: { type: "throttled_error", detail: "Request was throttled." },
     }));
-    const err = await new PostHogClient(CREDS, { http })
+    const err = await hostClient(new PostHogClient(CREDS, { http }))
       .listResources("project", "acct")
       .catch((e: unknown) => e);
     expect(statusOf(err)).toBe(429);
@@ -98,7 +102,7 @@ describe("PostHogClient", () => {
       if (method === "PATCH") return { body: { id: 1 } };
       return undefined;
     });
-    await new PostHogClient(CREDS, { http }).updateResource(
+    await hostClient(new PostHogClient(CREDS, { http })).updateResource(
       "feature-flag",
       "acct:feature-flag:7/1",
       "acct",
@@ -117,7 +121,7 @@ describe("PostHogClient", () => {
 
   it("soft-deletes everything but batch exports", async () => {
     const { http, calls } = makeHttp(() => ({ status: 204 }));
-    const client = new PostHogClient(CREDS, { http });
+    const client = hostClient(new PostHogClient(CREDS, { http }));
     await client.deleteResource("dashboard", "acct:dashboard:7/9");
     await client.deleteResource("batch-export", "acct:batch-export:7/abc");
     expect(calls[0]?.method).toBe("PATCH");
@@ -135,7 +139,7 @@ describe("PostHogClient", () => {
         return { body: { id: 1, key: "it's" } };
       return undefined;
     });
-    const client = new PostHogClient(CREDS, { http });
+    const client = hostClient(new PostHogClient(CREDS, { http }));
     const q = await client.executeQuery("acct:project:7", "acct", "SELECT 1");
     expect(q.rows).toEqual([{ t: "2026-10-06T10:00:00Z", c: 4 }]);
     const series = await client.fetchMetricSeries("feature-flag", "acct:feature-flag:7/1", "acct", {
@@ -171,7 +175,7 @@ describe("PostHogClient", () => {
       }
       return undefined;
     });
-    const rows = await new PostHogClient(CREDS, { http }).fetchCostData("acct", {
+    const rows = await hostClient(new PostHogClient(CREDS, { http })).fetchCostData("acct", {
       fromDate: "2026-10-01",
       toDate: "2026-10-02",
     });
@@ -193,7 +197,7 @@ describe("PostHogClient", () => {
         ? { body: { results: [{ id: "o1", name: "Acme", slug: "acme" }], next: null } }
         : undefined,
     );
-    const opts = await plugin.listCredentialOptions?.(
+    const opts = await hostPlugin(plugin).listCredentialOptions?.(
       "organizationId",
       { region: "us", apiKey: "phx" },
       { http },

@@ -1,4 +1,4 @@
-import type { DetailViewSchema, PluginClient } from "@infrawrench/plugin-base";
+import type { DetailViewSchema, HostPluginClient } from "@infrawrench/plugin-base";
 import { FileBrowser, formatErrorMessage } from "@infrawrench/ui";
 import { invoke } from "../../lib/invoke";
 
@@ -6,7 +6,7 @@ interface StorageBrowserContainerProps {
   schema: DetailViewSchema;
   pluginId: string;
   hasStorageToken: boolean;
-  getClient: () => PluginClient;
+  getClient: () => HostPluginClient;
 }
 
 export function StorageBrowserContainer({

@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -103,7 +106,7 @@ export class DynatraceClient implements PluginClient {
   private readonly ctx: DynatraceContext;
   private readonly dps: DpsCredentials;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const urls = resolveUrls(credentials["environmentUrl"] ?? "");
     const apiToken = (credentials["apiToken"] ?? "").trim();
     if (!urls.envUrl) throw new Error("Dynatrace plugin: missing environmentUrl credential");
@@ -196,74 +199,76 @@ export class DynatraceClient implements PluginClient {
     });
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    if (ENTITY_TYPES[typeId]) {
-      return this.scoped(async () =>
-        (await this.entities(typeId))
-          .filter((e) => e.entityId)
-          .map((e) => mapEntity(accountId, typeId, e)),
-      );
-    }
-    switch (typeId) {
-      case "environment":
-        return [await this.environment(accountId, false)];
-      case "problem":
-        return this.scoped(async () => {
-          const problems = await pagedList<DtProblem>(this.ctx, "/api/v2/problems", "problems", {
-            from: PROBLEM_WINDOW,
-            pageSize: 500,
-          });
-          return problems.filter((p) => p.problemId).map((p) => mapProblem(accountId, p));
-        });
-      case "slo":
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      if (ENTITY_TYPES[typeId]) {
         return this.scoped(async () =>
-          (await this.slos()).filter((s) => s.id).map((s) => mapSlo(accountId, s)),
+          (await this.entities(typeId))
+            .filter((e) => e.entityId)
+            .map((e) => mapEntity(accountId, typeId, e)),
         );
-      case "synthetic-monitor":
-        return this.scoped(async () => {
-          const [list, names] = await Promise.all([
-            envFetch<{ monitors?: DtMonitorStub[] }>(this.ctx, "/api/v1/synthetic/monitors"),
-            this.locationNames(),
-          ]);
-          const stubs = (list.monitors ?? []).filter((m) => m.entityId);
-          // The list carries name/type/enabled only; detail reads are bounded.
-          const details = await Promise.all(
-            stubs
-              .slice(0, 200)
-              .map((m) =>
-                envFetch<DtMonitor>(
-                  this.ctx,
-                  `/api/v1/synthetic/monitors/${encodeURIComponent(m.entityId ?? "")}`,
-                ).catch(() => m as DtMonitor),
-              ),
+      }
+      switch (typeId) {
+        case "environment":
+          return [await this.environment(accountId, false)];
+        case "problem":
+          return this.scoped(async () => {
+            const problems = await pagedList<DtProblem>(this.ctx, "/api/v2/problems", "problems", {
+              from: PROBLEM_WINDOW,
+              pageSize: 500,
+            });
+            return problems.filter((p) => p.problemId).map((p) => mapProblem(accountId, p));
+          });
+        case "slo":
+          return this.scoped(async () =>
+            (await this.slos()).filter((s) => s.id).map((s) => mapSlo(accountId, s)),
           );
-          const byId = new Map(details.map((d) => [d.entityId, d]));
-          return stubs.map((m) => mapMonitor(accountId, byId.get(m.entityId) ?? m, names));
-        });
-      case "alerting-profile":
-        return this.scoped(async () =>
-          (await this.settings<AlertingProfileValue>(SETTINGS_SCHEMAS["alerting-profile"]!)).map(
-            (o) => mapAlertingProfile(accountId, o),
-          ),
-        );
-      case "maintenance-window":
-        return this.scoped(async () =>
-          (
-            await this.settings<MaintenanceWindowValue>(SETTINGS_SCHEMAS["maintenance-window"]!)
-          ).map((o) => mapMaintenanceWindow(accountId, o)),
-        );
-      case "api-token":
-        return this.scoped(async () => {
-          const tokens = await pagedList<DtApiToken>(this.ctx, "/api/v2/apiTokens", "apiTokens", {
-            pageSize: 500,
-            fields:
-              "+lastUsedDate,+lastUsedIpAddress,+expirationDate,+scopes,+personalAccessToken,+creationDate,+owner,+enabled,+name",
+        case "synthetic-monitor":
+          return this.scoped(async () => {
+            const [list, names] = await Promise.all([
+              envFetch<{ monitors?: DtMonitorStub[] }>(this.ctx, "/api/v1/synthetic/monitors"),
+              this.locationNames(),
+            ]);
+            const stubs = (list.monitors ?? []).filter((m) => m.entityId);
+            // The list carries name/type/enabled only; detail reads are bounded.
+            const details = await Promise.all(
+              stubs
+                .slice(0, 200)
+                .map((m) =>
+                  envFetch<DtMonitor>(
+                    this.ctx,
+                    `/api/v1/synthetic/monitors/${encodeURIComponent(m.entityId ?? "")}`,
+                  ).catch(() => m as DtMonitor),
+                ),
+            );
+            const byId = new Map(details.map((d) => [d.entityId, d]));
+            return stubs.map((m) => mapMonitor(accountId, byId.get(m.entityId) ?? m, names));
           });
-          return tokens.filter((t) => t.id).map((t) => mapApiToken(accountId, t));
-        });
-      default:
-        throw new Error(`Dynatrace plugin: unknown resource type "${typeId}"`);
-    }
+        case "alerting-profile":
+          return this.scoped(async () =>
+            (await this.settings<AlertingProfileValue>(SETTINGS_SCHEMAS["alerting-profile"]!)).map(
+              (o) => mapAlertingProfile(accountId, o),
+            ),
+          );
+        case "maintenance-window":
+          return this.scoped(async () =>
+            (
+              await this.settings<MaintenanceWindowValue>(SETTINGS_SCHEMAS["maintenance-window"]!)
+            ).map((o) => mapMaintenanceWindow(accountId, o)),
+          );
+        case "api-token":
+          return this.scoped(async () => {
+            const tokens = await pagedList<DtApiToken>(this.ctx, "/api/v2/apiTokens", "apiTokens", {
+              pageSize: 500,
+              fields:
+                "+lastUsedDate,+lastUsedIpAddress,+expirationDate,+scopes,+personalAccessToken,+creationDate,+owner,+enabled,+name",
+            });
+            return tokens.filter((t) => t.id).map((t) => mapApiToken(accountId, t));
+          });
+        default:
+          throw new Error(`Dynatrace plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -345,63 +350,65 @@ export class DynatraceClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId) || resourceId;
-    if (ENTITY_TYPES[typeId]) {
-      const e = await envFetch<DtEntity>(this.ctx, `/api/v2/entities/${encodeURIComponent(id)}`, {
-        query: { fields: this.entityFields(typeId) },
-      });
-      return mapEntity(accountId, typeId, e);
-    }
-    switch (typeId) {
-      case "environment":
-        return this.environment(accountId, false);
-      case "problem":
-        return mapProblem(
-          accountId,
-          await envFetch<DtProblem>(this.ctx, `/api/v2/problems/${encodeURIComponent(id)}`),
-        );
-      case "slo": {
-        try {
-          return mapSlo(
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId) || resourceId;
+      if (ENTITY_TYPES[typeId]) {
+        const e = await envFetch<DtEntity>(this.ctx, `/api/v2/entities/${encodeURIComponent(id)}`, {
+          query: { fields: this.entityFields(typeId) },
+        });
+        return mapEntity(accountId, typeId, e);
+      }
+      switch (typeId) {
+        case "environment":
+          return this.environment(accountId, false);
+        case "problem":
+          return mapProblem(
             accountId,
-            await envFetch<DtSlo>(this.ctx, `/api/v2/slo/${encodeURIComponent(id)}`, {
-              query: { timeFrame: "CURRENT" },
-            }),
+            await envFetch<DtProblem>(this.ctx, `/api/v2/problems/${encodeURIComponent(id)}`),
           );
-        } catch (err) {
-          // A disabled SLO cannot be read on its own; the list still has it.
-          const found = (await this.slos()).find((s) => s.id === id);
-          if (found) return mapSlo(accountId, found);
-          throw err;
+        case "slo": {
+          try {
+            return mapSlo(
+              accountId,
+              await envFetch<DtSlo>(this.ctx, `/api/v2/slo/${encodeURIComponent(id)}`, {
+                query: { timeFrame: "CURRENT" },
+              }),
+            );
+          } catch (err) {
+            // A disabled SLO cannot be read on its own; the list still has it.
+            const found = (await this.slos()).find((s) => s.id === id);
+            if (found) return mapSlo(accountId, found);
+            throw err;
+          }
         }
+        case "synthetic-monitor": {
+          const [m, names] = await Promise.all([
+            envFetch<DtMonitor>(this.ctx, `/api/v1/synthetic/monitors/${encodeURIComponent(id)}`),
+            this.locationNames(),
+          ]);
+          return mapMonitor(accountId, m, names);
+        }
+        case "alerting-profile":
+          return mapAlertingProfile(accountId, await this.settingsObject<AlertingProfileValue>(id));
+        case "maintenance-window":
+          return mapMaintenanceWindow(
+            accountId,
+            await this.settingsObject<MaintenanceWindowValue>(id),
+          );
+        case "api-token":
+          return mapApiToken(
+            accountId,
+            await envFetch<DtApiToken>(this.ctx, `/api/v2/apiTokens/${encodeURIComponent(id)}`),
+          );
+        default:
+          throw new Error(`Dynatrace plugin: unknown resource type "${typeId}"`);
       }
-      case "synthetic-monitor": {
-        const [m, names] = await Promise.all([
-          envFetch<DtMonitor>(this.ctx, `/api/v1/synthetic/monitors/${encodeURIComponent(id)}`),
-          this.locationNames(),
-        ]);
-        return mapMonitor(accountId, m, names);
-      }
-      case "alerting-profile":
-        return mapAlertingProfile(accountId, await this.settingsObject<AlertingProfileValue>(id));
-      case "maintenance-window":
-        return mapMaintenanceWindow(
-          accountId,
-          await this.settingsObject<MaintenanceWindowValue>(id),
-        );
-      case "api-token":
-        return mapApiToken(
-          accountId,
-          await envFetch<DtApiToken>(this.ctx, `/api/v2/apiTokens/${encodeURIComponent(id)}`),
-        );
-      default:
-        throw new Error(`Dynatrace plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   private settingsObject<V>(objectId: string): Promise<DtSettingsObject<V>> {
@@ -411,519 +418,545 @@ export class DynatraceClient implements PluginClient {
     );
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "environment") {
-      const map: Record<string, string> = {
-        url: this.ctx.envUrl,
-        platformUrl: this.ctx.platformUrl,
-        environmentId: this.ctx.environmentId,
-      };
-      if (map[outputKey] !== undefined) return map[outputKey] ?? "";
-    }
-    const r = await this.getResource(typeId, resourceId, accountId);
-    const v = r.resolvedOutputs[outputKey] ?? r.fields[outputKey];
-    if (v === undefined) {
-      throw new Error(`Dynatrace plugin: cannot resolve output "${outputKey}" for "${typeId}"`);
-    }
-    return String(v);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "environment") {
+        const map: Record<string, string> = {
+          url: this.ctx.envUrl,
+          platformUrl: this.ctx.platformUrl,
+          environmentId: this.ctx.environmentId,
+        };
+        if (map[outputKey] !== undefined) return map[outputKey] ?? "";
+      }
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const v = r.resolvedOutputs[outputKey] ?? r.fields[outputKey];
+      if (v === undefined) {
+        throw new Error(`Dynatrace plugin: cannot resolve output "${outputKey}" for "${typeId}"`);
+      }
+      return String(v);
+    });
   }
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    if (resource.resourceTypeId === "environment") {
-      return this.environment(resource.accountId, true);
-    }
-    if (resource.resourceTypeId === "problem" && resource.externalId) {
-      const res = await envFetch<{ comments?: DtComment[] }>(
-        this.ctx,
-        `/api/v2/problems/${encodeURIComponent(resource.externalId)}/comments`,
-        { query: { pageSize: 50 } },
-      ).catch(() => ({ comments: [] as DtComment[] }));
-      const comments = (res.comments ?? []).map((c) => ({
-        author: c.authorName,
-        at: isoMs(c.createdAtTimestamp),
-        content: c.content,
-      }));
-      return {
-        ...resource,
-        resolvedOutputs: { ...resource.resolvedOutputs, [COMMENTS_KEY]: JSON.stringify(comments) },
-      };
-    }
-    return resource;
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (resource.resourceTypeId === "environment") {
+        return this.environment(resource.accountId, true);
+      }
+      if (resource.resourceTypeId === "problem" && resource.externalId) {
+        const res = await envFetch<{ comments?: DtComment[] }>(
+          this.ctx,
+          `/api/v2/problems/${encodeURIComponent(resource.externalId)}/comments`,
+          { query: { pageSize: 50 } },
+        ).catch(() => ({ comments: [] as DtComment[] }));
+        const comments = (res.comments ?? []).map((c) => ({
+          author: c.authorName,
+          at: isoMs(c.createdAtTimestamp),
+          content: c.content,
+        }));
+        return {
+          ...resource,
+          resolvedOutputs: {
+            ...resource.resolvedOutputs,
+            [COMMENTS_KEY]: JSON.stringify(comments),
+          },
+        };
+      }
+      return resource;
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics, logs, costs, query
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(typeId, resourceId, accountId);
-    const f = r.fields;
-    switch (typeId) {
-      case "environment":
-        return [
-          { label: "Hosts", value: str(f["hostCount"]) || "-" },
-          {
-            label: "Open problems",
-            value: str(f["openProblems"]) || "0",
-            variant: Number(f["openProblems"] ?? 0) > 0 ? "status-degraded" : "status-healthy",
-          },
-        ];
-      case "slo":
-        return [
-          {
-            label: "Current",
-            value:
-              f["evaluatedPercentage"] !== undefined ? `${str(f["evaluatedPercentage"])}%` : "-",
-          },
-          { label: "Target", value: `${str(f["target"])}%` },
-        ];
-      case "problem":
-        return [{ label: "Status", value: str(f["status"]) || "-" }];
-      default:
-        return [];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const f = r.fields;
+      switch (typeId) {
+        case "environment":
+          return [
+            { label: "Hosts", value: str(f["hostCount"]) || "-" },
+            {
+              label: "Open problems",
+              value: str(f["openProblems"]) || "0",
+              variant: Number(f["openProblems"] ?? 0) > 0 ? "status-degraded" : "status-healthy",
+            },
+          ];
+        case "slo":
+          return [
+            {
+              label: "Current",
+              value:
+                f["evaluatedPercentage"] !== undefined ? `${str(f["evaluatedPercentage"])}%` : "-",
+            },
+            { label: "Target", value: `${str(f["target"])}%` },
+          ];
+        case "problem":
+          return [{ label: "Status", value: str(f["status"]) || "-" }];
+        default:
+          return [];
+      }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     typeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const range = rangeOrDefault(timeRange, METRICS_WINDOW_MS);
-    const id = externalIdOf(resourceId) || resourceId;
-    if (typeId === "synthetic-monitor") {
-      const m = await this.getResource(typeId, resourceId, accountId);
-      const specs = METRICS[`synthetic-monitor-${str(m.fields["type"]) || "HTTP"}`] ?? [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const range = rangeOrDefault(timeRange, METRICS_WINDOW_MS);
+      const id = externalIdOf(resourceId) || resourceId;
+      if (typeId === "synthetic-monitor") {
+        const m = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const specs = METRICS[`synthetic-monitor-${str(m.fields["type"]) || "HTTP"}`] ?? [];
+        return entitySeries(this.ctx, specs, id, range);
+      }
+      const specs = METRICS[typeId];
+      if (!specs) return [];
       return entitySeries(this.ctx, specs, id, range);
-    }
-    const specs = METRICS[typeId];
-    if (!specs) return [];
-    return entitySeries(this.ctx, specs, id, range);
+    });
   }
 
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const id = (externalIdOf(resourceId) || resourceId).replace(/"/g, "");
-    const limit = Math.min(Math.max(params.tailLines ?? 200, 1), 1000);
-    const field = typeId === "service" ? "dt.entity.service" : "dt.entity.host";
-    let lines: Array<{ timestamp: string; status: string; content: string }>;
-    if (this.grail()) {
-      const rows = await runDql(
-        this.ctx,
-        `fetch logs, from: now()-24h\n| filter ${field} == "${id}"\n| sort timestamp desc\n| limit ${limit}`,
-        { maxResultRecords: limit },
-      );
-      lines = rows.map((r) => ({
-        timestamp: str(r["timestamp"]),
-        status: str(r["loglevel"] ?? r["status"]),
-        content: str(r["content"]),
-      }));
-    } else {
-      const res = await envFetch<{
-        results?: Array<{ timestamp?: number; status?: string; content?: string }>;
-      }>(this.ctx, "/api/v2/logs/search", {
-        query: { query: `${field}="${id}"`, from: "now-24h", limit, sort: "-timestamp" },
-      });
-      lines = (res.results ?? []).map((r) => ({
-        timestamp: isoMs(r.timestamp) ?? "",
-        status: str(r.status),
-        content: str(r.content),
-      }));
-    }
-    const text = lines
-      .reverse()
-      .map((l) => `${l.timestamp} ${l.status ? `[${l.status}] ` : ""}${l.content}\n`)
-      .join("");
-    return { text, containers: [], activeContainer: "" };
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const id = (externalIdOf(resourceId) || resourceId).replace(/"/g, "");
+      const limit = Math.min(Math.max(params.tailLines ?? 200, 1), 1000);
+      const field = typeId === "service" ? "dt.entity.service" : "dt.entity.host";
+      let lines: Array<{ timestamp: string; status: string; content: string }>;
+      if (this.grail()) {
+        const rows = await runDql(
+          this.ctx,
+          `fetch logs, from: now()-24h\n| filter ${field} == "${id}"\n| sort timestamp desc\n| limit ${limit}`,
+          { maxResultRecords: limit },
+        );
+        lines = rows.map((r) => ({
+          timestamp: str(r["timestamp"]),
+          status: str(r["loglevel"] ?? r["status"]),
+          content: str(r["content"]),
+        }));
+      } else {
+        const res = await envFetch<{
+          results?: Array<{ timestamp?: number; status?: string; content?: string }>;
+        }>(this.ctx, "/api/v2/logs/search", {
+          query: { query: `${field}="${id}"`, from: "now-24h", limit, sort: "-timestamp" },
+        });
+        lines = (res.results ?? []).map((r) => ({
+          timestamp: isoMs(r.timestamp) ?? "",
+          status: str(r.status),
+          content: str(r.content),
+        }));
+      }
+      const text = lines
+        .reverse()
+        .map((l) => `${l.timestamp} ${l.status ? `[${l.status}] ` : ""}${l.content}\n`)
+        .join("");
+      return { text, containers: [], activeContainer: "" };
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchDpsCostData(this.dps, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchDpsCostData(this.dps, range);
+    });
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    return verifyDynatraceCredentials(this.ctx);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return verifyDynatraceCredentials(this.ctx);
+    });
   }
 
-  async executeQuery(
+  executeQuery(
     _resourceId: string,
     _accountId: string,
     sql: string,
-  ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
-    const started = Date.now();
-    const rows = await runDql(this.ctx, sql);
-    // Nested records and arrays read better as JSON than as [object Object].
-    const flat = rows.map((r) =>
-      Object.fromEntries(
-        Object.entries(r).map(([k, v]) => [
-          k,
-          v !== null && typeof v === "object" ? JSON.stringify(v) : v,
-        ]),
-      ),
-    );
-    return { rows: flat, durationMs: Date.now() - started };
+  ): PluginEffect<{ rows: Record<string, unknown>[]; durationMs: number }> {
+    return attempt(async () => {
+      const started = Date.now();
+      const rows = await runDql(this.ctx, sql);
+      // Nested records and arrays read better as JSON than as [object Object].
+      const flat = rows.map((r) =>
+        Object.fromEntries(
+          Object.entries(r).map(([k, v]) => [
+            k,
+            v !== null && typeof v === "object" ? JSON.stringify(v) : v,
+          ]),
+        ),
+      );
+      return { rows: flat, durationMs: Date.now() - started };
+    });
   }
 
-  async introspectResource(): Promise<SqlTableMeta[]> {
-    return DQL_TABLES;
+  introspectResource(): PluginEffect<SqlTableMeta[]> {
+    return attempt(async () => {
+      return DQL_TABLES;
+    });
   }
 
   // -------------------------------------------------------------------------
   // Create
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "slo":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "Checkout availability",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "metricExpression",
-              label: "Metric expression",
-              kind: "text",
-              required: true,
-              multiline: true,
-              defaultValue:
-                "(100)*(builtin:service.errors.server.successCount:splitBy())/(builtin:service.requestCount.server:splitBy())",
-              description:
-                "Must evaluate to a percentage. The default is the share of successful service requests.",
-            },
-            {
-              key: "filter",
-              label: "Entity filter",
-              kind: "text",
-              required: false,
-              placeholder: 'type("SERVICE"),tag("env:prod")',
-              description: "An entity selector restricting which entities the expression covers.",
-            },
-            {
-              key: "target",
-              label: "Target (%)",
-              kind: "number",
-              required: true,
-              defaultValue: "99",
-              minValue: 0,
-              maxValue: 100,
-              stepValue: 0.01,
-            },
-            {
-              key: "warning",
-              label: "Warning (%)",
-              kind: "number",
-              required: true,
-              defaultValue: "99.5",
-              minValue: 0,
-              maxValue: 100,
-              stepValue: 0.01,
-            },
-            {
-              key: "timeframe",
-              label: "Timeframe",
-              kind: "select",
-              required: true,
-              defaultValue: "-1w",
-              options: [
-                { id: "-1d", label: "Last day" },
-                { id: "-1w", label: "Last week" },
-                { id: "-30d", label: "Last 30 days" },
-                { id: "-1M", label: "Last month" },
-              ],
-            },
-          ],
-        };
-      case "synthetic-monitor": {
-        const res = await envFetch<{
-          locations?: Array<{
-            entityId?: string;
-            name?: string;
-            type?: string;
-            status?: string;
-            cloudPlatform?: string;
-          }>;
-        }>(this.ctx, "/api/v1/synthetic/locations");
-        const locations = (res.locations ?? []).filter(
-          (l) => l.entityId && (!l.status || l.status === "ENABLED"),
-        );
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "Homepage" },
-            {
-              key: "url",
-              label: "URL",
-              kind: "text",
-              required: true,
-              placeholder: "https://example.com/health",
-            },
-            {
-              key: "method",
-              label: "Method",
-              kind: "select",
-              required: true,
-              defaultValue: "GET",
-              options: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"].map((m) => ({
-                id: m,
-                label: m,
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "slo":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "Checkout availability",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "metricExpression",
+                label: "Metric expression",
+                kind: "text",
+                required: true,
+                multiline: true,
+                defaultValue:
+                  "(100)*(builtin:service.errors.server.successCount:splitBy())/(builtin:service.requestCount.server:splitBy())",
+                description:
+                  "Must evaluate to a percentage. The default is the share of successful service requests.",
+              },
+              {
+                key: "filter",
+                label: "Entity filter",
+                kind: "text",
+                required: false,
+                placeholder: 'type("SERVICE"),tag("env:prod")',
+                description: "An entity selector restricting which entities the expression covers.",
+              },
+              {
+                key: "target",
+                label: "Target (%)",
+                kind: "number",
+                required: true,
+                defaultValue: "99",
+                minValue: 0,
+                maxValue: 100,
+                stepValue: 0.01,
+              },
+              {
+                key: "warning",
+                label: "Warning (%)",
+                kind: "number",
+                required: true,
+                defaultValue: "99.5",
+                minValue: 0,
+                maxValue: 100,
+                stepValue: 0.01,
+              },
+              {
+                key: "timeframe",
+                label: "Timeframe",
+                kind: "select",
+                required: true,
+                defaultValue: "-1w",
+                options: [
+                  { id: "-1d", label: "Last day" },
+                  { id: "-1w", label: "Last week" },
+                  { id: "-30d", label: "Last 30 days" },
+                  { id: "-1M", label: "Last month" },
+                ],
+              },
+            ],
+          };
+        case "synthetic-monitor": {
+          const res = await envFetch<{
+            locations?: Array<{
+              entityId?: string;
+              name?: string;
+              type?: string;
+              status?: string;
+              cloudPlatform?: string;
+            }>;
+          }>(this.ctx, "/api/v1/synthetic/locations");
+          const locations = (res.locations ?? []).filter(
+            (l) => l.entityId && (!l.status || l.status === "ENABLED"),
+          );
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true, placeholder: "Homepage" },
+              {
+                key: "url",
+                label: "URL",
+                kind: "text",
+                required: true,
+                placeholder: "https://example.com/health",
+              },
+              {
+                key: "method",
+                label: "Method",
+                kind: "select",
+                required: true,
+                defaultValue: "GET",
+                options: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"].map((m) => ({
+                  id: m,
+                  label: m,
+                })),
+              },
+              {
+                key: "frequencyMin",
+                label: "Frequency",
+                kind: "select",
+                required: true,
+                defaultValue: "15",
+                options: [1, 2, 5, 10, 15, 30, 60, 120, 240].map((n) => ({
+                  id: String(n),
+                  label: `Every ${n} min`,
+                })),
+              },
+              {
+                key: "locations",
+                label: "Locations",
+                kind: "policy-picker",
+                required: true,
+                description: "Where the monitor runs from.",
+                policies: locations.map((l) => ({
+                  id: l.entityId ?? "",
+                  label: l.name ?? l.entityId ?? "",
+                  category: l.type === "PRIVATE" ? "Private" : "Public",
+                  ...(l.cloudPlatform ? { description: l.cloudPlatform } : {}),
+                })),
+              },
+              {
+                key: "failOnStatus",
+                label: "Fail on HTTP status",
+                kind: "text",
+                required: false,
+                defaultValue: ">=400",
+                description:
+                  "Status codes that count as a failure, in Dynatrace's list syntax (>=400, 404, 500-599).",
+              },
+            ],
+          };
+        }
+        case "alerting-profile":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "Production on-call",
+              },
+              ...SEVERITY_FIELDS.map(([key, level]) => ({
+                key,
+                label: `${level
+                  .replace(/_/g, " ")
+                  .toLowerCase()
+                  .replace(/^./, (c) => c.toUpperCase())} delay (min)`,
+                kind: "number" as const,
+                required: false,
+                minValue: 0,
+                maxValue: 10000,
+                ...(level === "AVAILABILITY" || level === "ERRORS" ? { defaultValue: "0" } : {}),
+                description: "Blank leaves this severity out of the profile.",
               })),
-            },
-            {
-              key: "frequencyMin",
-              label: "Frequency",
-              kind: "select",
-              required: true,
-              defaultValue: "15",
-              options: [1, 2, 5, 10, 15, 30, 60, 120, 240].map((n) => ({
-                id: String(n),
-                label: `Every ${n} min`,
-              })),
-            },
-            {
-              key: "locations",
-              label: "Locations",
-              kind: "policy-picker",
-              required: true,
-              description: "Where the monitor runs from.",
-              policies: locations.map((l) => ({
-                id: l.entityId ?? "",
-                label: l.name ?? l.entityId ?? "",
-                category: l.type === "PRIVATE" ? "Private" : "Public",
-                ...(l.cloudPlatform ? { description: l.cloudPlatform } : {}),
-              })),
-            },
-            {
-              key: "failOnStatus",
-              label: "Fail on HTTP status",
-              kind: "text",
-              required: false,
-              defaultValue: ">=400",
-              description:
-                "Status codes that count as a failure, in Dynatrace's list syntax (>=400, 404, 500-599).",
-            },
-          ],
-        };
+              {
+                key: "tagFilter",
+                label: "Only entities tagged",
+                kind: "string-list",
+                required: false,
+                description: "Tags such as env:prod. Applied to every severity rule.",
+              },
+              {
+                key: "tagFilterIncludeMode",
+                label: "Tag match",
+                kind: "select",
+                required: false,
+                defaultValue: "INCLUDE_ANY",
+                options: [
+                  { id: "INCLUDE_ANY", label: "Any of the tags" },
+                  { id: "INCLUDE_ALL", label: "All of the tags" },
+                ],
+                showWhen: { fieldKey: "tagFilter", fieldValuesNot: [""] },
+              },
+            ],
+          };
+        case "maintenance-window": {
+          const recurring = {
+            fieldKey: "scheduleType",
+            fieldValues: ["DAILY", "WEEKLY", "MONTHLY"],
+          };
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "Database upgrade",
+              },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "maintenanceType",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "PLANNED",
+                options: [
+                  { id: "PLANNED", label: "Planned" },
+                  { id: "UNPLANNED", label: "Unplanned" },
+                ],
+              },
+              {
+                key: "suppression",
+                label: "During the window",
+                kind: "select",
+                required: true,
+                defaultValue: "DETECT_PROBLEMS_DONT_ALERT",
+                options: [
+                  { id: "DETECT_PROBLEMS_DONT_ALERT", label: "Detect problems, do not alert" },
+                  { id: "DONT_DETECT_PROBLEMS", label: "Do not detect problems" },
+                  { id: "DETECT_PROBLEMS_AND_ALERT", label: "Detect problems and alert" },
+                ],
+              },
+              {
+                key: "disableSynthetic",
+                label: "Pause synthetic monitors",
+                kind: "select",
+                required: true,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "No" },
+                  { id: "true", label: "Yes" },
+                ],
+              },
+              {
+                key: "scheduleType",
+                label: "Schedule",
+                kind: "select",
+                required: true,
+                defaultValue: "ONCE",
+                options: [
+                  { id: "ONCE", label: "Once" },
+                  { id: "DAILY", label: "Daily" },
+                  { id: "WEEKLY", label: "Weekly" },
+                  { id: "MONTHLY", label: "Monthly" },
+                ],
+              },
+              {
+                key: "start",
+                label: "Starts",
+                kind: "datetime",
+                required: true,
+                showWhen: { fieldKey: "scheduleType", fieldValue: "ONCE" },
+              },
+              {
+                key: "end",
+                label: "Ends",
+                kind: "datetime",
+                required: true,
+                showWhen: { fieldKey: "scheduleType", fieldValue: "ONCE" },
+              },
+              {
+                key: "dayOfWeek",
+                label: "Day",
+                kind: "select",
+                required: true,
+                defaultValue: "SUNDAY",
+                showWhen: { fieldKey: "scheduleType", fieldValue: "WEEKLY" },
+                options: [
+                  "MONDAY",
+                  "TUESDAY",
+                  "WEDNESDAY",
+                  "THURSDAY",
+                  "FRIDAY",
+                  "SATURDAY",
+                  "SUNDAY",
+                ].map((d) => ({
+                  id: d,
+                  label: d.charAt(0) + d.slice(1).toLowerCase(),
+                })),
+              },
+              {
+                key: "dayOfMonth",
+                label: "Day of month",
+                kind: "number",
+                required: true,
+                defaultValue: "1",
+                minValue: 1,
+                maxValue: 31,
+                showWhen: { fieldKey: "scheduleType", fieldValue: "MONTHLY" },
+              },
+              {
+                key: "startTime",
+                label: "From (hh:mm)",
+                kind: "text",
+                required: true,
+                placeholder: "22:00",
+                showWhen: recurring,
+              },
+              {
+                key: "endTime",
+                label: "Until (hh:mm)",
+                kind: "text",
+                required: true,
+                placeholder: "23:30",
+                showWhen: recurring,
+              },
+              {
+                key: "scheduleStartDate",
+                label: "First day",
+                kind: "datetime",
+                datetimeMode: "date",
+                required: true,
+                showWhen: recurring,
+              },
+              {
+                key: "scheduleEndDate",
+                label: "Last day",
+                kind: "datetime",
+                datetimeMode: "date",
+                required: true,
+                showWhen: recurring,
+              },
+              {
+                key: "timeZone",
+                label: "Time zone",
+                kind: "text",
+                required: true,
+                defaultValue: "UTC",
+                description:
+                  "UTC, an offset such as UTC+01:00, or an IANA zone such as Europe/Vienna.",
+              },
+              {
+                key: "entityTags",
+                label: "Only entities tagged",
+                kind: "string-list",
+                required: false,
+                description: "Leave empty for the whole environment.",
+              },
+            ],
+          };
+        }
+        default:
+          throw new Error(`Dynatrace plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      case "alerting-profile":
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "Production on-call",
-            },
-            ...SEVERITY_FIELDS.map(([key, level]) => ({
-              key,
-              label: `${level
-                .replace(/_/g, " ")
-                .toLowerCase()
-                .replace(/^./, (c) => c.toUpperCase())} delay (min)`,
-              kind: "number" as const,
-              required: false,
-              minValue: 0,
-              maxValue: 10000,
-              ...(level === "AVAILABILITY" || level === "ERRORS" ? { defaultValue: "0" } : {}),
-              description: "Blank leaves this severity out of the profile.",
-            })),
-            {
-              key: "tagFilter",
-              label: "Only entities tagged",
-              kind: "string-list",
-              required: false,
-              description: "Tags such as env:prod. Applied to every severity rule.",
-            },
-            {
-              key: "tagFilterIncludeMode",
-              label: "Tag match",
-              kind: "select",
-              required: false,
-              defaultValue: "INCLUDE_ANY",
-              options: [
-                { id: "INCLUDE_ANY", label: "Any of the tags" },
-                { id: "INCLUDE_ALL", label: "All of the tags" },
-              ],
-              showWhen: { fieldKey: "tagFilter", fieldValuesNot: [""] },
-            },
-          ],
-        };
-      case "maintenance-window": {
-        const recurring = { fieldKey: "scheduleType", fieldValues: ["DAILY", "WEEKLY", "MONTHLY"] };
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "Database upgrade",
-            },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "maintenanceType",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "PLANNED",
-              options: [
-                { id: "PLANNED", label: "Planned" },
-                { id: "UNPLANNED", label: "Unplanned" },
-              ],
-            },
-            {
-              key: "suppression",
-              label: "During the window",
-              kind: "select",
-              required: true,
-              defaultValue: "DETECT_PROBLEMS_DONT_ALERT",
-              options: [
-                { id: "DETECT_PROBLEMS_DONT_ALERT", label: "Detect problems, do not alert" },
-                { id: "DONT_DETECT_PROBLEMS", label: "Do not detect problems" },
-                { id: "DETECT_PROBLEMS_AND_ALERT", label: "Detect problems and alert" },
-              ],
-            },
-            {
-              key: "disableSynthetic",
-              label: "Pause synthetic monitors",
-              kind: "select",
-              required: true,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "No" },
-                { id: "true", label: "Yes" },
-              ],
-            },
-            {
-              key: "scheduleType",
-              label: "Schedule",
-              kind: "select",
-              required: true,
-              defaultValue: "ONCE",
-              options: [
-                { id: "ONCE", label: "Once" },
-                { id: "DAILY", label: "Daily" },
-                { id: "WEEKLY", label: "Weekly" },
-                { id: "MONTHLY", label: "Monthly" },
-              ],
-            },
-            {
-              key: "start",
-              label: "Starts",
-              kind: "datetime",
-              required: true,
-              showWhen: { fieldKey: "scheduleType", fieldValue: "ONCE" },
-            },
-            {
-              key: "end",
-              label: "Ends",
-              kind: "datetime",
-              required: true,
-              showWhen: { fieldKey: "scheduleType", fieldValue: "ONCE" },
-            },
-            {
-              key: "dayOfWeek",
-              label: "Day",
-              kind: "select",
-              required: true,
-              defaultValue: "SUNDAY",
-              showWhen: { fieldKey: "scheduleType", fieldValue: "WEEKLY" },
-              options: [
-                "MONDAY",
-                "TUESDAY",
-                "WEDNESDAY",
-                "THURSDAY",
-                "FRIDAY",
-                "SATURDAY",
-                "SUNDAY",
-              ].map((d) => ({
-                id: d,
-                label: d.charAt(0) + d.slice(1).toLowerCase(),
-              })),
-            },
-            {
-              key: "dayOfMonth",
-              label: "Day of month",
-              kind: "number",
-              required: true,
-              defaultValue: "1",
-              minValue: 1,
-              maxValue: 31,
-              showWhen: { fieldKey: "scheduleType", fieldValue: "MONTHLY" },
-            },
-            {
-              key: "startTime",
-              label: "From (hh:mm)",
-              kind: "text",
-              required: true,
-              placeholder: "22:00",
-              showWhen: recurring,
-            },
-            {
-              key: "endTime",
-              label: "Until (hh:mm)",
-              kind: "text",
-              required: true,
-              placeholder: "23:30",
-              showWhen: recurring,
-            },
-            {
-              key: "scheduleStartDate",
-              label: "First day",
-              kind: "datetime",
-              datetimeMode: "date",
-              required: true,
-              showWhen: recurring,
-            },
-            {
-              key: "scheduleEndDate",
-              label: "Last day",
-              kind: "datetime",
-              datetimeMode: "date",
-              required: true,
-              showWhen: recurring,
-            },
-            {
-              key: "timeZone",
-              label: "Time zone",
-              kind: "text",
-              required: true,
-              defaultValue: "UTC",
-              description:
-                "UTC, an offset such as UTC+01:00, or an IANA zone such as Europe/Vienna.",
-            },
-            {
-              key: "entityTags",
-              label: "Only entities tagged",
-              kind: "string-list",
-              required: false,
-              description: "Leave empty for the whole environment.",
-            },
-          ],
-        };
-      }
-      default:
-        throw new Error(`Dynatrace plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   private async createSettings(schemaId: string, value: unknown): Promise<string> {
@@ -943,128 +976,134 @@ export class DynatraceClient implements PluginClient {
     return first.objectId;
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "slo": {
-        const name = (fields["name"] ?? "").trim();
-        const body = {
-          name,
-          enabled: true,
-          metricExpression: (fields["metricExpression"] ?? "").trim(),
-          metricName: metricNameFor(name),
-          evaluationType: "AGGREGATE",
-          filter: (fields["filter"] ?? "").trim(),
-          target: Number(fields["target"]),
-          warning: Number(fields["warning"]),
-          timeframe: fields["timeframe"] || "-1w",
-          ...(fields["description"]?.trim() ? { description: fields["description"].trim() } : {}),
-        };
-        await envFetch(this.ctx, "/api/v2/slo", { method: "POST", body: JSON.stringify(body) });
-        const created = (await this.slos()).find((s) => s.name === name);
-        if (!created)
-          throw new Error(
-            "Dynatrace accepted the SLO but it is not listed yet. Refresh in a moment.",
-          );
-        return mapSlo(accountId, created);
-      }
-      case "synthetic-monitor": {
-        let locations: string[] = [];
-        try {
-          locations = JSON.parse(fields["locations"] || "[]") as string[];
-        } catch {
-          locations = (fields["locations"] ?? "")
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "slo": {
+          const name = (fields["name"] ?? "").trim();
+          const body = {
+            name,
+            enabled: true,
+            metricExpression: (fields["metricExpression"] ?? "").trim(),
+            metricName: metricNameFor(name),
+            evaluationType: "AGGREGATE",
+            filter: (fields["filter"] ?? "").trim(),
+            target: Number(fields["target"]),
+            warning: Number(fields["warning"]),
+            timeframe: fields["timeframe"] || "-1w",
+            ...(fields["description"]?.trim() ? { description: fields["description"].trim() } : {}),
+          };
+          await envFetch(this.ctx, "/api/v2/slo", { method: "POST", body: JSON.stringify(body) });
+          const created = (await this.slos()).find((s) => s.name === name);
+          if (!created)
+            throw new Error(
+              "Dynatrace accepted the SLO but it is not listed yet. Refresh in a moment.",
+            );
+          return mapSlo(accountId, created);
         }
-        if (locations.length === 0) throw new Error("Pick at least one location.");
-        const name = (fields["name"] ?? "").trim();
-        const failOn = (fields["failOnStatus"] ?? "").trim();
-        const body = {
-          name,
-          type: "HTTP",
-          frequencyMin: Number(fields["frequencyMin"] || 15),
-          enabled: true,
-          locations,
-          tags: [],
-          manuallyAssignedApps: [],
-          anomalyDetection: {
-            outageHandling: {
-              globalOutage: true,
-              globalOutagePolicy: { consecutiveRuns: 1 },
-              localOutage: false,
-              localOutagePolicy: { affectedLocations: 1, consecutiveRuns: 3 },
-              retryOnError: false,
-            },
-            loadingTimeThresholds: { enabled: true, thresholds: [] },
-          },
-          script: {
-            version: "1.0",
-            requests: [
-              {
-                description: name,
-                url: (fields["url"] ?? "").trim(),
-                method: fields["method"] || "GET",
-                ...(failOn
-                  ? {
-                      validation: {
-                        rules: [{ type: "httpStatusesList", value: failOn, passIfFound: false }],
-                      },
-                    }
-                  : {}),
-                configuration: { acceptAnyCertificate: false, followRedirects: true },
+        case "synthetic-monitor": {
+          let locations: string[] = [];
+          try {
+            locations = JSON.parse(fields["locations"] || "[]") as string[];
+          } catch {
+            locations = (fields["locations"] ?? "")
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+          }
+          if (locations.length === 0) throw new Error("Pick at least one location.");
+          const name = (fields["name"] ?? "").trim();
+          const failOn = (fields["failOnStatus"] ?? "").trim();
+          const body = {
+            name,
+            type: "HTTP",
+            frequencyMin: Number(fields["frequencyMin"] || 15),
+            enabled: true,
+            locations,
+            tags: [],
+            manuallyAssignedApps: [],
+            anomalyDetection: {
+              outageHandling: {
+                globalOutage: true,
+                globalOutagePolicy: { consecutiveRuns: 1 },
+                localOutage: false,
+                localOutagePolicy: { affectedLocations: 1, consecutiveRuns: 3 },
+                retryOnError: false,
               },
-            ],
-          },
-        };
-        const res = await envFetch<{ entityId?: string }>(this.ctx, "/api/v1/synthetic/monitors", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-        if (!res?.entityId) throw new Error("Dynatrace did not return the new monitor's id.");
-        return this.getResource("synthetic-monitor", res.entityId, accountId);
-      }
-      case "alerting-profile": {
-        const tags = (fields["tagFilter"] ?? "")
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean);
-        const mode = tags.length ? fields["tagFilterIncludeMode"] || "INCLUDE_ANY" : "NONE";
-        const severityRules = SEVERITY_FIELDS.flatMap(([key, level]) => {
-          const delay = numberOrUndefined(fields[key]);
-          return delay === undefined
-            ? []
-            : [
+              loadingTimeThresholds: { enabled: true, thresholds: [] },
+            },
+            script: {
+              version: "1.0",
+              requests: [
                 {
-                  severityLevel: level,
-                  delayInMinutes: delay,
-                  tagFilterIncludeMode: mode,
-                  tagFilter: tags,
+                  description: name,
+                  url: (fields["url"] ?? "").trim(),
+                  method: fields["method"] || "GET",
+                  ...(failOn
+                    ? {
+                        validation: {
+                          rules: [{ type: "httpStatusesList", value: failOn, passIfFound: false }],
+                        },
+                      }
+                    : {}),
+                  configuration: { acceptAnyCertificate: false, followRedirects: true },
                 },
-              ];
-        });
-        const objectId = await this.createSettings(SETTINGS_SCHEMAS["alerting-profile"]!, {
-          name: (fields["name"] ?? "").trim(),
-          managementZone: null,
-          severityRules,
-          eventFilters: [],
-        });
-        return this.getResource("alerting-profile", objectId, accountId);
+              ],
+            },
+          };
+          const res = await envFetch<{ entityId?: string }>(
+            this.ctx,
+            "/api/v1/synthetic/monitors",
+            {
+              method: "POST",
+              body: JSON.stringify(body),
+            },
+          );
+          if (!res?.entityId) throw new Error("Dynatrace did not return the new monitor's id.");
+          return runPluginEffect(this.getResource("synthetic-monitor", res.entityId, accountId));
+        }
+        case "alerting-profile": {
+          const tags = (fields["tagFilter"] ?? "")
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
+          const mode = tags.length ? fields["tagFilterIncludeMode"] || "INCLUDE_ANY" : "NONE";
+          const severityRules = SEVERITY_FIELDS.flatMap(([key, level]) => {
+            const delay = numberOrUndefined(fields[key]);
+            return delay === undefined
+              ? []
+              : [
+                  {
+                    severityLevel: level,
+                    delayInMinutes: delay,
+                    tagFilterIncludeMode: mode,
+                    tagFilter: tags,
+                  },
+                ];
+          });
+          const objectId = await this.createSettings(SETTINGS_SCHEMAS["alerting-profile"]!, {
+            name: (fields["name"] ?? "").trim(),
+            managementZone: null,
+            severityRules,
+            eventFilters: [],
+          });
+          return runPluginEffect(this.getResource("alerting-profile", objectId, accountId));
+        }
+        case "maintenance-window": {
+          const objectId = await this.createSettings(
+            SETTINGS_SCHEMAS["maintenance-window"]!,
+            maintenanceValue(fields),
+          );
+          return runPluginEffect(this.getResource("maintenance-window", objectId, accountId));
+        }
+        default:
+          throw new Error(`Dynatrace plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      case "maintenance-window": {
-        const objectId = await this.createSettings(
-          SETTINGS_SCHEMAS["maintenance-window"]!,
-          maintenanceValue(fields),
-        );
-        return this.getResource("maintenance-window", objectId, accountId);
-      }
-      default:
-        throw new Error(`Dynatrace plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1118,135 +1157,145 @@ export class DynatraceClient implements PluginClient {
     await envFetch(this.ctx, path, { method: "PUT", body: JSON.stringify({ ...rest, enabled }) });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId) || resourceId;
-    switch (typeId) {
-      case "slo": {
-        const patch: Partial<DtSlo> = {};
-        if ("name" in fields && fields["name"]?.trim()) patch.name = fields["name"].trim();
-        if ("description" in fields) patch.description = fields["description"] ?? "";
-        if ("metricExpression" in fields && fields["metricExpression"]?.trim())
-          patch.metricExpression = fields["metricExpression"].trim();
-        if ("filter" in fields) patch.filter = fields["filter"] ?? "";
-        if ("target" in fields && numberOrUndefined(fields["target"]) !== undefined)
-          patch.target = Number(fields["target"]);
-        if ("warning" in fields && numberOrUndefined(fields["warning"]) !== undefined)
-          patch.warning = Number(fields["warning"]);
-        if ("timeframe" in fields && fields["timeframe"]?.trim())
-          patch.timeframe = fields["timeframe"].trim();
-        if ("enabled" in fields) patch.enabled = fields["enabled"] === "true";
-        await this.putSlo(id, patch);
-        return this.getResource("slo", resourceId, accountId);
-      }
-      case "alerting-profile": {
-        await this.putSettings<AlertingProfileValue>(id, (v) => applyAlertingEdits(v, fields));
-        return this.getResource("alerting-profile", resourceId, accountId);
-      }
-      case "maintenance-window": {
-        await this.putSettings<MaintenanceWindowValue>(id, (v) => {
-          const g = { ...(v.generalProperties ?? {}) };
-          if (fields["name"]?.trim()) g.name = fields["name"].trim();
-          if ("description" in fields) g.description = fields["description"] ?? "";
-          if (fields["maintenanceType"]) g.maintenanceType = fields["maintenanceType"];
-          if (fields["suppression"]) g.suppression = fields["suppression"];
-          if ("disableSynthetic" in fields)
-            g.disableSyntheticMonitorExecution = fields["disableSynthetic"] === "true";
-          return {
-            ...v,
-            ...("enabled" in fields ? { enabled: fields["enabled"] === "true" } : {}),
-            generalProperties: g,
-          };
-        });
-        return this.getResource("maintenance-window", resourceId, accountId);
-      }
-      case "api-token": {
-        const body: Record<string, unknown> = {};
-        if (fields["name"]?.trim()) body["name"] = fields["name"].trim();
-        if ("enabled" in fields) body["enabled"] = fields["enabled"] === "true";
-        if (Object.keys(body).length > 0) {
-          await envFetch(this.ctx, `/api/v2/apiTokens/${encodeURIComponent(id)}`, {
-            method: "PUT",
-            body: JSON.stringify(body),
-          });
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId) || resourceId;
+      switch (typeId) {
+        case "slo": {
+          const patch: Partial<DtSlo> = {};
+          if ("name" in fields && fields["name"]?.trim()) patch.name = fields["name"].trim();
+          if ("description" in fields) patch.description = fields["description"] ?? "";
+          if ("metricExpression" in fields && fields["metricExpression"]?.trim())
+            patch.metricExpression = fields["metricExpression"].trim();
+          if ("filter" in fields) patch.filter = fields["filter"] ?? "";
+          if ("target" in fields && numberOrUndefined(fields["target"]) !== undefined)
+            patch.target = Number(fields["target"]);
+          if ("warning" in fields && numberOrUndefined(fields["warning"]) !== undefined)
+            patch.warning = Number(fields["warning"]);
+          if ("timeframe" in fields && fields["timeframe"]?.trim())
+            patch.timeframe = fields["timeframe"].trim();
+          if ("enabled" in fields) patch.enabled = fields["enabled"] === "true";
+          await this.putSlo(id, patch);
+          return runPluginEffect(this.getResource("slo", resourceId, accountId));
         }
-        return this.getResource("api-token", resourceId, accountId);
+        case "alerting-profile": {
+          await this.putSettings<AlertingProfileValue>(id, (v) => applyAlertingEdits(v, fields));
+          return runPluginEffect(this.getResource("alerting-profile", resourceId, accountId));
+        }
+        case "maintenance-window": {
+          await this.putSettings<MaintenanceWindowValue>(id, (v) => {
+            const g = { ...(v.generalProperties ?? {}) };
+            if (fields["name"]?.trim()) g.name = fields["name"].trim();
+            if ("description" in fields) g.description = fields["description"] ?? "";
+            if (fields["maintenanceType"]) g.maintenanceType = fields["maintenanceType"];
+            if (fields["suppression"]) g.suppression = fields["suppression"];
+            if ("disableSynthetic" in fields)
+              g.disableSyntheticMonitorExecution = fields["disableSynthetic"] === "true";
+            return {
+              ...v,
+              ...("enabled" in fields ? { enabled: fields["enabled"] === "true" } : {}),
+              generalProperties: g,
+            };
+          });
+          return runPluginEffect(this.getResource("maintenance-window", resourceId, accountId));
+        }
+        case "api-token": {
+          const body: Record<string, unknown> = {};
+          if (fields["name"]?.trim()) body["name"] = fields["name"].trim();
+          if ("enabled" in fields) body["enabled"] = fields["enabled"] === "true";
+          if (Object.keys(body).length > 0) {
+            await envFetch(this.ctx, `/api/v2/apiTokens/${encodeURIComponent(id)}`, {
+              method: "PUT",
+              body: JSON.stringify(body),
+            });
+          }
+          return runPluginEffect(this.getResource("api-token", resourceId, accountId));
+        }
+        default:
+          throw new Error(`Dynatrace plugin: "${typeId}" cannot be edited from Infrawrench`);
       }
-      default:
-        throw new Error(`Dynatrace plugin: "${typeId}" cannot be edited from Infrawrench`);
-    }
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string): Promise<void> {
-    const id = encodeURIComponent(externalIdOf(resourceId) || resourceId);
-    const path: Record<string, string> = {
-      slo: `/api/v2/slo/${id}`,
-      "synthetic-monitor": `/api/v1/synthetic/monitors/${id}`,
-      "alerting-profile": `/api/v2/settings/objects/${id}`,
-      "maintenance-window": `/api/v2/settings/objects/${id}`,
-      "api-token": `/api/v2/apiTokens/${id}`,
-    };
-    const target = path[typeId];
-    if (!target)
-      throw new Error(`Dynatrace plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    await envFetch(this.ctx, target, { method: "DELETE" });
+  deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = encodeURIComponent(externalIdOf(resourceId) || resourceId);
+      const path: Record<string, string> = {
+        slo: `/api/v2/slo/${id}`,
+        "synthetic-monitor": `/api/v1/synthetic/monitors/${id}`,
+        "alerting-profile": `/api/v2/settings/objects/${id}`,
+        "maintenance-window": `/api/v2/settings/objects/${id}`,
+        "api-token": `/api/v2/apiTokens/${id}`,
+      };
+      const target = path[typeId];
+      if (!target)
+        throw new Error(`Dynatrace plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      await envFetch(this.ctx, target, { method: "DELETE" });
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId) || resourceId;
-    const on = actionId === "enable";
-    if (actionId !== "enable" && actionId !== "disable") {
-      throw new Error(`Dynatrace plugin: unknown action "${actionId}" for "${typeId}"`);
-    }
-    switch (typeId) {
-      case "slo":
-        return this.putSlo(id, { enabled: on });
-      case "synthetic-monitor":
-        return this.putMonitor(id, on);
-      case "maintenance-window":
-      case "api-token":
-        await this.updateResource(typeId, resourceId, accountId, { enabled: String(on) });
-        return;
-      default:
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId) || resourceId;
+      const on = actionId === "enable";
+      if (actionId !== "enable" && actionId !== "disable") {
         throw new Error(`Dynatrace plugin: unknown action "${actionId}" for "${typeId}"`);
-    }
+      }
+      switch (typeId) {
+        case "slo":
+          return this.putSlo(id, { enabled: on });
+        case "synthetic-monitor":
+          return this.putMonitor(id, on);
+        case "maintenance-window":
+        case "api-token":
+          await runPluginEffect(
+            this.updateResource(typeId, resourceId, accountId, { enabled: String(on) }),
+          );
+          return;
+        default:
+          throw new Error(`Dynatrace plugin: unknown action "${actionId}" for "${typeId}"`);
+      }
+    });
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    if (typeId !== "problem") throw new Error(`Dynatrace plugin: unknown command "${command}"`);
-    const id = encodeURIComponent(externalIdOf(resourceId) || resourceId);
-    const message = (parseForm(args[0])["message"] ?? "").trim();
-    if (!message) throw new Error("Write a comment first.");
-    if (command === "comment") {
-      await envFetch(this.ctx, `/api/v2/problems/${id}/comments`, {
-        method: "POST",
-        body: JSON.stringify({ message, context: "Infrawrench" }),
-      });
-      return { ok: true };
-    }
-    if (command === "close") {
-      await envFetch(this.ctx, `/api/v2/problems/${id}/close`, {
-        method: "POST",
-        body: JSON.stringify({ message }),
-      });
-      return { ok: true };
-    }
-    throw new Error(`Dynatrace plugin: unknown command "${command}"`);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      if (typeId !== "problem") throw new Error(`Dynatrace plugin: unknown command "${command}"`);
+      const id = encodeURIComponent(externalIdOf(resourceId) || resourceId);
+      const message = (parseForm(args[0])["message"] ?? "").trim();
+      if (!message) throw new Error("Write a comment first.");
+      if (command === "comment") {
+        await envFetch(this.ctx, `/api/v2/problems/${id}/comments`, {
+          method: "POST",
+          body: JSON.stringify({ message, context: "Infrawrench" }),
+        });
+        return { ok: true };
+      }
+      if (command === "close") {
+        await envFetch(this.ctx, `/api/v2/problems/${id}/close`, {
+          method: "POST",
+          body: JSON.stringify({ message }),
+        });
+        return { ok: true };
+      }
+      throw new Error(`Dynatrace plugin: unknown command "${command}"`);
+    });
   }
 
   // -------------------------------------------------------------------------

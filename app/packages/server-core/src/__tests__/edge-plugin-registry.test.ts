@@ -31,6 +31,8 @@ describe("the web edge Worker's plugin registry", () => {
       // A capability that exists on Node exists on the edge, so checks like
       // `if (plugin.policyTemplate)` answer the same.
       for (const key of Object.keys(real) as (keyof typeof real)[]) {
+        // Test data, deliberately left out of the edge registry.
+        if (key === "testCredentials") continue;
         expect(typeof edge[key], `${real.manifest.id}.${String(key)}`).toBe(typeof real[key]);
       }
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   namespacePeerGroup,
+  peerPaneResource,
   podPeerGroup,
   deploymentPeerGroup,
   statefulSetPeerGroup,
@@ -42,6 +43,46 @@ describe("namespacePeerGroup", () => {
     expect(g.items[0]!.status).toBe("healthy");
     expect(g.items[0]!.externalId).toBe("uid1");
     expect(g.items[1]!.status).toBe("degraded");
+  });
+});
+
+describe("group roles", () => {
+  it("marks the namespace group as the scope filter and services as forwardable", () => {
+    expect(namespacePeerGroup([]).role).toBe("namespace");
+    expect(servicePeerGroup([]).role).toBe("service");
+  });
+});
+
+describe("peerPaneResource", () => {
+  it("draws a created pod with its image, status and console", () => {
+    const row = peerPaneResource(
+      ri("k8s-pod", {
+        namespace: "prod",
+        image: "ubuntu:24.04",
+        status: "Pending",
+        containerName: "scratch",
+      }),
+    );
+    expect(row).toMatchObject({
+      subtitle: "prod · ubuntu:24.04",
+      status: "provisioning",
+      namespace: "prod",
+      supportsExec: true,
+      containerName: "scratch",
+    });
+  });
+
+  it("draws a created namespace as active, without a console", () => {
+    const row = peerPaneResource(ri("k8s-namespace", {}));
+    expect(row.subtitle).toBe("Active");
+    expect(row.supportsExec).toBeUndefined();
+    expect(row.status).toBeUndefined();
+  });
+
+  it("draws anything else from its namespace and replicas", () => {
+    const row = peerPaneResource(ri("k8s-deployment", { namespace: "prod", replicas: 3 }));
+    expect(row.subtitle).toBe("prod · 3 replicas");
+    expect(row.supportsExec).toBeUndefined();
   });
 });
 

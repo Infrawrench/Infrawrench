@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CrusoeClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -12,16 +13,14 @@ const API_KEYS_HELP = {
   url: "https://docs.cloud.crusoe.ai/identity-and-security/managing-api-keys",
 };
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "crusoe",
-  version: "0.1.0",
+  egressHosts: ["api.cloud.crusoe.ai"],
   displayName: "Crusoe Cloud",
   description:
     "GPU cloud. Billed spend by product, project, region and resource, credits, reservations and quotas, and VMs, disks, snapshots, networks, firewall rules, Kubernetes clusters, load balancers and SSH keys.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accessKeyId",
       label: "Access Key",
@@ -50,7 +49,7 @@ const manifest: PluginManifest = {
       placeholder: "",
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Billed spend from Crusoe's own billing export: on-demand and spot costs
    * per resource (the console's Billing page) plus Intelligence Billing for
@@ -76,13 +75,16 @@ const manifest: PluginManifest = {
     partial: false,
   },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new CrusoeClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { accessKeyId: "TESTACCESSKEY", secretKey: "c2VjcmV0LWtleS1mb3ItdGVzdHM" },
   terraformExport: crusoeTerraformExport,
   remediationCommands: crusoeRemediationCommands,
   parseStatusFeed,
-};
+});

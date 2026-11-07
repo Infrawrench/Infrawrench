@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { UPCLOUD_PREFLIGHT, UpCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,14 @@ import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { upcloudTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "upcloud",
-  version: "0.1.0",
+  egressHosts: ["api.upcloud.com"],
   displayName: "UpCloud",
   description:
     "UpCloud: billed spend per resource from the monthly billing summary, prepaid credits, account limits, and servers, storage and backups, templates, private networks and routers, floating IPs, Managed Kubernetes, Managed Databases, Managed Load Balancers and Managed Object Storage.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -47,7 +46,7 @@ const manifest: PluginManifest = {
       optional: true,
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Billed spend from `/account/billing/summary/{YYYY-MM}`: month totals per
    * resource, dated to the 1st (period-native), restated while the month is
@@ -69,13 +68,16 @@ const manifest: PluginManifest = {
   preflight: UPCLOUD_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new UpCloudClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiToken: "ucat_01TESTTOKEN0000000000000000", username: "", password: "" },
   terraformExport: upcloudTerraformExport,
   parseStatusFeed,
   remediationCommands: upcloudRemediationCommands,
-};
+});

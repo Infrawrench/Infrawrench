@@ -23,7 +23,7 @@ interface PluginLike {
     id: string;
     displayName: string;
     tokenFormats?: TokenFormatDeclaration[] | undefined;
-    credentialFields: CredentialField[];
+    credentialFields: readonly CredentialField[];
   };
 }
 

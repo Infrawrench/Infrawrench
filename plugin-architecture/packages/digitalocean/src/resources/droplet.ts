@@ -63,7 +63,11 @@ export const DropletResourceType = rt({
       editable: false,
     }),
   ],
-  outputs: [o("ipv4", "Public IPv4"), o("ipv4Private", "Private IPv4"), o("ipv6", "Public IPv6")],
+  outputs: [
+    o("ipv4", "Public IPv4", { dnsValue: "ipv4" }),
+    o("ipv4Private", "Private IPv4"),
+    o("ipv6", "Public IPv6", { dnsValue: "ipv6" }),
+  ],
   // The lister records `vpc_uuid`; a VPC's externalId is that same uuid.
   dependsOn: [{ fieldKey: "vpcUuid", targetTypeId: "vpc", label: "in VPC" }],
   parentTypeId: "project",

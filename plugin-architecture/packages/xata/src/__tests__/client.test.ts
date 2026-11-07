@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { statusOf, XataApiError } from "../api.js";
@@ -37,7 +38,7 @@ function fake(routes: Route[]) {
       },
     },
   };
-  return { client: new XataClient({ apiKey: "xau_k" }, services), calls };
+  return { client: hostClient(new XataClient({ apiKey: "xau_k" }, services)), calls };
 }
 
 const on =

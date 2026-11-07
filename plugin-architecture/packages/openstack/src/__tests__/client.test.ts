@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { OpenStackApi, describeOpenStackError, normalizeAuthUrl } from "../api.js";
@@ -312,7 +313,7 @@ describe("client", () => {
 
   it("lists servers with network ids and outputs", async () => {
     const { http } = mockHttp(routes);
-    const client = new OpenStackClient(APP, { http });
+    const client = hostClient(new OpenStackClient(APP, { http }));
     const [s] = await client.listResources("os-server", "acct");
     expect(s!.fields["networkIds"]).toBe("net-1");
     expect(s!.resolvedOutputs["publicIp"]).toBe("203.0.113.9");
@@ -320,14 +321,14 @@ describe("client", () => {
 
   it("returns nothing for services missing from the catalog", async () => {
     const { http } = mockHttp(routes);
-    const client = new OpenStackClient(APP, { http });
+    const client = hostClient(new OpenStackClient(APP, { http }));
     expect(await client.listResources("os-dns-zone", "acct")).toEqual([]);
     expect(await client.listResources("os-loadbalancer", "acct")).toEqual([]);
   });
 
   it("lists Swift containers with their read ACL", async () => {
     const { http } = mockHttp(routes);
-    const client = new OpenStackClient(APP, { http });
+    const client = hostClient(new OpenStackClient(APP, { http }));
     const [c] = await client.listResources("os-container", "acct");
     expect(c!.fields).toMatchObject({
       name: "assets",
@@ -346,7 +347,7 @@ describe("client", () => {
         { status: 202 }
       ),
     });
-    const client = new OpenStackClient(APP, { http });
+    const client = hostClient(new OpenStackClient(APP, { http }));
     await client.invokeAction("os-server", "acct:os-server:srv-1", "reboot-hard", "acct");
     expect(JSON.parse(body)).toEqual({ reboot: { type: "HARD" } });
   });
@@ -363,7 +364,7 @@ describe("client", () => {
         { status: 200, body: {} }
       ),
     });
-    const client = new OpenStackClient(APP, { http });
+    const client = hostClient(new OpenStackClient(APP, { http }));
     await client.attachResource(
       "os-floating-ip",
       "acct:os-floating-ip:fip-1",
@@ -379,7 +380,7 @@ describe("client", () => {
       ...routes,
       "POST nova.example.com/v2.1/servers/srv-1/action": { output: "boot ok\n" },
     });
-    const client = new OpenStackClient(APP, { http });
+    const client = hostClient(new OpenStackClient(APP, { http }));
     const logs = await client.getLogs("os-server", "acct:os-server:srv-1", "acct", {
       tailLines: 50,
     });
@@ -417,8 +418,7 @@ describe("client", () => {
         },
       },
     });
-    const client = new OpenStackClient(APP, { http });
-    const q = await fetchOpenStackQuotas(client);
+    const q = await fetchOpenStackQuotas(new OpenStackClient(APP, { http }));
     expect(q.map((x) => x.id).sort()).toEqual([
       "block-storage/gigabytes",
       "block-storage/volumes",
@@ -438,7 +438,7 @@ describe("client", () => {
 describe("credential options", () => {
   it("lists regions from the catalog", async () => {
     const { http } = mockHttp({});
-    const opts = await plugin.listCredentialOptions!("region", APP, { http });
+    const opts = await hostPlugin(plugin).listCredentialOptions!("region", APP, { http });
     expect(opts.map((o) => o.id)).toEqual(["RegionOne", "RegionTwo"]);
   });
 });

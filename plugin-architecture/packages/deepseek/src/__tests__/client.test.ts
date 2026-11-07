@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeepSeekClient } from "../client.js";
 
@@ -30,7 +31,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client() {
-  return new DeepSeekClient({ apiKey: "sk-test" });
+  return hostClient(new DeepSeekClient({ apiKey: "sk-test" }));
 }
 
 beforeEach(() => {

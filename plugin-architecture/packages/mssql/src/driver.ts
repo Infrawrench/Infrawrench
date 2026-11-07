@@ -1,3 +1,6 @@
+import { attempt } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import * as mssql from "mssql";
 import { urlDialTarget, type DialTarget, type SqlNodeDriver } from "@infrawrench/plugin-base";
 
@@ -37,29 +40,41 @@ export const driver = {
   id: "mssql",
   dialTargets,
 
-  async query(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
-    const pool = new mssql.ConnectionPool(parseConnectionString(connectionString));
-    await pool.connect();
-    try {
-      const result = await pool.request().query(sql);
-      return (result.recordset ?? []) as Record<string, unknown>[];
-    } finally {
-      await pool.close();
-    }
+  query(connectionString: string, sql: string): PluginEffect<Record<string, unknown>[]> {
+    return attempt(async () => {
+      const pool = new mssql.ConnectionPool(parseConnectionString(connectionString));
+      await pool.connect();
+      try {
+        const result = await pool.request().query(sql);
+        return (result.recordset ?? []) as Record<string, unknown>[];
+      } finally {
+        await pool.close();
+      }
+    });
   },
 
-  async execute(connectionString: string, sql: string, params: unknown[]): Promise<number> {
-    const pool = new mssql.ConnectionPool(parseConnectionString(connectionString));
-    await pool.connect();
-    try {
-      const req = pool.request();
-      params.forEach((p, i) => {
-        req.input(`p${i}`, p as mssql.ISqlTypeFactory);
-      });
-      const result = await req.query(sql);
-      return result.rowsAffected[0] ?? 0;
-    } finally {
-      await pool.close();
-    }
+  execute(connectionString: string, sql: string, params: unknown[]): PluginEffect<number> {
+    return attempt(async () => {
+      const pool = new mssql.ConnectionPool(parseConnectionString(connectionString));
+      await pool.connect();
+      try {
+        const req = pool.request();
+        params.forEach((p, i) => {
+          req.input(`p${i}`, p as mssql.ISqlTypeFactory);
+        });
+        const result = await req.query(sql);
+        return result.rowsAffected[0] ?? 0;
+      } finally {
+        await pool.close();
+      }
+    });
   },
 } satisfies SqlNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { sql: driver },
+  server: { sql: driver },
+});

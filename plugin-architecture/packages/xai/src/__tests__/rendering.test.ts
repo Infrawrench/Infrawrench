@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -6,8 +8,8 @@ import { XaiClient } from "../client.js";
 
 runPluginRenderingTests(plugin);
 
-function client(): XaiClient {
-  return new XaiClient({ apiKey: "xai-test", managementKey: "xai-mgmt" });
+function client(): HostedMethods<XaiClient> {
+  return hostClient(new XaiClient({ apiKey: "xai-test", managementKey: "xai-mgmt" }));
 }
 
 function resource(

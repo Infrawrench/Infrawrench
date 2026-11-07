@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOAuthAuthorizeUrl, desktopOAuthRedirectUri } from "@infrawrench/plugin-base";
 import { plugin } from "../plugin.js";
@@ -60,7 +61,9 @@ describe("CloudinaryClient auth", () => {
 
   it("uses Basic auth for a pasted key and secret", async () => {
     const headers = capture();
-    await new CloudinaryClient({ cloudName: "demo", apiKey: "key", apiSecret: "secret" })
+    await hostClient(
+      new CloudinaryClient({ cloudName: "demo", apiKey: "key", apiSecret: "secret" }),
+    )
       .listResources("upload-preset", "a")
       .catch(() => undefined);
     expect(headers[0]).toBe(`Basic ${btoa("key:secret")}`);
@@ -70,9 +73,11 @@ describe("CloudinaryClient auth", () => {
     const headers = capture();
     let n = 0;
     const getAccessToken = vi.fn(async () => `fresh-${++n}`);
-    const c = new CloudinaryClient(
-      { cloudName: "demo", apiKey: "", apiSecret: "stored", __oauth: '{"v":1}' },
-      { oauth: { getAccessToken } } as never,
+    const c = hostClient(
+      new CloudinaryClient(
+        { cloudName: "demo", apiKey: "", apiSecret: "stored", __oauth: '{"v":1}' },
+        { oauth: { getAccessToken } } as never,
+      ),
     );
     await c.listResources("upload-preset", "a").catch(() => undefined);
     await c.listResources("upload-preset", "a").catch(() => undefined);
@@ -81,7 +86,7 @@ describe("CloudinaryClient auth", () => {
 
   it("treats an empty API key as an OAuth token when the grant was stripped", async () => {
     const headers = capture();
-    await new CloudinaryClient({ cloudName: "demo", apiSecret: "access-token" })
+    await hostClient(new CloudinaryClient({ cloudName: "demo", apiSecret: "access-token" }))
       .listResources("upload-preset", "a")
       .catch(() => undefined);
     expect(headers[0]).toBe("Bearer access-token");

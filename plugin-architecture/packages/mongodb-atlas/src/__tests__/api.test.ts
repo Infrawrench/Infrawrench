@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   AtlasApiError,
@@ -121,7 +122,7 @@ describe("organization picker", () => {
         { id: "d", name: "Gone", isDeleted: true },
       ],
     }));
-    const options = await plugin.listCredentialOptions!(
+    const options = await hostPlugin(plugin).listCredentialOptions!(
       "orgId",
       { clientId: "mdb_sa_id_1", clientSecret: "s" },
       { http },
@@ -135,7 +136,11 @@ describe("organization picker", () => {
   it("explains a rejected credential", async () => {
     const { http } = makeHttp(() => reply({ status: 401, body: {} }));
     await expect(
-      plugin.listCredentialOptions!("orgId", { clientId: "abc", clientSecret: "s" }, { http }),
+      hostPlugin(plugin).listCredentialOptions!(
+        "orgId",
+        { clientId: "abc", clientSecret: "s" },
+        { http },
+      ),
     ).rejects.toThrow(/rejected the credential/);
   });
 });

@@ -1,4 +1,6 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { SupabaseClient } from "./client.js";
 import { SUPABASE_LOGO } from "./logo.js";
@@ -9,15 +11,14 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { supabaseTerraformExport } from "./terraform.js";
 import { supabaseRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "supabase",
-  version: "0.1.0",
+  // *.supabase.co is each project's own gateway, used for the Storage API
+  egressHosts: ["api.supabase.com", "*.supabase.co"],
   displayName: "Supabase",
   description:
     "Supabase projects, branches, Edge Functions, Storage, Auth, API keys, backups and database settings through the Management API.",
   logoSvg: SUPABASE_LOGO,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -30,7 +31,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://supabase.com/dashboard/account/tokens",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accessToken",
       label: "Access Token",
@@ -44,7 +45,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   // 120 requests a minute per user and per project/organization scope.
   rateLimit: { capacity: 20, refillPerSecond: 2 },
   // Supabase has no billing or invoice API. The only money in the
@@ -65,14 +66,17 @@ const manifest: PluginManifest = {
   statusFeed,
   preflight: SUPABASE_PREFLIGHT,
   oauth: SUPABASE_OAUTH,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new SupabaseClient(credentials, services),
+  testCredentials: { accessToken: "sbp_test_token" },
   parseStatusFeed,
   terraformExport: supabaseTerraformExport,
   remediationCommands: supabaseRemediationCommands,
-  completeOAuthConnection: completeSupabaseOAuth,
-};
+  completeOAuthConnection: attemptFn(completeSupabaseOAuth),
+});

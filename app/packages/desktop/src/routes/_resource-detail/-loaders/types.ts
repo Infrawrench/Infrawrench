@@ -3,7 +3,7 @@ import type {
   DetailViewSchema,
   FieldDefinition,
   MetricSeries,
-  PluginClient,
+  HostPluginClient,
   ResourceInstance,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
@@ -14,7 +14,7 @@ import type { CloudCtx, SshConfig } from "../-types";
 export interface LoaderRefs {
   connectionString: { current: string };
   sqlDriverId: { current: string };
-  client: { current: PluginClient | null };
+  client: { current: HostPluginClient | null };
   cloudCtx: { current: CloudCtx | null };
   dockerHost: { current: string };
   localPeerCtx: {
@@ -52,6 +52,7 @@ export interface LoaderSetters {
   setKvConnected: (b: boolean) => void;
   setIsKvPlugin: (b: boolean) => void;
   setKvDriverName: (s: string | null) => void;
+  setKvDocumentBrowser: (b: boolean) => void;
   setIsDockerPlugin: (b: boolean) => void;
   setDockerDriverName: (s: string | null) => void;
   setHasStorageToken: (b: boolean) => void;

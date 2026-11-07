@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { buildOAuthAuthorizeUrl } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { plugin } from "../plugin.js";
@@ -31,7 +32,7 @@ describe("Convex OAuth declaration", () => {
 
 describe("completeOAuthConnection", () => {
   it("names the account after the team slug in the token", async () => {
-    const result = await plugin.completeOAuthConnection!(
+    const result = await hostPlugin(plugin).completeOAuthConnection!(
       { accessToken: "team:acme-co|AAAAAA==", raw: {} },
       { client: "server", fetch: noFetch },
     );
@@ -39,7 +40,7 @@ describe("completeOAuthConnection", () => {
   });
 
   it("suggests nothing for a token without the team prefix", async () => {
-    const result = await plugin.completeOAuthConnection!(
+    const result = await hostPlugin(plugin).completeOAuthConnection!(
       { accessToken: "opaque", raw: {} },
       { client: "server", fetch: noFetch },
     );

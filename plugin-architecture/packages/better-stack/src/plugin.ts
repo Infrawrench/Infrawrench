@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { BetterStackClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,21 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { betterStackTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "better-stack",
-  version: "0.1.0",
+  // Uptime, Telemetry and organization APIs, plus the regional Telemetry SQL endpoints (<region>-connect.betterstackdata.com).
+  egressHosts: [
+    "uptime.betterstack.com",
+    "incidents.betterstack.com",
+    "telemetry.betterstack.com",
+    "betterstack.com",
+    "*.betterstackdata.com",
+  ],
   displayName: "Better Stack",
   description:
     "Uptime monitoring, incident management, status pages and telemetry. Manage Better Stack monitors, heartbeats, status pages, on-call calendars, incidents, escalation policies, Telemetry sources and dashboards, chart response times and source events, tail and query logs with SQL, and track daily cost per product.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -39,7 +45,7 @@ const manifest: PluginManifest = {
       placeholder: "24 characters",
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Usage API: product -> service, billed item -> resource (with its name
     // as the `item` tag). Daily dollars, at most 400 days per request; today
@@ -51,12 +57,15 @@ const manifest: PluginManifest = {
   preflight: BETTER_STACK_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new BetterStackClient(credentials, services),
+  testCredentials: { apiToken: "test-better-stack-token" },
   parseStatusFeed,
   terraformExport: betterStackTerraformExport,
-};
+});

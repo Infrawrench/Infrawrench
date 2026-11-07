@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type {
   DetailViewSchema,
@@ -21,7 +22,9 @@ function host(responder: Responder) {
 }
 
 function client(services: HostServices) {
-  return new OpenSearchClient({ endpoint: BASE, username: "admin", password: "secret" }, services);
+  return hostClient(
+    new OpenSearchClient({ endpoint: BASE, username: "admin", password: "secret" }, services),
+  );
 }
 
 const CLUSTER: ResourceInstance = {

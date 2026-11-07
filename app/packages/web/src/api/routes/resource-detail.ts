@@ -434,7 +434,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   const hasKvBrowser = !!finalSchema.kvBrowser && !!client.listKvKeys;
   const hasKvConsole = !!manifest.kvDriver;
   const kvDriverName = manifest.kvDriver?.driver;
-  const isMongoDb = kvDriverName === "mongodb";
+  const isMongoDb = manifest.kvDriver?.browser === "documents";
   const hasDockerActions = !!manifest.dockerDriver;
   const sshConfig = client.getSshConfig?.();
 

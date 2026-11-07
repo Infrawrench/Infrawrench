@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { InfisicalClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,16 +7,15 @@ import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { infisicalTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "infisical",
-  version: "0.1.0",
+  // Infisical Cloud US/EU; self-hosted instances use the user's own URL
+  egressHosts: ["app.infisical.com", "us.infisical.com", "eu.infisical.com"],
   displayName: "Infisical",
   description:
     "Open-source secrets, certificate and key management. Manage projects, environments, folders and secrets, watch and trigger secret syncs, run machine identities, mint dynamic-secret leases and certificates, and read audit logs, on Infisical Cloud or a self-hosted instance.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "siteUrl",
       label: "Instance URL",
@@ -56,7 +56,7 @@ const manifest: PluginManifest = {
       placeholder: "my-sub-org",
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: {
     capabilities: [
       {
@@ -95,12 +95,19 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 4 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new InfisicalClient(credentials, services),
+  testCredentials: {
+    siteUrl: "https://app.infisical.com",
+    clientId: "00000000-0000-0000-0000-000000000000",
+    clientSecret: "test-infisical-secret",
+  },
   parseStatusFeed,
   terraformExport: infisicalTerraformExport,
-};
+});

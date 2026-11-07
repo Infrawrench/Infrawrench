@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { DIGITALOCEAN_FOCUS } from "./focus-services.js";
 import { DigitalOceanClient } from "./client.js";
 import { digitaloceanTerraformExport } from "./terraform.js";
@@ -38,9 +43,9 @@ import { AppResourceType } from "./resources/app.js";
 import { AutoscalePoolResourceType } from "./resources/autoscale-pool.js";
 import { DIGITALOCEAN_TRANSFER_RATES } from "./transfer-rates.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "digitalocean",
-  version: "0.1.0",
+  egressHosts: ["api.digitalocean.com"],
   displayName: "DigitalOcean",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#0080FF"/>
@@ -48,8 +53,6 @@ const manifest: PluginManifest = {
       <path d="M12.04 0C5.408-.02.005 5.37.005 11.992h4.638c0-4.923 4.882-8.731 10.064-6.855a6.95 6.95 0 014.147 4.148c1.889 5.177-1.924 10.055-6.84 10.064v-4.61H7.391v4.623h4.61V24c7.86 0 13.967-7.588 11.397-15.83-1.115-3.59-3.985-6.446-7.575-7.575A12.8 12.8 0 0012.039 0zM7.39 19.362H3.828v3.564H7.39zm-3.563 0v-2.978H.85v2.978z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -67,7 +70,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://cloud.digitalocean.com/account/api/tokens",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -93,7 +96,7 @@ const manifest: PluginManifest = {
       optional: true,
       placeholder: "secret shown once by DigitalOcean",
     },
-  ],
+  ]),
   rateLimit: { capacity: 60, refillPerSecond: 4 },
   // Billing Insights (`/v2/billing/{urn}/insights/...`): daily usage deltas
   // per invoice line + region. Needs the `billing:read` token scope. Data
@@ -122,7 +125,9 @@ const manifest: PluginManifest = {
   // Published transfer rates, for pricing a Kubernetes cluster's traffic on
   // this provider's network. A price list, not a capability: schedules nothing.
   transferRates: DIGITALOCEAN_TRANSFER_RATES,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ProjectResourceType,
@@ -158,12 +163,13 @@ const resourceTypes: ResourceTypeDefinition[] = [
   AgentApiKeyResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) =>
     new DigitalOceanClient(credentials, resourceTypes, services),
+  testCredentials: { apiToken: "dop_v1_test" },
   terraformExport: digitaloceanTerraformExport,
   remediationCommands: digitaloceanRemediationCommands,
   parseStatusFeed,
-};
+});

@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -448,7 +451,7 @@ export class AnthropicClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Anthropic plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -562,20 +565,22 @@ export class AnthropicClient implements PluginClient {
    * set. Console organizations have no per-seat charge and report none. Reads
    * every page or throws; a partial member list would drop seats silently.
    */
-  async fetchSeats(_accountId: string, options: SeatFetchOptions): Promise<SeatRecord[]> {
-    if (!this.hasAdminKey) return [];
-    // GET /v1/organizations/users (limit up to 1000, after_id / has_more / last_id):
-    // https://platform.claude.com/docs/en/api/organization/users/list
-    const users = await this.listEvery<AnthropicOrgUser>(
-      "/v1/organizations/users",
-      {},
-      SEAT_PAGE_SIZE,
-    );
-    const seats = buildClaudeSeats(users, null, this.analyticsApiKey.length > 0);
-    if (seats.length === 0 || !this.analyticsApiKey) return seats;
-    const window = analyticsWindow(options.lookbackDays, Date.now());
-    const rows = await this.fetchAnalyticsUsers(window.startingDate, window.endingDate);
-    return buildClaudeSeats(users, analyticsEvidence(rows, window.windowDays), true);
+  fetchSeats(_accountId: string, options: SeatFetchOptions): PluginEffect<SeatRecord[]> {
+    return attempt(async () => {
+      if (!this.hasAdminKey) return [];
+      // GET /v1/organizations/users (limit up to 1000, after_id / has_more / last_id):
+      // https://platform.claude.com/docs/en/api/organization/users/list
+      const users = await this.listEvery<AnthropicOrgUser>(
+        "/v1/organizations/users",
+        {},
+        SEAT_PAGE_SIZE,
+      );
+      const seats = buildClaudeSeats(users, null, this.analyticsApiKey.length > 0);
+      if (seats.length === 0 || !this.analyticsApiKey) return seats;
+      const window = analyticsWindow(options.lookbackDays, Date.now());
+      const rows = await this.fetchAnalyticsUsers(window.startingDate, window.endingDate);
+      return buildClaudeSeats(users, analyticsEvidence(rows, window.windowDays), true);
+    });
   }
 
   /**
@@ -639,61 +644,65 @@ export class AnthropicClient implements PluginClient {
    * Administrative roles and SCIM-managed members return 400.
    * https://platform.claude.com/docs/en/manage-claude/user-management#remove-a-member
    */
-  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
-    try {
-      await this.fetch<unknown>(
-        `/v1/organizations/users/${encodeURIComponent(seat.memberId)}`,
-        { method: "DELETE" },
-        { admin: true },
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (/API error 400\b/.test(message)) {
-        throw new Error(
-          "Anthropic refused to remove this member. Owners and admins are removed in claude.ai organization settings, and members provisioned by SCIM are removed in your identity provider.",
+  removeSeat(_accountId: string, seat: SeatRef): PluginEffect<SeatRemovalResult> {
+    return attempt(async () => {
+      try {
+        await this.fetch<unknown>(
+          `/v1/organizations/users/${encodeURIComponent(seat.memberId)}`,
+          { method: "DELETE" },
+          { admin: true },
         );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (/API error 400\b/.test(message)) {
+          throw new Error(
+            "Anthropic refused to remove this member. Owners and admins are removed in claude.ai organization settings, and members provisioned by SCIM are removed in your identity provider.",
+          );
+        }
+        if (/API error (401|403)\b/.test(message)) {
+          throw new Error(
+            "Anthropic refused the request. Removing members needs an Admin API key with the write:members scope.",
+          );
+        }
+        throw err;
       }
-      if (/API error (401|403)\b/.test(message)) {
-        throw new Error(
-          "Anthropic refused the request. Removing members needs an Admin API key with the write:members scope.",
-        );
-      }
-      throw err;
-    }
-    return {
-      effective: "end-of-cycle",
-      message:
-        "Removed. The seat is back in your organization's pool; lower the seat count in claude.ai billing to stop paying for it.",
-    };
+      return {
+        effective: "end-of-cycle",
+        message:
+          "Removed. The seat is back in your organization's pool; lower the seat count in claude.ai billing to stop paying for it.",
+      };
+    });
   }
 
   // ---- Listing -------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "model":
-        return (await this.fetchModels()).map((m) => this.mapModel(accountId, m));
-      case "message-batch":
-        return (await this.fetchBatches()).map((b) => this.mapBatch(accountId, b));
-      case "file":
-        return (await this.fetchFiles()).map((f) => this.mapFile(accountId, f));
-      case "workspace":
-        return (await this.fetchWorkspaces()).map((w) => this.mapWorkspace(accountId, w));
-      case "organization-user":
-        return (await this.fetchUsers()).map((u) => this.mapUser(accountId, u));
-      case "invite":
-        return (await this.fetchInvites()).map((i) => this.mapInvite(accountId, i));
-      case "api-key":
-        return (await this.fetchApiKeys()).map((k) => this.mapApiKey(accountId, k));
-      case "workspace-member":
-        return this.listWorkspaceMembers(accountId);
-      case "rate-limit":
-        return (await this.fetchRateLimits()).map((r) => this.mapRateLimit(accountId, r));
-      case "skill":
-        return (await this.fetchSkills()).map((sk) => this.mapSkill(accountId, sk));
-      default:
-        throw new Error(`Anthropic plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "model":
+          return (await this.fetchModels()).map((m) => this.mapModel(accountId, m));
+        case "message-batch":
+          return (await this.fetchBatches()).map((b) => this.mapBatch(accountId, b));
+        case "file":
+          return (await this.fetchFiles()).map((f) => this.mapFile(accountId, f));
+        case "workspace":
+          return (await this.fetchWorkspaces()).map((w) => this.mapWorkspace(accountId, w));
+        case "organization-user":
+          return (await this.fetchUsers()).map((u) => this.mapUser(accountId, u));
+        case "invite":
+          return (await this.fetchInvites()).map((i) => this.mapInvite(accountId, i));
+        case "api-key":
+          return (await this.fetchApiKeys()).map((k) => this.mapApiKey(accountId, k));
+        case "workspace-member":
+          return this.listWorkspaceMembers(accountId);
+        case "rate-limit":
+          return (await this.fetchRateLimits()).map((r) => this.mapRateLimit(accountId, r));
+        case "skill":
+          return (await this.fetchSkills()).map((sk) => this.mapSkill(accountId, sk));
+        default:
+          throw new Error(`Anthropic plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -837,346 +846,361 @@ export class AnthropicClient implements PluginClient {
     return this.listPaginated<AnthropicApiKey>("/v1/organizations/api_keys", {}, { admin: true });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    // Single-object GETs exist for batches and files and are much cheaper than
-    // re-listing, especially while a batch is still counting up.
-    if (typeId === "message-batch") {
-      const batch = await this.fetch<AnthropicMessageBatch>(
-        `/v1/messages/batches/${encodeURIComponent(externalId)}`,
-      );
-      return this.mapBatch(accountId, batch);
-    }
-    if (typeId === "file") {
-      const file = await this.fetch<AnthropicFile>(`/v1/files/${encodeURIComponent(externalId)}`);
-      return this.mapFile(accountId, file);
-    }
-    if (typeId === "skill") {
-      // GET /v1/skills/{id}: https://platform.claude.com/docs/en/api/skills/retrieve
-      const skill = await this.fetch<AnthropicSkill>(
-        `/v1/skills/${encodeURIComponent(externalId)}`,
-      );
-      return this.mapSkill(accountId, skill);
-    }
-    if (typeId === "workspace-member") {
-      // GET /v1/organizations/workspaces/{ws}/members/{user}: verified
-      // 2026-10-03 against
-      // https://platform.claude.com/docs/en/api/organization/workspaces/members/retrieve
-      const [workspaceId, userId] = splitMemberId(externalId);
-      const [member, user, workspace] = await Promise.all([
-        this.fetch<AnthropicWorkspaceMember>(
-          `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
-          undefined,
-          { admin: true },
-        ),
-        this.fetch<AnthropicUser>(
-          `/v1/organizations/users/${encodeURIComponent(userId)}`,
-          undefined,
-          { admin: true },
-        ).catch(() => undefined),
-        this.fetch<AnthropicWorkspace>(
-          `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}`,
-          undefined,
-          { admin: true },
-        ).catch(() => undefined),
-      ]);
-      return this.mapWorkspaceMember(accountId, member, user, workspace);
-    }
+      // Single-object GETs exist for batches and files and are much cheaper than
+      // re-listing, especially while a batch is still counting up.
+      if (typeId === "message-batch") {
+        const batch = await this.fetch<AnthropicMessageBatch>(
+          `/v1/messages/batches/${encodeURIComponent(externalId)}`,
+        );
+        return this.mapBatch(accountId, batch);
+      }
+      if (typeId === "file") {
+        const file = await this.fetch<AnthropicFile>(`/v1/files/${encodeURIComponent(externalId)}`);
+        return this.mapFile(accountId, file);
+      }
+      if (typeId === "skill") {
+        // GET /v1/skills/{id}: https://platform.claude.com/docs/en/api/skills/retrieve
+        const skill = await this.fetch<AnthropicSkill>(
+          `/v1/skills/${encodeURIComponent(externalId)}`,
+        );
+        return this.mapSkill(accountId, skill);
+      }
+      if (typeId === "workspace-member") {
+        // GET /v1/organizations/workspaces/{ws}/members/{user}: verified
+        // 2026-10-03 against
+        // https://platform.claude.com/docs/en/api/organization/workspaces/members/retrieve
+        const [workspaceId, userId] = splitMemberId(externalId);
+        const [member, user, workspace] = await Promise.all([
+          this.fetch<AnthropicWorkspaceMember>(
+            `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+            undefined,
+            { admin: true },
+          ),
+          this.fetch<AnthropicUser>(
+            `/v1/organizations/users/${encodeURIComponent(userId)}`,
+            undefined,
+            { admin: true },
+          ).catch(() => undefined),
+          this.fetch<AnthropicWorkspace>(
+            `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}`,
+            undefined,
+            { admin: true },
+          ).catch(() => undefined),
+        ]);
+        return this.mapWorkspaceMember(accountId, member, user, workspace);
+      }
 
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Anthropic plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Anthropic plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const direct = resource.resolvedOutputs[outputKey];
-    if (direct !== undefined) return direct;
-    throw new Error(`Anthropic plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const direct = resource.resolvedOutputs[outputKey];
+      if (direct !== undefined) return direct;
+      throw new Error(
+        `Anthropic plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
   // ---- Mutations -----------------------------------------------------------
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    if (typeId === "workspace") {
-      return {
-        fields: [
-          {
-            key: "name",
-            label: "Workspace Name",
-            kind: "text",
-            required: true,
-            placeholder: "Production",
-            description:
-              "Shown in the Console workspace switcher. Up to 40 characters, and up to 100 workspaces per organization; archived ones don't count.",
-          },
-          {
-            key: "displayColor",
-            label: "Display Color",
-            kind: "text",
-            required: false,
-            placeholder: "#6C5BB9",
-            description:
-              "Hex colour for the workspace in the Console. Leave blank for the default.",
-          },
-          {
-            key: "allowedInferenceGeos",
-            label: "Allowed Inference Geos",
-            kind: "select",
-            required: false,
-            options: ALLOWED_GEO_OPTIONS,
-            defaultValue: "unrestricted",
-            description: "Where requests from this workspace are allowed to run.",
-          },
-          {
-            key: "defaultInferenceGeo",
-            label: "Default Inference Geo",
-            kind: "select",
-            required: false,
-            options: INFERENCE_GEOS.map((g) => ({ id: g, label: g })),
-            defaultValue: "global",
-            description:
-              "Used when a request omits inference_geo. Must be one of the allowed geos. Data is stored in the us workspace geo, which cannot be changed later.",
-          },
-        ],
-      };
-    }
-    if (typeId === "workspace-member") {
-      const [workspaces, users] = await Promise.all([this.fetchWorkspaces(), this.fetchUsers()]);
-      const parentWorkspace = parentResourceId ? externalIdOf(parentResourceId) : "";
-      const fields: CreateResourceConfig["fields"] = [];
-      if (parentWorkspace) {
-        fields.push({
-          key: "workspaceId",
-          label: "Workspace",
-          kind: "text",
-          required: true,
-          hidden: true,
-          defaultValue: parentWorkspace,
-        });
-      } else {
-        fields.push({
-          key: "workspaceId",
-          label: "Workspace",
-          kind: "select",
-          required: true,
-          options: workspaces
-            .filter((w) => !w.archived_at)
-            .map((w) => ({ id: w.id, label: str(w.name) || w.id, description: w.id })),
-          description:
-            "The Default Workspace has no id and cannot be managed here: every organization member can already use it.",
-        });
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "workspace") {
+        return {
+          fields: [
+            {
+              key: "name",
+              label: "Workspace Name",
+              kind: "text",
+              required: true,
+              placeholder: "Production",
+              description:
+                "Shown in the Console workspace switcher. Up to 40 characters, and up to 100 workspaces per organization; archived ones don't count.",
+            },
+            {
+              key: "displayColor",
+              label: "Display Color",
+              kind: "text",
+              required: false,
+              placeholder: "#6C5BB9",
+              description:
+                "Hex colour for the workspace in the Console. Leave blank for the default.",
+            },
+            {
+              key: "allowedInferenceGeos",
+              label: "Allowed Inference Geos",
+              kind: "select",
+              required: false,
+              options: ALLOWED_GEO_OPTIONS,
+              defaultValue: "unrestricted",
+              description: "Where requests from this workspace are allowed to run.",
+            },
+            {
+              key: "defaultInferenceGeo",
+              label: "Default Inference Geo",
+              kind: "select",
+              required: false,
+              options: INFERENCE_GEOS.map((g) => ({ id: g, label: g })),
+              defaultValue: "global",
+              description:
+                "Used when a request omits inference_geo. Must be one of the allowed geos. Data is stored in the us workspace geo, which cannot be changed later.",
+            },
+          ],
+        };
       }
-      fields.push(
-        {
-          key: "userId",
-          label: "Member",
-          kind: "select",
-          required: true,
-          options: users.map((u) => ({
-            id: u.id,
-            label: str(u.name) || str(u.email) || u.id,
-            description: [str(u.email), str(u.role)].filter(Boolean).join(" · "),
-          })),
-          description: "Only existing organization members can be added. Invite new people first.",
-        },
-        {
-          key: "workspaceRole",
-          label: "Workspace Role",
-          kind: "select",
-          required: true,
-          options: WORKSPACE_ROLES,
-          defaultValue: "workspace_developer",
-          description:
-            "Workspace Billing cannot be assigned when adding a member; set it afterwards by editing the membership.",
-        },
-      );
-      return { fields };
-    }
-    if (typeId === "invite") {
-      return {
-        fields: [
-          {
-            key: "email",
-            label: "Email",
+      if (typeId === "workspace-member") {
+        const [workspaces, users] = await Promise.all([this.fetchWorkspaces(), this.fetchUsers()]);
+        const parentWorkspace = parentResourceId ? externalIdOf(parentResourceId) : "";
+        const fields: CreateResourceConfig["fields"] = [];
+        if (parentWorkspace) {
+          fields.push({
+            key: "workspaceId",
+            label: "Workspace",
             kind: "text",
             required: true,
-            placeholder: "teammate@example.com",
-          },
-          {
-            key: "role",
-            label: "Role",
+            hidden: true,
+            defaultValue: parentWorkspace,
+          });
+        } else {
+          fields.push({
+            key: "workspaceId",
+            label: "Workspace",
             kind: "select",
             required: true,
-            options: ASSIGNABLE_ROLES,
-            defaultValue: "user",
+            options: workspaces
+              .filter((w) => !w.archived_at)
+              .map((w) => ({ id: w.id, label: str(w.name) || w.id, description: w.id })),
             description:
-              "The admin role cannot be assigned through the API. On seat-based plans the invite consumes a seat from the lowest tier with availability and fails when none is free.",
+              "The Default Workspace has no id and cannot be managed here: every organization member can already use it.",
+          });
+        }
+        fields.push(
+          {
+            key: "userId",
+            label: "Member",
+            kind: "select",
+            required: true,
+            options: users.map((u) => ({
+              id: u.id,
+              label: str(u.name) || str(u.email) || u.id,
+              description: [str(u.email), str(u.role)].filter(Boolean).join(" · "),
+            })),
+            description:
+              "Only existing organization members can be added. Invite new people first.",
           },
-        ],
-      };
-    }
-    if (typeId === "api-key") {
-      throw new Error(
-        "Anthropic plugin: API keys cannot be created through the API. Create them in the Claude Console under Settings → API keys.",
-      );
-    }
-    throw new Error(`Anthropic plugin: no create config for type "${typeId}"`);
+          {
+            key: "workspaceRole",
+            label: "Workspace Role",
+            kind: "select",
+            required: true,
+            options: WORKSPACE_ROLES,
+            defaultValue: "workspace_developer",
+            description:
+              "Workspace Billing cannot be assigned when adding a member; set it afterwards by editing the membership.",
+          },
+        );
+        return { fields };
+      }
+      if (typeId === "invite") {
+        return {
+          fields: [
+            {
+              key: "email",
+              label: "Email",
+              kind: "text",
+              required: true,
+              placeholder: "teammate@example.com",
+            },
+            {
+              key: "role",
+              label: "Role",
+              kind: "select",
+              required: true,
+              options: ASSIGNABLE_ROLES,
+              defaultValue: "user",
+              description:
+                "The admin role cannot be assigned through the API. On seat-based plans the invite consumes a seat from the lowest tier with availability and fails when none is free.",
+            },
+          ],
+        };
+      }
+      if (typeId === "api-key") {
+        throw new Error(
+          "Anthropic plugin: API keys cannot be created through the API. Create them in the Claude Console under Settings → API keys.",
+        );
+      }
+      throw new Error(`Anthropic plugin: no create config for type "${typeId}"`);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "workspace") {
-      // POST /v1/organizations/workspaces: verified 2026-07-28 against
-      // https://platform.claude.com/docs/en/manage-claude/workspaces
-      const name = fields["name"]?.trim();
-      if (!name) throw new Error("Workspace name is required");
-      const body: Record<string, unknown> = { name };
-      const color = fields["displayColor"]?.trim();
-      if (color) body["display_color"] = color;
-      const residency = this.residencyBody(fields);
-      if (residency) body["data_residency"] = residency;
-      const created = await this.fetch<AnthropicWorkspace>(
-        "/v1/organizations/workspaces",
-        { method: "POST", body: JSON.stringify(body) },
-        { admin: true },
-      );
-      return this.mapWorkspace(accountId, created);
-    }
-    if (typeId === "workspace-member") {
-      // POST /v1/organizations/workspaces/{id}/members: verified 2026-10-03
-      // against https://platform.claude.com/docs/en/api/organization/workspaces/members/add
-      const workspaceId = fields["workspaceId"]?.trim();
-      const userId = fields["userId"]?.trim();
-      const workspaceRole = fields["workspaceRole"] || "workspace_developer";
-      if (!workspaceId || !userId) throw new Error("Pick a workspace and a member");
-      if (workspaceRole === "workspace_billing") {
-        throw new Error(
-          "Anthropic plugin: workspace_billing cannot be assigned when adding a member. Add them with another role, then edit the membership.",
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "workspace") {
+        // POST /v1/organizations/workspaces: verified 2026-07-28 against
+        // https://platform.claude.com/docs/en/manage-claude/workspaces
+        const name = fields["name"]?.trim();
+        if (!name) throw new Error("Workspace name is required");
+        const body: Record<string, unknown> = { name };
+        const color = fields["displayColor"]?.trim();
+        if (color) body["display_color"] = color;
+        const residency = this.residencyBody(fields);
+        if (residency) body["data_residency"] = residency;
+        const created = await this.fetch<AnthropicWorkspace>(
+          "/v1/organizations/workspaces",
+          { method: "POST", body: JSON.stringify(body) },
+          { admin: true },
         );
+        return this.mapWorkspace(accountId, created);
       }
-      const created = await this.fetch<AnthropicWorkspaceMember>(
-        `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members`,
-        {
-          method: "POST",
-          body: JSON.stringify({ user_id: userId, workspace_role: workspaceRole }),
-        },
-        { admin: true },
-      );
-      return this.mapWorkspaceMember(accountId, created);
-    }
-    if (typeId === "invite") {
-      // POST /v1/organizations/invites: verified 2026-07-28 against
-      // https://platform.claude.com/docs/en/api/admin-api/invites/create-invite
-      const email = fields["email"]?.trim();
-      const role = fields["role"] ?? "user";
-      if (!email) throw new Error("Invite email is required");
-      const created = await this.fetch<AnthropicInvite>(
-        "/v1/organizations/invites",
-        { method: "POST", body: JSON.stringify({ email, role }) },
-        { admin: true },
-      );
-      return this.mapInvite(accountId, created);
-    }
-    throw new Error(`Anthropic plugin: createResource not supported for type "${typeId}"`);
+      if (typeId === "workspace-member") {
+        // POST /v1/organizations/workspaces/{id}/members: verified 2026-10-03
+        // against https://platform.claude.com/docs/en/api/organization/workspaces/members/add
+        const workspaceId = fields["workspaceId"]?.trim();
+        const userId = fields["userId"]?.trim();
+        const workspaceRole = fields["workspaceRole"] || "workspace_developer";
+        if (!workspaceId || !userId) throw new Error("Pick a workspace and a member");
+        if (workspaceRole === "workspace_billing") {
+          throw new Error(
+            "Anthropic plugin: workspace_billing cannot be assigned when adding a member. Add them with another role, then edit the membership.",
+          );
+        }
+        const created = await this.fetch<AnthropicWorkspaceMember>(
+          `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members`,
+          {
+            method: "POST",
+            body: JSON.stringify({ user_id: userId, workspace_role: workspaceRole }),
+          },
+          { admin: true },
+        );
+        return this.mapWorkspaceMember(accountId, created);
+      }
+      if (typeId === "invite") {
+        // POST /v1/organizations/invites: verified 2026-07-28 against
+        // https://platform.claude.com/docs/en/api/admin-api/invites/create-invite
+        const email = fields["email"]?.trim();
+        const role = fields["role"] ?? "user";
+        if (!email) throw new Error("Invite email is required");
+        const created = await this.fetch<AnthropicInvite>(
+          "/v1/organizations/invites",
+          { method: "POST", body: JSON.stringify({ email, role }) },
+          { admin: true },
+        );
+        return this.mapInvite(accountId, created);
+      }
+      throw new Error(`Anthropic plugin: createResource not supported for type "${typeId}"`);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    if (typeId === "workspace") {
-      // POST /v1/organizations/workspaces/{id}: verified 2026-07-28 against
-      // https://platform.claude.com/docs/en/api/admin-api/workspaces/update-workspace
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined) body["name"] = fields["name"];
-      const color = fields["displayColor"]?.trim();
-      if (color) body["display_color"] = color;
-      if (fields["tags"] !== undefined) body["tags"] = parseTags(fields["tags"]);
-      const residency = this.residencyBody(fields);
-      if (residency) body["data_residency"] = residency;
-      const updated = await this.fetch<AnthropicWorkspace>(
-        `/v1/organizations/workspaces/${encodeURIComponent(externalId)}`,
-        { method: "POST", body: JSON.stringify(body) },
-        { admin: true },
-      );
-      return this.mapWorkspace(accountId, updated);
-    }
-
-    if (typeId === "workspace-member") {
-      // POST /v1/organizations/workspaces/{ws}/members/{user}: verified
-      // 2026-10-03 against
-      // https://platform.claude.com/docs/en/api/organization/workspaces/members/update
-      const workspaceRole = fields["workspaceRole"];
-      if (!workspaceRole) {
-        throw new Error("Anthropic plugin: workspace role is the only editable field on a member");
+      if (typeId === "workspace") {
+        // POST /v1/organizations/workspaces/{id}: verified 2026-07-28 against
+        // https://platform.claude.com/docs/en/api/admin-api/workspaces/update-workspace
+        const body: Record<string, unknown> = {};
+        if (fields["name"] !== undefined) body["name"] = fields["name"];
+        const color = fields["displayColor"]?.trim();
+        if (color) body["display_color"] = color;
+        if (fields["tags"] !== undefined) body["tags"] = parseTags(fields["tags"]);
+        const residency = this.residencyBody(fields);
+        if (residency) body["data_residency"] = residency;
+        const updated = await this.fetch<AnthropicWorkspace>(
+          `/v1/organizations/workspaces/${encodeURIComponent(externalId)}`,
+          { method: "POST", body: JSON.stringify(body) },
+          { admin: true },
+        );
+        return this.mapWorkspace(accountId, updated);
       }
-      const [workspaceId, userId] = splitMemberId(externalId);
-      const updated = await this.fetch<AnthropicWorkspaceMember>(
-        `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
-        { method: "POST", body: JSON.stringify({ workspace_role: workspaceRole }) },
-        { admin: true },
-      );
-      return this.mapWorkspaceMember(accountId, updated);
-    }
 
-    if (typeId === "organization-user") {
-      // POST /v1/organizations/users/{id}: verified 2026-07-28 against
-      // https://platform.claude.com/docs/en/api/admin-api/users/update-user
-      const role = fields["role"];
-      if (!role) throw new Error("Anthropic plugin: role is the only editable field on a member");
-      const updated = await this.fetch<AnthropicUser>(
-        `/v1/organizations/users/${encodeURIComponent(externalId)}`,
-        { method: "POST", body: JSON.stringify({ role }) },
-        { admin: true },
-      );
-      return this.mapUser(accountId, updated);
-    }
-
-    if (typeId === "api-key") {
-      // POST /v1/organizations/api_keys/{id}: verified 2026-07-28 against
-      // https://platform.claude.com/docs/en/api/admin-api/apikeys/update-api-key
-      //
-      // This is also how a key is *revoked*: there is no DELETE endpoint, so
-      // "delete" is `{"status":"inactive"}`.
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined) body["name"] = fields["name"];
-      if (fields["status"] !== undefined) {
-        const status = fields["status"];
-        if (status === "expired") {
+      if (typeId === "workspace-member") {
+        // POST /v1/organizations/workspaces/{ws}/members/{user}: verified
+        // 2026-10-03 against
+        // https://platform.claude.com/docs/en/api/organization/workspaces/members/update
+        const workspaceRole = fields["workspaceRole"];
+        if (!workspaceRole) {
           throw new Error(
-            'Anthropic plugin: "expired" is a state the API reports, not one you can set. Use active, inactive or archived.',
+            "Anthropic plugin: workspace role is the only editable field on a member",
           );
         }
-        body["status"] = status;
+        const [workspaceId, userId] = splitMemberId(externalId);
+        const updated = await this.fetch<AnthropicWorkspaceMember>(
+          `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+          { method: "POST", body: JSON.stringify({ workspace_role: workspaceRole }) },
+          { admin: true },
+        );
+        return this.mapWorkspaceMember(accountId, updated);
       }
-      const updated = await this.fetch<AnthropicApiKey>(
-        `/v1/organizations/api_keys/${encodeURIComponent(externalId)}`,
-        { method: "POST", body: JSON.stringify(body) },
-        { admin: true },
-      );
-      return this.mapApiKey(accountId, updated);
-    }
 
-    throw new Error(`Anthropic plugin: updateResource not supported for type "${typeId}"`);
+      if (typeId === "organization-user") {
+        // POST /v1/organizations/users/{id}: verified 2026-07-28 against
+        // https://platform.claude.com/docs/en/api/admin-api/users/update-user
+        const role = fields["role"];
+        if (!role) throw new Error("Anthropic plugin: role is the only editable field on a member");
+        const updated = await this.fetch<AnthropicUser>(
+          `/v1/organizations/users/${encodeURIComponent(externalId)}`,
+          { method: "POST", body: JSON.stringify({ role }) },
+          { admin: true },
+        );
+        return this.mapUser(accountId, updated);
+      }
+
+      if (typeId === "api-key") {
+        // POST /v1/organizations/api_keys/{id}: verified 2026-07-28 against
+        // https://platform.claude.com/docs/en/api/admin-api/apikeys/update-api-key
+        //
+        // This is also how a key is *revoked*: there is no DELETE endpoint, so
+        // "delete" is `{"status":"inactive"}`.
+        const body: Record<string, unknown> = {};
+        if (fields["name"] !== undefined) body["name"] = fields["name"];
+        if (fields["status"] !== undefined) {
+          const status = fields["status"];
+          if (status === "expired") {
+            throw new Error(
+              'Anthropic plugin: "expired" is a state the API reports, not one you can set. Use active, inactive or archived.',
+            );
+          }
+          body["status"] = status;
+        }
+        const updated = await this.fetch<AnthropicApiKey>(
+          `/v1/organizations/api_keys/${encodeURIComponent(externalId)}`,
+          { method: "POST", body: JSON.stringify(body) },
+          { admin: true },
+        );
+        return this.mapApiKey(accountId, updated);
+      }
+
+      throw new Error(`Anthropic plugin: updateResource not supported for type "${typeId}"`);
+    });
   }
 
   /**
@@ -1202,117 +1226,121 @@ export class AnthropicClient implements PluginClient {
     return residency;
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    switch (typeId) {
-      case "message-batch":
-        // DELETE /v1/messages/batches/{id}, only allowed once processing has
-        // ended; cancel an in-progress batch first.
-        // https://platform.claude.com/docs/en/api/deleting-message-batches
-        await this.fetch<unknown>(`/v1/messages/batches/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "file":
-        // DELETE /v1/files/{id}
-        // https://platform.claude.com/docs/en/api/files/delete
-        await this.fetch<unknown>(`/v1/files/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "skill":
-        // DELETE /v1/skills/{id}: without the beta header this removes the
-        // Skill and every version in one call. Anthropic-published Skills are
-        // read-only and the API refuses them.
-        // https://platform.claude.com/docs/en/api/skills/delete
-        await this.fetch<unknown>(`/v1/skills/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "workspace-member": {
-        // DELETE /v1/organizations/workspaces/{ws}/members/{user}
-        // https://platform.claude.com/docs/en/api/organization/workspaces/members/remove
-        const [workspaceId, userId] = splitMemberId(externalId);
-        await this.fetch<unknown>(
-          `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
-          { method: "DELETE" },
-          { admin: true },
-        );
-        return;
+      switch (typeId) {
+        case "message-batch":
+          // DELETE /v1/messages/batches/{id}, only allowed once processing has
+          // ended; cancel an in-progress batch first.
+          // https://platform.claude.com/docs/en/api/deleting-message-batches
+          await this.fetch<unknown>(`/v1/messages/batches/${encodeURIComponent(externalId)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "file":
+          // DELETE /v1/files/{id}
+          // https://platform.claude.com/docs/en/api/files/delete
+          await this.fetch<unknown>(`/v1/files/${encodeURIComponent(externalId)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "skill":
+          // DELETE /v1/skills/{id}: without the beta header this removes the
+          // Skill and every version in one call. Anthropic-published Skills are
+          // read-only and the API refuses them.
+          // https://platform.claude.com/docs/en/api/skills/delete
+          await this.fetch<unknown>(`/v1/skills/${encodeURIComponent(externalId)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "workspace-member": {
+          // DELETE /v1/organizations/workspaces/{ws}/members/{user}
+          // https://platform.claude.com/docs/en/api/organization/workspaces/members/remove
+          const [workspaceId, userId] = splitMemberId(externalId);
+          await this.fetch<unknown>(
+            `/v1/organizations/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`,
+            { method: "DELETE" },
+            { admin: true },
+          );
+          return;
+        }
+        case "organization-user":
+          // DELETE /v1/organizations/users/{id}. Members holding the admin,
+          // owner or primary_owner role cannot be removed through the API.
+          await this.fetch<unknown>(
+            `/v1/organizations/users/${encodeURIComponent(externalId)}`,
+            { method: "DELETE" },
+            { admin: true },
+          );
+          return;
+        case "invite":
+          // DELETE /v1/organizations/invites/{id}
+          await this.fetch<unknown>(
+            `/v1/organizations/invites/${encodeURIComponent(externalId)}`,
+            { method: "DELETE" },
+            { admin: true },
+          );
+          return;
+        case "api-key":
+          throw new Error(
+            'Anthropic plugin: API keys cannot be deleted through the API. Use the "Deactivate key" action instead, which revokes the key.',
+          );
+        case "workspace":
+          throw new Error(
+            'Anthropic plugin: workspaces cannot be deleted. Use the "Archive workspace" action. Archiving is irreversible and revokes every API key in the workspace.',
+          );
+        default:
+          throw new Error(`Anthropic plugin: deleteResource not supported for type "${typeId}"`);
       }
-      case "organization-user":
-        // DELETE /v1/organizations/users/{id}. Members holding the admin,
-        // owner or primary_owner role cannot be removed through the API.
-        await this.fetch<unknown>(
-          `/v1/organizations/users/${encodeURIComponent(externalId)}`,
-          { method: "DELETE" },
-          { admin: true },
-        );
-        return;
-      case "invite":
-        // DELETE /v1/organizations/invites/{id}
-        await this.fetch<unknown>(
-          `/v1/organizations/invites/${encodeURIComponent(externalId)}`,
-          { method: "DELETE" },
-          { admin: true },
-        );
-        return;
-      case "api-key":
-        throw new Error(
-          'Anthropic plugin: API keys cannot be deleted through the API. Use the "Deactivate key" action instead, which revokes the key.',
-        );
-      case "workspace":
-        throw new Error(
-          'Anthropic plugin: workspaces cannot be deleted. Use the "Archive workspace" action. Archiving is irreversible and revokes every API key in the workspace.',
-        );
-      default:
-        throw new Error(`Anthropic plugin: deleteResource not supported for type "${typeId}"`);
-    }
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    if (typeId === "message-batch" && actionId === "cancel-batch") {
-      // POST /v1/messages/batches/{id}/cancel: verified 2026-07-28 against
-      // https://platform.claude.com/docs/en/api/canceling-message-batches
-      await this.fetch<unknown>(`/v1/messages/batches/${encodeURIComponent(externalId)}/cancel`, {
-        method: "POST",
-      });
-      return;
-    }
+      if (typeId === "message-batch" && actionId === "cancel-batch") {
+        // POST /v1/messages/batches/{id}/cancel: verified 2026-07-28 against
+        // https://platform.claude.com/docs/en/api/canceling-message-batches
+        await this.fetch<unknown>(`/v1/messages/batches/${encodeURIComponent(externalId)}/cancel`, {
+          method: "POST",
+        });
+        return;
+      }
 
-    if (typeId === "workspace" && actionId === "archive-workspace") {
-      // POST /v1/organizations/workspaces/{id}/archive: verified 2026-07-28
-      // against https://platform.claude.com/docs/en/api/admin-api/workspaces/archive-workspace
-      //
-      // "Archiving a workspace immediately revokes all API keys in that
-      // workspace. This action cannot be undone." There is no unarchive.
-      await this.fetch<unknown>(
-        `/v1/organizations/workspaces/${encodeURIComponent(externalId)}/archive`,
-        { method: "POST" },
-        { admin: true },
-      );
-      return;
-    }
+      if (typeId === "workspace" && actionId === "archive-workspace") {
+        // POST /v1/organizations/workspaces/{id}/archive: verified 2026-07-28
+        // against https://platform.claude.com/docs/en/api/admin-api/workspaces/archive-workspace
+        //
+        // "Archiving a workspace immediately revokes all API keys in that
+        // workspace. This action cannot be undone." There is no unarchive.
+        await this.fetch<unknown>(
+          `/v1/organizations/workspaces/${encodeURIComponent(externalId)}/archive`,
+          { method: "POST" },
+          { admin: true },
+        );
+        return;
+      }
 
-    if (typeId === "api-key" && (actionId === "deactivate-key" || actionId === "activate-key")) {
-      const status = actionId === "deactivate-key" ? "inactive" : "active";
-      await this.fetch<unknown>(
-        `/v1/organizations/api_keys/${encodeURIComponent(externalId)}`,
-        { method: "POST", body: JSON.stringify({ status }) },
-        { admin: true },
-      );
-      return;
-    }
+      if (typeId === "api-key" && (actionId === "deactivate-key" || actionId === "activate-key")) {
+        const status = actionId === "deactivate-key" ? "inactive" : "active";
+        await this.fetch<unknown>(
+          `/v1/organizations/api_keys/${encodeURIComponent(externalId)}`,
+          { method: "POST", body: JSON.stringify({ status }) },
+          { admin: true },
+        );
+        return;
+      }
 
-    throw new Error(`Anthropic plugin: unknown action "${actionId}" for type "${typeId}"`);
+      throw new Error(`Anthropic plugin: unknown action "${actionId}" for type "${typeId}"`);
+    });
   }
 
   // ---- Metrics and cost ----------------------------------------------------
@@ -1328,68 +1356,70 @@ export class AnthropicClient implements PluginClient {
    * daily cost (see `fetchWorkspaceCostSeries`). Admin-key only, so this returns an
    * empty chart rather than an error when the account has no Admin key.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (!this.hasAdminKey) return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (!this.hasAdminKey) return [];
 
-    const externalId = externalIdOf(resourceId);
-    const filter = new URLSearchParams();
-    if (resourceTypeId === "model") filter.append("models[]", externalId);
-    else if (resourceTypeId === "workspace") filter.append("workspace_ids[]", externalId);
-    else if (resourceTypeId === "api-key") filter.append("api_key_ids[]", externalId);
-    else if (resourceTypeId === "organization-user") filter.append("account_ids[]", externalId);
-    else return [];
+      const externalId = externalIdOf(resourceId);
+      const filter = new URLSearchParams();
+      if (resourceTypeId === "model") filter.append("models[]", externalId);
+      else if (resourceTypeId === "workspace") filter.append("workspace_ids[]", externalId);
+      else if (resourceTypeId === "api-key") filter.append("api_key_ids[]", externalId);
+      else if (resourceTypeId === "organization-user") filter.append("account_ids[]", externalId);
+      else return [];
 
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 7 * 24 * 60 * 60 * 1000;
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - 7 * 24 * 60 * 60 * 1000;
 
-    const tokenSeries = await this.fetchTokenSeries(filter, startMs, endMs);
+      const tokenSeries = await this.fetchTokenSeries(filter, startMs, endMs);
 
-    if (resourceTypeId === "workspace") {
-      return [await this.fetchWorkspaceCostSeries(externalId, startMs, endMs), ...tokenSeries];
-    }
+      if (resourceTypeId === "workspace") {
+        return [await this.fetchWorkspaceCostSeries(externalId, startMs, endMs), ...tokenSeries];
+      }
 
-    if (resourceTypeId === "api-key") {
-      // Claude Code run on an API key reports as an `api_actor` carrying the
-      // key's *name*, not its id, so the key is read back for its name.
-      const key = await this.fetch<AnthropicApiKey>(
-        `/v1/organizations/api_keys/${encodeURIComponent(externalId)}`,
+      if (resourceTypeId === "api-key") {
+        // Claude Code run on an API key reports as an `api_actor` carrying the
+        // key's *name*, not its id, so the key is read back for its name.
+        const key = await this.fetch<AnthropicApiKey>(
+          `/v1/organizations/api_keys/${encodeURIComponent(externalId)}`,
+          undefined,
+          { admin: true },
+        );
+        const name = str(key?.name);
+        if (!name) return tokenSeries;
+        return [
+          ...tokenSeries,
+          ...(await this.fetchClaudeCodeSeries(
+            (actor) => actor?.type === "api_actor" && str(actor.api_key_name) === name,
+            startMs,
+            endMs,
+          )),
+        ];
+      }
+
+      if (resourceTypeId !== "organization-user") return tokenSeries;
+
+      const user = await this.fetch<AnthropicUser>(
+        `/v1/organizations/users/${encodeURIComponent(externalId)}`,
         undefined,
         { admin: true },
       );
-      const name = str(key?.name);
-      if (!name) return tokenSeries;
+      const email = str(user.email).toLowerCase();
+      if (!email) return tokenSeries;
       return [
         ...tokenSeries,
         ...(await this.fetchClaudeCodeSeries(
-          (actor) => actor?.type === "api_actor" && str(actor.api_key_name) === name,
+          (actor) => str(actor?.email_address).toLowerCase() === email,
           startMs,
           endMs,
         )),
       ];
-    }
-
-    if (resourceTypeId !== "organization-user") return tokenSeries;
-
-    const user = await this.fetch<AnthropicUser>(
-      `/v1/organizations/users/${encodeURIComponent(externalId)}`,
-      undefined,
-      { admin: true },
-    );
-    const email = str(user.email).toLowerCase();
-    if (!email) return tokenSeries;
-    return [
-      ...tokenSeries,
-      ...(await this.fetchClaudeCodeSeries(
-        (actor) => str(actor?.email_address).toLowerCase() === email,
-        startMs,
-        endMs,
-      )),
-    ];
+    });
   }
 
   /**
@@ -1621,46 +1651,48 @@ export class AnthropicClient implements PluginClient {
    * which is why members are the one type with a Logs tab. Newest first, so
    * the page is reversed into reading order.
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "organization-user") {
-      throw new Error(`Anthropic plugin: no logs for type "${typeId}"`);
-    }
-    const container = "activity";
-    const wrap = (lines: string[]) => ({
-      text: lines.map((line) => `${line}\n`).join(""),
-      containers: [container],
-      activeContainer: container,
-    });
-    if (!this.hasAdminKey) return wrap([ADMIN_KEY_HINT]);
-
-    const query = new URLSearchParams({
-      limit: String(Math.min(Math.max(params.tailLines ?? 100, 1), 1000)),
-    });
-    query.append("actor_ids[]", externalIdOf(resourceId));
-
-    let body: AnthropicPage<ComplianceActivity>;
-    try {
-      body = await this.fetch<AnthropicPage<ComplianceActivity>>(
-        `/v1/compliance/activities?${query.toString()}`,
-        undefined,
-        { admin: true },
-      );
-    } catch (error) {
-      if (error instanceof Error && / 403 /.test(error.message)) {
-        return wrap([
-          "The Activity Feed is not available to this Admin API key. Turn on the Compliance API in Claude Console → Settings → Security, then create a new Admin API key: keys made before the Compliance API was enabled never gain access to the feed.",
-        ]);
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "organization-user") {
+        throw new Error(`Anthropic plugin: no logs for type "${typeId}"`);
       }
-      throw error;
-    }
+      const container = "activity";
+      const wrap = (lines: string[]) => ({
+        text: lines.map((line) => `${line}\n`).join(""),
+        containers: [container],
+        activeContainer: container,
+      });
+      if (!this.hasAdminKey) return wrap([ADMIN_KEY_HINT]);
 
-    const lines = (body.data ?? []).reverse().map(formatActivity);
-    return wrap(lines.length > 0 ? lines : ["No activity recorded for this member."]);
+      const query = new URLSearchParams({
+        limit: String(Math.min(Math.max(params.tailLines ?? 100, 1), 1000)),
+      });
+      query.append("actor_ids[]", externalIdOf(resourceId));
+
+      let body: AnthropicPage<ComplianceActivity>;
+      try {
+        body = await this.fetch<AnthropicPage<ComplianceActivity>>(
+          `/v1/compliance/activities?${query.toString()}`,
+          undefined,
+          { admin: true },
+        );
+      } catch (error) {
+        if (error instanceof Error && / 403 /.test(error.message)) {
+          return wrap([
+            "The Activity Feed is not available to this Admin API key. Turn on the Compliance API in Claude Console → Settings → Security, then create a new Admin API key: keys made before the Compliance API was enabled never gain access to the feed.",
+          ]);
+        }
+        throw error;
+      }
+
+      const lines = (body.data ?? []).reverse().map(formatActivity);
+      return wrap(lines.length > 0 ? lines : ["No activity recorded for this member."]);
+    });
   }
 
   /**
@@ -1676,194 +1708,203 @@ export class AnthropicClient implements PluginClient {
    * Priority Tier spend is excluded from this report by Anthropic, so totals
    * here can be lower than the invoice for organizations on Priority Tier.
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    if (!this.hasAdminKey) {
-      throw new CostSetupError(
-        "Anthropic cost reporting needs an Admin API key (sk-ant-admin…). Add one to this account; a standard API key returns 401.",
-        { label: "Create an Admin API key", url: ADMIN_KEY_DOCS },
-      );
-    }
-
-    // `ending_at` is exclusive (buckets that *end before* this timestamp).
-    // Anthropic rejects a future `ending_at` with 400 "Invalid date range:
-    // ending date must be after starting date": their own cookbook always
-    // ends at start-of-today UTC so only completed days are requested. Cap
-    // here so a host window that includes "today" (monthChunks does) still
-    // works; a today-only chunk becomes an empty range and we skip the call.
-    // https://github.com/anthropics/anthropic-cookbook/blob/main/observability/usage_cost_api.ipynb
-    const today = new Date().toISOString().slice(0, 10);
-    const exclusiveEnd = addDays(range.toDate, 1);
-    const endingDay = exclusiveEnd > today ? today : exclusiveEnd;
-    if (range.fromDate >= endingDay) {
-      return [];
-    }
-
-    const base = new URLSearchParams();
-    base.set("starting_at", `${range.fromDate}T00:00:00Z`);
-    base.set("ending_at", `${endingDay}T00:00:00Z`);
-    base.set("bucket_width", "1d");
-    base.set("limit", "31");
-    base.append("group_by[]", "description");
-    base.append("group_by[]", "workspace_id");
-
-    const buckets: CostBucket[] = [];
-    let page: string | undefined;
-    for (let i = 0; i < 30; i++) {
-      const query = new URLSearchParams(base);
-      if (page) query.set("page", page);
-      const body = await this.fetch<CostReport>(
-        `/v1/organizations/cost_report?${query.toString()}`,
-        undefined,
-        { admin: true },
-      );
-      buckets.push(...(body.data ?? []));
-      if (!body.has_more || !body.next_page) break;
-      page = body.next_page;
-    }
-
-    const rows: CostRow[] = [];
-    for (const bucket of buckets) {
-      const date = str(bucket.starting_at).slice(0, 10);
-      if (date.length !== 10) continue;
-      for (const result of bucket.results ?? []) {
-        const cents = Number(result.amount);
-        if (!Number.isFinite(cents)) continue;
-        rows.push({
-          date,
-          service: str(result.description) || str(result.cost_type) || "Claude API usage",
-          resourceId: str(result.workspace_id) || "default-workspace",
-          currency: str(result.currency) || "USD",
-          // Lowest currency units → major units.
-          amount: cents / 100,
-          // Normalized AI dimensions: the report names the model and token
-          // type for token costs (grouped by description), which is what lets
-          // request logs be reconciled against this bill per model and type.
-          tags: aiCostTags({
-            provider: "anthropic",
-            model: result.cost_type === "tokens" ? str(result.model) : undefined,
-            tokenType:
-              result.cost_type === "tokens" ? anthropicTokenType(result.token_type) : undefined,
-          }),
-        });
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      if (!this.hasAdminKey) {
+        throw new CostSetupError(
+          "Anthropic cost reporting needs an Admin API key (sk-ant-admin…). Add one to this account; a standard API key returns 401.",
+          { label: "Create an Admin API key", url: ADMIN_KEY_DOCS },
+        );
       }
-    }
 
-    return rows;
+      // `ending_at` is exclusive (buckets that *end before* this timestamp).
+      // Anthropic rejects a future `ending_at` with 400 "Invalid date range:
+      // ending date must be after starting date": their own cookbook always
+      // ends at start-of-today UTC so only completed days are requested. Cap
+      // here so a host window that includes "today" (monthChunks does) still
+      // works; a today-only chunk becomes an empty range and we skip the call.
+      // https://github.com/anthropics/anthropic-cookbook/blob/main/observability/usage_cost_api.ipynb
+      const today = new Date().toISOString().slice(0, 10);
+      const exclusiveEnd = addDays(range.toDate, 1);
+      const endingDay = exclusiveEnd > today ? today : exclusiveEnd;
+      if (range.fromDate >= endingDay) {
+        return [];
+      }
+
+      const base = new URLSearchParams();
+      base.set("starting_at", `${range.fromDate}T00:00:00Z`);
+      base.set("ending_at", `${endingDay}T00:00:00Z`);
+      base.set("bucket_width", "1d");
+      base.set("limit", "31");
+      base.append("group_by[]", "description");
+      base.append("group_by[]", "workspace_id");
+
+      const buckets: CostBucket[] = [];
+      let page: string | undefined;
+      for (let i = 0; i < 30; i++) {
+        const query = new URLSearchParams(base);
+        if (page) query.set("page", page);
+        const body = await this.fetch<CostReport>(
+          `/v1/organizations/cost_report?${query.toString()}`,
+          undefined,
+          { admin: true },
+        );
+        buckets.push(...(body.data ?? []));
+        if (!body.has_more || !body.next_page) break;
+        page = body.next_page;
+      }
+
+      const rows: CostRow[] = [];
+      for (const bucket of buckets) {
+        const date = str(bucket.starting_at).slice(0, 10);
+        if (date.length !== 10) continue;
+        for (const result of bucket.results ?? []) {
+          const cents = Number(result.amount);
+          if (!Number.isFinite(cents)) continue;
+          rows.push({
+            date,
+            service: str(result.description) || str(result.cost_type) || "Claude API usage",
+            resourceId: str(result.workspace_id) || "default-workspace",
+            currency: str(result.currency) || "USD",
+            // Lowest currency units → major units.
+            amount: cents / 100,
+            // Normalized AI dimensions: the report names the model and token
+            // type for token costs (grouped by description), which is what lets
+            // request logs be reconciled against this bill per model and type.
+            tags: aiCostTags({
+              provider: "anthropic",
+              model: result.cost_type === "tokens" ? str(result.model) : undefined,
+              tokenType:
+                result.cost_type === "tokens" ? anthropicTokenType(result.token_type) : undefined,
+            }),
+          });
+        }
+      }
+
+      return rows;
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const fields = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const fields = resource.fields;
 
-    switch (resourceTypeId) {
-      case "model":
-        return [
-          { label: "Context", value: `${num(fields["maxInputTokens"]).toLocaleString()} tok` },
-          { label: "Max output", value: `${num(fields["maxTokens"]).toLocaleString()} tok` },
-          { label: "Vision", value: fields["vision"] ? "Yes" : "No" },
-        ];
-      case "message-batch": {
-        const status = str(fields["processingStatus"]);
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant: status === "ended" ? "status-healthy" : "default",
-          },
-          { label: "Succeeded", value: String(num(fields["succeeded"])) },
-          {
-            label: "Errored",
-            value: String(num(fields["errored"])),
-            variant: num(fields["errored"]) > 0 ? "status-error" : "default",
-          },
-        ];
+      switch (resourceTypeId) {
+        case "model":
+          return [
+            { label: "Context", value: `${num(fields["maxInputTokens"]).toLocaleString()} tok` },
+            { label: "Max output", value: `${num(fields["maxTokens"]).toLocaleString()} tok` },
+            { label: "Vision", value: fields["vision"] ? "Yes" : "No" },
+          ];
+        case "message-batch": {
+          const status = str(fields["processingStatus"]);
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant: status === "ended" ? "status-healthy" : "default",
+            },
+            { label: "Succeeded", value: String(num(fields["succeeded"])) },
+            {
+              label: "Errored",
+              value: String(num(fields["errored"])),
+              variant: num(fields["errored"]) > 0 ? "status-error" : "default",
+            },
+          ];
+        }
+        case "file":
+          return [
+            { label: "Size", value: formatBytes(num(fields["sizeBytes"])) },
+            { label: "Type", value: str(fields["mimeType"]) || "unknown" },
+          ];
+        case "workspace":
+          return [
+            {
+              label: "State",
+              value: fields["archivedAt"] ? "Archived" : "Active",
+              variant: fields["archivedAt"] ? "status-degraded" : "status-healthy",
+            },
+            { label: "Created", value: str(fields["createdAt"]).slice(0, 10) },
+          ];
+        case "organization-user":
+          return [
+            { label: "Role", value: str(fields["role"]) },
+            { label: "Joined", value: str(fields["addedAt"]).slice(0, 10) },
+          ];
+        case "invite": {
+          const status = str(fields["status"]);
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant: status === "pending" ? "default" : "status-degraded",
+            },
+            { label: "Expires", value: str(fields["expiresAt"]).slice(0, 10) },
+          ];
+        }
+        case "api-key": {
+          const status = str(fields["status"]);
+          return [
+            {
+              label: "Status",
+              value: status,
+              variant: status === "active" ? "status-healthy" : "status-degraded",
+            },
+            { label: "Hint", value: str(fields["partialKeyHint"]) || "—" },
+          ];
+        }
+        case "workspace-member":
+          return [
+            { label: "Role", value: workspaceRoleLabel(str(fields["workspaceRole"])) },
+            {
+              label: "Workspace",
+              value: str(fields["workspaceName"]) || str(fields["workspaceId"]),
+            },
+          ];
+        case "rate-limit":
+          return [
+            ...(num(fields["requestsPerMinute"])
+              ? [
+                  {
+                    label: "Requests / min",
+                    value: num(fields["requestsPerMinute"]).toLocaleString(),
+                  },
+                ]
+              : []),
+            ...(num(fields["inputTokensPerMinute"])
+              ? [
+                  {
+                    label: "Input tok / min",
+                    value: num(fields["inputTokensPerMinute"]).toLocaleString(),
+                  },
+                ]
+              : []),
+            ...(num(fields["outputTokensPerMinute"])
+              ? [
+                  {
+                    label: "Output tok / min",
+                    value: num(fields["outputTokensPerMinute"]).toLocaleString(),
+                  },
+                ]
+              : []),
+            { label: "Group", value: str(fields["groupType"]) },
+          ];
+        case "skill":
+          return [
+            { label: "Source", value: str(fields["source"]) },
+            { label: "Updated", value: str(fields["updatedAt"]).slice(0, 10) || "—" },
+          ];
+        default:
+          return [];
       }
-      case "file":
-        return [
-          { label: "Size", value: formatBytes(num(fields["sizeBytes"])) },
-          { label: "Type", value: str(fields["mimeType"]) || "unknown" },
-        ];
-      case "workspace":
-        return [
-          {
-            label: "State",
-            value: fields["archivedAt"] ? "Archived" : "Active",
-            variant: fields["archivedAt"] ? "status-degraded" : "status-healthy",
-          },
-          { label: "Created", value: str(fields["createdAt"]).slice(0, 10) },
-        ];
-      case "organization-user":
-        return [
-          { label: "Role", value: str(fields["role"]) },
-          { label: "Joined", value: str(fields["addedAt"]).slice(0, 10) },
-        ];
-      case "invite": {
-        const status = str(fields["status"]);
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant: status === "pending" ? "default" : "status-degraded",
-          },
-          { label: "Expires", value: str(fields["expiresAt"]).slice(0, 10) },
-        ];
-      }
-      case "api-key": {
-        const status = str(fields["status"]);
-        return [
-          {
-            label: "Status",
-            value: status,
-            variant: status === "active" ? "status-healthy" : "status-degraded",
-          },
-          { label: "Hint", value: str(fields["partialKeyHint"]) || "—" },
-        ];
-      }
-      case "workspace-member":
-        return [
-          { label: "Role", value: workspaceRoleLabel(str(fields["workspaceRole"])) },
-          { label: "Workspace", value: str(fields["workspaceName"]) || str(fields["workspaceId"]) },
-        ];
-      case "rate-limit":
-        return [
-          ...(num(fields["requestsPerMinute"])
-            ? [
-                {
-                  label: "Requests / min",
-                  value: num(fields["requestsPerMinute"]).toLocaleString(),
-                },
-              ]
-            : []),
-          ...(num(fields["inputTokensPerMinute"])
-            ? [
-                {
-                  label: "Input tok / min",
-                  value: num(fields["inputTokensPerMinute"]).toLocaleString(),
-                },
-              ]
-            : []),
-          ...(num(fields["outputTokensPerMinute"])
-            ? [
-                {
-                  label: "Output tok / min",
-                  value: num(fields["outputTokensPerMinute"]).toLocaleString(),
-                },
-              ]
-            : []),
-          { label: "Group", value: str(fields["groupType"]) },
-        ];
-      case "skill":
-        return [
-          { label: "Source", value: str(fields["source"]) },
-          { label: "Updated", value: str(fields["updatedAt"]).slice(0, 10) || "—" },
-        ];
-      default:
-        return [];
-    }
+    });
   }
 
   // ---- Mapping -------------------------------------------------------------
@@ -2202,31 +2243,33 @@ export class AnthropicClient implements PluginClient {
    * organization values); Skills gain their version history. Both land in
    * hidden `__…__` outputs that only `renderDetail` reads.
    */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const externalId = resource.externalId ?? externalIdOf(resource.id);
-    if (resource.resourceTypeId === "workspace" && this.hasAdminKey) {
-      if (resource.fields["archivedAt"]) return resource;
-      const limits = await this.fetchWorkspaceRateLimits(externalId);
-      return {
-        ...resource,
-        resolvedOutputs: { ...resource.resolvedOutputs, __rateLimits__: JSON.stringify(limits) },
-      };
-    }
-    if (resource.resourceTypeId === "skill") {
-      // GET /v1/skills/{id}/versions: newest first without the beta header.
-      // https://platform.claude.com/docs/en/api/skills/versions/list
-      const body = await this.fetch<AnthropicCursorPage<AnthropicSkillVersion>>(
-        `/v1/skills/${encodeURIComponent(externalId)}/versions?limit=20`,
-      );
-      return {
-        ...resource,
-        resolvedOutputs: {
-          ...resource.resolvedOutputs,
-          __versions__: JSON.stringify(body.data ?? []),
-        },
-      };
-    }
-    return resource;
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = resource.externalId ?? externalIdOf(resource.id);
+      if (resource.resourceTypeId === "workspace" && this.hasAdminKey) {
+        if (resource.fields["archivedAt"]) return resource;
+        const limits = await this.fetchWorkspaceRateLimits(externalId);
+        return {
+          ...resource,
+          resolvedOutputs: { ...resource.resolvedOutputs, __rateLimits__: JSON.stringify(limits) },
+        };
+      }
+      if (resource.resourceTypeId === "skill") {
+        // GET /v1/skills/{id}/versions: newest first without the beta header.
+        // https://platform.claude.com/docs/en/api/skills/versions/list
+        const body = await this.fetch<AnthropicCursorPage<AnthropicSkillVersion>>(
+          `/v1/skills/${encodeURIComponent(externalId)}/versions?limit=20`,
+        );
+        return {
+          ...resource,
+          resolvedOutputs: {
+            ...resource.resolvedOutputs,
+            __versions__: JSON.stringify(body.data ?? []),
+          },
+        };
+      }
+      return resource;
+    });
   }
 
   // ---- Rendering -----------------------------------------------------------

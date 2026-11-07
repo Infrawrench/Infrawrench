@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import type {
+  HostPlugin,
   PeerPaneResource,
   PeerPaneResourceGroup,
   ResourceInstance,
   ResourceTypeDefinition,
-  ResourceStatus,
 } from "@infrawrench/plugin-base";
 import {
   useUIStore,
@@ -49,6 +49,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   const [createTarget, setCreateTarget] = useState<PeerPaneResourceGroup | null>(null);
   const [k9sInstalled, setK9sInstalled] = useState<boolean | null>(null);
   const [createResourceType, setCreateResourceType] = useState<ResourceTypeDefinition | null>(null);
+  const [createPlugin, setCreatePlugin] = useState<HostPlugin | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [secretExportSource, setSecretExportSource] = useState<DraggableResource | null>(null);
   const [portForwards, setPortForwards] = useState<PeerPanePortForwardEntry[]>([]);
@@ -97,6 +98,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
     let cancelled = false;
     if (!createTarget) {
       setCreateResourceType(null);
+      setCreatePlugin(null);
       setCreateError(null);
       return;
     }
@@ -111,10 +113,14 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
         if (!resourceType) {
           throw new Error(`Resource type "${createTarget.resourceTypeId}" not found`);
         }
-        if (!cancelled) setCreateResourceType(resourceType);
+        if (!cancelled) {
+          setCreateResourceType(resourceType);
+          setCreatePlugin(loaded?.plugin ?? null);
+        }
       } catch (error) {
         if (!cancelled) {
           setCreateResourceType(null);
+          setCreatePlugin(null);
           setCreateError(formatErrorMessage(error));
         }
       }
@@ -420,9 +426,10 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
           {...(createClientFactory ? { clientFactory: createClientFactory } : {})}
           onClose={() => setCreateTarget(null)}
           onCreated={(created) => {
-            const peerResource = toPeerPaneResource(created);
-            const isEphemeralPod =
-              createTarget.resourceTypeId === "k8s-pod" && created.fields["ephemeral"] === "true";
+            const peerResource =
+              createPlugin?.peerPaneResource?.(created) ?? toPeerPaneResource(created);
+            const opensConsole =
+              peerResource.supportsExec && created.fields["ephemeral"] === "true";
             const key = `${createTarget.pluginId}:${createTarget.resourceTypeId}`;
 
             setExtraGroupState((prev) => {
@@ -444,9 +451,9 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
               return { forPane: pane, map: next };
             });
 
-            if (isEphemeralPod) {
+            if (opensConsole) {
               setExecTarget({
-                resource: { ...peerResource, supportsExec: true, containerName: "scratch" },
+                resource: peerResource,
                 group: createTarget,
                 ephemeral: true,
               });
@@ -503,10 +510,9 @@ function TerminalOverlay({
   );
 }
 
+/** The row for a plugin that doesn't draw its own with `peerPaneResource`. */
 function toPeerPaneResource(resource: ResourceInstance): PeerPaneResource {
   const namespace = String(resource.fields["namespace"] ?? "");
-  const image = String(resource.fields["image"] ?? "");
-  const status = String(resource.fields["status"] ?? "");
   const replicas = resource.fields["replicas"];
 
   return {
@@ -514,47 +520,14 @@ function toPeerPaneResource(resource: ResourceInstance): PeerPaneResource {
     pluginId: resource.pluginId,
     resourceTypeId: resource.resourceTypeId,
     displayName: resource.displayName,
-    subtitle:
-      resource.resourceTypeId === "k8s-namespace"
-        ? "Active"
-        : resource.resourceTypeId === "k8s-pod"
-          ? [namespace, image].filter(Boolean).join(" · ")
-          : [namespace, replicas != null ? `${String(replicas)} replicas` : ""]
-              .filter(Boolean)
-              .join(" · "),
+    subtitle: [namespace, replicas != null ? `${String(replicas)} replicas` : ""]
+      .filter(Boolean)
+      .join(" · "),
     fields: resource.fields,
     namespace,
-    ...(resource.resourceTypeId === "k8s-pod" ? { status: mapPeerStatus(status) } : {}),
     ...(resource.externalId ? { externalId: resource.externalId } : {}),
-    ...(resource.resourceTypeId === "k8s-pod" ? { supportsExec: true } : {}),
     ...(resource.fields["containerName"]
       ? { containerName: String(resource.fields["containerName"]) }
       : {}),
   };
-}
-
-function mapPeerStatus(status: string): ResourceStatus {
-  switch (status.toLowerCase()) {
-    case "running":
-    case "ready":
-    case "active":
-    case "succeeded":
-      return "healthy";
-    case "pending":
-    case "creating":
-    case "containercreating":
-      return "provisioning";
-    case "crashloopbackoff":
-    case "terminating":
-    case "evicted":
-      return "degraded";
-    case "failed":
-    case "error":
-    case "imagepullbackoff":
-    case "errimagepull":
-    case "oomkilled":
-      return "error";
-    default:
-      return "unknown";
-  }
 }

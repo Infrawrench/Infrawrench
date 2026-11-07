@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { fetchAzureMetricSeries, metricInterval, normalizeAzureUnit } from "../metrics.js";
@@ -138,7 +139,7 @@ describe("Azure Monitor metric series", () => {
   });
 
   it("renders a Metrics tab for the Container Apps environment and job", () => {
-    const client = plugin.createClient({
+    const client = hostPlugin(plugin).createClient({
       tenantId: "t",
       clientId: "c",
       clientSecret: "s",

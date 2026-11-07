@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import type { DetailViewSchema, ResourceInstance } from "@infrawrench/plugin-base";
 import type { GcpClientContext } from "../shared.js";
@@ -580,20 +581,22 @@ describe("catalogs", () => {
   });
 
   it("the gemini playground calls the global Vertex endpoint", async () => {
-    const client = new GcpClient(
-      {
-        serviceAccountJson: JSON.stringify({
-          type: "service_account",
-          project_id: "proj",
-          private_key_id: "kid",
-          private_key: "k",
-          client_email: "sa@proj.iam.gserviceaccount.com",
-          client_id: "1",
-          auth_uri: "https://accounts.google.com/o/oauth2/auth",
-          token_uri: "https://oauth2.googleapis.com/token",
-        }),
-      },
-      [],
+    const client = hostClient(
+      new GcpClient(
+        {
+          serviceAccountJson: JSON.stringify({
+            type: "service_account",
+            project_id: "proj",
+            private_key_id: "kid",
+            private_key: "k",
+            client_email: "sa@proj.iam.gserviceaccount.com",
+            client_id: "1",
+            auth_uri: "https://accounts.google.com/o/oauth2/auth",
+            token_uri: "https://oauth2.googleapis.com/token",
+          }),
+        },
+        [],
+      ),
     );
     vi.spyOn(client as unknown as { token: () => Promise<string> }, "token").mockResolvedValue(
       "tok",

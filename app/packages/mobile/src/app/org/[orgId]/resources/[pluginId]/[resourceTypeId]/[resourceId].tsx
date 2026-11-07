@@ -221,7 +221,7 @@ export default function ResourceDetailScreen() {
 
   // A pod's shell runs through its cluster, so exec is only offered when we
   // arrived with the parent in hand: same condition web uses.
-  const canExec = pluginId === "kubernetes" && resourceTypeId === "k8s-pod" && !!parentResourceId;
+  const canExec = !!data.detailSchema.execConsole && !!parentResourceId;
   const execHref = () => {
     const fields = data.resourceFields ?? {};
     const search = new URLSearchParams({

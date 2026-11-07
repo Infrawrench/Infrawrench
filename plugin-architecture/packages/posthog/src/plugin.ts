@@ -1,4 +1,6 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt, attemptFn } from "@infrawrench/plugin-base/effect";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { resolveHost } from "./api.js";
 import { PostHogClient, listOrganizations } from "./client.js";
@@ -9,16 +11,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { posthogTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "posthog",
-  version: "0.1.0",
+  // PostHog Cloud API hosts; self-hosted instances use their own URL.
+  egressHosts: ["us.posthog.com", "eu.posthog.com"],
   displayName: "PostHog",
   description:
     "Product analytics, feature flags and experiments. Manage projects, feature flags, experiments, cohorts, dashboards, insights, actions, annotations, destinations, batch exports and members, run HogQL, chart events and flag evaluations, and track spend by product and project.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "region",
       label: "Region",
@@ -63,7 +64,7 @@ const manifest: PluginManifest = {
       placeholder: "https://posthog.example.com",
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // /api/billing/spend/ by usage type and project, per day, in USD.
     dimensions: ["service", "resource", "tag"],
@@ -76,36 +77,41 @@ const manifest: PluginManifest = {
   // (1.33/s sustained); analytics endpoints 240/min and 1,200/h.
   rateLimit: { capacity: 10, refillPerSecond: 1 },
   oauth: POSTHOG_OAUTH,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new PostHogClient(credentials, services),
+  testCredentials: { region: "us", apiKey: "phx_test" },
   parseStatusFeed,
   policyTemplate: posthogPolicyTemplate,
   terraformExport: posthogTerraformExport,
-  completeOAuthConnection: completePostHogOAuth,
+  completeOAuthConnection: attemptFn(completePostHogOAuth),
   validateServerCredentials: validateOAuthHost,
-  async listCredentialOptions(fieldKey, credentials, services) {
-    if (fieldKey !== "organizationId") return [];
-    const apiKey = (credentials["apiKey"] ?? "").trim();
-    if (!apiKey) return [];
-    const { baseUrl, region } = resolveHost(
-      credentials["region"] ?? "us",
-      credentials["host"] ?? "",
-    );
-    const orgs = await listOrganizations({
-      baseUrl,
-      region,
-      apiKey,
-      ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
-      ...(services?.http ? { http: services.http } : {}),
+  listCredentialOptions(fieldKey, credentials, services) {
+    return attempt(async () => {
+      if (fieldKey !== "organizationId") return [];
+      const apiKey = (credentials["apiKey"] ?? "").trim();
+      if (!apiKey) return [];
+      const { baseUrl, region } = resolveHost(
+        credentials["region"] ?? "us",
+        credentials["host"] ?? "",
+      );
+      const orgs = await listOrganizations({
+        baseUrl,
+        region,
+        apiKey,
+        ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
+        ...(services?.http ? { http: services.http } : {}),
+      });
+      return orgs.map((o) => ({
+        id: String(o["id"]),
+        label: String(o["name"] ?? o["id"]),
+        ...(o["slug"] ? { description: String(o["slug"]) } : {}),
+      }));
     });
-    return orgs.map((o) => ({
-      id: String(o["id"]),
-      label: String(o["name"] ?? o["id"]),
-      ...(o["slug"] ? { description: String(o["slug"]) } : {}),
-    }));
   },
-};
+});

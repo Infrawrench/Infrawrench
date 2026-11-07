@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { Auth0Client } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -21,16 +22,15 @@ const SCOPES = [
   "read:attack_protection update:attack_protection read:logs read:stats",
 ].join(" ");
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "auth0",
-  version: "0.1.0",
+  // Auth0 tenants: {tenant}.auth0.com and {tenant}.{region}.auth0.com
+  egressHosts: ["*.auth0.com"],
   displayName: "Auth0",
   description:
     "Customer identity platform. Manage applications, APIs, connections, users, roles, organizations, Actions (with deploy), log streams, custom domains, tenant settings, branding and attack protection, and read tenant logs and daily sign-in stats.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "domain",
       label: "Tenant Domain",
@@ -58,7 +58,7 @@ const manifest: PluginManifest = {
       placeholder: "64-character secret",
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: {
     capabilities: [
       {
@@ -98,12 +98,19 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new Auth0Client(credentials, services),
+  testCredentials: {
+    domain: "acme.us.auth0.com",
+    clientId: "test-auth0-client",
+    clientSecret: "test-auth0-secret",
+  },
   parseStatusFeed,
   terraformExport: auth0TerraformExport,
-};
+});

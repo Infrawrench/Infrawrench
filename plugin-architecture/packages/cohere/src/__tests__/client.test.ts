@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CohereClient } from "../client.js";
 
@@ -30,7 +31,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client() {
-  return new CohereClient({ apiKey: "test-key" });
+  return hostClient(new CohereClient({ apiKey: "test-key" }));
 }
 
 function headerOf(init: RequestInit | undefined, name: string): string | undefined {
@@ -47,7 +48,7 @@ afterEach(() => {
 
 describe("constructor", () => {
   it("rejects a missing key rather than failing later on the wire", () => {
-    expect(() => new CohereClient({})).toThrow(/missing apiKey/);
+    expect(() => hostClient(new CohereClient({}))).toThrow(/missing apiKey/);
   });
 });
 

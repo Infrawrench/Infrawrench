@@ -9,7 +9,7 @@
  * (`readStorageObject`; wired to the platform's StorageNodeDriver), and how to
  * persist metrics / raise prompts.
  */
-import type { PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
+import type { HostPluginClient, ResourceInstance } from "@infrawrench/plugin-base";
 
 import type {
   ResourceInstanceLite,
@@ -53,7 +53,7 @@ export interface ClientHostDeps {
    * can't build peer clients should throw; the sidecar surface then simply
    * fails at the call rather than returning the wrong account's client.
    */
-  getClient(accountId: string, sidecar?: SidecarRef): Promise<PluginClient>;
+  getClient(accountId: string, sidecar?: SidecarRef): Promise<HostPluginClient>;
   /** Read a storage object's raw bytes (platform wires its StorageNodeDriver). */
   readStorageObject(accountId: string, bucket: string, key: string): Promise<Uint8Array>;
   getMetric(key: string): Promise<MetricValue>;

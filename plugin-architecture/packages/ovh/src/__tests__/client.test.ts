@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import type { HostServices, ResourceInstance } from "@infrawrench/plugin-base";
 import { OvhClient } from "../client.js";
@@ -14,7 +15,7 @@ const CREDS = {
 };
 
 function makeClient(creds: Record<string, string> = CREDS) {
-  return new OvhClient(creds, resourceTypes);
+  return hostClient(new OvhClient(creds, resourceTypes));
 }
 
 function okJson(body: unknown, status = 200): Response {
@@ -66,11 +67,13 @@ describe("constructor", () => {
     ["consumerKey", { ...CREDS, consumerKey: "" }],
     ["projectId", { ...CREDS, projectId: "" }],
   ])("throws when %s missing", (name, creds) => {
-    expect(() => new OvhClient(creds, resourceTypes)).toThrow(new RegExp(`missing ${name}`));
+    expect(() => hostClient(new OvhClient(creds, resourceTypes))).toThrow(
+      new RegExp(`missing ${name}`),
+    );
   });
 
   it("selects endpoint url by region", async () => {
-    const c = new OvhClient({ ...CREDS, endpoint: "ca" }, resourceTypes);
+    const c = hostClient(new OvhClient({ ...CREDS, endpoint: "ca" }, resourceTypes));
     fetchMock.mockImplementation(async (url: string | URL | Request) => {
       if (String(url).includes("/auth/time")) return okJson(1700000000);
       return okJson([]);
@@ -80,7 +83,7 @@ describe("constructor", () => {
   });
 
   it("falls back to eu for unknown endpoint", async () => {
-    const c = new OvhClient({ ...CREDS, endpoint: "zzz" }, resourceTypes);
+    const c = hostClient(new OvhClient({ ...CREDS, endpoint: "zzz" }, resourceTypes));
     fetchMock.mockImplementation(async (url: string | URL | Request) => {
       if (String(url).includes("/auth/time")) return okJson(1700000000);
       return okJson([]);
@@ -110,10 +113,12 @@ describe("auth signing / timestamp", () => {
       if (req.url.endsWith("/auth/time")) return { status: 200, headers: {}, body: "1700000000" };
       return { status: 200, headers: {}, body: "[]" };
     });
-    const c = new OvhClient(
-      { ...CREDS, caCert: "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----" },
-      resourceTypes,
-      { http: { request } } as unknown as HostServices,
+    const c = hostClient(
+      new OvhClient(
+        { ...CREDS, caCert: "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----" },
+        resourceTypes,
+        { http: { request } } as unknown as HostServices,
+      ),
     );
 
     await c.listResources("instance", ACCOUNT);

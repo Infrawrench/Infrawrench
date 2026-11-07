@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TogetherClient } from "../client.js";
 
@@ -40,7 +41,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client() {
-  return new TogetherClient({ apiKey: "tk_test" });
+  return hostClient(new TogetherClient({ apiKey: "tk_test" }));
 }
 
 beforeEach(() => {

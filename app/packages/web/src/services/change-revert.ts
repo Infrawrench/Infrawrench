@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { isFieldEditable } from "@infrawrench/plugin-base";
-import type { PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
+import type { HostPluginClient, ResourceInstance } from "@infrawrench/plugin-base";
 import { computeRevertPlan, type RevertPlan } from "@infrawrench/client-core";
 import { db } from "@/db/client";
 import { resourceChanges } from "@/db/schema";
@@ -91,7 +91,7 @@ export type RevertFailure =
  */
 export interface RevertPlanResult {
   plan: RevertPlan;
-  client: PluginClient | null;
+  client: HostPluginClient | null;
 }
 
 /** One change event, scoped to the org. */

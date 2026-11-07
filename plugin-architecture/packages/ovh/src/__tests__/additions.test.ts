@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { OvhClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -12,7 +13,7 @@ const CREDS = {
 };
 
 function makeClient() {
-  return new OvhClient(CREDS, plugin.resourceTypes);
+  return hostClient(new OvhClient(CREDS, plugin.resourceTypes));
 }
 
 function okJson(body: unknown, status = 200): Response {

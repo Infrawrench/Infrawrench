@@ -52,7 +52,8 @@ import {
 } from "../lib/provider-oauth";
 import { CreateResourceModal } from "../components/CreateResourceModal";
 import { SecretExportModal } from "../components/SecretExportModal";
-import { SshTunnelModal, type PresetKey } from "../components/SshTunnelModal";
+import { SshTunnelModal } from "../components/SshTunnelModal";
+import { sshTunnelServiceForDrop } from "../lib/ssh-tunnel-drop";
 import { DockerSetupModal } from "../components/DockerSetupModal";
 import { SshEnvDeployModal } from "../components/SshEnvDeployModal";
 import { MetricPingModal } from "../components/MetricPingModal";
@@ -158,7 +159,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   const [tunnelTarget, setTunnelTarget] = useState<{
     sshHost: string;
     sshDefaultUsername?: string;
-    defaultService?: PresetKey;
+    defaultService?: string;
   } | null>(null);
   const [dockerSetupTarget, setDockerSetupTarget] = useState<{
     sshHost: string;
@@ -252,33 +253,21 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
             sshDefaultUsername = sshEndpoint.defaultUsername;
           }
 
-          const TUNNEL_PLUGINS = new Set(["docker", "postgres", "mysql", "redis", "memcached"]);
-          const sourcePlugin =
-            source.pluginId === "__account__"
-              ? String(source.fields["pluginId"] ?? "")
-              : source.pluginId;
-          if (TUNNEL_PLUGINS.has(sourcePlugin)) {
-            const pluginToPreset: Record<string, PresetKey> = {
-              docker: "docker",
-              postgres: "postgres",
-              mysql: "mysql",
-              redis: "redis",
-              memcached: "memcached",
-            };
-            setTunnelTarget({
-              sshHost,
-              ...(sshDefaultUsername ? { sshDefaultUsername } : {}),
-              ...(pluginToPreset[sourcePlugin] !== undefined
-                ? { defaultService: pluginToPreset[sourcePlugin] }
-                : {}),
-            });
-          } else {
-            setEnvDeployDrop({
-              source,
-              sshHost,
-              ...(sshDefaultUsername ? { sshDefaultUsername } : {}),
-            });
-          }
+          void sshTunnelServiceForDrop(source).then((defaultService) => {
+            if (defaultService) {
+              setTunnelTarget({
+                sshHost,
+                ...(sshDefaultUsername ? { sshDefaultUsername } : {}),
+                defaultService,
+              });
+            } else {
+              setEnvDeployDrop({
+                source,
+                sshHost,
+                ...(sshDefaultUsername ? { sshDefaultUsername } : {}),
+              });
+            }
+          });
           return;
         }
       }

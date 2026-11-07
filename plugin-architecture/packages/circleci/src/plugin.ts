@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import type { CircleContext } from "./api.js";
 import { circleFetch, isPermissionError } from "./api.js";
@@ -17,16 +19,16 @@ import { circleciDeployEvents } from "./deploy-events.js";
 
 const PRICING_LINK = { label: "CircleCI pricing", url: "https://circleci.com/pricing/" };
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "circleci",
-  version: "0.1.0",
+  // Usage export files download from presigned S3 links (bucket and region
+  // are CircleCI's choice, so the whole S3 suffix).
+  egressHosts: ["circleci.com", "runner.circleci.com", "*.amazonaws.com"],
   displayName: "CircleCI",
   description:
     "Continuous integration and delivery. Track estimated CircleCI spend by project, resource class and executor, and manage projects, workflows with Insights metrics, pipelines, contexts, variables, schedules, triggers and self-hosted runners.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "Personal API Token",
@@ -68,7 +70,7 @@ const manifest: PluginManifest = {
       defaultValue: "0",
       helpLink: PRICING_LINK,
     },
-  ],
+  ]),
   costs: {
     // Usage export credits priced at the rate above: the kind of credit
     // (compute, Docker layer caching, storage, network, users…) -> service,
@@ -86,7 +88,9 @@ const manifest: PluginManifest = {
   // 5,000 requests an hour per token across the v2 API; stay well under it.
   rateLimit: { capacity: 10, refillPerSecond: 2 },
   oauth: CIRCLECI_OAUTH,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 /**
  * Options for the organization picker: every organization the token's user
@@ -124,13 +128,17 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: circleciDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new CircleCIClient(credentials, services),
+  testCredentials: {
+    apiToken: "test-circleci-token",
+    organization: "00000000-0000-0000-0000-000000000001",
+  },
   parseStatusFeed,
-  listCredentialOptions,
-  registerOAuthClient: registerCircleCIClient,
-  completeOAuthConnection: completeCircleCIOAuth,
-};
+  listCredentialOptions: attemptFn(listCredentialOptions),
+  registerOAuthClient: attemptFn(registerCircleCIClient),
+  completeOAuthConnection: attemptFn(completeCircleCIOAuth),
+});

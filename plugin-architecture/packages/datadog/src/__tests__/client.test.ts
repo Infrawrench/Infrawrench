@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { DatadogClient } from "../client.js";
 import { latestAttributionMonth, parseTagConfigSource } from "../attribution.js";
@@ -11,9 +12,11 @@ const ACCOUNT = "acc";
 
 function client(route: Parameters<typeof makeHttp>[0], site = "eu1") {
   const { http, calls } = makeHttp(route);
-  const c = new DatadogClient({ apiKey: "api-key", appKey: "app-key", site }, {
-    http,
-  } as unknown as ConstructorParameters<typeof DatadogClient>[1]);
+  const c = hostClient(
+    new DatadogClient({ apiKey: "api-key", appKey: "app-key", site }, {
+      http,
+    } as unknown as ConstructorParameters<typeof DatadogClient>[1]),
+  );
   return { c, calls };
 }
 
@@ -61,8 +64,8 @@ describe("attribution helpers", () => {
 
 describe("DatadogClient", () => {
   it("requires both keys", () => {
-    expect(() => new DatadogClient({ apiKey: "a" })).toThrow(/appKey/);
-    expect(() => new DatadogClient({ appKey: "a" })).toThrow(/apiKey/);
+    expect(() => hostClient(new DatadogClient({ apiKey: "a" }))).toThrow(/appKey/);
+    expect(() => hostClient(new DatadogClient({ appKey: "a" }))).toThrow(/apiKey/);
   });
 
   it("lists monitors against the account's site with muted state", async () => {

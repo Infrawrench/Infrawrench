@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { MailgunApiError, encodeParams } from "../api.js";
 import { MailgunClient, domainForm, resolveRegions } from "../client.js";
@@ -40,7 +41,10 @@ function client(
       };
     },
   };
-  return { c: new MailgunClient({ apiKey: "key-1", region }, { http } as never), calls };
+  return {
+    c: hostClient(new MailgunClient({ apiKey: "key-1", region }, { http } as never)),
+    calls,
+  };
 }
 
 const DETAIL = {

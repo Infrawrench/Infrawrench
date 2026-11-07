@@ -17,6 +17,7 @@
  * `crypto.subtle`, so it runs in Node, the Electron main process and a
  * Cloudflare Worker alike.
  */
+import type { PluginEffect } from "./contract-effect.js";
 
 /** Reserved credential key holding the serialized {@link OAuthGrantState}. */
 export const OAUTH_CREDENTIAL_KEY = "__oauth";
@@ -202,12 +203,12 @@ export interface OAuthPluginHooks {
   completeOAuthConnection?(
     tokens: OAuthTokenSet,
     context: OAuthCompletionContext,
-  ): Promise<OAuthCompletionResult>;
+  ): PluginEffect<OAuthCompletionResult>;
   /**
    * Replace the standard RFC 6749 code exchange, for providers whose token
    * call is non-standard (a JSON body, a key-minting endpoint). Optional.
    */
-  exchangeOAuthCode?(request: OAuthExchangeRequest): Promise<OAuthTokenSet>;
+  exchangeOAuthCode?(request: OAuthExchangeRequest): PluginEffect<OAuthTokenSet>;
   /**
    * Replace the standard authorize URL, for providers whose consent page
    * takes non-standard parameters (`callback_url` instead of `redirect_uri`,
@@ -225,7 +226,7 @@ export interface OAuthPluginHooks {
   registerOAuthClient?(request: {
     redirectUri: string;
     fetch: typeof fetch;
-  }): Promise<{ clientId: string; clientSecret?: string }>;
+  }): PluginEffect<{ clientId: string; clientSecret?: string }>;
 }
 
 /** Parameters for building an authorize URL. `clientId` is empty for `clientRegistration: "none"`. */
@@ -314,6 +315,7 @@ export function buildOAuthAuthorizeUrl(
 
 /** Error from a token endpoint. `invalidGrant` means the user must reconnect. */
 export class OAuthTokenError extends Error {
+  readonly _tag = "OAuthTokenError";
   constructor(
     message: string,
     readonly status: number,

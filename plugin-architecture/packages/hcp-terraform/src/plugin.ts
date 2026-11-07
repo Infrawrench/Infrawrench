@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import type { TfContext } from "./api.js";
@@ -21,15 +23,14 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { tfeTerraformExport } from "./terraform.js";
 import { hcpTerraformDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "hcp-terraform",
-  version: "0.1.0",
+  // app.terraform.io (and app.eu.terraform.io) for the API, archivist.terraform.io for run logs and state downloads; Terraform Enterprise hostnames are user-supplied and not allowlisted
+  egressHosts: ["app.terraform.io", "*.terraform.io"],
   displayName: "HCP Terraform",
   description:
     "HCP Terraform and Terraform Enterprise. Manage projects, workspaces and their variables, queue, apply and discard runs with plan and apply logs, reference state outputs from other resources, watch drift and checks, and manage variable sets, agent pools, policy sets, teams, run tasks and the private registry.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -42,7 +43,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://app.terraform.io/app/settings/tokens",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -74,7 +75,7 @@ const manifest: PluginManifest = {
       placeholder: "my-org",
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // One row per invoice, on its issue date. Credit-card-billed HCP
     // Terraform organizations only; everyone else reports nothing.
@@ -89,7 +90,9 @@ const manifest: PluginManifest = {
   statusFeed,
   // 30 requests a second per user.
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 function contextFor(credentials: Record<string, string>, services?: HostServices): TfContext {
   const token = (credentials["apiToken"] ?? "").trim();
@@ -140,14 +143,19 @@ function validateServerCredentials(credentials: Record<string, string>): string 
     : null;
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: hcpTerraformDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new HcpTerraformClient(credentials, services),
+  testCredentials: {
+    apiToken: "test.atlasv1.token",
+    hostname: "app.terraform.io",
+    organization: "acme",
+  },
   parseStatusFeed,
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   validateServerCredentials,
   terraformExport: tfeTerraformExport,
   remediationCommands: tfeRemediationCommands,
-};
+});

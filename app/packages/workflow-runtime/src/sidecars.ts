@@ -12,7 +12,11 @@
  * {@link attachSidecarInfo} puts them in the accounts tree, from which codegen
  * types them and the prelude builds them.
  */
-import type { Plugin, PluginClient, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import type {
+  HostPlugin,
+  HostPluginClient,
+  ResourceTypeDefinition,
+} from "@infrawrench/plugin-base";
 
 import { detailResourceCapabilities, mergeCapabilities } from "./capabilities.js";
 import type {
@@ -32,7 +36,7 @@ import type {
 export async function attachSidecarInfo(
   infos: WorkflowResourceTypeInfo[],
   defs: readonly ResourceTypeDefinition[],
-  resolvePlugin: (pluginId: string) => Promise<Plugin | undefined>,
+  resolvePlugin: (pluginId: string) => Promise<HostPlugin | undefined>,
 ): Promise<void> {
   const defById = new Map(defs.map((d) => [d.id, d]));
   await Promise.all(
@@ -121,7 +125,11 @@ export interface SidecarCapabilityProbe {
   /** List resources of a parent type in one account, to reach the peer through. */
   listParents(parentTypeId: string, accountId: string): Promise<{ id: string }[]>;
   /** Build the peer plugin's client using that parent's credentials. */
-  peerClient(pluginId: string, parentResourceId: string, accountId: string): Promise<PluginClient>;
+  peerClient(
+    pluginId: string,
+    parentResourceId: string,
+    accountId: string,
+  ): Promise<HostPluginClient>;
 }
 
 /**

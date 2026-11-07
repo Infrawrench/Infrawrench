@@ -1,19 +1,19 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { MailgunClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "mailgun",
-  version: "0.1.0",
+  // api.eu.mailgun.net holds EU-region domains
+  egressHosts: ["api.mailgun.net", "api.eu.mailgun.net"],
   displayName: "Mailgun",
   description:
     "Email sending and receiving. Manage domains in the US and EU regions with their DNS records and verification, sending keys and API keys, webhooks, routes, mailing lists, SMTP credentials, dedicated IP pools, tags, subaccounts and suppressions, chart daily delivery and engagement, and watch the custom monthly sending limit.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -26,7 +26,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://app.mailgun.com/settings/api_security",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -54,17 +54,20 @@ const manifest: PluginManifest = {
       ],
     },
     caCertCredentialField,
-  ],
+  ]),
   quotas: {
     label: "Custom monthly sending limit",
     partial: true,
   },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new MailgunClient(credentials, services),
+  testCredentials: { apiKey: "test-mailgun-api-key" },
   parseStatusFeed,
-};
+});

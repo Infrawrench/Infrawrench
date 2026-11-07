@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { NorthflankClient, parseEnvLines } from "../client.js";
@@ -64,7 +65,7 @@ describe("NorthflankClient HTTP", () => {
         data: { id: "p2", name: "Two", deployment: { region: "us-central" } },
       },
     });
-    const client = new NorthflankClient({ apiToken: "tok" });
+    const client = hostClient(new NorthflankClient({ apiToken: "tok" }));
     const projects = await client.listResources("nf-project", ACC);
     expect(projects.map((p) => p.externalId)).toEqual(["p1", "p2"]);
     expect(projects[0]!.fields["region"]).toBe("europe-west");
@@ -81,7 +82,7 @@ describe("NorthflankClient HTTP", () => {
         pagination: { hasNextPage: false },
       },
     });
-    const client = new NorthflankClient({ apiToken: "tok", teamId: "platform" });
+    const client = hostClient(new NorthflankClient({ apiToken: "tok", teamId: "platform" }));
     const [account] = await client.listResources("nf-account", ACC);
     expect(account!.fields["teamId"]).toBe("platform");
     await client.listResources("nf-domain", ACC);
@@ -95,7 +96,7 @@ describe("NorthflankClient HTTP", () => {
         { status: 403 },
       ),
     });
-    const client = new NorthflankClient({ apiToken: "tok" });
+    const client = hostClient(new NorthflankClient({ apiToken: "tok" }));
     const err = await client.listResources("nf-project", ACC).catch((e: unknown) => e);
     expect((err as { status?: number }).status).toBe(403);
     expect(String((err as Error).message)).toMatch(/Forbidden.*API role/);
@@ -108,7 +109,7 @@ describe("NorthflankClient HTTP", () => {
       },
       "POST /v1/projects/p1/services/api/runtime-environment": { data: {} },
     });
-    const client = new NorthflankClient({ apiToken: "tok" });
+    const client = hostClient(new NorthflankClient({ apiToken: "tok" }));
     await client.executeNoSqlCommand("nf-service", `${ACC}:nf-service:p1/api`, ACC, "set-env", [
       JSON.stringify({ variables: "B=3\nC=x=y" }),
     ]);
@@ -135,7 +136,7 @@ describe("NorthflankClient HTTP", () => {
         },
       },
     });
-    const client = new NorthflankClient({ apiToken: "tok" });
+    const client = hostClient(new NorthflankClient({ apiToken: "tok" }));
     const uri = await client.resolveOutput(
       "nf-addon",
       `${ACC}:nf-addon:p1/db`,
@@ -155,7 +156,7 @@ describe("NorthflankClient HTTP", () => {
       },
       "GET /v1/projects/p1/addons/db/credentials": { data: { secrets: {}, envs: {} } },
     });
-    const client = new NorthflankClient({ apiToken: "tok" });
+    const client = hostClient(new NorthflankClient({ apiToken: "tok" }));
     await expect(
       client.resolveOutput("nf-addon", `${ACC}:nf-addon:p1/db`, "connectionString", ACC),
     ).rejects.toThrow(/public access/);
@@ -193,7 +194,7 @@ describe("NorthflankClient HTTP", () => {
               pagination: { hasNextPage: false },
             },
     });
-    const client = new NorthflankClient({ apiToken: "tok" });
+    const client = hostClient(new NorthflankClient({ apiToken: "tok" }));
     const rows = (await client.fetchCostData(ACC, {
       fromDate: "2026-09-01",
       toDate: "2026-09-01",
@@ -229,11 +230,13 @@ describe("NorthflankClient HTTP", () => {
         pagination: { hasNextPage: false },
       },
     });
-    expect(await plugin.listCredentialOptions!("teamId", { apiToken: "t" })).toEqual([
+    expect(await hostPlugin(plugin).listCredentialOptions!("teamId", { apiToken: "t" })).toEqual([
       { id: "platform", label: "Platform" },
     ]);
     mockFetch({ "GET /v1/auth": { data: { entityType: "team", entityId: "me" } } });
-    expect(await plugin.listCredentialOptions!("teamId", { apiToken: "t" })).toEqual([]);
+    expect(await hostPlugin(plugin).listCredentialOptions!("teamId", { apiToken: "t" })).toEqual(
+      [],
+    );
   });
 });
 

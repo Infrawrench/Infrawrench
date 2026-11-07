@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -137,7 +140,7 @@ export class ExoscaleClient implements PluginClient {
   private typeCache: { at: number; value: Promise<listers.TypeIndex> } | null = null;
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     private readonly resourceTypes: ResourceTypeDefinition[],
     private readonly services?: HostServices,
   ) {
@@ -161,51 +164,63 @@ export class ExoscaleClient implements PluginClient {
     return this.typeCache.value;
   };
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    const lister = LISTERS[typeId];
-    if (!lister) throw new Error(`Exoscale plugin: unknown resource type "${typeId}"`);
-    return lister(this.api, accountId, this.types);
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      const lister = LISTERS[typeId];
+      if (!lister) throw new Error(`Exoscale plugin: unknown resource type "${typeId}"`);
+      return lister(this.api, accountId, this.types);
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const ext = resourceId.startsWith(`${accountId}:${typeId}:`)
-      ? resourceId.slice(accountId.length + typeId.length + 2)
-      : resourceId;
-    const { zone, id } = zonal(ext);
-    switch (typeId) {
-      case "instance":
-        return listers.mapInstance(
-          await this.api.get(zone, `/instance/${id}`),
-          zone,
-          accountId,
-          await this.types().catch(() => undefined),
-        );
-      case "block-storage":
-        return listers.mapVolume(await this.api.get(zone, `/block-storage/${id}`), zone, accountId);
-      case "sks-cluster":
-        return listers.mapCluster(await this.api.get(zone, `/sks-cluster/${id}`), zone, accountId);
-      case "nlb":
-        return listers.mapNlb(await this.api.get(zone, `/load-balancer/${id}`), zone, accountId);
-      case "private-network":
-        return listers.mapPrivateNetwork(
-          await this.api.get(zone, `/private-network/${id}`),
-          zone,
-          accountId,
-        );
-      case "security-group":
-        return listers.mapSecurityGroup(
-          await this.api.get(DEFAULT_ZONE, `/security-group/${ext}`),
-          accountId,
-        );
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId || r.externalId === ext);
-    if (!found) throw notFound(typeId, ext);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = resourceId.startsWith(`${accountId}:${typeId}:`)
+        ? resourceId.slice(accountId.length + typeId.length + 2)
+        : resourceId;
+      const { zone, id } = zonal(ext);
+      switch (typeId) {
+        case "instance":
+          return listers.mapInstance(
+            await this.api.get(zone, `/instance/${id}`),
+            zone,
+            accountId,
+            await this.types().catch(() => undefined),
+          );
+        case "block-storage":
+          return listers.mapVolume(
+            await this.api.get(zone, `/block-storage/${id}`),
+            zone,
+            accountId,
+          );
+        case "sks-cluster":
+          return listers.mapCluster(
+            await this.api.get(zone, `/sks-cluster/${id}`),
+            zone,
+            accountId,
+          );
+        case "nlb":
+          return listers.mapNlb(await this.api.get(zone, `/load-balancer/${id}`), zone, accountId);
+        case "private-network":
+          return listers.mapPrivateNetwork(
+            await this.api.get(zone, `/private-network/${id}`),
+            zone,
+            accountId,
+          );
+        case "security-group":
+          return listers.mapSecurityGroup(
+            await this.api.get(DEFAULT_ZONE, `/security-group/${ext}`),
+            accountId,
+          );
+      }
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId || r.externalId === ext);
+      if (!found) throw notFound(typeId, ext);
+      return found;
+    });
   }
 
   private async dbaasService(ext: string): Promise<listers.Json> {
@@ -226,47 +241,51 @@ export class ExoscaleClient implements PluginClient {
     };
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const ext = resource.externalId ?? "";
-    if (typeId === "sks-cluster" && outputKey === "kubeconfig") return this.kubeconfig(ext);
-    if (typeId === "dbaas") {
-      const svc = await this.dbaasService(ext);
-      const params = (svc["uri-params"] as listers.Json | undefined) ?? {};
-      const info = (svc["connection-info"] as listers.Json | undefined) ?? {};
-      switch (outputKey) {
-        case "connectionString":
-          return listers.str(svc["uri"]) || listers.str((info["uri"] as string[] | undefined)?.[0]);
-        case "host":
-          return listers.str(params["host"]);
-        case "port":
-          return listers.str(params["port"]);
-        case "username":
-          return listers.str(params["user"]);
-        case "password":
-          return listers.str(params["password"]);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const ext = resource.externalId ?? "";
+      if (typeId === "sks-cluster" && outputKey === "kubeconfig") return this.kubeconfig(ext);
+      if (typeId === "dbaas") {
+        const svc = await this.dbaasService(ext);
+        const params = (svc["uri-params"] as listers.Json | undefined) ?? {};
+        const info = (svc["connection-info"] as listers.Json | undefined) ?? {};
+        switch (outputKey) {
+          case "connectionString":
+            return (
+              listers.str(svc["uri"]) || listers.str((info["uri"] as string[] | undefined)?.[0])
+            );
+          case "host":
+            return listers.str(params["host"]);
+          case "port":
+            return listers.str(params["port"]);
+          case "username":
+            return listers.str(params["user"]);
+          case "password":
+            return listers.str(params["password"]);
+        }
       }
-    }
-    if (typeId === "dbaas-user" && outputKey === "password") {
-      const parts = ext.split("/");
-      const user = parts.pop() ?? "";
-      const res = (await actions.executeCommand(
-        this.api,
-        "dbaas",
-        `${accountId}:dbaas:${parts.join("/")}`,
-        "reveal-password",
-        [JSON.stringify({ username: user })],
-      )) as listers.Json;
-      return listers.str(res["password"]);
-    }
-    const value = resource.resolvedOutputs[outputKey];
-    if (value !== undefined) return value;
-    throw new Error(`Exoscale plugin: cannot resolve output "${outputKey}" for ${typeId}`);
+      if (typeId === "dbaas-user" && outputKey === "password") {
+        const parts = ext.split("/");
+        const user = parts.pop() ?? "";
+        const res = (await actions.executeCommand(
+          this.api,
+          "dbaas",
+          `${accountId}:dbaas:${parts.join("/")}`,
+          "reveal-password",
+          [JSON.stringify({ username: user })],
+        )) as listers.Json;
+        return listers.str(res["password"]);
+      }
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+      throw new Error(`Exoscale plugin: cannot resolve output "${outputKey}" for ${typeId}`);
+    });
   }
 
   /** `POST /sks-cluster-kubeconfig/{id}` returns the file base64-encoded. */
@@ -285,8 +304,10 @@ export class ExoscaleClient implements PluginClient {
     return res.kubeconfig ? base64ToUtf8(res.kubeconfig) : "";
   }
 
-  enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    return enrichDetail(this.api, resource);
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return enrichDetail(this.api, resource);
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -302,58 +323,66 @@ export class ExoscaleClient implements PluginClient {
     return renderSidebarItem(resource);
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    return dashboardStats(await this.getResource(typeId, resourceId, accountId));
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      return dashboardStats(await runPluginEffect(this.getResource(typeId, resourceId, accountId)));
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     typeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (typeId !== "dbaas") return [];
-    const r = await this.getResource(typeId, resourceId, accountId);
-    const { zone, id } = zonal(r.externalId ?? "");
-    return fetchDbaasMetrics(this.api, zone, id, timeRange);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (typeId !== "dbaas") return [];
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const { zone, id } = zonal(r.externalId ?? "");
+      return fetchDbaasMetrics(this.api, zone, id, timeRange);
+    });
   }
 
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "dbaas")
-      throw new Error("Exoscale plugin: logs are available for DBaaS services only");
-    const r = await this.getResource(typeId, resourceId, accountId);
-    const { zone, id } = zonal(r.externalId ?? "");
-    const res = await this.api.send<{
-      logs?: Array<{ time?: string; node?: string; unit?: string; message?: string }>;
-    }>(zone, "POST", `/dbaas-service-logs/${id}`, {
-      limit: Math.min(params.tailLines ?? 200, 1000),
-      "sort-order": "desc",
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "dbaas")
+        throw new Error("Exoscale plugin: logs are available for DBaaS services only");
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const { zone, id } = zonal(r.externalId ?? "");
+      const res = await this.api.send<{
+        logs?: Array<{ time?: string; node?: string; unit?: string; message?: string }>;
+      }>(zone, "POST", `/dbaas-service-logs/${id}`, {
+        limit: Math.min(params.tailLines ?? 200, 1000),
+        "sort-order": "desc",
+      });
+      const lines = [...(res.logs ?? [])]
+        .reverse()
+        .map((l) =>
+          `${l.time ?? ""} ${l.node ?? ""} ${l.unit ?? ""} ${l.message ?? ""}`
+            .replace(/\s+/g, " ")
+            .trim(),
+        );
+      return {
+        text: lines.length ? `${lines.join("\n")}\n` : "",
+        containers: ["service"],
+        activeContainer: "service",
+      };
     });
-    const lines = [...(res.logs ?? [])]
-      .reverse()
-      .map((l) =>
-        `${l.time ?? ""} ${l.node ?? ""} ${l.unit ?? ""} ${l.message ?? ""}`
-          .replace(/\s+/g, " ")
-          .trim(),
-      );
-    return {
-      text: lines.length ? `${lines.join("\n")}\n` : "",
-      containers: ["service"],
-      activeContainer: "service",
-    };
   }
 
-  getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    return getCreateConfig(this.api, typeId, parentResourceId);
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return getCreateConfig(this.api, typeId, parentResourceId);
+    });
   }
 
   createResource(
@@ -361,22 +390,28 @@ export class ExoscaleClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    return createResource(this.api, typeId, accountId, fields, parentResourceId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return createResource(this.api, typeId, accountId, fields, parentResourceId);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    await applyUpdate(this.api, typeId, resourceId, fields);
-    return this.getResource(typeId, resourceId, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      await applyUpdate(this.api, typeId, resourceId, fields);
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    });
   }
 
-  deleteResource(typeId: string, resourceId: string): Promise<void> {
-    return actions.deleteResource(this.api, typeId, resourceId);
+  deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
+    return attempt(async () => {
+      return actions.deleteResource(this.api, typeId, resourceId);
+    });
   }
 
   attachResource(
@@ -384,18 +419,22 @@ export class ExoscaleClient implements PluginClient {
     sourceResourceId: string,
     targetTypeId: string,
     targetResourceId: string,
-  ): Promise<void> {
-    return actions.attachResource(
-      this.api,
-      sourceTypeId,
-      sourceResourceId,
-      targetTypeId,
-      targetResourceId,
-    );
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      return actions.attachResource(
+        this.api,
+        sourceTypeId,
+        sourceResourceId,
+        targetTypeId,
+        targetResourceId,
+      );
+    });
   }
 
-  invokeAction(typeId: string, resourceId: string, actionId: string): Promise<void> {
-    return actions.invokeAction(this.api, typeId, resourceId, actionId);
+  invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
+    return attempt(async () => {
+      return actions.invokeAction(this.api, typeId, resourceId, actionId);
+    });
   }
 
   executeNoSqlCommand(
@@ -404,108 +443,121 @@ export class ExoscaleClient implements PluginClient {
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    return actions.executeCommand(this.api, typeId, resourceId, command, args);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      return actions.executeCommand(this.api, typeId, resourceId, command, args);
+    });
   }
 
-  fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchExoscaleCostData(this.api, range, this.services);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchExoscaleCostData(this.api, range, this.services);
+    });
   }
 
-  async fetchCreditBalance(): Promise<CreditBalance[]> {
-    try {
-      const res = await this.api.get<{ "live-balance"?: { balance?: number; currency?: string } }>(
-        DEFAULT_ZONE,
-        "/live-balance",
-      );
-      const lb = res["live-balance"];
-      if (!lb || typeof lb.balance !== "number" || !lb.currency) return [];
-      return [
-        {
-          key: "default",
-          label: "Account balance",
-          remaining: Math.max(0, lb.balance),
-          currency: lb.currency,
-        },
-      ];
-    } catch (err) {
-      const s = statusOf(err);
-      if (s === 401 || s === 403)
-        throw new CreditAccessError(
-          "This API key's role cannot read the organization balance.",
-          IAM_HELP,
-        );
-      throw err;
-    }
+  fetchCreditBalance(): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      try {
+        const res = await this.api.get<{
+          "live-balance"?: { balance?: number; currency?: string };
+        }>(DEFAULT_ZONE, "/live-balance");
+        const lb = res["live-balance"];
+        if (!lb || typeof lb.balance !== "number" || !lb.currency) return [];
+        return [
+          {
+            key: "default",
+            label: "Account balance",
+            remaining: Math.max(0, lb.balance),
+            currency: lb.currency,
+          },
+        ];
+      } catch (err) {
+        const s = statusOf(err);
+        if (s === 401 || s === 403)
+          throw new CreditAccessError(
+            "This API key's role cannot read the organization balance.",
+            IAM_HELP,
+          );
+        throw err;
+      }
+    });
   }
 
-  fetchQuotas(): Promise<QuotaUsage[]> {
-    return fetchQuotas(this.api);
+  fetchQuotas(): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      return fetchQuotas(this.api);
+    });
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    const identity = await this.api
-      .get<listers.Json>(DEFAULT_ZONE, "/organization")
-      .then((o) => listers.str(o["name"]) || undefined)
-      .catch(() => undefined);
-    const checks = await Promise.all(
-      PROBES.map(async (p) => {
-        try {
-          await this.api.get(DEFAULT_ZONE, p.path);
-          return { capabilityId: p.id, status: "ok" as const };
-        } catch (err) {
-          const status = statusOf(err);
-          // No report yet for a new organization is still access.
-          if (status === 404 && p.id === "costs")
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      const identity = await this.api
+        .get<listers.Json>(DEFAULT_ZONE, "/organization")
+        .then((o) => listers.str(o["name"]) || undefined)
+        .catch(() => undefined);
+      const checks = await Promise.all(
+        PROBES.map(async (p) => {
+          try {
+            await this.api.get(DEFAULT_ZONE, p.path);
             return { capabilityId: p.id, status: "ok" as const };
-          if (status === 401 || status === 403) {
+          } catch (err) {
+            const status = statusOf(err);
+            // No report yet for a new organization is still access.
+            if (status === 404 && p.id === "costs")
+              return { capabilityId: p.id, status: "ok" as const };
+            if (status === 401 || status === 403) {
+              return {
+                capabilityId: p.id,
+                status: "missing" as const,
+                missingPermissions: [{ id: p.id, label: p.permission }],
+                message:
+                  status === 401
+                    ? "Exoscale rejected the key. Check the key and secret, and that the key has not been revoked."
+                    : "The key's IAM role does not allow this. Add the service to the role in the Portal under IAM, Roles.",
+                helpLink: IAM_HELP,
+              };
+            }
             return {
               capabilityId: p.id,
-              status: "missing" as const,
-              missingPermissions: [{ id: p.id, label: p.permission }],
-              message:
-                status === 401
-                  ? "Exoscale rejected the key. Check the key and secret, and that the key has not been revoked."
-                  : "The key's IAM role does not allow this. Add the service to the role in the Portal under IAM, Roles.",
-              helpLink: IAM_HELP,
+              status: "unknown" as const,
+              message: err instanceof Error ? err.message : String(err),
             };
           }
-          return {
-            capabilityId: p.id,
-            status: "unknown" as const,
-            message: err instanceof Error ? err.message : String(err),
-          };
-        }
-      }),
-    );
-    return { checks, ...(identity ? { identity } : {}) };
+        }),
+      );
+      return { checks, ...(identity ? { identity } : {}) };
+    });
   }
 
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    if (typeId === "sks-cluster" && formatId === "kubeconfig") {
-      const r = await this.getResource(typeId, resourceId, accountId);
-      const content = await this.kubeconfig(r.externalId ?? "");
-      if (!content)
-        throw new Error(
-          "Exoscale did not return a kubeconfig; try again once the cluster is running.",
-        );
-      return {
-        content,
-        filename: `${r.displayName || "sks"}-kubeconfig.yaml`,
-        mimeType: "application/yaml",
-        warning: "This file grants full administrative access to the cluster for 30 days.",
-      };
-    }
-    throw new Error(`Exoscale plugin: no credential format "${formatId}" for ${typeId}`);
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      if (typeId === "sks-cluster" && formatId === "kubeconfig") {
+        const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        const content = await this.kubeconfig(r.externalId ?? "");
+        if (!content)
+          throw new Error(
+            "Exoscale did not return a kubeconfig; try again once the cluster is running.",
+          );
+        return {
+          content,
+          filename: `${r.displayName || "sks"}-kubeconfig.yaml`,
+          mimeType: "application/yaml",
+          warning: "This file grants full administrative access to the cluster for 30 days.",
+        };
+      }
+      throw new Error(`Exoscale plugin: no credential format "${formatId}" for ${typeId}`);
+    });
   }
 
-  listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    return storage.listObjects(this.api, bucket, prefix);
+  listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
+    return attempt(async () => {
+      return storage.listObjects(this.api, bucket, prefix);
+    });
   }
 
   uploadStorageObject(
@@ -513,15 +565,21 @@ export class ExoscaleClient implements PluginClient {
     key: string,
     file: File,
     onProgress?: (pct: number) => void,
-  ): Promise<void> {
-    return storage.uploadObject(this.api, bucket, key, file, onProgress);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      return storage.uploadObject(this.api, bucket, key, file, onProgress);
+    });
   }
 
-  makeStorageFolder(bucket: string, key: string): Promise<void> {
-    return storage.makeFolder(this.api, bucket, key);
+  makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return storage.makeFolder(this.api, bucket, key);
+    });
   }
 
-  deleteStorageObject(bucket: string, key: string): Promise<void> {
-    return storage.deleteObject(this.api, bucket, key);
+  deleteStorageObject(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return storage.deleteObject(this.api, bucket, key);
+    });
   }
 }

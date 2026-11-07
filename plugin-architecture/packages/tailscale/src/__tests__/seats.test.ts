@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { SeatRemediationFinding } from "@infrawrench/plugin-base";
 import { normalizeSeatRecords } from "@infrawrench/plugin-base";
@@ -36,7 +37,7 @@ function client(reply: (url: string, method: string) => { status?: number; body?
   });
   return {
     request,
-    c: plugin.createClient({ apiKey: "tskey-api-secret", tailnet: "example.com" }, {
+    c: hostPlugin(plugin).createClient({ apiKey: "tskey-api-secret", tailnet: "example.com" }, {
       http: { request },
     } as never),
   };

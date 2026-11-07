@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GeminiClient } from "../client.js";
 import { WAV_HEADER_BYTES } from "../audio.js";
@@ -31,7 +32,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client() {
-  return new GeminiClient({ apiKey: "AIzaTestKey" });
+  return hostClient(new GeminiClient({ apiKey: "AIzaTestKey" }));
 }
 
 function headerOf(init: RequestInit | undefined, name: string): string | undefined {
@@ -52,7 +53,7 @@ afterEach(() => {
 
 describe("constructor", () => {
   it("rejects a missing key", () => {
-    expect(() => new GeminiClient({})).toThrow(/missing apiKey/);
+    expect(() => hostClient(new GeminiClient({}))).toThrow(/missing apiKey/);
   });
 });
 

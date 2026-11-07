@@ -1,8 +1,11 @@
+import type { PluginEffect } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ckFetch } from "./api.js";
@@ -13,16 +16,14 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { checklyTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "checkly",
-  version: "0.1.0",
+  egressHosts: ["api.checklyhq.com"],
   displayName: "Checkly",
   description:
     "Synthetic monitoring and uptime checks. Manage Checkly checks of every type (activate, mute, run now, edit), check groups, alert channels, maintenance windows, private locations, dashboards, status pages and environment variables, and chart response times and failures per location.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -45,7 +46,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiKey"] },
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: CHECKLY_PREFLIGHT,
   statusFeed,
   quotas: {
@@ -54,38 +55,45 @@ const manifest: PluginManifest = {
     increaseUrl: "https://app.checklyhq.com/settings/account/billing",
   },
   rateLimit: { capacity: 10, refillPerSecond: 1 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new ChecklyClient(credentials, services),
+  testCredentials: { apiKey: "cu_test", accountId: "00000000-0000-0000-0000-000000000000" },
   parseStatusFeed,
   terraformExport: checklyTerraformExport,
-  async listCredentialOptions(
+  listCredentialOptions(
     fieldKey: string,
     credentials: Record<string, string>,
     services?: HostServices,
-  ): Promise<CredentialFieldOption[]> {
-    if (fieldKey !== "accountId") return [];
-    const apiKey = (credentials["apiKey"] ?? "").trim();
-    if (!apiKey) return [];
-    const accounts = await ckFetch<Array<{ id?: string; name?: string; planDisplayName?: string }>>(
-      {
-        apiKey,
-        accountId: "",
-        ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
-        ...(services?.http ? { http: services.http } : {}),
-      },
-      "/v1/accounts",
-      { noAccount: true },
-    );
-    return (accounts ?? [])
-      .filter((a) => a.id)
-      .map((a) => ({
-        id: a.id as string,
-        label: a.name ?? (a.id as string),
-        description: [a.planDisplayName, a.id].filter(Boolean).join(", "),
-      }));
+  ): PluginEffect<CredentialFieldOption[]> {
+    return attempt(async () => {
+      if (fieldKey !== "accountId") return [];
+      const apiKey = (credentials["apiKey"] ?? "").trim();
+      if (!apiKey) return [];
+      const accounts = await ckFetch<
+        Array<{ id?: string; name?: string; planDisplayName?: string }>
+      >(
+        {
+          apiKey,
+          accountId: "",
+          ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
+          ...(services?.http ? { http: services.http } : {}),
+        },
+        "/v1/accounts",
+        { noAccount: true },
+      );
+      return (accounts ?? [])
+        .filter((a) => a.id)
+        .map((a) => ({
+          id: a.id as string,
+          label: a.name ?? (a.id as string),
+          description: [a.planDisplayName, a.id].filter(Boolean).join(", "),
+        }));
+    });
   },
-};
+});

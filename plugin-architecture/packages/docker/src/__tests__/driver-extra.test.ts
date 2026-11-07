@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockVersion = vi.fn();
@@ -26,8 +27,10 @@ vi.mock("dockerode", () => ({
   }),
 }));
 
-import { driver } from "../driver.js";
+import { driver as contractDriver } from "../driver.js";
 import Dockerode from "dockerode";
+
+const driver = hostDriver(contractDriver);
 
 const HOST = "unix:///var/run/docker.sock";
 

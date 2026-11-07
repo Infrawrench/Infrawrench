@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { plugin } from "../plugin.js";
 import { flowSeries, flowWindow, formatFlowLogs } from "../network-flows.js";
@@ -52,7 +53,7 @@ function client() {
   });
   return {
     request,
-    client: plugin.createClient({ apiKey: "tskey-api-secret" }, { http: { request } }),
+    client: hostPlugin(plugin).createClient({ apiKey: "tskey-api-secret" }, { http: { request } }),
   };
 }
 
@@ -141,7 +142,10 @@ describe("network flow metrics", () => {
 
   it("explains a 403 from the flow log endpoint", async () => {
     const request = vi.fn().mockResolvedValue({ status: 403, body: "forbidden" });
-    const c = plugin.createClient({ apiKey: "tskey-api-secret" }, { http: { request } });
+    const c = hostPlugin(plugin).createClient(
+      { apiKey: "tskey-api-secret" },
+      { http: { request } },
+    );
     await expect(c.fetchMetricSeries!("tailnet", "acct:tailnet:-", "acct")).rejects.toThrow(
       /Premium or Enterprise plan/,
     );

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetCachesForTests } from "../account.js";
 import { decodeCloudToken } from "../api.js";
@@ -69,7 +70,7 @@ describe("GrafanaCloudClient", () => {
   it("lists stacks and marks a stack connected once a token is stored", async () => {
     const { http } = makeHttp((url, method) => baseRoute(url, method) ?? { status: 404 });
     const { secrets } = secretsStore();
-    const client = new GrafanaCloudClient({ token: fakeToken() }, { http, secrets });
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http, secrets }));
     const [stack] = await client.listResources("stack", "acct");
     expect(stack?.externalId).toBe("acme-prod");
     expect(stack?.fields["connected"]).toBe(false);
@@ -93,7 +94,7 @@ describe("GrafanaCloudClient", () => {
       return { status: 404 };
     });
     const { secrets } = secretsStore();
-    const client = new GrafanaCloudClient({ token: fakeToken() }, { http, secrets });
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http, secrets }));
     expect(await client.listResources("dashboard", "acct")).toEqual([]);
     await secrets.setPlaintext("acct:stack:acme-prod", "serviceAccountToken", "glsa_123");
     const [dash] = await client.listResources("dashboard", "acct");
@@ -120,7 +121,7 @@ describe("GrafanaCloudClient", () => {
       return { status: 404 };
     });
     const { secrets, store } = secretsStore();
-    const client = new GrafanaCloudClient({ token: fakeToken() }, { http, secrets });
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http, secrets }));
     await client.invokeAction("stack", "acct:stack:acme-prod", "connect", "acct");
     expect(store.get("acct:stack:acme-prod|serviceAccountToken")).toBe("glsa_minted");
     const create = calls.find((c) => c.url.pathname === "/api/instances/11/api/serviceaccounts");
@@ -151,7 +152,7 @@ describe("GrafanaCloudClient", () => {
       }
       return { status: 404 };
     });
-    const client = new GrafanaCloudClient({ token: fakeToken("4242", "us") }, { http });
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken("4242", "us") }, { http }));
     const policies = await client.listResources("access-policy", "acct");
     expect(policies).toHaveLength(1);
     expect(policies[0]?.fields["realms"]).toBe("Stack acme-prod");
@@ -174,7 +175,7 @@ describe("GrafanaCloudClient", () => {
         return { body: method === "GET" ? policy : {} };
       return baseRoute(url, method) ?? { status: 404 };
     });
-    const client = new GrafanaCloudClient({ token: fakeToken() }, { http });
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http }));
     await client.invokeAction("access-policy", "acct:access-policy:us/p1", "disable", "acct");
     const post = calls.find((c) => c.method === "POST");
     expect(post?.url.searchParams.get("region")).toBe("us");

@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CohereClient } from "./client.js";
 import { ModelResourceType } from "./resources/model.js";
@@ -32,16 +37,14 @@ const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     </svg>
   </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "cohere",
-  version: "0.1.0",
+  egressHosts: ["api.cohere.com"],
   displayName: "Cohere",
   description:
     "Cohere's Command, Embed, Rerank and Transcribe models, plus the datasets, fine-tunes, embed jobs and batches in your account.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -51,8 +54,10 @@ const manifest: PluginManifest = {
       placeholder: "abcDEF123456ghiJKL789012mnoPQR345678stuVW",
     },
     caCertCredentialField,
-  ],
-};
+  ]),
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ModelResourceType,
@@ -62,8 +67,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   BatchResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new CohereClient(credentials, services),
-};
+  testCredentials: { apiKey: "test-cohere-key" },
+});

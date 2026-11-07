@@ -272,6 +272,6 @@ const handler: ExportedHandler<Env> = {
     }
     return withSecurityHeaders(await handleApi(request, env, ctx, route.accountId));
   },
-} as ExportedHandler<Env>;
+} as unknown as ExportedHandler<Env>;
 
 export default handler;

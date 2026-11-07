@@ -1,5 +1,9 @@
-import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
-import { trailingId, type HetznerApi } from "./api.js";
+import {
+  pathEncode,
+  type CreateResourceConfig,
+  type ResourceInstance,
+} from "@infrawrench/plugin-base";
+import { trailingId, type CloudApi, type CloudResponse } from "./api.js";
 
 /**
  * Load Balancer TLS certificates (`/certificates`). Two kinds: `uploaded`
@@ -8,22 +12,7 @@ import { trailingId, type HetznerApi } from "./api.js";
  * Hetzner DNS).
  */
 
-export interface HetznerCertificate {
-  id: number;
-  name: string;
-  type?: "uploaded" | "managed";
-  created?: string;
-  domain_names?: string[];
-  not_valid_before?: string | null;
-  not_valid_after?: string | null;
-  fingerprint?: string | null;
-  status?: {
-    issuance?: string;
-    renewal?: string;
-    error?: { code?: string; message?: string } | null;
-  } | null;
-  used_by?: Array<{ id: number; type: string }>;
-}
+type HetznerCertificate = CloudResponse<"list_certificates">["certificates"][number];
 
 export function mapCertificate(c: HetznerCertificate, accountId: string): ResourceInstance {
   const created = c.created ?? new Date().toISOString();
@@ -57,10 +46,10 @@ export function mapCertificate(c: HetznerCertificate, accountId: string): Resour
 }
 
 export async function listCertificates(
-  api: HetznerApi,
+  cloud: CloudApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const certs = await api.fetchAll<HetznerCertificate>("/certificates", "certificates");
+  const certs = await cloud.getAll("/certificates", "certificates");
   return certs.map((c) => mapCertificate(c, accountId));
 }
 
@@ -111,41 +100,37 @@ export function certificateCreateConfig(): CreateResourceConfig {
 }
 
 export async function createCertificate(
-  api: HetznerApi,
+  cloud: CloudApi,
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const type = fields["type"] === "uploaded" ? "uploaded" : "managed";
-  let body: Record<string, unknown>;
-  if (type === "managed") {
-    const domains = (fields["domainNames"] ?? "")
-      .split(",")
-      .map((d) => d.trim())
-      .filter(Boolean);
-    if (domains.length === 0) {
-      throw new Error("Hetzner plugin: a managed certificate needs at least one domain");
-    }
-    body = { name: fields["name"], type, domain_names: domains };
-  } else {
+  if (fields["type"] === "uploaded") {
     if (!fields["certificate"] || !fields["privateKey"]) {
       throw new Error("Hetzner plugin: an uploaded certificate needs a certificate and a key");
     }
-    body = {
-      name: fields["name"],
-      type,
-      certificate: fields["certificate"],
-      private_key: fields["privateKey"],
-    };
+    const data = await cloud.post("/certificates", {
+      body: {
+        name: fields["name"],
+        type: "uploaded",
+        certificate: fields["certificate"],
+        private_key: fields["privateKey"],
+      },
+    });
+    return mapCertificate(data.certificate, accountId);
   }
-  const data = await api.fetch<{ certificate: HetznerCertificate }>("/certificates", {
-    method: "POST",
-    body: JSON.stringify(body),
+  const domains = (fields["domainNames"] ?? "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean);
+  if (domains.length === 0) {
+    throw new Error("Hetzner plugin: a managed certificate needs at least one domain");
+  }
+  const data = await cloud.post("/certificates", {
+    body: { name: fields["name"], type: "managed", domain_names: domains },
   });
   return mapCertificate(data.certificate, accountId);
 }
 
-export async function retryCertificate(api: HetznerApi, resourceId: string): Promise<void> {
-  await api.fetch<unknown>(`/certificates/${trailingId(resourceId)}/actions/retry`, {
-    method: "POST",
-  });
+export async function retryCertificate(cloud: CloudApi, resourceId: string): Promise<void> {
+  await cloud.post(`/certificates/${pathEncode(trailingId(resourceId))}/actions/retry`);
 }

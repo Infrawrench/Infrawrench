@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import type { BkContext } from "./api.js";
 import { bkPaged, isPermissionError } from "./api.js";
@@ -16,16 +18,14 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { buildkiteTerraformExport } from "./terraform.js";
 import { buildkiteDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "buildkite",
-  version: "0.1.0",
+  egressHosts: ["api.buildkite.com"],
   displayName: "Buildkite",
   description:
     "CI/CD on your own or Buildkite hosted agents. Manage pipelines and their YAML steps, start, cancel and rebuild builds, read job logs, stop and pause agents, and manage clusters, queues, agent tokens, secrets, schedules, pipeline templates and Test Engine flaky tests.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Access Token",
@@ -44,7 +44,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiToken"] },
       placeholder: "my-org",
     },
-  ],
+  ]),
   statusFeed,
   preflight: {
     capabilities: PREFLIGHT_CAPABILITIES,
@@ -53,7 +53,9 @@ const manifest: PluginManifest = {
   // 50 REST requests a minute per user and 200 per organization; stay under
   // the per-user limit so a sync never trips it on its own.
   rateLimit: { capacity: 8, refillPerSecond: 0.6 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 /**
  * Options for the organization picker: every organization the token can
@@ -87,14 +89,15 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: buildkiteDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new BuildkiteClient(credentials, services),
+  testCredentials: { apiToken: "bkua_test", organization: "acme" },
   parseStatusFeed,
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   terraformExport: buildkiteTerraformExport,
   remediationCommands: buildkiteRemediationCommands,
   policyTemplate,
-};
+});

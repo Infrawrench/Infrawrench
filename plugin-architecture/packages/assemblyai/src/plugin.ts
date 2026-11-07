@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { AssemblyAIClient } from "./client.js";
 import { AccountResourceType } from "./resources/account.js";
@@ -26,16 +31,14 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   </g>
 </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "assemblyai",
-  version: "0.1.0",
+  egressHosts: ["api.assemblyai.com", "api.eu.assemblyai.com"],
   displayName: "AssemblyAI",
   description:
     "Speech-to-text and voice agents. Browse transcripts, manage Voice Agent agents, sessions and webhooks, explore the LLM Gateway catalogue, and transcribe a clip from the Speech tab.",
   logoSvg,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -59,13 +62,15 @@ const manifest: PluginManifest = {
       ],
     },
     caCertCredentialField,
-  ],
+  ]),
   // AssemblyAI answers rate-limit violations with 403 rather than 429, which
   // is indistinguishable from an auth failure at the transport layer. Keep the
   // background poller well under any plausible ceiling so we never have to
   // guess which one a 403 meant.
   rateLimit: { capacity: 40, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 // Account first: it is the singleton that always exists, and the one that
 // carries the Speech tab on an account that has not transcribed anything yet.
@@ -78,8 +83,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   LlmModelResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new AssemblyAIClient(credentials, services),
-};
+  testCredentials: { apiKey: "test-assemblyai-key", region: "us" },
+});

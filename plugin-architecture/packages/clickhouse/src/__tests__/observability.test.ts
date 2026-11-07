@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@clickhouse/client-web", () => ({
@@ -31,7 +32,9 @@ function route(routes: Array<[string, unknown]>) {
 }
 
 function client() {
-  return new ClickHouseClient({ apiKeyId: "kid", apiKeySecret: "secret", organizationId: "org-1" });
+  return hostClient(
+    new ClickHouseClient({ apiKeyId: "kid", apiKeySecret: "secret", organizationId: "org-1" }),
+  );
 }
 
 function resource(typeId: string, externalId: string): ResourceInstance {

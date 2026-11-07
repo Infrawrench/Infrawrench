@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { listOffset } from "./api.js";
@@ -12,15 +14,14 @@ import type { SgSubuser } from "./mappers.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "sendgrid",
-  version: "0.1.0",
+  // api.eu.sendgrid.com serves EU regional subusers
+  egressHosts: ["api.sendgrid.com", "api.eu.sendgrid.com"],
   displayName: "SendGrid",
   description:
     "Twilio SendGrid email. Manage API keys, authenticated domains and link branding with their DNS records, dedicated IPs, IP pools and reverse DNS, subusers, event webhooks, inbound parse, templates, unsubscribe groups, verified senders, alerts and suppressions, and chart daily delivery and engagement.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -33,7 +34,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://app.sendgrid.com/settings/api_keys",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -70,14 +71,16 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiKey"], emptyLabel: "The key's own account" },
     },
     caCertCredentialField,
-  ],
+  ]),
   quotas: {
     label: "Email credits",
     increaseUrl: "https://app.sendgrid.com/account/billing",
     partial: false,
   },
   statusFeed,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listCredentialOptions(
   fieldKey: string,
@@ -107,10 +110,11 @@ async function listCredentialOptions(
     }));
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new SendGridClient(credentials, services),
+  testCredentials: { apiKey: "SG.test-key-id.test-secret" },
   parseStatusFeed,
-  listCredentialOptions,
-};
+  listCredentialOptions: attemptFn(listCredentialOptions),
+});

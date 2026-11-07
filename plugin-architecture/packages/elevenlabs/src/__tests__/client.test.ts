@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElevenLabsClient } from "../client.js";
 
@@ -41,7 +42,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client() {
-  return new ElevenLabsClient({ apiKey: "sk_test_key" });
+  return hostClient(new ElevenLabsClient({ apiKey: "sk_test_key" }));
 }
 
 function headerOf(init: RequestInit | undefined, name: string): string | undefined {
@@ -59,7 +60,7 @@ afterEach(() => {
 
 describe("credentials", () => {
   it("rejects a missing API key", () => {
-    expect(() => new ElevenLabsClient({})).toThrow(/missing apiKey/);
+    expect(() => hostClient(new ElevenLabsClient({}))).toThrow(/missing apiKey/);
   });
 });
 

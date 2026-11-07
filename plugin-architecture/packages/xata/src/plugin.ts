@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { XataClient } from "./client.js";
 import { XATA_LOGO } from "./logo.js";
@@ -7,16 +8,15 @@ import { xataRemediationCommands } from "./remediation.js";
 import { resourceTypes } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "xata",
-  version: "0.1.0",
+  // *.xata.tech is each branch's own SQL gateway host ({branch}.{region}.xata.tech)
+  egressHosts: ["api.xata.tech", "*.xata.tech"],
   displayName: "Xata",
   description:
     "Xata Postgres: organizations, projects, copy-on-write branches, backups, API keys and members, with metrics, logs, SQL and invoices.",
   logoSvg: XATA_LOGO,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -27,7 +27,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Open the Xata console", url: "https://console.xata.io" },
     },
     caCertCredentialField,
-  ],
+  ]),
   // Monthly invoices with one amount each, plus the running upcoming invoice.
   costs: {
     dimensions: ["tag"],
@@ -39,12 +39,15 @@ const manifest: PluginManifest = {
   quotas: { label: "Organization limits", partial: true, increaseUrl: "https://xata.io/contact" },
   statusFeed,
   preflight: XATA_PREFLIGHT,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new XataClient(credentials, services),
+  testCredentials: { apiKey: "xau_test" },
   parseStatusFeed,
   remediationCommands: xataRemediationCommands,
-};
+});

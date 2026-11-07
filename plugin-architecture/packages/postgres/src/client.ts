@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -44,7 +47,7 @@ export class PostgresClient implements PluginClient {
   private readonly connectionString: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     // Tolerate a missing/empty connectionString: peer-plugin flows resolve
     // credentials lazily, and the parent may not yet have an endpoint
     // (e.g. AlloyDB cluster without a primary instance). Methods that
@@ -62,92 +65,100 @@ export class PostgresClient implements PluginClient {
     return this.connectionString;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "pg-database":
-        return this.listDatabases(accountId);
-      case "pg-schema":
-        return this.listSchemas(accountId);
-      default:
-        throw new Error(`Postgres plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "pg-database":
+          return this.listDatabases(accountId);
+        case "pg-schema":
+          return this.listSchemas(accountId);
+        default:
+          throw new Error(`Postgres plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Postgres plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Postgres plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "pg-database" && outputKey === "connectionString") {
-      return this.connectionString;
-    }
-    if (typeId === "pg-database" && outputKey === "serverVersion") {
-      const sql = this.services?.sql;
-      if (!sql) return "";
-      const rows = await sql.query("SELECT version()");
-      return String(rows[0]?.["version"] ?? "")
-        .split(" ")
-        .slice(0, 2)
-        .join(" ");
-    }
-    if (typeId === "pg-database" && outputKey === "schemaNames") {
-      const schemas = await this.listSchemas(accountId);
-      return JSON.stringify(schemas.map((schema) => String(schema.fields["name"] ?? "")));
-    }
-    if (typeId === "pg-schema" && outputKey === "tableCount") {
-      const sql = this.services?.sql;
-      if (!sql) return "0";
-      const schemaName = resourceId.split(":").pop();
-      if (!schemaName) throw new Error("Cannot parse schema name");
-      const rows = await sql.query(
-        `SELECT COUNT(*) AS n
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "pg-database" && outputKey === "connectionString") {
+        return this.connectionString;
+      }
+      if (typeId === "pg-database" && outputKey === "serverVersion") {
+        const sql = this.services?.sql;
+        if (!sql) return "";
+        const rows = await sql.query("SELECT version()");
+        return String(rows[0]?.["version"] ?? "")
+          .split(" ")
+          .slice(0, 2)
+          .join(" ");
+      }
+      if (typeId === "pg-database" && outputKey === "schemaNames") {
+        const schemas = await this.listSchemas(accountId);
+        return JSON.stringify(schemas.map((schema) => String(schema.fields["name"] ?? "")));
+      }
+      if (typeId === "pg-schema" && outputKey === "tableCount") {
+        const sql = this.services?.sql;
+        if (!sql) return "0";
+        const schemaName = resourceId.split(":").pop();
+        if (!schemaName) throw new Error("Cannot parse schema name");
+        const rows = await sql.query(
+          `SELECT COUNT(*) AS n
          FROM information_schema.tables
          WHERE table_schema = ${sqlStringLiteral(schemaName)} AND table_type = 'BASE TABLE'`,
-      );
-      return String(Number(rows[0]?.["n"] ?? 0));
-    }
-    throw new Error(`Postgres plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+        );
+        return String(Number(rows[0]?.["n"] ?? 0));
+      }
+      throw new Error(`Postgres plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const sql = this.services?.sql;
-    if (!sql) throw new Error("PostgreSQL SQL service not available");
-    const name = resourceId.split(":").pop();
-    if (!name) throw new Error("Cannot parse resource name");
-    if (name.includes('"')) throw new Error("Invalid identifier");
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const sql = this.services?.sql;
+      if (!sql) throw new Error("PostgreSQL SQL service not available");
+      const name = resourceId.split(":").pop();
+      if (!name) throw new Error("Cannot parse resource name");
+      if (name.includes('"')) throw new Error("Invalid identifier");
 
-    switch (typeId) {
-      case "pg-database": {
-        const systemDbs = ["postgres", "template0", "template1"];
-        if (systemDbs.includes(name)) {
-          throw new Error(`Cannot delete system database "${name}"`);
+      switch (typeId) {
+        case "pg-database": {
+          const systemDbs = ["postgres", "template0", "template1"];
+          if (systemDbs.includes(name)) {
+            throw new Error(`Cannot delete system database "${name}"`);
+          }
+          await sql.execute(`DROP DATABASE "${name}"`, []);
+          break;
         }
-        await sql.execute(`DROP DATABASE "${name}"`, []);
-        break;
-      }
-      case "pg-schema": {
-        const systemSchemas = ["pg_catalog", "information_schema", "pg_toast", "public"];
-        if (systemSchemas.includes(name)) {
-          throw new Error(`Cannot delete system schema "${name}"`);
+        case "pg-schema": {
+          const systemSchemas = ["pg_catalog", "information_schema", "pg_toast", "public"];
+          if (systemSchemas.includes(name)) {
+            throw new Error(`Cannot delete system schema "${name}"`);
+          }
+          await sql.execute(`DROP SCHEMA "${name}" CASCADE`, []);
+          break;
         }
-        await sql.execute(`DROP SCHEMA "${name}" CASCADE`, []);
-        break;
+        default:
+          throw new Error(`Postgres plugin: deleteResource not supported for type "${typeId}"`);
       }
-      default:
-        throw new Error(`Postgres plugin: deleteResource not supported for type "${typeId}"`);
-    }
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -239,91 +250,94 @@ export class PostgresClient implements PluginClient {
     };
   }
 
-  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
-    this.requireConnection();
-    const sql = this.services?.sql;
-    let host = "";
-    try {
-      host = new URL(this.connectionString).hostname;
-    } catch {
-      /* connectionString may not be a parseable URL */
-    }
-
-    const databases: PeerPaneResource[] = [];
-    if (sql) {
-      const rows = (await sql.query(
-        "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname",
-      )) as { datname: string }[];
-      for (const row of rows) {
-        databases.push({
-          id: `${context.accountId}:pg-database:${row.datname}`,
-          pluginId: "postgres",
-          resourceTypeId: "pg-database",
-          displayName: row.datname,
-          subtitle: host,
-          status: "healthy",
-          fields: { host, database: row.datname },
-        });
+  renderPeerPane(context: PeerPaneContext): PluginEffect<PeerPaneSchema> {
+    return attempt(async () => {
+      this.requireConnection();
+      const sql = this.services?.sql;
+      let host = "";
+      try {
+        host = new URL(this.connectionString).hostname;
+      } catch {
+        /* connectionString may not be a parseable URL */
       }
-    }
 
-    const schemas: PeerPaneResource[] = [];
-    if (sql) {
-      const rows = (await sql.query(
-        `SELECT schema_name
+      const databases: PeerPaneResource[] = [];
+      if (sql) {
+        const rows = (await sql.query(
+          "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname",
+        )) as { datname: string }[];
+        for (const row of rows) {
+          databases.push({
+            id: `${context.accountId}:pg-database:${row.datname}`,
+            pluginId: "postgres",
+            resourceTypeId: "pg-database",
+            displayName: row.datname,
+            subtitle: host,
+            status: "healthy",
+            fields: { host, database: row.datname },
+          });
+        }
+      }
+
+      const schemas: PeerPaneResource[] = [];
+      if (sql) {
+        const rows = (await sql.query(
+          `SELECT schema_name
          FROM information_schema.schemata
          WHERE ${VISIBLE_SCHEMA_FILTER}
          ORDER BY schema_name`,
-      )) as { schema_name: string }[];
-      for (const row of rows) {
-        schemas.push({
-          id: `${context.accountId}:pg-schema:${row.schema_name}`,
-          pluginId: "postgres",
-          resourceTypeId: "pg-schema",
-          displayName: row.schema_name,
-          status: "healthy",
-          fields: { name: row.schema_name, host },
-        });
+        )) as { schema_name: string }[];
+        for (const row of rows) {
+          schemas.push({
+            id: `${context.accountId}:pg-schema:${row.schema_name}`,
+            pluginId: "postgres",
+            resourceTypeId: "pg-schema",
+            displayName: row.schema_name,
+            status: "healthy",
+            fields: { name: row.schema_name, host },
+          });
+        }
       }
-    }
 
-    return {
-      resourceGroups: [
-        {
-          title: `Databases (${databases.length})`,
-          resourceTypeId: "pg-database",
-          pluginId: "postgres",
-          items: databases,
-        },
-        {
-          title: `Schemas (${schemas.length})`,
-          resourceTypeId: "pg-schema",
-          pluginId: "postgres",
-          items: schemas,
-        },
-      ],
-    };
+      return {
+        resourceGroups: [
+          {
+            title: `Databases (${databases.length})`,
+            resourceTypeId: "pg-database",
+            pluginId: "postgres",
+            items: databases,
+          },
+          {
+            title: `Schemas (${schemas.length})`,
+            resourceTypeId: "pg-schema",
+            pluginId: "postgres",
+            items: schemas,
+          },
+        ],
+      };
+    });
   }
 
-  async introspect(): Promise<SqlTableMeta[]> {
-    const sql = this.services?.sql;
-    if (!sql) return [];
+  introspect(): PluginEffect<SqlTableMeta[]> {
+    return attempt(async () => {
+      const sql = this.services?.sql;
+      if (!sql) return [];
 
-    const [tableRows, columnRows, pkRows] = await Promise.all([
-      sql.query(
-        `SELECT table_schema, table_name
+      const [tableRows, columnRows, pkRows] = await Promise.all([
+        sql.query(
+          `SELECT table_schema, table_name
          FROM information_schema.tables
          WHERE table_type = 'BASE TABLE' AND ${VISIBLE_TABLE_SCHEMA_FILTER}
          ORDER BY table_schema, table_name`,
-      ),
-      sql.query(
-        `SELECT table_schema, table_name, column_name, data_type
+        ),
+        sql.query(
+          `SELECT table_schema, table_name, column_name, data_type
          FROM information_schema.columns
          WHERE ${VISIBLE_TABLE_SCHEMA_FILTER}
          ORDER BY table_schema, table_name, ordinal_position`,
-      ),
-      sql.query(
-        `SELECT kcu.table_schema, kcu.table_name, kcu.column_name
+        ),
+        sql.query(
+          `SELECT kcu.table_schema, kcu.table_name, kcu.column_name
          FROM information_schema.table_constraints tc
          JOIN information_schema.key_column_usage kcu
            ON tc.constraint_catalog = kcu.constraint_catalog
@@ -334,76 +348,79 @@ export class PostgresClient implements PluginClient {
            "tc.table_schema",
          )}
          ORDER BY kcu.table_schema, kcu.table_name, kcu.ordinal_position`,
-      ),
-    ]);
+        ),
+      ]);
 
-    const colsByTable = new Map<string, { name: string; type: string }[]>();
-    for (const col of columnRows as {
-      table_schema: string;
-      table_name: string;
-      column_name: string;
-      data_type: string;
-    }[]) {
-      const key = tableDisplayName(col.table_schema, col.table_name);
-      if (!colsByTable.has(key)) colsByTable.set(key, []);
-      colsByTable.get(key)!.push({ name: col.column_name, type: col.data_type });
-    }
-    const pksByTable = new Map<string, string[]>();
-    for (const pk of pkRows as {
-      table_schema: string;
-      table_name: string;
-      column_name: string;
-    }[]) {
-      const key = tableDisplayName(pk.table_schema, pk.table_name);
-      if (!pksByTable.has(key)) pksByTable.set(key, []);
-      pksByTable.get(key)!.push(pk.column_name);
-    }
+      const colsByTable = new Map<string, { name: string; type: string }[]>();
+      for (const col of columnRows as {
+        table_schema: string;
+        table_name: string;
+        column_name: string;
+        data_type: string;
+      }[]) {
+        const key = tableDisplayName(col.table_schema, col.table_name);
+        if (!colsByTable.has(key)) colsByTable.set(key, []);
+        colsByTable.get(key)!.push({ name: col.column_name, type: col.data_type });
+      }
+      const pksByTable = new Map<string, string[]>();
+      for (const pk of pkRows as {
+        table_schema: string;
+        table_name: string;
+        column_name: string;
+      }[]) {
+        const key = tableDisplayName(pk.table_schema, pk.table_name);
+        if (!pksByTable.has(key)) pksByTable.set(key, []);
+        pksByTable.get(key)!.push(pk.column_name);
+      }
 
-    return (tableRows as { table_schema: string; table_name: string }[]).map((t) => {
-      const name = tableDisplayName(t.table_schema, t.table_name);
-      return {
-        name,
-        columns: colsByTable.get(name) ?? [],
-        pkColumns: pksByTable.get(name) ?? [],
-      };
+      return (tableRows as { table_schema: string; table_name: string }[]).map((t) => {
+        const name = tableDisplayName(t.table_schema, t.table_name);
+        return {
+          name,
+          columns: colsByTable.get(name) ?? [],
+          pkColumns: pksByTable.get(name) ?? [],
+        };
+      });
     });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     _resourceTypeId: string,
     _resourceId: string,
     _accountId: string,
-  ): Promise<DashboardStat[]> {
-    const sql = this.services?.sql;
-    if (!sql) {
-      return [
-        { label: "Version", value: "" },
-        { label: "Size", value: "" },
-        { label: "Tables", value: "0" },
-      ];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const sql = this.services?.sql;
+      if (!sql) {
+        return [
+          { label: "Version", value: "" },
+          { label: "Size", value: "" },
+          { label: "Tables", value: "0" },
+        ];
+      }
 
-    const [versionRows, sizeRows, tableRows] = await Promise.all([
-      sql.query("SELECT version()"),
-      sql.query("SELECT pg_size_pretty(pg_database_size(current_database())) AS size"),
-      sql.query(
-        `SELECT COUNT(*) AS n
+      const [versionRows, sizeRows, tableRows] = await Promise.all([
+        sql.query("SELECT version()"),
+        sql.query("SELECT pg_size_pretty(pg_database_size(current_database())) AS size"),
+        sql.query(
+          `SELECT COUNT(*) AS n
          FROM information_schema.tables
          WHERE table_type = 'BASE TABLE' AND ${VISIBLE_TABLE_SCHEMA_FILTER}`,
-      ),
-    ]);
+        ),
+      ]);
 
-    const ver = String(versionRows[0]?.["version"] ?? "")
-      .split(" ")
-      .slice(0, 2)
-      .join(" ");
-    const size = String(sizeRows[0]?.["size"] ?? "");
-    const tableCount = Number(tableRows[0]?.["n"] ?? 0);
-    return [
-      { label: "Version", value: ver },
-      { label: "Size", value: size },
-      { label: "Tables", value: String(tableCount) },
-    ];
+      const ver = String(versionRows[0]?.["version"] ?? "")
+        .split(" ")
+        .slice(0, 2)
+        .join(" ");
+      const size = String(sizeRows[0]?.["size"] ?? "");
+      const tableCount = Number(tableRows[0]?.["n"] ?? 0);
+      return [
+        { label: "Version", value: ver },
+        { label: "Size", value: size },
+        { label: "Tables", value: String(tableCount) },
+      ];
+    });
   }
 
   /**
@@ -412,25 +429,27 @@ export class PostgresClient implements PluginClient {
    * the `day` / `value` (/ `label`) rows into points. Never falls back to the
    * writable `query()`: an unattended statement must not be able to write.
    */
-  async runBusinessMetricSource(
+  runBusinessMetricSource(
     _accountId: string,
     params: Record<string, string>,
     range: BusinessMetricSourceRange,
-  ): Promise<BusinessMetricSourceResult> {
-    const statement = (params["sql"] ?? "").trim();
-    assertBusinessMetricSql(statement);
-    const bound = bindBusinessMetricSqlRange(statement, range);
-    // Re-check after binding: substituted values are quoted literals, so the
-    // statement shape cannot change, but the guard is cheap and runs every time.
-    assertBusinessMetricSql(bound);
-    const sql = this.services?.sql;
-    if (!sql?.queryReadOnly) {
-      throw new Error(
-        "This host cannot guarantee a read-only query against PostgreSQL, so the importer will not run.",
-      );
-    }
-    const rows = await withBusinessMetricTimeout(sql.queryReadOnly(bound), range);
-    return { points: rowsToBusinessMetricPoints(rows, range.maxRows) };
+  ): PluginEffect<BusinessMetricSourceResult> {
+    return attempt(async () => {
+      const statement = (params["sql"] ?? "").trim();
+      assertBusinessMetricSql(statement);
+      const bound = bindBusinessMetricSqlRange(statement, range);
+      // Re-check after binding: substituted values are quoted literals, so the
+      // statement shape cannot change, but the guard is cheap and runs every time.
+      assertBusinessMetricSql(bound);
+      const sql = this.services?.sql;
+      if (!sql?.queryReadOnly) {
+        throw new Error(
+          "This host cannot guarantee a read-only query against PostgreSQL, so the importer will not run.",
+        );
+      }
+      const rows = await withBusinessMetricTimeout(sql.queryReadOnly(bound), range);
+      return { points: rowsToBusinessMetricPoints(rows, range.maxRows) };
+    });
   }
 
   private async listDatabases(accountId: string): Promise<ResourceInstance[]> {

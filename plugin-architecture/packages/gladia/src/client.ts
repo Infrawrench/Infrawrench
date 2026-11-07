@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   DashboardStat,
   DetailViewSchema,
@@ -220,7 +223,7 @@ export class GladiaClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Gladia plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -274,94 +277,108 @@ export class GladiaClient implements PluginClient {
     }
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "workspace":
-        return [await this.buildWorkspace(accountId)];
-      case "transcription":
-      case "live-session": {
-        const jobs = await this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES, typeId);
-        return jobs.map((job) => this.mapJob(accountId, job, typeId));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "workspace":
+          return [await this.buildWorkspace(accountId)];
+        case "transcription":
+        case "live-session": {
+          const jobs = await this.fetchJobs(PAGE_SIZE * MAX_LIST_PAGES, typeId);
+          return jobs.map((job) => this.mapJob(accountId, job, typeId));
+        }
+        default:
+          throw new Error(`Gladia plugin: unknown resource type "${typeId}"`);
       }
-      default:
-        throw new Error(`Gladia plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === "workspace") return this.buildWorkspace(accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "workspace") return this.buildWorkspace(accountId);
 
-    if (isJobType(typeId)) {
-      const job = await this.fetchJob(externalIdOf(resourceId), typeId);
-      return this.mapJob(accountId, job, typeId);
-    }
+      if (isJobType(typeId)) {
+        const job = await this.fetchJob(externalIdOf(resourceId), typeId);
+        return this.mapJob(accountId, job, typeId);
+      }
 
-    throw new Error(`Gladia plugin: unknown resource type "${typeId}"`);
+      throw new Error(`Gladia plugin: unknown resource type "${typeId}"`);
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     _accountId: string,
-  ): Promise<string> {
-    if (typeId === "workspace" && outputKey === "endpoint") return BASE_URL;
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "workspace" && outputKey === "endpoint") return BASE_URL;
 
-    if (isJobType(typeId)) {
-      const id = externalIdOf(resourceId);
-      if (outputKey === "transcriptionId" || outputKey === "sessionId") return id;
-      if (outputKey === "resultUrl") return `${BASE_URL}${JOB_PATHS[typeId]}/${id}`;
-      if (outputKey === "fullTranscript") {
-        const job = await this.fetchJob(id, typeId);
-        // `result` is null unless status === "done": optional-chain it.
-        return str(job.result?.transcription?.full_transcript);
+      if (isJobType(typeId)) {
+        const id = externalIdOf(resourceId);
+        if (outputKey === "transcriptionId" || outputKey === "sessionId") return id;
+        if (outputKey === "resultUrl") return `${BASE_URL}${JOB_PATHS[typeId]}/${id}`;
+        if (outputKey === "fullTranscript") {
+          const job = await this.fetchJob(id, typeId);
+          // `result` is null unless status === "done": optional-chain it.
+          return str(job.result?.transcription?.full_transcript);
+        }
       }
-    }
 
-    throw new Error(`Gladia plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      throw new Error(`Gladia plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const fields = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const fields = resource.fields;
 
-    if (resourceTypeId === "workspace") {
-      const billed = Number(fields["sampledBillingTime"] ?? 0);
-      const errored = Number(fields["erroredJobs"] ?? 0);
-      return [
-        { label: "Recent jobs", value: String(fields["recentJobs"] ?? 0) },
-        { label: "Billed (sampled)", value: `${round(billed / 60, 1)} min` },
-        {
-          label: "Errored",
-          value: String(errored),
-          variant: errored > 0 ? "status-degraded" : "default",
-        },
-      ];
-    }
+      if (resourceTypeId === "workspace") {
+        const billed = Number(fields["sampledBillingTime"] ?? 0);
+        const errored = Number(fields["erroredJobs"] ?? 0);
+        return [
+          { label: "Recent jobs", value: String(fields["recentJobs"] ?? 0) },
+          { label: "Billed (sampled)", value: `${round(billed / 60, 1)} min` },
+          {
+            label: "Errored",
+            value: String(errored),
+            variant: errored > 0 ? "status-degraded" : "default",
+          },
+        ];
+      }
 
-    if (isJobType(resourceTypeId)) {
-      const status = String(fields["status"] ?? "");
-      return [
-        {
-          label: "Status",
-          value: status,
-          variant:
-            status === "error" ? "status-error" : status === "done" ? "status-healthy" : "default",
-        },
-        { label: "Duration", value: `${round(Number(fields["audioDuration"] ?? 0), 1)} s` },
-        { label: "Billed", value: `${round(Number(fields["billingTime"] ?? 0), 1)} s` },
-      ];
-    }
+      if (isJobType(resourceTypeId)) {
+        const status = String(fields["status"] ?? "");
+        return [
+          {
+            label: "Status",
+            value: status,
+            variant:
+              status === "error"
+                ? "status-error"
+                : status === "done"
+                  ? "status-healthy"
+                  : "default",
+          },
+          { label: "Duration", value: `${round(Number(fields["audioDuration"] ?? 0), 1)} s` },
+          { label: "Billed", value: `${round(Number(fields["billingTime"] ?? 0), 1)} s` },
+        ];
+      }
 
-    return [];
+      return [];
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -397,18 +414,20 @@ export class GladiaClient implements PluginClient {
     };
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (!isJobType(typeId)) {
-      throw new Error(`Gladia plugin: cannot delete type "${typeId}"`);
-    }
-    // DELETE /v2/pre-recorded/{id} and DELETE /v2/live/{id}: verified against
-    // https://docs.gladia.io/api-reference/v2/pre-recorded/delete and
-    // https://docs.gladia.io/api-reference/v2/live/delete. Both answer 202
-    // Accepted on success and 403 when the job is not in a deletable state.
-    await this.requestVoid(
-      `${JOB_PATHS[typeId]}/${encodeURIComponent(externalIdOf(resourceId))}`,
-      "DELETE",
-    );
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (!isJobType(typeId)) {
+        throw new Error(`Gladia plugin: cannot delete type "${typeId}"`);
+      }
+      // DELETE /v2/pre-recorded/{id} and DELETE /v2/live/{id}: verified against
+      // https://docs.gladia.io/api-reference/v2/pre-recorded/delete and
+      // https://docs.gladia.io/api-reference/v2/live/delete. Both answer 202
+      // Accepted on success and 403 when the job is not in a deletable state.
+      await this.requestVoid(
+        `${JOB_PATHS[typeId]}/${encodeURIComponent(externalIdOf(resourceId))}`,
+        "DELETE",
+      );
+    });
   }
 
   /**
@@ -418,97 +437,99 @@ export class GladiaClient implements PluginClient {
    * poll. The panel is one request/response, so the whole thing happens here
    * inside a bounded loop rather than handing a job id back to the UI.
    */
-  async transcribeAudio(
+  transcribeAudio(
     typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    if (typeId !== "workspace") {
-      throw new Error(`Gladia plugin: cannot transcribe audio for type "${typeId}"`);
-    }
-
-    const bytes = base64ToBytes(payload.audioBase64);
-    if (bytes.byteLength === 0) throw new Error("Gladia plugin: empty audio payload");
-    if (bytes.byteLength > MAX_AUDIO_BYTES) {
-      throw new Error(
-        `Gladia plugin: clip is ${bytes.byteLength} bytes, over the documented ${MAX_AUDIO_BYTES}-byte limit`,
-      );
-    }
-
-    const started = Date.now();
-    const upload = await this.uploadAudio(bytes, payload.fileName ?? "clip", payload.mimeType);
-    const audioUrl = str(upload.audio_url);
-    if (!audioUrl) throw new Error("Gladia plugin: /v2/upload returned no audio_url");
-
-    const model =
-      payload.modelId && payload.modelId.length > 0 ? payload.modelId : GLADIA_DEFAULT_MODEL;
-    const body: Record<string, unknown> = {
-      audio_url: audioUrl,
-      diarization: true,
-      model,
-    };
-
-    // `language_config` is an object, and the docs explicitly warn against
-    // enabling `code_switching` alongside an empty `languages` list, so for
-    // auto-detect we omit the whole key rather than sending an empty one.
-    if (payload.language && payload.language !== GLADIA_AUTO_LANGUAGE) {
-      body["language_config"] = { languages: [payload.language], code_switching: false };
-    }
-
-    const init = await this.initTranscription(body);
-    const jobId = str(init.id);
-    if (!jobId) throw new Error("Gladia plugin: /v2/pre-recorded returned no job id");
-
-    const job = await this.pollJob(jobId);
-    const elapsedMs = Date.now() - started;
-
-    const transcription = job.result?.transcription;
-    const metadata = job.result?.metadata;
-    const utterances = transcription?.utterances ?? [];
-
-    const words: TranscriptWord[] = [];
-    for (const utterance of utterances) {
-      const speaker =
-        typeof utterance.speaker === "number" ? `Speaker ${utterance.speaker}` : undefined;
-      for (const word of utterance.words ?? []) {
-        const text = str(word.word);
-        if (!text) continue;
-        words.push({
-          text,
-          ...(num(word.start) !== undefined ? { start: num(word.start)! } : {}),
-          ...(num(word.end) !== undefined ? { end: num(word.end)! } : {}),
-          ...(speaker ? { speaker } : {}),
-        });
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      if (typeId !== "workspace") {
+        throw new Error(`Gladia plugin: cannot transcribe audio for type "${typeId}"`);
       }
-    }
 
-    const confidences = utterances
-      .map((utterance) => num(utterance.confidence))
-      .filter((value): value is number => value !== undefined);
-    const confidence =
-      confidences.length > 0
-        ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
-        : undefined;
+      const bytes = base64ToBytes(payload.audioBase64);
+      if (bytes.byteLength === 0) throw new Error("Gladia plugin: empty audio payload");
+      if (bytes.byteLength > MAX_AUDIO_BYTES) {
+        throw new Error(
+          `Gladia plugin: clip is ${bytes.byteLength} bytes, over the documented ${MAX_AUDIO_BYTES}-byte limit`,
+        );
+      }
 
-    const duration = num(metadata?.audio_duration);
-    const billing = num(metadata?.billing_time);
-    const language = transcription?.languages?.[0];
+      const started = Date.now();
+      const upload = await this.uploadAudio(bytes, payload.fileName ?? "clip", payload.mimeType);
+      const audioUrl = str(upload.audio_url);
+      if (!audioUrl) throw new Error("Gladia plugin: /v2/upload returned no audio_url");
 
-    const summaryParts = [model];
-    if (duration !== undefined) summaryParts.push(`${round(duration, 1)} s of audio`);
-    if (billing !== undefined) summaryParts.push(`${round(billing, 1)} s billed`);
-    summaryParts.push(`${round(elapsedMs / 1000, 1)} s round-trip`);
+      const model =
+        payload.modelId && payload.modelId.length > 0 ? payload.modelId : GLADIA_DEFAULT_MODEL;
+      const body: Record<string, unknown> = {
+        audio_url: audioUrl,
+        diarization: true,
+        model,
+      };
 
-    return {
-      text: str(transcription?.full_transcript),
-      summary: summaryParts.join(" · "),
-      ...(language ? { language } : {}),
-      ...(duration !== undefined ? { durationSeconds: duration } : {}),
-      ...(confidence !== undefined ? { confidence } : {}),
-      ...(words.length > 0 ? { words } : {}),
-      ...(jobId ? { requestId: jobId } : {}),
-    };
+      // `language_config` is an object, and the docs explicitly warn against
+      // enabling `code_switching` alongside an empty `languages` list, so for
+      // auto-detect we omit the whole key rather than sending an empty one.
+      if (payload.language && payload.language !== GLADIA_AUTO_LANGUAGE) {
+        body["language_config"] = { languages: [payload.language], code_switching: false };
+      }
+
+      const init = await this.initTranscription(body);
+      const jobId = str(init.id);
+      if (!jobId) throw new Error("Gladia plugin: /v2/pre-recorded returned no job id");
+
+      const job = await this.pollJob(jobId);
+      const elapsedMs = Date.now() - started;
+
+      const transcription = job.result?.transcription;
+      const metadata = job.result?.metadata;
+      const utterances = transcription?.utterances ?? [];
+
+      const words: TranscriptWord[] = [];
+      for (const utterance of utterances) {
+        const speaker =
+          typeof utterance.speaker === "number" ? `Speaker ${utterance.speaker}` : undefined;
+        for (const word of utterance.words ?? []) {
+          const text = str(word.word);
+          if (!text) continue;
+          words.push({
+            text,
+            ...(num(word.start) !== undefined ? { start: num(word.start)! } : {}),
+            ...(num(word.end) !== undefined ? { end: num(word.end)! } : {}),
+            ...(speaker ? { speaker } : {}),
+          });
+        }
+      }
+
+      const confidences = utterances
+        .map((utterance) => num(utterance.confidence))
+        .filter((value): value is number => value !== undefined);
+      const confidence =
+        confidences.length > 0
+          ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+          : undefined;
+
+      const duration = num(metadata?.audio_duration);
+      const billing = num(metadata?.billing_time);
+      const language = transcription?.languages?.[0];
+
+      const summaryParts = [model];
+      if (duration !== undefined) summaryParts.push(`${round(duration, 1)} s of audio`);
+      if (billing !== undefined) summaryParts.push(`${round(billing, 1)} s billed`);
+      summaryParts.push(`${round(elapsedMs / 1000, 1)} s round-trip`);
+
+      return {
+        text: str(transcription?.full_transcript),
+        summary: summaryParts.join(" · "),
+        ...(language ? { language } : {}),
+        ...(duration !== undefined ? { durationSeconds: duration } : {}),
+        ...(confidence !== undefined ? { confidence } : {}),
+        ...(words.length > 0 ? { words } : {}),
+        ...(jobId ? { requestId: jobId } : {}),
+      };
+    });
   }
 
   /**
@@ -661,104 +682,109 @@ export class GladiaClient implements PluginClient {
    * https://docs.gladia.io/api-reference/v2/pre-recorded/list
    * https://docs.gladia.io/api-reference/v2/live/list
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     _resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "workspace") return [];
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 30 * DAY_MS;
-    const [jobs, live] = await Promise.all([
-      this.fetchJobsBetween("transcription", startMs, endMs),
-      // Live history is a separate list; a failure there keeps the batch charts.
-      this.fetchJobsBetween("live-session", startMs, endMs).catch(() => [] as GladiaJob[]),
-    ]);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "workspace") return [];
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - 30 * DAY_MS;
+      const [jobs, live] = await Promise.all([
+        this.fetchJobsBetween("transcription", startMs, endMs),
+        // Live history is a separate list; a failure there keeps the batch charts.
+        this.fetchJobsBetween("live-session", startMs, endMs).catch(() => [] as GladiaJob[]),
+      ]);
 
-    const stamps: number[] = [];
-    for (let t = Math.floor(startMs / DAY_MS) * DAY_MS; t <= endMs; t += DAY_MS) stamps.push(t);
-    const dayOf = (job: GladiaJob): number | undefined => {
-      const at = Date.parse(str(job.created_at));
-      if (!Number.isFinite(at) || at < startMs || at > endMs) return undefined;
-      return Math.floor(at / DAY_MS) * DAY_MS;
-    };
-    const tally = (items: GladiaJob[], read: (job: GladiaJob) => number): Map<number, number> => {
-      const out = new Map<number, number>();
-      for (const job of items) {
-        const day = dayOf(job);
-        if (day !== undefined) out.set(day, (out.get(day) ?? 0) + read(job));
+      const stamps: number[] = [];
+      for (let t = Math.floor(startMs / DAY_MS) * DAY_MS; t <= endMs; t += DAY_MS) stamps.push(t);
+      const dayOf = (job: GladiaJob): number | undefined => {
+        const at = Date.parse(str(job.created_at));
+        if (!Number.isFinite(at) || at < startMs || at > endMs) return undefined;
+        return Math.floor(at / DAY_MS) * DAY_MS;
+      };
+      const tally = (items: GladiaJob[], read: (job: GladiaJob) => number): Map<number, number> => {
+        const out = new Map<number, number>();
+        for (const job of items) {
+          const day = dayOf(job);
+          if (day !== undefined) out.set(day, (out.get(day) ?? 0) + read(job));
+        }
+        return out;
+      };
+      const line = (label: string, unit: string, values: Map<number, number>): MetricSeries => ({
+        label,
+        unit,
+        points: stamps.map((t) => ({
+          timestamp: t,
+          value: Number((values.get(t) ?? 0).toFixed(2)),
+        })),
+      });
+      const billedMinutes = (job: GladiaJob): number =>
+        (num(job.result?.metadata?.billing_time) ?? 0) / 60;
+
+      const series: MetricSeries[] = [
+        line(
+          "Transcriptions",
+          "count",
+          tally(jobs, () => 1),
+        ),
+        line(
+          "Failed transcriptions",
+          "count",
+          tally(jobs, (j) => (str(j.status) === "error" ? 1 : 0)),
+        ),
+        line("Billed minutes", "minutes", tally(jobs, billedMinutes)),
+      ];
+      const models = [...new Set(jobs.map((j) => str(j.request_params?.model)).filter(Boolean))];
+      if (models.length > 1) {
+        for (const model of models.sort()) {
+          series.push(
+            line(
+              `Billed minutes: ${model}`,
+              "minutes",
+              tally(jobs, (j) => (str(j.request_params?.model) === model ? billedMinutes(j) : 0)),
+            ),
+          );
+        }
       }
-      return out;
-    };
-    const line = (label: string, unit: string, values: Map<number, number>): MetricSeries => ({
-      label,
-      unit,
-      points: stamps.map((t) => ({ timestamp: t, value: Number((values.get(t) ?? 0).toFixed(2)) })),
-    });
-    const billedMinutes = (job: GladiaJob): number =>
-      (num(job.result?.metadata?.billing_time) ?? 0) / 60;
-
-    const series: MetricSeries[] = [
-      line(
-        "Transcriptions",
-        "count",
-        tally(jobs, () => 1),
-      ),
-      line(
-        "Failed transcriptions",
-        "count",
-        tally(jobs, (j) => (str(j.status) === "error" ? 1 : 0)),
-      ),
-      line("Billed minutes", "minutes", tally(jobs, billedMinutes)),
-    ];
-    const models = [...new Set(jobs.map((j) => str(j.request_params?.model)).filter(Boolean))];
-    if (models.length > 1) {
-      for (const model of models.sort()) {
+      // Average processing time per finished job; days without one are omitted
+      // rather than plotted as zero.
+      const processing = new Map<number, { sum: number; count: number }>();
+      for (const job of jobs) {
+        const day = dayOf(job);
+        const seconds = num(job.result?.metadata?.transcription_time);
+        if (day === undefined || seconds === undefined || str(job.status) !== "done") continue;
+        const acc = processing.get(day) ?? { sum: 0, count: 0 };
+        acc.sum += seconds;
+        acc.count += 1;
+        processing.set(day, acc);
+      }
+      if (processing.size > 0) {
+        series.push({
+          label: "Avg processing time",
+          unit: "seconds",
+          points: [...processing.entries()]
+            .sort((a, b) => a[0] - b[0])
+            .map(([timestamp, acc]) => ({
+              timestamp,
+              value: Number((acc.sum / acc.count).toFixed(1)),
+            })),
+        });
+      }
+      if (live.some((j) => dayOf(j) !== undefined)) {
         series.push(
           line(
-            `Billed minutes: ${model}`,
-            "minutes",
-            tally(jobs, (j) => (str(j.request_params?.model) === model ? billedMinutes(j) : 0)),
+            "Live sessions",
+            "count",
+            tally(live, () => 1),
           ),
+          line("Live billed minutes", "minutes", tally(live, billedMinutes)),
         );
       }
-    }
-    // Average processing time per finished job; days without one are omitted
-    // rather than plotted as zero.
-    const processing = new Map<number, { sum: number; count: number }>();
-    for (const job of jobs) {
-      const day = dayOf(job);
-      const seconds = num(job.result?.metadata?.transcription_time);
-      if (day === undefined || seconds === undefined || str(job.status) !== "done") continue;
-      const acc = processing.get(day) ?? { sum: 0, count: 0 };
-      acc.sum += seconds;
-      acc.count += 1;
-      processing.set(day, acc);
-    }
-    if (processing.size > 0) {
-      series.push({
-        label: "Avg processing time",
-        unit: "seconds",
-        points: [...processing.entries()]
-          .sort((a, b) => a[0] - b[0])
-          .map(([timestamp, acc]) => ({
-            timestamp,
-            value: Number((acc.sum / acc.count).toFixed(1)),
-          })),
-      });
-    }
-    if (live.some((j) => dayOf(j) !== undefined)) {
-      series.push(
-        line(
-          "Live sessions",
-          "count",
-          tally(live, () => 1),
-        ),
-        line("Live billed minutes", "minutes", tally(live, billedMinutes)),
-      );
-    }
-    return series;
+      return series;
+    });
   }
 
   private mapJob(

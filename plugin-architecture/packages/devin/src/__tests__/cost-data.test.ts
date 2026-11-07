@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
@@ -253,7 +254,9 @@ describe("fetchCostData", () => {
 
   it("reads consumption with PST day bounds, a Bearer token, and attributes service users", async () => {
     const { http, calls } = devinApi();
-    const client = new DevinClient({ apiKey: "cog_x", acuPrice: "2" }, { http } as never);
+    const client = hostClient(
+      new DevinClient({ apiKey: "cog_x", acuPrice: "2" }, { http } as never),
+    );
     const out = await client.fetchCostData("acct", {
       fromDate: "2026-10-01",
       toDate: "2026-10-01",
@@ -278,7 +281,7 @@ describe("fetchCostData", () => {
     const { http } = devinApi({
       "/v3/organizations/org-1/consumption/daily": reply(403, { detail: "forbidden" }),
     });
-    const client = new DevinClient({ apiKey: "cog_x" }, { http } as never);
+    const client = hostClient(new DevinClient({ apiKey: "cog_x" }, { http } as never));
     await expect(client.fetchCostData("acct", RANGE)).rejects.toBeInstanceOf(CostSetupError);
   });
 
@@ -286,7 +289,7 @@ describe("fetchCostData", () => {
     const { http, calls } = devinApi({
       "/v3/organizations/org-1/consumption/daily": { total_acus: 0, consumption_by_date: [] },
     });
-    const client = new DevinClient({ apiKey: "cog_x" }, { http } as never);
+    const client = hostClient(new DevinClient({ apiKey: "cog_x" }, { http } as never));
     const out = await client.fetchCostData("acct", RANGE);
     expect(out.rows).toEqual([]);
     expect(calls.map((c) => c.path)).toEqual([

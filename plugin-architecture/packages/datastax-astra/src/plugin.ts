@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { AstraPluginClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
@@ -6,16 +7,20 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { astraTerraformExport } from "./terraform.js";
 import { astraRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "datastax-astra",
-  version: "0.1.0",
+  // Astra DevOps/streaming APIs, the metrics scrape host, and each database's Data API endpoint
+  egressHosts: [
+    "api.astra.datastax.com",
+    "api.streaming.datastax.com",
+    "metrics.astra.datastax.com",
+    "*.apps.astra.datastax.com",
+  ],
   displayName: "DataStax Astra",
   description:
     "Manage Astra DB Serverless vector and non-vector databases, regions, keyspaces, collections, access lists, CDC, private endpoints, snapshots and PCU groups, plus Astra Streaming tenants, roles, users and application tokens.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "token",
       label: "Application Token",
@@ -28,17 +33,20 @@ const manifest: PluginManifest = {
         url: "https://docs.datastax.com/en/astra-db-serverless/administration/manage-application-tokens.html",
       },
     },
-  ],
+  ]),
   statusFeed,
   // DevOps API: documented fair-use limits; stay well under them.
   rateLimit: { capacity: 10, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new AstraPluginClient(credentials, services),
+  testCredentials: { token: "AstraCS:test:secret" },
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: astraTerraformExport,
   remediationCommands: astraRemediationCommands,
-};
+});

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { ModalClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -110,7 +111,10 @@ function route(method: string, request: import("../proto.js").ProtoMessage) {
 
 function client() {
   const { http, calls } = makeHttp(route);
-  return { c: new ModalClient({ tokenId: "ak-x", tokenSecret: "as-y" }, { http }), calls };
+  return {
+    c: hostClient(new ModalClient({ tokenId: "ak-x", tokenSecret: "as-y" }, { http })),
+    calls,
+  };
 }
 
 describe("ModalClient listing", () => {

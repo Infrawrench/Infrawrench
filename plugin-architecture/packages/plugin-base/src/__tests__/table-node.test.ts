@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { schemaNodeSchema } from "../validation/schema.schema.js";
+import { schemaNodeSchema, validate } from "../validation/index.js";
 
 describe("schemaNodeSchema table node", () => {
   it("accepts a table with string and action cells", () => {
-    const r = schemaNodeSchema.safeParse({
+    const r = validate(schemaNodeSchema, {
       kind: "table",
       columns: [
         { key: "name", label: "Name", width: "wide", mono: true },
@@ -29,7 +29,7 @@ describe("schemaNodeSchema table node", () => {
   });
 
   it("rejects a table whose columns are malformed", () => {
-    const r = schemaNodeSchema.safeParse({
+    const r = validate(schemaNodeSchema, {
       kind: "table",
       columns: [{ label: "no key" }],
       rows: [],

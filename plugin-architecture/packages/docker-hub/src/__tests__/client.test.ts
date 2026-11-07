@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { HubApiError, secretKind } from "../api.js";
 import { DockerHubClient, parseRateHeader } from "../client.js";
@@ -21,9 +22,11 @@ function hub(route: (call: Call) => unknown) {
 function client(route: (call: Call) => unknown, creds: Record<string, string> = {}) {
   const { http, calls } = hub(route);
   return {
-    c: new DockerHubClient(
-      { username: "alice", token: "dckr_pat_x", namespaces: "alice, acme", ...creds },
-      { http } as never,
+    c: hostClient(
+      new DockerHubClient(
+        { username: "alice", token: "dckr_pat_x", namespaces: "alice, acme", ...creds },
+        { http } as never,
+      ),
     ),
     calls,
   };
@@ -82,7 +85,7 @@ describe("auth", () => {
     const { http } = hub((call) =>
       call.url.pathname === "/v2/user/orgs/" ? { results: [{ orgname: "acme" }], next: null } : {},
     );
-    const opts = await plugin.listCredentialOptions!(
+    const opts = await hostPlugin(plugin).listCredentialOptions!(
       "namespaces",
       { username: "alice", token: "dckr_pat_x" },
       { http } as never,
@@ -92,7 +95,9 @@ describe("auth", () => {
 
   it("an organization token manages only its organization", async () => {
     const { http, calls } = hub(() => ({ results: [], next: null }));
-    const c = new DockerHubClient({ username: "acme", token: "dckr_oat_x" }, { http } as never);
+    const c = hostClient(
+      new DockerHubClient({ username: "acme", token: "dckr_oat_x" }, { http } as never),
+    );
     await c.listResources("dockerhub-repository", ACCOUNT);
     expect(calls.map((x) => x.url.pathname)).toContain("/v2/namespaces/acme/repositories");
     expect(await c.listResources("dockerhub-access-token", ACCOUNT)).toEqual([]);

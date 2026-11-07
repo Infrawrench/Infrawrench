@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { describe, expect, it, vi } from "vitest";
@@ -223,10 +224,8 @@ describe("client", () => {
       if (c.url.includes("/sks-cluster-kubeconfig/")) return { body: { kubeconfig: btoa(yaml) } };
       return { body: { id: "c1", name: "prod", state: "running", nodepools: [] } };
     });
-    const client = new ExoscaleClient(
-      { apiKey: "k", apiSecret: "s" },
-      plugin.resourceTypes,
-      services,
+    const client = hostClient(
+      new ExoscaleClient({ apiKey: "k", apiSecret: "s" }, plugin.resourceTypes, services),
     );
     const out = await client.resolveOutput(
       "sks-cluster",

@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -27,130 +30,142 @@ export class MySQLClient implements PluginClient {
   private readonly connectionString: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const cs = credentials["connectionString"];
     if (!cs) throw new Error("MySQL plugin: missing connectionString credential");
     this.connectionString = cs;
     this.services = services;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "mysql-database":
-        return this.listDatabases(accountId);
-      default:
-        throw new Error(`MySQL plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "mysql-database":
+          return this.listDatabases(accountId);
+        default:
+          throw new Error(`MySQL plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`MySQL plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`MySQL plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string> {
-    if (typeId === "mysql-database") {
-      if (outputKey === "connectionString") {
-        return this.connectionStringForDatabase(this.databaseNameFromResourceId(resourceId));
+  resolveOutput(typeId: string, resourceId: string, outputKey: string): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "mysql-database") {
+        if (outputKey === "connectionString") {
+          return this.connectionStringForDatabase(this.databaseNameFromResourceId(resourceId));
+        }
+        if (outputKey === "serverVersion") {
+          const sql = this.services?.sql;
+          if (!sql) return "";
+          const rows = (await sql.query("SELECT VERSION() AS version")) as Array<{
+            version?: unknown;
+          }>;
+          return String(rows[0]?.version ?? "");
+        }
       }
-      if (outputKey === "serverVersion") {
-        const sql = this.services?.sql;
-        if (!sql) return "";
-        const rows = (await sql.query("SELECT VERSION() AS version")) as Array<{
-          version?: unknown;
-        }>;
-        return String(rows[0]?.version ?? "");
+      throw new Error(`MySQL plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
+  }
+
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId !== "mysql-database") {
+        throw new Error(`MySQL plugin: no create config for type "${typeId}"`);
       }
-    }
-    throw new Error(`MySQL plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Database name",
+            kind: "text",
+            required: true,
+            placeholder: "appdb",
+          },
+          {
+            key: "characterSet",
+            label: "Character set",
+            kind: "text",
+            required: false,
+            defaultValue: "utf8mb4",
+            placeholder: "utf8mb4",
+          },
+          {
+            key: "collation",
+            label: "Collation",
+            kind: "text",
+            required: false,
+            placeholder: "utf8mb4_0900_ai_ci",
+          },
+        ],
+      };
+    });
   }
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "mysql-database") {
-      throw new Error(`MySQL plugin: no create config for type "${typeId}"`);
-    }
-    return {
-      fields: [
-        {
-          key: "name",
-          label: "Database name",
-          kind: "text",
-          required: true,
-          placeholder: "appdb",
-        },
-        {
-          key: "characterSet",
-          label: "Character set",
-          kind: "text",
-          required: false,
-          defaultValue: "utf8mb4",
-          placeholder: "utf8mb4",
-        },
-        {
-          key: "collation",
-          label: "Collation",
-          kind: "text",
-          required: false,
-          placeholder: "utf8mb4_0900_ai_ci",
-        },
-      ],
-    };
-  }
-
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "mysql-database") {
-      throw new Error(`MySQL plugin: createResource not supported for type "${typeId}"`);
-    }
-    const sql = this.services?.sql;
-    if (!sql) throw new Error("MySQL SQL service not available");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "mysql-database") {
+        throw new Error(`MySQL plugin: createResource not supported for type "${typeId}"`);
+      }
+      const sql = this.services?.sql;
+      if (!sql) throw new Error("MySQL SQL service not available");
 
-    const dbName = this.validateDatabaseName(fields["name"] ?? "");
-    const characterSet = this.optionalIdentifier(fields["characterSet"] ?? "");
-    const collation = this.optionalIdentifier(fields["collation"] ?? "");
+      const dbName = this.validateDatabaseName(fields["name"] ?? "");
+      const characterSet = this.optionalIdentifier(fields["characterSet"] ?? "");
+      const collation = this.optionalIdentifier(fields["collation"] ?? "");
 
-    let statement = `CREATE DATABASE \`${dbName}\``;
-    if (characterSet) statement += ` CHARACTER SET ${characterSet}`;
-    if (collation) statement += ` COLLATE ${collation}`;
-    await sql.execute(statement, []);
+      let statement = `CREATE DATABASE \`${dbName}\``;
+      if (characterSet) statement += ` CHARACTER SET ${characterSet}`;
+      if (collation) statement += ` COLLATE ${collation}`;
+      await sql.execute(statement, []);
 
-    const now = new Date().toISOString();
-    return {
-      id: `${accountId}:mysql-database:${dbName}`,
-      pluginId: "mysql",
-      resourceTypeId: "mysql-database",
-      accountId,
-      displayName: dbName,
-      externalId: dbName,
-      fields: { host: this.hostFromConnectionString(), database: dbName },
-      resolvedOutputs: {},
-      secretStates: [],
-      createdAt: now,
-      updatedAt: now,
-    };
+      const now = new Date().toISOString();
+      return {
+        id: `${accountId}:mysql-database:${dbName}`,
+        pluginId: "mysql",
+        resourceTypeId: "mysql-database",
+        accountId,
+        displayName: dbName,
+        externalId: dbName,
+        fields: { host: this.hostFromConnectionString(), database: dbName },
+        resolvedOutputs: {},
+        secretStates: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId !== "mysql-database") {
-      throw new Error(`MySQL plugin: deleteResource not supported for type "${typeId}"`);
-    }
-    const sql = this.services?.sql;
-    if (!sql) throw new Error("MySQL SQL service not available");
-    const dbName = this.databaseNameFromResourceId(resourceId);
-    if (SYSTEM_DATABASES.has(dbName)) {
-      throw new Error(`Cannot delete system database "${dbName}"`);
-    }
-    this.validateDatabaseName(dbName);
-    await sql.execute(`DROP DATABASE \`${dbName}\``, []);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId !== "mysql-database") {
+        throw new Error(`MySQL plugin: deleteResource not supported for type "${typeId}"`);
+      }
+      const sql = this.services?.sql;
+      if (!sql) throw new Error("MySQL SQL service not available");
+      const dbName = this.databaseNameFromResourceId(resourceId);
+      if (SYSTEM_DATABASES.has(dbName)) {
+        throw new Error(`Cannot delete system database "${dbName}"`);
+      }
+      this.validateDatabaseName(dbName);
+      await sql.execute(`DROP DATABASE \`${dbName}\``, []);
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -204,116 +219,122 @@ export class MySQLClient implements PluginClient {
     };
   }
 
-  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
-    let host = "";
-    try {
-      host = new URL(this.connectionString).hostname;
-    } catch {
-      /* connectionString may not be a parseable URL */
-    }
-
-    const databases: PeerPaneResource[] = [];
-    const sql = this.services?.sql;
-    if (sql) {
-      const rows = (await sql.query("SHOW DATABASES")) as { Database: string }[];
-      const systemDbs = new Set(["information_schema", "performance_schema", "mysql", "sys"]);
-      for (const row of rows) {
-        if (systemDbs.has(row.Database)) continue;
-        databases.push({
-          id: `${context.accountId}:mysql-database:${row.Database}`,
-          pluginId: "mysql",
-          resourceTypeId: "mysql-database",
-          displayName: row.Database,
-          subtitle: host,
-          status: "healthy",
-          fields: { host, database: row.Database },
-        });
+  renderPeerPane(context: PeerPaneContext): PluginEffect<PeerPaneSchema> {
+    return attempt(async () => {
+      let host = "";
+      try {
+        host = new URL(this.connectionString).hostname;
+      } catch {
+        /* connectionString may not be a parseable URL */
       }
-    }
 
-    return {
-      resourceGroups: [
-        {
-          title: `Databases (${databases.length})`,
-          resourceTypeId: "mysql-database",
-          pluginId: "mysql",
-          items: databases,
-        },
-      ],
-    };
+      const databases: PeerPaneResource[] = [];
+      const sql = this.services?.sql;
+      if (sql) {
+        const rows = (await sql.query("SHOW DATABASES")) as { Database: string }[];
+        const systemDbs = new Set(["information_schema", "performance_schema", "mysql", "sys"]);
+        for (const row of rows) {
+          if (systemDbs.has(row.Database)) continue;
+          databases.push({
+            id: `${context.accountId}:mysql-database:${row.Database}`,
+            pluginId: "mysql",
+            resourceTypeId: "mysql-database",
+            displayName: row.Database,
+            subtitle: host,
+            status: "healthy",
+            fields: { host, database: row.Database },
+          });
+        }
+      }
+
+      return {
+        resourceGroups: [
+          {
+            title: `Databases (${databases.length})`,
+            resourceTypeId: "mysql-database",
+            pluginId: "mysql",
+            items: databases,
+          },
+        ],
+      };
+    });
   }
 
-  async introspect(): Promise<SqlTableMeta[]> {
-    const sql = this.services?.sql;
-    if (!sql) return [];
+  introspect(): PluginEffect<SqlTableMeta[]> {
+    return attempt(async () => {
+      const sql = this.services?.sql;
+      if (!sql) return [];
 
-    const [tableRows, columnRows, pkRows] = await Promise.all([
-      sql.query(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' ORDER BY table_name",
-      ),
-      sql.query(
-        "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = DATABASE() ORDER BY table_name, ordinal_position",
-      ),
-      sql.query(
-        "SELECT table_name, column_name FROM information_schema.key_column_usage WHERE table_schema = DATABASE() AND constraint_name = 'PRIMARY' ORDER BY table_name, ordinal_position",
-      ),
-    ]);
+      const [tableRows, columnRows, pkRows] = await Promise.all([
+        sql.query(
+          "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' ORDER BY table_name",
+        ),
+        sql.query(
+          "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = DATABASE() ORDER BY table_name, ordinal_position",
+        ),
+        sql.query(
+          "SELECT table_name, column_name FROM information_schema.key_column_usage WHERE table_schema = DATABASE() AND constraint_name = 'PRIMARY' ORDER BY table_name, ordinal_position",
+        ),
+      ]);
 
-    const colsByTable = new Map<string, { name: string; type: string }[]>();
-    for (const col of columnRows as {
-      table_name: string;
-      column_name: string;
-      data_type: string;
-    }[]) {
-      if (!colsByTable.has(col.table_name)) colsByTable.set(col.table_name, []);
-      colsByTable.get(col.table_name)!.push({ name: col.column_name, type: col.data_type });
-    }
-    const pksByTable = new Map<string, string[]>();
-    for (const pk of pkRows as { table_name: string; column_name: string }[]) {
-      if (!pksByTable.has(pk.table_name)) pksByTable.set(pk.table_name, []);
-      pksByTable.get(pk.table_name)!.push(pk.column_name);
-    }
+      const colsByTable = new Map<string, { name: string; type: string }[]>();
+      for (const col of columnRows as {
+        table_name: string;
+        column_name: string;
+        data_type: string;
+      }[]) {
+        if (!colsByTable.has(col.table_name)) colsByTable.set(col.table_name, []);
+        colsByTable.get(col.table_name)!.push({ name: col.column_name, type: col.data_type });
+      }
+      const pksByTable = new Map<string, string[]>();
+      for (const pk of pkRows as { table_name: string; column_name: string }[]) {
+        if (!pksByTable.has(pk.table_name)) pksByTable.set(pk.table_name, []);
+        pksByTable.get(pk.table_name)!.push(pk.column_name);
+      }
 
-    return (tableRows as { table_name: string }[]).map((t) => ({
-      name: t.table_name,
-      columns: colsByTable.get(t.table_name) ?? [],
-      pkColumns: pksByTable.get(t.table_name) ?? [],
-    }));
+      return (tableRows as { table_name: string }[]).map((t) => ({
+        name: t.table_name,
+        columns: colsByTable.get(t.table_name) ?? [],
+        pkColumns: pksByTable.get(t.table_name) ?? [],
+      }));
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     _resourceTypeId: string,
     _resourceId: string,
     _accountId: string,
-  ): Promise<DashboardStat[]> {
-    const sql = this.services?.sql;
-    if (!sql) {
-      return [
-        { label: "Version", value: "" },
-        { label: "Size", value: "" },
-        { label: "Tables", value: "0" },
-      ];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const sql = this.services?.sql;
+      if (!sql) {
+        return [
+          { label: "Version", value: "" },
+          { label: "Size", value: "" },
+          { label: "Tables", value: "0" },
+        ];
+      }
 
-    const [versionRows, sizeRows, tableRows] = await Promise.all([
-      sql.query("SELECT VERSION() AS version"),
-      sql.query(
-        `SELECT CONCAT(ROUND(SUM(data_length + index_length) / 1024 / 1024, 1), ' MB') AS size
+      const [versionRows, sizeRows, tableRows] = await Promise.all([
+        sql.query("SELECT VERSION() AS version"),
+        sql.query(
+          `SELECT CONCAT(ROUND(SUM(data_length + index_length) / 1024 / 1024, 1), ' MB') AS size
          FROM information_schema.tables WHERE table_schema = DATABASE()`,
-      ),
-      sql.query(
-        "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'",
-      ),
-    ]);
+        ),
+        sql.query(
+          "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'",
+        ),
+      ]);
 
-    const version = String(versionRows[0]?.["version"] ?? "");
-    const size = String(sizeRows[0]?.["size"] ?? "");
-    const tableCount = Number(tableRows[0]?.["n"] ?? 0);
-    return [
-      { label: "Version", value: version },
-      { label: "Size", value: size },
-      { label: "Tables", value: String(tableCount) },
-    ];
+      const version = String(versionRows[0]?.["version"] ?? "");
+      const size = String(sizeRows[0]?.["size"] ?? "");
+      const tableCount = Number(tableRows[0]?.["n"] ?? 0);
+      return [
+        { label: "Version", value: version },
+        { label: "Size", value: size },
+        { label: "Tables", value: String(tableCount) },
+      ];
+    });
   }
 
   /**
@@ -322,25 +343,27 @@ export class MySQLClient implements PluginClient {
    * the `day` / `value` (/ `label`) rows into points. Never falls back to the
    * writable `query()`: an unattended statement must not be able to write.
    */
-  async runBusinessMetricSource(
+  runBusinessMetricSource(
     _accountId: string,
     params: Record<string, string>,
     range: BusinessMetricSourceRange,
-  ): Promise<BusinessMetricSourceResult> {
-    const statement = (params["sql"] ?? "").trim();
-    assertBusinessMetricSql(statement);
-    const bound = bindBusinessMetricSqlRange(statement, range);
-    // Re-check after binding: substituted values are quoted literals, so the
-    // statement shape cannot change, but the guard is cheap and runs every time.
-    assertBusinessMetricSql(bound);
-    const sql = this.services?.sql;
-    if (!sql?.queryReadOnly) {
-      throw new Error(
-        "This host cannot guarantee a read-only query against MySQL, so the importer will not run.",
-      );
-    }
-    const rows = await withBusinessMetricTimeout(sql.queryReadOnly(bound), range);
-    return { points: rowsToBusinessMetricPoints(rows, range.maxRows) };
+  ): PluginEffect<BusinessMetricSourceResult> {
+    return attempt(async () => {
+      const statement = (params["sql"] ?? "").trim();
+      assertBusinessMetricSql(statement);
+      const bound = bindBusinessMetricSqlRange(statement, range);
+      // Re-check after binding: substituted values are quoted literals, so the
+      // statement shape cannot change, but the guard is cheap and runs every time.
+      assertBusinessMetricSql(bound);
+      const sql = this.services?.sql;
+      if (!sql?.queryReadOnly) {
+        throw new Error(
+          "This host cannot guarantee a read-only query against MySQL, so the importer will not run.",
+        );
+      }
+      const rows = await withBusinessMetricTimeout(sql.queryReadOnly(bound), range);
+      return { points: rowsToBusinessMetricPoints(rows, range.maxRows) };
+    });
   }
 
   private async listDatabases(accountId: string): Promise<ResourceInstance[]> {

@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { DopplerClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { dopplerRemediationCommands } from "./remediation.js";
@@ -6,15 +7,13 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { dopplerTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "doppler",
-  version: "0.1.0",
+  egressHosts: ["api.doppler.com"],
   displayName: "Doppler",
   description:
     "Doppler secrets management: projects, environments and configs with a secrets editor, service tokens, integrations and syncs, webhooks, workplace users, groups and service accounts, and the activity log.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -34,7 +33,7 @@ const manifest: PluginManifest = {
       credentialFields: ["token"],
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "token",
       label: "API Token",
@@ -47,17 +46,20 @@ const manifest: PluginManifest = {
         url: "https://docs.doppler.com/reference/auth-token-formats",
       },
     },
-  ],
+  ]),
   statusFeed,
   // Doppler allows 240 API requests a minute on most plans; stay under it.
   rateLimit: { capacity: 10, refillPerSecond: 3 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new DopplerClient(credentials, services),
+  testCredentials: { token: "dp.pt.test" },
   parseStatusFeed,
   terraformExport: dopplerTerraformExport,
   remediationCommands: dopplerRemediationCommands,
-};
+});

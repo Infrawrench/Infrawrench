@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { buildOAuthAuthorizeUrl, desktopOAuthRedirectUri } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
@@ -49,7 +50,7 @@ describe("completeOAuthConnection", () => {
       status: 200,
       body: { user: { email: "ada@example.com", name: "Ada" } },
     }));
-    const result = await plugin.completeOAuthConnection!(
+    const result = await hostPlugin(plugin).completeOAuthConnection!(
       {
         accessToken: "pdus+_tok",
         raw: {
@@ -73,7 +74,7 @@ describe("completeOAuthConnection", () => {
         ? { status: 401, body: {} }
         : { status: 200, body: { user: { email: "eu@example.com" } } },
     );
-    const result = await plugin.completeOAuthConnection!(
+    const result = await hostPlugin(plugin).completeOAuthConnection!(
       { accessToken: "pdus+_tok", raw: {} },
       { client: "desktop", fetch: doFetch },
     );
@@ -89,7 +90,7 @@ describe("completeOAuthConnection", () => {
 
   it("still pre-fills a region when the lookups fail", async () => {
     const { doFetch } = fakeFetch(() => new Error("offline"));
-    const result = await plugin.completeOAuthConnection!(
+    const result = await hostPlugin(plugin).completeOAuthConnection!(
       { accessToken: "pdus+_tok", raw: {} },
       { client: "desktop", fetch: doFetch },
     );
@@ -111,7 +112,7 @@ describe("OAuth transport", () => {
       { apiKey: "tok", __oauth: "{}" },
       { apiKey: "u+AbCdEf" },
     ]) {
-      await new PagerDutyClient(creds, { http }).listResources("pagerduty-team", "acc");
+      await hostClient(new PagerDutyClient(creds, { http })).listResources("pagerduty-team", "acc");
     }
     expect(headers).toEqual(["Bearer pdus+_abc", "Bearer tok", "Token token=u+AbCdEf"]);
     expect(isPagerDutyOAuth({ apiKey: "u+AbCdEf" })).toBe(false);

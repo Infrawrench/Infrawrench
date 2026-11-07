@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MetronomeClient } from "../client.js";
 import { installFetch, jsonResponse } from "./helpers.js";
@@ -5,7 +6,7 @@ import { installFetch, jsonResponse } from "./helpers.js";
 const ACCOUNT = "acct-1";
 
 function client() {
-  return new MetronomeClient({ apiToken: "mtr-test" });
+  return hostClient(new MetronomeClient({ apiToken: "mtr-test" }));
 }
 
 afterEach(() => {

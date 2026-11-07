@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { B2ApiError, coarseRegionOf, s3RegionOf } from "../api.js";
@@ -81,9 +82,11 @@ function client(route: Route, secrets?: Map<string, string>) {
       : {}),
   };
   return {
-    c: new BackblazeB2Client(
-      { applicationKeyId: "kid", applicationKey: "secret" },
-      services as never,
+    c: hostClient(
+      new BackblazeB2Client(
+        { applicationKeyId: "kid", applicationKey: "secret" },
+        services as never,
+      ),
     ),
     calls,
   };

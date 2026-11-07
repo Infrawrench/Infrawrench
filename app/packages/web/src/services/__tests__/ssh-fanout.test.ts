@@ -6,7 +6,11 @@ const mockGetClientForAccount = vi.fn();
 vi.mock("../plugin-clients", () => ({
   getClientForAccount: (...a: unknown[]) => mockGetClientForAccount(...a),
 }));
-vi.mock("../../plugins/loader", () => ({ loadPlugins: vi.fn(), getPlugin: vi.fn() }));
+const mockLoadPlugins = vi.fn();
+vi.mock("../../plugins/loader", () => ({
+  loadPlugins: (...a: unknown[]) => mockLoadPlugins(...a),
+  getPlugin: vi.fn(),
+}));
 vi.mock("../encryption", () => ({ decrypt: vi.fn(), buildAad: vi.fn() }));
 
 const mockResolveSshConfig = vi.fn();
@@ -21,7 +25,7 @@ vi.mock("../host-validation", () => ({
   resolveSafeHost: (...a: unknown[]) => mockResolveSafeHost(...a),
 }));
 
-const { deriveResourceTarget, runFanout } = await import("../ssh-fanout");
+const { deriveResourceTarget, listFanoutTargets, runFanout } = await import("../ssh-fanout");
 
 const row = {
   id: "res-1",
@@ -96,6 +100,24 @@ describe("deriveResourceTarget", () => {
   });
 });
 
+describe("listFanoutTargets", () => {
+  it("lists accounts under the plugin that declares them as hosts", async () => {
+    mockLoadPlugins.mockResolvedValue([
+      { plugin: { manifest: { id: "hosts", jumpHost: true }, resourceTypes: [] } },
+      { plugin: { manifest: { id: "other" }, resourceTypes: [] } },
+    ]);
+    const where = vi
+      .fn()
+      .mockResolvedValue([{ id: "acct-1", displayName: "box", pluginId: "hosts" }]);
+    const from = vi.fn().mockReturnValue({ where });
+    mockSelect.mockReturnValue({ from });
+
+    const targets = await listFanoutTargets("org-1");
+
+    expect(targets[0]).toMatchObject({ kind: "account", id: "acct-1", pluginId: "hosts" });
+  });
+});
+
 describe("runFanout host pinning", () => {
   const CONFIG = { host: "box.example", port: 22, username: "root", privateKey: "KEY" };
 
@@ -107,7 +129,7 @@ describe("runFanout host pinning", () => {
     const from = vi.fn().mockReturnValue({ where });
     mockSelect.mockReturnValue({ from });
     mockGetClientForAccount.mockResolvedValue({
-      plugin: { manifest: { id: "ssh" } },
+      plugin: { manifest: { id: "ssh", jumpHost: true } },
       client: {},
     });
     mockResolveSshConfig.mockResolvedValue(CONFIG);
@@ -134,6 +156,17 @@ describe("runFanout host pinning", () => {
       "uptime",
       { dialAddress: "198.51.100.4" },
     );
+  });
+
+  it("refuses an account whose plugin is not a jump host", async () => {
+    mockGetClientForAccount.mockResolvedValue({
+      plugin: { manifest: { id: "other" } },
+      client: {},
+    });
+    const [result] = await run();
+
+    expect(result!.error).toBe("Account is not an SSH host");
+    expect(mockSshExecCapture).not.toHaveBeenCalled();
   });
 
   it("blocks the host and never dials when the guard refuses", async () => {

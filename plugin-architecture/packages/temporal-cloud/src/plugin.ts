@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { TemporalCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,14 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { temporalTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "temporal-cloud",
-  version: "0.1.0",
+  egressHosts: ["saas-api.tmprl.cloud", "metrics.temporal.io"],
   displayName: "Temporal Cloud",
   description:
     "Durable execution as a service. Track spend by namespace and usage dimension, chart actions, workflow outcomes, latency and backlog, and manage namespaces, export sinks, users, service accounts, API keys, Nexus endpoints and connectivity rules.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -83,7 +82,7 @@ const manifest: PluginManifest = {
       placeholder: "0.00105",
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Billing reports attribute every charge to a namespace (`resource`), by
     // usage dimension (`service`: Actions, Active Storage, Retained Storage,
@@ -101,12 +100,15 @@ const manifest: PluginManifest = {
   statusFeed,
   // Cloud Ops API: 40 requests per second per user, 80 per service account.
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new TemporalCloudClient(credentials, services),
+  testCredentials: { apiKey: "test-temporal-cloud-api-key" },
   parseStatusFeed,
   terraformExport: temporalTerraformExport,
-};
+});

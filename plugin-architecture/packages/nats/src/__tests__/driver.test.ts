@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The NATS.js client is mocked: these tests pin what the driver asks of it.
@@ -114,8 +115,15 @@ vi.mock("@nats-io/obj", () => ({
   },
 }));
 
-const { buildConnectOptions, closeAll, describeFailure, dialTargets, driver, encodeData } =
-  await import("../driver.js");
+const {
+  buildConnectOptions,
+  closeAll,
+  describeFailure,
+  dialTargets,
+  driver: contractDriver,
+  encodeData,
+} = await import("../driver.js");
+const driver = hostDriver(contractDriver);
 const { encodeAuth, decodeAuthArgs, parseServers } = await import("../connection.js");
 
 beforeEach(() => {

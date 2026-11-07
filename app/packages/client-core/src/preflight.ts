@@ -11,8 +11,8 @@
  */
 
 import type {
-  Plugin,
-  PluginClient,
+  HostPlugin,
+  HostPluginClient,
   PolicyTemplate,
   PreflightCapability,
   PreflightDeclaration,
@@ -178,8 +178,8 @@ function sanitizeHelpLink(raw: unknown): { label: string; url: string } | null {
  * (plugins are semi-trusted: bundled, but versioned separately).
  */
 export async function runAccountPreflight(
-  plugin: Plugin,
-  client: PluginClient,
+  plugin: HostPlugin,
+  client: HostPluginClient,
 ): Promise<PreflightReport> {
   const pluginId = plugin.manifest.id;
   const declaration = plugin.manifest.preflight;

@@ -1,52 +1,42 @@
 /**
- * Aggregates all plugin node drivers and re-exports typed maps for use in
- * the IPC handlers (main.ts). All driver interface definitions live in
- * @infrawrench/plugin-base: this file is a pure registration point.
+ * Every plugin's node drivers, for the Electron main process
+ * (`nodeDrivers.desktop`). This file is a pure registration point: all driver
+ * interfaces live in @infrawrench/plugin-base.
  */
-import type {
-  SqlNodeDriver,
-  KvNodeDriver,
-  DockerNodeDriver,
-  K8sNodeDriver,
-  StorageNodeDriver,
-} from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
+import { collectNodeDrivers } from "@infrawrench/plugin-base/effect";
 
-import { driver as pgDriver } from "@infrawrench/plugin-postgres/driver";
-import { driver as mysqlDriver } from "@infrawrench/plugin-mysql/driver";
-import { driver as mssqlDriver } from "@infrawrench/plugin-mssql/driver";
-import { driver as redisDriver } from "@infrawrench/plugin-redis/driver";
-import { driver as kafkaDriver } from "@infrawrench/plugin-kafka/driver";
-import { driver as natsDriver } from "@infrawrench/plugin-nats/driver";
-import { driver as memcachedDriver } from "@infrawrench/plugin-memcached/driver";
-import { driver as mongodbDriver } from "@infrawrench/plugin-mongodb/driver";
-import { driver as dockerDriver } from "@infrawrench/plugin-docker/driver";
-import { driver as k8sDriver } from "@infrawrench/plugin-kubernetes/driver";
-import { driver as libsqlDriver } from "@infrawrench/plugin-turso/driver";
-import { driver as planetscaleDriver } from "@infrawrench/plugin-planetscale/driver";
-import { nodeDriver as gcpDriver } from "@infrawrench/plugin-gcp/node-driver";
-import { nodeDriver as uploadthingDriver } from "@infrawrench/plugin-uploadthing/node-driver";
+import { nodeDrivers as postgresPlugin } from "@infrawrench/plugin-postgres/driver";
+import { nodeDrivers as mysqlPlugin } from "@infrawrench/plugin-mysql/driver";
+import { nodeDrivers as mssqlPlugin } from "@infrawrench/plugin-mssql/driver";
+import { nodeDrivers as redisPlugin } from "@infrawrench/plugin-redis/driver";
+import { nodeDrivers as kafkaPlugin } from "@infrawrench/plugin-kafka/driver";
+import { nodeDrivers as natsPlugin } from "@infrawrench/plugin-nats/driver";
+import { nodeDrivers as memcachedPlugin } from "@infrawrench/plugin-memcached/driver";
+import { nodeDrivers as mongodbPlugin } from "@infrawrench/plugin-mongodb/driver";
+import { nodeDrivers as dockerPlugin } from "@infrawrench/plugin-docker/driver";
+import { nodeDrivers as kubernetesPlugin } from "@infrawrench/plugin-kubernetes/driver";
+import { nodeDrivers as tursoPlugin } from "@infrawrench/plugin-turso/driver";
+import { nodeDrivers as planetscalePlugin } from "@infrawrench/plugin-planetscale/driver";
+import { nodeDrivers as gcpPlugin } from "@infrawrench/plugin-gcp/node-driver";
+import { nodeDrivers as uploadthingPlugin } from "@infrawrench/plugin-uploadthing/node-driver";
 
-export const sqlDrivers = new Map<string, SqlNodeDriver>([
-  [pgDriver.id, pgDriver],
-  [mysqlDriver.id, mysqlDriver],
-  [mssqlDriver.id, mssqlDriver],
-  [libsqlDriver.id, libsqlDriver],
-  [planetscaleDriver.id, planetscaleDriver],
-]);
-
-export const kvDrivers = new Map<string, KvNodeDriver>([
-  [redisDriver.id, redisDriver],
-  [memcachedDriver.id, memcachedDriver],
-  [mongodbDriver.id, mongodbDriver],
-  [kafkaDriver.id, kafkaDriver],
-  [natsDriver.id, natsDriver],
-]);
-
-export const dockerDrivers = new Map<string, DockerNodeDriver>([[dockerDriver.id, dockerDriver]]);
-
-export const k8sDrivers = new Map<string, K8sNodeDriver>([[k8sDriver.id, k8sDriver]]);
-
-export const storageDrivers = new Map<string, StorageNodeDriver>([
-  [gcpDriver.pluginId, gcpDriver],
-  [uploadthingDriver.pluginId, uploadthingDriver],
-]);
+export const { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers, storageDrivers } =
+  collectNodeDrivers(
+    [
+      postgresPlugin,
+      mysqlPlugin,
+      mssqlPlugin,
+      redisPlugin,
+      kafkaPlugin,
+      natsPlugin,
+      memcachedPlugin,
+      mongodbPlugin,
+      dockerPlugin,
+      kubernetesPlugin,
+      tursoPlugin,
+      planetscalePlugin,
+      gcpPlugin,
+      uploadthingPlugin,
+    ],
+    "desktop",
+  );

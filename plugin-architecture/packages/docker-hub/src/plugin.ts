@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import type { HubContext } from "./api.js";
 import { statusOf } from "./api.js";
@@ -13,16 +15,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { dockerHubTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "docker-hub",
-  version: "0.1.0",
+  // auth.docker.io and registry-1.docker.io are only used to read the pull rate limit headers
+  egressHosts: ["hub.docker.com", "auth.docker.io", "registry-1.docker.io"],
   displayName: "Docker Hub",
   description:
     "Docker Hub repositories and tags, organizations with their members, teams and invites, personal and organization access tokens, the audit log and your pull rate limit.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "username",
       label: "Docker ID",
@@ -66,7 +67,7 @@ const manifest: PluginManifest = {
       advanced: true,
       placeholder: "15",
     },
-  ],
+  ]),
   statusFeed,
   quotas: {
     label: "Pull rate limit",
@@ -76,7 +77,9 @@ const manifest: PluginManifest = {
   // Docker Hub's API limit is per minute and per account; stay well inside it.
   rateLimit: { capacity: 10, refillPerSecond: 3 },
   seats: { products: ["Docker"], removal: true },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listCredentialOptions(
   fieldKey: string,
@@ -105,13 +108,14 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new DockerHubClient(credentials, services),
+  testCredentials: { username: "acme", token: "dckr_pat_test" },
   parseStatusFeed,
   terraformExport: dockerHubTerraformExport,
   remediationCommands: dockerHubRemediationCommands,
   seatRemediationCommands: dockerHubSeatRemediationCommands,
-  listCredentialOptions,
-};
+  listCredentialOptions: attemptFn(listCredentialOptions),
+});

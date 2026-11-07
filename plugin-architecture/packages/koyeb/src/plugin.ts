@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { KoyebClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -8,16 +9,14 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { koyebTerraformExport } from "./terraform.js";
 import { koyebDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "koyeb",
-  version: "0.1.0",
+  egressHosts: ["app.koyeb.com"],
   displayName: "Koyeb",
   description:
     "Serverless platform. Manage apps, web services, workers and Postgres databases with deployments, rollbacks, scaling, pause and resume, plus secrets, domains, volumes and snapshots, with logs, metrics, the current invoice, quotas and a spending alert.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Access Token",
@@ -28,7 +27,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Open Koyeb API settings", url: "https://app.koyeb.com/settings/api" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     dimensions: ["service"],
     periodNative: true,
@@ -41,14 +40,17 @@ const manifest: PluginManifest = {
     increaseUrl: "https://app.koyeb.com/settings/plans",
   },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   deployEvents: koyebDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new KoyebClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiToken: "test-token" },
   parseStatusFeed,
   terraformExport: koyebTerraformExport,
   remediationCommands: koyebRemediationCommands,
-};
+});

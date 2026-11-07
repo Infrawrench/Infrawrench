@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resourceTypeDefinitionSchema } from "../validation/index.js";
+import { resourceTypeDefinitionSchema, validate } from "../validation/index.js";
 
 const resourceTypeWith = (expiryFields: unknown) => ({
   id: "certificate",
@@ -14,7 +14,8 @@ const resourceTypeWith = (expiryFields: unknown) => ({
 
 describe("expiryFields validation", () => {
   it("accepts an absolute-expiry rule", () => {
-    const parsed = resourceTypeDefinitionSchema.safeParse(
+    const parsed = validate(
+      resourceTypeDefinitionSchema,
       resourceTypeWith([
         { fieldKey: "notAfter", from: "expiry", kind: "tls-cert", label: "Certificate expires" },
       ]),
@@ -41,12 +42,13 @@ describe("expiryFields validation", () => {
         maxAgeDays: 90,
       },
     ]) {
-      expect(resourceTypeDefinitionSchema.safeParse(resourceTypeWith([rule])).success).toBe(true);
+      expect(validate(resourceTypeDefinitionSchema, resourceTypeWith([rule])).success).toBe(true);
     }
   });
 
   it("rejects fallbackFieldKey on a from:'expiry' rule", () => {
-    const parsed = resourceTypeDefinitionSchema.safeParse(
+    const parsed = validate(
+      resourceTypeDefinitionSchema,
       resourceTypeWith([
         {
           fieldKey: "notAfter",
@@ -63,7 +65,8 @@ describe("expiryFields validation", () => {
   // maxAgeDays on an absolute deadline is dead config: the author almost
   // certainly meant `from: "created"`, so the manifest must fail loudly.
   it("rejects maxAgeDays on a from:'expiry' rule", () => {
-    const parsed = resourceTypeDefinitionSchema.safeParse(
+    const parsed = validate(
+      resourceTypeDefinitionSchema,
       resourceTypeWith([
         {
           fieldKey: "notAfter",
@@ -87,7 +90,7 @@ describe("expiryFields validation", () => {
       { fieldKey: "notAfter", from: "created", kind: "tls-cert", label: "x", maxAgeDays: 1.5 },
     ];
     for (const rule of bad) {
-      expect(resourceTypeDefinitionSchema.safeParse(resourceTypeWith([rule])).success).toBe(false);
+      expect(validate(resourceTypeDefinitionSchema, resourceTypeWith([rule])).success).toBe(false);
     }
   });
 });

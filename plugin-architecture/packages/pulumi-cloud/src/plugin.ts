@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import type { PuContext } from "./api.js";
@@ -15,16 +17,15 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { DEFAULT_PLAN, PLANS } from "./usage.js";
 import { pulumiDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "pulumi-cloud",
-  version: "0.1.0",
+  // managed Pulumi Cloud API; self-hosted API URLs are user-supplied and not allowlisted
+  egressHosts: ["api.pulumi.com"],
   displayName: "Pulumi Cloud",
   description:
     "Pulumi Cloud: stacks with outputs other resources can reference, update history and drift, Pulumi Deployments with logs, schedules and settings, ESC environments with revisions, organization tokens, teams, webhooks, policy packs and policy groups, and usage-based cost.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accessToken",
       label: "Access Token",
@@ -77,7 +78,7 @@ const manifest: PluginManifest = {
       placeholder: DEFAULT_API_URL,
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Daily usage from the resources, deployments and secrets summaries,
     // priced at the picked plan's published rates.
@@ -88,7 +89,9 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listCredentialOptions(
   fieldKey: string,
@@ -126,12 +129,13 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: pulumiDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new PulumiCloudClient(credentials, services),
+  testCredentials: { accessToken: "pul-test", organization: "acme", plan: "pro" },
   parseStatusFeed,
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   remediationCommands: pulumiCloudRemediationCommands,
-};
+});

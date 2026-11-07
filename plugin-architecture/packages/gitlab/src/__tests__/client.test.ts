@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { GitLabApiError, glPaged, resolveBaseUrl, statusOf } from "../api.js";
 import { GitLabClient, cleanTrace, parseListish, splitVariable } from "../client.js";
@@ -18,10 +19,12 @@ function client(
   extra: object = {},
 ) {
   const { http, calls } = makeHttp(route);
-  const c = new GitLabClient({ url: "https://gitlab.example.com", token: "glpat-x", ...creds }, {
-    http,
-    ...extra,
-  } as never);
+  const c = hostClient(
+    new GitLabClient({ url: "https://gitlab.example.com", token: "glpat-x", ...creds }, {
+      http,
+      ...extra,
+    } as never),
+  );
   return { c, calls };
 }
 
@@ -89,7 +92,7 @@ describe("group picker", () => {
         { id: 1, full_path: "acme", name: "acme" },
       ];
     });
-    const options = await plugin.listCredentialOptions!(
+    const options = await hostPlugin(plugin).listCredentialOptions!(
       "group",
       { token: "t", url: "gitlab.com" },
       { http } as never,
@@ -100,7 +103,7 @@ describe("group picker", () => {
   it("explains a rejected token", async () => {
     const { http } = makeHttp(() => ({ status: 401, body: { message: "401 Unauthorized" } }));
     await expect(
-      plugin.listCredentialOptions!("group", { token: "t" }, { http } as never),
+      hostPlugin(plugin).listCredentialOptions!("group", { token: "t" }, { http } as never),
     ).rejects.toThrow(/expired/);
   });
 });

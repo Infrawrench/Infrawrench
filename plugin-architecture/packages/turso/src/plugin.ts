@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { TursoClient } from "./client.js";
 import { TursoGroupResourceType } from "./resources/turso-group.js";
 import { TursoDatabaseResourceType } from "./resources/turso-database.js";
@@ -8,9 +13,9 @@ import { TursoApiTokenResourceType } from "./resources/turso-api-token.js";
 import { TursoOrganizationMemberResourceType } from "./resources/turso-organization-member.js";
 import { TursoOrganizationInviteResourceType } from "./resources/turso-organization-invite.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "turso",
-  version: "0.1.0",
+  egressHosts: ["api.turso.tech"],
   displayName: "Turso",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#0F1923"/>
@@ -18,9 +23,7 @@ const manifest: PluginManifest = {
       <path d="m23.31.803-.563-.42-1.11 1.189-.891-1.286-.512.235.704 1.798-.326.35L18.082 0l-.574.284 2.25 4.836-2.108.741h-.05l-1.143-1.359-1.144 1.36H8.687l-1.144-1.36-1.146 1.363H6.36l-2.12-.745L6.491.284 5.919 0l-2.53 2.668-.327-.349.705-1.798-.512-.236-.89 1.287L1.253.382.69.804 2.42 3.69l-.89.939.311 2.375 2.061.787L3.9 8.817H1.947v.444l.755 1.078 1.197.433v6.971l3.057 4.55L7.657 24l1.101-1.606L9.9 24l.999-1.606L12 24l1.102-1.606L14.1 24l1.141-1.606L16.343 24l.701-1.706 3.058-4.55v-6.972l1.196-.433.756-1.078v-.444h-1.952l.003-1.03 2.054-.784.311-2.375-.89-.939zm-8.93 18.718H8.033l.793-1.615.794 1.615.793-1.083.793 1.083.794-1.083.793 1.083.794-1.083.793 1.083.793-1.615.794 1.615zm3.886-7.39-3.3 1.084-.143 3.061-2.827.627-2.826-.627-.142-3.06-3.3-1.085v-1.635l4.266 1.21-.052 4.126h4.109l-.052-4.127 4.266-1.209z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -36,7 +39,7 @@ const manifest: PluginManifest = {
       sensitive: false,
       placeholder: "my-org",
     },
-  ],
+  ]),
   // Issued monthly invoices only: an org-level lump sum with no line items
   // and no period fields, dated to each invoice's due date.
   costs: {
@@ -48,7 +51,9 @@ const manifest: PluginManifest = {
   // Plan allowances (rows read/written, storage, sync, databases, groups,
   // locations) against the current billing cycle's organization usage.
   quotas: { label: "Plan Limits", increaseUrl: "https://app.turso.tech" },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   TursoGroupResourceType,
@@ -60,8 +65,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   TursoOrganizationInviteResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new TursoClient(credentials, services),
-};
+  testCredentials: { apiToken: "test-token", organizationName: "test-org" },
+});

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { PerplexityClient, agentOutputText } from "../client.js";
@@ -43,10 +44,9 @@ describe("Perplexity", () => {
         ],
       },
     }));
-    const [m] = await new PerplexityClient({ apiKey: "pplx-x" }, { http }).listResources(
-      "perplexity-router-model",
-      ACCOUNT,
-    );
+    const [m] = await hostClient(
+      new PerplexityClient({ apiKey: "pplx-x" }, { http }),
+    ).listResources("perplexity-router-model", ACCOUNT);
     expect(m?.externalId).toBe("perplexity/kimi-k3");
     expect(m?.fields["inputPrice"]).toBe(0.6);
     expect(calls[0]?.url).toBe("https://api.perplexity.ai/router/v1/models");
@@ -62,7 +62,7 @@ describe("Perplexity", () => {
         created_at: 1760000000,
       },
     }));
-    const r = await new PerplexityClient({ apiKey: "k" }, { http }).createResource(
+    const r = await hostClient(new PerplexityClient({ apiKey: "k" }, { http })).createResource(
       "perplexity-async-request",
       ACCOUNT,
       {
@@ -95,7 +95,7 @@ describe("Perplexity", () => {
         },
       },
     }));
-    const r = await new PerplexityClient({ apiKey: "k" }, { http }).getResource(
+    const r = await hostClient(new PerplexityClient({ apiKey: "k" }, { http })).getResource(
       "perplexity-async-request",
       `${ACCOUNT}:perplexity-async-request:req-1`,
       ACCOUNT,
@@ -109,7 +109,7 @@ describe("Perplexity", () => {
     const { http, calls } = host((url, method) =>
       method === "GET" ? { body: { skill_id: "sk1", revision: "rev-9" } } : { body: {} },
     );
-    await new PerplexityClient({ apiKey: "k" }, { http }).deleteResource(
+    await hostClient(new PerplexityClient({ apiKey: "k" }, { http })).deleteResource(
       "perplexity-skill",
       `${ACCOUNT}:perplexity-skill:sk1`,
       ACCOUNT,
@@ -121,7 +121,7 @@ describe("Perplexity", () => {
   it("attaches the HTTP status to errors", async () => {
     const { http } = host(() => ({ status: 401, body: { error: "bad key" } }));
     await expect(
-      new PerplexityClient({ apiKey: "k" }, { http }).listResources(
+      hostClient(new PerplexityClient({ apiKey: "k" }, { http })).listResources(
         "perplexity-agent-model",
         ACCOUNT,
       ),

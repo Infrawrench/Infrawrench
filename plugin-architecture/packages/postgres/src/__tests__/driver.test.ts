@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockQuery = vi.fn();
@@ -15,8 +16,10 @@ vi.mock("pg", () => ({
   }),
 }));
 
-import { driver } from "../driver.js";
+import { driver as contractDriver } from "../driver.js";
 import { Pool } from "pg";
+
+const driver = hostDriver(contractDriver);
 
 describe("postgres driver", () => {
   beforeEach(() => {

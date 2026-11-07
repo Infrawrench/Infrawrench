@@ -185,8 +185,8 @@ export async function getCarbonEstimate(
 
   // Every instance-role row that is not itself a node, by every name it goes by.
   const instanceNames = new Set<string>();
-  for (const { row } of candidates) {
-    if (row.resourceTypeId === "k8s-node") continue;
+  for (const { row, declaration } of candidates) {
+    if (declaration.mayDuplicateInstance) continue;
     for (const alias of instanceAliases({
       displayName: row.displayName,
       externalId: row.externalId,
@@ -202,7 +202,7 @@ export async function getCarbonEstimate(
   await Promise.all(
     candidates.map(async ({ row, declaration }) => {
       if (
-        row.resourceTypeId === "k8s-node" &&
+        declaration.mayDuplicateInstance &&
         nodeAliases(row.displayName).some((alias) => instanceNames.has(alias))
       ) {
         duplicateCount += 1;

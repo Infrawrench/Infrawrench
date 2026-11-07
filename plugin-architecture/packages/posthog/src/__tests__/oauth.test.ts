@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { buildOAuthAuthorizeUrl, desktopOAuthRedirectUri } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { POSTHOG_OAUTH_SCOPES } from "../oauth.js";
@@ -42,7 +43,7 @@ describe("PostHog OAuth declaration", () => {
 describe("completeOAuthConnection", () => {
   it("pre-fills region and the single granted organization", async () => {
     const { doFetch, seen } = fakeFetch(() => ({ status: 200, body: { name: "Acme" } }));
-    const result = await plugin.completeOAuthConnection!(
+    const result = await hostPlugin(plugin).completeOAuthConnection!(
       {
         accessToken: "pha_tok",
         raw: { posthog_region: "eu", scoped_organizations: ["org-1"], scoped_teams: [] },
@@ -63,7 +64,7 @@ describe("completeOAuthConnection", () => {
         ? { status: 200, body: { id: 7, organization: "org-7" } }
         : { status: 200, body: { name: "Seven" } },
     );
-    const result = await plugin.completeOAuthConnection!(
+    const result = await hostPlugin(plugin).completeOAuthConnection!(
       { accessToken: "pha_tok", raw: { posthog_region: "us", scoped_teams: [7] } },
       { client: "desktop", fetch: doFetch },
     );
@@ -76,7 +77,7 @@ describe("completeOAuthConnection", () => {
 
   it("leaves the organization on current for an all-access grant and survives failures", async () => {
     const { doFetch, seen } = fakeFetch(() => new Error("offline"));
-    const result = await plugin.completeOAuthConnection!(
+    const result = await hostPlugin(plugin).completeOAuthConnection!(
       { accessToken: "pha_tok", raw: { scoped_organizations: ["a", "b"] } },
       { client: "desktop", fetch: doFetch },
     );

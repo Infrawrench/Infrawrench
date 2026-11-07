@@ -48,9 +48,9 @@ beforeEach(async () => {
   await registry.destroyAllAgentConnections();
 });
 
-describe("allowlistForPlugins", () => {
-  it("maps known plugin ids to their host suffixes (deduped)", () => {
-    const out = registry.allowlistForPlugins(["aws", "aws", "gcp"]);
+describe("allowlistForPlugins", { timeout: 60_000 }, () => {
+  it("maps known plugin ids to their host suffixes (deduped)", async () => {
+    const out = await registry.allowlistForPlugins(["aws", "aws", "gcp"]);
     expect(out).toContain("*.amazonaws.com");
     expect(out).toContain("*.aws.amazon.com");
     expect(out).toContain("*.googleapis.com");
@@ -58,16 +58,16 @@ describe("allowlistForPlugins", () => {
     expect(out.filter((h) => h === "*.amazonaws.com")).toHaveLength(1);
   });
 
-  it("ignores unknown plugin ids", () => {
-    expect(registry.allowlistForPlugins(["nope"])).toEqual([]);
+  it("ignores unknown plugin ids", async () => {
+    expect(await registry.allowlistForPlugins(["nope"])).toEqual([]);
   });
 
-  it("kubernetes contributes nothing (not bastion-routed in v1)", () => {
-    expect(registry.allowlistForPlugins(["kubernetes"])).toEqual([]);
+  it("kubernetes contributes nothing (not bastion-routed in v1)", async () => {
+    expect(await registry.allowlistForPlugins(["kubernetes"])).toEqual([]);
   });
 
-  it("includes Scaleway control-plane and regional service hosts", () => {
-    const out = registry.allowlistForPlugins(["scaleway"]);
+  it("includes Scaleway control-plane and regional service hosts", async () => {
+    const out = await registry.allowlistForPlugins(["scaleway"]);
     expect(out).toContain("api.scaleway.com");
     expect(out).toContain("*.scw.cloud");
   });

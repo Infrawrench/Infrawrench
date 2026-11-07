@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -128,7 +131,7 @@ export class PostmarkClient implements PluginClient {
   private serverCache: Cached<ServerEntry[]> | undefined;
   private domainCache: Cached<PmDomain[]> | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     this.accountToken = (credentials["accountToken"] ?? "").trim();
     this.serverToken = (credentials["serverToken"] ?? "").trim();
     if (!this.accountToken && !this.serverToken) {
@@ -261,143 +264,147 @@ export class PostmarkClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "postmark-server":
-        return (await this.servers()).map((e) => mapServer(accountId, e.server));
-      case "postmark-message-stream":
-        return this.perServer(async (e) => {
-          const res = await this.server<{ MessageStreams?: PmMessageStream[] }>(
-            e.token,
-            "/message-streams",
-            { query: { MessageStreamType: "All", IncludeArchivedStreams: true } },
-          );
-          return (res?.MessageStreams ?? []).map((s) => mapMessageStream(accountId, e.ref, s));
-        });
-      case "postmark-webhook":
-        return this.perServer(async (e) => {
-          const res = await this.server<{ Webhooks?: PmWebhook[] }>(e.token, "/webhooks");
-          return (res?.Webhooks ?? []).map((w) => mapWebhook(accountId, e.ref, w));
-        });
-      case "postmark-template":
-        return this.perServer(async (e) =>
-          (
-            await this.paged<PmTemplate>("server", e.token, "/templates", "Templates", {
-              TemplateType: "All",
-            })
-          ).map((t) => mapTemplate(accountId, e.ref, t)),
-        );
-      case "postmark-inbound-rule":
-        return this.perServer(async (e) =>
-          (
-            await this.paged<PmInboundRule>(
-              "server",
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "postmark-server":
+          return (await this.servers()).map((e) => mapServer(accountId, e.server));
+        case "postmark-message-stream":
+          return this.perServer(async (e) => {
+            const res = await this.server<{ MessageStreams?: PmMessageStream[] }>(
               e.token,
-              "/triggers/inboundrules",
-              "InboundRules",
+              "/message-streams",
+              { query: { MessageStreamType: "All", IncludeArchivedStreams: true } },
+            );
+            return (res?.MessageStreams ?? []).map((s) => mapMessageStream(accountId, e.ref, s));
+          });
+        case "postmark-webhook":
+          return this.perServer(async (e) => {
+            const res = await this.server<{ Webhooks?: PmWebhook[] }>(e.token, "/webhooks");
+            return (res?.Webhooks ?? []).map((w) => mapWebhook(accountId, e.ref, w));
+          });
+        case "postmark-template":
+          return this.perServer(async (e) =>
+            (
+              await this.paged<PmTemplate>("server", e.token, "/templates", "Templates", {
+                TemplateType: "All",
+              })
+            ).map((t) => mapTemplate(accountId, e.ref, t)),
+          );
+        case "postmark-inbound-rule":
+          return this.perServer(async (e) =>
+            (
+              await this.paged<PmInboundRule>(
+                "server",
+                e.token,
+                "/triggers/inboundrules",
+                "InboundRules",
+              )
+            ).map((r) => mapInboundRule(accountId, e.ref, r)),
+          );
+        case "postmark-domain":
+          return (await this.domains()).map((d) => mapDomain(accountId, d));
+        case "postmark-dns-record":
+          return (await this.domains()).flatMap((d) => mapDnsRecords(accountId, d));
+        case "postmark-sender-signature":
+          if (!this.accountToken) return [];
+          return (
+            await this.paged<PmSenderSignature>(
+              "account",
+              this.accountToken,
+              "/senders",
+              "SenderSignatures",
             )
-          ).map((r) => mapInboundRule(accountId, e.ref, r)),
-        );
-      case "postmark-domain":
-        return (await this.domains()).map((d) => mapDomain(accountId, d));
-      case "postmark-dns-record":
-        return (await this.domains()).flatMap((d) => mapDnsRecords(accountId, d));
-      case "postmark-sender-signature":
-        if (!this.accountToken) return [];
-        return (
-          await this.paged<PmSenderSignature>(
-            "account",
-            this.accountToken,
-            "/senders",
-            "SenderSignatures",
-          )
-        ).map((s) => mapSenderSignature(accountId, s));
-      default:
-        throw new Error(`Postmark plugin: unknown resource type "${typeId}"`);
-    }
+          ).map((s) => mapSenderSignature(accountId, s));
+        default:
+          throw new Error(`Postmark plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const ext = externalIdOf(resourceId);
-    switch (typeId) {
-      case "postmark-server":
-        return this.loadServer(accountId, ext);
-      case "postmark-message-stream": {
-        const { serverId, id } = splitScoped(ext);
-        const e = await this.serverEntry(serverId);
-        const s = await this.server<PmMessageStream>(
-          e.token,
-          `/message-streams/${encodeURIComponent(id)}`,
-        );
-        const r = mapMessageStream(accountId, e.ref, s);
-        if (s.MessageStreamType === "Inbound") return r;
-        const [overview, suppressions] = await Promise.all([
-          outboundOverview(this.transport, e.token, id).catch(() => undefined),
-          this.server<{ Suppressions?: SuppressionRow[] }>(
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      switch (typeId) {
+        case "postmark-server":
+          return this.loadServer(accountId, ext);
+        case "postmark-message-stream": {
+          const { serverId, id } = splitScoped(ext);
+          const e = await this.serverEntry(serverId);
+          const s = await this.server<PmMessageStream>(
             e.token,
-            `/message-streams/${encodeURIComponent(id)}/suppressions/dump`,
-          )
-            .then((d) => d?.Suppressions ?? [])
-            .catch(() => undefined),
-        ]);
-        return stash(r, {
-          [OVERVIEW_KEY]: overview,
-          [SUPPRESSIONS_KEY]: suppressions?.slice(0, 200),
-        });
+            `/message-streams/${encodeURIComponent(id)}`,
+          );
+          const r = mapMessageStream(accountId, e.ref, s);
+          if (s.MessageStreamType === "Inbound") return r;
+          const [overview, suppressions] = await Promise.all([
+            outboundOverview(this.transport, e.token, id).catch(() => undefined),
+            this.server<{ Suppressions?: SuppressionRow[] }>(
+              e.token,
+              `/message-streams/${encodeURIComponent(id)}/suppressions/dump`,
+            )
+              .then((d) => d?.Suppressions ?? [])
+              .catch(() => undefined),
+          ]);
+          return stash(r, {
+            [OVERVIEW_KEY]: overview,
+            [SUPPRESSIONS_KEY]: suppressions?.slice(0, 200),
+          });
+        }
+        case "postmark-webhook": {
+          const { serverId, id } = splitScoped(ext);
+          const e = await this.serverEntry(serverId);
+          const [w, stats] = await Promise.all([
+            this.server<PmWebhook>(e.token, `/webhooks/${encodeURIComponent(id)}`),
+            this.server<WebhookStats>(
+              e.token,
+              `/webhooks/${encodeURIComponent(id)}/statistics`,
+            ).catch(() => undefined),
+          ]);
+          return stash(mapWebhook(accountId, e.ref, w), { [WEBHOOK_STATS_KEY]: stats });
+        }
+        case "postmark-template": {
+          const { serverId, id } = splitScoped(ext);
+          const e = await this.serverEntry(serverId);
+          return mapTemplate(
+            accountId,
+            e.ref,
+            await this.server<PmTemplate>(e.token, `/templates/${encodeURIComponent(id)}`),
+          );
+        }
+        case "postmark-domain":
+          return mapDomain(
+            accountId,
+            await this.account<PmDomain>(`/domains/${encodeURIComponent(ext)}`),
+          );
+        case "postmark-dns-record": {
+          const { serverId: domainId } = splitScoped(ext);
+          const d = await this.account<PmDomain>(`/domains/${encodeURIComponent(domainId)}`);
+          const found = mapDnsRecords(accountId, d).find((r) => r.externalId === ext);
+          if (!found) throw notFound(typeId, resourceId);
+          return found;
+        }
+        case "postmark-sender-signature":
+          return mapSenderSignature(
+            accountId,
+            await this.account<PmSenderSignature>(`/senders/${encodeURIComponent(ext)}`),
+          );
+        default: {
+          const all = await runPluginEffect(this.listResources(typeId, accountId));
+          const found = all.find((r) => r.id === resourceId || r.externalId === ext);
+          if (!found) throw notFound(typeId, resourceId);
+          return found;
+        }
       }
-      case "postmark-webhook": {
-        const { serverId, id } = splitScoped(ext);
-        const e = await this.serverEntry(serverId);
-        const [w, stats] = await Promise.all([
-          this.server<PmWebhook>(e.token, `/webhooks/${encodeURIComponent(id)}`),
-          this.server<WebhookStats>(
-            e.token,
-            `/webhooks/${encodeURIComponent(id)}/statistics`,
-          ).catch(() => undefined),
-        ]);
-        return stash(mapWebhook(accountId, e.ref, w), { [WEBHOOK_STATS_KEY]: stats });
-      }
-      case "postmark-template": {
-        const { serverId, id } = splitScoped(ext);
-        const e = await this.serverEntry(serverId);
-        return mapTemplate(
-          accountId,
-          e.ref,
-          await this.server<PmTemplate>(e.token, `/templates/${encodeURIComponent(id)}`),
-        );
-      }
-      case "postmark-domain":
-        return mapDomain(
-          accountId,
-          await this.account<PmDomain>(`/domains/${encodeURIComponent(ext)}`),
-        );
-      case "postmark-dns-record": {
-        const { serverId: domainId } = splitScoped(ext);
-        const d = await this.account<PmDomain>(`/domains/${encodeURIComponent(domainId)}`);
-        const found = mapDnsRecords(accountId, d).find((r) => r.externalId === ext);
-        if (!found) throw notFound(typeId, resourceId);
-        return found;
-      }
-      case "postmark-sender-signature":
-        return mapSenderSignature(
-          accountId,
-          await this.account<PmSenderSignature>(`/senders/${encodeURIComponent(ext)}`),
-        );
-      default: {
-        const all = await this.listResources(typeId, accountId);
-        const found = all.find((r) => r.id === resourceId || r.externalId === ext);
-        if (!found) throw notFound(typeId, resourceId);
-        return found;
-      }
-    }
+    });
   }
 
   private async loadServer(accountId: string, serverId: string): Promise<ResourceInstance> {
@@ -427,65 +434,71 @@ export class PostmarkClient implements PluginClient {
     });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "postmark-server" && outputKey === "serverToken") {
-      return (await this.serverEntry(externalIdOf(resourceId))).token;
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(`Postmark plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "postmark-server" && outputKey === "serverToken") {
+        return (await this.serverEntry(externalIdOf(resourceId))).token;
+      }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
+      throw new Error(`Postmark plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats and metrics
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
-  ): Promise<DashboardStat[]> {
-    if (resourceTypeId !== "postmark-server" && resourceTypeId !== "postmark-message-stream") {
-      return [];
-    }
-    const ext = externalIdOf(resourceId);
-    const { serverId, id } =
-      resourceTypeId === "postmark-server" ? { serverId: ext, id: "" } : splitScoped(ext);
-    const e = await this.serverEntry(serverId);
-    const o: OutboundOverview = await outboundOverview(this.transport, e.token, id || undefined);
-    const rate = o.BounceRate ?? 0;
-    return [
-      { label: "Sent (30d)", value: (o.Sent ?? 0).toLocaleString("en-US") },
-      {
-        label: "Bounce rate",
-        value: `${rate.toFixed(2)}%`,
-        variant: rate >= 10 ? "status-error" : rate >= 5 ? "status-degraded" : "status-healthy",
-      },
-    ];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "postmark-server" && resourceTypeId !== "postmark-message-stream") {
+        return [];
+      }
+      const ext = externalIdOf(resourceId);
+      const { serverId, id } =
+        resourceTypeId === "postmark-server" ? { serverId: ext, id: "" } : splitScoped(ext);
+      const e = await this.serverEntry(serverId);
+      const o: OutboundOverview = await outboundOverview(this.transport, e.token, id || undefined);
+      const rate = o.BounceRate ?? 0;
+      return [
+        { label: "Sent (30d)", value: (o.Sent ?? 0).toLocaleString("en-US") },
+        {
+          label: "Bounce rate",
+          value: `${rate.toFixed(2)}%`,
+          variant: rate >= 10 ? "status-error" : rate >= 5 ? "status-degraded" : "status-healthy",
+        },
+      ];
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const range = rangeOrDefault(timeRange);
-    const ext = externalIdOf(resourceId);
-    if (resourceTypeId === "postmark-server") {
-      return statsSeries(this.transport, (await this.serverEntry(ext)).token, range);
-    }
-    if (resourceTypeId === "postmark-message-stream") {
-      const { serverId, id } = splitScoped(ext);
-      return statsSeries(this.transport, (await this.serverEntry(serverId)).token, range, id);
-    }
-    return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const range = rangeOrDefault(timeRange);
+      const ext = externalIdOf(resourceId);
+      if (resourceTypeId === "postmark-server") {
+        return statsSeries(this.transport, (await this.serverEntry(ext)).token, range);
+      }
+      if (resourceTypeId === "postmark-message-stream") {
+        const { serverId, id } = splitScoped(ext);
+        return statsSeries(this.transport, (await this.serverEntry(serverId)).token, range, id);
+      }
+      return [];
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -521,201 +534,208 @@ export class PostmarkClient implements PluginClient {
     return id;
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    const text = (
-      key: string,
-      label: string,
-      opts: Partial<CreateFieldConfig> = {},
-    ): CreateFieldConfig => ({
-      key,
-      label,
-      kind: "text",
-      required: false,
-      ...opts,
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      const text = (
+        key: string,
+        label: string,
+        opts: Partial<CreateFieldConfig> = {},
+      ): CreateFieldConfig => ({
+        key,
+        label,
+        kind: "text",
+        required: false,
+        ...opts,
+      });
+      const toggle = (
+        key: string,
+        label: string,
+        defaultValue: boolean,
+        description?: string,
+      ): CreateFieldConfig => ({
+        key,
+        label,
+        kind: "select",
+        required: false,
+        defaultValue: String(defaultValue),
+        options: [
+          { id: "true", label: "On" },
+          { id: "false", label: "Off" },
+        ],
+        ...(description ? { description } : {}),
+      });
+      switch (typeId) {
+        case "postmark-server":
+          return {
+            fields: [
+              text("name", "Name", { required: true, description: "Needs the account API token." }),
+              {
+                key: "color",
+                label: "Color",
+                kind: "select",
+                required: false,
+                defaultValue: "Blue",
+                options: SERVER_COLORS.map((c) => ({ id: c, label: c })),
+              },
+              {
+                key: "deliveryType",
+                label: "Delivery",
+                kind: "select",
+                required: true,
+                defaultValue: "Live",
+                description:
+                  "Sandbox servers accept mail but never deliver it. This cannot be changed later.",
+                options: [
+                  { id: "Live", label: "Live" },
+                  { id: "Sandbox", label: "Sandbox" },
+                ],
+              },
+              toggle("trackOpens", "Track opens", false),
+              {
+                key: "trackLinks",
+                label: "Track links",
+                kind: "select",
+                required: false,
+                defaultValue: "None",
+                options: TRACK_LINKS.map((t) => ({ id: t, label: t })),
+              },
+              toggle(
+                "smtpApiActivated",
+                "SMTP",
+                true,
+                "Allow sending over SMTP as well as the API.",
+              ),
+            ],
+          };
+        case "postmark-message-stream":
+          return {
+            fields: [
+              ...(await this.serverField(parentResourceId)),
+              text("streamId", "Stream ID", {
+                required: true,
+                placeholder: "newsletters",
+                description:
+                  "What your app passes as MessageStream when sending. Lowercase letters, numbers and dashes; it cannot be changed later.",
+              }),
+              text("name", "Name", { required: true }),
+              {
+                key: "messageStreamType",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "Transactional",
+                options: [
+                  {
+                    id: "Transactional",
+                    label: "Transactional",
+                    description: "One-to-one mail your app triggers.",
+                  },
+                  {
+                    id: "Broadcasts",
+                    label: "Broadcasts",
+                    description: "Newsletters and announcements to many recipients.",
+                  },
+                ],
+              },
+              text("description", "Description"),
+              {
+                key: "unsubscribeHandlingType",
+                label: "Unsubscribe handling",
+                kind: "select",
+                required: false,
+                defaultValue: "",
+                options: [
+                  { id: "", label: "Postmark default for the type" },
+                  ...UNSUBSCRIBE_HANDLING.map((u) => ({ id: u, label: u })),
+                ],
+              },
+            ],
+          };
+        case "postmark-domain":
+          return {
+            fields: [
+              text("name", "Domain", { required: true, placeholder: "example.com" }),
+              text("returnPathDomain", "Return-Path domain", {
+                placeholder: "pm-bounces.example.com",
+                description:
+                  "Optional subdomain with a CNAME to pm.mtasv.net, for DMARC-aligned SPF.",
+              }),
+            ],
+          };
+        case "postmark-sender-signature":
+          return {
+            fields: [
+              text("emailAddress", "From address", {
+                required: true,
+                placeholder: "support@example.com",
+              }),
+              text("name", "From name", { required: true }),
+              text("replyToEmailAddress", "Reply-To"),
+              text("returnPathDomain", "Return-Path domain"),
+              text("confirmationPersonalNote", "Note in the confirmation email", {
+                description: "Up to 400 characters, shown to whoever confirms the address.",
+              }),
+            ],
+          };
+        case "postmark-webhook":
+          return { fields: await this.webhookFields(parentResourceId) };
+        case "postmark-template":
+          return {
+            fields: [
+              ...(await this.serverField(parentResourceId)),
+              text("name", "Name", { required: true }),
+              text("alias", "Alias", {
+                placeholder: "welcome-email",
+                description: "Lets your app send by name instead of ID.",
+              }),
+              {
+                key: "templateType",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "Standard",
+                options: [
+                  { id: "Standard", label: "Standard" },
+                  {
+                    id: "Layout",
+                    label: "Layout",
+                    description:
+                      "A wrapper other templates render inside; must contain {{{@content}}}.",
+                  },
+                ],
+              },
+              text("layoutTemplate", "Layout alias", {
+                showWhen: { fieldKey: "templateType", fieldValue: "Standard" },
+                description: "Optional alias of a layout on the same server.",
+              }),
+              text("subject", "Subject", {
+                required: true,
+                showWhen: { fieldKey: "templateType", fieldValue: "Standard" },
+              }),
+              {
+                key: "htmlBody",
+                label: "HTML body",
+                kind: "code",
+                codeLanguage: "html",
+                required: false,
+              },
+              text("textBody", "Text body", { multiline: true }),
+            ],
+          };
+        case "postmark-inbound-rule":
+          return {
+            fields: [
+              ...(await this.serverField(parentResourceId)),
+              text("rule", "Address or domain to block", {
+                required: true,
+                placeholder: "spammer@example.com or example.com",
+              }),
+            ],
+          };
+        default:
+          throw new Error(`Postmark plugin: "${typeId}" cannot be created from Infrawrench`);
+      }
     });
-    const toggle = (
-      key: string,
-      label: string,
-      defaultValue: boolean,
-      description?: string,
-    ): CreateFieldConfig => ({
-      key,
-      label,
-      kind: "select",
-      required: false,
-      defaultValue: String(defaultValue),
-      options: [
-        { id: "true", label: "On" },
-        { id: "false", label: "Off" },
-      ],
-      ...(description ? { description } : {}),
-    });
-    switch (typeId) {
-      case "postmark-server":
-        return {
-          fields: [
-            text("name", "Name", { required: true, description: "Needs the account API token." }),
-            {
-              key: "color",
-              label: "Color",
-              kind: "select",
-              required: false,
-              defaultValue: "Blue",
-              options: SERVER_COLORS.map((c) => ({ id: c, label: c })),
-            },
-            {
-              key: "deliveryType",
-              label: "Delivery",
-              kind: "select",
-              required: true,
-              defaultValue: "Live",
-              description:
-                "Sandbox servers accept mail but never deliver it. This cannot be changed later.",
-              options: [
-                { id: "Live", label: "Live" },
-                { id: "Sandbox", label: "Sandbox" },
-              ],
-            },
-            toggle("trackOpens", "Track opens", false),
-            {
-              key: "trackLinks",
-              label: "Track links",
-              kind: "select",
-              required: false,
-              defaultValue: "None",
-              options: TRACK_LINKS.map((t) => ({ id: t, label: t })),
-            },
-            toggle("smtpApiActivated", "SMTP", true, "Allow sending over SMTP as well as the API."),
-          ],
-        };
-      case "postmark-message-stream":
-        return {
-          fields: [
-            ...(await this.serverField(parentResourceId)),
-            text("streamId", "Stream ID", {
-              required: true,
-              placeholder: "newsletters",
-              description:
-                "What your app passes as MessageStream when sending. Lowercase letters, numbers and dashes; it cannot be changed later.",
-            }),
-            text("name", "Name", { required: true }),
-            {
-              key: "messageStreamType",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "Transactional",
-              options: [
-                {
-                  id: "Transactional",
-                  label: "Transactional",
-                  description: "One-to-one mail your app triggers.",
-                },
-                {
-                  id: "Broadcasts",
-                  label: "Broadcasts",
-                  description: "Newsletters and announcements to many recipients.",
-                },
-              ],
-            },
-            text("description", "Description"),
-            {
-              key: "unsubscribeHandlingType",
-              label: "Unsubscribe handling",
-              kind: "select",
-              required: false,
-              defaultValue: "",
-              options: [
-                { id: "", label: "Postmark default for the type" },
-                ...UNSUBSCRIBE_HANDLING.map((u) => ({ id: u, label: u })),
-              ],
-            },
-          ],
-        };
-      case "postmark-domain":
-        return {
-          fields: [
-            text("name", "Domain", { required: true, placeholder: "example.com" }),
-            text("returnPathDomain", "Return-Path domain", {
-              placeholder: "pm-bounces.example.com",
-              description:
-                "Optional subdomain with a CNAME to pm.mtasv.net, for DMARC-aligned SPF.",
-            }),
-          ],
-        };
-      case "postmark-sender-signature":
-        return {
-          fields: [
-            text("emailAddress", "From address", {
-              required: true,
-              placeholder: "support@example.com",
-            }),
-            text("name", "From name", { required: true }),
-            text("replyToEmailAddress", "Reply-To"),
-            text("returnPathDomain", "Return-Path domain"),
-            text("confirmationPersonalNote", "Note in the confirmation email", {
-              description: "Up to 400 characters, shown to whoever confirms the address.",
-            }),
-          ],
-        };
-      case "postmark-webhook":
-        return { fields: await this.webhookFields(parentResourceId) };
-      case "postmark-template":
-        return {
-          fields: [
-            ...(await this.serverField(parentResourceId)),
-            text("name", "Name", { required: true }),
-            text("alias", "Alias", {
-              placeholder: "welcome-email",
-              description: "Lets your app send by name instead of ID.",
-            }),
-            {
-              key: "templateType",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "Standard",
-              options: [
-                { id: "Standard", label: "Standard" },
-                {
-                  id: "Layout",
-                  label: "Layout",
-                  description:
-                    "A wrapper other templates render inside; must contain {{{@content}}}.",
-                },
-              ],
-            },
-            text("layoutTemplate", "Layout alias", {
-              showWhen: { fieldKey: "templateType", fieldValue: "Standard" },
-              description: "Optional alias of a layout on the same server.",
-            }),
-            text("subject", "Subject", {
-              required: true,
-              showWhen: { fieldKey: "templateType", fieldValue: "Standard" },
-            }),
-            {
-              key: "htmlBody",
-              label: "HTML body",
-              kind: "code",
-              codeLanguage: "html",
-              required: false,
-            },
-            text("textBody", "Text body", { multiline: true }),
-          ],
-        };
-      case "postmark-inbound-rule":
-        return {
-          fields: [
-            ...(await this.serverField(parentResourceId)),
-            text("rule", "Address or domain to block", {
-              required: true,
-              placeholder: "spammer@example.com or example.com",
-            }),
-          ],
-        };
-      default:
-        throw new Error(`Postmark plugin: "${typeId}" cannot be created from Infrawrench`);
-    }
   }
 
   private async webhookFields(parentResourceId?: string): Promise<CreateFieldConfig[]> {
@@ -781,421 +801,444 @@ export class PostmarkClient implements PluginClient {
     ];
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    this.invalidate();
-    switch (typeId) {
-      case "postmark-server": {
-        const s = await this.account<PmServer>("/servers", {
-          body: {
-            Name: trimmed(fields, "name"),
-            ...(trimmed(fields, "color") ? { Color: trimmed(fields, "color") } : {}),
-            DeliveryType: trimmed(fields, "deliveryType") || "Live",
-            ...(bool(fields["trackOpens"]) !== undefined
-              ? { TrackOpens: bool(fields["trackOpens"]) }
-              : {}),
-            ...(trimmed(fields, "trackLinks") ? { TrackLinks: trimmed(fields, "trackLinks") } : {}),
-            ...(bool(fields["smtpApiActivated"]) !== undefined
-              ? { SmtpApiActivated: bool(fields["smtpApiActivated"]) }
-              : {}),
-          },
-        });
-        return mapServer(accountId, s);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      this.invalidate();
+      switch (typeId) {
+        case "postmark-server": {
+          const s = await this.account<PmServer>("/servers", {
+            body: {
+              Name: trimmed(fields, "name"),
+              ...(trimmed(fields, "color") ? { Color: trimmed(fields, "color") } : {}),
+              DeliveryType: trimmed(fields, "deliveryType") || "Live",
+              ...(bool(fields["trackOpens"]) !== undefined
+                ? { TrackOpens: bool(fields["trackOpens"]) }
+                : {}),
+              ...(trimmed(fields, "trackLinks")
+                ? { TrackLinks: trimmed(fields, "trackLinks") }
+                : {}),
+              ...(bool(fields["smtpApiActivated"]) !== undefined
+                ? { SmtpApiActivated: bool(fields["smtpApiActivated"]) }
+                : {}),
+            },
+          });
+          return mapServer(accountId, s);
+        }
+        case "postmark-message-stream": {
+          const e = await this.serverEntry(this.parentServerId(fields, parentResourceId));
+          const handling = trimmed(fields, "unsubscribeHandlingType");
+          const s = await this.server<PmMessageStream>(e.token, "/message-streams", {
+            body: {
+              ID: trimmed(fields, "streamId").toLowerCase(),
+              Name: trimmed(fields, "name"),
+              MessageStreamType: trimmed(fields, "messageStreamType") || "Transactional",
+              ...(trimmed(fields, "description")
+                ? { Description: trimmed(fields, "description") }
+                : {}),
+              ...(handling
+                ? { SubscriptionManagementConfiguration: { UnsubscribeHandlingType: handling } }
+                : {}),
+            },
+          });
+          return mapMessageStream(accountId, e.ref, s);
+        }
+        case "postmark-domain": {
+          const d = await this.account<PmDomain>("/domains", {
+            body: {
+              Name: trimmed(fields, "name"),
+              ...(trimmed(fields, "returnPathDomain")
+                ? { ReturnPathDomain: trimmed(fields, "returnPathDomain") }
+                : {}),
+            },
+          });
+          return mapDomain(accountId, d);
+        }
+        case "postmark-sender-signature": {
+          const s = await this.account<PmSenderSignature>("/senders", {
+            body: {
+              FromEmail: trimmed(fields, "emailAddress"),
+              Name: trimmed(fields, "name"),
+              ...(trimmed(fields, "replyToEmailAddress")
+                ? { ReplyToEmail: trimmed(fields, "replyToEmailAddress") }
+                : {}),
+              ...(trimmed(fields, "returnPathDomain")
+                ? { ReturnPathDomain: trimmed(fields, "returnPathDomain") }
+                : {}),
+              ...(trimmed(fields, "confirmationPersonalNote")
+                ? {
+                    ConfirmationPersonalNote: trimmed(fields, "confirmationPersonalNote").slice(
+                      0,
+                      400,
+                    ),
+                  }
+                : {}),
+            },
+          });
+          return mapSenderSignature(accountId, s);
+        }
+        case "postmark-webhook": {
+          const [serverId, stream] = trimmed(fields, "serverStream").split("|");
+          const e = await this.serverEntry(
+            serverId || this.parentServerId(fields, parentResourceId),
+          );
+          const url = trimmed(fields, "url");
+          if (!/^https?:\/\//i.test(url))
+            throw new Error("Postmark plugin: the webhook URL must start with https://");
+          const user = trimmed(fields, "httpAuthUsername");
+          const w = await this.server<PmWebhook>(e.token, "/webhooks", {
+            body: {
+              Url: url,
+              MessageStream: stream || "outbound",
+              ...(user
+                ? { HttpAuth: { Username: user, Password: fields["httpAuthPassword"] ?? "" } }
+                : {}),
+              Triggers: triggersFrom(fields),
+            },
+          });
+          return mapWebhook(accountId, e.ref, w);
+        }
+        case "postmark-template": {
+          const e = await this.serverEntry(this.parentServerId(fields, parentResourceId));
+          const layout = trimmed(fields, "templateType") === "Layout";
+          const res = await this.server<PmTemplate>(e.token, "/templates", {
+            body: {
+              Name: trimmed(fields, "name"),
+              TemplateType: layout ? "Layout" : "Standard",
+              ...(trimmed(fields, "alias") ? { Alias: trimmed(fields, "alias") } : {}),
+              ...(!layout && trimmed(fields, "subject")
+                ? { Subject: trimmed(fields, "subject") }
+                : {}),
+              ...(!layout && trimmed(fields, "layoutTemplate")
+                ? { LayoutTemplate: trimmed(fields, "layoutTemplate") }
+                : {}),
+              ...(fields["htmlBody"] ? { HtmlBody: fields["htmlBody"] } : {}),
+              ...(fields["textBody"] ? { TextBody: fields["textBody"] } : {}),
+            },
+          });
+          return mapTemplate(accountId, e.ref, {
+            ...res,
+            Name: res.Name ?? trimmed(fields, "name"),
+          });
+        }
+        case "postmark-inbound-rule": {
+          const e = await this.serverEntry(this.parentServerId(fields, parentResourceId));
+          const r = await this.server<PmInboundRule>(e.token, "/triggers/inboundrules", {
+            body: { Rule: trimmed(fields, "rule") },
+          });
+          return mapInboundRule(accountId, e.ref, r);
+        }
+        default:
+          throw new Error(`Postmark plugin: "${typeId}" cannot be created from Infrawrench`);
       }
-      case "postmark-message-stream": {
-        const e = await this.serverEntry(this.parentServerId(fields, parentResourceId));
-        const handling = trimmed(fields, "unsubscribeHandlingType");
-        const s = await this.server<PmMessageStream>(e.token, "/message-streams", {
-          body: {
-            ID: trimmed(fields, "streamId").toLowerCase(),
-            Name: trimmed(fields, "name"),
-            MessageStreamType: trimmed(fields, "messageStreamType") || "Transactional",
-            ...(trimmed(fields, "description")
-              ? { Description: trimmed(fields, "description") }
-              : {}),
-            ...(handling
-              ? { SubscriptionManagementConfiguration: { UnsubscribeHandlingType: handling } }
-              : {}),
-          },
-        });
-        return mapMessageStream(accountId, e.ref, s);
-      }
-      case "postmark-domain": {
-        const d = await this.account<PmDomain>("/domains", {
-          body: {
-            Name: trimmed(fields, "name"),
-            ...(trimmed(fields, "returnPathDomain")
-              ? { ReturnPathDomain: trimmed(fields, "returnPathDomain") }
-              : {}),
-          },
-        });
-        return mapDomain(accountId, d);
-      }
-      case "postmark-sender-signature": {
-        const s = await this.account<PmSenderSignature>("/senders", {
-          body: {
-            FromEmail: trimmed(fields, "emailAddress"),
-            Name: trimmed(fields, "name"),
-            ...(trimmed(fields, "replyToEmailAddress")
-              ? { ReplyToEmail: trimmed(fields, "replyToEmailAddress") }
-              : {}),
-            ...(trimmed(fields, "returnPathDomain")
-              ? { ReturnPathDomain: trimmed(fields, "returnPathDomain") }
-              : {}),
-            ...(trimmed(fields, "confirmationPersonalNote")
-              ? {
-                  ConfirmationPersonalNote: trimmed(fields, "confirmationPersonalNote").slice(
-                    0,
-                    400,
-                  ),
-                }
-              : {}),
-          },
-        });
-        return mapSenderSignature(accountId, s);
-      }
-      case "postmark-webhook": {
-        const [serverId, stream] = trimmed(fields, "serverStream").split("|");
-        const e = await this.serverEntry(serverId || this.parentServerId(fields, parentResourceId));
-        const url = trimmed(fields, "url");
-        if (!/^https?:\/\//i.test(url))
-          throw new Error("Postmark plugin: the webhook URL must start with https://");
-        const user = trimmed(fields, "httpAuthUsername");
-        const w = await this.server<PmWebhook>(e.token, "/webhooks", {
-          body: {
-            Url: url,
-            MessageStream: stream || "outbound",
-            ...(user
-              ? { HttpAuth: { Username: user, Password: fields["httpAuthPassword"] ?? "" } }
-              : {}),
-            Triggers: triggersFrom(fields),
-          },
-        });
-        return mapWebhook(accountId, e.ref, w);
-      }
-      case "postmark-template": {
-        const e = await this.serverEntry(this.parentServerId(fields, parentResourceId));
-        const layout = trimmed(fields, "templateType") === "Layout";
-        const res = await this.server<PmTemplate>(e.token, "/templates", {
-          body: {
-            Name: trimmed(fields, "name"),
-            TemplateType: layout ? "Layout" : "Standard",
-            ...(trimmed(fields, "alias") ? { Alias: trimmed(fields, "alias") } : {}),
-            ...(!layout && trimmed(fields, "subject")
-              ? { Subject: trimmed(fields, "subject") }
-              : {}),
-            ...(!layout && trimmed(fields, "layoutTemplate")
-              ? { LayoutTemplate: trimmed(fields, "layoutTemplate") }
-              : {}),
-            ...(fields["htmlBody"] ? { HtmlBody: fields["htmlBody"] } : {}),
-            ...(fields["textBody"] ? { TextBody: fields["textBody"] } : {}),
-          },
-        });
-        return mapTemplate(accountId, e.ref, { ...res, Name: res.Name ?? trimmed(fields, "name") });
-      }
-      case "postmark-inbound-rule": {
-        const e = await this.serverEntry(this.parentServerId(fields, parentResourceId));
-        const r = await this.server<PmInboundRule>(e.token, "/triggers/inboundrules", {
-          body: { Rule: trimmed(fields, "rule") },
-        });
-        return mapInboundRule(accountId, e.ref, r);
-      }
-      default:
-        throw new Error(`Postmark plugin: "${typeId}" cannot be created from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Update
   // -------------------------------------------------------------------------
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const ext = externalIdOf(resourceId);
-    this.invalidate();
-    switch (typeId) {
-      case "postmark-server": {
-        const body = serverBody(fields);
-        if (this.accountToken) {
-          await this.account<PmServer>(`/servers/${encodeURIComponent(ext)}`, {
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      this.invalidate();
+      switch (typeId) {
+        case "postmark-server": {
+          const body = serverBody(fields);
+          if (this.accountToken) {
+            await this.account<PmServer>(`/servers/${encodeURIComponent(ext)}`, {
+              method: "PUT",
+              body,
+            });
+          } else {
+            await this.server<PmServer>(this.serverToken, "/server", { method: "PUT", body });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "postmark-message-stream": {
+          const { serverId, id } = splitScoped(ext);
+          const e = await this.serverEntry(serverId);
+          const body: Record<string, unknown> = {};
+          if ("name" in fields) body["Name"] = trimmed(fields, "name");
+          if ("description" in fields) body["Description"] = trimmed(fields, "description");
+          if (trimmed(fields, "unsubscribeHandlingType")) {
+            body["SubscriptionManagementConfiguration"] = {
+              UnsubscribeHandlingType: trimmed(fields, "unsubscribeHandlingType"),
+            };
+          }
+          const s = await this.server<PmMessageStream>(
+            e.token,
+            `/message-streams/${encodeURIComponent(id)}`,
+            {
+              method: "PATCH",
+              body,
+            },
+          );
+          return mapMessageStream(accountId, e.ref, s);
+        }
+        case "postmark-domain": {
+          const d = await this.account<PmDomain>(`/domains/${encodeURIComponent(ext)}`, {
+            method: "PUT",
+            body: { ReturnPathDomain: trimmed(fields, "returnPathDomain") },
+          });
+          return mapDomain(accountId, d);
+        }
+        case "postmark-sender-signature": {
+          const current = await this.account<PmSenderSignature>(
+            `/senders/${encodeURIComponent(ext)}`,
+          );
+          const s = await this.account<PmSenderSignature>(`/senders/${encodeURIComponent(ext)}`, {
+            method: "PUT",
+            body: {
+              Name: "name" in fields ? trimmed(fields, "name") : (current.Name ?? ""),
+              ...("replyToEmailAddress" in fields
+                ? { ReplyToEmail: trimmed(fields, "replyToEmailAddress") }
+                : {}),
+              ...("returnPathDomain" in fields
+                ? { ReturnPathDomain: trimmed(fields, "returnPathDomain") }
+                : {}),
+            },
+          });
+          return mapSenderSignature(accountId, s);
+        }
+        case "postmark-webhook": {
+          const { serverId, id } = splitScoped(ext);
+          const e = await this.serverEntry(serverId);
+          const current = await this.server<PmWebhook>(
+            e.token,
+            `/webhooks/${encodeURIComponent(id)}`,
+          );
+          const merged = { ...mapWebhook(accountId, e.ref, current).fields, ...fields } as Record<
+            string,
+            string | boolean
+          >;
+          const body: Record<string, unknown> = { Triggers: triggersFrom(merged) };
+          if ("url" in fields) body["Url"] = trimmed(fields, "url");
+          if ("httpAuthUsername" in fields || fields["httpAuthPassword"]) {
+            const user =
+              "httpAuthUsername" in fields
+                ? trimmed(fields, "httpAuthUsername")
+                : (current.HttpAuth?.Username ?? "");
+            body["HttpAuth"] = user
+              ? {
+                  Username: user,
+                  Password: fields["httpAuthPassword"] || current.HttpAuth?.Password || "",
+                }
+              : { Username: "", Password: "" };
+          }
+          const w = await this.server<PmWebhook>(e.token, `/webhooks/${encodeURIComponent(id)}`, {
             method: "PUT",
             body,
           });
-        } else {
-          await this.server<PmServer>(this.serverToken, "/server", { method: "PUT", body });
+          return mapWebhook(accountId, e.ref, w);
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "postmark-message-stream": {
-        const { serverId, id } = splitScoped(ext);
-        const e = await this.serverEntry(serverId);
-        const body: Record<string, unknown> = {};
-        if ("name" in fields) body["Name"] = trimmed(fields, "name");
-        if ("description" in fields) body["Description"] = trimmed(fields, "description");
-        if (trimmed(fields, "unsubscribeHandlingType")) {
-          body["SubscriptionManagementConfiguration"] = {
-            UnsubscribeHandlingType: trimmed(fields, "unsubscribeHandlingType"),
+        case "postmark-template": {
+          const { serverId, id } = splitScoped(ext);
+          const e = await this.serverEntry(serverId);
+          const map: Record<string, string> = {
+            name: "Name",
+            alias: "Alias",
+            subject: "Subject",
+            htmlBody: "HtmlBody",
+            textBody: "TextBody",
+            layoutTemplate: "LayoutTemplate",
           };
-        }
-        const s = await this.server<PmMessageStream>(
-          e.token,
-          `/message-streams/${encodeURIComponent(id)}`,
-          {
-            method: "PATCH",
+          const body: Record<string, string> = {};
+          for (const [key, param] of Object.entries(map)) {
+            if (key in fields)
+              body[param] =
+                key === "htmlBody" || key === "textBody"
+                  ? (fields[key] ?? "")
+                  : trimmed(fields, key);
+          }
+          await this.server<PmTemplate>(e.token, `/templates/${encodeURIComponent(id)}`, {
+            method: "PUT",
             body,
-          },
-        );
-        return mapMessageStream(accountId, e.ref, s);
-      }
-      case "postmark-domain": {
-        const d = await this.account<PmDomain>(`/domains/${encodeURIComponent(ext)}`, {
-          method: "PUT",
-          body: { ReturnPathDomain: trimmed(fields, "returnPathDomain") },
-        });
-        return mapDomain(accountId, d);
-      }
-      case "postmark-sender-signature": {
-        const current = await this.account<PmSenderSignature>(
-          `/senders/${encodeURIComponent(ext)}`,
-        );
-        const s = await this.account<PmSenderSignature>(`/senders/${encodeURIComponent(ext)}`, {
-          method: "PUT",
-          body: {
-            Name: "name" in fields ? trimmed(fields, "name") : (current.Name ?? ""),
-            ...("replyToEmailAddress" in fields
-              ? { ReplyToEmail: trimmed(fields, "replyToEmailAddress") }
-              : {}),
-            ...("returnPathDomain" in fields
-              ? { ReturnPathDomain: trimmed(fields, "returnPathDomain") }
-              : {}),
-          },
-        });
-        return mapSenderSignature(accountId, s);
-      }
-      case "postmark-webhook": {
-        const { serverId, id } = splitScoped(ext);
-        const e = await this.serverEntry(serverId);
-        const current = await this.server<PmWebhook>(
-          e.token,
-          `/webhooks/${encodeURIComponent(id)}`,
-        );
-        const merged = { ...mapWebhook(accountId, e.ref, current).fields, ...fields } as Record<
-          string,
-          string | boolean
-        >;
-        const body: Record<string, unknown> = { Triggers: triggersFrom(merged) };
-        if ("url" in fields) body["Url"] = trimmed(fields, "url");
-        if ("httpAuthUsername" in fields || fields["httpAuthPassword"]) {
-          const user =
-            "httpAuthUsername" in fields
-              ? trimmed(fields, "httpAuthUsername")
-              : (current.HttpAuth?.Username ?? "");
-          body["HttpAuth"] = user
-            ? {
-                Username: user,
-                Password: fields["httpAuthPassword"] || current.HttpAuth?.Password || "",
-              }
-            : { Username: "", Password: "" };
+          });
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        const w = await this.server<PmWebhook>(e.token, `/webhooks/${encodeURIComponent(id)}`, {
-          method: "PUT",
-          body,
-        });
-        return mapWebhook(accountId, e.ref, w);
+        default:
+          throw new Error(`Postmark plugin: "${typeId}" cannot be edited from Infrawrench`);
       }
-      case "postmark-template": {
-        const { serverId, id } = splitScoped(ext);
-        const e = await this.serverEntry(serverId);
-        const map: Record<string, string> = {
-          name: "Name",
-          alias: "Alias",
-          subject: "Subject",
-          htmlBody: "HtmlBody",
-          textBody: "TextBody",
-          layoutTemplate: "LayoutTemplate",
-        };
-        const body: Record<string, string> = {};
-        for (const [key, param] of Object.entries(map)) {
-          if (key in fields)
-            body[param] =
-              key === "htmlBody" || key === "textBody" ? (fields[key] ?? "") : trimmed(fields, key);
-        }
-        await this.server<PmTemplate>(e.token, `/templates/${encodeURIComponent(id)}`, {
-          method: "PUT",
-          body,
-        });
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      default:
-        throw new Error(`Postmark plugin: "${typeId}" cannot be edited from Infrawrench`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Delete and actions
   // -------------------------------------------------------------------------
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const ext = externalIdOf(resourceId);
-    this.invalidate();
-    switch (typeId) {
-      case "postmark-server":
-        await this.account(`/servers/${encodeURIComponent(ext)}`, { method: "DELETE" });
-        return;
-      case "postmark-message-stream": {
-        // Postmark has no delete: archiving stops the stream and purges it after 45 days.
-        const { serverId, id } = splitScoped(ext);
-        const e = await this.serverEntry(serverId);
-        await this.server(e.token, `/message-streams/${encodeURIComponent(id)}/archive`, {
-          method: "POST",
-        });
-        return;
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      this.invalidate();
+      switch (typeId) {
+        case "postmark-server":
+          await this.account(`/servers/${encodeURIComponent(ext)}`, { method: "DELETE" });
+          return;
+        case "postmark-message-stream": {
+          // Postmark has no delete: archiving stops the stream and purges it after 45 days.
+          const { serverId, id } = splitScoped(ext);
+          const e = await this.serverEntry(serverId);
+          await this.server(e.token, `/message-streams/${encodeURIComponent(id)}/archive`, {
+            method: "POST",
+          });
+          return;
+        }
+        case "postmark-domain":
+          await this.account(`/domains/${encodeURIComponent(ext)}`, { method: "DELETE" });
+          return;
+        case "postmark-sender-signature":
+          await this.account(`/senders/${encodeURIComponent(ext)}`, { method: "DELETE" });
+          return;
+        case "postmark-webhook":
+        case "postmark-template":
+        case "postmark-inbound-rule": {
+          const { serverId, id } = splitScoped(ext);
+          const e = await this.serverEntry(serverId);
+          const base =
+            typeId === "postmark-webhook"
+              ? "/webhooks"
+              : typeId === "postmark-template"
+                ? "/templates"
+                : "/triggers/inboundrules";
+          await this.server(e.token, `${base}/${encodeURIComponent(id)}`, { method: "DELETE" });
+          return;
+        }
+        default:
+          throw new Error(`Postmark plugin: "${typeId}" cannot be deleted from Infrawrench`);
       }
-      case "postmark-domain":
-        await this.account(`/domains/${encodeURIComponent(ext)}`, { method: "DELETE" });
-        return;
-      case "postmark-sender-signature":
-        await this.account(`/senders/${encodeURIComponent(ext)}`, { method: "DELETE" });
-        return;
-      case "postmark-webhook":
-      case "postmark-template":
-      case "postmark-inbound-rule": {
-        const { serverId, id } = splitScoped(ext);
-        const e = await this.serverEntry(serverId);
-        const base =
-          typeId === "postmark-webhook"
-            ? "/webhooks"
-            : typeId === "postmark-template"
-              ? "/templates"
-              : "/triggers/inboundrules";
-        await this.server(e.token, `${base}/${encodeURIComponent(id)}`, { method: "DELETE" });
-        return;
-      }
-      default:
-        throw new Error(`Postmark plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    }
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const ext = externalIdOf(resourceId);
-    this.invalidate();
-    if (typeId === "postmark-domain") {
-      const base = `/domains/${encodeURIComponent(ext)}`;
-      if (actionId === "verify-dkim") {
-        const d = await this.account<PmDomain>(`${base}/verifyDkim`, { method: "PUT" });
-        if (!d?.DKIMVerified && !d?.DKIMPendingHost) {
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      this.invalidate();
+      if (typeId === "postmark-domain") {
+        const base = `/domains/${encodeURIComponent(ext)}`;
+        if (actionId === "verify-dkim") {
+          const d = await this.account<PmDomain>(`${base}/verifyDkim`, { method: "PUT" });
+          if (!d?.DKIMVerified && !d?.DKIMPendingHost) {
+            throw new Error(
+              "Postmark has not found the DKIM TXT record yet. DNS changes can take a while to show up.",
+            );
+          }
+          return;
+        }
+        if (actionId === "verify-return-path") {
+          const d = await this.account<PmDomain>(`${base}/verifyReturnPath`, { method: "PUT" });
+          if (d && d.ReturnPathDomainVerified === false) {
+            throw new Error(
+              "Postmark has not found the Return-Path CNAME yet. DNS changes can take a while to show up.",
+            );
+          }
+          return;
+        }
+        if (actionId === "rotate-dkim") {
+          await this.account(`${base}/rotatedkim`, { method: "POST" });
+          return;
+        }
+      }
+      if (typeId === "postmark-sender-signature" && actionId === "resend-confirmation") {
+        await this.account(`/senders/${encodeURIComponent(ext)}/resend`, { method: "POST" });
+        return;
+      }
+      if (
+        typeId === "postmark-message-stream" &&
+        (actionId === "archive" || actionId === "unarchive")
+      ) {
+        const { serverId, id } = splitScoped(ext);
+        const e = await this.serverEntry(serverId);
+        await this.server(e.token, `/message-streams/${encodeURIComponent(id)}/${actionId}`, {
+          method: "POST",
+        });
+        return;
+      }
+      if (typeId === "postmark-webhook" && actionId === "verify") {
+        const { serverId, id } = splitScoped(ext);
+        const e = await this.serverEntry(serverId);
+        const res = await this.server<{
+          Success?: boolean;
+          Message?: string;
+          Results?: Array<{ TriggerType?: string; Success?: boolean; Message?: string }>;
+        }>(e.token, `/webhooks/${encodeURIComponent(id)}/verify`, { method: "POST" });
+        if (res && res.Success === false) {
+          const failed = (res.Results ?? [])
+            .filter((r) => r.Success === false)
+            .map((r) => `${r.TriggerType}: ${r.Message ?? "failed"}`);
           throw new Error(
-            "Postmark has not found the DKIM TXT record yet. DNS changes can take a while to show up.",
+            `Postmark could not reach the endpoint. ${failed.join("; ") || res.Message || ""}`.trim(),
           );
         }
         return;
       }
-      if (actionId === "verify-return-path") {
-        const d = await this.account<PmDomain>(`${base}/verifyReturnPath`, { method: "PUT" });
-        if (d && d.ReturnPathDomainVerified === false) {
-          throw new Error(
-            "Postmark has not found the Return-Path CNAME yet. DNS changes can take a while to show up.",
-          );
-        }
-        return;
-      }
-      if (actionId === "rotate-dkim") {
-        await this.account(`${base}/rotatedkim`, { method: "POST" });
-        return;
-      }
-    }
-    if (typeId === "postmark-sender-signature" && actionId === "resend-confirmation") {
-      await this.account(`/senders/${encodeURIComponent(ext)}/resend`, { method: "POST" });
-      return;
-    }
-    if (
-      typeId === "postmark-message-stream" &&
-      (actionId === "archive" || actionId === "unarchive")
-    ) {
-      const { serverId, id } = splitScoped(ext);
-      const e = await this.serverEntry(serverId);
-      await this.server(e.token, `/message-streams/${encodeURIComponent(id)}/${actionId}`, {
-        method: "POST",
-      });
-      return;
-    }
-    if (typeId === "postmark-webhook" && actionId === "verify") {
-      const { serverId, id } = splitScoped(ext);
-      const e = await this.serverEntry(serverId);
-      const res = await this.server<{
-        Success?: boolean;
-        Message?: string;
-        Results?: Array<{ TriggerType?: string; Success?: boolean; Message?: string }>;
-      }>(e.token, `/webhooks/${encodeURIComponent(id)}/verify`, { method: "POST" });
-      if (res && res.Success === false) {
-        const failed = (res.Results ?? [])
-          .filter((r) => r.Success === false)
-          .map((r) => `${r.TriggerType}: ${r.Message ?? "failed"}`);
-        throw new Error(
-          `Postmark could not reach the endpoint. ${failed.join("; ") || res.Message || ""}`.trim(),
-        );
-      }
-      return;
-    }
-    throw new Error(`Postmark plugin: unknown action "${actionId}" for "${typeId}"`);
+      throw new Error(`Postmark plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const values = parsePromptValues(args);
-    const ext = externalIdOf(resourceId);
-    if (
-      typeId === "postmark-message-stream" &&
-      (command === COMMANDS.addSuppressions || command === COMMANDS.removeSuppressions)
-    ) {
-      const { serverId, id } = splitScoped(ext);
-      const e = await this.serverEntry(serverId);
-      const emails = parseAddresses(values["emails"] ?? "");
-      if (emails.length === 0) throw new Error("Enter at least one email address.");
-      const path = `/message-streams/${encodeURIComponent(id)}/suppressions${command === COMMANDS.removeSuppressions ? "/delete" : ""}`;
-      const failed: string[] = [];
-      for (let i = 0; i < emails.length; i += SUPPRESSION_BATCH) {
-        const batch = emails.slice(i, i + SUPPRESSION_BATCH);
-        const res = await this.server<{
-          Suppressions?: Array<{ EmailAddress?: string; Status?: string; Message?: string | null }>;
-        }>(e.token, path, {
-          body: { Suppressions: batch.map((EmailAddress) => ({ EmailAddress })) },
-        });
-        for (const s of res?.Suppressions ?? []) {
-          if (s.Status === "Failed") failed.push(`${s.EmailAddress}: ${s.Message ?? "failed"}`);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const values = parsePromptValues(args);
+      const ext = externalIdOf(resourceId);
+      if (
+        typeId === "postmark-message-stream" &&
+        (command === COMMANDS.addSuppressions || command === COMMANDS.removeSuppressions)
+      ) {
+        const { serverId, id } = splitScoped(ext);
+        const e = await this.serverEntry(serverId);
+        const emails = parseAddresses(values["emails"] ?? "");
+        if (emails.length === 0) throw new Error("Enter at least one email address.");
+        const path = `/message-streams/${encodeURIComponent(id)}/suppressions${command === COMMANDS.removeSuppressions ? "/delete" : ""}`;
+        const failed: string[] = [];
+        for (let i = 0; i < emails.length; i += SUPPRESSION_BATCH) {
+          const batch = emails.slice(i, i + SUPPRESSION_BATCH);
+          const res = await this.server<{
+            Suppressions?: Array<{
+              EmailAddress?: string;
+              Status?: string;
+              Message?: string | null;
+            }>;
+          }>(e.token, path, {
+            body: { Suppressions: batch.map((EmailAddress) => ({ EmailAddress })) },
+          });
+          for (const s of res?.Suppressions ?? []) {
+            if (s.Status === "Failed") failed.push(`${s.EmailAddress}: ${s.Message ?? "failed"}`);
+          }
         }
+        if (failed.length > 0)
+          throw new Error(`Some addresses were not changed. ${failed.join("; ")}`);
+        return { ok: true, count: emails.length };
       }
-      if (failed.length > 0)
-        throw new Error(`Some addresses were not changed. ${failed.join("; ")}`);
-      return { ok: true, count: emails.length };
-    }
-    if (typeId === "postmark-server" && command === COMMANDS.reactivateBounce) {
-      const e = await this.serverEntry(ext);
-      const bounceId = (values["bounceId"] ?? "").trim();
-      if (!bounceId) throw new Error("Pick a bounce to reactivate.");
-      return this.server(e.token, `/bounces/${encodeURIComponent(bounceId)}/activate`, {
-        method: "PUT",
-      });
-    }
-    throw new Error(`Postmark plugin: unknown command "${command}" for "${typeId}"`);
+      if (typeId === "postmark-server" && command === COMMANDS.reactivateBounce) {
+        const e = await this.serverEntry(ext);
+        const bounceId = (values["bounceId"] ?? "").trim();
+        if (!bounceId) throw new Error("Pick a bounce to reactivate.");
+        return this.server(e.token, `/bounces/${encodeURIComponent(bounceId)}/activate`, {
+          method: "PUT",
+        });
+      }
+      throw new Error(`Postmark plugin: unknown command "${command}" for "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------

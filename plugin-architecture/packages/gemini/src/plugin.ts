@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { GeminiClient } from "./client.js";
 import { ModelResourceType } from "./resources/model.js";
@@ -33,16 +38,14 @@ const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     </svg>
   </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "gemini",
-  version: "0.1.0",
+  egressHosts: ["generativelanguage.googleapis.com"],
   displayName: "Google Gemini",
   description:
     "The Gemini API on Google AI Studio: models, tuned models, uploaded files, context caches, batch jobs, File Search stores, custom voices and webhooks, plus speech synthesis and transcription.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -52,8 +55,10 @@ const manifest: PluginManifest = {
       placeholder: "AIzaSy...",
     },
     caCertCredentialField,
-  ],
-};
+  ]),
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ModelResourceType,
@@ -67,8 +72,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   WebhookResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new GeminiClient(credentials, services),
-};
+  testCredentials: { apiKey: "AIzaSyTestGeminiApiKey0000000000000000000" },
+});

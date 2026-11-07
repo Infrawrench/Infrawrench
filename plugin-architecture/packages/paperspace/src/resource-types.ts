@@ -88,7 +88,7 @@ export const MachineResourceType = rt({
     f("createdAt", "Created", { required: false, editable: false }),
   ],
   outputs: [
-    o("publicIp", "Public IP"),
+    o("publicIp", "Public IP", { dnsValue: "ipv4" }),
     o("privateIp", "Private IP"),
     o("sshCommand", "SSH Command"),
   ],

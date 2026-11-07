@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { ProxmoxClient } from "../client.js";
@@ -300,7 +301,7 @@ describe("client", () => {
 
   it("lists VMs with config-derived fields", async () => {
     const { http } = mockHttp(routes);
-    const client = new ProxmoxClient(CREDS, { http });
+    const client = hostClient(new ProxmoxClient(CREDS, { http }));
     const vms = await client.listResources("pve-vm", "acct");
     expect(vms).toHaveLength(2);
     const web = vms.find((v) => v.externalId === "100")!;
@@ -322,7 +323,7 @@ describe("client", () => {
 
   it("lists containers", async () => {
     const { http } = mockHttp(routes);
-    const client = new ProxmoxClient(CREDS, { http });
+    const client = hostClient(new ProxmoxClient(CREDS, { http }));
     const [ct] = await client.listResources("pve-ct", "acct");
     expect(ct!.fields).toMatchObject({
       name: "ct01",
@@ -335,7 +336,7 @@ describe("client", () => {
 
   it("lists backups once per shared storage, with their guest", async () => {
     const { http, calls } = mockHttp(routes);
-    const client = new ProxmoxClient(CREDS, { http });
+    const client = hostClient(new ProxmoxClient(CREDS, { http }));
     const backups = await client.listResources("pve-backup", "acct");
     expect(backups).toHaveLength(2);
     expect(calls.filter((c) => c.url.includes("/storage/nfs/content"))).toHaveLength(1);
@@ -353,7 +354,7 @@ describe("client", () => {
 
   it("resolves a VM's IPv4 from the guest agent", async () => {
     const { http } = mockHttp(routes);
-    const client = new ProxmoxClient(CREDS, { http });
+    const client = hostClient(new ProxmoxClient(CREDS, { http }));
     expect(await client.resolveOutput("pve-vm", "acct:pve-vm:100", "ipv4", "acct")).toBe(
       "10.0.0.5",
     );
@@ -364,7 +365,7 @@ describe("client", () => {
       ...routes,
       "POST /nodes/pve1/qemu/100/status/shutdown": "UPID:x",
     });
-    const client = new ProxmoxClient(CREDS, { http });
+    const client = hostClient(new ProxmoxClient(CREDS, { http }));
     await client.invokeAction("pve-vm", "acct:pve-vm:100", "shutdown", "acct");
     expect(
       calls.some(
@@ -382,7 +383,7 @@ describe("client", () => {
         return { status: 200, body: { data: null } };
       },
     });
-    const client = new ProxmoxClient(CREDS, { http });
+    const client = hostClient(new ProxmoxClient(CREDS, { http }));
     await client.updateResource("pve-vm", "acct:pve-vm:100", "acct", {
       memoryMb: "8192",
       tags: "",
@@ -395,7 +396,7 @@ describe("client", () => {
 
   it("refuses to delete a running guest", async () => {
     const { http } = mockHttp(routes);
-    const client = new ProxmoxClient(CREDS, { http });
+    const client = hostClient(new ProxmoxClient(CREDS, { http }));
     await expect(client.deleteResource("pve-vm", "acct:pve-vm:100", "acct")).rejects.toMatchObject({
       status: 409,
     });
@@ -407,7 +408,7 @@ describe("client", () => {
       "POST /nodes/pve1/qemu/100/snapshot": "UPID:s",
       "PUT /nodes/pve1/qemu/100/resize": "UPID:r",
     });
-    const client = new ProxmoxClient(CREDS, { http });
+    const client = hostClient(new ProxmoxClient(CREDS, { http }));
     await client.executeNoSqlCommand("pve-vm", "acct:pve-vm:100", "acct", "snapshot", [
       JSON.stringify({ snapname: "pre", vmstate: "true" }),
     ]);
@@ -424,7 +425,7 @@ describe("client", () => {
     const { http } = mockHttp({
       "GET /cluster/ha/rules": () => ({ status: 501, body: { data: null } }),
     });
-    const client = new ProxmoxClient(CREDS, { http });
+    const client = hostClient(new ProxmoxClient(CREDS, { http }));
     expect(await client.listResources("pve-ha-rule", "acct")).toEqual([]);
   });
 
@@ -437,7 +438,7 @@ describe("client", () => {
       ],
       "GET /pools": [{ poolid: "prod" }],
     });
-    const client = new ProxmoxClient(CREDS, { http });
+    const client = hostClient(new ProxmoxClient(CREDS, { http }));
     const vm = await client.getResource("pve-vm", "acct:pve-vm:100", "acct");
     const detail = client.renderDetail(await client.enrichDetail(vm));
     const labels = (detail.headerActions ?? []).map((a) => a.label);

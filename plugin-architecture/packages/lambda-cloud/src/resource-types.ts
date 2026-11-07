@@ -54,7 +54,7 @@ export const InstanceResourceType = rt({
     f("restartBlocked", "Restart Unavailable Because", { required: false, editable: false }),
   ],
   outputs: [
-    o("ip", "Public IPv4"),
+    o("ip", "Public IPv4", { dnsValue: "ipv4" }),
     o("privateIp", "Private IPv4"),
     o("sshCommand", "SSH Command"),
     o("jupyterUrl", "JupyterLab URL", {

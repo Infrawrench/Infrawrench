@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField, f, o, rt } from "@infrawrench/plugin-base";
 import { SambaNovaClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -34,15 +35,13 @@ export const SambaNovaModelType = rt({
   iconKey: "cpu",
 });
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "sambanova",
-  version: "0.1.0",
+  egressHosts: ["api.sambanova.ai"],
   displayName: "SambaNova",
   description: "SambaCloud models with list prices, a chat Playground and Whisper transcription.",
   logoSvg: LOGO,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -53,7 +52,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Create an API key", url: "https://cloud.sambanova.ai/apis" },
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: {
     capabilities: [
       {
@@ -66,11 +65,14 @@ const manifest: PluginManifest = {
     ],
   },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: [SambaNovaModelType],
   createClient: (credentials, services) => new SambaNovaClient(credentials, services),
+  testCredentials: { apiKey: "sn-test" },
   parseStatusFeed,
-};
+});

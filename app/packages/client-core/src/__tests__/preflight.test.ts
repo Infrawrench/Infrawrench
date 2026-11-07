@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Plugin, PluginClient, PreflightDeclaration } from "@infrawrench/plugin-base";
+import type { HostPlugin, HostPluginClient, PreflightDeclaration } from "@infrawrench/plugin-base";
 import {
   buildPreflightChecklist,
   defaultTemplateCapabilityIds,
@@ -162,25 +162,24 @@ describe("defaultTemplateCapabilityIds", () => {
   });
 });
 
-function fakePlugin(preflight: PreflightDeclaration | null = declaration): Plugin {
+function fakePlugin(preflight: PreflightDeclaration | null = declaration): HostPlugin {
   return {
     manifest: {
       id: "fake",
-      version: "0.1.0",
       displayName: "Fake",
       logoSvg: "<svg/>",
-      author: "t",
-      minHostVersion: "0.1.0",
+      egressHosts: [],
       credentialFields: [],
       ...(preflight ? { preflight } : {}),
     },
     resourceTypes: [],
-    createClient: () => ({}) as PluginClient,
+    testCredentials: {},
+    createClient: () => ({}) as HostPluginClient,
   };
 }
 
-function clientWith(verify: PluginClient["verifyCredentials"]): PluginClient {
-  return { verifyCredentials: verify } as unknown as PluginClient;
+function clientWith(verify: HostPluginClient["verifyCredentials"]): HostPluginClient {
+  return { verifyCredentials: verify } as unknown as HostPluginClient;
 }
 
 describe("runAccountPreflight", () => {

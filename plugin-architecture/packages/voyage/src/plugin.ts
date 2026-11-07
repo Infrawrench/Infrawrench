@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField, f, o, rt } from "@infrawrench/plugin-base";
 import { VoyageClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -84,16 +89,14 @@ export const RESOURCE_TYPES: ResourceTypeDefinition[] = [
   VoyageFileType,
 ];
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "voyage",
-  version: "0.1.0",
+  egressHosts: ["api.voyageai.com"],
   displayName: "Voyage AI",
   description:
     "Voyage AI embedding and rerank models with list prices and a test bench, plus batches and files.",
   logoSvg: LOGO,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -107,7 +110,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: {
     capabilities: [
       {
@@ -120,11 +123,14 @@ const manifest: PluginManifest = {
     ],
   },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new VoyageClient(credentials, services),
+  testCredentials: { apiKey: "pa-test" },
   parseStatusFeed,
-};
+});

@@ -95,7 +95,11 @@ export const EcsInstanceResourceType = rt({
     f("sshUsername", "SSH Username", { required: false, editable: false }),
     createdField,
   ],
-  outputs: [o("publicIp", "Public IP"), o("privateIp", "Private IP"), o("id", "Instance ID")],
+  outputs: [
+    o("publicIp", "Public IP", { dnsValue: "ipv4" }),
+    o("privateIp", "Private IP"),
+    o("id", "Instance ID"),
+  ],
   dependsOn: [
     vpcDep,
     vswitchDep,
@@ -370,7 +374,7 @@ export const EipResourceType = rt({
     f("chargeType", "Billing", { required: false, editable: false }),
     createdField,
   ],
-  outputs: [o("ipAddress", "IP Address"), o("id", "Allocation ID")],
+  outputs: [o("ipAddress", "IP Address", { dnsValue: "ipv4" }), o("id", "Allocation ID")],
   dependsOn: [
     {
       fieldKey: "instanceId",
@@ -455,7 +459,7 @@ export const AlbResourceType = rt({
     f("payType", "Billing", { required: false, editable: false }),
     { ...createdField, showcase: true },
   ],
-  outputs: [o("dnsName", "DNS Name"), o("id", "Load Balancer ID")],
+  outputs: [o("dnsName", "DNS Name", { dnsValue: "hostname" }), o("id", "Load Balancer ID")],
   dependsOn: [vpcDep],
   iconKey: "load-balancer",
   supportsUpdate: true,

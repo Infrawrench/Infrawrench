@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AstraPluginClient } from "../client.js";
 import { AstraApiError } from "../api.js";
@@ -54,7 +55,7 @@ describe("AstraPluginClient", () => {
         },
       ],
     });
-    const client = new AstraPluginClient({ token: "AstraCS:a:b" });
+    const client = hostClient(new AstraPluginClient({ token: "AstraCS:a:b" }));
     const dbs = await client.listResources(T.database, "acc");
     expect(dbs).toHaveLength(101);
     expect(calls[0]!.headers["Authorization"]).toBe("Bearer AstraCS:a:b");
@@ -93,7 +94,7 @@ describe("AstraPluginClient", () => {
         status: { collections: [] },
       },
     });
-    const client = new AstraPluginClient({ token: "AstraCS:a:b" });
+    const client = hostClient(new AstraPluginClient({ token: "AstraCS:a:b" }));
     const cols = await client.listResources(T.collection, "acc");
     expect(cols.map((c) => c.externalId)).toEqual([`${DB.id}/default_keyspace/docs`]);
     expect(cols[0]!.fields).toMatchObject({
@@ -115,7 +116,7 @@ describe("AstraPluginClient", () => {
       [`GET /v2/databases/${DB.id}`]: DB,
       "GET /v2/access-lists": [],
     });
-    const client = new AstraPluginClient({ token: "t" });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
     await expect(
       client.updateResource(T.database, `acc:${T.database}:${DB.id}`, "acc", {
         accessListEnabled: "true",
@@ -136,7 +137,7 @@ describe("AstraPluginClient", () => {
 
   it("deletes one access list entry by address", async () => {
     const { calls } = mockFetch({ [`DELETE /v2/databases/${DB.id}/access-list`]: null });
-    const client = new AstraPluginClient({ token: "t" });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
     await client.deleteResource(T.accessEntry, `acc:${T.accessEntry}:${DB.id}/10.0.0.0/8`, "acc");
     expect(calls[0]!.url.searchParams.get("addresses")).toBe("10.0.0.0/8");
   });
@@ -150,7 +151,7 @@ describe("AstraPluginClient", () => {
       },
       "GET /v2/databases": () => (created ? [DB] : []),
     });
-    const client = new AstraPluginClient({ token: "t" });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
     const r = await client.createResource(T.database, "acc", {
       name: "vectors",
       dbType: "vector",
@@ -177,7 +178,7 @@ describe("AstraPluginClient", () => {
         roles: ["r1"],
       },
     });
-    const client = new AstraPluginClient({ token: "t" });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
     const res = await client.createResource(T.token, "acc", { roles: '["r1"]' });
     expect("resource" in res && res.resource.resolvedOutputs["token"]).toBe("AstraCS:cid:x");
   });
@@ -190,7 +191,7 @@ describe("AstraPluginClient", () => {
         { status: 503 },
       ),
     });
-    const client = new AstraPluginClient({ token: "t" });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
     await client.invokeAction(T.database, `acc:${T.database}:${DB.id}`, "resume", "acc");
     expect(calls.at(-1)!.url.host).toContain("apps.astra.datastax.com");
   });
@@ -199,7 +200,7 @@ describe("AstraPluginClient", () => {
     mockFetch({
       "GET /v2/databases": new Response('{"errors":[{"message":"bad token"}]}', { status: 401 }),
     });
-    const client = new AstraPluginClient({ token: "t" });
+    const client = hostClient(new AstraPluginClient({ token: "t" }));
     const err = await client.listResources(T.database, "acc").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AstraApiError);
     expect((err as AstraApiError).status).toBe(401);
@@ -216,7 +217,7 @@ describe("AstraPluginClient", () => {
     const { calls } = mockFetch({
       [`GET metrics.astra.datastax.com/v1/databases/${DB.id}/metrics`]: body,
     });
-    const client = new AstraPluginClient({ token: "tok" });
+    const client = hostClient(new AstraPluginClient({ token: "tok" }));
     const series = await client.fetchMetricSeries(T.database, `acc:${T.database}:${DB.id}`, "acc");
     expect(calls[0]!.headers["Authorization"]).toBe("Astra-Token tok");
     expect(series.find((s) => s.label === "Read latency p99")!.points[0]!.value).toBe(20);

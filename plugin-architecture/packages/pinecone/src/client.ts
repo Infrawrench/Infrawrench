@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ChatMessage,
   ChatStreamEvent,
@@ -186,7 +189,7 @@ export class PineconeClient implements PluginClient {
   private projectCache: Cached<PcProject[]> | undefined;
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     private readonly resourceTypes: ResourceTypeDefinition[],
     private readonly services?: HostServices,
   ) {
@@ -281,109 +284,113 @@ export class PineconeClient implements PluginClient {
 
   // ── Listing ──────────────────────────────────────────────────────────
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "index":
-        return (await this.indexes()).map((i) => mapIndex(i, accountId));
-      case "collection": {
-        const res = await this.api.control<{ collections?: PcCollection[] }>("/collections");
-        return (res?.collections ?? []).map((c) => mapCollection(c, accountId));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "index":
+          return (await this.indexes()).map((i) => mapIndex(i, accountId));
+        case "collection": {
+          const res = await this.api.control<{ collections?: PcCollection[] }>("/collections");
+          return (res?.collections ?? []).map((c) => mapCollection(c, accountId));
+        }
+        case "backup":
+          return (await this.listBackups()).map((b) => mapBackup(b, accountId));
+        case "backup-schedule": {
+          const indexes = (await this.indexes()).filter(
+            (i) => i.deployment?.deployment_type !== "pod",
+          );
+          const lists = await mapLimit(indexes, FAN_OUT, async (i) => {
+            try {
+              return (await this.listSchedules(i.name)).map((s) =>
+                mapBackupSchedule(s, i.name, accountId),
+              );
+            } catch (e) {
+              if (isStatus(e, 400, 403, 404)) return [];
+              throw e;
+            }
+          });
+          return lists.flat();
+        }
+        case "restore-job": {
+          const jobs = await collectPages<PcRestoreJob>((token) =>
+            this.api.control("/restore-jobs", { query: { limit: 100, paginationToken: token } }),
+          );
+          return jobs.map((j) => mapRestoreJob(j, accountId));
+        }
+        case "assistant":
+          return (await this.listAssistants()).map((a) => mapAssistant(a, accountId));
+        case "project":
+          if (!this.api.hasAdmin) return [];
+          return (await this.projects()).map((p) => mapProject(p, accountId));
+        case "api-key": {
+          if (!this.api.hasAdmin) return [];
+          const projects = await this.projects();
+          const lists = await mapLimit(projects, FAN_OUT, async (p) =>
+            (await this.projectApiKeys(p)).map((k) => mapApiKey(k, p.name, accountId)),
+          );
+          return lists.flat();
+        }
+        case "service-account":
+          if (!this.api.hasAdmin) return [];
+          return (await this.listServiceAccounts()).map((s) => mapServiceAccount(s, accountId));
+        default:
+          throw new Error(`Pinecone plugin: unknown resource type "${typeId}"`);
       }
-      case "backup":
-        return (await this.listBackups()).map((b) => mapBackup(b, accountId));
-      case "backup-schedule": {
-        const indexes = (await this.indexes()).filter(
-          (i) => i.deployment?.deployment_type !== "pod",
-        );
-        const lists = await mapLimit(indexes, FAN_OUT, async (i) => {
-          try {
-            return (await this.listSchedules(i.name)).map((s) =>
-              mapBackupSchedule(s, i.name, accountId),
-            );
-          } catch (e) {
-            if (isStatus(e, 400, 403, 404)) return [];
-            throw e;
-          }
-        });
-        return lists.flat();
-      }
-      case "restore-job": {
-        const jobs = await collectPages<PcRestoreJob>((token) =>
-          this.api.control("/restore-jobs", { query: { limit: 100, paginationToken: token } }),
-        );
-        return jobs.map((j) => mapRestoreJob(j, accountId));
-      }
-      case "assistant":
-        return (await this.listAssistants()).map((a) => mapAssistant(a, accountId));
-      case "project":
-        if (!this.api.hasAdmin) return [];
-        return (await this.projects()).map((p) => mapProject(p, accountId));
-      case "api-key": {
-        if (!this.api.hasAdmin) return [];
-        const projects = await this.projects();
-        const lists = await mapLimit(projects, FAN_OUT, async (p) =>
-          (await this.projectApiKeys(p)).map((k) => mapApiKey(k, p.name, accountId)),
-        );
-        return lists.flat();
-      }
-      case "service-account":
-        if (!this.api.hasAdmin) return [];
-        return (await this.listServiceAccounts()).map((s) => mapServiceAccount(s, accountId));
-      default:
-        throw new Error(`Pinecone plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalOf(resourceId);
-    switch (typeId) {
-      case "index":
-        return mapIndex(await this.describeIndex(id), accountId);
-      case "collection":
-        return mapCollection(
-          await this.api.control<PcCollection>(`/collections/${enc(id)}`),
-          accountId,
-        );
-      case "backup":
-        return mapBackup(await this.api.control<PcBackup>(`/backups/${enc(id)}`), accountId);
-      case "backup-schedule": {
-        const [s, indexes] = await Promise.all([
-          this.api.control<PcBackupSchedule>(`/backup-schedules/${enc(id)}`),
-          this.indexes().catch(() => [] as PcIndex[]),
-        ]);
-        const indexName = await this.indexNameForId(s.index_id ?? "", indexes);
-        return mapBackupSchedule(s, indexName, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      switch (typeId) {
+        case "index":
+          return mapIndex(await this.describeIndex(id), accountId);
+        case "collection":
+          return mapCollection(
+            await this.api.control<PcCollection>(`/collections/${enc(id)}`),
+            accountId,
+          );
+        case "backup":
+          return mapBackup(await this.api.control<PcBackup>(`/backups/${enc(id)}`), accountId);
+        case "backup-schedule": {
+          const [s, indexes] = await Promise.all([
+            this.api.control<PcBackupSchedule>(`/backup-schedules/${enc(id)}`),
+            this.indexes().catch(() => [] as PcIndex[]),
+          ]);
+          const indexName = await this.indexNameForId(s.index_id ?? "", indexes);
+          return mapBackupSchedule(s, indexName, accountId);
+        }
+        case "restore-job":
+          return mapRestoreJob(
+            await this.api.control<PcRestoreJob>(`/restore-jobs/${enc(id)}`),
+            accountId,
+          );
+        case "assistant":
+          return mapAssistant(
+            await this.api.control<PcAssistant>(`/assistant/assistants/${enc(id)}`),
+            accountId,
+          );
+        case "project":
+          return mapProject(await this.api.admin<PcProject>(`/projects/${enc(id)}`), accountId);
+        case "api-key": {
+          const key = await this.api.admin<PcApiKey>(`/api-keys/${enc(id)}`);
+          const projects = await this.projects().catch(() => [] as PcProject[]);
+          const project = projects.find((p) => p.id === key.project_id);
+          return mapApiKey(key, project?.name ?? "", accountId);
+        }
+        case "service-account":
+          return mapServiceAccount(
+            await this.api.admin<PcServiceAccount>(`/service-accounts/${enc(id)}`),
+            accountId,
+          );
+        default:
+          throw new Error(`Pinecone plugin: unknown resource type "${typeId}"`);
       }
-      case "restore-job":
-        return mapRestoreJob(
-          await this.api.control<PcRestoreJob>(`/restore-jobs/${enc(id)}`),
-          accountId,
-        );
-      case "assistant":
-        return mapAssistant(
-          await this.api.control<PcAssistant>(`/assistant/assistants/${enc(id)}`),
-          accountId,
-        );
-      case "project":
-        return mapProject(await this.api.admin<PcProject>(`/projects/${enc(id)}`), accountId);
-      case "api-key": {
-        const key = await this.api.admin<PcApiKey>(`/api-keys/${enc(id)}`);
-        const projects = await this.projects().catch(() => [] as PcProject[]);
-        const project = projects.find((p) => p.id === key.project_id);
-        return mapApiKey(key, project?.name ?? "", accountId);
-      }
-      case "service-account":
-        return mapServiceAccount(
-          await this.api.admin<PcServiceAccount>(`/service-accounts/${enc(id)}`),
-          accountId,
-        );
-      default:
-        throw new Error(`Pinecone plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   /**
@@ -401,120 +408,124 @@ export class PineconeClient implements PluginClient {
     return "";
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "index" && outputKey === "apiKey") return this.api.apiKey;
-    if (typeId === "api-key" && outputKey === "apiKey") {
-      const v = await this.services?.secrets?.getPlaintext(resourceId, API_KEY_VALUE_FIELD);
-      if (!v) {
-        throw new Error(
-          "Pinecone only shows an API key's value when it is created. Create a new key from Infrawrench to keep its value here.",
-        );
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "index" && outputKey === "apiKey") return this.api.apiKey;
+      if (typeId === "api-key" && outputKey === "apiKey") {
+        const v = await this.services?.secrets?.getPlaintext(resourceId, API_KEY_VALUE_FIELD);
+        if (!v) {
+          throw new Error(
+            "Pinecone only shows an API key's value when it is created. Create a new key from Infrawrench to keep its value here.",
+          );
+        }
+        return v;
       }
-      return v;
-    }
-    if (typeId === "service-account" && outputKey === "clientSecret") {
-      const v = await this.services?.secrets?.getPlaintext(resourceId, CLIENT_SECRET_FIELD);
-      if (!v) {
-        throw new Error(
-          "Pinecone only shows a client secret when it is created or rotated. Rotate it from Infrawrench to keep the new secret here.",
-        );
+      if (typeId === "service-account" && outputKey === "clientSecret") {
+        const v = await this.services?.secrets?.getPlaintext(resourceId, CLIENT_SECRET_FIELD);
+        if (!v) {
+          throw new Error(
+            "Pinecone only shows a client secret when it is created or rotated. Rotate it from Infrawrench to keep the new secret here.",
+          );
+        }
+        return v;
       }
-      return v;
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    return resource.resolvedOutputs[outputKey] ?? "";
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return resource.resolvedOutputs[outputKey] ?? "";
+    });
   }
 
   // ── Detail ───────────────────────────────────────────────────────────
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const fields = { ...resource.fields };
-    const id = resource.externalId ?? externalOf(resource.id);
-    if (resource.resourceTypeId === "index") {
-      const host = String(fields["host"] ?? "");
-      const isPod = fields["deploymentType"] === "pod";
-      const [stats, schedules, backups] = await Promise.all([
-        host && fields["status"] === "Ready"
-          ? fetchIndexStats(this.api, host).catch(() => null)
-          : Promise.resolve(null),
-        isPod ? Promise.resolve([]) : this.listSchedules(id).catch(() => []),
-        isPod ? Promise.resolve([]) : this.listBackups().catch(() => []),
-      ]);
-      if (stats) {
-        const rows: NamespaceRow[] = Object.entries(stats.namespaces ?? {})
-          .map(([name, ns]) => ({ name, records: ns.vectorCount ?? 0 }))
-          .sort((a, b) => b.records - a.records)
-          .slice(0, 200);
-        fields["recordCount"] = stats.totalVectorCount ?? 0;
-        fields["namespaceCount"] = Object.keys(stats.namespaces ?? {}).length;
-        if (rows.length) fields[ENRICH_NAMESPACES] = JSON.stringify(rows);
-      }
-      if (schedules.length) {
-        fields[ENRICH_SCHEDULES] = JSON.stringify(
-          schedules.map((s) => ({
-            name: s.name ?? s.schedule_id,
-            frequency: s.frequency ?? "",
-            retention: String(s.retention_expire_after_days ?? ""),
-            next: s.enabled === false ? "Disabled" : (s.next_scheduled_run ?? ""),
-          })),
-        );
-      }
-      const own = backups.filter((b) => b.source_index_name === id).slice(0, 50);
-      if (own.length) {
-        fields[ENRICH_BACKUPS] = JSON.stringify(
-          own.map((b) => ({
-            name: b.name || b.backup_id,
-            status: b.status ?? "",
-            records: b.record_count === undefined ? "" : String(b.record_count),
-            created: b.created_at ?? "",
-          })),
-        );
-      }
-    } else if (resource.resourceTypeId === "backup-schedule") {
-      const history = await collectPages<PcBackup & { scheduled_execution_at?: string }>(
-        (token) =>
-          this.api.control(`/backup-schedules/${enc(id)}/history`, {
-            query: { limit: 100, paginationToken: token },
-          }),
-        3,
-      ).catch(() => []);
-      if (history.length) {
-        fields[ENRICH_HISTORY] = JSON.stringify(
-          history.slice(0, 50).map((b) => ({
-            name: b.name || b.backup_id,
-            status: b.status ?? "",
-            size: formatSize(b.size_bytes),
-            created:
-              b.status === "Scheduled" ? (b.scheduled_execution_at ?? "") : (b.created_at ?? ""),
-          })),
-        );
-      }
-    } else if (resource.resourceTypeId === "assistant") {
-      const host = String(fields["host"] ?? "");
-      if (host) {
-        const files = await this.api
-          .dataPlane<{ files?: PcAssistantFile[] }>(host, `/files/${enc(id)}`)
-          .then((r) => r?.files ?? [])
-          .catch(() => null);
-        if (files) {
-          fields["fileCount"] = files.length;
-          fields[ENRICH_FILES] = JSON.stringify(
-            files.slice(0, 200).map((f) => ({
-              name: f.name ?? f.id ?? "",
-              status: f.status ?? "",
-              size: formatSize(f.size),
-              created: f.created_on ?? "",
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const fields = { ...resource.fields };
+      const id = resource.externalId ?? externalOf(resource.id);
+      if (resource.resourceTypeId === "index") {
+        const host = String(fields["host"] ?? "");
+        const isPod = fields["deploymentType"] === "pod";
+        const [stats, schedules, backups] = await Promise.all([
+          host && fields["status"] === "Ready"
+            ? fetchIndexStats(this.api, host).catch(() => null)
+            : Promise.resolve(null),
+          isPod ? Promise.resolve([]) : this.listSchedules(id).catch(() => []),
+          isPod ? Promise.resolve([]) : this.listBackups().catch(() => []),
+        ]);
+        if (stats) {
+          const rows: NamespaceRow[] = Object.entries(stats.namespaces ?? {})
+            .map(([name, ns]) => ({ name, records: ns.vectorCount ?? 0 }))
+            .sort((a, b) => b.records - a.records)
+            .slice(0, 200);
+          fields["recordCount"] = stats.totalVectorCount ?? 0;
+          fields["namespaceCount"] = Object.keys(stats.namespaces ?? {}).length;
+          if (rows.length) fields[ENRICH_NAMESPACES] = JSON.stringify(rows);
+        }
+        if (schedules.length) {
+          fields[ENRICH_SCHEDULES] = JSON.stringify(
+            schedules.map((s) => ({
+              name: s.name ?? s.schedule_id,
+              frequency: s.frequency ?? "",
+              retention: String(s.retention_expire_after_days ?? ""),
+              next: s.enabled === false ? "Disabled" : (s.next_scheduled_run ?? ""),
             })),
           );
         }
+        const own = backups.filter((b) => b.source_index_name === id).slice(0, 50);
+        if (own.length) {
+          fields[ENRICH_BACKUPS] = JSON.stringify(
+            own.map((b) => ({
+              name: b.name || b.backup_id,
+              status: b.status ?? "",
+              records: b.record_count === undefined ? "" : String(b.record_count),
+              created: b.created_at ?? "",
+            })),
+          );
+        }
+      } else if (resource.resourceTypeId === "backup-schedule") {
+        const history = await collectPages<PcBackup & { scheduled_execution_at?: string }>(
+          (token) =>
+            this.api.control(`/backup-schedules/${enc(id)}/history`, {
+              query: { limit: 100, paginationToken: token },
+            }),
+          3,
+        ).catch(() => []);
+        if (history.length) {
+          fields[ENRICH_HISTORY] = JSON.stringify(
+            history.slice(0, 50).map((b) => ({
+              name: b.name || b.backup_id,
+              status: b.status ?? "",
+              size: formatSize(b.size_bytes),
+              created:
+                b.status === "Scheduled" ? (b.scheduled_execution_at ?? "") : (b.created_at ?? ""),
+            })),
+          );
+        }
+      } else if (resource.resourceTypeId === "assistant") {
+        const host = String(fields["host"] ?? "");
+        if (host) {
+          const files = await this.api
+            .dataPlane<{ files?: PcAssistantFile[] }>(host, `/files/${enc(id)}`)
+            .then((r) => r?.files ?? [])
+            .catch(() => null);
+          if (files) {
+            fields["fileCount"] = files.length;
+            fields[ENRICH_FILES] = JSON.stringify(
+              files.slice(0, 200).map((f) => ({
+                name: f.name ?? f.id ?? "",
+                status: f.status ?? "",
+                size: formatSize(f.size),
+                created: f.created_on ?? "",
+              })),
+            );
+          }
+        }
       }
-    }
-    return { ...resource, fields };
+      return { ...resource, fields };
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -548,463 +559,467 @@ export class PineconeClient implements PluginClient {
     return projects.map((p) => ({ id: p.id, label: p.name, description: p.id }));
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    const fromParent = (type: string) => parentResourceId?.includes(`:${type}:`) === true;
-    switch (typeId) {
-      case "index": {
-        const models = await this.models().catch(() => [] as PcModel[]);
-        const fields: CreateFieldConfig[] = [
-          {
-            key: "name",
-            label: "Name",
-            kind: "text",
-            required: true,
-            placeholder: "products",
-            description: "Lowercase letters, digits and hyphens, up to 45 characters",
-          },
-          {
-            key: "kind",
-            label: "Index kind",
-            kind: "select",
-            required: true,
-            defaultValue: models.length ? "integrated" : "dense",
-            options: [
-              ...(models.length
-                ? [
-                    {
-                      id: "integrated",
-                      label: "Integrated embedding",
-                      description: "Pinecone embeds your text with a hosted model",
-                    },
-                  ]
-                : []),
-              { id: "dense", label: "Dense vectors", description: "You bring the embeddings" },
-              {
-                id: "sparse",
-                label: "Sparse vectors",
-                description: "Keyword-style sparse vectors, dotproduct similarity",
-              },
-            ],
-          },
-          {
-            key: "model",
-            label: "Embedding model",
-            kind: "select",
-            required: true,
-            showWhen: { fieldKey: "kind", fieldValue: "integrated" },
-            ...(models[0] ? { defaultValue: models[0].model } : {}),
-            options: models.map((m) => ({
-              id: m.model,
-              label: m.model,
-              description: [
-                m.vector_type,
-                m.default_dimension ? `${m.default_dimension} dims` : "",
-                m.short_description ?? "",
-              ]
-                .filter(Boolean)
-                .join(" · ")
-                .slice(0, 160),
-            })),
-          },
-          {
-            key: "textField",
-            label: "Text field to embed",
-            kind: "text",
-            required: true,
-            defaultValue: "text",
-            showWhen: { fieldKey: "kind", fieldValue: "integrated" },
-            description: "The record field Pinecone embeds at upsert and query time",
-          },
-          {
-            key: "dimension",
-            label: "Dimension",
-            kind: "number",
-            required: true,
-            minValue: 1,
-            maxValue: 20000,
-            defaultValue: "1536",
-            showWhen: { fieldKey: "kind", fieldValue: "dense" },
-            description: "Must match the embedding model you write vectors from",
-          },
-          {
-            key: "metric",
-            label: "Metric",
-            kind: "select",
-            required: true,
-            defaultValue: "cosine",
-            showWhen: { fieldKey: "kind", fieldValue: "dense" },
-            options: [
-              { id: "cosine", label: "Cosine" },
-              { id: "dotproduct", label: "Dot product" },
-              { id: "euclidean", label: "Euclidean" },
-            ],
-          },
-          {
-            key: "region",
-            label: "Region",
-            kind: "region-picker",
-            required: true,
-            defaultValue: "aws/us-east-1",
-            regions: SERVERLESS_REGIONS.map((r) => ({
-              id: `${r.cloud}/${r.region}`,
-              label: r.label,
-            })),
-            description: "Starter-plan projects can only use AWS us-east-1",
-          },
-          {
-            key: "readCapacityMode",
-            label: "Read capacity",
-            kind: "select",
-            required: false,
-            defaultValue: "OnDemand",
-            options: [
-              { id: "OnDemand", label: "On-demand", description: "Billed per read unit" },
-              {
-                id: "Dedicated",
-                label: "Dedicated read nodes",
-                description: "Fixed hourly price, predictable latency",
-              },
-            ],
-          },
-          {
-            key: "nodeType",
-            label: "Read node type",
-            kind: "select",
-            required: false,
-            defaultValue: "b1",
-            showWhen: { fieldKey: "readCapacityMode", fieldValue: "Dedicated" },
-            options: [
-              { id: "b1", label: "b1" },
-              { id: "t1", label: "t1 (more CPU and memory)" },
-            ],
-          },
-          {
-            key: "replicas",
-            label: "Read replicas",
-            kind: "number",
-            required: false,
-            minValue: 1,
-            defaultValue: "1",
-            showWhen: { fieldKey: "readCapacityMode", fieldValue: "Dedicated" },
-          },
-          {
-            key: "shards",
-            label: "Read shards",
-            kind: "number",
-            required: false,
-            minValue: 1,
-            defaultValue: "1",
-            showWhen: { fieldKey: "readCapacityMode", fieldValue: "Dedicated" },
-            description: "250 GB of storage each",
-          },
-          {
-            key: "deletionProtection",
-            label: "Deletion protection",
-            kind: "select",
-            required: false,
-            defaultValue: "disabled",
-            options: [
-              { id: "disabled", label: "Disabled" },
-              { id: "enabled", label: "Enabled" },
-            ],
-          },
-          {
-            key: "tags",
-            label: "Tags",
-            kind: "text",
-            required: false,
-            placeholder: "env=prod, team=search",
-          },
-        ];
-        return { fields };
-      }
-      case "collection":
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true },
-            {
-              key: "source",
-              label: "Source index",
-              kind: "select",
-              required: true,
-              description: "Only pod-based indexes can be saved as collections",
-              options: await this.indexOptions((i) => i.deployment?.deployment_type === "pod"),
-            },
-          ],
-        };
-      case "backup":
-        return {
-          fields: [
-            {
-              key: "indexName",
-              label: "Index",
-              kind: "select",
-              required: true,
-              options: await this.indexOptions((i) => i.deployment?.deployment_type !== "pod"),
-            },
-            { key: "name", label: "Name", kind: "text", required: false },
-            { key: "description", label: "Description", kind: "text", required: false },
-          ],
-        };
-      case "backup-schedule":
-        return {
-          fields: [
-            ...(fromParent("index")
-              ? []
-              : [
-                  {
-                    key: "indexName",
-                    label: "Index",
-                    kind: "select" as const,
-                    required: true,
-                    options: await this.indexOptions(
-                      (i) => i.deployment?.deployment_type !== "pod",
-                    ),
-                  },
-                ]),
-            { key: "name", label: "Name", kind: "text", required: true, placeholder: "nightly" },
-            {
-              key: "frequency",
-              label: "Frequency",
-              kind: "select",
-              required: true,
-              defaultValue: "daily",
-              options: [
-                { id: "daily", label: "Daily" },
-                { id: "weekly", label: "Weekly" },
-                { id: "monthly", label: "Monthly" },
-              ],
-            },
-            {
-              key: "retentionDays",
-              label: "Keep each backup for (days)",
-              kind: "number",
-              required: true,
-              minValue: 1,
-              defaultValue: "7",
-            },
-          ],
-        };
-      case "assistant":
-        return {
-          fields: [
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      const fromParent = (type: string) => parentResourceId?.includes(`:${type}:`) === true;
+      switch (typeId) {
+        case "index": {
+          const models = await this.models().catch(() => [] as PcModel[]);
+          const fields: CreateFieldConfig[] = [
             {
               key: "name",
               label: "Name",
               kind: "text",
               required: true,
-              description: "Lowercase letters, digits and hyphens, up to 63 characters",
+              placeholder: "products",
+              description: "Lowercase letters, digits and hyphens, up to 45 characters",
+            },
+            {
+              key: "kind",
+              label: "Index kind",
+              kind: "select",
+              required: true,
+              defaultValue: models.length ? "integrated" : "dense",
+              options: [
+                ...(models.length
+                  ? [
+                      {
+                        id: "integrated",
+                        label: "Integrated embedding",
+                        description: "Pinecone embeds your text with a hosted model",
+                      },
+                    ]
+                  : []),
+                { id: "dense", label: "Dense vectors", description: "You bring the embeddings" },
+                {
+                  id: "sparse",
+                  label: "Sparse vectors",
+                  description: "Keyword-style sparse vectors, dotproduct similarity",
+                },
+              ],
+            },
+            {
+              key: "model",
+              label: "Embedding model",
+              kind: "select",
+              required: true,
+              showWhen: { fieldKey: "kind", fieldValue: "integrated" },
+              ...(models[0] ? { defaultValue: models[0].model } : {}),
+              options: models.map((m) => ({
+                id: m.model,
+                label: m.model,
+                description: [
+                  m.vector_type,
+                  m.default_dimension ? `${m.default_dimension} dims` : "",
+                  m.short_description ?? "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+                  .slice(0, 160),
+              })),
+            },
+            {
+              key: "textField",
+              label: "Text field to embed",
+              kind: "text",
+              required: true,
+              defaultValue: "text",
+              showWhen: { fieldKey: "kind", fieldValue: "integrated" },
+              description: "The record field Pinecone embeds at upsert and query time",
+            },
+            {
+              key: "dimension",
+              label: "Dimension",
+              kind: "number",
+              required: true,
+              minValue: 1,
+              maxValue: 20000,
+              defaultValue: "1536",
+              showWhen: { fieldKey: "kind", fieldValue: "dense" },
+              description: "Must match the embedding model you write vectors from",
+            },
+            {
+              key: "metric",
+              label: "Metric",
+              kind: "select",
+              required: true,
+              defaultValue: "cosine",
+              showWhen: { fieldKey: "kind", fieldValue: "dense" },
+              options: [
+                { id: "cosine", label: "Cosine" },
+                { id: "dotproduct", label: "Dot product" },
+                { id: "euclidean", label: "Euclidean" },
+              ],
             },
             {
               key: "region",
               label: "Region",
-              kind: "select",
+              kind: "region-picker",
               required: true,
-              defaultValue: "us",
+              defaultValue: "aws/us-east-1",
+              regions: SERVERLESS_REGIONS.map((r) => ({
+                id: `${r.cloud}/${r.region}`,
+                label: r.label,
+              })),
+              description: "Starter-plan projects can only use AWS us-east-1",
+            },
+            {
+              key: "readCapacityMode",
+              label: "Read capacity",
+              kind: "select",
+              required: false,
+              defaultValue: "OnDemand",
               options: [
-                { id: "us", label: "United States" },
-                { id: "eu", label: "Europe" },
+                { id: "OnDemand", label: "On-demand", description: "Billed per read unit" },
+                {
+                  id: "Dedicated",
+                  label: "Dedicated read nodes",
+                  description: "Fixed hourly price, predictable latency",
+                },
               ],
             },
             {
-              key: "instructions",
-              label: "Instructions",
-              kind: "text",
-              multiline: true,
+              key: "nodeType",
+              label: "Read node type",
+              kind: "select",
               required: false,
-              placeholder: "Answer in a friendly tone and cite the document you used.",
+              defaultValue: "b1",
+              showWhen: { fieldKey: "readCapacityMode", fieldValue: "Dedicated" },
+              options: [
+                { id: "b1", label: "b1" },
+                { id: "t1", label: "t1 (more CPU and memory)" },
+              ],
             },
-          ],
-        };
-      case "project":
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true },
             {
-              key: "maxPods",
-              label: "Max pods",
+              key: "replicas",
+              label: "Read replicas",
               kind: "number",
               required: false,
-              minValue: 0,
-              defaultValue: "0",
-              description: "0 keeps the project serverless only",
+              minValue: 1,
+              defaultValue: "1",
+              showWhen: { fieldKey: "readCapacityMode", fieldValue: "Dedicated" },
             },
             {
-              key: "forceEncryptionWithCmek",
-              label: "Require CMEK encryption",
+              key: "shards",
+              label: "Read shards",
+              kind: "number",
+              required: false,
+              minValue: 1,
+              defaultValue: "1",
+              showWhen: { fieldKey: "readCapacityMode", fieldValue: "Dedicated" },
+              description: "250 GB of storage each",
+            },
+            {
+              key: "deletionProtection",
+              label: "Deletion protection",
               kind: "select",
               required: false,
-              defaultValue: "false",
+              defaultValue: "disabled",
               options: [
-                { id: "false", label: "No" },
-                { id: "true", label: "Yes (cannot be turned off later)" },
+                { id: "disabled", label: "Disabled" },
+                { id: "enabled", label: "Enabled" },
               ],
             },
-          ],
-        };
-      case "api-key":
-        return {
-          fields: [
-            ...(fromParent("project")
-              ? []
-              : [
-                  {
-                    key: "projectId",
-                    label: "Project",
-                    kind: "select" as const,
-                    required: true,
-                    options: await this.projectOptions(),
-                  },
-                ]),
-            { key: "name", label: "Name", kind: "text", required: true },
             {
-              key: "roles",
-              label: "Roles",
-              kind: "policy-picker",
+              key: "tags",
+              label: "Tags",
+              kind: "text",
               required: false,
-              description: "Leave empty for ProjectEditor, Pinecone's default",
-              policies: API_KEY_ROLES.map((r) => ({
-                id: r,
-                label: r,
-                description: API_KEY_ROLE_LABELS[r] ?? "",
-              })),
+              placeholder: "env=prod, team=search",
             },
-          ],
-        };
-      case "service-account":
-        return {
-          fields: [{ key: "name", label: "Name", kind: "text", required: true }],
-        };
-      default:
-        throw new Error(`Pinecone plugin: cannot create "${typeId}"`);
-    }
+          ];
+          return { fields };
+        }
+        case "collection":
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "source",
+                label: "Source index",
+                kind: "select",
+                required: true,
+                description: "Only pod-based indexes can be saved as collections",
+                options: await this.indexOptions((i) => i.deployment?.deployment_type === "pod"),
+              },
+            ],
+          };
+        case "backup":
+          return {
+            fields: [
+              {
+                key: "indexName",
+                label: "Index",
+                kind: "select",
+                required: true,
+                options: await this.indexOptions((i) => i.deployment?.deployment_type !== "pod"),
+              },
+              { key: "name", label: "Name", kind: "text", required: false },
+              { key: "description", label: "Description", kind: "text", required: false },
+            ],
+          };
+        case "backup-schedule":
+          return {
+            fields: [
+              ...(fromParent("index")
+                ? []
+                : [
+                    {
+                      key: "indexName",
+                      label: "Index",
+                      kind: "select" as const,
+                      required: true,
+                      options: await this.indexOptions(
+                        (i) => i.deployment?.deployment_type !== "pod",
+                      ),
+                    },
+                  ]),
+              { key: "name", label: "Name", kind: "text", required: true, placeholder: "nightly" },
+              {
+                key: "frequency",
+                label: "Frequency",
+                kind: "select",
+                required: true,
+                defaultValue: "daily",
+                options: [
+                  { id: "daily", label: "Daily" },
+                  { id: "weekly", label: "Weekly" },
+                  { id: "monthly", label: "Monthly" },
+                ],
+              },
+              {
+                key: "retentionDays",
+                label: "Keep each backup for (days)",
+                kind: "number",
+                required: true,
+                minValue: 1,
+                defaultValue: "7",
+              },
+            ],
+          };
+        case "assistant":
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                description: "Lowercase letters, digits and hyphens, up to 63 characters",
+              },
+              {
+                key: "region",
+                label: "Region",
+                kind: "select",
+                required: true,
+                defaultValue: "us",
+                options: [
+                  { id: "us", label: "United States" },
+                  { id: "eu", label: "Europe" },
+                ],
+              },
+              {
+                key: "instructions",
+                label: "Instructions",
+                kind: "text",
+                multiline: true,
+                required: false,
+                placeholder: "Answer in a friendly tone and cite the document you used.",
+              },
+            ],
+          };
+        case "project":
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "maxPods",
+                label: "Max pods",
+                kind: "number",
+                required: false,
+                minValue: 0,
+                defaultValue: "0",
+                description: "0 keeps the project serverless only",
+              },
+              {
+                key: "forceEncryptionWithCmek",
+                label: "Require CMEK encryption",
+                kind: "select",
+                required: false,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "No" },
+                  { id: "true", label: "Yes (cannot be turned off later)" },
+                ],
+              },
+            ],
+          };
+        case "api-key":
+          return {
+            fields: [
+              ...(fromParent("project")
+                ? []
+                : [
+                    {
+                      key: "projectId",
+                      label: "Project",
+                      kind: "select" as const,
+                      required: true,
+                      options: await this.projectOptions(),
+                    },
+                  ]),
+              { key: "name", label: "Name", kind: "text", required: true },
+              {
+                key: "roles",
+                label: "Roles",
+                kind: "policy-picker",
+                required: false,
+                description: "Leave empty for ProjectEditor, Pinecone's default",
+                policies: API_KEY_ROLES.map((r) => ({
+                  id: r,
+                  label: r,
+                  description: API_KEY_ROLE_LABELS[r] ?? "",
+                })),
+              },
+            ],
+          };
+        case "service-account":
+          return {
+            fields: [{ key: "name", label: "Name", kind: "text", required: true }],
+          };
+        default:
+          throw new Error(`Pinecone plugin: cannot create "${typeId}"`);
+      }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceCreateReturn> {
-    switch (typeId) {
-      case "index":
-        return this.createIndex(accountId, fields);
-      case "collection": {
-        const name = str(fields["name"]);
-        checkName(name, "Collection");
-        const source = str(fields["source"]);
-        if (!source) throw new Error("Choose the pod-based index to copy.");
-        const c = await this.api.control<PcCollection>("/collections", {
-          method: "POST",
-          body: { name, source },
-        });
-        const inst = mapCollection(c ?? { name, status: "Initializing" }, accountId);
-        inst.fields["sourceIndex"] = source;
-        return inst;
-      }
-      case "backup": {
-        const indexName = str(fields["indexName"]);
-        if (!indexName) throw new Error("Choose the index to back up.");
-        return mapBackup(await this.createBackup(indexName, fields), accountId);
-      }
-      case "backup-schedule": {
-        const indexName = parentResourceId?.includes(":index:")
-          ? externalOf(parentResourceId)
-          : str(fields["indexName"]);
-        if (!indexName) throw new Error("Choose the index to back up.");
-        const name = str(fields["name"]);
-        if (!name) throw new Error("Enter a name for the schedule.");
-        const frequency = str(fields["frequency"]) || "daily";
-        const days = intField(fields["retentionDays"], "Retention", 1) ?? 7;
-        const s = await this.api.control<PcBackupSchedule>(
-          `/indexes/${enc(indexName)}/backup-schedules`,
-          {
+  ): PluginEffect<ResourceCreateReturn> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "index":
+          return this.createIndex(accountId, fields);
+        case "collection": {
+          const name = str(fields["name"]);
+          checkName(name, "Collection");
+          const source = str(fields["source"]);
+          if (!source) throw new Error("Choose the pod-based index to copy.");
+          const c = await this.api.control<PcCollection>("/collections", {
+            method: "POST",
+            body: { name, source },
+          });
+          const inst = mapCollection(c ?? { name, status: "Initializing" }, accountId);
+          inst.fields["sourceIndex"] = source;
+          return inst;
+        }
+        case "backup": {
+          const indexName = str(fields["indexName"]);
+          if (!indexName) throw new Error("Choose the index to back up.");
+          return mapBackup(await this.createBackup(indexName, fields), accountId);
+        }
+        case "backup-schedule": {
+          const indexName = parentResourceId?.includes(":index:")
+            ? externalOf(parentResourceId)
+            : str(fields["indexName"]);
+          if (!indexName) throw new Error("Choose the index to back up.");
+          const name = str(fields["name"]);
+          if (!name) throw new Error("Enter a name for the schedule.");
+          const frequency = str(fields["frequency"]) || "daily";
+          const days = intField(fields["retentionDays"], "Retention", 1) ?? 7;
+          const s = await this.api.control<PcBackupSchedule>(
+            `/indexes/${enc(indexName)}/backup-schedules`,
+            {
+              method: "POST",
+              body: {
+                name,
+                schedule: { type: "time-based", frequency },
+                retention: { expire_after_days: days },
+              },
+            },
+          );
+          return mapBackupSchedule(s, indexName, accountId);
+        }
+        case "assistant": {
+          const name = str(fields["name"]);
+          if (!ASSISTANT_NAME_RE.test(name)) {
+            throw new Error(
+              "Assistant names are 1 to 63 lowercase letters, digits or hyphens, starting and ending with a letter or digit.",
+            );
+          }
+          const instructions = fields["instructions"] ?? "";
+          const a = await this.api.control<PcAssistant>("/assistant/assistants", {
             method: "POST",
             body: {
               name,
-              schedule: { type: "time-based", frequency },
-              retention: { expire_after_days: days },
+              region: str(fields["region"]) || "us",
+              ...(instructions.trim() ? { instructions } : {}),
             },
-          },
-        );
-        return mapBackupSchedule(s, indexName, accountId);
-      }
-      case "assistant": {
-        const name = str(fields["name"]);
-        if (!ASSISTANT_NAME_RE.test(name)) {
-          throw new Error(
-            "Assistant names are 1 to 63 lowercase letters, digits or hyphens, starting and ending with a letter or digit.",
+          });
+          return mapAssistant(a ?? { name, status: "Initializing" }, accountId);
+        }
+        case "project": {
+          const name = str(fields["name"]);
+          if (!name) throw new Error("Enter a project name.");
+          const maxPods = intField(fields["maxPods"], "Max pods", 0);
+          const p = await this.api.admin<PcProject>("/projects", {
+            method: "POST",
+            body: {
+              name,
+              ...(maxPods !== undefined ? { max_pods: maxPods } : {}),
+              ...(fields["forceEncryptionWithCmek"] === "true"
+                ? { force_encryption_with_cmek: true }
+                : {}),
+            },
+          });
+          this.projectCache = undefined;
+          return mapProject(p, accountId);
+        }
+        case "api-key": {
+          const projectId = parentResourceId?.includes(":project:")
+            ? externalOf(parentResourceId)
+            : str(fields["projectId"]);
+          if (!projectId) throw new Error("Choose a project.");
+          const name = str(fields["name"]);
+          if (!name || name.length > 80) throw new Error("API key names are 1 to 80 characters.");
+          const roles = parseRoles(fields["roles"] ?? "");
+          const res = await this.api.admin<{ key: PcApiKey; value: string }>(
+            `/projects/${enc(projectId)}/api-keys`,
+            { method: "POST", body: { name, ...(roles.length ? { roles } : {}) } },
           );
+          const projects = await this.projects().catch(() => [] as PcProject[]);
+          const inst = mapApiKey(
+            res.key,
+            projects.find((p) => p.id === projectId)?.name ?? "",
+            accountId,
+          );
+          await this.services?.secrets?.setPlaintext?.(inst.id, API_KEY_VALUE_FIELD, res.value);
+          return inst;
         }
-        const instructions = fields["instructions"] ?? "";
-        const a = await this.api.control<PcAssistant>("/assistant/assistants", {
-          method: "POST",
-          body: {
-            name,
-            region: str(fields["region"]) || "us",
-            ...(instructions.trim() ? { instructions } : {}),
-          },
-        });
-        return mapAssistant(a ?? { name, status: "Initializing" }, accountId);
-      }
-      case "project": {
-        const name = str(fields["name"]);
-        if (!name) throw new Error("Enter a project name.");
-        const maxPods = intField(fields["maxPods"], "Max pods", 0);
-        const p = await this.api.admin<PcProject>("/projects", {
-          method: "POST",
-          body: {
-            name,
-            ...(maxPods !== undefined ? { max_pods: maxPods } : {}),
-            ...(fields["forceEncryptionWithCmek"] === "true"
-              ? { force_encryption_with_cmek: true }
-              : {}),
-          },
-        });
-        this.projectCache = undefined;
-        return mapProject(p, accountId);
-      }
-      case "api-key": {
-        const projectId = parentResourceId?.includes(":project:")
-          ? externalOf(parentResourceId)
-          : str(fields["projectId"]);
-        if (!projectId) throw new Error("Choose a project.");
-        const name = str(fields["name"]);
-        if (!name || name.length > 80) throw new Error("API key names are 1 to 80 characters.");
-        const roles = parseRoles(fields["roles"] ?? "");
-        const res = await this.api.admin<{ key: PcApiKey; value: string }>(
-          `/projects/${enc(projectId)}/api-keys`,
-          { method: "POST", body: { name, ...(roles.length ? { roles } : {}) } },
-        );
-        const projects = await this.projects().catch(() => [] as PcProject[]);
-        const inst = mapApiKey(
-          res.key,
-          projects.find((p) => p.id === projectId)?.name ?? "",
-          accountId,
-        );
-        await this.services?.secrets?.setPlaintext?.(inst.id, API_KEY_VALUE_FIELD, res.value);
-        return inst;
-      }
-      case "service-account": {
-        const name = str(fields["name"]);
-        if (!name || name.length > 80) {
-          throw new Error("Service account names are 1 to 80 characters.");
+        case "service-account": {
+          const name = str(fields["name"]);
+          if (!name || name.length > 80) {
+            throw new Error("Service account names are 1 to 80 characters.");
+          }
+          const res = await this.api.admin<{
+            service_account: PcServiceAccount;
+            client_secret: string;
+          }>("/service-accounts", { method: "POST", body: { name } });
+          const inst = mapServiceAccount(res.service_account, accountId);
+          await this.services?.secrets?.setPlaintext?.(
+            inst.id,
+            CLIENT_SECRET_FIELD,
+            res.client_secret,
+          );
+          return inst;
         }
-        const res = await this.api.admin<{
-          service_account: PcServiceAccount;
-          client_secret: string;
-        }>("/service-accounts", { method: "POST", body: { name } });
-        const inst = mapServiceAccount(res.service_account, accountId);
-        await this.services?.secrets?.setPlaintext?.(
-          inst.id,
-          CLIENT_SECRET_FIELD,
-          res.client_secret,
-        );
-        return inst;
+        default:
+          throw new Error(`Pinecone plugin: cannot create "${typeId}"`);
       }
-      default:
-        throw new Error(`Pinecone plugin: cannot create "${typeId}"`);
-    }
+    });
   }
 
   private readCapacityBody(fields: Record<string, string>): Record<string, unknown> | undefined {
@@ -1086,188 +1101,200 @@ export class PineconeClient implements PluginClient {
 
   // ── Update ───────────────────────────────────────────────────────────
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalOf(resourceId);
-    switch (typeId) {
-      case "index": {
-        const current = await this.describeIndex(id);
-        const body = buildConfigurePatch(current, fields);
-        if (Object.keys(body).length) {
-          await this.api.control(`/indexes/${enc(id)}`, { method: "PATCH", body });
-          this.invalidateIndexes();
-        }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "backup-schedule": {
-        const body: Record<string, unknown> = {};
-        if (fields["frequency"]) body["frequency"] = str(fields["frequency"]);
-        const days = intField(fields["retentionDays"], "Retention", 1);
-        if (days !== undefined) body["retention"] = { expire_after_days: days };
-        if (fields["enabled"] !== undefined && fields["enabled"] !== "") {
-          body["enabled"] = fields["enabled"] === "true";
-        }
-        if (Object.keys(body).length) {
-          await this.api.control(`/backup-schedules/${enc(id)}`, { method: "PATCH", body });
-        }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "assistant": {
-        const body: Record<string, unknown> = {};
-        if (fields["instructions"] !== undefined) body["instructions"] = fields["instructions"];
-        if (fields["metadata"] !== undefined) body["metadata"] = parseMetadata(fields["metadata"]);
-        if (Object.keys(body).length) {
-          await this.api.control(`/assistant/assistants/${enc(id)}`, { method: "PATCH", body });
-        }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "project": {
-        const body: Record<string, unknown> = {};
-        if (fields["name"]) body["name"] = str(fields["name"]);
-        const maxPods = intField(fields["maxPods"], "Max pods", 0);
-        if (maxPods !== undefined) body["max_pods"] = maxPods;
-        if (fields["forceEncryptionWithCmek"] === "true") {
-          body["force_encryption_with_cmek"] = true;
-        } else if (fields["forceEncryptionWithCmek"] === "false") {
-          const current = await this.api.admin<PcProject>(`/projects/${enc(id)}`);
-          if (current.force_encryption_with_cmek) {
-            throw new Error("Pinecone does not allow turning CMEK enforcement off once it is on.");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      switch (typeId) {
+        case "index": {
+          const current = await this.describeIndex(id);
+          const body = buildConfigurePatch(current, fields);
+          if (Object.keys(body).length) {
+            await this.api.control(`/indexes/${enc(id)}`, { method: "PATCH", body });
+            this.invalidateIndexes();
           }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        if (Object.keys(body).length) {
-          await this.api.admin(`/projects/${enc(id)}`, { method: "PATCH", body });
-          this.projectCache = undefined;
+        case "backup-schedule": {
+          const body: Record<string, unknown> = {};
+          if (fields["frequency"]) body["frequency"] = str(fields["frequency"]);
+          const days = intField(fields["retentionDays"], "Retention", 1);
+          if (days !== undefined) body["retention"] = { expire_after_days: days };
+          if (fields["enabled"] !== undefined && fields["enabled"] !== "") {
+            body["enabled"] = fields["enabled"] === "true";
+          }
+          if (Object.keys(body).length) {
+            await this.api.control(`/backup-schedules/${enc(id)}`, { method: "PATCH", body });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
+        case "assistant": {
+          const body: Record<string, unknown> = {};
+          if (fields["instructions"] !== undefined) body["instructions"] = fields["instructions"];
+          if (fields["metadata"] !== undefined)
+            body["metadata"] = parseMetadata(fields["metadata"]);
+          if (Object.keys(body).length) {
+            await this.api.control(`/assistant/assistants/${enc(id)}`, { method: "PATCH", body });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "project": {
+          const body: Record<string, unknown> = {};
+          if (fields["name"]) body["name"] = str(fields["name"]);
+          const maxPods = intField(fields["maxPods"], "Max pods", 0);
+          if (maxPods !== undefined) body["max_pods"] = maxPods;
+          if (fields["forceEncryptionWithCmek"] === "true") {
+            body["force_encryption_with_cmek"] = true;
+          } else if (fields["forceEncryptionWithCmek"] === "false") {
+            const current = await this.api.admin<PcProject>(`/projects/${enc(id)}`);
+            if (current.force_encryption_with_cmek) {
+              throw new Error(
+                "Pinecone does not allow turning CMEK enforcement off once it is on.",
+              );
+            }
+          }
+          if (Object.keys(body).length) {
+            await this.api.admin(`/projects/${enc(id)}`, { method: "PATCH", body });
+            this.projectCache = undefined;
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "api-key": {
+          const body: Record<string, unknown> = {};
+          if (fields["name"]) body["name"] = str(fields["name"]);
+          if (fields["roles"] !== undefined) {
+            const roles = parseRoles(fields["roles"]);
+            if (!roles.length) throw new Error("An API key needs at least one role.");
+            body["roles"] = roles;
+          }
+          if (Object.keys(body).length) {
+            await this.api.admin(`/api-keys/${enc(id)}`, { method: "PATCH", body });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        case "service-account": {
+          const name = str(fields["name"]);
+          if (name) {
+            await this.api.admin(`/service-accounts/${enc(id)}`, {
+              method: "PATCH",
+              body: { name },
+            });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        default:
+          throw new Error(`Pinecone plugin: cannot update "${typeId}"`);
       }
-      case "api-key": {
-        const body: Record<string, unknown> = {};
-        if (fields["name"]) body["name"] = str(fields["name"]);
-        if (fields["roles"] !== undefined) {
-          const roles = parseRoles(fields["roles"]);
-          if (!roles.length) throw new Error("An API key needs at least one role.");
-          body["roles"] = roles;
-        }
-        if (Object.keys(body).length) {
-          await this.api.admin(`/api-keys/${enc(id)}`, { method: "PATCH", body });
-        }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "service-account": {
-        const name = str(fields["name"]);
-        if (name) {
-          await this.api.admin(`/service-accounts/${enc(id)}`, {
-            method: "PATCH",
-            body: { name },
-          });
-        }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      default:
-        throw new Error(`Pinecone plugin: cannot update "${typeId}"`);
-    }
+    });
   }
 
   // ── Delete ───────────────────────────────────────────────────────────
 
-  async deleteResource(typeId: string, resourceId: string): Promise<void> {
-    const id = externalOf(resourceId);
-    const paths: Record<string, () => Promise<unknown>> = {
-      index: () => this.api.control(`/indexes/${enc(id)}`, { method: "DELETE" }),
-      collection: () => this.api.control(`/collections/${enc(id)}`, { method: "DELETE" }),
-      backup: () => this.api.control(`/backups/${enc(id)}`, { method: "DELETE" }),
-      "backup-schedule": () =>
-        this.api.control(`/backup-schedules/${enc(id)}`, { method: "DELETE" }),
-      assistant: () => this.api.control(`/assistant/assistants/${enc(id)}`, { method: "DELETE" }),
-      project: () => this.api.admin(`/projects/${enc(id)}`, { method: "DELETE" }),
-      "api-key": () => this.api.admin(`/api-keys/${enc(id)}`, { method: "DELETE" }),
-      "service-account": () => this.api.admin(`/service-accounts/${enc(id)}`, { method: "DELETE" }),
-    };
-    const run = paths[typeId];
-    if (!run) throw new Error(`Pinecone plugin: cannot delete "${typeId}"`);
-    try {
-      await run();
-    } catch (e) {
-      if (typeId === "index" && isStatus(e, 403, 412)) {
-        throw new Error(
-          `${errorText(e)}. If deletion protection is on, disable it on the index first.`,
-        );
+  deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      const paths: Record<string, () => Promise<unknown>> = {
+        index: () => this.api.control(`/indexes/${enc(id)}`, { method: "DELETE" }),
+        collection: () => this.api.control(`/collections/${enc(id)}`, { method: "DELETE" }),
+        backup: () => this.api.control(`/backups/${enc(id)}`, { method: "DELETE" }),
+        "backup-schedule": () =>
+          this.api.control(`/backup-schedules/${enc(id)}`, { method: "DELETE" }),
+        assistant: () => this.api.control(`/assistant/assistants/${enc(id)}`, { method: "DELETE" }),
+        project: () => this.api.admin(`/projects/${enc(id)}`, { method: "DELETE" }),
+        "api-key": () => this.api.admin(`/api-keys/${enc(id)}`, { method: "DELETE" }),
+        "service-account": () =>
+          this.api.admin(`/service-accounts/${enc(id)}`, { method: "DELETE" }),
+      };
+      const run = paths[typeId];
+      if (!run) throw new Error(`Pinecone plugin: cannot delete "${typeId}"`);
+      try {
+        await run();
+      } catch (e) {
+        if (typeId === "index" && isStatus(e, 403, 412)) {
+          throw new Error(
+            `${errorText(e)}. If deletion protection is on, disable it on the index first.`,
+          );
+        }
+        throw e;
       }
-      throw e;
-    }
-    if (typeId === "index") this.invalidateIndexes();
-    if (typeId === "project") this.projectCache = undefined;
+      if (typeId === "index") this.invalidateIndexes();
+      if (typeId === "project") this.projectCache = undefined;
+    });
   }
 
   // ── Actions ──────────────────────────────────────────────────────────
 
-  async invokeAction(typeId: string, resourceId: string, actionId: string): Promise<void> {
-    const id = externalOf(resourceId);
-    if (typeId === "index") {
-      const patches: Record<string, Record<string, unknown>> = {
-        "enable-deletion-protection": { deletion_protection: "enabled" },
-        "disable-deletion-protection": { deletion_protection: "disabled" },
-        "read-capacity-on-demand": { read_capacity: { mode: "OnDemand" } },
-      };
-      const body = patches[actionId];
-      if (body) {
-        await this.api.control(`/indexes/${enc(id)}`, { method: "PATCH", body });
-        this.invalidateIndexes();
+  invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      if (typeId === "index") {
+        const patches: Record<string, Record<string, unknown>> = {
+          "enable-deletion-protection": { deletion_protection: "enabled" },
+          "disable-deletion-protection": { deletion_protection: "disabled" },
+          "read-capacity-on-demand": { read_capacity: { mode: "OnDemand" } },
+        };
+        const body = patches[actionId];
+        if (body) {
+          await this.api.control(`/indexes/${enc(id)}`, { method: "PATCH", body });
+          this.invalidateIndexes();
+          return;
+        }
+      }
+      if (typeId === "service-account" && actionId === "rotate-secret") {
+        const res = await this.api.admin<{ client_secret: string }>(
+          `/service-accounts/${enc(id)}/rotate-secret`,
+          { method: "POST" },
+        );
+        await this.services?.secrets?.setPlaintext?.(
+          resourceId,
+          CLIENT_SECRET_FIELD,
+          res.client_secret,
+        );
         return;
       }
-    }
-    if (typeId === "service-account" && actionId === "rotate-secret") {
-      const res = await this.api.admin<{ client_secret: string }>(
-        `/service-accounts/${enc(id)}/rotate-secret`,
-        { method: "POST" },
-      );
-      await this.services?.secrets?.setPlaintext?.(
-        resourceId,
-        CLIENT_SECRET_FIELD,
-        res.client_secret,
-      );
-      return;
-    }
-    throw new Error(`Pinecone plugin: action "${actionId}" is not supported for "${typeId}"`);
+      throw new Error(`Pinecone plugin: action "${actionId}" is not supported for "${typeId}"`);
+    });
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const id = externalOf(resourceId);
-    const vals = parseFormArg(args[0]);
-    if (typeId === "index" && command === "createBackup") {
-      await this.createBackup(id, vals);
-      return null;
-    }
-    if (typeId === "index" && command === "createCollection") {
-      const name = str(vals["name"]);
-      checkName(name, "Collection");
-      await this.api.control("/collections", { method: "POST", body: { name, source: id } });
-      return null;
-    }
-    if (typeId === "backup" && command === "restoreBackup") {
-      const name = str(vals["name"]);
-      checkName(name, "Index");
-      const res = await this.api.control<{ restore_job_id: string; index_id: string }>(
-        `/backups/${enc(id)}/create-index`,
-        {
-          method: "POST",
-          body: { name, deletion_protection: str(vals["deletionProtection"]) || "disabled" },
-        },
-      );
-      this.invalidateIndexes();
-      return res;
-    }
-    throw new Error(`Pinecone plugin: unknown command "${command}"`);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      const vals = parseFormArg(args[0]);
+      if (typeId === "index" && command === "createBackup") {
+        await this.createBackup(id, vals);
+        return null;
+      }
+      if (typeId === "index" && command === "createCollection") {
+        const name = str(vals["name"]);
+        checkName(name, "Collection");
+        await this.api.control("/collections", { method: "POST", body: { name, source: id } });
+        return null;
+      }
+      if (typeId === "backup" && command === "restoreBackup") {
+        const name = str(vals["name"]);
+        checkName(name, "Index");
+        const res = await this.api.control<{ restore_job_id: string; index_id: string }>(
+          `/backups/${enc(id)}/create-index`,
+          {
+            method: "POST",
+            body: { name, deletion_protection: str(vals["deletionProtection"]) || "disabled" },
+          },
+        );
+        this.invalidateIndexes();
+        return res;
+      }
+      throw new Error(`Pinecone plugin: unknown command "${command}"`);
+    });
   }
 
   // ── Chat (assistants) ────────────────────────────────────────────────
@@ -1278,7 +1305,7 @@ export class PineconeClient implements PluginClient {
    * non-streaming so it goes through the host HTTP service like every other
    * call; the full answer arrives as one delta.
    */
-  async *streamChatMessage(
+  private async *streamChatMessageIterable(
     typeId: string,
     resourceId: string,
     accountId: string,
@@ -1290,7 +1317,7 @@ export class PineconeClient implements PluginClient {
       return;
     }
     try {
-      const assistant = await this.getResource(typeId, resourceId, accountId);
+      const assistant = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
       const host = String(assistant.fields["host"] ?? "");
       const name = assistant.externalId ?? externalOf(resourceId);
       const res = await this.api.dataPlane<{
@@ -1324,25 +1351,39 @@ export class PineconeClient implements PluginClient {
     }
   }
 
+  streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    messages: ChatMessage[],
+    options?: { model?: string },
+  ) {
+    return attemptStream(() =>
+      this.streamChatMessageIterable(typeId, resourceId, accountId, messages, options),
+    );
+  }
+
   // ── Metrics and quotas ───────────────────────────────────────────────
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "index") return [];
-    const name = externalOf(resourceId);
-    const index = await this.getResource("index", resourceId, accountId);
-    const host = String(index.fields["host"] ?? "");
-    const now = Date.now();
-    const [stats, prom] = await Promise.all([
-      host ? fetchIndexStats(this.api, host).catch(() => null) : Promise.resolve(null),
-      this.projectId && index.fields["deploymentType"] !== "pod"
-        ? scrapeProject(this.api, this.projectId).catch(() => [])
-        : Promise.resolve([]),
-    ]);
-    return [...(stats ? statsSeries(stats, now) : []), ...prometheusSeries(prom, name, now)];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "index") return [];
+      const name = externalOf(resourceId);
+      const index = await runPluginEffect(this.getResource("index", resourceId, accountId));
+      const host = String(index.fields["host"] ?? "");
+      const now = Date.now();
+      const [stats, prom] = await Promise.all([
+        host ? fetchIndexStats(this.api, host).catch(() => null) : Promise.resolve(null),
+        this.projectId && index.fields["deploymentType"] !== "pod"
+          ? scrapeProject(this.api, this.projectId).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+      return [...(stats ? statsSeries(stats, now) : []), ...prometheusSeries(prom, name, now)];
+    });
   }
 
   /**
@@ -1351,37 +1392,39 @@ export class PineconeClient implements PluginClient {
    * indexes' `shards × replicas`. Needs the service account and project ID;
    * a serverless-only project (`max_pods` 0) has no pod quota to report.
    */
-  async fetchQuotas(): Promise<QuotaUsage[]> {
-    if (!this.api.hasAdmin || !this.projectId) {
-      throw new QuotaAccessError(
-        "Pod quotas need a service account and the project ID on this account.",
-      );
-    }
-    let project: PcProject;
-    try {
-      project = await this.api.admin<PcProject>(`/projects/${enc(this.projectId)}`);
-    } catch (e) {
-      if (isStatus(e, 401, 403, 404)) {
-        throw new QuotaAccessError(`Pinecone refused the project lookup: ${errorText(e)}`);
+  fetchQuotas(): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      if (!this.api.hasAdmin || !this.projectId) {
+        throw new QuotaAccessError(
+          "Pod quotas need a service account and the project ID on this account.",
+        );
       }
-      throw e;
-    }
-    if (!project.max_pods || project.max_pods <= 0) return [];
-    const indexes = await this.indexes();
-    const used = indexes
-      .filter((i) => i.deployment?.deployment_type === "pod")
-      .reduce((n, i) => n + (i.deployment?.replicas ?? 1) * (i.deployment?.shards ?? 1), 0);
-    return [
-      {
-        id: `pods/${project.id}`,
-        service: "Pod-based indexes",
-        name: `Pods in project ${project.name}`,
-        limit: project.max_pods,
-        used,
-        unit: "pods",
-        adjustable: true,
-      },
-    ];
+      let project: PcProject;
+      try {
+        project = await this.api.admin<PcProject>(`/projects/${enc(this.projectId)}`);
+      } catch (e) {
+        if (isStatus(e, 401, 403, 404)) {
+          throw new QuotaAccessError(`Pinecone refused the project lookup: ${errorText(e)}`);
+        }
+        throw e;
+      }
+      if (!project.max_pods || project.max_pods <= 0) return [];
+      const indexes = await this.indexes();
+      const used = indexes
+        .filter((i) => i.deployment?.deployment_type === "pod")
+        .reduce((n, i) => n + (i.deployment?.replicas ?? 1) * (i.deployment?.shards ?? 1), 0);
+      return [
+        {
+          id: `pods/${project.id}`,
+          service: "Pod-based indexes",
+          name: `Pods in project ${project.name}`,
+          limit: project.max_pods,
+          used,
+          unit: "pods",
+          adjustable: true,
+        },
+      ];
+    });
   }
 }
 

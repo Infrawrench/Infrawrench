@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   DetailViewSchema,
   HostServices,
@@ -82,7 +85,7 @@ export class ProxmoxClient implements PluginClient {
   readonly api: ProxmoxApi;
   private resourcesCache: { at: number; promise: Promise<PveClusterResource[]> } | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const url = credentials["url"] ?? "";
     const tokenId = credentials["tokenId"] ?? "";
     const tokenSecret = credentials["tokenSecret"] ?? "";
@@ -173,51 +176,55 @@ export class ProxmoxClient implements PluginClient {
   // Listing
   // ---------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case CLUSTER:
-        return this.listCluster(accountId);
-      case NODE:
-        return this.listNodes(accountId);
-      case VM:
-        return this.listGuests(accountId, "qemu");
-      case CT:
-        return this.listGuests(accountId, "lxc");
-      case STORAGE:
-        return this.listStorage(accountId);
-      case BACKUP:
-        return this.listBackups(accountId);
-      case BACKUP_JOB:
-        return this.listBackupJobs(accountId);
-      case POOL:
-        return this.listPools(accountId);
-      case HA_RESOURCE:
-        return this.listHaResources(accountId);
-      case HA_RULE:
-        return this.listHaRules(accountId);
-      case FW_RULE:
-        return this.listFirewallRules(accountId);
-      case SECURITY_GROUP:
-        return this.listSecurityGroups(accountId);
-      case FW_ALIAS:
-        return this.listAliases(accountId);
-      case IPSET:
-        return this.listIpsets(accountId);
-      default:
-        throw new Error(`Proxmox plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case CLUSTER:
+          return this.listCluster(accountId);
+        case NODE:
+          return this.listNodes(accountId);
+        case VM:
+          return this.listGuests(accountId, "qemu");
+        case CT:
+          return this.listGuests(accountId, "lxc");
+        case STORAGE:
+          return this.listStorage(accountId);
+        case BACKUP:
+          return this.listBackups(accountId);
+        case BACKUP_JOB:
+          return this.listBackupJobs(accountId);
+        case POOL:
+          return this.listPools(accountId);
+        case HA_RESOURCE:
+          return this.listHaResources(accountId);
+        case HA_RULE:
+          return this.listHaRules(accountId);
+        case FW_RULE:
+          return this.listFirewallRules(accountId);
+        case SECURITY_GROUP:
+          return this.listSecurityGroups(accountId);
+        case FW_ALIAS:
+          return this.listAliases(accountId);
+        case IPSET:
+          return this.listIpsets(accountId);
+        default:
+          throw new Error(`Proxmox plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const ext = externalIdOf(resourceId);
-    const found = all.find((r) => r.id === resourceId || r.externalId === ext);
-    if (!found) throw new ProxmoxApiError(`Proxmox plugin: ${typeId} ${ext} not found`, 404);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const ext = externalIdOf(resourceId);
+      const found = all.find((r) => r.id === resourceId || r.externalId === ext);
+      if (!found) throw new ProxmoxApiError(`Proxmox plugin: ${typeId} ${ext} not found`, 404);
+      return found;
+    });
   }
 
   private async listCluster(accountId: string): Promise<ResourceInstance[]> {
@@ -745,42 +752,44 @@ export class ProxmoxClient implements PluginClient {
   // Outputs
   // ---------------------------------------------------------------------------
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     _accountId: string,
-  ): Promise<string> {
-    const ext = externalIdOf(resourceId);
-    if (typeId === VM || typeId === CT) {
-      const loc = await this.locateGuest(ext);
-      if (outputKey === "vmid") return String(loc.vmid);
-      if (outputKey === "node") return loc.node;
-      if (outputKey === "ipv4" || outputKey === "ipv6") {
-        const addrs = await this.guestAddresses(loc);
-        return addrs[outputKey];
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      if (typeId === VM || typeId === CT) {
+        const loc = await this.locateGuest(ext);
+        if (outputKey === "vmid") return String(loc.vmid);
+        if (outputKey === "node") return loc.node;
+        if (outputKey === "ipv4" || outputKey === "ipv6") {
+          const addrs = await this.guestAddresses(loc);
+          return addrs[outputKey];
+        }
       }
-    }
-    if (typeId === NODE) {
-      if (outputKey === "nodeName") return ext;
-      if (outputKey === "ip") {
-        const status = await this.api.get<Array<Record<string, unknown>>>("/cluster/status");
-        const n = (status ?? []).find((s) => s["type"] === "node" && s["name"] === ext);
-        return String(n?.["ip"] ?? "");
+      if (typeId === NODE) {
+        if (outputKey === "nodeName") return ext;
+        if (outputKey === "ip") {
+          const status = await this.api.get<Array<Record<string, unknown>>>("/cluster/status");
+          const n = (status ?? []).find((s) => s["type"] === "node" && s["name"] === ext);
+          return String(n?.["ip"] ?? "");
+        }
       }
-    }
-    if (typeId === CLUSTER && outputKey === "apiUrl") return this.api.uiUrl;
-    if (typeId === STORAGE && outputKey === "storage") return parseStorageExternalId(ext).storage;
-    if (typeId === BACKUP && outputKey === "volid") return parseBackupExternalId(ext).volid;
-    if (typeId === BACKUP_JOB && outputKey === "jobId") return ext;
-    if (typeId === POOL && outputKey === "poolid") return ext;
-    if (typeId === HA_RESOURCE && outputKey === "sid") return ext;
-    if (typeId === SECURITY_GROUP && outputKey === "group") return ext;
-    if (typeId === FW_ALIAS && outputKey === "cidr") {
-      const a = await this.api.get<{ cidr?: string }>(`/cluster/firewall/aliases/${seg(ext)}`);
-      return a?.cidr ?? "";
-    }
-    throw new Error(`Proxmox plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      if (typeId === CLUSTER && outputKey === "apiUrl") return this.api.uiUrl;
+      if (typeId === STORAGE && outputKey === "storage") return parseStorageExternalId(ext).storage;
+      if (typeId === BACKUP && outputKey === "volid") return parseBackupExternalId(ext).volid;
+      if (typeId === BACKUP_JOB && outputKey === "jobId") return ext;
+      if (typeId === POOL && outputKey === "poolid") return ext;
+      if (typeId === HA_RESOURCE && outputKey === "sid") return ext;
+      if (typeId === SECURITY_GROUP && outputKey === "group") return ext;
+      if (typeId === FW_ALIAS && outputKey === "cidr") {
+        const a = await this.api.get<{ cidr?: string }>(`/cluster/firewall/aliases/${seg(ext)}`);
+        return a?.cidr ?? "";
+      }
+      throw new Error(`Proxmox plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   /** IP addresses from the guest agent (VMs) or the container's interfaces. */
@@ -807,149 +816,154 @@ export class ProxmoxClient implements PluginClient {
   // Detail
   // ---------------------------------------------------------------------------
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const t = resource.resourceTypeId;
-    const ext = resource.externalId ?? externalIdOf(resource.id);
-    const data: ProxmoxEnrichment = {};
-    const all = await this.clusterResources().catch(() => [] as PveClusterResource[]);
-    data.nodes = all
-      .filter((r) => r.type === "node" && r.status === "online")
-      .map((r) => r.node as string)
-      .sort();
-    data.pools = [];
-    if (t === VM || t === CT) {
-      const loc = await this.locateGuest(ext);
-      const path = this.guestPath(loc);
-      const [snaps, rules, pools, cfg, backupStores, addrs] = await Promise.all([
-        this.api.get<Array<Record<string, unknown>>>(`${path}/snapshot`).catch(() => []),
-        this.api.get<Array<Record<string, unknown>>>(`${path}/firewall/rules`).catch(() => []),
-        this.api.get<Array<{ poolid: string }>>("/pools").catch(() => []),
-        this.api.get<PveConfig>(`${path}/config`).catch(() => undefined),
-        this.storagesWithContent("backup").catch(() => []),
-        this.guestAddresses(loc),
-      ]);
-      data.snapshots = (snaps ?? [])
-        .filter((s) => s["name"] !== "current")
-        .map((s) => ({
-          name: String(s["name"]),
-          description: String(s["description"] ?? "").trim(),
-          time: epochIso(typeof s["snaptime"] === "number" ? (s["snaptime"] as number) : undefined),
-          vmstate: truthy(s["vmstate"]),
-          parent: String(s["parent"] ?? ""),
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const t = resource.resourceTypeId;
+      const ext = resource.externalId ?? externalIdOf(resource.id);
+      const data: ProxmoxEnrichment = {};
+      const all = await this.clusterResources().catch(() => [] as PveClusterResource[]);
+      data.nodes = all
+        .filter((r) => r.type === "node" && r.status === "online")
+        .map((r) => r.node as string)
+        .sort();
+      data.pools = [];
+      if (t === VM || t === CT) {
+        const loc = await this.locateGuest(ext);
+        const path = this.guestPath(loc);
+        const [snaps, rules, pools, cfg, backupStores, addrs] = await Promise.all([
+          this.api.get<Array<Record<string, unknown>>>(`${path}/snapshot`).catch(() => []),
+          this.api.get<Array<Record<string, unknown>>>(`${path}/firewall/rules`).catch(() => []),
+          this.api.get<Array<{ poolid: string }>>("/pools").catch(() => []),
+          this.api.get<PveConfig>(`${path}/config`).catch(() => undefined),
+          this.storagesWithContent("backup").catch(() => []),
+          this.guestAddresses(loc),
+        ]);
+        data.snapshots = (snaps ?? [])
+          .filter((s) => s["name"] !== "current")
+          .map((s) => ({
+            name: String(s["name"]),
+            description: String(s["description"] ?? "").trim(),
+            time: epochIso(
+              typeof s["snaptime"] === "number" ? (s["snaptime"] as number) : undefined,
+            ),
+            vmstate: truthy(s["vmstate"]),
+            parent: String(s["parent"] ?? ""),
+          }));
+        data.firewallRules = (rules ?? []).map((r) => this.mapFirewallRule(r));
+        data.pools = (pools ?? []).map((p) => p.poolid).sort();
+        data.disks =
+          cfg && loc.kind === "qemu"
+            ? resizableVmDisks(cfg)
+            : cfg
+              ? Object.keys(cfg)
+                  .filter((k) => k === "rootfs" || /^mp\d+$/.test(k))
+                  .sort()
+              : [];
+        data.backupStorages = backupStores
+          .map((s) => s.storage)
+          .filter((v, i, a) => a.indexOf(v) === i);
+        data.storages = (
+          await this.storagesWithContent(loc.kind === "qemu" ? "images" : "rootdir").catch(() => [])
+        )
+          .map((s) => s.storage)
+          .filter((v, i, a) => a.indexOf(v) === i);
+        const resolvedOutputs = { ...resource.resolvedOutputs };
+        if (addrs.ipv4) resolvedOutputs["ipv4"] = addrs.ipv4;
+        if (addrs.ipv6) resolvedOutputs["ipv6"] = addrs.ipv6;
+        return {
+          ...resource,
+          resolvedOutputs: { ...resolvedOutputs, [ENRICH_KEY]: JSON.stringify(data) },
+        };
+      }
+      if (t === STORAGE) {
+        const { node, storage } = parseStorageExternalId(ext);
+        const [status, content] = await Promise.all([
+          this.api
+            .get<{ total?: number; used?: number; avail?: number }>(
+              `/nodes/${seg(node)}/storage/${seg(storage)}/status`,
+            )
+            .catch(() => undefined),
+          this.storageContent(node, storage).catch(() => []),
+        ]);
+        data.storageStatus = {
+          totalGb: bytesToGib(status?.total),
+          usedGb: bytesToGib(status?.used),
+          availGb: bytesToGib(status?.avail),
+        };
+        data.content = content
+          .filter((c) => c.content !== "backup")
+          .slice(0, 200)
+          .map((c) => ({
+            volid: c.volid,
+            content: c.content ?? "",
+            format: c.format ?? "",
+            sizeGb: bytesToGib(c.size),
+            vmid: c.vmid !== undefined ? String(c.vmid) : "",
+          }));
+      }
+      if (t === SECURITY_GROUP) {
+        const rules = await this.api
+          .get<Array<Record<string, unknown>>>(`/cluster/firewall/groups/${seg(ext)}`)
+          .catch(() => []);
+        data.firewallRules = (rules ?? []).map((r) => this.mapFirewallRule(r));
+      }
+      if (t === IPSET) {
+        const entries = await this.api
+          .get<Array<{ cidr: string; comment?: string; nomatch?: number }>>(
+            `/cluster/firewall/ipset/${seg(ext)}`,
+          )
+          .catch(() => []);
+        data.ipsetEntries = (entries ?? []).map((e) => ({
+          cidr: e.cidr,
+          comment: e.comment ?? "",
+          nomatch: truthy(e.nomatch),
         }));
-      data.firewallRules = (rules ?? []).map((r) => this.mapFirewallRule(r));
-      data.pools = (pools ?? []).map((p) => p.poolid).sort();
-      data.disks =
-        cfg && loc.kind === "qemu"
-          ? resizableVmDisks(cfg)
-          : cfg
-            ? Object.keys(cfg)
-                .filter((k) => k === "rootfs" || /^mp\d+$/.test(k))
-                .sort()
-            : [];
-      data.backupStorages = backupStores
-        .map((s) => s.storage)
-        .filter((v, i, a) => a.indexOf(v) === i);
-      data.storages = (
-        await this.storagesWithContent(loc.kind === "qemu" ? "images" : "rootdir").catch(() => [])
-      )
-        .map((s) => s.storage)
-        .filter((v, i, a) => a.indexOf(v) === i);
-      const resolvedOutputs = { ...resource.resolvedOutputs };
-      if (addrs.ipv4) resolvedOutputs["ipv4"] = addrs.ipv4;
-      if (addrs.ipv6) resolvedOutputs["ipv6"] = addrs.ipv6;
+      }
+      if (t === CLUSTER) {
+        const [ha, notBacked, log] = await Promise.all([
+          this.api
+            .get<Array<Record<string, unknown>>>("/cluster/ha/status/current")
+            .catch(() => []),
+          this.api
+            .get<Array<{ vmid: number; name?: string; type: string }>>(
+              "/cluster/backup-info/not-backed-up",
+            )
+            .catch(() => []),
+          this.api
+            .get<
+              Array<{ time?: number; node?: string; user?: string; msg?: string; pri?: number }>
+            >("/cluster/log", { max: 30 })
+            .catch(() => []),
+        ]);
+        data.haStatus = (ha ?? [])
+          .filter((h) => h["type"] !== "service")
+          .map((h) => ({
+            id: String(h["id"] ?? ""),
+            node: String(h["node"] ?? ""),
+            status: String(h["status"] ?? ""),
+          }));
+        data.notBackedUp = (notBacked ?? []).map((g) => ({
+          vmid: String(g.vmid),
+          name: g.name ?? "",
+          type: g.type,
+        }));
+        data.clusterLog = (log ?? []).map((l) => ({
+          time: epochIso(l.time),
+          node: l.node ?? "",
+          user: l.user ?? "",
+          msg: l.msg ?? "",
+        }));
+      }
+      if (t === HA_RESOURCE || t === BACKUP) {
+        const stores =
+          t === BACKUP ? await this.storagesWithContent(BACKUP_RESTORE_CONTENT(resource)) : [];
+        data.storages = stores.map((s) => s.storage).filter((v, i, a) => a.indexOf(v) === i);
+      }
       return {
         ...resource,
-        resolvedOutputs: { ...resolvedOutputs, [ENRICH_KEY]: JSON.stringify(data) },
+        resolvedOutputs: { ...resource.resolvedOutputs, [ENRICH_KEY]: JSON.stringify(data) },
       };
-    }
-    if (t === STORAGE) {
-      const { node, storage } = parseStorageExternalId(ext);
-      const [status, content] = await Promise.all([
-        this.api
-          .get<{ total?: number; used?: number; avail?: number }>(
-            `/nodes/${seg(node)}/storage/${seg(storage)}/status`,
-          )
-          .catch(() => undefined),
-        this.storageContent(node, storage).catch(() => []),
-      ]);
-      data.storageStatus = {
-        totalGb: bytesToGib(status?.total),
-        usedGb: bytesToGib(status?.used),
-        availGb: bytesToGib(status?.avail),
-      };
-      data.content = content
-        .filter((c) => c.content !== "backup")
-        .slice(0, 200)
-        .map((c) => ({
-          volid: c.volid,
-          content: c.content ?? "",
-          format: c.format ?? "",
-          sizeGb: bytesToGib(c.size),
-          vmid: c.vmid !== undefined ? String(c.vmid) : "",
-        }));
-    }
-    if (t === SECURITY_GROUP) {
-      const rules = await this.api
-        .get<Array<Record<string, unknown>>>(`/cluster/firewall/groups/${seg(ext)}`)
-        .catch(() => []);
-      data.firewallRules = (rules ?? []).map((r) => this.mapFirewallRule(r));
-    }
-    if (t === IPSET) {
-      const entries = await this.api
-        .get<Array<{ cidr: string; comment?: string; nomatch?: number }>>(
-          `/cluster/firewall/ipset/${seg(ext)}`,
-        )
-        .catch(() => []);
-      data.ipsetEntries = (entries ?? []).map((e) => ({
-        cidr: e.cidr,
-        comment: e.comment ?? "",
-        nomatch: truthy(e.nomatch),
-      }));
-    }
-    if (t === CLUSTER) {
-      const [ha, notBacked, log] = await Promise.all([
-        this.api.get<Array<Record<string, unknown>>>("/cluster/ha/status/current").catch(() => []),
-        this.api
-          .get<Array<{ vmid: number; name?: string; type: string }>>(
-            "/cluster/backup-info/not-backed-up",
-          )
-          .catch(() => []),
-        this.api
-          .get<Array<{ time?: number; node?: string; user?: string; msg?: string; pri?: number }>>(
-            "/cluster/log",
-            { max: 30 },
-          )
-          .catch(() => []),
-      ]);
-      data.haStatus = (ha ?? [])
-        .filter((h) => h["type"] !== "service")
-        .map((h) => ({
-          id: String(h["id"] ?? ""),
-          node: String(h["node"] ?? ""),
-          status: String(h["status"] ?? ""),
-        }));
-      data.notBackedUp = (notBacked ?? []).map((g) => ({
-        vmid: String(g.vmid),
-        name: g.name ?? "",
-        type: g.type,
-      }));
-      data.clusterLog = (log ?? []).map((l) => ({
-        time: epochIso(l.time),
-        node: l.node ?? "",
-        user: l.user ?? "",
-        msg: l.msg ?? "",
-      }));
-    }
-    if (t === HA_RESOURCE || t === BACKUP) {
-      const stores =
-        t === BACKUP ? await this.storagesWithContent(BACKUP_RESTORE_CONTENT(resource)) : [];
-      data.storages = stores.map((s) => s.storage).filter((v, i, a) => a.indexOf(v) === i);
-    }
-    return {
-      ...resource,
-      resolvedOutputs: { ...resource.resolvedOutputs, [ENRICH_KEY]: JSON.stringify(data) },
-    };
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -960,213 +974,227 @@ export class ProxmoxClient implements PluginClient {
     return renderProxmoxSidebar(resource);
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     typeId: string,
     resourceId: string,
     _accountId: string,
-  ): Promise<DashboardStat[]> {
-    const ext = externalIdOf(resourceId);
-    const all = await this.clusterResources();
-    if (typeId === VM || typeId === CT) {
-      const r = all.find((x) => x.vmid === Number(ext));
-      if (!r) return [];
-      const running = r.status === "running";
-      return [
-        {
-          label: "Status",
-          value: r.status ?? "unknown",
-          variant: running ? "status-healthy" : "status-error",
-        },
-        { label: "CPU", value: running ? `${((r.cpu ?? 0) * 100).toFixed(1)}%` : "-" },
-        {
-          label: "Memory",
-          value: running
-            ? `${bytesToGib(r.mem)} / ${bytesToGib(r.maxmem)} GiB`
-            : `${bytesToGib(r.maxmem)} GiB`,
-        },
-        { label: "Node", value: r.node ?? "" },
-      ];
-    }
-    if (typeId === NODE) {
-      const r = all.find((x) => x.type === "node" && x.node === ext);
-      if (!r) return [];
-      return [
-        {
-          label: "Status",
-          value: r.status ?? "unknown",
-          variant: r.status === "online" ? "status-healthy" : "status-error",
-        },
-        { label: "CPU", value: `${((r.cpu ?? 0) * 100).toFixed(1)}%` },
-        { label: "Memory", value: `${bytesToGib(r.mem)} / ${bytesToGib(r.maxmem)} GiB` },
-        {
-          label: "Guests",
-          value: String(
-            all.filter((x) => (x.type === "qemu" || x.type === "lxc") && x.node === ext).length,
-          ),
-        },
-      ];
-    }
-    if (typeId === STORAGE) {
-      const { node, storage } = parseStorageExternalId(ext);
-      const r = all.find((x) => x.type === "storage" && x.node === node && x.storage === storage);
-      if (!r) return [];
-      const pct = r.maxdisk ? ((r.disk ?? 0) / r.maxdisk) * 100 : 0;
-      return [
-        { label: "Used", value: `${bytesToGib(r.disk)} / ${bytesToGib(r.maxdisk)} GiB` },
-        {
-          label: "Usage",
-          value: `${pct.toFixed(0)}%`,
-          variant: pct > 90 ? "status-error" : pct > 75 ? "status-degraded" : "status-healthy",
-        },
-      ];
-    }
-    return [];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      const all = await this.clusterResources();
+      if (typeId === VM || typeId === CT) {
+        const r = all.find((x) => x.vmid === Number(ext));
+        if (!r) return [];
+        const running = r.status === "running";
+        return [
+          {
+            label: "Status",
+            value: r.status ?? "unknown",
+            variant: running ? "status-healthy" : "status-error",
+          },
+          { label: "CPU", value: running ? `${((r.cpu ?? 0) * 100).toFixed(1)}%` : "-" },
+          {
+            label: "Memory",
+            value: running
+              ? `${bytesToGib(r.mem)} / ${bytesToGib(r.maxmem)} GiB`
+              : `${bytesToGib(r.maxmem)} GiB`,
+          },
+          { label: "Node", value: r.node ?? "" },
+        ];
+      }
+      if (typeId === NODE) {
+        const r = all.find((x) => x.type === "node" && x.node === ext);
+        if (!r) return [];
+        return [
+          {
+            label: "Status",
+            value: r.status ?? "unknown",
+            variant: r.status === "online" ? "status-healthy" : "status-error",
+          },
+          { label: "CPU", value: `${((r.cpu ?? 0) * 100).toFixed(1)}%` },
+          { label: "Memory", value: `${bytesToGib(r.mem)} / ${bytesToGib(r.maxmem)} GiB` },
+          {
+            label: "Guests",
+            value: String(
+              all.filter((x) => (x.type === "qemu" || x.type === "lxc") && x.node === ext).length,
+            ),
+          },
+        ];
+      }
+      if (typeId === STORAGE) {
+        const { node, storage } = parseStorageExternalId(ext);
+        const r = all.find((x) => x.type === "storage" && x.node === node && x.storage === storage);
+        if (!r) return [];
+        const pct = r.maxdisk ? ((r.disk ?? 0) / r.maxdisk) * 100 : 0;
+        return [
+          { label: "Used", value: `${bytesToGib(r.disk)} / ${bytesToGib(r.maxdisk)} GiB` },
+          {
+            label: "Usage",
+            value: `${pct.toFixed(0)}%`,
+            variant: pct > 90 ? "status-error" : pct > 75 ? "status-degraded" : "status-healthy",
+          },
+        ];
+      }
+      return [];
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Metrics (RRD)
   // ---------------------------------------------------------------------------
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     typeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const ext = externalIdOf(resourceId);
-    const now = Date.now();
-    const startMs = timeRange?.startMs ?? now - 3_600_000;
-    const endMs = timeRange?.endMs ?? now;
-    const timeframe = rrdTimeframe(endMs - startMs);
-    let path: string;
-    if (typeId === NODE) path = `/nodes/${seg(ext)}/rrddata`;
-    else if (typeId === VM || typeId === CT)
-      path = `${this.guestPath(await this.locateGuest(ext))}/rrddata`;
-    else if (typeId === STORAGE) {
-      const { node, storage } = parseStorageExternalId(ext);
-      path = `/nodes/${seg(node)}/storage/${seg(storage)}/rrddata`;
-    } else return [];
-    const rows =
-      (await this.api.get<Array<Record<string, number>>>(path, { timeframe, cf: "AVERAGE" })) ?? [];
-    const inRange = rows.filter((r) => {
-      const t = (r["time"] ?? 0) * 1000;
-      return t >= startMs - 60_000 && t <= endMs + 60_000;
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      const now = Date.now();
+      const startMs = timeRange?.startMs ?? now - 3_600_000;
+      const endMs = timeRange?.endMs ?? now;
+      const timeframe = rrdTimeframe(endMs - startMs);
+      let path: string;
+      if (typeId === NODE) path = `/nodes/${seg(ext)}/rrddata`;
+      else if (typeId === VM || typeId === CT)
+        path = `${this.guestPath(await this.locateGuest(ext))}/rrddata`;
+      else if (typeId === STORAGE) {
+        const { node, storage } = parseStorageExternalId(ext);
+        path = `/nodes/${seg(node)}/storage/${seg(storage)}/rrddata`;
+      } else return [];
+      const rows =
+        (await this.api.get<Array<Record<string, number>>>(path, { timeframe, cf: "AVERAGE" })) ??
+        [];
+      const inRange = rows.filter((r) => {
+        const t = (r["time"] ?? 0) * 1000;
+        return t >= startMs - 60_000 && t <= endMs + 60_000;
+      });
+      return rrdToSeries(
+        typeId === NODE ? "node" : typeId === STORAGE ? "storage" : "guest",
+        inRange,
+      );
     });
-    return rrdToSeries(
-      typeId === NODE ? "node" : typeId === STORAGE ? "storage" : "guest",
-      inRange,
-    );
   }
 
   // ---------------------------------------------------------------------------
   // Logs + describe
   // ---------------------------------------------------------------------------
 
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     _accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    const ext = externalIdOf(resourceId);
-    const tail = Math.min(Math.max(params.tailLines ?? 200, 10), 5000);
-    if (typeId === NODE) {
-      const containers = ["System journal", "Recent tasks"];
-      const active =
-        params.container && containers.includes(params.container)
-          ? params.container
-          : containers[0]!;
-      if (active === "System journal") {
-        const lines =
-          (await this.api.get<string[]>(`/nodes/${seg(ext)}/journal`, { lastentries: tail })) ?? [];
-        return { text: lines.map((l) => `${l}\n`).join(""), containers, activeContainer: active };
-      }
-      const tasks =
-        (await this.api.get<Array<Record<string, unknown>>>(`/nodes/${seg(ext)}/tasks`, {
-          limit: 50,
-        })) ?? [];
-      return {
-        text: tasks.map((t) => `${taskLine(t)}\n`).join(""),
-        containers,
-        activeContainer: active,
-      };
-    }
-    if (typeId === VM || typeId === CT) {
-      const loc = await this.locateGuest(ext);
-      const tasks =
-        (await this.api.get<Array<Record<string, unknown>>>(`/nodes/${seg(loc.node)}/tasks`, {
-          vmid: loc.vmid,
-          limit: 25,
-          source: "all",
-        })) ?? [];
-      const containers = tasks.map((t) => `${taskLine(t)} · ${String(t["upid"])}`);
-      if (containers.length === 0) {
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      const tail = Math.min(Math.max(params.tailLines ?? 200, 10), 5000);
+      if (typeId === NODE) {
+        const containers = ["System journal", "Recent tasks"];
+        const active =
+          params.container && containers.includes(params.container)
+            ? params.container
+            : containers[0]!;
+        if (active === "System journal") {
+          const lines =
+            (await this.api.get<string[]>(`/nodes/${seg(ext)}/journal`, { lastentries: tail })) ??
+            [];
+          return { text: lines.map((l) => `${l}\n`).join(""), containers, activeContainer: active };
+        }
+        const tasks =
+          (await this.api.get<Array<Record<string, unknown>>>(`/nodes/${seg(ext)}/tasks`, {
+            limit: 50,
+          })) ?? [];
         return {
-          text: "No tasks recorded for this guest on its current node.\n",
-          containers: [],
-          activeContainer: "",
+          text: tasks.map((t) => `${taskLine(t)}\n`).join(""),
+          containers,
+          activeContainer: active,
         };
       }
-      const active =
-        params.container && containers.includes(params.container)
-          ? params.container
-          : containers[0]!;
-      const upid = active.slice(active.lastIndexOf("· ") + 2);
-      const taskNode = upid.split(":")[1] ?? loc.node;
-      const lines =
-        (await this.api.get<Array<{ n: number; t: string }>>(
-          `/nodes/${seg(taskNode)}/tasks/${seg(upid)}/log`,
-          {
-            limit: tail,
-          },
-        )) ?? [];
-      return { text: lines.map((l) => `${l.t}\n`).join(""), containers, activeContainer: active };
-    }
-    return { text: "", containers: [], activeContainer: "" };
+      if (typeId === VM || typeId === CT) {
+        const loc = await this.locateGuest(ext);
+        const tasks =
+          (await this.api.get<Array<Record<string, unknown>>>(`/nodes/${seg(loc.node)}/tasks`, {
+            vmid: loc.vmid,
+            limit: 25,
+            source: "all",
+          })) ?? [];
+        const containers = tasks.map((t) => `${taskLine(t)} · ${String(t["upid"])}`);
+        if (containers.length === 0) {
+          return {
+            text: "No tasks recorded for this guest on its current node.\n",
+            containers: [],
+            activeContainer: "",
+          };
+        }
+        const active =
+          params.container && containers.includes(params.container)
+            ? params.container
+            : containers[0]!;
+        const upid = active.slice(active.lastIndexOf("· ") + 2);
+        const taskNode = upid.split(":")[1] ?? loc.node;
+        const lines =
+          (await this.api.get<Array<{ n: number; t: string }>>(
+            `/nodes/${seg(taskNode)}/tasks/${seg(upid)}/log`,
+            {
+              limit: tail,
+            },
+          )) ?? [];
+        return { text: lines.map((l) => `${l.t}\n`).join(""), containers, activeContainer: active };
+      }
+      return { text: "", containers: [], activeContainer: "" };
+    });
   }
 
-  async describeResource(typeId: string, resourceId: string, _accountId: string): Promise<string> {
-    const ext = externalIdOf(resourceId);
-    if (typeId === VM || typeId === CT) {
-      const loc = await this.locateGuest(ext);
-      const cfg = (await this.api.get<PveConfig>(`${this.guestPath(loc)}/config`)) ?? {};
-      return Object.keys(cfg)
-        .filter((k) => k !== "digest")
-        .sort()
-        .map((k) => `${k}: ${String(cfg[k]).replace(/\n/g, "\n  ")}`)
-        .join("\n");
-    }
-    if (typeId === BACKUP_JOB) {
-      const job = await this.api.get<Record<string, unknown>>(`/cluster/backup/${seg(ext)}`);
-      return Object.entries(job ?? {})
-        .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
-        .join("\n");
-    }
-    if (typeId === STORAGE) {
-      const { storage } = parseStorageExternalId(ext);
-      const cfg = await this.api.get<Record<string, unknown>>(`/storage/${seg(storage)}`);
-      return Object.entries(cfg ?? {})
-        .filter(([k]) => k !== "digest")
-        .map(([k, v]) => `${k}: ${String(v)}`)
-        .join("\n");
-    }
-    return "";
+  describeResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<string> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      if (typeId === VM || typeId === CT) {
+        const loc = await this.locateGuest(ext);
+        const cfg = (await this.api.get<PveConfig>(`${this.guestPath(loc)}/config`)) ?? {};
+        return Object.keys(cfg)
+          .filter((k) => k !== "digest")
+          .sort()
+          .map((k) => `${k}: ${String(cfg[k]).replace(/\n/g, "\n  ")}`)
+          .join("\n");
+      }
+      if (typeId === BACKUP_JOB) {
+        const job = await this.api.get<Record<string, unknown>>(`/cluster/backup/${seg(ext)}`);
+        return Object.entries(job ?? {})
+          .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
+          .join("\n");
+      }
+      if (typeId === STORAGE) {
+        const { storage } = parseStorageExternalId(ext);
+        const cfg = await this.api.get<Record<string, unknown>>(`/storage/${seg(storage)}`);
+        return Object.entries(cfg ?? {})
+          .filter(([k]) => k !== "digest")
+          .map(([k, v]) => `${k}: ${String(v)}`)
+          .join("\n");
+      }
+      return "";
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Mutations
   // ---------------------------------------------------------------------------
 
-  getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    return proxmoxCreateConfig(this, typeId);
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return proxmoxCreateConfig(this, typeId);
+    });
   }
 
   createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceCreateReturn> {
-    return proxmoxCreateResource(this, typeId, accountId, fields);
+  ): PluginEffect<ResourceCreateReturn> {
+    return attempt(async () => {
+      return proxmoxCreateResource(this, typeId, accountId, fields);
+    });
   }
 
   invokeAction(
@@ -1174,8 +1202,10 @@ export class ProxmoxClient implements PluginClient {
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    return proxmoxInvokeAction(this, typeId, resourceId, actionId);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      return proxmoxInvokeAction(this, typeId, resourceId, actionId);
+    });
   }
 
   executeNoSqlCommand(
@@ -1184,288 +1214,300 @@ export class ProxmoxClient implements PluginClient {
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    return proxmoxPromptCommand(this, typeId, resourceId, command, args);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      return proxmoxPromptCommand(this, typeId, resourceId, command, args);
+    });
   }
 
-  verifyCredentials(): Promise<PreflightResult> {
-    return proxmoxVerifyCredentials(this.api);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return proxmoxVerifyCredentials(this.api);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const ext = externalIdOf(resourceId);
-    switch (typeId) {
-      case VM:
-      case CT: {
-        const loc = await this.locateGuest(ext);
-        if (loc.resource.status === "running") {
-          throw new ProxmoxApiError(
-            `Stop ${loc.kind === "qemu" ? "the VM" : "the container"} before deleting it.`,
-            409,
-          );
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      switch (typeId) {
+        case VM:
+        case CT: {
+          const loc = await this.locateGuest(ext);
+          if (loc.resource.status === "running") {
+            throw new ProxmoxApiError(
+              `Stop ${loc.kind === "qemu" ? "the VM" : "the container"} before deleting it.`,
+              409,
+            );
+          }
+          const upid = await this.api.delete<string>(this.guestPath(loc), {
+            purge: true,
+            "destroy-unreferenced-disks": true,
+          });
+          if (typeof upid === "string")
+            await this.api.waitForTask(loc.node, upid, { timeoutMs: 60_000 });
+          break;
         }
-        const upid = await this.api.delete<string>(this.guestPath(loc), {
-          purge: true,
-          "destroy-unreferenced-disks": true,
-        });
-        if (typeof upid === "string")
-          await this.api.waitForTask(loc.node, upid, { timeoutMs: 60_000 });
-        break;
+        case BACKUP: {
+          const { node, storage, volid } = parseBackupExternalId(ext);
+          await this.api.delete(
+            `/nodes/${seg(node)}/storage/${seg(storage)}/content/${seg(volid)}`,
+          );
+          break;
+        }
+        case BACKUP_JOB:
+          await this.api.delete(`/cluster/backup/${seg(ext)}`);
+          break;
+        case POOL:
+          await this.api.delete("/pools", { poolid: ext });
+          break;
+        case HA_RESOURCE:
+          await this.api.delete(`/cluster/ha/resources/${seg(ext)}`);
+          break;
+        case HA_RULE:
+          await this.api.delete(`/cluster/ha/rules/${seg(ext)}`);
+          break;
+        case FW_RULE:
+          await this.api.delete(`/cluster/firewall/rules/${seg(ext)}`);
+          break;
+        case SECURITY_GROUP:
+          await this.api.delete(`/cluster/firewall/groups/${seg(ext)}`);
+          break;
+        case FW_ALIAS:
+          await this.api.delete(`/cluster/firewall/aliases/${seg(ext)}`);
+          break;
+        case IPSET:
+          await this.api.delete(`/cluster/firewall/ipset/${seg(ext)}`, { force: true });
+          break;
+        default:
+          throw new Error(`Proxmox plugin: ${typeId} cannot be deleted`);
       }
-      case BACKUP: {
-        const { node, storage, volid } = parseBackupExternalId(ext);
-        await this.api.delete(`/nodes/${seg(node)}/storage/${seg(storage)}/content/${seg(volid)}`);
-        break;
-      }
-      case BACKUP_JOB:
-        await this.api.delete(`/cluster/backup/${seg(ext)}`);
-        break;
-      case POOL:
-        await this.api.delete("/pools", { poolid: ext });
-        break;
-      case HA_RESOURCE:
-        await this.api.delete(`/cluster/ha/resources/${seg(ext)}`);
-        break;
-      case HA_RULE:
-        await this.api.delete(`/cluster/ha/rules/${seg(ext)}`);
-        break;
-      case FW_RULE:
-        await this.api.delete(`/cluster/firewall/rules/${seg(ext)}`);
-        break;
-      case SECURITY_GROUP:
-        await this.api.delete(`/cluster/firewall/groups/${seg(ext)}`);
-        break;
-      case FW_ALIAS:
-        await this.api.delete(`/cluster/firewall/aliases/${seg(ext)}`);
-        break;
-      case IPSET:
-        await this.api.delete(`/cluster/firewall/ipset/${seg(ext)}`, { force: true });
-        break;
-      default:
-        throw new Error(`Proxmox plugin: ${typeId} cannot be deleted`);
-    }
-    this.invalidate();
+      this.invalidate();
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const ext = externalIdOf(resourceId);
-    const has = (k: string) => Object.prototype.hasOwnProperty.call(fields, k);
-    const bool = (k: string) => (fields[k] === "true" || fields[k] === "1" ? 1 : 0);
-    /** Set changed keys; clear the ones the user emptied via `delete`. */
-    const build = (map: Record<string, string>, bools: string[] = []) => {
-      const params: Record<string, FormValue> = {};
-      const del: string[] = [];
-      for (const [formKey, apiKey] of Object.entries(map)) {
-        if (!has(formKey)) continue;
-        const v = fields[formKey] ?? "";
-        if (bools.includes(formKey)) params[apiKey] = bool(formKey);
-        else if (v === "") del.push(apiKey);
-        else params[apiKey] = v;
-      }
-      if (del.length) params["delete"] = del.join(",");
-      return params;
-    };
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      const has = (k: string) => Object.prototype.hasOwnProperty.call(fields, k);
+      const bool = (k: string) => (fields[k] === "true" || fields[k] === "1" ? 1 : 0);
+      /** Set changed keys; clear the ones the user emptied via `delete`. */
+      const build = (map: Record<string, string>, bools: string[] = []) => {
+        const params: Record<string, FormValue> = {};
+        const del: string[] = [];
+        for (const [formKey, apiKey] of Object.entries(map)) {
+          if (!has(formKey)) continue;
+          const v = fields[formKey] ?? "";
+          if (bools.includes(formKey)) params[apiKey] = bool(formKey);
+          else if (v === "") del.push(apiKey);
+          else params[apiKey] = v;
+        }
+        if (del.length) params["delete"] = del.join(",");
+        return params;
+      };
 
-    switch (typeId) {
-      case CLUSTER: {
-        const params = build(
-          {
-            firewallEnabled: "enable",
-            firewallPolicyIn: "policy_in",
-            firewallPolicyOut: "policy_out",
-          },
-          ["firewallEnabled"],
-        );
-        if (Object.keys(params).length) await this.api.put("/cluster/firewall/options", params);
-        break;
-      }
-      case VM: {
-        const loc = await this.locateGuest(ext);
-        const params = build(
-          {
-            name: "name",
-            cores: "cores",
-            sockets: "sockets",
-            memoryMb: "memory",
-            balloonMb: "balloon",
-            cpuType: "cpu",
-            ostype: "ostype",
-            agent: "agent",
-            onboot: "onboot",
-            protection: "protection",
-            tags: "tags",
-            description: "description",
-          },
-          ["agent", "onboot", "protection"],
-        );
-        if (Object.keys(params).length) await this.api.put(`${this.guestPath(loc)}/config`, params);
-        break;
-      }
-      case CT: {
-        const loc = await this.locateGuest(ext);
-        const params = build(
-          {
-            name: "hostname",
-            cores: "cores",
-            memoryMb: "memory",
-            swapMb: "swap",
-            features: "features",
-            onboot: "onboot",
-            protection: "protection",
-            tags: "tags",
-            description: "description",
-          },
-          ["onboot", "protection"],
-        );
-        if (Object.keys(params).length) await this.api.put(`${this.guestPath(loc)}/config`, params);
-        break;
-      }
-      case STORAGE: {
-        const { storage } = parseStorageExternalId(ext);
-        const params: Record<string, FormValue> = {};
-        if (has("content") && fields["content"]) params["content"] = fields["content"];
-        if (has("enabled")) params["disable"] = bool("enabled") ? 0 : 1;
-        if (Object.keys(params).length) await this.api.put(`/storage/${seg(storage)}`, params);
-        break;
-      }
-      case BACKUP: {
-        const { node, storage, volid } = parseBackupExternalId(ext);
-        const params: Record<string, FormValue> = {};
-        if (has("notes")) params["notes"] = fields["notes"] ?? "";
-        if (has("protected")) params["protected"] = bool("protected");
-        if (Object.keys(params).length) {
-          await this.api.put(
-            `/nodes/${seg(node)}/storage/${seg(storage)}/content/${seg(volid)}`,
-            params,
+      switch (typeId) {
+        case CLUSTER: {
+          const params = build(
+            {
+              firewallEnabled: "enable",
+              firewallPolicyIn: "policy_in",
+              firewallPolicyOut: "policy_out",
+            },
+            ["firewallEnabled"],
           );
+          if (Object.keys(params).length) await this.api.put("/cluster/firewall/options", params);
+          break;
         }
-        break;
-      }
-      case BACKUP_JOB: {
-        const params = build(
-          {
-            schedule: "schedule",
-            storage: "storage",
-            selection: "vmid",
-            all: "all",
-            exclude: "exclude",
-            pool: "pool",
-            node: "node",
-            mode: "mode",
-            compress: "compress",
-            enabled: "enabled",
-            comment: "comment",
-            notesTemplate: "notes-template",
-            pruneBackups: "prune-backups",
-            repeatMissed: "repeat-missed",
-          },
-          ["all", "enabled", "repeatMissed"],
-        );
-        if (Object.keys(params).length) await this.api.put(`/cluster/backup/${seg(ext)}`, params);
-        break;
-      }
-      case POOL:
-        if (has("comment"))
-          await this.api.put("/pools", { poolid: ext, comment: fields["comment"] ?? "" });
-        break;
-      case HA_RESOURCE: {
-        const params = build(
-          {
-            state: "state",
-            maxRestart: "max_restart",
-            maxRelocate: "max_relocate",
-            failback: "failback",
-            comment: "comment",
-          },
-          ["failback"],
-        );
-        if (Object.keys(params).length)
-          await this.api.put(`/cluster/ha/resources/${seg(ext)}`, params);
-        break;
-      }
-      case HA_RULE: {
-        const current = await this.api.get<Record<string, unknown>>(
-          `/cluster/ha/rules/${seg(ext)}`,
-        );
-        const params = build(
-          {
-            resources: "resources",
-            nodes: "nodes",
-            affinity: "affinity",
-            strict: "strict",
-            disable: "disable",
-            comment: "comment",
-          },
-          ["strict", "disable"],
-        );
-        params["type"] = String(current?.["type"] ?? "");
-        if (params["type"] !== "node-affinity") {
-          delete params["nodes"];
-          delete params["strict"];
+        case VM: {
+          const loc = await this.locateGuest(ext);
+          const params = build(
+            {
+              name: "name",
+              cores: "cores",
+              sockets: "sockets",
+              memoryMb: "memory",
+              balloonMb: "balloon",
+              cpuType: "cpu",
+              ostype: "ostype",
+              agent: "agent",
+              onboot: "onboot",
+              protection: "protection",
+              tags: "tags",
+              description: "description",
+            },
+            ["agent", "onboot", "protection"],
+          );
+          if (Object.keys(params).length)
+            await this.api.put(`${this.guestPath(loc)}/config`, params);
+          break;
         }
-        await this.api.put(`/cluster/ha/rules/${seg(ext)}`, params);
-        break;
-      }
-      case FW_RULE: {
-        const params = build(
-          {
-            type: "type",
-            action: "action",
-            enable: "enable",
-            macro: "macro",
-            proto: "proto",
-            source: "source",
-            dest: "dest",
-            sport: "sport",
-            dport: "dport",
-            iface: "iface",
-            log: "log",
-            comment: "comment",
-          },
-          ["enable"],
-        );
-        if (Object.keys(params).length)
-          await this.api.put(`/cluster/firewall/rules/${seg(ext)}`, params);
-        break;
-      }
-      case SECURITY_GROUP:
-        if (has("comment")) {
-          await this.api.post("/cluster/firewall/groups", {
-            group: ext,
-            rename: ext,
-            comment: fields["comment"] ?? "",
+        case CT: {
+          const loc = await this.locateGuest(ext);
+          const params = build(
+            {
+              name: "hostname",
+              cores: "cores",
+              memoryMb: "memory",
+              swapMb: "swap",
+              features: "features",
+              onboot: "onboot",
+              protection: "protection",
+              tags: "tags",
+              description: "description",
+            },
+            ["onboot", "protection"],
+          );
+          if (Object.keys(params).length)
+            await this.api.put(`${this.guestPath(loc)}/config`, params);
+          break;
+        }
+        case STORAGE: {
+          const { storage } = parseStorageExternalId(ext);
+          const params: Record<string, FormValue> = {};
+          if (has("content") && fields["content"]) params["content"] = fields["content"];
+          if (has("enabled")) params["disable"] = bool("enabled") ? 0 : 1;
+          if (Object.keys(params).length) await this.api.put(`/storage/${seg(storage)}`, params);
+          break;
+        }
+        case BACKUP: {
+          const { node, storage, volid } = parseBackupExternalId(ext);
+          const params: Record<string, FormValue> = {};
+          if (has("notes")) params["notes"] = fields["notes"] ?? "";
+          if (has("protected")) params["protected"] = bool("protected");
+          if (Object.keys(params).length) {
+            await this.api.put(
+              `/nodes/${seg(node)}/storage/${seg(storage)}/content/${seg(volid)}`,
+              params,
+            );
+          }
+          break;
+        }
+        case BACKUP_JOB: {
+          const params = build(
+            {
+              schedule: "schedule",
+              storage: "storage",
+              selection: "vmid",
+              all: "all",
+              exclude: "exclude",
+              pool: "pool",
+              node: "node",
+              mode: "mode",
+              compress: "compress",
+              enabled: "enabled",
+              comment: "comment",
+              notesTemplate: "notes-template",
+              pruneBackups: "prune-backups",
+              repeatMissed: "repeat-missed",
+            },
+            ["all", "enabled", "repeatMissed"],
+          );
+          if (Object.keys(params).length) await this.api.put(`/cluster/backup/${seg(ext)}`, params);
+          break;
+        }
+        case POOL:
+          if (has("comment"))
+            await this.api.put("/pools", { poolid: ext, comment: fields["comment"] ?? "" });
+          break;
+        case HA_RESOURCE: {
+          const params = build(
+            {
+              state: "state",
+              maxRestart: "max_restart",
+              maxRelocate: "max_relocate",
+              failback: "failback",
+              comment: "comment",
+            },
+            ["failback"],
+          );
+          if (Object.keys(params).length)
+            await this.api.put(`/cluster/ha/resources/${seg(ext)}`, params);
+          break;
+        }
+        case HA_RULE: {
+          const current = await this.api.get<Record<string, unknown>>(
+            `/cluster/ha/rules/${seg(ext)}`,
+          );
+          const params = build(
+            {
+              resources: "resources",
+              nodes: "nodes",
+              affinity: "affinity",
+              strict: "strict",
+              disable: "disable",
+              comment: "comment",
+            },
+            ["strict", "disable"],
+          );
+          params["type"] = String(current?.["type"] ?? "");
+          if (params["type"] !== "node-affinity") {
+            delete params["nodes"];
+            delete params["strict"];
+          }
+          await this.api.put(`/cluster/ha/rules/${seg(ext)}`, params);
+          break;
+        }
+        case FW_RULE: {
+          const params = build(
+            {
+              type: "type",
+              action: "action",
+              enable: "enable",
+              macro: "macro",
+              proto: "proto",
+              source: "source",
+              dest: "dest",
+              sport: "sport",
+              dport: "dport",
+              iface: "iface",
+              log: "log",
+              comment: "comment",
+            },
+            ["enable"],
+          );
+          if (Object.keys(params).length)
+            await this.api.put(`/cluster/firewall/rules/${seg(ext)}`, params);
+          break;
+        }
+        case SECURITY_GROUP:
+          if (has("comment")) {
+            await this.api.post("/cluster/firewall/groups", {
+              group: ext,
+              rename: ext,
+              comment: fields["comment"] ?? "",
+            });
+          }
+          break;
+        case FW_ALIAS: {
+          const current = await this.api.get<{ cidr?: string; comment?: string }>(
+            `/cluster/firewall/aliases/${seg(ext)}`,
+          );
+          await this.api.put(`/cluster/firewall/aliases/${seg(ext)}`, {
+            cidr: has("cidr") ? fields["cidr"] : current?.cidr,
+            comment: has("comment") ? fields["comment"] : current?.comment,
           });
+          break;
         }
-        break;
-      case FW_ALIAS: {
-        const current = await this.api.get<{ cidr?: string; comment?: string }>(
-          `/cluster/firewall/aliases/${seg(ext)}`,
-        );
-        await this.api.put(`/cluster/firewall/aliases/${seg(ext)}`, {
-          cidr: has("cidr") ? fields["cidr"] : current?.cidr,
-          comment: has("comment") ? fields["comment"] : current?.comment,
-        });
-        break;
+        case IPSET:
+          if (has("comment")) {
+            await this.api.post("/cluster/firewall/ipset", {
+              name: ext,
+              rename: ext,
+              comment: fields["comment"] ?? "",
+            });
+          }
+          break;
+        default:
+          throw new Error(`Proxmox plugin: ${typeId} cannot be edited`);
       }
-      case IPSET:
-        if (has("comment")) {
-          await this.api.post("/cluster/firewall/ipset", {
-            name: ext,
-            rename: ext,
-            comment: fields["comment"] ?? "",
-          });
-        }
-        break;
-      default:
-        throw new Error(`Proxmox plugin: ${typeId} cannot be edited`);
-    }
-    this.invalidate();
-    return this.getResource(typeId, resourceId, accountId);
+      this.invalidate();
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    });
   }
 }
 

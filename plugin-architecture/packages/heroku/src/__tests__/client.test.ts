@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HerokuClient } from "../client.js";
 import { invoiceRows, periodDay } from "../cost-data.js";
@@ -58,7 +59,7 @@ const APP = {
 };
 
 function client(creds: Record<string, string> = { apiKey: "HRKU-k" }) {
-  return new HerokuClient(creds, RESOURCE_TYPES);
+  return hostClient(new HerokuClient(creds, RESOURCE_TYPES));
 }
 
 describe("transport", () => {
@@ -294,7 +295,7 @@ describe("terraform", () => {
 describe("credential options", () => {
   it("lists teams", async () => {
     routes["GET /teams"] = [{ id: "t1", name: "acme", role: "admin" }];
-    expect(await plugin.listCredentialOptions!("team", { apiKey: "k" })).toEqual([
+    expect(await hostPlugin(plugin).listCredentialOptions!("team", { apiKey: "k" })).toEqual([
       { id: "t1", label: "acme", description: "Your role: admin" },
     ]);
   });

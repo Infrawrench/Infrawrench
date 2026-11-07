@@ -38,10 +38,10 @@ export interface PluginInfo {
     optional?: boolean;
     /** Collapsed under "Advanced options" until opened or filled in. */
     advanced?: boolean;
-    regions?: Array<{ id: string; label: string; location?: string; flag?: string }>;
+    regions?: ReadonlyArray<{ id: string; label: string; location?: string; flag?: string }>;
     accountReference?: { pluginId: string };
     /** Picker filled by the plugin from the provider once `dependsOn` is entered. */
-    providerOptions?: { dependsOn: string[]; emptyLabel?: string; multiple?: boolean };
+    providerOptions?: { dependsOn: readonly string[]; emptyLabel?: string; multiple?: boolean };
     helpLink?: { label: string; url: string };
   }>;
   /** Declared when the plugin supports credential preflight; absent otherwise. */
@@ -51,6 +51,16 @@ export interface PluginInfo {
    * ("Connect with X"); absent hides the button and leaves the manual form.
    */
   oauth?: ProviderOAuthInfo | null;
+  /** Offered in the "Connect to service via SSH" modal. See `manifest.sshTunnel`. */
+  sshTunnel?: {
+    label: string;
+    defaultPort: number;
+    credentials: Readonly<Record<string, string>>;
+  };
+  /** This plugin's accounts are SSH hosts another account can connect through. */
+  jumpHost?: boolean;
+  /** Which browser opens for a connection. See `manifest.kvDriver.browser`. */
+  kvBrowser?: "keys" | "documents";
 }
 
 export type CredentialFieldInfo = PluginInfo["credentialFields"][number];

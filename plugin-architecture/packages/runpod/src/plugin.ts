@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { RunpodClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { runpodTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "runpod",
-  version: "0.1.0",
+  // REST management API, GraphQL (account, GPU types, SSH keys) and the Serverless queue API
+  egressHosts: ["rest.runpod.io", "api.runpod.io", "api.runpod.ai"],
   displayName: "Runpod",
   description:
     "GPU cloud. Pods with start, stop, restart and SSH, Serverless endpoints with queue health, templates, network volumes, registry credentials and SSH keys, plus billed spend, balance, savings plans and account limits.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -30,7 +30,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Billed spend from Runpod's REST billing history: per-pod and
    * per-Serverless-endpoint charges plus network storage, bucketed by day in
@@ -53,13 +53,16 @@ const manifest: PluginManifest = {
     partial: true,
   },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new RunpodClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiKey: "rpa_test" },
   terraformExport: runpodTerraformExport,
   remediationCommands: runpodRemediationCommands,
   parseStatusFeed,
-};
+});

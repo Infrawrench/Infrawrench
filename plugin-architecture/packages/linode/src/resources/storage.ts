@@ -92,7 +92,7 @@ export const BucketResourceType = rt({
     f("corsEnabled", "CORS", { kind: "boolean", required: false }),
     f("created", "Created", { required: false, editable: false }),
   ],
-  outputs: [o("hostname", "Hostname"), o("s3Endpoint", "S3 Endpoint")],
+  outputs: [o("hostname", "Hostname", { dnsValue: "hostname" }), o("s3Endpoint", "S3 Endpoint")],
   iconKey: "storage",
   supportsCreate: true,
   // Edit = ACL and CORS (`PUT /object-storage/buckets/{region}/{bucket}/access`).

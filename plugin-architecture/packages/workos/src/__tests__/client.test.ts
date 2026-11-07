@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkosClient } from "../client.js";
 
@@ -33,7 +34,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client() {
-  return new WorkosClient({ apiKey: "sk_test_key" });
+  return hostClient(new WorkosClient({ apiKey: "sk_test_key" }));
 }
 
 function list(data: unknown[], after: string | null = null) {
@@ -61,7 +62,7 @@ afterEach(() => {
 
 describe("constructor", () => {
   it("requires an apiKey", () => {
-    expect(() => new WorkosClient({})).toThrow(/apiKey/);
+    expect(() => hostClient(new WorkosClient({}))).toThrow(/apiKey/);
   });
 });
 
@@ -249,7 +250,9 @@ describe("delete and actions", () => {
 
   it("refuses a direct-fetch DELETE when a CA certificate is configured", async () => {
     installFetch(() => jsonResponse("", 204));
-    const caClient = new WorkosClient({ apiKey: "sk_test_key", caCert: "-----BEGIN CERT" });
+    const caClient = hostClient(
+      new WorkosClient({ apiKey: "sk_test_key", caCert: "-----BEGIN CERT" }),
+    );
     await expect(
       caClient.deleteResource("organization", `${ACCOUNT}:organization:${ORG}`, ACCOUNT),
     ).rejects.toThrow(/CA certificate/);

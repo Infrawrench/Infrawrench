@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { SendGridApiError } from "../api.js";
 import { SendGridClient, parseScopes } from "../client.js";
@@ -21,7 +22,10 @@ function client(
       };
     },
   };
-  return { c: new SendGridClient({ apiKey: "SG.kid.secret", ...creds }, { http } as never), calls };
+  return {
+    c: hostClient(new SendGridClient({ apiKey: "SG.kid.secret", ...creds }, { http } as never)),
+    calls,
+  };
 }
 
 describe("SendGrid client", () => {

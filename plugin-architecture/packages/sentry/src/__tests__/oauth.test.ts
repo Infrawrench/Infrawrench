@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { buildOAuthAuthorizeUrl, desktopOAuthRedirectUri } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { regionIdFor } from "../oauth.js";
@@ -46,7 +47,7 @@ describe("completeOAuthConnection", () => {
         },
       ],
     });
-    const result = await plugin.completeOAuthConnection!(
+    const result = await hostPlugin(plugin).completeOAuthConnection!(
       { accessToken: "sentry-oauth", raw: { organization_id: "42" } },
       { client: "server", fetch: doFetch },
     );
@@ -66,7 +67,7 @@ describe("completeOAuthConnection", () => {
         { id: "2", slug: "b", name: "Bee", links: { regionUrl: "https://us.sentry.io" } },
       ],
     });
-    const result = await plugin.completeOAuthConnection!(
+    const result = await hostPlugin(plugin).completeOAuthConnection!(
       { accessToken: "t", raw: { organization_id: "2" } },
       { client: "desktop", fetch: doFetch },
     );
@@ -81,7 +82,7 @@ describe("completeOAuthConnection", () => {
       new Error("offline"),
     ]) {
       const { doFetch } = fakeFetch(reply);
-      const result = await plugin.completeOAuthConnection!(
+      const result = await hostPlugin(plugin).completeOAuthConnection!(
         { accessToken: "t", raw: {} },
         { client: "server", fetch: doFetch },
       );

@@ -1,3 +1,4 @@
+import { hostPlugins } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import type { OAuthDeclaration } from "@infrawrench/plugin-base";
 import {
@@ -613,7 +614,12 @@ describe("local client availability", () => {
       import("@infrawrench/plugin-circleci"),
       import("@infrawrench/plugin-posthog"),
     ]);
-    const plugins = [netlify.plugin, openrouter.plugin, circleci.plugin, posthog.plugin];
+    const plugins = hostPlugins([
+      netlify.plugin,
+      openrouter.plugin,
+      circleci.plugin,
+      posthog.plugin,
+    ]);
     expect(localClientPluginIds(plugins, noEnv)).toEqual(["openrouter", "circleci"]);
     expect(localClientPluginIds(plugins, (id) => (id === "posthog" ? "ph" : undefined))).toEqual([
       "openrouter",

@@ -1,5 +1,10 @@
-import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
-import { errorText, trailingId, type HetznerApi } from "./api.js";
+import {
+  pathEncode,
+  type CreateResourceConfig,
+  type NoSlashString,
+  type ResourceInstance,
+} from "@infrawrench/plugin-base";
+import { errorText, trailingId, type CloudApi, type CloudResponse } from "./api.js";
 
 /**
  * Hetzner DNS, which moved into the Cloud API (`/zones`, same project token)
@@ -10,32 +15,8 @@ import { errorText, trailingId, type HetznerApi } from "./api.js";
  * shape, with the values comma-joined into `content`.
  */
 
-export interface HetznerZone {
-  id: number;
-  name: string;
-  created?: string;
-  mode?: "primary" | "secondary";
-  ttl?: number;
-  status?: string;
-  record_count?: number;
-  registrar?: string;
-  protection?: { delete?: boolean };
-  authoritative_nameservers?: {
-    assigned?: string[];
-    delegated?: string[];
-    delegation_status?: string;
-  };
-}
-
-export interface HetznerRrset {
-  id?: string;
-  name: string;
-  type: string;
-  ttl?: number | null;
-  records?: Array<{ value: string; comment?: string | null }>;
-  protection?: { change?: boolean };
-  zone?: number;
-}
+type HetznerZone = CloudResponse<"list_zones">["zones"][number];
+type HetznerRrset = CloudResponse<"list_zone_rrsets">["rrsets"][number];
 
 /** Record types the RRSet API accepts, minus SOA (managed by Hetzner). */
 export const DNS_RECORD_TYPES = [
@@ -134,18 +115,18 @@ export function parseRecordValues(input: string): string[] {
   return out;
 }
 
-export async function listZones(api: HetznerApi, accountId: string): Promise<ResourceInstance[]> {
-  const zones = await api.fetchAll<HetznerZone>("/zones", "zones");
+export async function listZones(cloud: CloudApi, accountId: string): Promise<ResourceInstance[]> {
+  const zones = await cloud.getAll("/zones", "zones");
   return zones.map((z) => mapZone(z, accountId));
 }
 
-export async function listRrsets(api: HetznerApi, accountId: string): Promise<ResourceInstance[]> {
-  const zones = await api.fetchAll<HetznerZone>("/zones", "zones");
+export async function listRrsets(cloud: CloudApi, accountId: string): Promise<ResourceInstance[]> {
+  const zones = await cloud.getAll("/zones", "zones");
   const perZone = await Promise.all(
     zones.map(async (zone) => {
       // Secondary zones are read-only copies of someone else's primary;
       // their records still list, so they are included.
-      const rrsets = await api.fetchAll<HetznerRrset>(`/zones/${zone.id}/rrsets`, "rrsets");
+      const rrsets = await cloud.getAll(`/zones/${pathEncode(zone.id)}/rrsets`, "rrsets");
       return rrsets.filter((r) => r.type !== "SOA").map((r) => mapRrset(r, zone, accountId));
     }),
   );
@@ -177,12 +158,12 @@ export async function zoneCreateConfig(): Promise<CreateResourceConfig> {
 }
 
 export async function recordCreateConfig(
-  api: HetznerApi,
+  cloud: CloudApi,
   parentResourceId?: string,
 ): Promise<CreateResourceConfig> {
   const fields: CreateResourceConfig["fields"] = [];
   if (!parentResourceId) {
-    const zones = await api.fetchAll<HetznerZone>("/zones?mode=primary", "zones");
+    const zones = await cloud.getAll("/zones", "zones", { query: { mode: "primary" } });
     const options = zones.map((z) => ({ id: String(z.id), label: z.name }));
     fields.push({
       key: "zoneId",
@@ -231,24 +212,23 @@ export async function recordCreateConfig(
 }
 
 export async function createZone(
-  api: HetznerApi,
+  cloud: CloudApi,
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
   const ttl = fields["ttl"] ? Number(fields["ttl"]) : undefined;
-  const data = await api.fetch<{ zone: HetznerZone }>("/zones", {
-    method: "POST",
-    body: JSON.stringify({
+  const data = await cloud.post("/zones", {
+    body: {
       name: (fields["name"] ?? "").trim().toLowerCase().replace(/\.$/, ""),
       mode: "primary",
       ...(ttl ? { ttl } : {}),
-    }),
+    },
   });
   return mapZone(data.zone, accountId);
 }
 
 export async function createRrset(
-  api: HetznerApi,
+  cloud: CloudApi,
   accountId: string,
   fields: Record<string, string>,
   parentResourceId?: string,
@@ -258,52 +238,55 @@ export async function createRrset(
   const values = parseRecordValues(fields["content"] ?? "");
   if (values.length === 0) throw new Error("Hetzner plugin: a DNS record needs at least one value");
   const ttl = fields["ttl"] ? Number(fields["ttl"]) : undefined;
+  const zonePath = `/zones/${pathEncode(zoneId)}` as const;
   const [zoneData, created] = await Promise.all([
-    api.fetch<{ zone: HetznerZone }>(`/zones/${zoneId}`),
-    api.fetch<{ rrset: HetznerRrset }>(`/zones/${zoneId}/rrsets`, {
-      method: "POST",
-      body: JSON.stringify({
+    cloud.get(zonePath),
+    cloud.post(`${zonePath}/rrsets`, {
+      body: {
         name: (fields["name"] || "@").trim().toLowerCase(),
         type: fields["type"] || "A",
         ...(ttl ? { ttl } : {}),
         records: values.map((value) => ({ value })),
-      }),
+      },
     }),
   ]);
   return mapRrset(created.rrset, zoneData.zone, accountId);
 }
 
-/** externalId `{zoneId}/{name}/{type}` → its RRSet path. */
-function rrsetPath(resourceId: string): string {
+/** externalId `{zoneId}/{name}/{type}` → its zone and RRSet path. */
+function rrsetAddress(resourceId: string): {
+  zoneId: NoSlashString;
+  path: `/zones/${NoSlashString}/rrsets/${NoSlashString}/${NoSlashString}`;
+} {
   const externalId = resourceId.split(":").slice(2).join(":");
-  const [zoneId, name, type] = externalId.split("/");
-  if (!zoneId || !name || !type) throw new Error(`Cannot parse DNS record ID "${resourceId}"`);
-  return `/zones/${zoneId}/rrsets/${encodeURIComponent(name)}/${type}`;
+  const [rawZoneId, name, type] = externalId.split("/");
+  if (!rawZoneId || !name || !type) throw new Error(`Cannot parse DNS record ID "${resourceId}"`);
+  const zoneId = pathEncode(rawZoneId);
+  return { zoneId, path: `/zones/${zoneId}/rrsets/${pathEncode(name)}/${pathEncode(type)}` };
 }
 
-export async function deleteRrset(api: HetznerApi, resourceId: string): Promise<void> {
-  await api.fetch<unknown>(rrsetPath(resourceId), { method: "DELETE" });
+export async function deleteRrset(cloud: CloudApi, resourceId: string): Promise<void> {
+  await cloud.delete(rrsetAddress(resourceId).path);
 }
 
-export async function deleteZone(api: HetznerApi, resourceId: string): Promise<void> {
-  await api.fetch<unknown>(`/zones/${trailingId(resourceId)}`, { method: "DELETE" });
+export async function deleteZone(cloud: CloudApi, resourceId: string): Promise<void> {
+  await cloud.delete(`/zones/${pathEncode(trailingId(resourceId))}`);
 }
 
 /** Edit a zone's default TTL. */
 export async function updateZone(
-  api: HetznerApi,
+  cloud: CloudApi,
   resourceId: string,
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const zoneId = trailingId(resourceId);
+  const zoneId = pathEncode(trailingId(resourceId));
   if (fields["ttl"] !== undefined && fields["ttl"] !== "") {
-    await api.fetch<unknown>(`/zones/${zoneId}/actions/change_ttl`, {
-      method: "POST",
-      body: JSON.stringify({ ttl: Number(fields["ttl"]) }),
+    await cloud.post(`/zones/${zoneId}/actions/change_ttl`, {
+      body: { ttl: Number(fields["ttl"]) },
     });
   }
-  const data = await api.fetch<{ zone: HetznerZone }>(`/zones/${zoneId}`);
+  const data = await cloud.get(`/zones/${zoneId}`);
   return mapZone(data.zone, accountId);
 }
 
@@ -312,12 +295,12 @@ export async function updateZone(
  * (`change_ttl`; an emptied TTL resets to the zone default with `null`).
  */
 export async function updateRrset(
-  api: HetznerApi,
+  cloud: CloudApi,
   resourceId: string,
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const path = rrsetPath(resourceId);
+  const { zoneId, path } = rrsetAddress(resourceId);
   const failures: string[] = [];
   if (fields["content"] !== undefined) {
     const values = parseRecordValues(fields["content"]);
@@ -325,9 +308,8 @@ export async function updateRrset(
       failures.push("a DNS record needs at least one value");
     } else {
       try {
-        await api.fetch<unknown>(`${path}/actions/set_records`, {
-          method: "POST",
-          body: JSON.stringify({ records: values.map((value) => ({ value })) }),
+        await cloud.post(`${path}/actions/set_records`, {
+          body: { records: values.map((value) => ({ value })) },
         });
       } catch (e) {
         failures.push(`set records failed: ${errorText(e)}`);
@@ -336,19 +318,14 @@ export async function updateRrset(
   }
   if (fields["ttl"] !== undefined) {
     try {
-      await api.fetch<unknown>(`${path}/actions/change_ttl`, {
-        method: "POST",
-        body: JSON.stringify({ ttl: fields["ttl"] === "" ? null : Number(fields["ttl"]) }),
+      await cloud.post(`${path}/actions/change_ttl`, {
+        body: { ttl: fields["ttl"] === "" ? null : Number(fields["ttl"]) },
       });
     } catch (e) {
       failures.push(`change TTL failed: ${errorText(e)}`);
     }
   }
   if (failures.length > 0) throw new Error(`Hetzner DNS record update: ${failures.join("; ")}`);
-  const zoneId = path.split("/")[2]!;
-  const [zone, rrset] = await Promise.all([
-    api.fetch<{ zone: HetznerZone }>(`/zones/${zoneId}`),
-    api.fetch<{ rrset: HetznerRrset }>(path),
-  ]);
+  const [zone, rrset] = await Promise.all([cloud.get(`/zones/${zoneId}`), cloud.get(path)]);
   return mapRrset(rrset.rrset, zone.zone, accountId);
 }

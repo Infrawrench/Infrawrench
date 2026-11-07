@@ -52,9 +52,9 @@ export const InstanceResourceType = rt({
     created(),
   ],
   outputs: [
-    o("ipv4", "Public IPv4"),
+    o("ipv4", "Public IPv4", { dnsValue: "ipv4" }),
     o("ipv4Private", "Private IPv4"),
-    o("ipv6", "IPv6"),
+    o("ipv6", "IPv6", { dnsValue: "ipv6" }),
     o("instanceId", "Instance ID", { hidden: true }),
     o("instanceRef", "Instance Reference", { hidden: true }),
     o("initialPassword", "Initial Password", {
@@ -531,7 +531,7 @@ export const LoadBalancerResourceType = rt({
     f("firewallId", "Firewall", { required: false, editable: false }),
     f("networkId", "Network", { required: false, editable: false }),
   ],
-  outputs: [o("ipv4", "Public IP")],
+  outputs: [o("ipv4", "Public IP", { dnsValue: "ipv4" })],
   dependsOn: [
     {
       fieldKey: "clusterId",
@@ -639,7 +639,7 @@ export const ReservedIpResourceType = rt({
     f("assignedToType", "Assigned Type", { required: false, editable: false }),
     f("assignedToName", "Assigned Name", { required: false, editable: false }),
   ],
-  outputs: [o("ip", "IP Address")],
+  outputs: [o("ip", "IP Address", { dnsValue: "ipv4" })],
   dependsOn: [
     {
       fieldKey: "assignedToId",

@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { XaiClient } from "./client.js";
 import { ModelResourceType } from "./resources/model.js";
@@ -16,9 +21,9 @@ import { SpendingLimitResourceType } from "./resources/spending-limit.js";
 // Official xAI wordmark glyph, taken from the @lobehub/icons-static-svg brand
 // set (icons/xai.svg), which mirrors xAI's own mark. Black background, white
 // glyph: xAI's brand colours.
-const manifest: PluginManifest = {
+export const manifest = {
   id: "xai",
-  version: "0.1.0",
+  egressHosts: ["api.x.ai", "management-api.x.ai"],
   displayName: "xAI",
   description:
     "Grok models, files, batches, skills, voices and speech on api.x.ai, plus collections, team keys, audit logs, invoices, spending limits and prepaid credit on management-api.x.ai",
@@ -28,9 +33,7 @@ const manifest: PluginManifest = {
       <path d="M6.469 8.776L16.512 23h-4.464L2.005 8.776H6.47zm-.004 7.9l2.233 3.164L6.467 23H2l4.465-6.324zM22 2.582V23h-3.659V7.764L22 2.582zM22 1l-9.952 14.095-2.233-3.163L17.533 1H22z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -54,7 +57,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // POST /v1/billing/teams/{team_id}/usage returns true daily buckets.
@@ -70,7 +73,9 @@ const manifest: PluginManifest = {
     requiresElevatedCredential: true,
   },
   rateLimit: { capacity: 20, refillPerSecond: 4 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ModelResourceType,
@@ -86,8 +91,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   SpendingLimitResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new XaiClient(credentials, services),
-};
+  testCredentials: { apiKey: "xai-test-inference-key", managementKey: "xai-test-management-key" },
+});

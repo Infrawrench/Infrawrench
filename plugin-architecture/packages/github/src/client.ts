@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   LeakedSecretPage,
   LeakedSecretQuery,
@@ -107,7 +110,7 @@ export class GitHubClient implements PluginClient {
   readonly ctx: GitHubContext;
   private memo = new Map<string, { at: number; value: Promise<unknown> }>();
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["token"] ?? "").trim();
     if (!token) throw new Error("GitHub plugin: missing token credential");
     const owner = parseOwner(credentials["owner"]);
@@ -122,12 +125,16 @@ export class GitHubClient implements PluginClient {
     };
   }
 
-  listLeakedSecrets(query: LeakedSecretQuery): Promise<LeakedSecretPage> {
-    return listSecretScanningAlerts(this.ctx, query);
+  listLeakedSecrets(query: LeakedSecretQuery): PluginEffect<LeakedSecretPage> {
+    return attempt(async () => {
+      return listSecretScanningAlerts(this.ctx, query);
+    });
   }
 
-  resolveLeakedSecret(ref: string, resolution: LeakedSecretResolution): Promise<void> {
-    return resolveSecretScanningAlert(this.ctx, ref, resolution);
+  resolveLeakedSecret(ref: string, resolution: LeakedSecretResolution): PluginEffect<void> {
+    return attempt(async () => {
+      return resolveSecretScanningAlert(this.ctx, ref, resolution);
+    });
   }
 
   private get isOrg(): boolean {
@@ -181,55 +188,57 @@ export class GitHubClient implements PluginClient {
     }
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    if (ORG_ONLY.has(typeId) && !this.isOrg) return [];
-    if (ENTERPRISE_ONLY.has(typeId) && this.isOrg) return [];
-    switch (typeId) {
-      case "billing-account":
-        return [await this.billingAccount(accountId)];
-      case "copilot-seat":
-        return this.scoped(() => this.listSeats(accountId));
-      case "hosted-runner":
-        return this.scoped(() => this.listHostedRunners(accountId));
-      case "runner":
-        return this.scoped(async () =>
-          (
-            await ghPaged<GhRunner, { runners?: GhRunner[] }>(
-              this.ctx,
-              `${ownerBase(this.ctx.owner)}/actions/runners`,
-              (r) => r.runners,
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      if (ORG_ONLY.has(typeId) && !this.isOrg) return [];
+      if (ENTERPRISE_ONLY.has(typeId) && this.isOrg) return [];
+      switch (typeId) {
+        case "billing-account":
+          return [await this.billingAccount(accountId)];
+        case "copilot-seat":
+          return this.scoped(() => this.listSeats(accountId));
+        case "hosted-runner":
+          return this.scoped(() => this.listHostedRunners(accountId));
+        case "runner":
+          return this.scoped(async () =>
+            (
+              await ghPaged<GhRunner, { runners?: GhRunner[] }>(
+                this.ctx,
+                `${ownerBase(this.ctx.owner)}/actions/runners`,
+                (r) => r.runners,
+              )
+            ).map((r) => mapRunner(accountId, r)),
+          );
+        case "actions-cache":
+          return this.scoped(async () =>
+            (
+              await ghPaged<GhRepoCacheUsage, { repository_cache_usages?: GhRepoCacheUsage[] }>(
+                this.ctx,
+                `${ownerBase(this.ctx.owner)}/actions/cache/usage-by-repository`,
+                (r) => r.repository_cache_usages,
+              )
             )
-          ).map((r) => mapRunner(accountId, r)),
-        );
-      case "actions-cache":
-        return this.scoped(async () =>
-          (
-            await ghPaged<GhRepoCacheUsage, { repository_cache_usages?: GhRepoCacheUsage[] }>(
-              this.ctx,
-              `${ownerBase(this.ctx.owner)}/actions/cache/usage-by-repository`,
-              (r) => r.repository_cache_usages,
-            )
-          )
-            .filter((u) => u.full_name)
-            .map((u) => mapActionsCache(accountId, u)),
-        );
-      case "codespace":
-        return this.scoped(async () =>
-          (
-            await ghPaged<GhCodespace, { codespaces?: GhCodespace[] }>(
-              this.ctx,
-              `${ownerBase(this.ctx.owner)}/codespaces`,
-              (r) => r.codespaces,
-            )
-          ).map((c) => mapCodespace(accountId, c)),
-        );
-      case "budget":
-        return this.scoped(() => this.listBudgets(accountId));
-      case "cost-center":
-        return this.scoped(() => this.listCostCenters(accountId));
-      default:
-        throw new Error(`GitHub plugin: unknown resource type "${typeId}"`);
-    }
+              .filter((u) => u.full_name)
+              .map((u) => mapActionsCache(accountId, u)),
+          );
+        case "codespace":
+          return this.scoped(async () =>
+            (
+              await ghPaged<GhCodespace, { codespaces?: GhCodespace[] }>(
+                this.ctx,
+                `${ownerBase(this.ctx.owner)}/codespaces`,
+                (r) => r.codespaces,
+              )
+            ).map((c) => mapCodespace(accountId, c)),
+          );
+        case "budget":
+          return this.scoped(() => this.listBudgets(accountId));
+        case "cost-center":
+          return this.scoped(() => this.listCostCenters(accountId));
+        default:
+          throw new Error(`GitHub plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -304,35 +313,39 @@ export class GitHubClient implements PluginClient {
    * Copilot seats with their last activity. GitHub reports exact last-use
    * dates, so `options.lookbackDays` needs no wider read.
    */
-  async fetchSeats(_accountId: string, _options: SeatFetchOptions): Promise<SeatRecord[]> {
-    const [objects, price] = await Promise.all([
-      fetchCopilotSeatObjects(this.ctx),
-      this.seatPrices(),
-    ]);
-    return mapCopilotSeatRecords(objects, this.ctx.owner, price);
+  fetchSeats(_accountId: string, _options: SeatFetchOptions): PluginEffect<SeatRecord[]> {
+    return attempt(async () => {
+      const [objects, price] = await Promise.all([
+        fetchCopilotSeatObjects(this.ctx),
+        this.seatPrices(),
+      ]);
+      return mapCopilotSeatRecords(objects, this.ctx.owner, price);
+    });
   }
 
-  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
-    const login = (seat.login ?? "").trim();
-    if (!login) throw new Error("GitHub plugin: this seat has no GitHub login to cancel.");
-    const team = seat.context?.["team"];
-    if (team) {
-      throw new Error(
-        `The Copilot seat for ${login} comes from the ${team} team. Remove ${login} from that team, or the team from Copilot, in GitHub.`,
-      );
-    }
-    const org = seat.context?.["organization"];
-    if (this.ctx.owner.kind === "enterprise" && org) {
-      throw new Error(
-        `The Copilot seat for ${login} is granted by the ${org} organization; cancel it in that organization's Copilot settings.`,
-      );
-    }
-    this.invalidate();
-    await this.cancelCopilotSeat(login);
-    return {
-      effective: "end-of-cycle",
-      message: `The seat for ${login} is pending cancellation: they keep Copilot, and it stays billed, until the end of the billing cycle.`,
-    };
+  removeSeat(_accountId: string, seat: SeatRef): PluginEffect<SeatRemovalResult> {
+    return attempt(async () => {
+      const login = (seat.login ?? "").trim();
+      if (!login) throw new Error("GitHub plugin: this seat has no GitHub login to cancel.");
+      const team = seat.context?.["team"];
+      if (team) {
+        throw new Error(
+          `The Copilot seat for ${login} comes from the ${team} team. Remove ${login} from that team, or the team from Copilot, in GitHub.`,
+        );
+      }
+      const org = seat.context?.["organization"];
+      if (this.ctx.owner.kind === "enterprise" && org) {
+        throw new Error(
+          `The Copilot seat for ${login} is granted by the ${org} organization; cancel it in that organization's Copilot settings.`,
+        );
+      }
+      this.invalidate();
+      await this.cancelCopilotSeat(login);
+      return {
+        effective: "end-of-cycle",
+        message: `The seat for ${login} is pending cancellation: they keep Copilot, and it stays billed, until the end of the billing cycle.`,
+      };
+    });
   }
 
   private async skuSpend(): Promise<Map<string, { net: number; pricePerUnit?: number }>> {
@@ -450,171 +463,187 @@ export class GitHubClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "billing-account") {
-      const base = await this.billingAccount(accountId);
-      const ym = currentYearMonth();
-      const [summary, premium, credits, seats] = await Promise.all([
-        this.monthSummary().catch(() => undefined),
-        fetchModelUsage(this.ctx, "premium_request", ym).catch(() => undefined),
-        fetchModelUsage(this.ctx, "ai_credit", ym).catch(() => undefined),
-        this.isOrg
-          ? ghFetch<{ seat_breakdown?: unknown }>(
-              this.ctx,
-              `${ownerBase(this.ctx.owner)}/copilot/billing`,
-            ).catch(() => undefined)
-          : Promise.resolve(undefined),
-      ]);
-      return {
-        ...base,
-        resolvedOutputs: {
-          ...base.resolvedOutputs,
-          ...(summary ? { [SUMMARY_KEY]: JSON.stringify(summary) } : {}),
-          ...(premium?.length ? { [PREMIUM_KEY]: JSON.stringify(premium) } : {}),
-          ...(credits?.length ? { [AI_CREDIT_KEY]: JSON.stringify(credits) } : {}),
-          ...(seats?.seat_breakdown
-            ? { [SEAT_BREAKDOWN_KEY]: JSON.stringify(seats.seat_breakdown) }
-            : {}),
-        },
-      };
-    }
-    if (typeId === "actions-cache") {
-      const repoPath = `/repos/${id.split("/").map(encodeURIComponent).join("/")}`;
-      const [usage, caches] = await Promise.all([
-        ghFetch<GhRepoCacheUsage>(this.ctx, `${repoPath}/actions/cache/usage`),
-        ghFetch<{ actions_caches?: GhActionsCache[] }>(this.ctx, `${repoPath}/actions/caches`, {
-          query: { per_page: 50, sort: "size_in_bytes", direction: "desc" },
-        }).catch(() => undefined),
-      ]);
-      const r = mapActionsCache(accountId, { ...usage, full_name: usage.full_name ?? id });
-      return caches?.actions_caches
-        ? {
-            ...r,
-            resolvedOutputs: {
-              ...r.resolvedOutputs,
-              [CACHES_KEY]: JSON.stringify(caches.actions_caches),
-            },
-          }
-        : r;
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId || r.externalId === id);
-    if (!found) throw new Error(`GitHub plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "billing-account") {
+        const base = await this.billingAccount(accountId);
+        const ym = currentYearMonth();
+        const [summary, premium, credits, seats] = await Promise.all([
+          this.monthSummary().catch(() => undefined),
+          fetchModelUsage(this.ctx, "premium_request", ym).catch(() => undefined),
+          fetchModelUsage(this.ctx, "ai_credit", ym).catch(() => undefined),
+          this.isOrg
+            ? ghFetch<{ seat_breakdown?: unknown }>(
+                this.ctx,
+                `${ownerBase(this.ctx.owner)}/copilot/billing`,
+              ).catch(() => undefined)
+            : Promise.resolve(undefined),
+        ]);
+        return {
+          ...base,
+          resolvedOutputs: {
+            ...base.resolvedOutputs,
+            ...(summary ? { [SUMMARY_KEY]: JSON.stringify(summary) } : {}),
+            ...(premium?.length ? { [PREMIUM_KEY]: JSON.stringify(premium) } : {}),
+            ...(credits?.length ? { [AI_CREDIT_KEY]: JSON.stringify(credits) } : {}),
+            ...(seats?.seat_breakdown
+              ? { [SEAT_BREAKDOWN_KEY]: JSON.stringify(seats.seat_breakdown) }
+              : {}),
+          },
+        };
+      }
+      if (typeId === "actions-cache") {
+        const repoPath = `/repos/${id.split("/").map(encodeURIComponent).join("/")}`;
+        const [usage, caches] = await Promise.all([
+          ghFetch<GhRepoCacheUsage>(this.ctx, `${repoPath}/actions/cache/usage`),
+          ghFetch<{ actions_caches?: GhActionsCache[] }>(this.ctx, `${repoPath}/actions/caches`, {
+            query: { per_page: 50, sort: "size_in_bytes", direction: "desc" },
+          }).catch(() => undefined),
+        ]);
+        const r = mapActionsCache(accountId, { ...usage, full_name: usage.full_name ?? id });
+        return caches?.actions_caches
+          ? {
+              ...r,
+              resolvedOutputs: {
+                ...r.resolvedOutputs,
+                [CACHES_KEY]: JSON.stringify(caches.actions_caches),
+              },
+            }
+          : r;
+      }
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId || r.externalId === id);
+      if (!found) throw new Error(`GitHub plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(`GitHub plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
+      throw new Error(`GitHub plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics and costs
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    const usd = (v: unknown) =>
-      typeof v === "number" ? `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—";
-    switch (resourceTypeId) {
-      case "billing-account":
-        return [
-          { label: "Net This Month", value: usd(f["monthToDate"]) },
-          { label: "Discounts", value: usd(f["discountToDate"]) },
-          { label: "Copilot Seats", value: String(f["copilotSeats"] ?? "—") },
-        ];
-      case "copilot-seat":
-        return [
-          {
-            label: "Status",
-            value: f["idle"] === true ? "Idle" : "Active",
-            variant: f["idle"] === true ? "status-degraded" : "status-healthy",
-          },
-          { label: "Days Since Activity", value: String(f["idleDays"] ?? "—") },
-        ];
-      case "budget":
-        return [
-          { label: "Spent", value: usd(f["spentThisMonth"]) },
-          { label: "Budget", value: usd(f["budgetAmount"]) },
-        ];
-      case "actions-cache":
-        return [
-          { label: "Size", value: String(f["size"] ?? "—") },
-          { label: "Caches", value: String(f["cacheCount"] ?? "—") },
-        ];
-      case "codespace":
-        return [
-          { label: "State", value: String(f["state"] ?? "—") },
-          { label: "Days Since Use", value: String(f["idleDays"] ?? "—") },
-        ];
-      case "hosted-runner":
-        return [
-          { label: "Status", value: String(f["status"] ?? "—") },
-          { label: "SKU This Month", value: usd(f["skuMonthToDate"]) },
-        ];
-      default:
-        return [];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      const usd = (v: unknown) =>
+        typeof v === "number" ? `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—";
+      switch (resourceTypeId) {
+        case "billing-account":
+          return [
+            { label: "Net This Month", value: usd(f["monthToDate"]) },
+            { label: "Discounts", value: usd(f["discountToDate"]) },
+            { label: "Copilot Seats", value: String(f["copilotSeats"] ?? "—") },
+          ];
+        case "copilot-seat":
+          return [
+            {
+              label: "Status",
+              value: f["idle"] === true ? "Idle" : "Active",
+              variant: f["idle"] === true ? "status-degraded" : "status-healthy",
+            },
+            { label: "Days Since Activity", value: String(f["idleDays"] ?? "—") },
+          ];
+        case "budget":
+          return [
+            { label: "Spent", value: usd(f["spentThisMonth"]) },
+            { label: "Budget", value: usd(f["budgetAmount"]) },
+          ];
+        case "actions-cache":
+          return [
+            { label: "Size", value: String(f["size"] ?? "—") },
+            { label: "Caches", value: String(f["cacheCount"] ?? "—") },
+          ];
+        case "codespace":
+          return [
+            { label: "State", value: String(f["state"] ?? "—") },
+            { label: "Days Since Use", value: String(f["idleDays"] ?? "—") },
+          ];
+        case "hosted-runner":
+          return [
+            { label: "Status", value: String(f["status"] ?? "—") },
+            { label: "SKU This Month", value: usd(f["skuMonthToDate"]) },
+          ];
+        default:
+          return [];
+      }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     _resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "billing-account") return [];
-    return billingAccountSeries(this.ctx, rangeOrDefault(timeRange, METRICS_WINDOW_MS));
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "billing-account") return [];
+      return billingAccountSeries(this.ctx, rangeOrDefault(timeRange, METRICS_WINDOW_MS));
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchGitHubCostData(this.ctx, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchGitHubCostData(this.ctx, range);
+    });
   }
 
-  async listVulnerabilityFindings(_accountId: string): Promise<VulnerabilityFinding[]> {
-    return fetchDependabotFindings(this.ctx);
+  listVulnerabilityFindings(_accountId: string): PluginEffect<VulnerabilityFinding[]> {
+    return attempt(async () => {
+      return fetchDependabotFindings(this.ctx);
+    });
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    return verifyGitHubCredentials(this.ctx);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return verifyGitHubCredentials(this.ctx);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Create / update / delete
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "copilot-seat":
-        return { fields: [await this.seatUserField()] };
-      case "hosted-runner":
-        return { fields: await this.hostedRunnerFields() };
-      case "budget":
-        return { fields: await this.budgetFields() };
-      case "cost-center":
-        return { fields: costCenterFields() };
-      default:
-        throw new Error(`GitHub plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "copilot-seat":
+          return { fields: [await this.seatUserField()] };
+        case "hosted-runner":
+          return { fields: await this.hostedRunnerFields() };
+        case "budget":
+          return { fields: await this.budgetFields() };
+        case "cost-center":
+          return { fields: costCenterFields() };
+        default:
+          throw new Error(`GitHub plugin: cannot create "${typeId}" from Infrawrench`);
+      }
+    });
   }
 
   private async seatUserField(): Promise<CreateFieldConfig> {
@@ -919,244 +948,253 @@ export class GitHubClient implements PluginClient {
     return fields;
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    this.invalidate();
-    switch (typeId) {
-      case "copilot-seat": {
-        const login = (fields["login"] ?? "").trim();
-        if (!login) throw new Error("Choose a member to give a Copilot seat.");
-        await ghFetch<unknown>(
-          this.ctx,
-          `${ownerBase(this.ctx.owner)}/copilot/billing/selected_users`,
-          {
-            method: "POST",
-            body: { selected_usernames: [login] },
-          },
-        );
-        const seats = await this.listSeats(accountId).catch(() => [] as ResourceInstance[]);
-        return (
-          seats.find((s) => (s.externalId ?? "").toLowerCase() === login.toLowerCase()) ??
-          mapCopilotSeat(
-            accountId,
-            { assignee: { login }, created_at: new Date().toISOString() },
-            undefined,
-          )
-        );
-      }
-      case "hosted-runner": {
-        const [source, ...rest] = (fields["image"] ?? "").split(":");
-        const created = await ghFetch<GhHostedRunner>(
-          this.ctx,
-          `${ownerBase(this.ctx.owner)}/actions/hosted-runners`,
-          {
-            method: "POST",
-            body: {
-              name: (fields["name"] ?? "").trim(),
-              image: { id: rest.join(":"), source: source || "github" },
-              size: fields["size"],
-              runner_group_id: Number(fields["runnerGroupId"]),
-              ...(fields["maximumRunners"]
-                ? { maximum_runners: Number(fields["maximumRunners"]) }
-                : {}),
-              enable_static_ip: yes(fields["enableStaticIp"]),
-            },
-          },
-        );
-        return mapHostedRunner(accountId, created, await this.skuSpend());
-      }
-      case "budget": {
-        const created = await ghFetch<{ budget?: GhBudget } & GhBudget>(
-          this.ctx,
-          `${billingBase(this.ctx.owner)}/budgets`,
-          { method: "POST", body: buildBudgetBody(fields) },
-        );
-        const budget = created.budget ?? created;
-        return mapBudget(accountId, budget, undefined);
-      }
-      case "cost-center": {
-        const created = await ghFetch<CostCenter>(
-          this.ctx,
-          `${billingBase(this.ctx.owner)}/cost-centers`,
-          {
-            method: "POST",
-            body: {
-              name: (fields["name"] ?? "").trim(),
-              ...(fields["aiCreditPoolEnabled"]
-                ? { ai_credit_pool_enabled: yes(fields["aiCreditPoolEnabled"]) }
-                : {}),
-            },
-          },
-        );
-        const add = memberBody(fields);
-        if (created.id && add) {
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      this.invalidate();
+      switch (typeId) {
+        case "copilot-seat": {
+          const login = (fields["login"] ?? "").trim();
+          if (!login) throw new Error("Choose a member to give a Copilot seat.");
           await ghFetch<unknown>(
             this.ctx,
-            `${billingBase(this.ctx.owner)}/cost-centers/${encodeURIComponent(created.id)}/resource`,
-            { method: "POST", body: add },
+            `${ownerBase(this.ctx.owner)}/copilot/billing/selected_users`,
+            {
+              method: "POST",
+              body: { selected_usernames: [login] },
+            },
+          );
+          const seats = await this.listSeats(accountId).catch(() => [] as ResourceInstance[]);
+          return (
+            seats.find((s) => (s.externalId ?? "").toLowerCase() === login.toLowerCase()) ??
+            mapCopilotSeat(
+              accountId,
+              { assignee: { login }, created_at: new Date().toISOString() },
+              undefined,
+            )
           );
         }
-        return mapCostCenter(
-          accountId,
-          { ...created, resources: membersToResources(fields) },
-          undefined,
-        );
+        case "hosted-runner": {
+          const [source, ...rest] = (fields["image"] ?? "").split(":");
+          const created = await ghFetch<GhHostedRunner>(
+            this.ctx,
+            `${ownerBase(this.ctx.owner)}/actions/hosted-runners`,
+            {
+              method: "POST",
+              body: {
+                name: (fields["name"] ?? "").trim(),
+                image: { id: rest.join(":"), source: source || "github" },
+                size: fields["size"],
+                runner_group_id: Number(fields["runnerGroupId"]),
+                ...(fields["maximumRunners"]
+                  ? { maximum_runners: Number(fields["maximumRunners"]) }
+                  : {}),
+                enable_static_ip: yes(fields["enableStaticIp"]),
+              },
+            },
+          );
+          return mapHostedRunner(accountId, created, await this.skuSpend());
+        }
+        case "budget": {
+          const created = await ghFetch<{ budget?: GhBudget } & GhBudget>(
+            this.ctx,
+            `${billingBase(this.ctx.owner)}/budgets`,
+            { method: "POST", body: buildBudgetBody(fields) },
+          );
+          const budget = created.budget ?? created;
+          return mapBudget(accountId, budget, undefined);
+        }
+        case "cost-center": {
+          const created = await ghFetch<CostCenter>(
+            this.ctx,
+            `${billingBase(this.ctx.owner)}/cost-centers`,
+            {
+              method: "POST",
+              body: {
+                name: (fields["name"] ?? "").trim(),
+                ...(fields["aiCreditPoolEnabled"]
+                  ? { ai_credit_pool_enabled: yes(fields["aiCreditPoolEnabled"]) }
+                  : {}),
+              },
+            },
+          );
+          const add = memberBody(fields);
+          if (created.id && add) {
+            await ghFetch<unknown>(
+              this.ctx,
+              `${billingBase(this.ctx.owner)}/cost-centers/${encodeURIComponent(created.id)}/resource`,
+              { method: "POST", body: add },
+            );
+          }
+          return mapCostCenter(
+            accountId,
+            { ...created, resources: membersToResources(fields) },
+            undefined,
+          );
+        }
+        default:
+          throw new Error(`GitHub plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      default:
-        throw new Error(`GitHub plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    this.invalidate();
-    if (typeId === "hosted-runner") {
-      const body: Record<string, unknown> = {};
-      if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
-      if ("maximumRunners" in fields && fields["maximumRunners"]) {
-        body["maximum_runners"] = Number(fields["maximumRunners"]);
-      }
-      if ("enableStaticIp" in fields) body["enable_static_ip"] = yes(fields["enableStaticIp"]);
-      const updated = await ghFetch<GhHostedRunner>(
-        this.ctx,
-        `${ownerBase(this.ctx.owner)}/actions/hosted-runners/${encodeURIComponent(id)}`,
-        { method: "PATCH", body },
-      );
-      return mapHostedRunner(accountId, updated, await this.skuSpend());
-    }
-    if (typeId === "budget") {
-      const current = await ghFetch<GhBudget>(
-        this.ctx,
-        `${billingBase(this.ctx.owner)}/budgets/${encodeURIComponent(id)}`,
-      ).catch(() => undefined);
-      const body: Record<string, unknown> = {};
-      if ("budgetAmount" in fields)
-        body["budget_amount"] = Math.round(Number(fields["budgetAmount"]));
-      if ("preventFurtherUsage" in fields)
-        body["prevent_further_usage"] = yes(fields["preventFurtherUsage"]);
-      if ("willAlert" in fields || "alertRecipients" in fields) {
-        body["budget_alerting"] = {
-          will_alert:
-            "willAlert" in fields
-              ? yes(fields["willAlert"])
-              : (current?.budget_alerting?.will_alert ?? false),
-          alert_recipients:
-            "alertRecipients" in fields
-              ? list(fields["alertRecipients"])
-              : (current?.budget_alerting?.alert_recipients ?? []),
-        };
-      }
-      if ("expiresAt" in fields && fields["expiresAt"])
-        body["expires_at"] = fields["expiresAt"]!.slice(0, 10);
-      await ghFetch<unknown>(
-        this.ctx,
-        `${billingBase(this.ctx.owner)}/budgets/${encodeURIComponent(id)}`,
-        {
-          method: "PATCH",
-          body,
-        },
-      );
-      return this.getResource("budget", resourceId, accountId);
-    }
-    if (typeId === "cost-center") {
-      const path = `${billingBase(this.ctx.owner)}/cost-centers/${encodeURIComponent(id)}`;
-      const patch: Record<string, unknown> = {};
-      if ("name" in fields) patch["name"] = (fields["name"] ?? "").trim();
-      if ("aiCreditPoolEnabled" in fields)
-        patch["ai_credit_pool_enabled"] = yes(fields["aiCreditPoolEnabled"]);
-      if (Object.keys(patch).length > 0) {
-        await ghFetch<unknown>(this.ctx, path, { method: "PATCH", body: patch });
-      }
-      const memberKeys = ["users", "organizations", "repositories", "enterpriseTeams"] as const;
-      if (memberKeys.some((k) => k in fields)) {
-        const current = await ghFetch<CostCenter>(this.ctx, path);
-        const now = costCenterMembers(current.resources);
-        const add: Record<string, string[]> = {};
-        const remove: Record<string, string[]> = {};
-        const wire: Record<(typeof memberKeys)[number], string> = {
-          users: "users",
-          organizations: "organizations",
-          repositories: "repositories",
-          enterpriseTeams: "enterprise_teams",
-        };
-        for (const k of memberKeys) {
-          if (!(k in fields)) continue;
-          const want = new Set(list(fields[k]).map((s) => s.toLowerCase()));
-          const have = new Map(now[k].map((s) => [s.toLowerCase(), s]));
-          const toAdd = list(fields[k]).filter((s) => !have.has(s.toLowerCase()));
-          const toRemove = [...have.entries()].filter(([lc]) => !want.has(lc)).map(([, s]) => s);
-          if (toAdd.length) add[wire[k]] = toAdd;
-          if (toRemove.length) remove[wire[k]] = toRemove;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      this.invalidate();
+      if (typeId === "hosted-runner") {
+        const body: Record<string, unknown> = {};
+        if ("name" in fields) body["name"] = (fields["name"] ?? "").trim();
+        if ("maximumRunners" in fields && fields["maximumRunners"]) {
+          body["maximum_runners"] = Number(fields["maximumRunners"]);
         }
-        if (Object.keys(remove).length > 0) {
-          await ghFetch<unknown>(this.ctx, `${path}/resource`, { method: "DELETE", body: remove });
-        }
-        if (Object.keys(add).length > 0) {
-          await ghFetch<unknown>(this.ctx, `${path}/resource`, { method: "POST", body: add });
-        }
-      }
-      return this.getResource("cost-center", resourceId, accountId);
-    }
-    throw new Error(`GitHub plugin: "${typeId}" cannot be edited from Infrawrench`);
-  }
-
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const id = externalIdOf(resourceId);
-    const base = ownerBase(this.ctx.owner);
-    this.invalidate();
-    switch (typeId) {
-      case "copilot-seat":
-        return this.cancelCopilotSeat(id);
-      case "hosted-runner":
-        await ghFetch<unknown>(
+        if ("enableStaticIp" in fields) body["enable_static_ip"] = yes(fields["enableStaticIp"]);
+        const updated = await ghFetch<GhHostedRunner>(
           this.ctx,
-          `${base}/actions/hosted-runners/${encodeURIComponent(id)}`,
-          {
-            method: "DELETE",
-          },
+          `${ownerBase(this.ctx.owner)}/actions/hosted-runners/${encodeURIComponent(id)}`,
+          { method: "PATCH", body },
         );
-        return;
-      case "runner":
-        await ghFetch<unknown>(this.ctx, `${base}/actions/runners/${encodeURIComponent(id)}`, {
-          method: "DELETE",
-        });
-        return;
-      case "codespace": {
-        const { user, name } = splitCodespaceId(id);
-        await ghFetch<unknown>(
-          this.ctx,
-          `${base}/members/${encodeURIComponent(user)}/codespaces/${encodeURIComponent(name)}`,
-          { method: "DELETE" },
-        );
-        return;
+        return mapHostedRunner(accountId, updated, await this.skuSpend());
       }
-      case "budget":
+      if (typeId === "budget") {
+        const current = await ghFetch<GhBudget>(
+          this.ctx,
+          `${billingBase(this.ctx.owner)}/budgets/${encodeURIComponent(id)}`,
+        ).catch(() => undefined);
+        const body: Record<string, unknown> = {};
+        if ("budgetAmount" in fields)
+          body["budget_amount"] = Math.round(Number(fields["budgetAmount"]));
+        if ("preventFurtherUsage" in fields)
+          body["prevent_further_usage"] = yes(fields["preventFurtherUsage"]);
+        if ("willAlert" in fields || "alertRecipients" in fields) {
+          body["budget_alerting"] = {
+            will_alert:
+              "willAlert" in fields
+                ? yes(fields["willAlert"])
+                : (current?.budget_alerting?.will_alert ?? false),
+            alert_recipients:
+              "alertRecipients" in fields
+                ? list(fields["alertRecipients"])
+                : (current?.budget_alerting?.alert_recipients ?? []),
+          };
+        }
+        if ("expiresAt" in fields && fields["expiresAt"])
+          body["expires_at"] = fields["expiresAt"]!.slice(0, 10);
         await ghFetch<unknown>(
           this.ctx,
           `${billingBase(this.ctx.owner)}/budgets/${encodeURIComponent(id)}`,
           {
-            method: "DELETE",
+            method: "PATCH",
+            body,
           },
         );
-        return;
-      case "cost-center":
-        await ghFetch<unknown>(
-          this.ctx,
-          `${billingBase(this.ctx.owner)}/cost-centers/${encodeURIComponent(id)}`,
-          { method: "DELETE" },
-        );
-        return;
-      default:
-        throw new Error(`GitHub plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    }
+        return runPluginEffect(this.getResource("budget", resourceId, accountId));
+      }
+      if (typeId === "cost-center") {
+        const path = `${billingBase(this.ctx.owner)}/cost-centers/${encodeURIComponent(id)}`;
+        const patch: Record<string, unknown> = {};
+        if ("name" in fields) patch["name"] = (fields["name"] ?? "").trim();
+        if ("aiCreditPoolEnabled" in fields)
+          patch["ai_credit_pool_enabled"] = yes(fields["aiCreditPoolEnabled"]);
+        if (Object.keys(patch).length > 0) {
+          await ghFetch<unknown>(this.ctx, path, { method: "PATCH", body: patch });
+        }
+        const memberKeys = ["users", "organizations", "repositories", "enterpriseTeams"] as const;
+        if (memberKeys.some((k) => k in fields)) {
+          const current = await ghFetch<CostCenter>(this.ctx, path);
+          const now = costCenterMembers(current.resources);
+          const add: Record<string, string[]> = {};
+          const remove: Record<string, string[]> = {};
+          const wire: Record<(typeof memberKeys)[number], string> = {
+            users: "users",
+            organizations: "organizations",
+            repositories: "repositories",
+            enterpriseTeams: "enterprise_teams",
+          };
+          for (const k of memberKeys) {
+            if (!(k in fields)) continue;
+            const want = new Set(list(fields[k]).map((s) => s.toLowerCase()));
+            const have = new Map(now[k].map((s) => [s.toLowerCase(), s]));
+            const toAdd = list(fields[k]).filter((s) => !have.has(s.toLowerCase()));
+            const toRemove = [...have.entries()].filter(([lc]) => !want.has(lc)).map(([, s]) => s);
+            if (toAdd.length) add[wire[k]] = toAdd;
+            if (toRemove.length) remove[wire[k]] = toRemove;
+          }
+          if (Object.keys(remove).length > 0) {
+            await ghFetch<unknown>(this.ctx, `${path}/resource`, {
+              method: "DELETE",
+              body: remove,
+            });
+          }
+          if (Object.keys(add).length > 0) {
+            await ghFetch<unknown>(this.ctx, `${path}/resource`, { method: "POST", body: add });
+          }
+        }
+        return runPluginEffect(this.getResource("cost-center", resourceId, accountId));
+      }
+      throw new Error(`GitHub plugin: "${typeId}" cannot be edited from Infrawrench`);
+    });
+  }
+
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const base = ownerBase(this.ctx.owner);
+      this.invalidate();
+      switch (typeId) {
+        case "copilot-seat":
+          return this.cancelCopilotSeat(id);
+        case "hosted-runner":
+          await ghFetch<unknown>(
+            this.ctx,
+            `${base}/actions/hosted-runners/${encodeURIComponent(id)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          return;
+        case "runner":
+          await ghFetch<unknown>(this.ctx, `${base}/actions/runners/${encodeURIComponent(id)}`, {
+            method: "DELETE",
+          });
+          return;
+        case "codespace": {
+          const { user, name } = splitCodespaceId(id);
+          await ghFetch<unknown>(
+            this.ctx,
+            `${base}/members/${encodeURIComponent(user)}/codespaces/${encodeURIComponent(name)}`,
+            { method: "DELETE" },
+          );
+          return;
+        }
+        case "budget":
+          await ghFetch<unknown>(
+            this.ctx,
+            `${billingBase(this.ctx.owner)}/budgets/${encodeURIComponent(id)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          return;
+        case "cost-center":
+          await ghFetch<unknown>(
+            this.ctx,
+            `${billingBase(this.ctx.owner)}/cost-centers/${encodeURIComponent(id)}`,
+            { method: "DELETE" },
+          );
+          return;
+        default:
+          throw new Error(`GitHub plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      }
+    });
   }
 
   /**
@@ -1196,57 +1234,60 @@ export class GitHubClient implements PluginClient {
   // Actions
   // -------------------------------------------------------------------------
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId);
-    this.invalidate();
-    if (typeId === "copilot-seat" && actionId === "remove-seat") return this.cancelCopilotSeat(id);
-    if (typeId === "actions-cache") {
-      const repoPath = `/repos/${id.split("/").map(encodeURIComponent).join("/")}`;
-      if (actionId.startsWith("delete-cache:")) {
-        const cacheId = actionId.slice("delete-cache:".length);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      this.invalidate();
+      if (typeId === "copilot-seat" && actionId === "remove-seat")
+        return this.cancelCopilotSeat(id);
+      if (typeId === "actions-cache") {
+        const repoPath = `/repos/${id.split("/").map(encodeURIComponent).join("/")}`;
+        if (actionId.startsWith("delete-cache:")) {
+          const cacheId = actionId.slice("delete-cache:".length);
+          await ghFetch<unknown>(
+            this.ctx,
+            `${repoPath}/actions/caches/${encodeURIComponent(cacheId)}`,
+            {
+              method: "DELETE",
+            },
+          );
+          return;
+        }
+        if (actionId === "delete-all-caches") {
+          // There is no "delete everything" call; page through and delete by id.
+          for (let round = 0; round < 50; round++) {
+            const res = await ghFetch<{ actions_caches?: GhActionsCache[] }>(
+              this.ctx,
+              `${repoPath}/actions/caches`,
+              { query: { per_page: 100 } },
+            );
+            const batch = (res.actions_caches ?? []).filter((c) => c.id !== undefined);
+            if (batch.length === 0) return;
+            for (const c of batch) {
+              await ghFetch<unknown>(this.ctx, `${repoPath}/actions/caches/${c.id}`, {
+                method: "DELETE",
+              });
+            }
+          }
+          return;
+        }
+      }
+      if (typeId === "codespace" && actionId === "stop") {
+        const { user, name } = splitCodespaceId(id);
         await ghFetch<unknown>(
           this.ctx,
-          `${repoPath}/actions/caches/${encodeURIComponent(cacheId)}`,
-          {
-            method: "DELETE",
-          },
+          `${ownerBase(this.ctx.owner)}/members/${encodeURIComponent(user)}/codespaces/${encodeURIComponent(name)}/stop`,
+          { method: "POST" },
         );
         return;
       }
-      if (actionId === "delete-all-caches") {
-        // There is no "delete everything" call; page through and delete by id.
-        for (let round = 0; round < 50; round++) {
-          const res = await ghFetch<{ actions_caches?: GhActionsCache[] }>(
-            this.ctx,
-            `${repoPath}/actions/caches`,
-            { query: { per_page: 100 } },
-          );
-          const batch = (res.actions_caches ?? []).filter((c) => c.id !== undefined);
-          if (batch.length === 0) return;
-          for (const c of batch) {
-            await ghFetch<unknown>(this.ctx, `${repoPath}/actions/caches/${c.id}`, {
-              method: "DELETE",
-            });
-          }
-        }
-        return;
-      }
-    }
-    if (typeId === "codespace" && actionId === "stop") {
-      const { user, name } = splitCodespaceId(id);
-      await ghFetch<unknown>(
-        this.ctx,
-        `${ownerBase(this.ctx.owner)}/members/${encodeURIComponent(user)}/codespaces/${encodeURIComponent(name)}/stop`,
-        { method: "POST" },
-      );
-      return;
-    }
-    throw new Error(`GitHub plugin: unknown action "${actionId}" for "${typeId}"`);
+      throw new Error(`GitHub plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------

@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostEstimate,
   CostFetchRange,
@@ -84,7 +87,7 @@ export class VastClient implements PluginClient {
   private userCache: { at: number; value: Promise<VUser> } | undefined;
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     resourceTypes: ResourceTypeDefinition[],
     services?: HostServices,
   ) {
@@ -173,68 +176,76 @@ export class VastClient implements PluginClient {
 
   // ── Listing ──────────────────────────────────────────────────────────
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "instance":
-        return (await this.raw.instances()).map((i) => mapInstance(i, accountId));
-      case "template":
-        return (await this.ownTemplates()).map((t) => mapTemplate(t, accountId));
-      case "volume":
-        return (await this.raw.volumes()).map((v) => mapVolume(v, accountId));
-      case "ssh-key":
-        return (await this.raw.sshKeys()).map((k) => mapSshKey(k, accountId));
-      case "serverless-endpoint":
-        return (await this.raw.endpoints()).map((e) => mapEndpoint(e, accountId));
-      case "workergroup":
-        return (await this.raw.workergroups()).map((w) => mapWorkergroup(w, accountId));
-      case "env-var": {
-        const res = await this.api.request<{ secrets?: Record<string, unknown> }>(
-          "/api/v0/secrets/",
-        );
-        // Only the names: values are secrets and never enter inventory.
-        return Object.keys(res?.secrets ?? {})
-          .sort()
-          .map((k) => mapEnvVar(k, accountId));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "instance":
+          return (await this.raw.instances()).map((i) => mapInstance(i, accountId));
+        case "template":
+          return (await this.ownTemplates()).map((t) => mapTemplate(t, accountId));
+        case "volume":
+          return (await this.raw.volumes()).map((v) => mapVolume(v, accountId));
+        case "ssh-key":
+          return (await this.raw.sshKeys()).map((k) => mapSshKey(k, accountId));
+        case "serverless-endpoint":
+          return (await this.raw.endpoints()).map((e) => mapEndpoint(e, accountId));
+        case "workergroup":
+          return (await this.raw.workergroups()).map((w) => mapWorkergroup(w, accountId));
+        case "env-var": {
+          const res = await this.api.request<{ secrets?: Record<string, unknown> }>(
+            "/api/v0/secrets/",
+          );
+          // Only the names: values are secrets and never enter inventory.
+          return Object.keys(res?.secrets ?? {})
+            .sort()
+            .map((k) => mapEnvVar(k, accountId));
+        }
+        default:
+          throw new Error(`Vast.ai plugin: unknown resource type "${typeId}"`);
       }
-      default:
-        throw new Error(`Vast.ai plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalOf(resourceId);
-    if (typeId === "instance") {
-      const res = await this.api.request<{ instances?: VInstance | null }>(
-        `/api/v0/instances/${encodeURIComponent(id)}/`,
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      if (typeId === "instance") {
+        const res = await this.api.request<{ instances?: VInstance | null }>(
+          `/api/v0/instances/${encodeURIComponent(id)}/`,
+        );
+        if (!res?.instances) throw notFound(typeId, id);
+        return mapInstance(res.instances, accountId);
+      }
+      const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
+        (r) => r.id === resourceId || r.externalId === id,
       );
-      if (!res?.instances) throw notFound(typeId, id);
-      return mapInstance(res.instances, accountId);
-    }
-    const found = (await this.listResources(typeId, accountId)).find(
-      (r) => r.id === resourceId || r.externalId === id,
-    );
-    if (!found) throw notFound(typeId, id);
-    return found;
+      if (!found) throw notFound(typeId, id);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    return resource.resolvedOutputs[outputKey] ?? "";
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return resource.resolvedOutputs[outputKey] ?? "";
+    });
   }
 
   // ── Create / update / delete ─────────────────────────────────────────
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    return buildCreateConfig(this, typeId, parentResourceId);
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return buildCreateConfig(this, typeId, parentResourceId);
+    });
   }
 
   instanceBody(fields: Record<string, string>, minBid?: number): Record<string, unknown> {
@@ -278,147 +289,159 @@ export class VastClient implements PluginClient {
     return body;
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "instance": {
-        const offerId = str(fields["offerId"]);
-        if (!/^\d+$/.test(offerId)) throw new Error("Vast.ai plugin: choose a machine offer");
-        let minBid: number | undefined;
-        if (str(fields["pricing"]) === "interruptible" && !(num(fields["bidPrice"], 0)! > 0)) {
-          const [offer] = await this.searchOffers({
-            id: { eq: Number(offerId) },
-            type: "bid",
-            limit: 1,
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "instance": {
+          const offerId = str(fields["offerId"]);
+          if (!/^\d+$/.test(offerId)) throw new Error("Vast.ai plugin: choose a machine offer");
+          let minBid: number | undefined;
+          if (str(fields["pricing"]) === "interruptible" && !(num(fields["bidPrice"], 0)! > 0)) {
+            const [offer] = await this.searchOffers({
+              id: { eq: Number(offerId) },
+              type: "bid",
+              limit: 1,
+            });
+            minBid = offer?.min_bid;
+          }
+          const res = await this.api.request<{ new_contract?: number }>(
+            `/api/v0/asks/${offerId}/`,
+            {
+              method: "PUT",
+              body: this.instanceBody(fields, minBid),
+            },
+          );
+          const id = res?.new_contract;
+          if (!id)
+            throw new Error("Vast.ai plugin: the offer was accepted but no instance id came back");
+          try {
+            return await runPluginEffect(this.getResource("instance", String(id), accountId));
+          } catch {
+            return mapInstance(
+              { id, label: str(fields["label"]) || null, actual_status: "loading" },
+              accountId,
+            );
+          }
+        }
+        case "template": {
+          const runtype = str(fields["runtype"]) || "ssh_direct";
+          const env = buildDockerFlags(fields["env"], fields["ports"]);
+          const res = await this.api.request<{ template?: VTemplate }>("/api/v0/template/", {
+            method: "POST",
+            body: {
+              name: str(fields["name"]),
+              image: str(fields["image"]),
+              tag: str(fields["tag"]) || "latest",
+              desc: str(fields["description"]),
+              // Create accepts ssh/jupyter/args plus direct flags.
+              runtype: runtype.startsWith("ssh")
+                ? "ssh"
+                : runtype.startsWith("jupyter")
+                  ? "jupyter"
+                  : "args",
+              use_ssh: runtype.startsWith("ssh"),
+              ssh_direct: runtype === "ssh_direct",
+              jup_direct: runtype === "jupyter_direct",
+              recommended_disk_space: num(fields["diskGb"], 32),
+              private: str(fields["private"]) !== "false",
+              ...(env ? { env } : {}),
+              ...(str(fields["onstart"]) ? { onstart: fields["onstart"] } : {}),
+              ...(str(fields["readme"]) ? { readme: fields["readme"] } : {}),
+            },
           });
-          minBid = offer?.min_bid;
+          const created = res?.template;
+          if (created?.id) {
+            return mapTemplate(
+              {
+                ...created,
+                name: created.name ?? str(fields["name"]),
+                image: str(fields["image"]),
+              },
+              accountId,
+            );
+          }
+          throw new Error("Vast.ai plugin: template create returned no template");
         }
-        const res = await this.api.request<{ new_contract?: number }>(`/api/v0/asks/${offerId}/`, {
-          method: "PUT",
-          body: this.instanceBody(fields, minBid),
-        });
-        const id = res?.new_contract;
-        if (!id)
-          throw new Error("Vast.ai plugin: the offer was accepted but no instance id came back");
-        try {
-          return await this.getResource("instance", String(id), accountId);
-        } catch {
-          return mapInstance(
-            { id, label: str(fields["label"]) || null, actual_status: "loading" },
+        case "volume": {
+          const offerId = Number(str(fields["offerId"]));
+          if (!offerId) throw new Error("Vast.ai plugin: choose a host for the volume");
+          const name = str(fields["name"]);
+          await this.api.request("/api/v0/volumes/", {
+            method: "PUT",
+            body: {
+              id: offerId,
+              size: Math.round(num(fields["size"], 15) ?? 15),
+              ...(name ? { name } : {}),
+            },
+          });
+          const all = await this.raw.volumes().catch(() => [] as VVolume[]);
+          const created =
+            (name && all.find((v) => v.label === name)) ||
+            [...all].sort((a, b) => (b.start_date ?? 0) - (a.start_date ?? 0))[0];
+          if (!created)
+            throw new Error("Vast.ai plugin: the volume was rented but could not be found");
+          return mapVolume(created, accountId);
+        }
+        case "ssh-key": {
+          const key = str(fields["publicKey"]);
+          if (!key) throw new Error("Vast.ai plugin: paste or pick a public key");
+          const res = await this.api.request<{ key?: VSshKey }>("/api/v0/ssh/", {
+            method: "POST",
+            body: { ssh_key: key },
+          });
+          return mapSshKey(res?.key ?? { id: 0, key }, accountId);
+        }
+        case "serverless-endpoint": {
+          const res = await this.api.request<{ result?: number }>("/api/v0/endptjobs/", {
+            method: "POST",
+            body: this.endpointBody(fields, true),
+          });
+          return mapEndpoint(
+            { id: res?.result ?? 0, endpoint_name: str(fields["name"]) },
             accountId,
           );
         }
-      }
-      case "template": {
-        const runtype = str(fields["runtype"]) || "ssh_direct";
-        const env = buildDockerFlags(fields["env"], fields["ports"]);
-        const res = await this.api.request<{ template?: VTemplate }>("/api/v0/template/", {
-          method: "POST",
-          body: {
-            name: str(fields["name"]),
-            image: str(fields["image"]),
-            tag: str(fields["tag"]) || "latest",
-            desc: str(fields["description"]),
-            // Create accepts ssh/jupyter/args plus direct flags.
-            runtype: runtype.startsWith("ssh")
-              ? "ssh"
-              : runtype.startsWith("jupyter")
-                ? "jupyter"
-                : "args",
-            use_ssh: runtype.startsWith("ssh"),
-            ssh_direct: runtype === "ssh_direct",
-            jup_direct: runtype === "jupyter_direct",
-            recommended_disk_space: num(fields["diskGb"], 32),
-            private: str(fields["private"]) !== "false",
-            ...(env ? { env } : {}),
-            ...(str(fields["onstart"]) ? { onstart: fields["onstart"] } : {}),
-            ...(str(fields["readme"]) ? { readme: fields["readme"] } : {}),
-          },
-        });
-        const created = res?.template;
-        if (created?.id) {
-          return mapTemplate(
-            { ...created, name: created.name ?? str(fields["name"]), image: str(fields["image"]) },
+        case "workergroup": {
+          const endpointId = parentResourceId?.includes(":serverless-endpoint:")
+            ? externalOf(parentResourceId)
+            : str(fields["endpointId"]);
+          const search = str(fields["searchQuery"]);
+          const res = await this.api.request<{ id?: number }>("/api/v0/workergroups/", {
+            method: "POST",
+            body: {
+              endpoint_id: Number(endpointId),
+              template_hash: str(fields["templateHash"]),
+              ...(search ? { search_params: search } : {}),
+              gpu_ram: num(fields["gpuRamGb"], 24),
+              test_workers: num(fields["testWorkers"], 3),
+            },
+          });
+          return mapWorkergroup(
+            {
+              id: res?.id ?? 0,
+              endpoint_id: Number(endpointId),
+              template_hash: str(fields["templateHash"]),
+            },
             accountId,
           );
         }
-        throw new Error("Vast.ai plugin: template create returned no template");
+        case "env-var": {
+          const key = str(fields["key"]).toUpperCase();
+          await this.api.request("/api/v0/secrets/", {
+            method: "POST",
+            body: { key, value: fields["value"] ?? "" },
+          });
+          return mapEnvVar(key, accountId);
+        }
+        default:
+          throw new Error(`Vast.ai plugin: cannot create "${typeId}"`);
       }
-      case "volume": {
-        const offerId = Number(str(fields["offerId"]));
-        if (!offerId) throw new Error("Vast.ai plugin: choose a host for the volume");
-        const name = str(fields["name"]);
-        await this.api.request("/api/v0/volumes/", {
-          method: "PUT",
-          body: {
-            id: offerId,
-            size: Math.round(num(fields["size"], 15) ?? 15),
-            ...(name ? { name } : {}),
-          },
-        });
-        const all = await this.raw.volumes().catch(() => [] as VVolume[]);
-        const created =
-          (name && all.find((v) => v.label === name)) ||
-          [...all].sort((a, b) => (b.start_date ?? 0) - (a.start_date ?? 0))[0];
-        if (!created)
-          throw new Error("Vast.ai plugin: the volume was rented but could not be found");
-        return mapVolume(created, accountId);
-      }
-      case "ssh-key": {
-        const key = str(fields["publicKey"]);
-        if (!key) throw new Error("Vast.ai plugin: paste or pick a public key");
-        const res = await this.api.request<{ key?: VSshKey }>("/api/v0/ssh/", {
-          method: "POST",
-          body: { ssh_key: key },
-        });
-        return mapSshKey(res?.key ?? { id: 0, key }, accountId);
-      }
-      case "serverless-endpoint": {
-        const res = await this.api.request<{ result?: number }>("/api/v0/endptjobs/", {
-          method: "POST",
-          body: this.endpointBody(fields, true),
-        });
-        return mapEndpoint({ id: res?.result ?? 0, endpoint_name: str(fields["name"]) }, accountId);
-      }
-      case "workergroup": {
-        const endpointId = parentResourceId?.includes(":serverless-endpoint:")
-          ? externalOf(parentResourceId)
-          : str(fields["endpointId"]);
-        const search = str(fields["searchQuery"]);
-        const res = await this.api.request<{ id?: number }>("/api/v0/workergroups/", {
-          method: "POST",
-          body: {
-            endpoint_id: Number(endpointId),
-            template_hash: str(fields["templateHash"]),
-            ...(search ? { search_params: search } : {}),
-            gpu_ram: num(fields["gpuRamGb"], 24),
-            test_workers: num(fields["testWorkers"], 3),
-          },
-        });
-        return mapWorkergroup(
-          {
-            id: res?.id ?? 0,
-            endpoint_id: Number(endpointId),
-            template_hash: str(fields["templateHash"]),
-          },
-          accountId,
-        );
-      }
-      case "env-var": {
-        const key = str(fields["key"]).toUpperCase();
-        await this.api.request("/api/v0/secrets/", {
-          method: "POST",
-          body: { key, value: fields["value"] ?? "" },
-        });
-        return mapEnvVar(key, accountId);
-      }
-      default:
-        throw new Error(`Vast.ai plugin: cannot create "${typeId}"`);
-    }
+    });
   }
 
   private endpointBody(fields: Record<string, string>, create: boolean): Record<string, unknown> {
@@ -436,215 +459,233 @@ export class VastClient implements PluginClient {
     return body;
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const raw = externalOf(resourceId);
-    const id = encodeURIComponent(raw);
-    switch (typeId) {
-      case "instance": {
-        if (fields["label"] !== undefined) {
-          await this.api.request(`/api/v0/instances/${id}/`, {
-            method: "PUT",
-            body: { label: str(fields["label"]) },
-          });
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const raw = externalOf(resourceId);
+      const id = encodeURIComponent(raw);
+      switch (typeId) {
+        case "instance": {
+          if (fields["label"] !== undefined) {
+            await this.api.request(`/api/v0/instances/${id}/`, {
+              method: "PUT",
+              body: { label: str(fields["label"]) },
+            });
+          }
+          const bid = num(fields["bidPrice"]);
+          if (bid !== undefined && bid > 0) {
+            await this.api.request(`/api/v0/instances/bid_price/${id}/`, {
+              method: "PUT",
+              body: { client_id: "me", price: bid },
+            });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        const bid = num(fields["bidPrice"]);
-        if (bid !== undefined && bid > 0) {
-          await this.api.request(`/api/v0/instances/bid_price/${id}/`, {
-            method: "PUT",
-            body: { client_id: "me", price: bid },
-          });
+        case "template": {
+          const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          const body: Record<string, unknown> = { hash_id: String(current.fields["hashId"] ?? "") };
+          if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
+          if (fields["image"] !== undefined) body["image"] = str(fields["image"]);
+          if (fields["description"] !== undefined) body["desc"] = str(fields["description"]);
+          if (fields["diskGb"] !== undefined)
+            body["recommended_disk_space"] = num(fields["diskGb"]);
+          await this.api.request("/api/v0/template/", { method: "PUT", body });
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "template": {
-        const current = await this.getResource(typeId, resourceId, accountId);
-        const body: Record<string, unknown> = { hash_id: String(current.fields["hashId"] ?? "") };
-        if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
-        if (fields["image"] !== undefined) body["image"] = str(fields["image"]);
-        if (fields["description"] !== undefined) body["desc"] = str(fields["description"]);
-        if (fields["diskGb"] !== undefined) body["recommended_disk_space"] = num(fields["diskGb"]);
-        await this.api.request("/api/v0/template/", { method: "PUT", body });
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "ssh-key": {
-        if (fields["publicKey"] !== undefined) {
-          await this.api.request(`/api/v0/ssh/${id}/`, {
-            method: "PUT",
-            body: { ssh_key: str(fields["publicKey"]) },
-          });
+        case "ssh-key": {
+          if (fields["publicKey"] !== undefined) {
+            await this.api.request(`/api/v0/ssh/${id}/`, {
+              method: "PUT",
+              body: { ssh_key: str(fields["publicKey"]) },
+            });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "serverless-endpoint": {
-        const body = this.endpointBody(fields, false);
-        if (Object.keys(body).length) {
-          await this.api.request(`/api/v0/endptjobs/${id}/`, { method: "PUT", body });
+        case "serverless-endpoint": {
+          const body = this.endpointBody(fields, false);
+          if (Object.keys(body).length) {
+            await this.api.request(`/api/v0/endptjobs/${id}/`, { method: "PUT", body });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "workergroup": {
-        const body: Record<string, unknown> = {};
-        if (fields["searchQuery"] !== undefined) body["search_params"] = str(fields["searchQuery"]);
-        if (fields["gpuRamGb"] !== undefined) body["gpu_ram"] = num(fields["gpuRamGb"]);
-        if (fields["testWorkers"] !== undefined) body["test_workers"] = num(fields["testWorkers"]);
-        if (fields["launchArgs"] !== undefined) body["launch_args"] = str(fields["launchArgs"]);
-        if (Object.keys(body).length) {
-          await this.api.request(`/api/v0/workergroups/${id}/`, { method: "PUT", body });
+        case "workergroup": {
+          const body: Record<string, unknown> = {};
+          if (fields["searchQuery"] !== undefined)
+            body["search_params"] = str(fields["searchQuery"]);
+          if (fields["gpuRamGb"] !== undefined) body["gpu_ram"] = num(fields["gpuRamGb"]);
+          if (fields["testWorkers"] !== undefined)
+            body["test_workers"] = num(fields["testWorkers"]);
+          if (fields["launchArgs"] !== undefined) body["launch_args"] = str(fields["launchArgs"]);
+          if (Object.keys(body).length) {
+            await this.api.request(`/api/v0/workergroups/${id}/`, { method: "PUT", body });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "env-var": {
-        const value = fields["value"];
-        if (value) {
-          await this.api.request("/api/v0/secrets/", { method: "PUT", body: { key: raw, value } });
+        case "env-var": {
+          const value = fields["value"];
+          if (value) {
+            await this.api.request("/api/v0/secrets/", {
+              method: "PUT",
+              body: { key: raw, value },
+            });
+          }
+          return mapEnvVar(raw, accountId);
         }
-        return mapEnvVar(raw, accountId);
+        default:
+          throw new Error(`Vast.ai plugin: cannot update "${typeId}"`);
       }
-      default:
-        throw new Error(`Vast.ai plugin: cannot update "${typeId}"`);
-    }
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    const raw = externalOf(resourceId);
-    const id = encodeURIComponent(raw);
-    switch (typeId) {
-      case "instance":
-        await this.api.request(`/api/v0/instances/${id}/`, { method: "DELETE" });
-        return;
-      case "template": {
-        await this.api.request("/api/v0/template/", {
-          method: "DELETE",
-          body: { template_id: Number(raw) },
-        });
-        return;
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const raw = externalOf(resourceId);
+      const id = encodeURIComponent(raw);
+      switch (typeId) {
+        case "instance":
+          await this.api.request(`/api/v0/instances/${id}/`, { method: "DELETE" });
+          return;
+        case "template": {
+          await this.api.request("/api/v0/template/", {
+            method: "DELETE",
+            body: { template_id: Number(raw) },
+          });
+          return;
+        }
+        case "volume":
+          // The CLI sends the id as a query parameter, the spec as a body; send both.
+          await this.api.request("/api/v0/volumes/", {
+            method: "DELETE",
+            query: { id: raw },
+            body: { id: Number(raw) },
+          });
+          return;
+        case "ssh-key":
+          await this.api.request(`/api/v0/ssh/${id}/`, { method: "DELETE" });
+          return;
+        case "serverless-endpoint":
+          await this.api.request(`/api/v0/endptjobs/${id}/`, { method: "DELETE" });
+          return;
+        case "workergroup":
+          await this.api.request(`/api/v0/workergroups/${id}/`, { method: "DELETE" });
+          return;
+        case "env-var":
+          await this.api.request("/api/v0/secrets/", { method: "DELETE", body: { key: raw } });
+          return;
+        default:
+          void accountId;
+          throw new Error(`Vast.ai plugin: cannot delete "${typeId}"`);
       }
-      case "volume":
-        // The CLI sends the id as a query parameter, the spec as a body; send both.
-        await this.api.request("/api/v0/volumes/", {
-          method: "DELETE",
-          query: { id: raw },
-          body: { id: Number(raw) },
-        });
-        return;
-      case "ssh-key":
-        await this.api.request(`/api/v0/ssh/${id}/`, { method: "DELETE" });
-        return;
-      case "serverless-endpoint":
-        await this.api.request(`/api/v0/endptjobs/${id}/`, { method: "DELETE" });
-        return;
-      case "workergroup":
-        await this.api.request(`/api/v0/workergroups/${id}/`, { method: "DELETE" });
-        return;
-      case "env-var":
-        await this.api.request("/api/v0/secrets/", { method: "DELETE", body: { key: raw } });
-        return;
-      default:
-        void accountId;
-        throw new Error(`Vast.ai plugin: cannot delete "${typeId}"`);
-    }
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const raw = externalOf(resourceId);
-    const id = encodeURIComponent(raw);
-    if (typeId === "instance") {
-      switch (actionId) {
-        case "start":
-        case "stop":
-          await this.api.request(`/api/v0/instances/${id}/`, {
-            method: "PUT",
-            body: { state: actionId === "start" ? "running" : "stopped" },
-          });
-          return;
-        case "reboot":
-        case "recycle":
-          await this.api.request(`/api/v0/instances/${actionId}/${id}/`, { method: "PUT" });
-          return;
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const raw = externalOf(resourceId);
+      const id = encodeURIComponent(raw);
+      if (typeId === "instance") {
+        switch (actionId) {
+          case "start":
+          case "stop":
+            await this.api.request(`/api/v0/instances/${id}/`, {
+              method: "PUT",
+              body: { state: actionId === "start" ? "running" : "stopped" },
+            });
+            return;
+          case "reboot":
+          case "recycle":
+            await this.api.request(`/api/v0/instances/${actionId}/${id}/`, { method: "PUT" });
+            return;
+        }
       }
-    }
-    if (typeId === "serverless-endpoint" && (actionId === "start" || actionId === "stop")) {
-      // Start/stop is addressed by deployment, which points at its endpoint.
-      const res = await this.api.request<{
-        deployments?: Array<{ id: number; endpoint_id?: number | null }>;
-      }>("/api/v0/deployments/");
-      const deployment = (res?.deployments ?? []).find((d) => String(d.endpoint_id) === raw);
-      if (!deployment) {
-        throw new Error(
-          "Vast.ai plugin: this endpoint has no deployment, so Vast cannot start or stop it as a whole. Scale it with Max Workers instead.",
-        );
+      if (typeId === "serverless-endpoint" && (actionId === "start" || actionId === "stop")) {
+        // Start/stop is addressed by deployment, which points at its endpoint.
+        const res = await this.api.request<{
+          deployments?: Array<{ id: number; endpoint_id?: number | null }>;
+        }>("/api/v0/deployments/");
+        const deployment = (res?.deployments ?? []).find((d) => String(d.endpoint_id) === raw);
+        if (!deployment) {
+          throw new Error(
+            "Vast.ai plugin: this endpoint has no deployment, so Vast cannot start or stop it as a whole. Scale it with Max Workers instead.",
+          );
+        }
+        await this.api.request(`/api/v0/deployment/${deployment.id}/${actionId}/`, {
+          method: "POST",
+        });
+        return;
       }
-      await this.api.request(`/api/v0/deployment/${deployment.id}/${actionId}/`, {
-        method: "POST",
-      });
-      return;
-    }
-    throw new Error(`Vast.ai plugin: action "${actionId}" is not supported for "${typeId}"`);
+      throw new Error(`Vast.ai plugin: action "${actionId}" is not supported for "${typeId}"`);
+    });
   }
 
   // ── Estimates, cost, credits ─────────────────────────────────────────
 
-  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
-    if (typeId !== "instance") return null;
-    const offerId = Number(str(fields["offerId"]));
-    if (!offerId) return null;
-    const [offer] = await this.searchOffers({ id: { eq: offerId }, limit: 1 }).catch(() => []);
-    if (!offer?.dph_total) return null;
-    const bid = num(fields["bidPrice"], 0) ?? 0;
-    const rate =
-      str(fields["pricing"]) === "interruptible"
-        ? bid > 0
-          ? bid
-          : (offer.min_bid ?? offer.dph_total)
-        : offer.dph_total;
-    return buildCostEstimate(
-      [
+  estimateCost(typeId: string, fields: Record<string, string>): PluginEffect<CostEstimate | null> {
+    return attempt(async () => {
+      if (typeId !== "instance") return null;
+      const offerId = Number(str(fields["offerId"]));
+      if (!offerId) return null;
+      const [offer] = await this.searchOffers({ id: { eq: offerId }, limit: 1 }).catch(() => []);
+      if (!offer?.dph_total) return null;
+      const bid = num(fields["bidPrice"], 0) ?? 0;
+      const rate =
+        str(fields["pricing"]) === "interruptible"
+          ? bid > 0
+            ? bid
+            : (offer.min_bid ?? offer.dph_total)
+          : offer.dph_total;
+      return buildCostEstimate(
+        [
+          {
+            label: `${offer.num_gpus ?? 1}x ${offer.gpu_name ?? "GPU"}`,
+            monthlyAmount: rate * HOURS_PER_MONTH,
+            detail: `${HOURS_PER_MONTH} h × $${rate.toFixed(3)}/h`,
+            quantity: 1,
+            unit: "instance",
+          },
+        ],
         {
-          label: `${offer.num_gpus ?? 1}x ${offer.gpu_name ?? "GPU"}`,
-          monthlyAmount: rate * HOURS_PER_MONTH,
-          detail: `${HOURS_PER_MONTH} h × $${rate.toFixed(3)}/h`,
-          quantity: 1,
-          unit: "instance",
+          partial: true,
+          notes: ["Host's hourly price while running. Bandwidth is billed per GB on top."],
         },
-      ],
-      {
-        partial: true,
-        notes: ["Host's hourly price while running. Bandwidth is billed per GB on top."],
-      },
-    );
+      );
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchVastCostData(this.api, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchVastCostData(this.api, range);
+    });
   }
 
-  async fetchCreditBalance(_accountId: string): Promise<CreditBalance[]> {
-    let me: VUser;
-    try {
-      this.userCache = undefined;
-      me = await this.user();
-    } catch (e) {
-      if (isStatus(e, 401, 403)) {
-        throw new CreditAccessError(
-          "Vast.ai refused the account details for this API key. It needs the user_read permission.",
-          { label: "Manage Vast.ai API keys", url: "https://cloud.vast.ai/manage-keys/" },
-        );
+  fetchCreditBalance(_accountId: string): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      let me: VUser;
+      try {
+        this.userCache = undefined;
+        me = await this.user();
+      } catch (e) {
+        if (isStatus(e, 401, 403)) {
+          throw new CreditAccessError(
+            "Vast.ai refused the account details for this API key. It needs the user_read permission.",
+            { label: "Manage Vast.ai API keys", url: "https://cloud.vast.ai/manage-keys/" },
+          );
+        }
+        throw e;
       }
-      throw e;
-    }
-    const balance = typeof me?.balance === "number" ? me.balance : me?.credit;
-    if (typeof balance !== "number" || !Number.isFinite(balance)) return [];
-    return [{ key: "default", label: "Vast.ai credit", remaining: balance, currency: "USD" }];
+      const balance = typeof me?.balance === "number" ? me.balance : me?.credit;
+      if (typeof balance !== "number" || !Number.isFinite(balance)) return [];
+      return [{ key: "default", label: "Vast.ai credit", remaining: balance, currency: "USD" }];
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

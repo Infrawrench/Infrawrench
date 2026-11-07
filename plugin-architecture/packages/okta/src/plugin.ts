@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DEFAULT_SCOPES } from "./api.js";
 import { OktaClient } from "./client.js";
@@ -8,16 +9,15 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { oktaSeatRemediationCommands } from "./remediation.js";
 import { oktaTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "okta",
-  version: "0.1.0",
+  // Okta orgs live on per-tenant subdomains; orgs on a custom URL domain use the user's own host
+  egressHosts: ["*.okta.com", "*.oktapreview.com", "*.okta-emea.com", "*.okta-gov.com"],
   displayName: "Okta",
   description:
     "Workforce and customer identity. Manage users and their lifecycle, groups, app assignments, authorization servers, policies, network zones, API tokens, event hooks, custom domains and trusted origins, read the System Log, and watch sign-in and rate-limit metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "orgUrl",
       label: "Okta Org URL",
@@ -92,7 +92,7 @@ const manifest: PluginManifest = {
       placeholder: "6",
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: {
     capabilities: [
       {
@@ -146,13 +146,16 @@ const manifest: PluginManifest = {
   // Okta's org-wide management limits start around 600 requests/minute per endpoint family.
   rateLimit: { capacity: 20, refillPerSecond: 5 },
   seats: { products: ["Okta"], removal: true },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new OktaClient(credentials, services),
+  testCredentials: { orgUrl: "https://acme.okta.com", apiToken: "00test-okta-token" },
   parseStatusFeed,
   terraformExport: oktaTerraformExport,
   seatRemediationCommands: oktaSeatRemediationCommands,
-};
+});

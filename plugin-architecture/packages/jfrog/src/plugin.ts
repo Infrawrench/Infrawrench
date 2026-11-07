@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { JfrogClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -8,16 +9,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { jfrogTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "jfrog",
-  version: "0.1.0",
+  // platform URL is user-supplied (JFrog Cloud or self-hosted); v1 doesn't bastion-route JFrog
+  egressHosts: [],
   displayName: "JFrog",
   description:
     "JFrog Platform (cloud or self-hosted): Artifactory repositories with an artifact browser, builds, Xray watches, policies and violations, users, groups, permissions and access tokens, with storage metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "baseUrl",
       label: "Platform URL",
@@ -39,7 +39,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: JFROG_PREFLIGHT,
   statusFeed,
   // Xray's artifact summary for the most recent artifacts of each repository
@@ -54,13 +54,16 @@ const manifest: PluginManifest = {
   },
   // JFrog Cloud throttles per instance; stay gentle.
   rateLimit: { capacity: 10, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new JfrogClient(credentials, services),
+  testCredentials: { baseUrl: "https://acme.jfrog.io", accessToken: "test-jfrog-token" },
   parseStatusFeed,
   terraformExport: jfrogTerraformExport,
   remediationCommands: jfrogRemediationCommands,
-};
+});

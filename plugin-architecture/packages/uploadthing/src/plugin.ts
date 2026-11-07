@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { UploadThingClient } from "./client.js";
 import { UtAppResourceType } from "./resources/ut-app.js";
@@ -10,9 +15,11 @@ import { uploadthingRemediationCommands } from "./remediation.js";
 // The source artwork is authored in a flipped coordinate space, hence the
 // `translate(0,300) scale(0.1,-0.1)` wrapper, which is part of the original
 // and must be kept for the four lobes to land the right way up.
-const manifest: PluginManifest = {
+export const manifest = {
   id: "uploadthing",
-  version: "0.1.0",
+  // Control plane, the per-app file-serving host, and the regional ingest
+  // endpoints presigned uploads PUT to.
+  egressHosts: ["api.uploadthing.com", "*.ufs.sh", "*.ingest.uploadthing.com", "utfs.io"],
   displayName: "UploadThing",
   description:
     "Browse, upload, rename, re-permission and delete files in an UploadThing app, and watch its storage quota.",
@@ -21,9 +28,7 @@ const manifest: PluginManifest = {
       <path d="M2193 2980 c-111 -20 -248 -91 -339 -177 -122 -114 -210 -295 -230 -474 -7 -60 -18 -75 -29 -40 -10 32 -79 134 -121 177 -128 135 -290 206 -469 207 -181 1 -322 -59 -455 -192 -95 -96 -141 -166 -181 -280 -75 -212 -59 -449 42 -647 22 -42 38 -78 37 -79 -2 -1 -23 -13 -48 -25 -153 -77 -278 -226 -343 -405 -72 -203 -58 -444 37 -633 89 -177 213 -288 398 -358 66 -25 86 -28 198 -28 112 0 133 3 200 27 216 79 374 248 445 477 9 30 18 60 20 67 3 8 27 0 71 -22 204 -103 451 -83 640 51 137 97 245 254 290 424 20 72 25 283 11 380 l-9 55 66 13 c223 42 429 232 510 470 163 479 -142 994 -602 1017 -48 2 -110 0 -139 -5z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key or Token",
@@ -37,20 +42,23 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   // `getUsageInfo` reports the app's storage quota alongside what counts
   // against it; `fetchQuotas` turns the pair into a reading.
   quotas: {
     label: "Storage quota",
     increaseUrl: "https://uploadthing.com/pricing",
   },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [UtAppResourceType, UtFileResourceType];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new UploadThingClient(credentials, services),
+  testCredentials: { apiKey: "sk_live_EXAMPLE_NOT_A_REAL_KEY" },
   remediationCommands: uploadthingRemediationCommands,
-};
+});

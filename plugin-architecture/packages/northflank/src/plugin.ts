@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { nfFetch, nfList } from "./api.js";
@@ -13,16 +15,14 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import type { NfAuth, NfTeam } from "./types.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "northflank",
-  version: "0.1.0",
+  egressHosts: ["api.northflank.com"],
   displayName: "Northflank",
   description:
     "Manage Northflank projects, services, jobs, database addons, secret groups, volumes, pipelines, domains and BYOC clusters: deploy images, start builds, scale, pause, run jobs, back up and upgrade addons, tail logs and chart metrics, with daily spend by project.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -45,7 +45,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiToken"], emptyLabel: "The token's own team" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Daily PaaS spend split by project (resource = project id) and by
     // CPU / memory / storage / GPU, plus BYOC, egress IP and load balancer
@@ -57,7 +57,9 @@ const manifest: PluginManifest = {
   statusFeed,
   // Documented default: 1000 requests per hour per account.
   rateLimit: { capacity: 30, refillPerSecond: 0.25 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listCredentialOptions(
   fieldKey: string,
@@ -85,11 +87,12 @@ async function listCredentialOptions(
   }));
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new NorthflankClient(credentials, services),
+  testCredentials: { apiToken: "test-northflank-token" },
   parseStatusFeed: (body: string) => parseStatusFeed(body),
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   remediationCommands: northflankRemediationCommands,
-};
+});

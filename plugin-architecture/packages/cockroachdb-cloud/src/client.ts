@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -130,7 +133,7 @@ export class CockroachClient implements PluginClient {
   readonly ctx: CrdbContext;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["apiKey"] ?? "").trim();
     if (!token) throw new Error("CockroachDB Cloud plugin: missing apiKey credential");
     const caCert = credentials["caCert"] ?? "";
@@ -142,8 +145,10 @@ export class CockroachClient implements PluginClient {
     this.services = services;
   }
 
-  verifyCredentials(): Promise<PreflightResult> {
-    return verifyCockroachCredentials(this);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return verifyCockroachCredentials(this);
+    });
   }
 
   clusters(): Promise<CCluster[]> {
@@ -184,8 +189,10 @@ export class CockroachClient implements PluginClient {
 
   // ---- listing -----------------------------------------------------------------
 
-  listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    return this.list(typeId, accountId);
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      return this.list(typeId, accountId);
+    });
   }
 
   private async list(
@@ -483,73 +490,77 @@ export class CockroachClient implements PluginClient {
     return clusterResource(c, accountId, { backups, deferral, window, cmek, allowlist });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    const clusterScoped =
-      typeId.startsWith("crdb-") &&
-      !["crdb-organization", "crdb-folder", "crdb-service-account", "crdb-api-key"].includes(
-        typeId,
-      );
-    let all: ResourceInstance[];
-    if (clusterScoped) {
-      const [clusterId] = split(externalId);
-      const c = await crdb<CCluster>(this.ctx, "GET", `/api/v1/clusters/${enc(clusterId)}`);
-      all = await this.list(typeId, accountId, [c]);
-    } else {
-      all = await this.list(typeId, accountId);
-    }
-    const found = all.find((r) => r.id === resourceId);
-    if (!found)
-      throw new CrdbApiError(404, `CockroachDB Cloud plugin: ${typeId}/${externalId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const clusterScoped =
+        typeId.startsWith("crdb-") &&
+        !["crdb-organization", "crdb-folder", "crdb-service-account", "crdb-api-key"].includes(
+          typeId,
+        );
+      let all: ResourceInstance[];
+      if (clusterScoped) {
+        const [clusterId] = split(externalId);
+        const c = await crdb<CCluster>(this.ctx, "GET", `/api/v1/clusters/${enc(clusterId)}`);
+        all = await this.list(typeId, accountId, [c]);
+      } else {
+        all = await this.list(typeId, accountId);
+      }
+      const found = all.find((r) => r.id === resourceId);
+      if (!found)
+        throw new CrdbApiError(404, `CockroachDB Cloud plugin: ${typeId}/${externalId} not found`);
+      return found;
+    });
   }
 
   // ---- outputs -------------------------------------------------------------------
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     _accountId: string,
-  ): Promise<string> {
-    const externalId = externalIdOf(resourceId);
-    const [first, rest] = split(externalId);
-    switch (`${typeId}.${outputKey}`) {
-      case "crdb-organization.organizationId":
-      case "crdb-folder.folderId":
-      case "crdb-cluster.clusterId":
-      case "crdb-service-account.serviceAccountId":
-        return externalId;
-      case "crdb-cluster.sqlHost": {
-        const c = await crdb<CCluster>(this.ctx, "GET", `/api/v1/clusters/${enc(externalId)}`);
-        return c.sql_dns || c.regions[0]?.sql_dns || "";
-      }
-      case "crdb-cluster.connectionStringTemplate":
-        return this.connectionString(externalId);
-      case "crdb-database.databaseName":
-      case "crdb-sql-user.username":
-        return rest;
-      case "crdb-sql-user.connectionString": {
-        const password = await this.services?.secrets?.getPlaintext(resourceId, PASSWORD_FIELD);
-        if (!password) {
-          throw new Error(
-            'CockroachDB Cloud never returns SQL passwords. Use "Set password" on this SQL user so Infrawrench can build its connection string.',
-          );
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const [first, rest] = split(externalId);
+      switch (`${typeId}.${outputKey}`) {
+        case "crdb-organization.organizationId":
+        case "crdb-folder.folderId":
+        case "crdb-cluster.clusterId":
+        case "crdb-service-account.serviceAccountId":
+          return externalId;
+        case "crdb-cluster.sqlHost": {
+          const c = await crdb<CCluster>(this.ctx, "GET", `/api/v1/clusters/${enc(externalId)}`);
+          return c.sql_dns || c.regions[0]?.sql_dns || "";
         }
-        return withPassword(portable(await this.connectionString(first, rest)), rest, password);
+        case "crdb-cluster.connectionStringTemplate":
+          return this.connectionString(externalId);
+        case "crdb-database.databaseName":
+        case "crdb-sql-user.username":
+          return rest;
+        case "crdb-sql-user.connectionString": {
+          const password = await this.services?.secrets?.getPlaintext(resourceId, PASSWORD_FIELD);
+          if (!password) {
+            throw new Error(
+              'CockroachDB Cloud never returns SQL passwords. Use "Set password" on this SQL user so Infrawrench can build its connection string.',
+            );
+          }
+          return withPassword(portable(await this.connectionString(first, rest)), rest, password);
+        }
+        case "crdb-api-key.secret":
+          throw new Error(
+            "CockroachDB Cloud shows an API key's secret only when it is created. Create a new key to get one.",
+          );
       }
-      case "crdb-api-key.secret":
-        throw new Error(
-          "CockroachDB Cloud shows an API key's secret only when it is created. Create a new key to get one.",
-        );
-    }
-    throw new Error(
-      `CockroachDB Cloud plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+      throw new Error(
+        `CockroachDB Cloud plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
   private async connectionString(clusterId: string, sqlUser?: string): Promise<string> {
@@ -563,28 +574,32 @@ export class CockroachClient implements PluginClient {
     return res.connection_string;
   }
 
-  async rerollOutput(
+  rerollOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     _accountId: string,
-  ): Promise<void> {
-    if (typeId === "crdb-sql-user" && outputKey === "connectionString") {
-      await this.setPassword(resourceId);
-      return;
-    }
-    throw new Error(`CockroachDB Cloud plugin: "${outputKey}" cannot be reissued.`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "crdb-sql-user" && outputKey === "connectionString") {
+        await this.setPassword(resourceId);
+        return;
+      }
+      throw new Error(`CockroachDB Cloud plugin: "${outputKey}" cannot be reissued.`);
+    });
   }
 
-  async applySecretReroll(
+  applySecretReroll(
     typeId: string,
     resourceId: string,
     _accountId: string,
     fieldKey: string,
     plaintext: string,
-  ): Promise<void> {
-    if (typeId === "crdb-sql-user" && fieldKey === PASSWORD_FIELD)
-      await this.setPassword(resourceId, plaintext);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "crdb-sql-user" && fieldKey === PASSWORD_FIELD)
+        await this.setPassword(resourceId, plaintext);
+    });
   }
 
   private async setPassword(resourceId: string, chosen?: string): Promise<void> {
@@ -604,81 +619,85 @@ export class CockroachClient implements PluginClient {
     await this.services.secrets.setPlaintext(resourceId, PASSWORD_FIELD, password);
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    let values: Record<string, string> = {};
-    try {
-      values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
-    } catch {
-      values = {};
-    }
-    if (typeId === "crdb-sql-user" && command === "reset-password") {
-      await this.setPassword(resourceId, values["password"]);
-      return { ok: true };
-    }
-    if (typeId === "crdb-cluster" && command === "move-to-folder") {
-      await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalIdOf(resourceId))}`, {
-        parent_id: values["folderId"] || "root",
-      });
-      return { ok: true };
-    }
-    if (typeId === "crdb-cluster" && command === "upgrade") {
-      await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalIdOf(resourceId))}`, {
-        cockroach_version: required(values["version"], "a version"),
-      });
-      return { ok: true };
-    }
-    throw new Error(`CockroachDB Cloud plugin: unknown command "${command}".`);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      let values: Record<string, string> = {};
+      try {
+        values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+      } catch {
+        values = {};
+      }
+      if (typeId === "crdb-sql-user" && command === "reset-password") {
+        await this.setPassword(resourceId, values["password"]);
+        return { ok: true };
+      }
+      if (typeId === "crdb-cluster" && command === "move-to-folder") {
+        await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalIdOf(resourceId))}`, {
+          parent_id: values["folderId"] || "root",
+        });
+        return { ok: true };
+      }
+      if (typeId === "crdb-cluster" && command === "upgrade") {
+        await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalIdOf(resourceId))}`, {
+          cockroach_version: required(values["version"], "a version"),
+        });
+        return { ok: true };
+      }
+      throw new Error(`CockroachDB Cloud plugin: unknown command "${command}".`);
+    });
   }
 
   // ---- detail views ----------------------------------------------------------------
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const fields = { ...resource.fields };
-    if (resource.resourceTypeId === "crdb-cluster") {
-      const id = String(resource.externalId ?? "");
-      const [nodes, versions, folders] = await Promise.all([
-        settle(
-          paged<{ name: string; region_name: string; status: string }>(
-            this.ctx,
-            `/api/v1/clusters/${enc(id)}/nodes`,
-            "nodes",
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const fields = { ...resource.fields };
+      if (resource.resourceTypeId === "crdb-cluster") {
+        const id = String(resource.externalId ?? "");
+        const [nodes, versions, folders] = await Promise.all([
+          settle(
+            paged<{ name: string; region_name: string; status: string }>(
+              this.ctx,
+              `/api/v1/clusters/${enc(id)}/nodes`,
+              "nodes",
+            ),
           ),
-        ),
-        settle(
-          paged<{
-            version: string;
-            allowed_upgrades: string[];
-            support_status: string;
-            support_end: string;
-          }>(this.ctx, "/api/v1/cluster-versions", "versions"),
-        ),
-        settle(this.folders()),
-      ]);
-      if (nodes) fields["_nodes"] = JSON.stringify(nodes);
-      if (versions) fields["_versions"] = JSON.stringify(versions);
-      if (folders)
-        fields["_folders"] = JSON.stringify(
-          folders.map((fo) => ({ id: fo.resource_id, name: fo.name })),
-        );
-    }
-    if (resource.resourceTypeId === "crdb-organization") {
-      const invoices = await settle(paged<CInvoice>(this.ctx, "/api/v1/invoices", "invoices"));
-      const latest = invoices?.sort((a, b) => b.period_start.localeCompare(a.period_start))[0];
-      if (latest)
-        fields["_latestInvoice"] = JSON.stringify({
-          period_start: latest.period_start,
-          status: latest.status,
-          totals: latest.totals,
-          balances: latest.balances,
-        });
-    }
-    return { ...resource, fields };
+          settle(
+            paged<{
+              version: string;
+              allowed_upgrades: string[];
+              support_status: string;
+              support_end: string;
+            }>(this.ctx, "/api/v1/cluster-versions", "versions"),
+          ),
+          settle(this.folders()),
+        ]);
+        if (nodes) fields["_nodes"] = JSON.stringify(nodes);
+        if (versions) fields["_versions"] = JSON.stringify(versions);
+        if (folders)
+          fields["_folders"] = JSON.stringify(
+            folders.map((fo) => ({ id: fo.resource_id, name: fo.name })),
+          );
+      }
+      if (resource.resourceTypeId === "crdb-organization") {
+        const invoices = await settle(paged<CInvoice>(this.ctx, "/api/v1/invoices", "invoices"));
+        const latest = invoices?.sort((a, b) => b.period_start.localeCompare(a.period_start))[0];
+        if (latest)
+          fields["_latestInvoice"] = JSON.stringify({
+            period_start: latest.period_start,
+            status: latest.status,
+            totals: latest.totals,
+            balances: latest.balances,
+          });
+      }
+      return { ...resource, fields };
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -689,330 +708,350 @@ export class CockroachClient implements PluginClient {
     return renderSidebarItem(resource);
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    if (typeId !== "crdb-cluster") return [];
-    const r = await this.getResource(typeId, resourceId, accountId);
-    return [
-      { label: "Plan", value: String(r.fields["plan"] ?? "") },
-      { label: "Region", value: String(r.fields["region"] ?? "") },
-      { label: "Version", value: String(r.fields["version"] ?? "") },
-    ];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      if (typeId !== "crdb-cluster") return [];
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return [
+        { label: "Plan", value: String(r.fields["plan"] ?? "") },
+        { label: "Region", value: String(r.fields["region"] ?? "") },
+        { label: "Version", value: String(r.fields["version"] ?? "") },
+      ];
+    });
   }
 
   // ---- create / update / delete ----------------------------------------------------
 
-  getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    return getCreateConfig(this, typeId, parentResourceId);
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return getCreateConfig(this, typeId, parentResourceId);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceCreateReturn> {
-    const parent = parentResourceId ? externalIdOf(parentResourceId) : "";
-    const clusterId = () => required(parent || fields["clusterId"], "a cluster");
-    const base = () => `/api/v1/clusters/${enc(clusterId())}`;
-    switch (typeId) {
-      case "crdb-folder": {
-        const fo = await crdb<CFolder>(this.ctx, "POST", "/api/v1/folders", {
-          name: required(fields["name"], "a name"),
-          parent_id: fields["parentId"] || "root",
-        });
-        return folderResource(fo, accountId);
-      }
-      case "crdb-cluster": {
-        const c = await crdb<CCluster>(
-          this.ctx,
-          "POST",
-          "/api/v1/clusters",
-          clusterCreateBody(fields),
-        );
-        return clusterResource(c, accountId, {});
-      }
-      case "crdb-database": {
-        const name = required(fields["name"], "a name");
-        await crdb(this.ctx, "POST", `${base()}/databases`, { name });
-        return instance(
-          accountId,
-          typeId,
-          `${clusterId()}/${name}`,
-          name,
-          { name, clusterId: clusterId(), tableCount: 0 },
-          {
-            typeId: "crdb-cluster",
-            externalId: clusterId(),
-          },
-        );
-      }
-      case "crdb-sql-user": {
-        const name = required(fields["name"], "a name");
-        const password = fields["password"] || randomPassword();
-        await crdb(this.ctx, "POST", `${base()}/sql-users`, { name, password });
-        const r = instance(
-          accountId,
-          typeId,
-          `${clusterId()}/${name}`,
-          name,
-          { name, clusterId: clusterId() },
-          {
-            typeId: "crdb-cluster",
-            externalId: clusterId(),
-          },
-        );
-        const warnings = [];
-        if (this.services?.secrets?.setPlaintext) {
-          await this.services.secrets.setPlaintext(r.id, PASSWORD_FIELD, password);
-        } else {
-          warnings.push({
-            code: "password-not-stored",
-            message: `Save this password now, it is not stored: ${password}`,
+  ): PluginEffect<ResourceCreateReturn> {
+    return attempt(async () => {
+      const parent = parentResourceId ? externalIdOf(parentResourceId) : "";
+      const clusterId = () => required(parent || fields["clusterId"], "a cluster");
+      const base = () => `/api/v1/clusters/${enc(clusterId())}`;
+      switch (typeId) {
+        case "crdb-folder": {
+          const fo = await crdb<CFolder>(this.ctx, "POST", "/api/v1/folders", {
+            name: required(fields["name"], "a name"),
+            parent_id: fields["parentId"] || "root",
           });
+          return folderResource(fo, accountId);
         }
-        return { resource: r, warnings };
-      }
-      case "crdb-allowlist-entry": {
-        const [ip, mask] = parseCidr(required(fields["cidr"], "a CIDR"));
-        const e = await crdb<CAllowlistEntry>(this.ctx, "POST", `${base()}/networking/allowlist`, {
-          cidr_ip: ip,
-          cidr_mask: mask,
-          ...(fields["name"] ? { name: fields["name"] } : {}),
-          sql: fields["sql"] !== "false",
-          ui: fields["ui"] === "true",
-        });
-        return allowlistResource(clusterId(), e, accountId);
-      }
-      case "crdb-log-export": {
-        const type = required(fields["type"], "a destination");
-        await crdb(this.ctx, "POST", `${base()}/logexport`, {
-          type,
-          log_name: required(fields["logName"], "a log name"),
-          ...(fields["authPrincipal"] ? { auth_principal: fields["authPrincipal"] } : {}),
-          ...(fields["otlpEndpoint"] ? { otlp_endpoint: fields["otlpEndpoint"] } : {}),
-          ...(fields["otlpAuthorization"]
-            ? { otlp_headers: { authorization: fields["otlpAuthorization"] } }
-            : {}),
-          ...(fields["region"] ? { region: fields["region"] } : {}),
-          ...(bool(fields["redact"]) !== undefined ? { redact: bool(fields["redact"]) } : {}),
-        });
-        return this.getResource(typeId, `${accountId}:${typeId}:${clusterId()}`, accountId).catch(
-          () =>
+        case "crdb-cluster": {
+          const c = await crdb<CCluster>(
+            this.ctx,
+            "POST",
+            "/api/v1/clusters",
+            clusterCreateBody(fields),
+          );
+          return clusterResource(c, accountId, {});
+        }
+        case "crdb-database": {
+          const name = required(fields["name"], "a name");
+          await crdb(this.ctx, "POST", `${base()}/databases`, { name });
+          return instance(
+            accountId,
+            typeId,
+            `${clusterId()}/${name}`,
+            name,
+            { name, clusterId: clusterId(), tableCount: 0 },
+            {
+              typeId: "crdb-cluster",
+              externalId: clusterId(),
+            },
+          );
+        }
+        case "crdb-sql-user": {
+          const name = required(fields["name"], "a name");
+          const password = fields["password"] || randomPassword();
+          await crdb(this.ctx, "POST", `${base()}/sql-users`, { name, password });
+          const r = instance(
+            accountId,
+            typeId,
+            `${clusterId()}/${name}`,
+            name,
+            { name, clusterId: clusterId() },
+            {
+              typeId: "crdb-cluster",
+              externalId: clusterId(),
+            },
+          );
+          const warnings = [];
+          if (this.services?.secrets?.setPlaintext) {
+            await this.services.secrets.setPlaintext(r.id, PASSWORD_FIELD, password);
+          } else {
+            warnings.push({
+              code: "password-not-stored",
+              message: `Save this password now, it is not stored: ${password}`,
+            });
+          }
+          return { resource: r, warnings };
+        }
+        case "crdb-allowlist-entry": {
+          const [ip, mask] = parseCidr(required(fields["cidr"], "a CIDR"));
+          const e = await crdb<CAllowlistEntry>(
+            this.ctx,
+            "POST",
+            `${base()}/networking/allowlist`,
+            {
+              cidr_ip: ip,
+              cidr_mask: mask,
+              ...(fields["name"] ? { name: fields["name"] } : {}),
+              sql: fields["sql"] !== "false",
+              ui: fields["ui"] === "true",
+            },
+          );
+          return allowlistResource(clusterId(), e, accountId);
+        }
+        case "crdb-log-export": {
+          const type = required(fields["type"], "a destination");
+          await crdb(this.ctx, "POST", `${base()}/logexport`, {
+            type,
+            log_name: required(fields["logName"], "a log name"),
+            ...(fields["authPrincipal"] ? { auth_principal: fields["authPrincipal"] } : {}),
+            ...(fields["otlpEndpoint"] ? { otlp_endpoint: fields["otlpEndpoint"] } : {}),
+            ...(fields["otlpAuthorization"]
+              ? { otlp_headers: { authorization: fields["otlpAuthorization"] } }
+              : {}),
+            ...(fields["region"] ? { region: fields["region"] } : {}),
+            ...(bool(fields["redact"]) !== undefined ? { redact: bool(fields["redact"]) } : {}),
+          });
+          return runPluginEffect(
+            this.getResource(typeId, `${accountId}:${typeId}:${clusterId()}`, accountId),
+          ).catch(() =>
             instance(accountId, typeId, clusterId(), `logs → ${type}`, {
               type,
               clusterId: clusterId(),
               status: "ENABLING",
             }),
-        );
-      }
-      case "crdb-metric-export": {
-        const kind = required(fields["kind"], "a destination");
-        const body =
-          kind === "datadog"
-            ? {
-                api_key: required(fields["datadogApiKey"], "a Datadog API key"),
-                site: fields["datadogSite"] || "US1",
-              }
-            : kind === "cloudwatch"
+          );
+        }
+        case "crdb-metric-export": {
+          const kind = required(fields["kind"], "a destination");
+          const body =
+            kind === "datadog"
               ? {
-                  role_arn: required(fields["roleArn"], "an IAM role ARN"),
-                  ...(fields["targetRegion"] ? { target_region: fields["targetRegion"] } : {}),
-                  ...(fields["logGroupName"] ? { log_group_name: fields["logGroupName"] } : {}),
+                  api_key: required(fields["datadogApiKey"], "a Datadog API key"),
+                  site: fields["datadogSite"] || "US1",
                 }
-              : {};
-        await crdb(this.ctx, "POST", `${base()}/metricexport/${enc(kind)}`, body);
-        return instance(
-          accountId,
-          typeId,
-          `${clusterId()}/${kind}`,
-          `metrics → ${kind}`,
-          {
-            kind,
-            clusterId: clusterId(),
-            status: "ENABLING",
-          },
-          { typeId: "crdb-cluster", externalId: clusterId() },
-        );
-      }
-      case "crdb-blackout-window": {
-        const w = await crdb<{ id: string; start_time: string; end_time: string }>(
-          this.ctx,
-          "POST",
-          `${base()}/blackout-windows`,
-          {
-            start_time: required(fields["startTime"], "a start time"),
-            end_time: required(fields["endTime"], "an end time"),
-          },
-        );
-        return instance(
-          accountId,
-          typeId,
-          `${clusterId()}/${w.id}`,
-          `${w.start_time.slice(0, 10)} → ${w.end_time.slice(0, 10)}`,
-          {
-            clusterId: clusterId(),
-            startTime: w.start_time,
-            endTime: w.end_time,
-          },
-          { typeId: "crdb-cluster", externalId: clusterId() },
-        );
-      }
-      case "crdb-egress-rule": {
-        const ports = listValue(fields["ports"]).map(Number).filter(Number.isFinite);
-        const res = await crdb<{ Rule?: { id: string } }>(
-          this.ctx,
-          "POST",
-          `${base()}/networking/egress-rules`,
-          {
+              : kind === "cloudwatch"
+                ? {
+                    role_arn: required(fields["roleArn"], "an IAM role ARN"),
+                    ...(fields["targetRegion"] ? { target_region: fields["targetRegion"] } : {}),
+                    ...(fields["logGroupName"] ? { log_group_name: fields["logGroupName"] } : {}),
+                  }
+                : {};
+          await crdb(this.ctx, "POST", `${base()}/metricexport/${enc(kind)}`, body);
+          return instance(
+            accountId,
+            typeId,
+            `${clusterId()}/${kind}`,
+            `metrics → ${kind}`,
+            {
+              kind,
+              clusterId: clusterId(),
+              status: "ENABLING",
+            },
+            { typeId: "crdb-cluster", externalId: clusterId() },
+          );
+        }
+        case "crdb-blackout-window": {
+          const w = await crdb<{ id: string; start_time: string; end_time: string }>(
+            this.ctx,
+            "POST",
+            `${base()}/blackout-windows`,
+            {
+              start_time: required(fields["startTime"], "a start time"),
+              end_time: required(fields["endTime"], "an end time"),
+            },
+          );
+          return instance(
+            accountId,
+            typeId,
+            `${clusterId()}/${w.id}`,
+            `${w.start_time.slice(0, 10)} → ${w.end_time.slice(0, 10)}`,
+            {
+              clusterId: clusterId(),
+              startTime: w.start_time,
+              endTime: w.end_time,
+            },
+            { typeId: "crdb-cluster", externalId: clusterId() },
+          );
+        }
+        case "crdb-egress-rule": {
+          const ports = listValue(fields["ports"]).map(Number).filter(Number.isFinite);
+          const res = await crdb<{ Rule?: { id: string } }>(
+            this.ctx,
+            "POST",
+            `${base()}/networking/egress-rules`,
+            {
+              name: required(fields["name"], "a name"),
+              type: fields["type"] === "CIDR" ? "CIDR" : "FQDN",
+              destination: required(fields["destination"], "a destination"),
+              description: fields["description"] ?? "",
+              ...(ports.length ? { ports } : {}),
+            },
+          );
+          const id = res?.Rule?.id ?? "";
+          return runPluginEffect(
+            this.getResource(typeId, `${accountId}:${typeId}:${clusterId()}/${id}`, accountId),
+          );
+        }
+        case "crdb-service-account": {
+          const roles = listValue(fields["roles"]);
+          const sa = await crdb<CServiceAccount>(this.ctx, "POST", "/api/v1/service-accounts", {
             name: required(fields["name"], "a name"),
-            type: fields["type"] === "CIDR" ? "CIDR" : "FQDN",
-            destination: required(fields["destination"], "a destination"),
             description: fields["description"] ?? "",
-            ...(ports.length ? { ports } : {}),
-          },
-        );
-        const id = res?.Rule?.id ?? "";
-        return this.getResource(typeId, `${accountId}:${typeId}:${clusterId()}/${id}`, accountId);
+            roles: roles.map((name) => ({ name, resource: { type: "ORGANIZATION" } })),
+          });
+          return serviceAccountResource(sa, accountId);
+        }
+        case "crdb-api-key": {
+          const sa = parent || required(fields["serviceAccountId"], "a service account");
+          const res = await crdb<{ api_key: CApiKey; secret: string }>(
+            this.ctx,
+            "POST",
+            "/api/v1/api-keys",
+            {
+              name: required(fields["name"], "a name"),
+              service_account_id: sa,
+            },
+          );
+          const r = instance(
+            accountId,
+            typeId,
+            res.api_key.id,
+            res.api_key.name,
+            { name: res.api_key.name, serviceAccountId: sa, createdAt: res.api_key.created_at },
+            { typeId: "crdb-service-account", externalId: sa },
+            res.api_key.created_at,
+          );
+          r.resolvedOutputs["secret"] = res.secret;
+          return r;
+        }
+        default:
+          throw new Error(`CockroachDB Cloud plugin: cannot create "${typeId}".`);
       }
-      case "crdb-service-account": {
-        const roles = listValue(fields["roles"]);
-        const sa = await crdb<CServiceAccount>(this.ctx, "POST", "/api/v1/service-accounts", {
-          name: required(fields["name"], "a name"),
-          description: fields["description"] ?? "",
-          roles: roles.map((name) => ({ name, resource: { type: "ORGANIZATION" } })),
-        });
-        return serviceAccountResource(sa, accountId);
-      }
-      case "crdb-api-key": {
-        const sa = parent || required(fields["serviceAccountId"], "a service account");
-        const res = await crdb<{ api_key: CApiKey; secret: string }>(
-          this.ctx,
-          "POST",
-          "/api/v1/api-keys",
-          {
-            name: required(fields["name"], "a name"),
-            service_account_id: sa,
-          },
-        );
-        const r = instance(
-          accountId,
-          typeId,
-          res.api_key.id,
-          res.api_key.name,
-          { name: res.api_key.name, serviceAccountId: sa, createdAt: res.api_key.created_at },
-          { typeId: "crdb-service-account", externalId: sa },
-          res.api_key.created_at,
-        );
-        r.resolvedOutputs["secret"] = res.secret;
-        return r;
-      }
-      default:
-        throw new Error(`CockroachDB Cloud plugin: cannot create "${typeId}".`);
-    }
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
-    const [first, rest] = split(externalId);
-    switch (typeId) {
-      case "crdb-folder":
-        if (fields["name"])
-          await crdb(this.ctx, "PATCH", `/api/v1/folders/${enc(externalId)}`, {
-            name: fields["name"],
-          });
-        break;
-      case "crdb-cluster":
-        await this.updateCluster(externalId, fields);
-        break;
-      case "crdb-database":
-        if (fields["name"] && fields["name"] !== rest) {
-          await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(first)}/databases/${enc(rest)}`, {
-            name: rest,
-            new_name: fields["name"],
-          });
-          return this.getResource(
-            typeId,
-            `${accountId}:${typeId}:${first}/${fields["name"]}`,
-            accountId,
-          );
-        }
-        break;
-      case "crdb-sql-user":
-        if (fields["password"]) await this.setPassword(resourceId, fields["password"]);
-        break;
-      case "crdb-allowlist-entry": {
-        const [ip, mask] = parseCidr(rest);
-        const current = (
-          await paged<CAllowlistEntry>(
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const [first, rest] = split(externalId);
+      switch (typeId) {
+        case "crdb-folder":
+          if (fields["name"])
+            await crdb(this.ctx, "PATCH", `/api/v1/folders/${enc(externalId)}`, {
+              name: fields["name"],
+            });
+          break;
+        case "crdb-cluster":
+          await this.updateCluster(externalId, fields);
+          break;
+        case "crdb-database":
+          if (fields["name"] && fields["name"] !== rest) {
+            await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(first)}/databases/${enc(rest)}`, {
+              name: rest,
+              new_name: fields["name"],
+            });
+            return runPluginEffect(
+              this.getResource(
+                typeId,
+                `${accountId}:${typeId}:${first}/${fields["name"]}`,
+                accountId,
+              ),
+            );
+          }
+          break;
+        case "crdb-sql-user":
+          if (fields["password"]) await this.setPassword(resourceId, fields["password"]);
+          break;
+        case "crdb-allowlist-entry": {
+          const [ip, mask] = parseCidr(rest);
+          const current = (
+            await paged<CAllowlistEntry>(
+              this.ctx,
+              `/api/v1/clusters/${enc(first)}/networking/allowlist`,
+              "allowlist",
+            )
+          ).find((e) => e.cidr_ip === ip && e.cidr_mask === mask);
+          await crdb(
             this.ctx,
-            `/api/v1/clusters/${enc(first)}/networking/allowlist`,
-            "allowlist",
-          )
-        ).find((e) => e.cidr_ip === ip && e.cidr_mask === mask);
-        await crdb(
-          this.ctx,
-          "PATCH",
-          `/api/v1/clusters/${enc(first)}/networking/allowlist/${enc(ip)}/${mask}`,
-          {
-            name: fields["name"] ?? current?.name ?? "",
-            sql: bool(fields["sql"]) ?? current?.sql ?? true,
-            ui: bool(fields["ui"]) ?? current?.ui ?? false,
-          },
-        );
-        break;
-      }
-      case "crdb-blackout-window":
-        await crdb(
-          this.ctx,
-          "PATCH",
-          `/api/v1/clusters/${enc(first)}/blackout-windows/${enc(rest)}`,
-          {
-            ...(fields["startTime"] ? { start_time: fields["startTime"] } : {}),
-            ...(fields["endTime"] ? { end_time: fields["endTime"] } : {}),
-          },
-        );
-        break;
-      case "crdb-egress-rule": {
-        const current = await this.getResource(typeId, resourceId, accountId);
-        await crdb(
-          this.ctx,
-          "PATCH",
-          `/api/v1/clusters/${enc(first)}/networking/egress-rules/${enc(rest)}`,
-          {
-            type: String(current.fields["type"] ?? "FQDN"),
+            "PATCH",
+            `/api/v1/clusters/${enc(first)}/networking/allowlist/${enc(ip)}/${mask}`,
+            {
+              name: fields["name"] ?? current?.name ?? "",
+              sql: bool(fields["sql"]) ?? current?.sql ?? true,
+              ui: bool(fields["ui"]) ?? current?.ui ?? false,
+            },
+          );
+          break;
+        }
+        case "crdb-blackout-window":
+          await crdb(
+            this.ctx,
+            "PATCH",
+            `/api/v1/clusters/${enc(first)}/blackout-windows/${enc(rest)}`,
+            {
+              ...(fields["startTime"] ? { start_time: fields["startTime"] } : {}),
+              ...(fields["endTime"] ? { end_time: fields["endTime"] } : {}),
+            },
+          );
+          break;
+        case "crdb-egress-rule": {
+          const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          await crdb(
+            this.ctx,
+            "PATCH",
+            `/api/v1/clusters/${enc(first)}/networking/egress-rules/${enc(rest)}`,
+            {
+              type: String(current.fields["type"] ?? "FQDN"),
+              ...(fields["description"] !== undefined
+                ? { description: fields["description"] }
+                : {}),
+              ...(fields["ports"] !== undefined
+                ? { ports: listValue(fields["ports"]).map(Number).filter(Number.isFinite) }
+                : {}),
+            },
+          );
+          break;
+        }
+        case "crdb-service-account":
+          await crdb(this.ctx, "PATCH", `/api/v1/service-accounts/${enc(externalId)}`, {
+            ...(fields["name"] ? { name: fields["name"] } : {}),
             ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
-            ...(fields["ports"] !== undefined
-              ? { ports: listValue(fields["ports"]).map(Number).filter(Number.isFinite) }
-              : {}),
-          },
-        );
-        break;
-      }
-      case "crdb-service-account":
-        await crdb(this.ctx, "PATCH", `/api/v1/service-accounts/${enc(externalId)}`, {
-          ...(fields["name"] ? { name: fields["name"] } : {}),
-          ...(fields["description"] !== undefined ? { description: fields["description"] } : {}),
-        });
-        break;
-      case "crdb-api-key":
-        if (fields["name"])
-          await crdb(this.ctx, "PATCH", `/api/v1/api-keys/${enc(externalId)}`, {
-            name: fields["name"],
           });
-        break;
-      default:
-        throw new Error(`CockroachDB Cloud plugin: cannot update "${typeId}".`);
-    }
-    return this.getResource(typeId, resourceId, accountId);
+          break;
+        case "crdb-api-key":
+          if (fields["name"])
+            await crdb(this.ctx, "PATCH", `/api/v1/api-keys/${enc(externalId)}`, {
+              name: fields["name"],
+            });
+          break;
+        default:
+          throw new Error(`CockroachDB Cloud plugin: cannot update "${typeId}".`);
+      }
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    });
   }
 
   private async updateCluster(id: string, fields: Record<string, string>): Promise<void> {
@@ -1084,98 +1123,108 @@ export class CockroachClient implements PluginClient {
     }
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    const [first, rest] = split(externalId);
-    const base = `/api/v1/clusters/${enc(first)}`;
-    switch (typeId) {
-      case "crdb-folder":
-        await crdb(this.ctx, "DELETE", `/api/v1/folders/${enc(externalId)}`);
-        return;
-      case "crdb-cluster":
-        await crdb(this.ctx, "DELETE", `/api/v1/clusters/${enc(externalId)}`);
-        return;
-      case "crdb-database":
-        await crdb(this.ctx, "DELETE", `${base}/databases/${enc(rest)}`);
-        return;
-      case "crdb-sql-user":
-        await crdb(this.ctx, "DELETE", `${base}/sql-users/${enc(rest)}`);
-        return;
-      case "crdb-allowlist-entry": {
-        const [ip, mask] = parseCidr(rest);
-        await crdb(this.ctx, "DELETE", `${base}/networking/allowlist/${enc(ip)}/${mask}`);
-        return;
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      const [first, rest] = split(externalId);
+      const base = `/api/v1/clusters/${enc(first)}`;
+      switch (typeId) {
+        case "crdb-folder":
+          await crdb(this.ctx, "DELETE", `/api/v1/folders/${enc(externalId)}`);
+          return;
+        case "crdb-cluster":
+          await crdb(this.ctx, "DELETE", `/api/v1/clusters/${enc(externalId)}`);
+          return;
+        case "crdb-database":
+          await crdb(this.ctx, "DELETE", `${base}/databases/${enc(rest)}`);
+          return;
+        case "crdb-sql-user":
+          await crdb(this.ctx, "DELETE", `${base}/sql-users/${enc(rest)}`);
+          return;
+        case "crdb-allowlist-entry": {
+          const [ip, mask] = parseCidr(rest);
+          await crdb(this.ctx, "DELETE", `${base}/networking/allowlist/${enc(ip)}/${mask}`);
+          return;
+        }
+        case "crdb-log-export":
+          await crdb(this.ctx, "DELETE", `/api/v1/clusters/${enc(externalId)}/logexport`);
+          return;
+        case "crdb-metric-export":
+          await crdb(this.ctx, "DELETE", `${base}/metricexport/${enc(rest)}`);
+          return;
+        case "crdb-blackout-window":
+          await crdb(this.ctx, "DELETE", `${base}/blackout-windows/${enc(rest)}`);
+          return;
+        case "crdb-egress-rule":
+          await crdb(this.ctx, "DELETE", `${base}/networking/egress-rules/${enc(rest)}`);
+          return;
+        case "crdb-service-account":
+          await crdb(this.ctx, "DELETE", `/api/v1/service-accounts/${enc(externalId)}`);
+          return;
+        case "crdb-api-key":
+          await crdb(this.ctx, "DELETE", `/api/v1/api-keys/${enc(externalId)}`);
+          return;
+        default:
+          throw new Error(`CockroachDB Cloud plugin: "${typeId}" cannot be deleted.`);
       }
-      case "crdb-log-export":
-        await crdb(this.ctx, "DELETE", `/api/v1/clusters/${enc(externalId)}/logexport`);
-        return;
-      case "crdb-metric-export":
-        await crdb(this.ctx, "DELETE", `${base}/metricexport/${enc(rest)}`);
-        return;
-      case "crdb-blackout-window":
-        await crdb(this.ctx, "DELETE", `${base}/blackout-windows/${enc(rest)}`);
-        return;
-      case "crdb-egress-rule":
-        await crdb(this.ctx, "DELETE", `${base}/networking/egress-rules/${enc(rest)}`);
-        return;
-      case "crdb-service-account":
-        await crdb(this.ctx, "DELETE", `/api/v1/service-accounts/${enc(externalId)}`);
-        return;
-      case "crdb-api-key":
-        await crdb(this.ctx, "DELETE", `/api/v1/api-keys/${enc(externalId)}`);
-        return;
-      default:
-        throw new Error(`CockroachDB Cloud plugin: "${typeId}" cannot be deleted.`);
-    }
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const externalId = externalIdOf(resourceId);
-    if (typeId === "crdb-backup" && actionId === "restore-cluster") {
-      const [clusterId, backupId] = split(externalId);
-      await crdb(this.ctx, "POST", `/api/v1/clusters/${enc(clusterId)}/restores`, {
-        type: "CLUSTER",
-        backup_id: backupId,
-      });
-      return;
-    }
-    if (typeId === "crdb-cluster") {
-      if (actionId === "finalize-upgrade") {
-        await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalId)}`, {
-          upgrade_status: "FINALIZED",
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
+      if (typeId === "crdb-backup" && actionId === "restore-cluster") {
+        const [clusterId, backupId] = split(externalId);
+        await crdb(this.ctx, "POST", `/api/v1/clusters/${enc(clusterId)}/restores`, {
+          type: "CLUSTER",
+          backup_id: backupId,
         });
         return;
       }
-      if (actionId === "rollback-upgrade") {
-        await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalId)}`, {
-          upgrade_status: "ROLLBACK_RUNNING",
-        });
-        return;
+      if (typeId === "crdb-cluster") {
+        if (actionId === "finalize-upgrade") {
+          await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalId)}`, {
+            upgrade_status: "FINALIZED",
+          });
+          return;
+        }
+        if (actionId === "rollback-upgrade") {
+          await crdb(this.ctx, "PATCH", `/api/v1/clusters/${enc(externalId)}`, {
+            upgrade_status: "ROLLBACK_RUNNING",
+          });
+          return;
+        }
+        if (actionId === "enable-prometheus") {
+          await crdb(
+            this.ctx,
+            "POST",
+            `/api/v1/clusters/${enc(externalId)}/metricexport/prometheus`,
+          );
+          return;
+        }
       }
-      if (actionId === "enable-prometheus") {
-        await crdb(this.ctx, "POST", `/api/v1/clusters/${enc(externalId)}/metricexport/prometheus`);
-        return;
-      }
-    }
-    throw new CrdbApiError(
-      400,
-      `CockroachDB Cloud plugin: unknown action "${actionId}" for "${typeId}".`,
-    );
+      throw new CrdbApiError(
+        400,
+        `CockroachDB Cloud plugin: unknown action "${actionId}" for "${typeId}".`,
+      );
+    });
   }
 
   // ---- costs ---------------------------------------------------------------------
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    // The list endpoint already embeds invoice items and line items.
-    const invoices = await paged<CInvoice>(this.ctx, "/api/v1/invoices", "invoices", {
-      start_time: `${range.fromDate.slice(0, 7)}-01T00:00:00Z`,
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      // The list endpoint already embeds invoice items and line items.
+      const invoices = await paged<CInvoice>(this.ctx, "/api/v1/invoices", "invoices", {
+        start_time: `${range.fromDate.slice(0, 7)}-01T00:00:00Z`,
+      });
+      return invoicesToCostRows(invoices, range);
     });
-    return invoicesToCostRows(invoices, range);
   }
 }
 

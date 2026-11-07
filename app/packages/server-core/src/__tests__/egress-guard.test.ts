@@ -1,3 +1,4 @@
+import { attempt, hostClient, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockLookup = vi.fn();
@@ -283,6 +284,49 @@ describe("assertDialTargetsAllowed / guardDriverConnection", () => {
 });
 
 describe("HTTP egress through the global dispatcher", () => {
+  // Plugin methods are lazy Effects and this scope ends when the wrapped call
+  // returns, so the guard only holds because hosts wrap the host-facing client,
+  // which starts the request inside the call. Both directions are pinned here.
+  describe("plugin clients on the Effect contract", () => {
+    const withLoopbackServer = async (run: (url: string) => Promise<void>) => {
+      const http = await import("node:http");
+      const server = http.createServer((_req, res) => res.end("ok"));
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+      const { port } = server.address() as { port: number };
+      try {
+        guard.ensureEgressGuardInstalled();
+        await run(`http://127.0.0.1:${port}/`);
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((r) => server.close(() => r()));
+      }
+    };
+    const pluginClient = (url: string) => ({
+      fetchNow: () => attempt(async () => (await fetch(url)).text()),
+      fetchLater: () =>
+        attempt(async () => {
+          await new Promise((r) => setTimeout(r, 1));
+          return (await fetch(url)).text();
+        }),
+    });
+    const scope = { organizationId: "org-b" };
+
+    it("refuses loopback through a host client, before and after the first await", async () => {
+      await withLoopbackServer(async (url) => {
+        const client = guard.withEgressScope(hostClient(pluginClient(url)), scope);
+        await expect(client.fetchNow()).rejects.toThrow();
+        await expect(client.fetchLater()).rejects.toThrow();
+      });
+    });
+
+    it("escapes the guard if a host ever scopes a raw contract client", async () => {
+      await withLoopbackServer(async (url) => {
+        const raw = guard.withEgressScope(pluginClient(url), scope);
+        await expect(runPluginEffect(raw.fetchNow())).resolves.toBe("ok");
+      });
+    });
+  });
+
   it("refuses loopback inside a scope, allows the owner's tunnel, leaves unscoped fetch alone", async () => {
     const http = await import("node:http");
     const server = http.createServer((_req, res) => res.end("ok"));

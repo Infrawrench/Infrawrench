@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenAIClient } from "../client.js";
 
@@ -40,8 +42,10 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
   }) as unknown as typeof fetch);
 }
 
-function client(credentials?: Record<string, string>): OpenAIClient {
-  return new OpenAIClient(credentials ?? { apiKey: "sk-proj-test", adminApiKey: "sk-admin-test" });
+function client(credentials?: Record<string, string>): HostedMethods<OpenAIClient> {
+  return hostClient(
+    new OpenAIClient(credentials ?? { apiKey: "sk-proj-test", adminApiKey: "sk-admin-test" }),
+  );
 }
 
 function authOf(init: RequestInit | undefined): string {

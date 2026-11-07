@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DashboardStat,
@@ -105,7 +108,7 @@ export class VsphereClient implements PluginClient {
   readonly api: VsphereApi;
   private readonly cache = new Map<string, { at: number; p: Promise<unknown> }>();
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const url = credentials["url"] ?? "";
     const username = credentials["username"] ?? "";
     if (!url) throw new Error("vSphere plugin: missing url credential");
@@ -315,103 +318,112 @@ export class VsphereClient implements PluginClient {
   // Listing
   // ---------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case VCENTER:
-        return this.listVcenter(accountId);
-      case DATACENTER:
-        return (await this.datacenters()).map((d) =>
-          this.instance(
-            accountId,
-            DATACENTER,
-            d.datacenter,
-            d.name,
-            { name: d.name },
-            { resolvedOutputs: { datacenterId: d.datacenter } },
-          ),
-        );
-      case CLUSTER:
-        return this.listClusters(accountId);
-      case HOST:
-        return this.listHosts(accountId);
-      case VM:
-        return this.listVms(accountId);
-      case DATASTORE:
-        return this.listDatastores(accountId);
-      case NETWORK:
-        return (await this.networks()).map((n) =>
-          this.instance(
-            accountId,
-            NETWORK,
-            n.network,
-            n.name,
-            { name: n.name, type: n.type },
-            { resolvedOutputs: { networkId: n.network } },
-          ),
-        );
-      case RESOURCE_POOL:
-        return this.listResourcePools(accountId);
-      case FOLDER:
-        return (await this.folders()).map((fo) =>
-          this.instance(
-            accountId,
-            FOLDER,
-            fo.folder,
-            fo.name,
-            { name: fo.name, type: fo.type },
-            { resolvedOutputs: { folderId: fo.folder } },
-          ),
-        );
-      case LIBRARY:
-        return this.listLibraries(accountId);
-      case LIBRARY_ITEM:
-        return this.listLibraryItems(accountId);
-      case TAG_CATEGORY:
-        return this.listCategories(accountId);
-      case TAG:
-        return this.listTags(accountId);
-      case CUSTOMIZATION_SPEC: {
-        const specs =
-          (await this.api.get<
-            Array<{ name: string; description?: string; os_type?: string; last_modified?: string }>
-          >("/vcenter/guest/customization-specs")) ?? [];
-        return specs.map((s) =>
-          this.instance(accountId, CUSTOMIZATION_SPEC, s.name, s.name, {
-            name: s.name,
-            description: s.description ?? "",
-            osType: s.os_type ?? "",
-            modifiedAt: s.last_modified ?? "",
-          }),
-        );
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case VCENTER:
+          return this.listVcenter(accountId);
+        case DATACENTER:
+          return (await this.datacenters()).map((d) =>
+            this.instance(
+              accountId,
+              DATACENTER,
+              d.datacenter,
+              d.name,
+              { name: d.name },
+              { resolvedOutputs: { datacenterId: d.datacenter } },
+            ),
+          );
+        case CLUSTER:
+          return this.listClusters(accountId);
+        case HOST:
+          return this.listHosts(accountId);
+        case VM:
+          return this.listVms(accountId);
+        case DATASTORE:
+          return this.listDatastores(accountId);
+        case NETWORK:
+          return (await this.networks()).map((n) =>
+            this.instance(
+              accountId,
+              NETWORK,
+              n.network,
+              n.name,
+              { name: n.name, type: n.type },
+              { resolvedOutputs: { networkId: n.network } },
+            ),
+          );
+        case RESOURCE_POOL:
+          return this.listResourcePools(accountId);
+        case FOLDER:
+          return (await this.folders()).map((fo) =>
+            this.instance(
+              accountId,
+              FOLDER,
+              fo.folder,
+              fo.name,
+              { name: fo.name, type: fo.type },
+              { resolvedOutputs: { folderId: fo.folder } },
+            ),
+          );
+        case LIBRARY:
+          return this.listLibraries(accountId);
+        case LIBRARY_ITEM:
+          return this.listLibraryItems(accountId);
+        case TAG_CATEGORY:
+          return this.listCategories(accountId);
+        case TAG:
+          return this.listTags(accountId);
+        case CUSTOMIZATION_SPEC: {
+          const specs =
+            (await this.api.get<
+              Array<{
+                name: string;
+                description?: string;
+                os_type?: string;
+                last_modified?: string;
+              }>
+            >("/vcenter/guest/customization-specs")) ?? [];
+          return specs.map((s) =>
+            this.instance(accountId, CUSTOMIZATION_SPEC, s.name, s.name, {
+              name: s.name,
+              description: s.description ?? "",
+              osType: s.os_type ?? "",
+              modifiedAt: s.last_modified ?? "",
+            }),
+          );
+        }
+        default:
+          throw new Error(`vSphere plugin: unknown resource type "${typeId}"`);
       }
-      default:
-        throw new Error(`vSphere plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const ext = externalIdOf(resourceId);
-    if (typeId === VM) {
-      const summary = (await this.vms()).find((v) => v.vm === ext);
-      if (!summary) throw new VsphereApiError(`vSphere VM ${ext} not found`, 404);
-      const placement = await this.vmPlacement().catch(() => new Map());
-      const tags = await this.tagsFor([ext]).catch(() => new Map<string, string[]>());
-      return this.mapVm(
-        accountId,
-        summary,
-        await this.api.get<VmInfo>(`/vcenter/vm/${seg(ext)}`).catch(() => undefined),
-        placement.get(ext),
-        tags.get(ext),
-      );
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.externalId === ext);
-    if (!found) throw new VsphereApiError(`vSphere ${typeId} ${ext} not found`, 404);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      if (typeId === VM) {
+        const summary = (await this.vms()).find((v) => v.vm === ext);
+        if (!summary) throw new VsphereApiError(`vSphere VM ${ext} not found`, 404);
+        const placement = await this.vmPlacement().catch(() => new Map());
+        const tags = await this.tagsFor([ext]).catch(() => new Map<string, string[]>());
+        return this.mapVm(
+          accountId,
+          summary,
+          await this.api.get<VmInfo>(`/vcenter/vm/${seg(ext)}`).catch(() => undefined),
+          placement.get(ext),
+          tags.get(ext),
+        );
+      }
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.externalId === ext);
+      if (!found) throw new VsphereApiError(`vSphere ${typeId} ${ext} not found`, 404);
+      return found;
+    });
   }
 
   private async listVcenter(accountId: string): Promise<ResourceInstance[]> {
@@ -792,135 +804,143 @@ export class VsphereClient implements PluginClient {
   // Outputs, detail
   // ---------------------------------------------------------------------------
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     _accountId: string,
-  ): Promise<string> {
-    const ext = externalIdOf(resourceId);
-    if (typeId === VM) {
-      if (outputKey === "vmId") return ext;
-      const ident = await this.api
-        .get<{ ip_address?: string; host_name?: string }>(`/vcenter/vm/${seg(ext)}/guest/identity`)
-        .catch(() => undefined);
-      if (outputKey === "ipAddress") return ident?.ip_address ?? "";
-      if (outputKey === "guestHostname") return ident?.host_name ?? "";
-    }
-    if (typeId === HOST) {
-      if (outputKey === "hostId") return ext;
-      if (outputKey === "hostname")
-        return (await this.hosts()).find((h) => h.host === ext)?.name ?? "";
-    }
-    if (typeId === VCENTER && outputKey === "url") return this.api.baseUrl;
-    const simple: Record<string, string> = {
-      datacenterId: DATACENTER,
-      clusterId: CLUSTER,
-      datastoreId: DATASTORE,
-      networkId: NETWORK,
-      resourcePoolId: RESOURCE_POOL,
-      folderId: FOLDER,
-      libraryId: LIBRARY,
-      itemId: LIBRARY_ITEM,
-      categoryId: TAG_CATEGORY,
-      tagId: TAG,
-    };
-    if (simple[outputKey] === typeId) return ext;
-    throw new Error(`vSphere plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      if (typeId === VM) {
+        if (outputKey === "vmId") return ext;
+        const ident = await this.api
+          .get<{ ip_address?: string; host_name?: string }>(
+            `/vcenter/vm/${seg(ext)}/guest/identity`,
+          )
+          .catch(() => undefined);
+        if (outputKey === "ipAddress") return ident?.ip_address ?? "";
+        if (outputKey === "guestHostname") return ident?.host_name ?? "";
+      }
+      if (typeId === HOST) {
+        if (outputKey === "hostId") return ext;
+        if (outputKey === "hostname")
+          return (await this.hosts()).find((h) => h.host === ext)?.name ?? "";
+      }
+      if (typeId === VCENTER && outputKey === "url") return this.api.baseUrl;
+      const simple: Record<string, string> = {
+        datacenterId: DATACENTER,
+        clusterId: CLUSTER,
+        datastoreId: DATASTORE,
+        networkId: NETWORK,
+        resourcePoolId: RESOURCE_POOL,
+        folderId: FOLDER,
+        libraryId: LIBRARY,
+        itemId: LIBRARY_ITEM,
+        categoryId: TAG_CATEGORY,
+        tagId: TAG,
+      };
+      if (simple[outputKey] === typeId) return ext;
+      throw new Error(`vSphere plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const ext = resource.externalId ?? externalIdOf(resource.id);
-    const data: VsphereEnrichment = {};
-    const outputs = { ...resource.resolvedOutputs };
-    const named = <T extends { name: string }>(list: T[], id: (t: T) => string) =>
-      list.map((x) => ({ id: id(x), label: x.name }));
-    if (resource.resourceTypeId === VM || resource.resourceTypeId === LIBRARY_ITEM) {
-      const [hosts, pools, datastores, folders, specs, clusters] = await Promise.all([
-        this.hosts().catch(() => []),
-        this.resourcePools().catch(() => []),
-        this.datastores().catch(() => []),
-        this.folders({ type: "VIRTUAL_MACHINE" }).catch(() => []),
-        this.api.get<Array<{ name: string }>>("/vcenter/guest/customization-specs").catch(() => []),
-        this.clusters().catch(() => []),
-      ]);
-      data.hosts = named(hosts, (h) => h.host);
-      data.pools = named(pools, (p) => p.resource_pool);
-      data.datastores = named(datastores, (d) => d.datastore);
-      data.folders = named(folders, (fo) => fo.folder);
-      data.clusters = named(clusters, (c) => c.cluster);
-      data.specs = (specs ?? []).map((s) => s.name);
-    }
-    if (resource.resourceTypeId === VM) {
-      const [ident, tools, tagIds, allTags, isos] = await Promise.all([
-        this.api
-          .get<{
-            ip_address?: string;
-            host_name?: string;
-            full_name?: { default_message?: string };
-          }>(`/vcenter/vm/${seg(ext)}/guest/identity`)
-          .catch(() => undefined),
-        this.api
-          .get<{ run_state?: string; version_status?: string; version?: string }>(
-            `/vcenter/vm/${seg(ext)}/tools`,
-          )
-          .catch(() => undefined),
-        this.api
-          .post<string[]>(
-            "/cis/tagging/tag-association",
-            { object_id: { type: "VirtualMachine", id: ext } },
-            { action: "list-attached-tags" },
-          )
-          .catch(() => [] as string[]),
-        this.cached<string[]>("/cis/tagging/tag").catch(() => [] as string[]),
-        this.libraries()
-          .then((libs) => mapLimit(libs, 3, (l) => this.libraryItems(l.id).catch(() => [])))
-          .then((lists) => lists.flat().filter((i) => (i.type ?? "").toLowerCase() === "iso"))
-          .catch(() => []),
-      ]);
-      if (ident?.ip_address) outputs["ipAddress"] = ident.ip_address;
-      if (ident?.host_name) outputs["guestHostname"] = ident.host_name;
-      data.guestFullName = ident?.full_name?.default_message ?? "";
-      data.toolsRunState = tools?.run_state ?? "";
-      data.toolsVersionStatus = tools?.version_status ?? "";
-      const tagNames = await mapLimit(allTags ?? [], 8, async (id) => ({
-        id,
-        label:
-          (
-            await this.cached<{ name?: string }>(`/cis/tagging/tag/${seg(id)}`).catch(
-              () => undefined,
-            )
-          )?.name ?? id,
-      }));
-      data.attachedTags = tagNames.filter((t) => (tagIds ?? []).includes(t.id));
-      data.availableTags = tagNames.filter((t) => !(tagIds ?? []).includes(t.id));
-      data.isos = isos.map((i) => ({ id: i.id, label: i.name ?? i.id }));
-      if (resource.fields["powerState"] === "POWERED_ON") {
-        const ticket = await this.api
-          .post<{ ticket?: string }>(`/vcenter/vm/${seg(ext)}/console/tickets`, { type: "VMRC" })
-          .catch(() => undefined);
-        if (ticket?.ticket) data.consoleTicket = ticket.ticket;
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = resource.externalId ?? externalIdOf(resource.id);
+      const data: VsphereEnrichment = {};
+      const outputs = { ...resource.resolvedOutputs };
+      const named = <T extends { name: string }>(list: T[], id: (t: T) => string) =>
+        list.map((x) => ({ id: id(x), label: x.name }));
+      if (resource.resourceTypeId === VM || resource.resourceTypeId === LIBRARY_ITEM) {
+        const [hosts, pools, datastores, folders, specs, clusters] = await Promise.all([
+          this.hosts().catch(() => []),
+          this.resourcePools().catch(() => []),
+          this.datastores().catch(() => []),
+          this.folders({ type: "VIRTUAL_MACHINE" }).catch(() => []),
+          this.api
+            .get<Array<{ name: string }>>("/vcenter/guest/customization-specs")
+            .catch(() => []),
+          this.clusters().catch(() => []),
+        ]);
+        data.hosts = named(hosts, (h) => h.host);
+        data.pools = named(pools, (p) => p.resource_pool);
+        data.datastores = named(datastores, (d) => d.datastore);
+        data.folders = named(folders, (fo) => fo.folder);
+        data.clusters = named(clusters, (c) => c.cluster);
+        data.specs = (specs ?? []).map((s) => s.name);
       }
-    }
-    if (resource.resourceTypeId === DATASTORE) {
-      const d = (await this.datastores()).find((x) => x.datastore === ext);
-      if (d) data.datastoreUsage = { capacityGb: gib(d.capacity), freeGb: gib(d.free_space) };
-    }
-    if (
-      resource.resourceTypeId === HOST ||
-      resource.resourceTypeId === CLUSTER ||
-      resource.resourceTypeId === RESOURCE_POOL
-    ) {
-      const key =
-        resource.resourceTypeId === HOST
-          ? "hosts"
-          : resource.resourceTypeId === CLUSTER
-            ? "clusters"
-            : "resource_pools";
-      const vms = await this.cached<VmSummary[]>("/vcenter/vm", { [key]: ext }).catch(() => []);
-      data.vms = vms.map((v) => ({ id: v.vm, name: v.name, power: v.power_state }));
-    }
-    return { ...resource, resolvedOutputs: { ...outputs, [ENRICH_KEY]: JSON.stringify(data) } };
+      if (resource.resourceTypeId === VM) {
+        const [ident, tools, tagIds, allTags, isos] = await Promise.all([
+          this.api
+            .get<{
+              ip_address?: string;
+              host_name?: string;
+              full_name?: { default_message?: string };
+            }>(`/vcenter/vm/${seg(ext)}/guest/identity`)
+            .catch(() => undefined),
+          this.api
+            .get<{ run_state?: string; version_status?: string; version?: string }>(
+              `/vcenter/vm/${seg(ext)}/tools`,
+            )
+            .catch(() => undefined),
+          this.api
+            .post<string[]>(
+              "/cis/tagging/tag-association",
+              { object_id: { type: "VirtualMachine", id: ext } },
+              { action: "list-attached-tags" },
+            )
+            .catch(() => [] as string[]),
+          this.cached<string[]>("/cis/tagging/tag").catch(() => [] as string[]),
+          this.libraries()
+            .then((libs) => mapLimit(libs, 3, (l) => this.libraryItems(l.id).catch(() => [])))
+            .then((lists) => lists.flat().filter((i) => (i.type ?? "").toLowerCase() === "iso"))
+            .catch(() => []),
+        ]);
+        if (ident?.ip_address) outputs["ipAddress"] = ident.ip_address;
+        if (ident?.host_name) outputs["guestHostname"] = ident.host_name;
+        data.guestFullName = ident?.full_name?.default_message ?? "";
+        data.toolsRunState = tools?.run_state ?? "";
+        data.toolsVersionStatus = tools?.version_status ?? "";
+        const tagNames = await mapLimit(allTags ?? [], 8, async (id) => ({
+          id,
+          label:
+            (
+              await this.cached<{ name?: string }>(`/cis/tagging/tag/${seg(id)}`).catch(
+                () => undefined,
+              )
+            )?.name ?? id,
+        }));
+        data.attachedTags = tagNames.filter((t) => (tagIds ?? []).includes(t.id));
+        data.availableTags = tagNames.filter((t) => !(tagIds ?? []).includes(t.id));
+        data.isos = isos.map((i) => ({ id: i.id, label: i.name ?? i.id }));
+        if (resource.fields["powerState"] === "POWERED_ON") {
+          const ticket = await this.api
+            .post<{ ticket?: string }>(`/vcenter/vm/${seg(ext)}/console/tickets`, { type: "VMRC" })
+            .catch(() => undefined);
+          if (ticket?.ticket) data.consoleTicket = ticket.ticket;
+        }
+      }
+      if (resource.resourceTypeId === DATASTORE) {
+        const d = (await this.datastores()).find((x) => x.datastore === ext);
+        if (d) data.datastoreUsage = { capacityGb: gib(d.capacity), freeGb: gib(d.free_space) };
+      }
+      if (
+        resource.resourceTypeId === HOST ||
+        resource.resourceTypeId === CLUSTER ||
+        resource.resourceTypeId === RESOURCE_POOL
+      ) {
+        const key =
+          resource.resourceTypeId === HOST
+            ? "hosts"
+            : resource.resourceTypeId === CLUSTER
+              ? "clusters"
+              : "resource_pools";
+        const vms = await this.cached<VmSummary[]>("/vcenter/vm", { [key]: ext }).catch(() => []);
+        data.vms = vms.map((v) => ({ id: v.vm, name: v.name, power: v.power_state }));
+      }
+      return { ...resource, resolvedOutputs: { ...outputs, [ENRICH_KEY]: JSON.stringify(data) } };
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -931,328 +951,345 @@ export class VsphereClient implements PluginClient {
     return renderVsphereSidebar(resource);
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     typeId: string,
     resourceId: string,
     _accountId: string,
-  ): Promise<DashboardStat[]> {
-    const ext = externalIdOf(resourceId);
-    if (typeId === DATASTORE) {
-      const d = (await this.datastores()).find((x) => x.datastore === ext);
-      if (!d || !d.capacity) return [];
-      const used = d.capacity - (d.free_space ?? 0);
-      const pct = (used / d.capacity) * 100;
-      return [
-        { label: "Used", value: `${gib(used)} / ${gib(d.capacity)} GiB` },
-        {
-          label: "Usage",
-          value: `${pct.toFixed(0)}%`,
-          variant: pct > 90 ? "status-error" : pct > 80 ? "status-degraded" : "status-healthy",
-        },
-      ];
-    }
-    if (typeId === VM) {
-      const v = (await this.vms()).find((x) => x.vm === ext);
-      if (!v) return [];
-      return [
-        {
-          label: "Power",
-          value: v.power_state,
-          variant: v.power_state === "POWERED_ON" ? "status-healthy" : "status-error",
-        },
-        { label: "vCPUs", value: String(v.cpu_count ?? "") },
-        { label: "Memory", value: `${v.memory_size_MiB ?? v.memory_size_mib ?? 0} MiB` },
-      ];
-    }
-    if (typeId === HOST) {
-      const h = (await this.hosts()).find((x) => x.host === ext);
-      if (!h) return [];
-      const vms = await this.cached<VmSummary[]>("/vcenter/vm", { hosts: ext }).catch(() => []);
-      return [
-        {
-          label: "Connection",
-          value: h.connection_state,
-          variant: h.connection_state === "CONNECTED" ? "status-healthy" : "status-error",
-        },
-        { label: "VMs", value: String(vms.length) },
-      ];
-    }
-    return [];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      if (typeId === DATASTORE) {
+        const d = (await this.datastores()).find((x) => x.datastore === ext);
+        if (!d || !d.capacity) return [];
+        const used = d.capacity - (d.free_space ?? 0);
+        const pct = (used / d.capacity) * 100;
+        return [
+          { label: "Used", value: `${gib(used)} / ${gib(d.capacity)} GiB` },
+          {
+            label: "Usage",
+            value: `${pct.toFixed(0)}%`,
+            variant: pct > 90 ? "status-error" : pct > 80 ? "status-degraded" : "status-healthy",
+          },
+        ];
+      }
+      if (typeId === VM) {
+        const v = (await this.vms()).find((x) => x.vm === ext);
+        if (!v) return [];
+        return [
+          {
+            label: "Power",
+            value: v.power_state,
+            variant: v.power_state === "POWERED_ON" ? "status-healthy" : "status-error",
+          },
+          { label: "vCPUs", value: String(v.cpu_count ?? "") },
+          { label: "Memory", value: `${v.memory_size_MiB ?? v.memory_size_mib ?? 0} MiB` },
+        ];
+      }
+      if (typeId === HOST) {
+        const h = (await this.hosts()).find((x) => x.host === ext);
+        if (!h) return [];
+        const vms = await this.cached<VmSummary[]>("/vcenter/vm", { hosts: ext }).catch(() => []);
+        return [
+          {
+            label: "Connection",
+            value: h.connection_state,
+            variant: h.connection_state === "CONNECTED" ? "status-healthy" : "status-error",
+          },
+          { label: "VMs", value: String(vms.length) },
+        ];
+      }
+      return [];
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Mutations
   // ---------------------------------------------------------------------------
 
-  getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    return vsphereCreateConfig(this, typeId);
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return vsphereCreateConfig(this, typeId);
+    });
   }
 
   createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceCreateReturn> {
-    return vsphereCreateResource(this, typeId, accountId, fields);
+  ): PluginEffect<ResourceCreateReturn> {
+    return attempt(async () => {
+      return vsphereCreateResource(this, typeId, accountId, fields);
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const ext = externalIdOf(resourceId);
-    try {
-      if (typeId === VM) {
-        const vm = `/vcenter/vm/${seg(ext)}`;
-        if (["start", "stop", "suspend", "reset"].includes(actionId)) {
-          await this.api.post(`${vm}/power`, undefined, { action: actionId });
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      try {
+        if (typeId === VM) {
+          const vm = `/vcenter/vm/${seg(ext)}`;
+          if (["start", "stop", "suspend", "reset"].includes(actionId)) {
+            await this.api.post(`${vm}/power`, undefined, { action: actionId });
+            return;
+          }
+          if (actionId.startsWith("guest-")) {
+            await this.api.post(`${vm}/guest/power`, undefined, {
+              action: actionId.slice("guest-".length),
+            });
+            return;
+          }
+          if (actionId === "tools-upgrade") {
+            await this.api.post(`${vm}/tools`, {}, { action: "upgrade" });
+            return;
+          }
+          if (actionId.startsWith("detach-tag:")) {
+            await this.api.post(
+              `/cis/tagging/tag-association/${seg(actionId.slice(11))}`,
+              { object_id: { type: "VirtualMachine", id: ext } },
+              { action: "detach" },
+            );
+            return;
+          }
+        }
+        if (typeId === HOST && (actionId === "connect" || actionId === "disconnect")) {
+          await this.api.post(`/vcenter/host/${seg(ext)}`, undefined, { action: actionId });
           return;
         }
-        if (actionId.startsWith("guest-")) {
-          await this.api.post(`${vm}/guest/power`, undefined, {
-            action: actionId.slice("guest-".length),
-          });
-          return;
-        }
-        if (actionId === "tools-upgrade") {
-          await this.api.post(`${vm}/tools`, {}, { action: "upgrade" });
-          return;
-        }
-        if (actionId.startsWith("detach-tag:")) {
-          await this.api.post(
-            `/cis/tagging/tag-association/${seg(actionId.slice(11))}`,
-            { object_id: { type: "VirtualMachine", id: ext } },
-            { action: "detach" },
-          );
-          return;
-        }
+      } finally {
+        this.invalidate();
       }
-      if (typeId === HOST && (actionId === "connect" || actionId === "disconnect")) {
-        await this.api.post(`/vcenter/host/${seg(ext)}`, undefined, { action: actionId });
-        return;
-      }
-    } finally {
-      this.invalidate();
-    }
-    throw new Error(`vSphere plugin: action "${actionId}" is not supported for ${typeId}`);
+      throw new Error(`vSphere plugin: action "${actionId}" is not supported for ${typeId}`);
+    });
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const v = decodePromptArgs(args);
-    const ext = externalIdOf(resourceId);
-    try {
-      if (typeId === VM) {
-        switch (command) {
-          case "clone": {
-            if (!v["name"]) throw new VsphereApiError("A name is required.", 400);
-            const placement = placementOf(v);
-            const id = await this.api.post<string>(
-              "/vcenter/vm",
-              {
-                source: ext,
-                name: v["name"],
-                ...(Object.keys(placement).length ? { placement } : {}),
-                power_on: v["powerOn"] === "true",
-                ...(v["spec"] ? { guest_customization_spec: { name: v["spec"] } } : {}),
-              },
-              { action: "clone" },
-            );
-            return { ok: true, vm: id };
-          }
-          case "relocate": {
-            const placement = placementOf(v);
-            if (Object.keys(placement).length === 0)
-              throw new VsphereApiError("Pick a host, resource pool or datastore to move to.", 400);
-            await this.api.post(`/vcenter/vm/${seg(ext)}`, { placement }, { action: "relocate" });
-            return { ok: true };
-          }
-          case "add-disk": {
-            const gb = Number(v["sizeGb"]);
-            if (!Number.isFinite(gb) || gb <= 0)
-              throw new VsphereApiError("Enter a disk size in GiB.", 400);
-            await this.api.post(`/vcenter/vm/${seg(ext)}/hardware/disk`, {
-              new_vmdk: { capacity: Math.round(gb * GIB) },
-            });
-            return { ok: true };
-          }
-          case "mount-iso": {
-            if (!v["item"]) throw new VsphereApiError("Pick an ISO library item.", 400);
-            await this.api.post("/vcenter/iso/image", undefined, {
-              action: "mount",
-              library_item: v["item"],
-              vm: ext,
-            });
-            return { ok: true };
-          }
-          case "attach-tag": {
-            if (!v["tag"]) throw new VsphereApiError("Pick a tag.", 400);
-            await this.api.post(
-              `/cis/tagging/tag-association/${seg(v["tag"])}`,
-              { object_id: { type: "VirtualMachine", id: ext } },
-              { action: "attach" },
-            );
-            return { ok: true };
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const v = decodePromptArgs(args);
+      const ext = externalIdOf(resourceId);
+      try {
+        if (typeId === VM) {
+          switch (command) {
+            case "clone": {
+              if (!v["name"]) throw new VsphereApiError("A name is required.", 400);
+              const placement = placementOf(v);
+              const id = await this.api.post<string>(
+                "/vcenter/vm",
+                {
+                  source: ext,
+                  name: v["name"],
+                  ...(Object.keys(placement).length ? { placement } : {}),
+                  power_on: v["powerOn"] === "true",
+                  ...(v["spec"] ? { guest_customization_spec: { name: v["spec"] } } : {}),
+                },
+                { action: "clone" },
+              );
+              return { ok: true, vm: id };
+            }
+            case "relocate": {
+              const placement = placementOf(v);
+              if (Object.keys(placement).length === 0)
+                throw new VsphereApiError(
+                  "Pick a host, resource pool or datastore to move to.",
+                  400,
+                );
+              await this.api.post(`/vcenter/vm/${seg(ext)}`, { placement }, { action: "relocate" });
+              return { ok: true };
+            }
+            case "add-disk": {
+              const gb = Number(v["sizeGb"]);
+              if (!Number.isFinite(gb) || gb <= 0)
+                throw new VsphereApiError("Enter a disk size in GiB.", 400);
+              await this.api.post(`/vcenter/vm/${seg(ext)}/hardware/disk`, {
+                new_vmdk: { capacity: Math.round(gb * GIB) },
+              });
+              return { ok: true };
+            }
+            case "mount-iso": {
+              if (!v["item"]) throw new VsphereApiError("Pick an ISO library item.", 400);
+              await this.api.post("/vcenter/iso/image", undefined, {
+                action: "mount",
+                library_item: v["item"],
+                vm: ext,
+              });
+              return { ok: true };
+            }
+            case "attach-tag": {
+              if (!v["tag"]) throw new VsphereApiError("Pick a tag.", 400);
+              await this.api.post(
+                `/cis/tagging/tag-association/${seg(v["tag"])}`,
+                { object_id: { type: "VirtualMachine", id: ext } },
+                { action: "attach" },
+              );
+              return { ok: true };
+            }
           }
         }
+        if (typeId === LIBRARY_ITEM && command === "deploy") {
+          const item = await runPluginEffect(this.getResource(LIBRARY_ITEM, resourceId, accountId));
+          const id = await deployLibraryItem(this, ext, String(item.fields["type"] ?? ""), v);
+          return { ok: true, vm: id };
+        }
+      } finally {
+        this.invalidate();
       }
-      if (typeId === LIBRARY_ITEM && command === "deploy") {
-        const item = await this.getResource(LIBRARY_ITEM, resourceId, accountId);
-        const id = await deployLibraryItem(this, ext, String(item.fields["type"] ?? ""), v);
-        return { ok: true, vm: id };
+      throw new Error(`vSphere plugin: command "${command}" is not supported for ${typeId}`);
+    });
+  }
+
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      switch (typeId) {
+        case VM: {
+          const v = (await this.vms()).find((x) => x.vm === ext);
+          if (v && v.power_state !== "POWERED_OFF")
+            throw new VsphereApiError("Power the VM off before deleting it.", 409);
+          await this.api.delete(`/vcenter/vm/${seg(ext)}`);
+          break;
+        }
+        case HOST:
+          await this.api.delete(`/vcenter/host/${seg(ext)}`);
+          break;
+        case DATACENTER:
+          await this.api.delete(`/vcenter/datacenter/${seg(ext)}`);
+          break;
+        case RESOURCE_POOL:
+          await this.api.delete(`/vcenter/resource-pool/${seg(ext)}`);
+          break;
+        case LIBRARY: {
+          const lib = await runPluginEffect(this.getResource(LIBRARY, resourceId, accountId));
+          await this.api.delete(
+            `/content/${lib.fields["type"] === "SUBSCRIBED" ? "subscribed-library" : "local-library"}/${seg(ext)}`,
+          );
+          break;
+        }
+        case LIBRARY_ITEM:
+          await this.api.delete(`/content/library/item/${seg(ext)}`);
+          break;
+        case TAG_CATEGORY:
+          await this.api.delete(`/cis/tagging/category/${seg(ext)}`);
+          break;
+        case TAG:
+          await this.api.delete(`/cis/tagging/tag/${seg(ext)}`);
+          break;
+        case CUSTOMIZATION_SPEC:
+          await this.api.delete(`/vcenter/guest/customization-specs/${seg(ext)}`);
+          break;
+        default:
+          throw new Error(`vSphere plugin: ${typeId} cannot be deleted`);
       }
-    } finally {
       this.invalidate();
-    }
-    throw new Error(`vSphere plugin: command "${command}" is not supported for ${typeId}`);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    const ext = externalIdOf(resourceId);
-    switch (typeId) {
-      case VM: {
-        const v = (await this.vms()).find((x) => x.vm === ext);
-        if (v && v.power_state !== "POWERED_OFF")
-          throw new VsphereApiError("Power the VM off before deleting it.", 409);
-        await this.api.delete(`/vcenter/vm/${seg(ext)}`);
-        break;
-      }
-      case HOST:
-        await this.api.delete(`/vcenter/host/${seg(ext)}`);
-        break;
-      case DATACENTER:
-        await this.api.delete(`/vcenter/datacenter/${seg(ext)}`);
-        break;
-      case RESOURCE_POOL:
-        await this.api.delete(`/vcenter/resource-pool/${seg(ext)}`);
-        break;
-      case LIBRARY: {
-        const lib = await this.getResource(LIBRARY, resourceId, accountId);
-        await this.api.delete(
-          `/content/${lib.fields["type"] === "SUBSCRIBED" ? "subscribed-library" : "local-library"}/${seg(ext)}`,
-        );
-        break;
-      }
-      case LIBRARY_ITEM:
-        await this.api.delete(`/content/library/item/${seg(ext)}`);
-        break;
-      case TAG_CATEGORY:
-        await this.api.delete(`/cis/tagging/category/${seg(ext)}`);
-        break;
-      case TAG:
-        await this.api.delete(`/cis/tagging/tag/${seg(ext)}`);
-        break;
-      case CUSTOMIZATION_SPEC:
-        await this.api.delete(`/vcenter/guest/customization-specs/${seg(ext)}`);
-        break;
-      default:
-        throw new Error(`vSphere plugin: ${typeId} cannot be deleted`);
-    }
-    this.invalidate();
-  }
-
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const ext = externalIdOf(resourceId);
-    const has = (k: string) => Object.prototype.hasOwnProperty.call(fields, k);
-    const num = (k: string) => (has(k) && fields[k] !== "" ? Number(fields[k]) : undefined);
-    const bool = (k: string) => (has(k) ? fields[k] === "true" : undefined);
-    const compact = (o: Record<string, unknown>) =>
-      Object.fromEntries(Object.entries(o).filter(([, x]) => x !== undefined));
-    switch (typeId) {
-      case VM: {
-        const cpu = compact({
-          count: num("cpuCount"),
-          cores_per_socket: num("coresPerSocket"),
-          hot_add_enabled: bool("cpuHotAdd"),
-        });
-        if (Object.keys(cpu).length)
-          await this.api.patch(`/vcenter/vm/${seg(ext)}/hardware/cpu`, cpu);
-        const mem = compact({ size_MiB: num("memoryMb"), hot_add_enabled: bool("memoryHotAdd") });
-        if (Object.keys(mem).length)
-          await this.api.patch(`/vcenter/vm/${seg(ext)}/hardware/memory`, mem);
-        break;
-      }
-      case RESOURCE_POOL: {
-        const alloc = (prefix: "cpu" | "memory", unit: "Mhz" | "Mb") =>
-          compact({
-            reservation: num(`${prefix}Reservation${unit}`),
-            limit: num(`${prefix}Limit${unit}`),
-            expandable_reservation: bool(`${prefix}Expandable`),
-            ...(has(`${prefix}Shares`) && fields[`${prefix}Shares`]
-              ? { shares: { level: fields[`${prefix}Shares`] } }
-              : {}),
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const ext = externalIdOf(resourceId);
+      const has = (k: string) => Object.prototype.hasOwnProperty.call(fields, k);
+      const num = (k: string) => (has(k) && fields[k] !== "" ? Number(fields[k]) : undefined);
+      const bool = (k: string) => (has(k) ? fields[k] === "true" : undefined);
+      const compact = (o: Record<string, unknown>) =>
+        Object.fromEntries(Object.entries(o).filter(([, x]) => x !== undefined));
+      switch (typeId) {
+        case VM: {
+          const cpu = compact({
+            count: num("cpuCount"),
+            cores_per_socket: num("coresPerSocket"),
+            hot_add_enabled: bool("cpuHotAdd"),
           });
-        const body = compact({ name: has("name") ? fields["name"] : undefined });
-        const c = alloc("cpu", "Mhz");
-        const m = alloc("memory", "Mb");
-        if (Object.keys(c).length) body["cpu_allocation"] = c;
-        if (Object.keys(m).length) body["memory_allocation"] = m;
-        await this.api.patch(`/vcenter/resource-pool/${seg(ext)}`, body);
-        break;
+          if (Object.keys(cpu).length)
+            await this.api.patch(`/vcenter/vm/${seg(ext)}/hardware/cpu`, cpu);
+          const mem = compact({ size_MiB: num("memoryMb"), hot_add_enabled: bool("memoryHotAdd") });
+          if (Object.keys(mem).length)
+            await this.api.patch(`/vcenter/vm/${seg(ext)}/hardware/memory`, mem);
+          break;
+        }
+        case RESOURCE_POOL: {
+          const alloc = (prefix: "cpu" | "memory", unit: "Mhz" | "Mb") =>
+            compact({
+              reservation: num(`${prefix}Reservation${unit}`),
+              limit: num(`${prefix}Limit${unit}`),
+              expandable_reservation: bool(`${prefix}Expandable`),
+              ...(has(`${prefix}Shares`) && fields[`${prefix}Shares`]
+                ? { shares: { level: fields[`${prefix}Shares`] } }
+                : {}),
+            });
+          const body = compact({ name: has("name") ? fields["name"] : undefined });
+          const c = alloc("cpu", "Mhz");
+          const m = alloc("memory", "Mb");
+          if (Object.keys(c).length) body["cpu_allocation"] = c;
+          if (Object.keys(m).length) body["memory_allocation"] = m;
+          await this.api.patch(`/vcenter/resource-pool/${seg(ext)}`, body);
+          break;
+        }
+        case LIBRARY: {
+          const lib = await runPluginEffect(this.getResource(LIBRARY, resourceId, accountId));
+          await this.api.patch(
+            `/content/${lib.fields["type"] === "SUBSCRIBED" ? "subscribed-library" : "local-library"}/${seg(ext)}`,
+            compact({
+              name: has("name") ? fields["name"] : undefined,
+              description: has("description") ? fields["description"] : undefined,
+            }),
+          );
+          break;
+        }
+        case LIBRARY_ITEM:
+          await this.api.patch(
+            `/content/library/item/${seg(ext)}`,
+            compact({
+              name: has("name") ? fields["name"] : undefined,
+              description: has("description") ? fields["description"] : undefined,
+            }),
+          );
+          break;
+        case TAG:
+          await this.api.patch(
+            `/cis/tagging/tag/${seg(ext)}`,
+            compact({
+              name: has("name") ? fields["name"] : undefined,
+              description: has("description") ? fields["description"] : undefined,
+            }),
+          );
+          break;
+        case TAG_CATEGORY: {
+          const types = has("associableTypes")
+            ? (fields["associableTypes"] ?? "")
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : undefined;
+          await this.api.patch(
+            `/cis/tagging/category/${seg(ext)}`,
+            compact({
+              name: has("name") ? fields["name"] : undefined,
+              description: has("description") ? fields["description"] : undefined,
+              associable_types: types,
+            }),
+          );
+          break;
+        }
+        default:
+          throw new Error(`vSphere plugin: ${typeId} cannot be edited`);
       }
-      case LIBRARY: {
-        const lib = await this.getResource(LIBRARY, resourceId, accountId);
-        await this.api.patch(
-          `/content/${lib.fields["type"] === "SUBSCRIBED" ? "subscribed-library" : "local-library"}/${seg(ext)}`,
-          compact({
-            name: has("name") ? fields["name"] : undefined,
-            description: has("description") ? fields["description"] : undefined,
-          }),
-        );
-        break;
-      }
-      case LIBRARY_ITEM:
-        await this.api.patch(
-          `/content/library/item/${seg(ext)}`,
-          compact({
-            name: has("name") ? fields["name"] : undefined,
-            description: has("description") ? fields["description"] : undefined,
-          }),
-        );
-        break;
-      case TAG:
-        await this.api.patch(
-          `/cis/tagging/tag/${seg(ext)}`,
-          compact({
-            name: has("name") ? fields["name"] : undefined,
-            description: has("description") ? fields["description"] : undefined,
-          }),
-        );
-        break;
-      case TAG_CATEGORY: {
-        const types = has("associableTypes")
-          ? (fields["associableTypes"] ?? "")
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
-          : undefined;
-        await this.api.patch(
-          `/cis/tagging/category/${seg(ext)}`,
-          compact({
-            name: has("name") ? fields["name"] : undefined,
-            description: has("description") ? fields["description"] : undefined,
-            associable_types: types,
-          }),
-        );
-        break;
-      }
-      default:
-        throw new Error(`vSphere plugin: ${typeId} cannot be edited`);
-    }
-    this.invalidate();
-    return this.getResource(typeId, resourceId, accountId);
+      this.invalidate();
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    });
   }
 }
 

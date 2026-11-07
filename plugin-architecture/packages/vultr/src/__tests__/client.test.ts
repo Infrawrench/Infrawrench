@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { evaluateOrphanRule, exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { describe, expect, it, vi } from "vitest";
@@ -195,7 +196,7 @@ describe("client", () => {
         return { status: 202, body: { instance: { id: "i9", label: "x" } } };
       return { body: {} };
     });
-    const client = new VultrClient({ apiKey: "K" }, plugin.resourceTypes, services);
+    const client = hostClient(new VultrClient({ apiKey: "K" }, plugin.resourceTypes, services));
     const created = await client.createResource("instance", "acct", {
       label: "x",
       region: "ewr",
@@ -219,7 +220,7 @@ describe("client", () => {
     const yaml =
       "apiVersion: v1\nclusters:\n- cluster:\n    server: https://abc.vultr-k8s.com:6443\n";
     const { services } = host(() => ({ body: { kube_config: btoa(yaml) } }));
-    const client = new VultrClient({ apiKey: "K" }, plugin.resourceTypes, services);
+    const client = hostClient(new VultrClient({ apiKey: "K" }, plugin.resourceTypes, services));
     expect(
       await client.resolveOutput(
         "kubernetes-cluster",

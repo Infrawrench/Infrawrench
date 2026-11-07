@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { nextPageUrl } from "../api.js";
 import { SentryClient, parseSchedule } from "../client.js";
@@ -14,7 +15,7 @@ const ACCOUNT = "acct";
 
 function client(route: (call: Call) => unknown, extra: Record<string, string> = {}) {
   const { http, calls } = makeHttp(route);
-  return { c: new SentryClient({ ...creds, ...extra }, { http } as never), calls };
+  return { c: hostClient(new SentryClient({ ...creds, ...extra }, { http } as never)), calls };
 }
 
 describe("regions", () => {
@@ -34,7 +35,7 @@ describe("credential options", () => {
       { slug: "zeta", name: "Zeta" },
       { slug: "acme", name: "Acme" },
     ]);
-    const options = await plugin.listCredentialOptions!(
+    const options = await hostPlugin(plugin).listCredentialOptions!(
       "organization",
       { region: "de", authToken: "sntryu_X" },
       { http } as never,
@@ -50,11 +51,13 @@ describe("credential options", () => {
 
   it("refuses organization tokens and explains a rejected token", async () => {
     await expect(
-      plugin.listCredentialOptions!("organization", { authToken: "sntrys_abc" }),
+      hostPlugin(plugin).listCredentialOptions!("organization", { authToken: "sntrys_abc" }),
     ).rejects.toThrow(/organization token/);
     const { http } = makeHttp(() => ({ status: 401, body: { detail: "Invalid token" } }));
     await expect(
-      plugin.listCredentialOptions!("organization", { authToken: "sntryu_X" }, { http } as never),
+      hostPlugin(plugin).listCredentialOptions!("organization", { authToken: "sntryu_X" }, {
+        http,
+      } as never),
     ).rejects.toThrow(/org:read/);
   });
 

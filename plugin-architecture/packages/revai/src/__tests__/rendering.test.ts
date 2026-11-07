@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -7,8 +9,8 @@ import { REVAI_PANEL_TRANSCRIBER_OPTIONS, REVAI_TRANSCRIBER_OPTIONS } from "../o
 
 const ACCOUNT = "acct-1";
 
-function client(region = "us"): RevAiClient {
-  return new RevAiClient({ accessToken: "test-revai-access-token", region });
+function client(region = "us"): HostedMethods<RevAiClient> {
+  return hostClient(new RevAiClient({ accessToken: "test-revai-access-token", region }));
 }
 
 function account(): ResourceInstance {

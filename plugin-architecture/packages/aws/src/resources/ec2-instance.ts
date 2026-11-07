@@ -53,7 +53,11 @@ export const EC2InstanceResourceType = rt({
       ],
     }),
   ],
-  outputs: [o("publicIp", "Public IP"), o("privateIp", "Private IP"), o("publicDns", "Public DNS")],
+  outputs: [
+    o("publicIp", "Public IP", { dnsValue: "ipv4" }),
+    o("privateIp", "Private IP"),
+    o("publicDns", "Public DNS", { dnsValue: "hostname" }),
+  ],
   // Dependency-graph edges. The host can guess `vpc-…` ids on its own, but
   // saying which type each field points at makes the edge exact and lets it
   // survive an id that some other resource also mentions.

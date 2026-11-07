@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { QdrantApiError, millicents, durationToDays } from "../api.js";
 import {
@@ -21,7 +22,9 @@ const BASE = `api.cloud.qdrant.io/api/cluster/v1/accounts/${ACC}`;
 
 function client() {
   const http = fakeHttp();
-  const c = new QdrantCloudClient({ apiKey: "mk", accountId: ACC }, RESOURCE_TYPES, http.services);
+  const c = hostClient(
+    new QdrantCloudClient({ apiKey: "mk", accountId: ACC }, RESOURCE_TYPES, http.services),
+  );
   return { http, c };
 }
 

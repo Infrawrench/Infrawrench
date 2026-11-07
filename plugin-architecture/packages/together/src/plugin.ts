@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { TogetherClient } from "./client.js";
 import { ModelResourceType } from "./resources/model.js";
@@ -18,9 +23,9 @@ import { togetherRemediationCommands } from "./remediation.js";
 // magenta (#EF2CC1), lilac (#CAAEF5) and orange (#FC4C02). The source artwork
 // is 484.98×452.5; it is scaled ÷7.14 and centred on the 100×100 plugin canvas
 // over a near-black container so the three colours stay legible on both themes.
-const manifest: PluginManifest = {
+export const manifest = {
   id: "together",
-  version: "0.1.0",
+  egressHosts: ["api.together.ai", "api.together.xyz", "api-inference.together.ai"],
   displayName: "Together AI",
   description:
     "Serverless and dedicated inference, fine-tuning, batch jobs, evaluations and GPU clusters on Together AI.",
@@ -32,9 +37,7 @@ const manifest: PluginManifest = {
       <path fill="#FC4C02" d="M242.46,452.5c66.95,0,121.23-54.27,121.23-121.23,0-43.07-22.22-80.75-56.07-102.25l-60.71,104.84-8.99-5.21,60.57-104.91c-16.79-8.79-35.75-13.7-56.02-13.7-66.95,0-121.23,54.27-121.23,121.23,0,66.95,54.27,121.23,121.23,121.23Z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -45,7 +48,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Create an API key", url: "https://api.together.ai/settings/api-keys" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // `GET /v1/billing/usage` returns daily windows of priced line items.
@@ -58,7 +61,9 @@ const manifest: PluginManifest = {
     // Prior months can lag by up to 24 hours, the current month by an hour.
     restatementDays: 3,
   },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   EndpointResourceType,
@@ -73,9 +78,10 @@ const resourceTypes: ResourceTypeDefinition[] = [
   SharedVolumeResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new TogetherClient(credentials, services),
+  testCredentials: { apiKey: "test-together-key" },
   remediationCommands: togetherRemediationCommands,
-};
+});

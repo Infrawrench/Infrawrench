@@ -10,6 +10,7 @@ export const NodeResourceType = rt({
   // A node whose machine is already listed as an instance is counted once:
   // the host matches node names against instance names.
   carbon: {
+    mayDuplicateInstance: true,
     regionFieldKey: "region",
     grid: "auto",
     vcpus: { from: "field", fieldKey: "capacityCpu", format: "k8s-quantity" },

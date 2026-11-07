@@ -7,7 +7,7 @@ export function RegionPicker({
   onChange,
   filterValue,
 }: {
-  regions: {
+  regions: readonly {
     id: string;
     label: string;
     location?: string;

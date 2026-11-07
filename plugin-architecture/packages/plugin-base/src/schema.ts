@@ -671,6 +671,11 @@ export interface DetailViewTab {
 
 /** Full detail view: shown when user clicks a card or sidebar item */
 export interface DetailViewSchema {
+  /**
+   * The resource can open an interactive shell through its parent (a Kubernetes
+   * pod through its cluster): hosts offer a console when they have that parent.
+   */
+  execConsole?: boolean;
   title: string;
   subtitle?: string;
   status?: StatusDotNode;
@@ -1155,6 +1160,11 @@ export interface PeerPaneResourceGroup {
   items: PeerPaneResource[];
   /** If true, host shows a "Create" button for this group */
   supportsCreate?: boolean;
+  /**
+   * `namespace`: these items are the pane's scope filter rather than rows of
+   * their own. `service`: items can be port-forwarded when they have a selector.
+   */
+  role?: "namespace" | "service";
 }
 
 export interface PeerPaneSchema {

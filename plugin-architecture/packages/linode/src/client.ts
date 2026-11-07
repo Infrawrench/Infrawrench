@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostEstimate,
   CostFetchRange,
@@ -78,7 +81,7 @@ export class LinodeClient implements PluginClient {
   private readonly resourceTypes: ResourceTypeDefinition[];
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     resourceTypes: ResourceTypeDefinition[],
     services?: HostServices,
   ) {
@@ -93,73 +96,81 @@ export class LinodeClient implements PluginClient {
     this.resourceTypes = resourceTypes;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    const lister = LISTERS[typeId];
-    if (!lister) throw new Error(`Linode plugin: unknown resource type "${typeId}"`);
-    return lister(this.api, accountId);
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      const lister = LISTERS[typeId];
+      if (!lister) throw new Error(`Linode plugin: unknown resource type "${typeId}"`);
+      return lister(this.api, accountId);
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = trailingId(resourceId);
-    if (typeId === "linode") {
-      const [linode, firewalls] = await Promise.all([
-        this.api.get<LinodeInstance>(`/linode/instances/${id}`),
-        this.api
-          .get<{ data?: Array<{ id: number }> }>(`/linode/instances/${id}/firewalls`)
-          .catch(() => null),
-      ]);
-      return listers.mapLinode(
-        linode,
-        accountId,
-        firewalls ? (firewalls.data ?? []).map((f) => String(f.id)) : null,
-      );
-    }
-    if (typeId === "database") {
-      const [engine, dbId] = id.split("/");
-      const db = await this.api.get<LinodeDatabase>(`/databases/${engine}/instances/${dbId}`);
-      return listers.mapDatabase({ ...db, engine: db.engine ?? engine ?? "" }, accountId);
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId || r.externalId === id);
-    if (!found) throw new Error(`Linode plugin: ${typeId} ${id} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = trailingId(resourceId);
+      if (typeId === "linode") {
+        const [linode, firewalls] = await Promise.all([
+          this.api.get<LinodeInstance>(`/linode/instances/${id}`),
+          this.api
+            .get<{ data?: Array<{ id: number }> }>(`/linode/instances/${id}/firewalls`)
+            .catch(() => null),
+        ]);
+        return listers.mapLinode(
+          linode,
+          accountId,
+          firewalls ? (firewalls.data ?? []).map((f) => String(f.id)) : null,
+        );
+      }
+      if (typeId === "database") {
+        const [engine, dbId] = id.split("/");
+        const db = await this.api.get<LinodeDatabase>(`/databases/${engine}/instances/${dbId}`);
+        return listers.mapDatabase({ ...db, engine: db.engine ?? engine ?? "" }, accountId);
+      }
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId || r.externalId === id);
+      if (!found) throw new Error(`Linode plugin: ${typeId} ${id} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const id = trailingId(resourceId);
-    if (typeId === "database") return this.resolveDatabaseOutput(id, outputKey);
-    if (typeId === "lke-cluster") {
-      switch (outputKey) {
-        case "clusterId":
-          return id;
-        case "kubeconfig": {
-          const res = await this.api.get<{ kubeconfig?: string }>(`/lke/clusters/${id}/kubeconfig`);
-          return res.kubeconfig ? decodeBase64(res.kubeconfig) : "";
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const id = trailingId(resourceId);
+      if (typeId === "database") return this.resolveDatabaseOutput(id, outputKey);
+      if (typeId === "lke-cluster") {
+        switch (outputKey) {
+          case "clusterId":
+            return id;
+          case "kubeconfig": {
+            const res = await this.api.get<{ kubeconfig?: string }>(
+              `/lke/clusters/${id}/kubeconfig`,
+            );
+            return res.kubeconfig ? decodeBase64(res.kubeconfig) : "";
+          }
+          case "apiEndpoint": {
+            const res = await this.api.all<{ endpoint?: string }>(
+              `/lke/clusters/${id}/api-endpoints`,
+            );
+            return res[0]?.endpoint ?? "";
+          }
+          case "nodeHourlyRates":
+            return this.nodeHourlyRates(id);
         }
-        case "apiEndpoint": {
-          const res = await this.api.all<{ endpoint?: string }>(
-            `/lke/clusters/${id}/api-endpoints`,
-          );
-          return res[0]?.endpoint ?? "";
-        }
-        case "nodeHourlyRates":
-          return this.nodeHourlyRates(id);
       }
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value !== undefined) return value;
-    if (outputKey.endsWith("Id")) return resource.externalId ?? "";
-    throw new Error(`Linode plugin: cannot resolve output "${outputKey}" for ${typeId}`);
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+      if (outputKey.endsWith("Id")) return resource.externalId ?? "";
+      throw new Error(`Linode plugin: cannot resolve output "${outputKey}" for ${typeId}`);
+    });
   }
 
   private async resolveDatabaseOutput(id: string, outputKey: string): Promise<string> {
@@ -211,8 +222,10 @@ export class LinodeClient implements PluginClient {
     }
   }
 
-  enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    return enrichDetail(this.api, this.catalog, resource);
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return enrichDetail(this.api, this.catalog, resource);
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -228,30 +241,36 @@ export class LinodeClient implements PluginClient {
     return renderSidebarItem(resource);
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    return dashboardStats(await this.getResource(typeId, resourceId, accountId));
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      return dashboardStats(await runPluginEffect(this.getResource(typeId, resourceId, accountId)));
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     typeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const id = trailingId(resourceId);
-    if (typeId === "linode") return fetchLinodeMetrics(this.api, id, timeRange);
-    if (typeId === "nodebalancer") return fetchNodeBalancerMetrics(this.api, id, timeRange);
-    if (typeId === "database")
-      return fetchDatabaseMetrics(this.api, id.split("/")[1] ?? id, timeRange);
-    return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const id = trailingId(resourceId);
+      if (typeId === "linode") return fetchLinodeMetrics(this.api, id, timeRange);
+      if (typeId === "nodebalancer") return fetchNodeBalancerMetrics(this.api, id, timeRange);
+      if (typeId === "database")
+        return fetchDatabaseMetrics(this.api, id.split("/")[1] ?? id, timeRange);
+      return [];
+    });
   }
 
-  getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    return getCreateConfig({ api: this.api, catalog: this.catalog }, typeId, parentResourceId);
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return getCreateConfig({ api: this.api, catalog: this.catalog }, typeId, parentResourceId);
+    });
   }
 
   createResource(
@@ -259,28 +278,34 @@ export class LinodeClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    return createResource(
-      { api: this.api, catalog: this.catalog },
-      typeId,
-      accountId,
-      fields,
-      parentResourceId,
-    );
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      return createResource(
+        { api: this.api, catalog: this.catalog },
+        typeId,
+        accountId,
+        fields,
+        parentResourceId,
+      );
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    await applyUpdate(this.api, typeId, resourceId, fields);
-    return this.getResource(typeId, resourceId, accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      await applyUpdate(this.api, typeId, resourceId, fields);
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    });
   }
 
-  deleteResource(typeId: string, resourceId: string): Promise<void> {
-    return actions.deleteResource(this.api, typeId, resourceId);
+  deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
+    return attempt(async () => {
+      return actions.deleteResource(this.api, typeId, resourceId);
+    });
   }
 
   attachResource(
@@ -288,18 +313,22 @@ export class LinodeClient implements PluginClient {
     sourceResourceId: string,
     targetTypeId: string,
     targetResourceId: string,
-  ): Promise<void> {
-    return actions.attachResource(
-      this.api,
-      sourceTypeId,
-      sourceResourceId,
-      targetTypeId,
-      targetResourceId,
-    );
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      return actions.attachResource(
+        this.api,
+        sourceTypeId,
+        sourceResourceId,
+        targetTypeId,
+        targetResourceId,
+      );
+    });
   }
 
-  invokeAction(typeId: string, resourceId: string, actionId: string): Promise<void> {
-    return actions.invokeAction(this.api, typeId, resourceId, actionId);
+  invokeAction(typeId: string, resourceId: string, actionId: string): PluginEffect<void> {
+    return attempt(async () => {
+      return actions.invokeAction(this.api, typeId, resourceId, actionId);
+    });
   }
 
   executeNoSqlCommand(
@@ -308,68 +337,84 @@ export class LinodeClient implements PluginClient {
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    return actions.executeCommand(this.api, typeId, resourceId, command, args);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      return actions.executeCommand(this.api, typeId, resourceId, command, args);
+    });
   }
 
-  async getCreateSizePricing(
+  getCreateSizePricing(
     typeId: string,
     request: CreateSizePricingRequest,
-  ): Promise<Record<string, number>> {
-    if (!["linode", "lke-cluster", "lke-node-pool"].includes(typeId)) return {};
-    return sizePricing(
-      await this.catalog.get(),
-      request.regionId,
-      request.sizes.map((s) => s.id),
-    );
+  ): PluginEffect<Record<string, number>> {
+    return attempt(async () => {
+      if (!["linode", "lke-cluster", "lke-node-pool"].includes(typeId)) return {};
+      return sizePricing(
+        await this.catalog.get(),
+        request.regionId,
+        request.sizes.map((s) => s.id),
+      );
+    });
   }
 
-  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
-    try {
-      return estimateFromCatalog(await this.catalog.get(), typeId, fields);
-    } catch {
-      return null;
-    }
+  estimateCost(typeId: string, fields: Record<string, string>): PluginEffect<CostEstimate | null> {
+    return attempt(async () => {
+      try {
+        return estimateFromCatalog(await this.catalog.get(), typeId, fields);
+      } catch {
+        return null;
+      }
+    });
   }
 
-  fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchLinodeCostData({ api: this.api, catalog: () => this.catalog.get() }, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchLinodeCostData({ api: this.api, catalog: () => this.catalog.get() }, range);
+    });
   }
 
-  fetchCreditBalance(): Promise<CreditBalance[]> {
-    return fetchCredits(this.api);
+  fetchCreditBalance(): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      return fetchCredits(this.api);
+    });
   }
 
-  verifyCredentials(): Promise<PreflightResult> {
-    return verifyLinodeCredentials(this.api);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return verifyLinodeCredentials(this.api);
+    });
   }
 
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     _accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    if (typeId !== "lke-cluster" || formatId !== "kubeconfig") {
-      throw new Error(`Linode plugin: no credential format "${formatId}" for ${typeId}`);
-    }
-    const id = trailingId(resourceId);
-    const res = await this.api.get<{ kubeconfig?: string }>(`/lke/clusters/${id}/kubeconfig`);
-    if (!res.kubeconfig)
-      throw new Error(
-        "Linode has not issued a kubeconfig for this cluster yet; try again once it is ready.",
-      );
-    return {
-      content: decodeBase64(res.kubeconfig),
-      filename: `lke-${id}-kubeconfig.yaml`,
-      mimeType: "application/yaml",
-      warning:
-        "This file grants full administrative access to the cluster. Regenerate the kubeconfig from the cluster page if it leaks.",
-    };
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      if (typeId !== "lke-cluster" || formatId !== "kubeconfig") {
+        throw new Error(`Linode plugin: no credential format "${formatId}" for ${typeId}`);
+      }
+      const id = trailingId(resourceId);
+      const res = await this.api.get<{ kubeconfig?: string }>(`/lke/clusters/${id}/kubeconfig`);
+      if (!res.kubeconfig)
+        throw new Error(
+          "Linode has not issued a kubeconfig for this cluster yet; try again once it is ready.",
+        );
+      return {
+        content: decodeBase64(res.kubeconfig),
+        filename: `lke-${id}-kubeconfig.yaml`,
+        mimeType: "application/yaml",
+        warning:
+          "This file grants full administrative access to the cluster. Regenerate the kubeconfig from the cluster page if it leaks.",
+      };
+    });
   }
 
-  listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    return objects.listObjects(this.api, bucket, prefix);
+  listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
+    return attempt(async () => {
+      return objects.listObjects(this.api, bucket, prefix);
+    });
   }
 
   uploadStorageObject(
@@ -377,15 +422,21 @@ export class LinodeClient implements PluginClient {
     key: string,
     file: File,
     onProgress?: (pct: number) => void,
-  ): Promise<void> {
-    return objects.uploadObject(this.api, bucket, key, file, onProgress);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      return objects.uploadObject(this.api, bucket, key, file, onProgress);
+    });
   }
 
-  makeStorageFolder(bucket: string, key: string): Promise<void> {
-    return objects.makeFolder(this.api, bucket, key);
+  makeStorageFolder(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return objects.makeFolder(this.api, bucket, key);
+    });
   }
 
-  deleteStorageObject(bucket: string, key: string): Promise<void> {
-    return objects.deleteObject(this.api, bucket, key);
+  deleteStorageObject(bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      return objects.deleteObject(this.api, bucket, key);
+    });
   }
 }

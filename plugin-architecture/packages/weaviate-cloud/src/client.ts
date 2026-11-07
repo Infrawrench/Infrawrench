@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -258,7 +261,7 @@ export class WeaviateClient implements PluginClient {
   private lastAccountId = "";
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     private readonly resourceTypes: ResourceTypeDefinition[],
     private readonly services?: HostServices,
   ) {
@@ -474,81 +477,83 @@ export class WeaviateClient implements PluginClient {
 
   // ── Listing ──────────────────────────────────────────────────────────
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "cluster":
-        return (await this.clusterViews(accountId)).map(mapCluster);
-      case "collection":
-        return this.perCluster(accountId, async (conn, scope) => {
-          const [classes, nodes] = await Promise.all([
-            this.schema(conn),
-            this.nodes(conn).catch(() => []),
-          ]);
-          const stats = collectionStats(nodes);
-          return classes.map((c) => mapCollection(c, stats.get(c.class), scope));
-        });
-      case "tenant":
-        return this.perCluster(accountId, async (conn, scope) => {
-          const classes = (await this.schema(conn))
-            .filter((c) => c.multiTenancyConfig?.enabled)
-            .slice(0, MAX_TENANT_COLLECTIONS);
-          const lists = await mapLimit(classes, FAN_OUT, async (c) => {
-            const tenants = await this.tenants(conn, c.class);
-            return tenants.map((t) => mapTenant(c.class, t, scope));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "cluster":
+          return (await this.clusterViews(accountId)).map(mapCluster);
+        case "collection":
+          return this.perCluster(accountId, async (conn, scope) => {
+            const [classes, nodes] = await Promise.all([
+              this.schema(conn),
+              this.nodes(conn).catch(() => []),
+            ]);
+            const stats = collectionStats(nodes);
+            return classes.map((c) => mapCollection(c, stats.get(c.class), scope));
           });
-          return lists.flat();
-        });
-      case "alias":
-        return this.perCluster(accountId, async (conn, scope) => {
-          try {
-            const res = await conn.api.request<{ aliases?: WvAlias[] }>("/aliases");
-            return (res?.aliases ?? []).map((a) => mapAlias(a, scope));
-          } catch (e) {
-            // Aliases arrived in Weaviate 1.32; older clusters answer 404.
-            if (isStatus(e, 404, 405)) return [];
-            throw e;
-          }
-        });
-      case "backup":
-        return this.perCluster(accountId, async (conn, scope) => {
-          const backends = backupBackends(await this.meta(conn));
-          const lists = await mapLimit(backends, FAN_OUT, async (backend) => {
+        case "tenant":
+          return this.perCluster(accountId, async (conn, scope) => {
+            const classes = (await this.schema(conn))
+              .filter((c) => c.multiTenancyConfig?.enabled)
+              .slice(0, MAX_TENANT_COLLECTIONS);
+            const lists = await mapLimit(classes, FAN_OUT, async (c) => {
+              const tenants = await this.tenants(conn, c.class);
+              return tenants.map((t) => mapTenant(c.class, t, scope));
+            });
+            return lists.flat();
+          });
+        case "alias":
+          return this.perCluster(accountId, async (conn, scope) => {
             try {
-              const res = await conn.api.request<WvBackup[]>(`/backups/${enc(backend)}`);
-              return (res ?? []).map((b) => mapBackup(b, backend, scope));
+              const res = await conn.api.request<{ aliases?: WvAlias[] }>("/aliases");
+              return (res?.aliases ?? []).map((a) => mapAlias(a, scope));
             } catch (e) {
-              if (isStatus(e, 404, 405, 422, 501)) return [];
+              // Aliases arrived in Weaviate 1.32; older clusters answer 404.
+              if (isStatus(e, 404, 405)) return [];
               throw e;
             }
           });
-          return lists.flat();
-        });
-      case "db-user":
-        return this.perCluster(accountId, async (conn, scope) => {
-          try {
-            const res = await conn.api.request<WvDbUser[]>("/users/db", {
-              query: { includeLastUsedTime: true },
+        case "backup":
+          return this.perCluster(accountId, async (conn, scope) => {
+            const backends = backupBackends(await this.meta(conn));
+            const lists = await mapLimit(backends, FAN_OUT, async (backend) => {
+              try {
+                const res = await conn.api.request<WvBackup[]>(`/backups/${enc(backend)}`);
+                return (res ?? []).map((b) => mapBackup(b, backend, scope));
+              } catch (e) {
+                if (isStatus(e, 404, 405, 422, 501)) return [];
+                throw e;
+              }
             });
-            return (res ?? []).map((u) => mapUser(u, scope));
-          } catch (e) {
-            // RBAC and DB users need Weaviate 1.30+ with RBAC on.
-            if (isStatus(e, 404, 405)) return [];
-            throw e;
-          }
-        });
-      case "role":
-        return this.perCluster(accountId, async (conn, scope) => {
-          try {
-            const res = await conn.api.request<WvRole[]>("/authz/roles");
-            return (res ?? []).map((r) => mapRole(r, scope));
-          } catch (e) {
-            if (isStatus(e, 404, 405)) return [];
-            throw e;
-          }
-        });
-      default:
-        throw new Error(`Weaviate plugin: unknown resource type "${typeId}"`);
-    }
+            return lists.flat();
+          });
+        case "db-user":
+          return this.perCluster(accountId, async (conn, scope) => {
+            try {
+              const res = await conn.api.request<WvDbUser[]>("/users/db", {
+                query: { includeLastUsedTime: true },
+              });
+              return (res ?? []).map((u) => mapUser(u, scope));
+            } catch (e) {
+              // RBAC and DB users need Weaviate 1.30+ with RBAC on.
+              if (isStatus(e, 404, 405)) return [];
+              throw e;
+            }
+          });
+        case "role":
+          return this.perCluster(accountId, async (conn, scope) => {
+            try {
+              const res = await conn.api.request<WvRole[]>("/authz/roles");
+              return (res ?? []).map((r) => mapRole(r, scope));
+            } catch (e) {
+              if (isStatus(e, 404, 405)) return [];
+              throw e;
+            }
+          });
+        default:
+          throw new Error(`Weaviate plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   private async tenants(conn: Conn, collection: string): Promise<WvTenant[]> {
@@ -559,161 +564,167 @@ export class WeaviateClient implements PluginClient {
     return Object.values(res ?? {});
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === "cluster") {
-      const key = externalOf(resourceId);
-      const found = (await this.clusterViews(accountId)).find((v) => v.scope.key === key);
-      if (!found) throw new Error(`Weaviate plugin: cluster ${key} not found`);
-      return mapCluster(found);
-    }
-    const { conn, scope } = await this.connFor(resourceId);
-    switch (typeId) {
-      case "collection": {
-        const [name] = partsOf(resourceId, 1);
-        const [c, nodes] = await Promise.all([
-          conn.api.request<WvClass>(`/schema/${enc(name!)}`),
-          this.nodes(conn).catch(() => []),
-        ]);
-        return mapCollection(c, collectionStats(nodes).get(c.class), scope);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "cluster") {
+        const key = externalOf(resourceId);
+        const found = (await this.clusterViews(accountId)).find((v) => v.scope.key === key);
+        if (!found) throw new Error(`Weaviate plugin: cluster ${key} not found`);
+        return mapCluster(found);
       }
-      case "tenant": {
-        const [collection, name] = partsOf(resourceId, 2);
-        const t = await conn.api.request<WvTenant>(
-          `/schema/${enc(collection!)}/tenants/${enc(name!)}`,
-        );
-        return mapTenant(collection!, t, scope);
+      const { conn, scope } = await this.connFor(resourceId);
+      switch (typeId) {
+        case "collection": {
+          const [name] = partsOf(resourceId, 1);
+          const [c, nodes] = await Promise.all([
+            conn.api.request<WvClass>(`/schema/${enc(name!)}`),
+            this.nodes(conn).catch(() => []),
+          ]);
+          return mapCollection(c, collectionStats(nodes).get(c.class), scope);
+        }
+        case "tenant": {
+          const [collection, name] = partsOf(resourceId, 2);
+          const t = await conn.api.request<WvTenant>(
+            `/schema/${enc(collection!)}/tenants/${enc(name!)}`,
+          );
+          return mapTenant(collection!, t, scope);
+        }
+        case "alias": {
+          const [name] = partsOf(resourceId, 1);
+          return mapAlias(await conn.api.request<WvAlias>(`/aliases/${enc(name!)}`), scope);
+        }
+        case "backup": {
+          const [backend, name] = partsOf(resourceId, 2);
+          const b = await conn.api.request<WvBackup>(`/backups/${enc(backend!)}/${enc(name!)}`);
+          return mapBackup(b, backend!, scope);
+        }
+        case "db-user": {
+          const [name] = partsOf(resourceId, 1);
+          return mapUser(await conn.api.request<WvDbUser>(`/users/db/${enc(name!)}`), scope);
+        }
+        case "role": {
+          const [name] = partsOf(resourceId, 1);
+          return mapRole(await conn.api.request<WvRole>(`/authz/roles/${enc(name!)}`), scope);
+        }
+        default:
+          throw new Error(`Weaviate plugin: unknown resource type "${typeId}"`);
       }
-      case "alias": {
-        const [name] = partsOf(resourceId, 1);
-        return mapAlias(await conn.api.request<WvAlias>(`/aliases/${enc(name!)}`), scope);
-      }
-      case "backup": {
-        const [backend, name] = partsOf(resourceId, 2);
-        const b = await conn.api.request<WvBackup>(`/backups/${enc(backend!)}/${enc(name!)}`);
-        return mapBackup(b, backend!, scope);
-      }
-      case "db-user": {
-        const [name] = partsOf(resourceId, 1);
-        return mapUser(await conn.api.request<WvDbUser>(`/users/db/${enc(name!)}`), scope);
-      }
-      case "role": {
-        const [name] = partsOf(resourceId, 1);
-        return mapRole(await conn.api.request<WvRole>(`/authz/roles/${enc(name!)}`), scope);
-      }
-      default:
-        throw new Error(`Weaviate plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "cluster" && outputKey === "apiKey") {
-      const { scope } = splitScoped(resourceId);
-      const conn = await this.conn(accountId || scope.accountId, scope.key);
-      if (!conn) throw new Error(`Weaviate cluster ${scope.key} ${NOT_CONNECTED}`);
-      return conn.apiKey;
-    }
-    if (typeId === "db-user" && outputKey === "apiKey") {
-      const v = await this.services?.secrets?.getPlaintext(resourceId, USER_KEY_FIELD);
-      if (!v) {
-        throw new Error(
-          "Weaviate shows a user's key once. Rotate the key from Infrawrench to keep it here.",
-        );
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "cluster" && outputKey === "apiKey") {
+        const { scope } = splitScoped(resourceId);
+        const conn = await this.conn(accountId || scope.accountId, scope.key);
+        if (!conn) throw new Error(`Weaviate cluster ${scope.key} ${NOT_CONNECTED}`);
+        return conn.apiKey;
       }
-      return v;
-    }
-    const r = await this.getResource(typeId, resourceId, accountId);
-    return r.resolvedOutputs[outputKey] ?? "";
+      if (typeId === "db-user" && outputKey === "apiKey") {
+        const v = await this.services?.secrets?.getPlaintext(resourceId, USER_KEY_FIELD);
+        if (!v) {
+          throw new Error(
+            "Weaviate shows a user's key once. Rotate the key from Infrawrench to keep it here.",
+          );
+        }
+        return v;
+      }
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return r.resolvedOutputs[outputKey] ?? "";
+    });
   }
 
   // ── Detail ───────────────────────────────────────────────────────────
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const fields = { ...resource.fields };
-    const { scope, parts } = splitScoped(resource.id);
-    const conn = await this.conn(resource.accountId || scope.accountId, scope.key);
-    if (!conn) return resource;
-    if (resource.resourceTypeId === "cluster") {
-      const [nodes, classes] = await Promise.all([
-        this.nodes(conn).catch(() => [] as WvNode[]),
-        this.schema(conn).catch(() => [] as WvClass[]),
-      ]);
-      fields[ENRICH_NODES] = JSON.stringify(
-        nodes.map((n) => ({
-          name: n.name ?? "",
-          status: n.status ?? "",
-          version: n.version ?? "",
-          objects: String(n.stats?.objectCount ?? ""),
-          shards: String(n.stats?.shardCount ?? n.shards?.length ?? ""),
-          mode: n.operationalMode ?? "",
-        })),
-      );
-      fields[ENRICH_COLLECTIONS] = JSON.stringify(classes.map((c) => c.class));
-    } else if (resource.resourceTypeId === "collection") {
-      const id = parts.join("/");
-      const [c, nodes] = await Promise.all([
-        conn.api.request<WvClass>(`/schema/${enc(id)}`).catch(() => null),
-        this.nodes(conn).catch(() => [] as WvNode[]),
-      ]);
-      if (c?.properties?.length) {
-        fields[ENRICH_PROPERTIES] = JSON.stringify(
-          c.properties.map((p) => ({
-            name: p.name,
-            type: (p.dataType ?? []).join(" | "),
-            tokenization: p.tokenization ?? "",
-            indexes: [
-              p.indexFilterable !== false ? "filterable" : "",
-              p.indexSearchable !== false && (p.dataType ?? []).some((t) => t.startsWith("text"))
-                ? "searchable"
-                : "",
-              p.indexRangeFilters ? "range" : "",
-            ]
-              .filter(Boolean)
-              .join(", "),
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const fields = { ...resource.fields };
+      const { scope, parts } = splitScoped(resource.id);
+      const conn = await this.conn(resource.accountId || scope.accountId, scope.key);
+      if (!conn) return resource;
+      if (resource.resourceTypeId === "cluster") {
+        const [nodes, classes] = await Promise.all([
+          this.nodes(conn).catch(() => [] as WvNode[]),
+          this.schema(conn).catch(() => [] as WvClass[]),
+        ]);
+        fields[ENRICH_NODES] = JSON.stringify(
+          nodes.map((n) => ({
+            name: n.name ?? "",
+            status: n.status ?? "",
+            version: n.version ?? "",
+            objects: String(n.stats?.objectCount ?? ""),
+            shards: String(n.stats?.shardCount ?? n.shards?.length ?? ""),
+            mode: n.operationalMode ?? "",
           })),
         );
-      }
-      const shards = nodes.flatMap((n) =>
-        (n.shards ?? [])
-          .filter((s) => s.class === id)
-          .map((s) => ({
-            node: n.name ?? "",
-            name: s.name ?? "",
-            objects: String(s.objectCount ?? 0),
-            indexing: s.vectorIndexingStatus ?? "",
-            queue: String(s.vectorQueueLength ?? 0),
-          })),
-      );
-      if (shards.length) fields[ENRICH_SHARDS] = JSON.stringify(shards.slice(0, 200));
-    } else if (resource.resourceTypeId === "role") {
-      const id = parts.join("/");
-      const r = await conn.api.request<WvRole>(`/authz/roles/${enc(id)}`).catch(() => null);
-      if (r?.permissions?.length) {
-        fields[ENRICH_PERMISSIONS] = JSON.stringify(
-          r.permissions.map((p) => {
-            const scopeText = Object.entries(p)
-              .filter(([k, v]) => k !== "action" && v && typeof v === "object")
-              .map(
-                ([k, v]) =>
-                  `${k}: ${Object.entries(v as Record<string, unknown>)
-                    .map(([kk, vv]) => `${kk}=${String(vv)}`)
-                    .join(" ")}`,
-              )
-              .join("; ");
-            return { action: p.action ?? "", scope: scopeText };
-          }),
+        fields[ENRICH_COLLECTIONS] = JSON.stringify(classes.map((c) => c.class));
+      } else if (resource.resourceTypeId === "collection") {
+        const id = parts.join("/");
+        const [c, nodes] = await Promise.all([
+          conn.api.request<WvClass>(`/schema/${enc(id)}`).catch(() => null),
+          this.nodes(conn).catch(() => [] as WvNode[]),
+        ]);
+        if (c?.properties?.length) {
+          fields[ENRICH_PROPERTIES] = JSON.stringify(
+            c.properties.map((p) => ({
+              name: p.name,
+              type: (p.dataType ?? []).join(" | "),
+              tokenization: p.tokenization ?? "",
+              indexes: [
+                p.indexFilterable !== false ? "filterable" : "",
+                p.indexSearchable !== false && (p.dataType ?? []).some((t) => t.startsWith("text"))
+                  ? "searchable"
+                  : "",
+                p.indexRangeFilters ? "range" : "",
+              ]
+                .filter(Boolean)
+                .join(", "),
+            })),
+          );
+        }
+        const shards = nodes.flatMap((n) =>
+          (n.shards ?? [])
+            .filter((s) => s.class === id)
+            .map((s) => ({
+              node: n.name ?? "",
+              name: s.name ?? "",
+              objects: String(s.objectCount ?? 0),
+              indexing: s.vectorIndexingStatus ?? "",
+              queue: String(s.vectorQueueLength ?? 0),
+            })),
         );
+        if (shards.length) fields[ENRICH_SHARDS] = JSON.stringify(shards.slice(0, 200));
+      } else if (resource.resourceTypeId === "role") {
+        const id = parts.join("/");
+        const r = await conn.api.request<WvRole>(`/authz/roles/${enc(id)}`).catch(() => null);
+        if (r?.permissions?.length) {
+          fields[ENRICH_PERMISSIONS] = JSON.stringify(
+            r.permissions.map((p) => {
+              const scopeText = Object.entries(p)
+                .filter(([k, v]) => k !== "action" && v && typeof v === "object")
+                .map(
+                  ([k, v]) =>
+                    `${k}: ${Object.entries(v as Record<string, unknown>)
+                      .map(([kk, vv]) => `${kk}=${String(vv)}`)
+                      .join(" ")}`,
+                )
+                .join("; ");
+              return { action: p.action ?? "", scope: scopeText };
+            }),
+          );
+        }
       }
-    }
-    return { ...resource, fields };
+      return { ...resource, fields };
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -833,205 +844,213 @@ export class WeaviateClient implements PluginClient {
     };
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    if (typeId === "cluster") return this.clusterCreateConfig();
-    const { conn } = await this.formConn(parentResourceId);
-    switch (typeId) {
-      case "collection": {
-        const meta = await this.meta(conn).catch(() => undefined);
-        const vectorizers = vectorizerModules(meta);
-        const fields: CreateFieldConfig[] = [
-          {
-            key: "name",
-            label: "Name",
-            kind: "text",
-            required: true,
-            placeholder: "Article",
-            description: "Starts with a capital letter",
-          },
-          { key: "description", label: "Description", kind: "text", required: false },
-          {
-            key: "vectorizer",
-            label: "Vectorizer",
-            kind: "select",
-            required: true,
-            defaultValue: "none",
-            options: [
-              { id: "none", label: "None (bring your own vectors)" },
-              ...vectorizers.map((v) => ({ id: v, label: v })),
-            ],
-            description: "Modules the cluster has loaded",
-          },
-          {
-            key: "vectorIndexType",
-            label: "Vector index",
-            kind: "select",
-            required: false,
-            defaultValue: "hnsw",
-            options: [
-              { id: "hnsw", label: "HNSW", description: "Graph index, best for large collections" },
-              { id: "flat", label: "Flat", description: "Brute force, small or per-tenant data" },
-              { id: "dynamic", label: "Dynamic", description: "Flat until it grows, then HNSW" },
-            ],
-          },
-          {
-            key: "properties",
-            label: "Properties",
-            kind: "key-value-list",
-            required: false,
-            entryKeyLabel: "Property",
-            entryKeyPlaceholder: "title",
-            entryKeyName: "name",
-            entryValueLabel: "Type",
-            entryValueName: "dataType",
-            entryValueOptions: DATA_TYPES.map((d) => ({ id: d, label: d })),
-            entryValueDefault: "text",
-            addLabel: "Add property",
-          },
-          {
-            key: "replicationFactor",
-            label: "Replication factor",
-            kind: "number",
-            required: false,
-            minValue: 1,
-            defaultValue: "1",
-          },
-          {
-            key: "multiTenancy",
-            label: "Multi-tenancy",
-            kind: "select",
-            required: false,
-            defaultValue: "false",
-            options: [
-              { id: "false", label: "Off" },
-              { id: "true", label: "On (one shard per tenant)" },
-            ],
-            description: "Cannot be changed after the collection is created",
-          },
-        ];
-        return { fields };
-      }
-      case "tenant": {
-        const fromCollection = parentResourceId?.split(":")[1] === "collection";
-        return {
-          fields: [
-            ...(fromCollection
-              ? []
-              : [
-                  {
-                    key: "collection",
-                    label: "Collection",
-                    kind: "select" as const,
-                    required: true,
-                    description: "Only multi-tenant collections",
-                    options: await this.collectionOptions(
-                      conn,
-                      (c) => c.multiTenancyConfig?.enabled === true,
-                    ),
-                  },
-                ]),
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "cluster") return this.clusterCreateConfig();
+      const { conn } = await this.formConn(parentResourceId);
+      switch (typeId) {
+        case "collection": {
+          const meta = await this.meta(conn).catch(() => undefined);
+          const vectorizers = vectorizerModules(meta);
+          const fields: CreateFieldConfig[] = [
             {
-              key: "names",
-              label: "Tenant names",
-              kind: "string-list",
+              key: "name",
+              label: "Name",
+              kind: "text",
               required: true,
-              addLabel: "Add tenant",
+              placeholder: "Article",
+              description: "Starts with a capital letter",
+            },
+            { key: "description", label: "Description", kind: "text", required: false },
+            {
+              key: "vectorizer",
+              label: "Vectorizer",
+              kind: "select",
+              required: true,
+              defaultValue: "none",
+              options: [
+                { id: "none", label: "None (bring your own vectors)" },
+                ...vectorizers.map((v) => ({ id: v, label: v })),
+              ],
+              description: "Modules the cluster has loaded",
             },
             {
-              key: "activityStatus",
-              label: "Start as",
+              key: "vectorIndexType",
+              label: "Vector index",
               kind: "select",
               required: false,
-              defaultValue: "ACTIVE",
+              defaultValue: "hnsw",
               options: [
-                { id: "ACTIVE", label: "Active" },
-                { id: "INACTIVE", label: "Inactive" },
+                {
+                  id: "hnsw",
+                  label: "HNSW",
+                  description: "Graph index, best for large collections",
+                },
+                { id: "flat", label: "Flat", description: "Brute force, small or per-tenant data" },
+                { id: "dynamic", label: "Dynamic", description: "Flat until it grows, then HNSW" },
               ],
             },
-          ],
-        };
-      }
-      case "alias":
-        return {
-          fields: [
             {
-              key: "alias",
-              label: "Alias",
-              kind: "text",
-              required: true,
-              placeholder: "ArticleLive",
+              key: "properties",
+              label: "Properties",
+              kind: "key-value-list",
+              required: false,
+              entryKeyLabel: "Property",
+              entryKeyPlaceholder: "title",
+              entryKeyName: "name",
+              entryValueLabel: "Type",
+              entryValueName: "dataType",
+              entryValueOptions: DATA_TYPES.map((d) => ({ id: d, label: d })),
+              entryValueDefault: "text",
+              addLabel: "Add property",
             },
             {
-              key: "collection",
-              label: "Collection",
+              key: "replicationFactor",
+              label: "Replication factor",
+              kind: "number",
+              required: false,
+              minValue: 1,
+              defaultValue: "1",
+            },
+            {
+              key: "multiTenancy",
+              label: "Multi-tenancy",
               kind: "select",
-              required: true,
-              options: await this.collectionOptions(conn),
+              required: false,
+              defaultValue: "false",
+              options: [
+                { id: "false", label: "Off" },
+                { id: "true", label: "On (one shard per tenant)" },
+              ],
+              description: "Cannot be changed after the collection is created",
             },
-          ],
-        };
-      case "backup": {
-        const backends = backupBackends(await this.meta(conn).catch(() => undefined));
-        if (!backends.length) {
-          throw new Error(
-            "This cluster has no backup module enabled, so it cannot take backups through the API.",
-          );
+          ];
+          return { fields };
         }
-        return {
-          fields: [
-            {
-              key: "id",
-              label: "Backup ID",
-              kind: "text",
-              required: true,
-              description: "Lowercase letters, digits, hyphens and underscores",
-            },
-            {
-              key: "backend",
-              label: "Backend",
-              kind: "select",
-              required: true,
-              defaultValue: backends[0]!,
-              options: backends.map((b) => ({ id: b, label: b })),
-            },
-            {
-              key: "include",
-              label: "Collections",
-              kind: "policy-picker",
-              required: false,
-              description: "Leave empty to back up every collection",
-              policies: (await this.collectionOptions(conn)).map((c) => ({
-                id: c.id,
-                label: c.label,
-              })),
-            },
-          ],
-        };
+        case "tenant": {
+          const fromCollection = parentResourceId?.split(":")[1] === "collection";
+          return {
+            fields: [
+              ...(fromCollection
+                ? []
+                : [
+                    {
+                      key: "collection",
+                      label: "Collection",
+                      kind: "select" as const,
+                      required: true,
+                      description: "Only multi-tenant collections",
+                      options: await this.collectionOptions(
+                        conn,
+                        (c) => c.multiTenancyConfig?.enabled === true,
+                      ),
+                    },
+                  ]),
+              {
+                key: "names",
+                label: "Tenant names",
+                kind: "string-list",
+                required: true,
+                addLabel: "Add tenant",
+              },
+              {
+                key: "activityStatus",
+                label: "Start as",
+                kind: "select",
+                required: false,
+                defaultValue: "ACTIVE",
+                options: [
+                  { id: "ACTIVE", label: "Active" },
+                  { id: "INACTIVE", label: "Inactive" },
+                ],
+              },
+            ],
+          };
+        }
+        case "alias":
+          return {
+            fields: [
+              {
+                key: "alias",
+                label: "Alias",
+                kind: "text",
+                required: true,
+                placeholder: "ArticleLive",
+              },
+              {
+                key: "collection",
+                label: "Collection",
+                kind: "select",
+                required: true,
+                options: await this.collectionOptions(conn),
+              },
+            ],
+          };
+        case "backup": {
+          const backends = backupBackends(await this.meta(conn).catch(() => undefined));
+          if (!backends.length) {
+            throw new Error(
+              "This cluster has no backup module enabled, so it cannot take backups through the API.",
+            );
+          }
+          return {
+            fields: [
+              {
+                key: "id",
+                label: "Backup ID",
+                kind: "text",
+                required: true,
+                description: "Lowercase letters, digits, hyphens and underscores",
+              },
+              {
+                key: "backend",
+                label: "Backend",
+                kind: "select",
+                required: true,
+                defaultValue: backends[0]!,
+                options: backends.map((b) => ({ id: b, label: b })),
+              },
+              {
+                key: "include",
+                label: "Collections",
+                kind: "policy-picker",
+                required: false,
+                description: "Leave empty to back up every collection",
+                policies: (await this.collectionOptions(conn)).map((c) => ({
+                  id: c.id,
+                  label: c.label,
+                })),
+              },
+            ],
+          };
+        }
+        case "db-user": {
+          const roles = await conn.api
+            .request<WvRole[]>("/authz/roles")
+            .catch(() => [] as WvRole[]);
+          return {
+            fields: [
+              {
+                key: "userId",
+                label: "User ID",
+                kind: "text",
+                required: true,
+                placeholder: "ingest-service",
+              },
+              {
+                key: "roles",
+                label: "Roles",
+                kind: "policy-picker",
+                required: false,
+                policies: roles.map((r) => ({ id: r.name, label: r.name })),
+              },
+            ],
+          };
+        }
+        default:
+          throw new Error(`Weaviate plugin: cannot create "${typeId}"`);
       }
-      case "db-user": {
-        const roles = await conn.api.request<WvRole[]>("/authz/roles").catch(() => [] as WvRole[]);
-        return {
-          fields: [
-            {
-              key: "userId",
-              label: "User ID",
-              kind: "text",
-              required: true,
-              placeholder: "ingest-service",
-            },
-            {
-              key: "roles",
-              label: "Roles",
-              kind: "policy-picker",
-              required: false,
-              policies: roles.map((r) => ({ id: r.name, label: r.name })),
-            },
-          ],
-        };
-      }
-      default:
-        throw new Error(`Weaviate plugin: cannot create "${typeId}"`);
-    }
+    });
   }
 
   /** Check a pasted key against the cluster before keeping it. */
@@ -1071,7 +1090,9 @@ export class WeaviateClient implements PluginClient {
         // Listed by the organization: keep the key beside the cluster.
         await this.storeSecret(clusterResourceId(scope), CLUSTER_KEY_FIELD, apiKey);
         this.storedConns.set(key, conn);
-        return await this.getResource("cluster", clusterResourceId(scope), accountId);
+        return await runPluginEffect(
+          this.getResource("cluster", clusterResourceId(scope), accountId),
+        );
       }
       // Anything else is remembered in the account's More clusters credential,
       // where it can be edited or removed later.
@@ -1121,87 +1142,92 @@ export class WeaviateClient implements PluginClient {
     });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceCreateReturn> {
-    if (accountId) this.lastAccountId = accountId;
-    if (typeId === "cluster") return this.createCluster(accountId, fields);
-    const target = await this.formConn(parentResourceId);
-    const conn = target.conn;
-    const scope = { accountId, key: conn.key };
-    switch (typeId) {
-      case "collection": {
-        const name = str(fields["name"]);
-        checkCollectionName(name);
-        const vectorizer = str(fields["vectorizer"]) || "none";
-        const rf = intField(fields["replicationFactor"], "Replication factor", 1);
-        const body: Record<string, unknown> = {
-          class: name,
-          vectorizer,
-          vectorIndexType: str(fields["vectorIndexType"]) || "hnsw",
-          properties: parseProperties(fields["properties"]),
-          ...(str(fields["description"]) ? { description: str(fields["description"]) } : {}),
-          ...(rf ? { replicationConfig: { factor: rf } } : {}),
-          ...(fields["multiTenancy"] === "true" ? { multiTenancyConfig: { enabled: true } } : {}),
-        };
-        const c = await conn.api.request<WvClass>("/schema", { method: "POST", body });
-        return mapCollection(c ?? (body as WvClass), undefined, scope);
-      }
-      case "tenant": {
-        const collection =
-          parentResourceId?.split(":")[1] === "collection"
-            ? partsOf(parentResourceId, 1)[0]!
-            : str(fields["collection"]);
-        if (!collection) throw new Error("Choose a multi-tenant collection.");
-        const names = parseList(fields["names"]);
-        if (!names.length) throw new Error("Enter at least one tenant name.");
-        const status = str(fields["activityStatus"]) || "ACTIVE";
-        const created = await conn.api.request<WvTenant[]>(`/schema/${enc(collection)}/tenants`, {
-          method: "POST",
-          body: names.map((n) => ({ name: n, activityStatus: status })),
-        });
-        const first = created?.[0] ?? { name: names[0]!, activityStatus: status };
-        return mapTenant(collection, first, scope);
-      }
-      case "alias": {
-        const alias = str(fields["alias"]);
-        checkCollectionName(alias);
-        const collection = str(fields["collection"]);
-        if (!collection) throw new Error("Choose the collection the alias points to.");
-        await conn.api.request("/aliases", { method: "POST", body: { alias, class: collection } });
-        return mapAlias({ alias, class: collection }, scope);
-      }
-      case "backup": {
-        const b = await this.startBackup(conn, fields);
-        return mapBackup(b, str(fields["backend"]) || b.backend || "", scope);
-      }
-      case "db-user": {
-        const userId = str(fields["userId"]);
-        if (!/^[A-Za-z0-9_.@-]{1,128}$/.test(userId)) {
-          throw new Error("User IDs use letters, digits, dots, @, underscores and hyphens.");
+  ): PluginEffect<ResourceCreateReturn> {
+    return attempt(async () => {
+      if (accountId) this.lastAccountId = accountId;
+      if (typeId === "cluster") return this.createCluster(accountId, fields);
+      const target = await this.formConn(parentResourceId);
+      const conn = target.conn;
+      const scope = { accountId, key: conn.key };
+      switch (typeId) {
+        case "collection": {
+          const name = str(fields["name"]);
+          checkCollectionName(name);
+          const vectorizer = str(fields["vectorizer"]) || "none";
+          const rf = intField(fields["replicationFactor"], "Replication factor", 1);
+          const body: Record<string, unknown> = {
+            class: name,
+            vectorizer,
+            vectorIndexType: str(fields["vectorIndexType"]) || "hnsw",
+            properties: parseProperties(fields["properties"]),
+            ...(str(fields["description"]) ? { description: str(fields["description"]) } : {}),
+            ...(rf ? { replicationConfig: { factor: rf } } : {}),
+            ...(fields["multiTenancy"] === "true" ? { multiTenancyConfig: { enabled: true } } : {}),
+          };
+          const c = await conn.api.request<WvClass>("/schema", { method: "POST", body });
+          return mapCollection(c ?? (body as WvClass), undefined, scope);
         }
-        const res = await conn.api.request<{ apikey?: string }>(`/users/db/${enc(userId)}`, {
-          method: "POST",
-          body: {},
-        });
-        const roles = parseList(fields["roles"]);
-        if (roles.length) {
-          await conn.api.request(`/authz/users/${enc(userId)}/assign`, {
+        case "tenant": {
+          const collection =
+            parentResourceId?.split(":")[1] === "collection"
+              ? partsOf(parentResourceId, 1)[0]!
+              : str(fields["collection"]);
+          if (!collection) throw new Error("Choose a multi-tenant collection.");
+          const names = parseList(fields["names"]);
+          if (!names.length) throw new Error("Enter at least one tenant name.");
+          const status = str(fields["activityStatus"]) || "ACTIVE";
+          const created = await conn.api.request<WvTenant[]>(`/schema/${enc(collection)}/tenants`, {
             method: "POST",
-            body: { roles, userType: "db" },
+            body: names.map((n) => ({ name: n, activityStatus: status })),
           });
+          const first = created?.[0] ?? { name: names[0]!, activityStatus: status };
+          return mapTenant(collection, first, scope);
         }
-        const inst = mapUser({ userId, roles, active: true, dbUserType: "db_user" }, scope);
-        if (res?.apikey)
-          await this.services?.secrets?.setPlaintext?.(inst.id, USER_KEY_FIELD, res.apikey);
-        return inst;
+        case "alias": {
+          const alias = str(fields["alias"]);
+          checkCollectionName(alias);
+          const collection = str(fields["collection"]);
+          if (!collection) throw new Error("Choose the collection the alias points to.");
+          await conn.api.request("/aliases", {
+            method: "POST",
+            body: { alias, class: collection },
+          });
+          return mapAlias({ alias, class: collection }, scope);
+        }
+        case "backup": {
+          const b = await this.startBackup(conn, fields);
+          return mapBackup(b, str(fields["backend"]) || b.backend || "", scope);
+        }
+        case "db-user": {
+          const userId = str(fields["userId"]);
+          if (!/^[A-Za-z0-9_.@-]{1,128}$/.test(userId)) {
+            throw new Error("User IDs use letters, digits, dots, @, underscores and hyphens.");
+          }
+          const res = await conn.api.request<{ apikey?: string }>(`/users/db/${enc(userId)}`, {
+            method: "POST",
+            body: {},
+          });
+          const roles = parseList(fields["roles"]);
+          if (roles.length) {
+            await conn.api.request(`/authz/users/${enc(userId)}/assign`, {
+              method: "POST",
+              body: { roles, userType: "db" },
+            });
+          }
+          const inst = mapUser({ userId, roles, active: true, dbUserType: "db_user" }, scope);
+          if (res?.apikey)
+            await this.services?.secrets?.setPlaintext?.(inst.id, USER_KEY_FIELD, res.apikey);
+          return inst;
+        }
+        default:
+          throw new Error(`Weaviate plugin: cannot create "${typeId}"`);
       }
-      default:
-        throw new Error(`Weaviate plugin: cannot create "${typeId}"`);
-    }
+    });
   }
 
   private async startBackup(conn: Conn, fields: Record<string, string>): Promise<WvBackup> {
@@ -1227,89 +1253,91 @@ export class WeaviateClient implements PluginClient {
 
   // ── Update ───────────────────────────────────────────────────────────
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const { conn } = await this.connFor(resourceId);
-    switch (typeId) {
-      case "collection": {
-        const [id] = partsOf(resourceId, 1);
-        const current = await conn.api.request<WvClass>(`/schema/${enc(id!)}`);
-        const next: WvClass = JSON.parse(JSON.stringify(current)) as WvClass;
-        let changed = false;
-        if (fields["description"] !== undefined) {
-          next.description = fields["description"];
-          changed = true;
-        }
-        const rf = intField(fields["replicationFactor"], "Replication factor", 1);
-        if (rf !== undefined) {
-          next.replicationConfig = { ...(next.replicationConfig ?? {}), factor: rf };
-          changed = true;
-        }
-        for (const k of ["autoTenantCreation", "autoTenantActivation"] as const) {
-          if (fields[k] !== undefined && fields[k] !== "") {
-            if (!next.multiTenancyConfig?.enabled) {
-              throw new Error("Tenant settings only apply to multi-tenant collections.");
-            }
-            next.multiTenancyConfig = { ...next.multiTenancyConfig, [k]: fields[k] === "true" };
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const { conn } = await this.connFor(resourceId);
+      switch (typeId) {
+        case "collection": {
+          const [id] = partsOf(resourceId, 1);
+          const current = await conn.api.request<WvClass>(`/schema/${enc(id!)}`);
+          const next: WvClass = JSON.parse(JSON.stringify(current)) as WvClass;
+          let changed = false;
+          if (fields["description"] !== undefined) {
+            next.description = fields["description"];
             changed = true;
           }
-        }
-        if (changed) {
-          await conn.api.request(`/schema/${enc(id!)}`, { method: "PUT", body: next });
-        }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "tenant": {
-        const status = str(fields["activityStatus"]);
-        if (status) {
-          if (!["ACTIVE", "INACTIVE", "OFFLOADED"].includes(status)) {
-            throw new Error(`A tenant can be set to ${TENANT_STATUSES.slice(0, 3).join(", ")}.`);
+          const rf = intField(fields["replicationFactor"], "Replication factor", 1);
+          if (rf !== undefined) {
+            next.replicationConfig = { ...(next.replicationConfig ?? {}), factor: rf };
+            changed = true;
           }
-          await this.setTenantStatus(conn, resourceId, status);
+          for (const k of ["autoTenantCreation", "autoTenantActivation"] as const) {
+            if (fields[k] !== undefined && fields[k] !== "") {
+              if (!next.multiTenancyConfig?.enabled) {
+                throw new Error("Tenant settings only apply to multi-tenant collections.");
+              }
+              next.multiTenancyConfig = { ...next.multiTenancyConfig, [k]: fields[k] === "true" };
+              changed = true;
+            }
+          }
+          if (changed) {
+            await conn.api.request(`/schema/${enc(id!)}`, { method: "PUT", body: next });
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "alias": {
-        const [id] = partsOf(resourceId, 1);
-        const collection = str(fields["collection"]);
-        if (collection) {
-          await conn.api.request(`/aliases/${enc(id!)}`, {
-            method: "PUT",
-            body: { class: collection },
-          });
+        case "tenant": {
+          const status = str(fields["activityStatus"]);
+          if (status) {
+            if (!["ACTIVE", "INACTIVE", "OFFLOADED"].includes(status)) {
+              throw new Error(`A tenant can be set to ${TENANT_STATUSES.slice(0, 3).join(", ")}.`);
+            }
+            await this.setTenantStatus(conn, resourceId, status);
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
-      }
-      case "db-user": {
-        const [id] = partsOf(resourceId, 1);
-        if (fields["roles"] !== undefined) {
-          const current = await conn.api.request<WvDbUser>(`/users/db/${enc(id!)}`);
-          const have = new Set(current.roles ?? []);
-          const want = new Set(parseList(fields["roles"]));
-          const add = [...want].filter((r) => !have.has(r));
-          const remove = [...have].filter((r) => !want.has(r));
-          if (add.length) {
-            await conn.api.request(`/authz/users/${enc(id!)}/assign`, {
-              method: "POST",
-              body: { roles: add, userType: "db" },
+        case "alias": {
+          const [id] = partsOf(resourceId, 1);
+          const collection = str(fields["collection"]);
+          if (collection) {
+            await conn.api.request(`/aliases/${enc(id!)}`, {
+              method: "PUT",
+              body: { class: collection },
             });
           }
-          if (remove.length) {
-            await conn.api.request(`/authz/users/${enc(id!)}/revoke`, {
-              method: "POST",
-              body: { roles: remove, userType: "db" },
-            });
-          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
-        return this.getResource(typeId, resourceId, accountId);
+        case "db-user": {
+          const [id] = partsOf(resourceId, 1);
+          if (fields["roles"] !== undefined) {
+            const current = await conn.api.request<WvDbUser>(`/users/db/${enc(id!)}`);
+            const have = new Set(current.roles ?? []);
+            const want = new Set(parseList(fields["roles"]));
+            const add = [...want].filter((r) => !have.has(r));
+            const remove = [...have].filter((r) => !want.has(r));
+            if (add.length) {
+              await conn.api.request(`/authz/users/${enc(id!)}/assign`, {
+                method: "POST",
+                body: { roles: add, userType: "db" },
+              });
+            }
+            if (remove.length) {
+              await conn.api.request(`/authz/users/${enc(id!)}/revoke`, {
+                method: "POST",
+                body: { roles: remove, userType: "db" },
+              });
+            }
+          }
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
+        default:
+          throw new Error(`Weaviate plugin: cannot update "${typeId}"`);
       }
-      default:
-        throw new Error(`Weaviate plugin: cannot update "${typeId}"`);
-    }
+    });
   }
 
   private async setTenantStatus(conn: Conn, resourceId: string, status: string): Promise<void> {
@@ -1322,101 +1350,109 @@ export class WeaviateClient implements PluginClient {
 
   // ── Delete ───────────────────────────────────────────────────────────
 
-  async deleteResource(typeId: string, resourceId: string): Promise<void> {
-    const { conn } = await this.connFor(resourceId);
-    switch (typeId) {
-      case "collection": {
-        const [id] = partsOf(resourceId, 1);
-        await conn.api.request(`/schema/${enc(id!)}`, { method: "DELETE" });
-        return;
+  deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const { conn } = await this.connFor(resourceId);
+      switch (typeId) {
+        case "collection": {
+          const [id] = partsOf(resourceId, 1);
+          await conn.api.request(`/schema/${enc(id!)}`, { method: "DELETE" });
+          return;
+        }
+        case "tenant": {
+          const [collection, name] = partsOf(resourceId, 2);
+          await conn.api.request(`/schema/${enc(collection!)}/tenants`, {
+            method: "DELETE",
+            body: [name],
+          });
+          return;
+        }
+        case "alias": {
+          const [id] = partsOf(resourceId, 1);
+          await conn.api.request(`/aliases/${enc(id!)}`, { method: "DELETE" });
+          return;
+        }
+        case "db-user": {
+          const [id] = partsOf(resourceId, 1);
+          await conn.api.request(`/users/db/${enc(id!)}`, { method: "DELETE" });
+          return;
+        }
+        case "role": {
+          const [id] = partsOf(resourceId, 1);
+          await conn.api.request(`/authz/roles/${enc(id!)}`, { method: "DELETE" });
+          return;
+        }
+        default:
+          throw new Error(`Weaviate plugin: cannot delete "${typeId}"`);
       }
-      case "tenant": {
-        const [collection, name] = partsOf(resourceId, 2);
-        await conn.api.request(`/schema/${enc(collection!)}/tenants`, {
-          method: "DELETE",
-          body: [name],
-        });
-        return;
-      }
-      case "alias": {
-        const [id] = partsOf(resourceId, 1);
-        await conn.api.request(`/aliases/${enc(id!)}`, { method: "DELETE" });
-        return;
-      }
-      case "db-user": {
-        const [id] = partsOf(resourceId, 1);
-        await conn.api.request(`/users/db/${enc(id!)}`, { method: "DELETE" });
-        return;
-      }
-      case "role": {
-        const [id] = partsOf(resourceId, 1);
-        await conn.api.request(`/authz/roles/${enc(id!)}`, { method: "DELETE" });
-        return;
-      }
-      default:
-        throw new Error(`Weaviate plugin: cannot delete "${typeId}"`);
-    }
+    });
   }
 
   // ── Actions ──────────────────────────────────────────────────────────
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    if (typeId === "cluster" && actionId === "disconnect") {
-      const { scope } = splitScoped(resourceId);
-      if (this.credentialConns.has(scope.key)) {
-        throw new Error(
-          "This cluster comes from the account's credentials; remove it from More clusters in the account settings.",
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "cluster" && actionId === "disconnect") {
+        const { scope } = splitScoped(resourceId);
+        if (this.credentialConns.has(scope.key)) {
+          throw new Error(
+            "This cluster comes from the account's credentials; remove it from More clusters in the account settings.",
+          );
+        }
+        await this.storeSecret(
+          clusterResourceId({ accountId: accountId || scope.accountId, key: scope.key }),
+          CLUSTER_KEY_FIELD,
+          "",
         );
+        this.storedConns.delete(scope.key);
+        return;
       }
-      await this.storeSecret(
-        clusterResourceId({ accountId: accountId || scope.accountId, key: scope.key }),
-        CLUSTER_KEY_FIELD,
-        "",
-      );
-      this.storedConns.delete(scope.key);
-      return;
-    }
-    const { conn } = await this.connFor(resourceId);
-    if (typeId === "db-user") {
-      const [id] = partsOf(resourceId, 1);
-      if (actionId === "rotate-key") {
-        const res = await conn.api.request<{ apikey?: string }>(
-          `/users/db/${enc(id!)}/rotate-key`,
-          { method: "POST" },
+      const { conn } = await this.connFor(resourceId);
+      if (typeId === "db-user") {
+        const [id] = partsOf(resourceId, 1);
+        if (actionId === "rotate-key") {
+          const res = await conn.api.request<{ apikey?: string }>(
+            `/users/db/${enc(id!)}/rotate-key`,
+            { method: "POST" },
+          );
+          if (res?.apikey)
+            await this.services?.secrets?.setPlaintext?.(resourceId, USER_KEY_FIELD, res.apikey);
+          return;
+        }
+        if (actionId === "activate" || actionId === "deactivate") {
+          await conn.api.request(`/users/db/${enc(id!)}/${actionId}`, { method: "POST", body: {} });
+          return;
+        }
+      }
+      if (typeId === "tenant" && (actionId === "activate" || actionId === "deactivate")) {
+        await this.setTenantStatus(
+          conn,
+          resourceId,
+          actionId === "activate" ? "ACTIVE" : "INACTIVE",
         );
-        if (res?.apikey)
-          await this.services?.secrets?.setPlaintext?.(resourceId, USER_KEY_FIELD, res.apikey);
         return;
       }
-      if (actionId === "activate" || actionId === "deactivate") {
-        await conn.api.request(`/users/db/${enc(id!)}/${actionId}`, { method: "POST", body: {} });
-        return;
+      if (typeId === "backup") {
+        const [backend, name] = partsOf(resourceId, 2);
+        if (actionId === "restore") {
+          await conn.api.request(`/backups/${enc(backend!)}/${enc(name!)}/restore`, {
+            method: "POST",
+            body: {},
+          });
+          return;
+        }
+        if (actionId === "cancel") {
+          await conn.api.request(`/backups/${enc(backend!)}/${enc(name!)}`, { method: "DELETE" });
+          return;
+        }
       }
-    }
-    if (typeId === "tenant" && (actionId === "activate" || actionId === "deactivate")) {
-      await this.setTenantStatus(conn, resourceId, actionId === "activate" ? "ACTIVE" : "INACTIVE");
-      return;
-    }
-    if (typeId === "backup") {
-      const [backend, name] = partsOf(resourceId, 2);
-      if (actionId === "restore") {
-        await conn.api.request(`/backups/${enc(backend!)}/${enc(name!)}/restore`, {
-          method: "POST",
-          body: {},
-        });
-        return;
-      }
-      if (actionId === "cancel") {
-        await conn.api.request(`/backups/${enc(backend!)}/${enc(name!)}`, { method: "DELETE" });
-        return;
-      }
-    }
-    throw new Error(`Weaviate plugin: action "${actionId}" is not supported for "${typeId}"`);
+      throw new Error(`Weaviate plugin: action "${actionId}" is not supported for "${typeId}"`);
+    });
   }
 
   /** Connect: keep a pasted key, or claim the one-time key of a cluster that has not revealed it. */
@@ -1450,21 +1486,23 @@ export class WeaviateClient implements PluginClient {
     return { connected: true };
   }
 
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    if (typeId === "cluster" && command === "connect") {
-      return this.connectCluster(resourceId, accountId, str(parseFormArg(args[0])["apiKey"]));
-    }
-    if (typeId === "cluster" && command === "createBackup") {
-      const { conn } = await this.connFor(resourceId);
-      return this.startBackup(conn, parseFormArg(args[0]));
-    }
-    throw new Error(`Weaviate plugin: unknown command "${command}"`);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      if (typeId === "cluster" && command === "connect") {
+        return this.connectCluster(resourceId, accountId, str(parseFormArg(args[0])["apiKey"]));
+      }
+      if (typeId === "cluster" && command === "createBackup") {
+        const { conn } = await this.connFor(resourceId);
+        return this.startBackup(conn, parseFormArg(args[0]));
+      }
+      throw new Error(`Weaviate plugin: unknown command "${command}"`);
+    });
   }
 
   // ── Metrics ──────────────────────────────────────────────────────────
@@ -1475,47 +1513,49 @@ export class WeaviateClient implements PluginClient {
    * node stats are current values; the host's metrics warehouse turns
    * successive readings into a history.
    */
-  async fetchMetricSeries(resourceTypeId: string, resourceId: string): Promise<MetricSeries[]> {
-    const { scope, parts } = splitScoped(resourceId);
-    const conn = await this.conn(scope.accountId, scope.key);
-    if (!conn) return [];
-    const now = Date.now();
-    const nodes = await this.nodes(conn);
-    const point = (label: string, unit: string, value: number): MetricSeries => ({
-      label,
-      unit,
-      points: [{ timestamp: now, value }],
+  fetchMetricSeries(resourceTypeId: string, resourceId: string): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const { scope, parts } = splitScoped(resourceId);
+      const conn = await this.conn(scope.accountId, scope.key);
+      if (!conn) return [];
+      const now = Date.now();
+      const nodes = await this.nodes(conn);
+      const point = (label: string, unit: string, value: number): MetricSeries => ({
+        label,
+        unit,
+        points: [{ timestamp: now, value }],
+      });
+      if (resourceTypeId === "cluster") {
+        const shards = nodes.flatMap((n) => n.shards ?? []);
+        return [
+          point(
+            "Objects",
+            "objects",
+            nodes.reduce((s, n) => s + (n.stats?.objectCount ?? 0), 0),
+          ),
+          point(
+            "Shards",
+            "shards",
+            nodes.reduce((s, n) => s + (n.stats?.shardCount ?? 0), 0),
+          ),
+          point("Healthy Nodes", "nodes", nodes.filter((n) => n.status === "HEALTHY").length),
+          point(
+            "Vector Queue",
+            "vectors",
+            shards.reduce((s, x) => s + (x.vectorQueueLength ?? 0), 0),
+          ),
+        ];
+      }
+      if (resourceTypeId === "collection") {
+        const stats = collectionStats(nodes).get(parts.join("/"));
+        if (!stats) return [];
+        return [
+          point("Objects", "objects", stats.objects),
+          point("Shards", "shards", stats.shards),
+          point("Vector Queue", "vectors", stats.queue),
+        ];
+      }
+      return [];
     });
-    if (resourceTypeId === "cluster") {
-      const shards = nodes.flatMap((n) => n.shards ?? []);
-      return [
-        point(
-          "Objects",
-          "objects",
-          nodes.reduce((s, n) => s + (n.stats?.objectCount ?? 0), 0),
-        ),
-        point(
-          "Shards",
-          "shards",
-          nodes.reduce((s, n) => s + (n.stats?.shardCount ?? 0), 0),
-        ),
-        point("Healthy Nodes", "nodes", nodes.filter((n) => n.status === "HEALTHY").length),
-        point(
-          "Vector Queue",
-          "vectors",
-          shards.reduce((s, x) => s + (x.vectorQueueLength ?? 0), 0),
-        ),
-      ];
-    }
-    if (resourceTypeId === "collection") {
-      const stats = collectionStats(nodes).get(parts.join("/"));
-      if (!stats) return [];
-      return [
-        point("Objects", "objects", stats.objects),
-        point("Shards", "shards", stats.shards),
-        point("Vector Queue", "vectors", stats.queue),
-      ];
-    }
-    return [];
   }
 }

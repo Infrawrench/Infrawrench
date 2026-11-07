@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 
@@ -65,7 +66,7 @@ describe("KubernetesClient with services.k8s driver", () => {
     });
     const services: HostServices = { k8s: { command } };
 
-    const client = new KubernetesClient({ kubeconfig: KUBECONFIG }, services);
+    const client = hostClient(new KubernetesClient({ kubeconfig: KUBECONFIG }, services));
     const result = await client.listResources("k8s-namespace", "acct1");
 
     expect(command).toHaveBeenCalledWith(
@@ -83,7 +84,9 @@ describe("KubernetesClient with services.k8s driver", () => {
     // The hand-rolled parser would silently drop the exec block, leaving no
     // token. As long as the driver is present the client must still
     // construct so the driver can do its job.
-    expect(() => new KubernetesClient({ kubeconfig: EXEC_KUBECONFIG }, services)).not.toThrow();
+    expect(() =>
+      hostClient(new KubernetesClient({ kubeconfig: EXEC_KUBECONFIG }, services)),
+    ).not.toThrow();
   });
 
   it("falls back to direct fetch when no services.k8s is provided", async () => {
@@ -93,7 +96,7 @@ describe("KubernetesClient with services.k8s driver", () => {
     const original = globalThis.fetch;
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     try {
-      const client = new KubernetesClient({ kubeconfig: KUBECONFIG });
+      const client = hostClient(new KubernetesClient({ kubeconfig: KUBECONFIG }));
       await client.listResources("k8s-namespace", "acct1");
       expect(fetchMock).toHaveBeenCalledWith(
         "https://cluster.example/api/v1/namespaces",

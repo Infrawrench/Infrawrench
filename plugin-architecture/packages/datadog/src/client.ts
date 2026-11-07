@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   BusinessMetricSourceOption,
   BusinessMetricSourceRange,
@@ -89,7 +92,7 @@ const MONITOR_ACTIONS = new Set(["mute", "mute-1h", "mute-1d", "unmute"]);
 export class DatadogClient implements PluginClient {
   private readonly ctx: DatadogContext;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     const appKey = (credentials["appKey"] ?? "").trim();
     if (!apiKey) throw new Error("Datadog plugin: missing apiKey credential");
@@ -126,55 +129,59 @@ export class DatadogClient implements PluginClient {
     }
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "organization":
-        return this.listOrganizations(accountId);
-      case "monitor":
-        return this.scoped(async () =>
-          (await this.fetchMonitors()).map((m) => mapMonitor(accountId, this.site, m)),
-        );
-      case "downtime":
-        return this.scoped(() => this.listDowntimes(accountId));
-      case "dashboard":
-        return this.scoped(async () =>
-          (await this.fetchDashboards()).map((d) => mapDashboard(accountId, this.site, d)),
-        );
-      case "slo":
-        return this.scoped(async () =>
-          (await this.fetchSlos()).map((s) => mapSlo(accountId, this.site, s)),
-        );
-      case "synthetics-test":
-        return this.scoped(async () =>
-          (await this.fetchSyntheticsTests()).map((t) =>
-            mapSyntheticsTest(accountId, this.site, t),
-          ),
-        );
-      case "host":
-        return this.scoped(async () => (await this.fetchHosts()).map((h) => mapHost(accountId, h)));
-      case "user":
-        return this.scoped(() => this.listUsers(accountId));
-      case "api-key":
-        return this.scoped(async () => {
-          const { data, included } = await ddPaged<DdApiKey>(this.ctx, "/api/v2/api_keys", {
-            include: "created_by",
-          });
-          const users = includedUsers(included);
-          return data.map((k) => mapApiKey(accountId, k, users));
-        });
-      case "application-key":
-        return this.scoped(async () => {
-          const { data, included } = await ddPaged<DdApplicationKey>(
-            this.ctx,
-            "/api/v2/application_keys",
-            { include: "owned_by" },
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "organization":
+          return this.listOrganizations(accountId);
+        case "monitor":
+          return this.scoped(async () =>
+            (await this.fetchMonitors()).map((m) => mapMonitor(accountId, this.site, m)),
           );
-          const users = includedUsers(included);
-          return data.map((k) => mapApplicationKey(accountId, k, users));
-        });
-      default:
-        throw new Error(`Datadog plugin: unknown resource type "${typeId}"`);
-    }
+        case "downtime":
+          return this.scoped(() => this.listDowntimes(accountId));
+        case "dashboard":
+          return this.scoped(async () =>
+            (await this.fetchDashboards()).map((d) => mapDashboard(accountId, this.site, d)),
+          );
+        case "slo":
+          return this.scoped(async () =>
+            (await this.fetchSlos()).map((s) => mapSlo(accountId, this.site, s)),
+          );
+        case "synthetics-test":
+          return this.scoped(async () =>
+            (await this.fetchSyntheticsTests()).map((t) =>
+              mapSyntheticsTest(accountId, this.site, t),
+            ),
+          );
+        case "host":
+          return this.scoped(async () =>
+            (await this.fetchHosts()).map((h) => mapHost(accountId, h)),
+          );
+        case "user":
+          return this.scoped(() => this.listUsers(accountId));
+        case "api-key":
+          return this.scoped(async () => {
+            const { data, included } = await ddPaged<DdApiKey>(this.ctx, "/api/v2/api_keys", {
+              include: "created_by",
+            });
+            const users = includedUsers(included);
+            return data.map((k) => mapApiKey(accountId, k, users));
+          });
+        case "application-key":
+          return this.scoped(async () => {
+            const { data, included } = await ddPaged<DdApplicationKey>(
+              this.ctx,
+              "/api/v2/application_keys",
+              { include: "owned_by" },
+            );
+            const users = includedUsers(included);
+            return data.map((k) => mapApplicationKey(accountId, k, users));
+          });
+        default:
+          throw new Error(`Datadog plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   private async fetchMonitors(): Promise<DdMonitor[]> {
@@ -325,245 +332,265 @@ export class DatadogClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "monitor": {
-        const m = await ddFetch<DdMonitor>(this.ctx, `/api/v1/monitor/${encodeURIComponent(id)}`, {
-          query: { with_downtimes: true },
-        });
-        return mapMonitor(accountId, this.site, m);
-      }
-      case "slo": {
-        const res = await ddFetch<{ data?: DdSlo }>(
-          this.ctx,
-          `/api/v1/slo/${encodeURIComponent(id)}`,
-        );
-        if (res.data) return mapSlo(accountId, this.site, res.data);
-        break;
-      }
-      case "synthetics-test": {
-        const t = await ddFetch<DdSyntheticsTest>(
-          this.ctx,
-          `/api/v1/synthetics/tests/${encodeURIComponent(id)}`,
-        );
-        return mapSyntheticsTest(accountId, this.site, t);
-      }
-      case "downtime": {
-        const res = await ddFetch<{ data?: DdDowntime; included?: unknown[] }>(
-          this.ctx,
-          `/api/v2/downtime/${encodeURIComponent(id)}`,
-          { query: { include: "monitor" } },
-        );
-        if (res.data) {
-          const names = new Map<string, string>();
-          for (const inc of (res.included ?? []) as Array<{
-            type?: string;
-            id?: string | number;
-            attributes?: { name?: string };
-          }>) {
-            if (inc.type === "monitors" && inc.id !== undefined && inc.attributes?.name) {
-              names.set(String(inc.id), inc.attributes.name);
-            }
-          }
-          return mapDowntime(accountId, res.data, names);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "monitor": {
+          const m = await ddFetch<DdMonitor>(
+            this.ctx,
+            `/api/v1/monitor/${encodeURIComponent(id)}`,
+            {
+              query: { with_downtimes: true },
+            },
+          );
+          return mapMonitor(accountId, this.site, m);
         }
-        break;
-      }
-      case "user": {
-        const res = await ddFetch<{ data?: DdUser; included?: unknown[] }>(
-          this.ctx,
-          `/api/v2/users/${encodeURIComponent(id)}`,
-        );
-        if (res.data) return mapUser(accountId, res.data, includedRoles(res.included ?? []));
-        break;
-      }
-      case "host": {
-        const hosts = await this.fetchHosts(`host:${id}`);
-        const found = hosts.find((h) => (h.host_name ?? h.name) === id);
-        if (found) return mapHost(accountId, found);
-        break;
-      }
-      case "organization": {
-        const all = await this.listOrganizations(accountId);
-        const found = all.find((r) => r.id === resourceId) ?? all[0];
-        if (!found) break;
-        const [summary, attribution] = await Promise.all([
-          fetchDatadogCostSummary(this.ctx).catch(() => []),
-          this.site.government
-            ? Promise.resolve(undefined)
-            : fetchCostAttribution(this.ctx).catch(() => undefined),
-        ]);
-        const own = summary.find(
-          (s) => (s.publicId || s.orgName) === found.externalId || summary.length === 1,
-        );
-        const orgAttribution = attribution
-          ? {
-              ...attribution,
-              rows:
-                found.fields["name"] && attribution.rows.some((r) => r.orgName)
-                  ? attribution.rows.filter(
-                      (r) => !r.orgName || r.orgName === String(found.fields["name"]),
-                    )
-                  : attribution.rows,
+        case "slo": {
+          const res = await ddFetch<{ data?: DdSlo }>(
+            this.ctx,
+            `/api/v1/slo/${encodeURIComponent(id)}`,
+          );
+          if (res.data) return mapSlo(accountId, this.site, res.data);
+          break;
+        }
+        case "synthetics-test": {
+          const t = await ddFetch<DdSyntheticsTest>(
+            this.ctx,
+            `/api/v1/synthetics/tests/${encodeURIComponent(id)}`,
+          );
+          return mapSyntheticsTest(accountId, this.site, t);
+        }
+        case "downtime": {
+          const res = await ddFetch<{ data?: DdDowntime; included?: unknown[] }>(
+            this.ctx,
+            `/api/v2/downtime/${encodeURIComponent(id)}`,
+            { query: { include: "monitor" } },
+          );
+          if (res.data) {
+            const names = new Map<string, string>();
+            for (const inc of (res.included ?? []) as Array<{
+              type?: string;
+              id?: string | number;
+              attributes?: { name?: string };
+            }>) {
+              if (inc.type === "monitors" && inc.id !== undefined && inc.attributes?.name) {
+                names.set(String(inc.id), inc.attributes.name);
+              }
             }
-          : undefined;
-        return {
-          ...found,
-          resolvedOutputs: {
-            ...found.resolvedOutputs,
-            ...(own ? { [COST_SUMMARY_KEY]: JSON.stringify(own) } : {}),
-            ...(orgAttribution ? { [ATTRIBUTION_KEY]: JSON.stringify(orgAttribution) } : {}),
-          },
-        };
+            return mapDowntime(accountId, res.data, names);
+          }
+          break;
+        }
+        case "user": {
+          const res = await ddFetch<{ data?: DdUser; included?: unknown[] }>(
+            this.ctx,
+            `/api/v2/users/${encodeURIComponent(id)}`,
+          );
+          if (res.data) return mapUser(accountId, res.data, includedRoles(res.included ?? []));
+          break;
+        }
+        case "host": {
+          const hosts = await this.fetchHosts(`host:${id}`);
+          const found = hosts.find((h) => (h.host_name ?? h.name) === id);
+          if (found) return mapHost(accountId, found);
+          break;
+        }
+        case "organization": {
+          const all = await this.listOrganizations(accountId);
+          const found = all.find((r) => r.id === resourceId) ?? all[0];
+          if (!found) break;
+          const [summary, attribution] = await Promise.all([
+            fetchDatadogCostSummary(this.ctx).catch(() => []),
+            this.site.government
+              ? Promise.resolve(undefined)
+              : fetchCostAttribution(this.ctx).catch(() => undefined),
+          ]);
+          const own = summary.find(
+            (s) => (s.publicId || s.orgName) === found.externalId || summary.length === 1,
+          );
+          const orgAttribution = attribution
+            ? {
+                ...attribution,
+                rows:
+                  found.fields["name"] && attribution.rows.some((r) => r.orgName)
+                    ? attribution.rows.filter(
+                        (r) => !r.orgName || r.orgName === String(found.fields["name"]),
+                      )
+                    : attribution.rows,
+              }
+            : undefined;
+          return {
+            ...found,
+            resolvedOutputs: {
+              ...found.resolvedOutputs,
+              ...(own ? { [COST_SUMMARY_KEY]: JSON.stringify(own) } : {}),
+              ...(orgAttribution ? { [ATTRIBUTION_KEY]: JSON.stringify(orgAttribution) } : {}),
+            },
+          };
+        }
+        default:
+          break;
       }
-      default:
-        break;
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId || r.externalId === id);
-    if (!found) throw new Error(`Datadog plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId || r.externalId === id);
+      if (!found) throw new Error(`Datadog plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(`Datadog plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
+      throw new Error(`Datadog plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics and costs
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = r.fields;
-    const usd = (v: unknown) =>
-      typeof v === "number" ? `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—";
-    switch (resourceTypeId) {
-      case "organization":
-        return [
-          { label: "Month to Date", value: usd(f["monthToDate"]) },
-          { label: "Projected", value: usd(f["projectedCost"]) },
-        ];
-      case "monitor": {
-        const state = String(f["overallState"] ?? "");
-        return [
-          {
-            label: "State",
-            value: state || "—",
-            variant:
-              state === "OK"
-                ? "status-healthy"
-                : state === "Alert"
-                  ? "status-error"
-                  : state === "Warn"
-                    ? "status-degraded"
-                    : "default",
-          },
-          { label: "Muted", value: f["muted"] === true ? "Yes" : "No" },
-        ];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      const f = r.fields;
+      const usd = (v: unknown) =>
+        typeof v === "number" ? `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "—";
+      switch (resourceTypeId) {
+        case "organization":
+          return [
+            { label: "Month to Date", value: usd(f["monthToDate"]) },
+            { label: "Projected", value: usd(f["projectedCost"]) },
+          ];
+        case "monitor": {
+          const state = String(f["overallState"] ?? "");
+          return [
+            {
+              label: "State",
+              value: state || "—",
+              variant:
+                state === "OK"
+                  ? "status-healthy"
+                  : state === "Alert"
+                    ? "status-error"
+                    : state === "Warn"
+                      ? "status-degraded"
+                      : "default",
+            },
+            { label: "Muted", value: f["muted"] === true ? "Yes" : "No" },
+          ];
+        }
+        case "host":
+          return [
+            {
+              label: "Status",
+              value: f["up"] === false ? "Not reporting" : "Up",
+              variant: f["up"] === false ? "status-error" : "status-healthy",
+            },
+            { label: "CPU", value: f["cpu"] !== undefined ? `${String(f["cpu"])}%` : "—" },
+            { label: "Load (15m)", value: String(f["load"] ?? "—") },
+          ];
+        case "slo":
+          return [
+            { label: "Target", value: f["target"] !== undefined ? `${String(f["target"])}%` : "—" },
+            { label: "Timeframe", value: String(f["timeframe"] ?? "—") },
+          ];
+        case "synthetics-test":
+          return [
+            { label: "Status", value: String(f["status"] ?? "—") },
+            { label: "Type", value: String(f["type"] ?? "—") },
+          ];
+        default:
+          return [];
       }
-      case "host":
-        return [
-          {
-            label: "Status",
-            value: f["up"] === false ? "Not reporting" : "Up",
-            variant: f["up"] === false ? "status-error" : "status-healthy",
-          },
-          { label: "CPU", value: f["cpu"] !== undefined ? `${String(f["cpu"])}%` : "—" },
-          { label: "Load (15m)", value: String(f["load"] ?? "—") },
-        ];
-      case "slo":
-        return [
-          { label: "Target", value: f["target"] !== undefined ? `${String(f["target"])}%` : "—" },
-          { label: "Timeframe", value: String(f["timeframe"] ?? "—") },
-        ];
-      case "synthetics-test":
-        return [
-          { label: "Status", value: String(f["status"] ?? "—") },
-          { label: "Type", value: String(f["type"] ?? "—") },
-        ];
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const id = externalIdOf(resourceId);
-    switch (resourceTypeId) {
-      case "organization": {
-        const range = rangeOrDefault(timeRange, USAGE_METRICS_WINDOW_MS);
-        const org = await this.getResource("organization", resourceId, accountId).catch(
-          () => undefined,
-        );
-        return usageSeries(this.ctx, String(org?.fields["publicId"] ?? ""), range);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (resourceTypeId) {
+        case "organization": {
+          const range = rangeOrDefault(timeRange, USAGE_METRICS_WINDOW_MS);
+          const org = await runPluginEffect(
+            this.getResource("organization", resourceId, accountId),
+          ).catch(() => undefined);
+          return usageSeries(this.ctx, String(org?.fields["publicId"] ?? ""), range);
+        }
+        case "host":
+          return hostSeries(this.ctx, id, rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS));
+        case "monitor": {
+          const m = await runPluginEffect(this.getResource("monitor", resourceId, accountId));
+          return monitorSeries(
+            this.ctx,
+            String(m.fields["type"] ?? ""),
+            String(m.fields["query"] ?? ""),
+            String(m.fields["thresholdsJson"] ?? ""),
+            rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
+          );
+        }
+        case "slo":
+          return sloSeries(this.ctx, id, rangeOrDefault(timeRange, USAGE_METRICS_WINDOW_MS));
+        case "synthetics-test": {
+          const t = await runPluginEffect(
+            this.getResource("synthetics-test", resourceId, accountId),
+          );
+          return syntheticsSeries(
+            this.ctx,
+            id,
+            String(t.fields["type"] ?? ""),
+            rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
+          );
+        }
+        default:
+          return [];
       }
-      case "host":
-        return hostSeries(this.ctx, id, rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS));
-      case "monitor": {
-        const m = await this.getResource("monitor", resourceId, accountId);
-        return monitorSeries(
-          this.ctx,
-          String(m.fields["type"] ?? ""),
-          String(m.fields["query"] ?? ""),
-          String(m.fields["thresholdsJson"] ?? ""),
-          rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
-        );
-      }
-      case "slo":
-        return sloSeries(this.ctx, id, rangeOrDefault(timeRange, USAGE_METRICS_WINDOW_MS));
-      case "synthetics-test": {
-        const t = await this.getResource("synthetics-test", resourceId, accountId);
-        return syntheticsSeries(
-          this.ctx,
-          id,
-          String(t.fields["type"] ?? ""),
-          rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS),
-        );
-      }
-      default:
-        return [];
-    }
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchDatadogCostData(this.ctx, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchDatadogCostData(this.ctx, range);
+    });
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    return verifyDatadogCredentials(this.ctx);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return verifyDatadogCredentials(this.ctx);
+    });
   }
 
-  async fetchIdleFindings(
+  fetchIdleFindings(
     _accountId: string,
     request: IdleScanRequest,
-  ): Promise<IdleFindingRecord[]> {
-    return fetchDatadogIdleFindings(request, {
-      fetchPage: datadogMetricListFetch(this.ctx),
-      apiUrl: this.ctx.site.apiUrl,
+  ): PluginEffect<IdleFindingRecord[]> {
+    return attempt(async () => {
+      return fetchDatadogIdleFindings(request, {
+        fetchPage: datadogMetricListFetch(this.ctx),
+        apiUrl: this.ctx.site.apiUrl,
+      });
     });
   }
 
@@ -571,253 +598,263 @@ export class DatadogClient implements PluginClient {
   // Create / update / delete
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "downtime") {
-      throw new Error(`Datadog plugin: cannot create "${typeId}" from Infrawrench`);
-    }
-    const monitors = await this.fetchMonitors().catch(() => [] as DdMonitor[]);
-    return {
-      fields: [
-        {
-          key: "monitorId",
-          label: "Monitor",
-          kind: "select",
-          required: false,
-          description:
-            "The monitor to silence. Leave on All monitors to silence every monitor that matches the scope.",
-          defaultValue: "",
-          options: [
-            { id: "", label: "All monitors" },
-            ...monitors
-              .filter((m) => m.id !== undefined)
-              .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
-              .map((m) => ({
-                id: String(m.id),
-                label: m.name ?? String(m.id),
-                ...(m.type ? { description: m.type } : {}),
-              })),
-          ],
-        },
-        {
-          key: "scope",
-          label: "Scope",
-          kind: "text",
-          required: true,
-          defaultValue: "*",
-          placeholder: "env:prod",
-          description:
-            "Which groups to silence: * for all of them, or tags such as env:prod or host:web-1.",
-        },
-        {
-          key: "start",
-          label: "Start",
-          kind: "datetime",
-          required: false,
-          description: "Leave empty to start now.",
-        },
-        {
-          key: "end",
-          label: "End",
-          kind: "datetime",
-          required: false,
-          description: "Leave empty to keep the downtime until it is canceled.",
-        },
-        {
-          key: "message",
-          label: "Message",
-          kind: "text",
-          required: false,
-          multiline: true,
-          description: "Included with the notifications the downtime sends, if any.",
-        },
-      ],
-    };
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId !== "downtime") {
+        throw new Error(`Datadog plugin: cannot create "${typeId}" from Infrawrench`);
+      }
+      const monitors = await this.fetchMonitors().catch(() => [] as DdMonitor[]);
+      return {
+        fields: [
+          {
+            key: "monitorId",
+            label: "Monitor",
+            kind: "select",
+            required: false,
+            description:
+              "The monitor to silence. Leave on All monitors to silence every monitor that matches the scope.",
+            defaultValue: "",
+            options: [
+              { id: "", label: "All monitors" },
+              ...monitors
+                .filter((m) => m.id !== undefined)
+                .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
+                .map((m) => ({
+                  id: String(m.id),
+                  label: m.name ?? String(m.id),
+                  ...(m.type ? { description: m.type } : {}),
+                })),
+            ],
+          },
+          {
+            key: "scope",
+            label: "Scope",
+            kind: "text",
+            required: true,
+            defaultValue: "*",
+            placeholder: "env:prod",
+            description:
+              "Which groups to silence: * for all of them, or tags such as env:prod or host:web-1.",
+          },
+          {
+            key: "start",
+            label: "Start",
+            kind: "datetime",
+            required: false,
+            description: "Leave empty to start now.",
+          },
+          {
+            key: "end",
+            label: "End",
+            kind: "datetime",
+            required: false,
+            description: "Leave empty to keep the downtime until it is canceled.",
+          },
+          {
+            key: "message",
+            label: "Message",
+            kind: "text",
+            required: false,
+            multiline: true,
+            description: "Included with the notifications the downtime sends, if any.",
+          },
+        ],
+      };
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "downtime") {
-      throw new Error(`Datadog plugin: cannot create "${typeId}" from Infrawrench`);
-    }
-    const monitorId = (fields["monitorId"] ?? "").trim();
-    const start = (fields["start"] ?? "").trim();
-    const end = (fields["end"] ?? "").trim();
-    const res = await ddFetch<{ data?: DdDowntime; included?: unknown[] }>(
-      this.ctx,
-      "/api/v2/downtime",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          data: {
-            type: "downtime",
-            attributes: {
-              scope: (fields["scope"] ?? "").trim() || "*",
-              ...(fields["message"] ? { message: fields["message"] } : {}),
-              monitor_identifier: monitorId
-                ? { monitor_id: Number(monitorId) }
-                : { monitor_tags: ["*"] },
-              ...(start || end
-                ? { schedule: { ...(start ? { start } : {}), ...(end ? { end } : {}) } }
-                : {}),
-            },
-          },
-        }),
-      },
-    );
-    if (!res.data) throw new Error("Datadog plugin: downtime create returned no data");
-    const names = new Map<string, string>();
-    if (monitorId) {
-      const m = await ddFetch<DdMonitor>(
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "downtime") {
+        throw new Error(`Datadog plugin: cannot create "${typeId}" from Infrawrench`);
+      }
+      const monitorId = (fields["monitorId"] ?? "").trim();
+      const start = (fields["start"] ?? "").trim();
+      const end = (fields["end"] ?? "").trim();
+      const res = await ddFetch<{ data?: DdDowntime; included?: unknown[] }>(
         this.ctx,
-        `/api/v1/monitor/${encodeURIComponent(monitorId)}`,
-      ).catch(() => undefined);
-      if (m?.name) names.set(monitorId, m.name);
-    }
-    return mapDowntime(accountId, res.data, names);
+        "/api/v2/downtime",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            data: {
+              type: "downtime",
+              attributes: {
+                scope: (fields["scope"] ?? "").trim() || "*",
+                ...(fields["message"] ? { message: fields["message"] } : {}),
+                monitor_identifier: monitorId
+                  ? { monitor_id: Number(monitorId) }
+                  : { monitor_tags: ["*"] },
+                ...(start || end
+                  ? { schedule: { ...(start ? { start } : {}), ...(end ? { end } : {}) } }
+                  : {}),
+              },
+            },
+          }),
+        },
+      );
+      if (!res.data) throw new Error("Datadog plugin: downtime create returned no data");
+      const names = new Map<string, string>();
+      if (monitorId) {
+        const m = await ddFetch<DdMonitor>(
+          this.ctx,
+          `/api/v1/monitor/${encodeURIComponent(monitorId)}`,
+        ).catch(() => undefined);
+        if (m?.name) names.set(monitorId, m.name);
+      }
+      return mapDowntime(accountId, res.data, names);
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "monitor") {
-      const body: Record<string, unknown> = {};
-      if ("name" in fields) body["name"] = fields["name"];
-      if ("message" in fields) body["message"] = fields["message"];
-      if ("priority" in fields) {
-        body["priority"] = fields["priority"] ? Number(fields["priority"]) : null;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "monitor") {
+        const body: Record<string, unknown> = {};
+        if ("name" in fields) body["name"] = fields["name"];
+        if ("message" in fields) body["message"] = fields["message"];
+        if ("priority" in fields) {
+          body["priority"] = fields["priority"] ? Number(fields["priority"]) : null;
+        }
+        if ("tags" in fields) {
+          body["tags"] = (fields["tags"] ?? "")
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
+        }
+        const m = await ddFetch<DdMonitor>(this.ctx, `/api/v1/monitor/${encodeURIComponent(id)}`, {
+          method: "PUT",
+          body: JSON.stringify(body),
+        });
+        return mapMonitor(accountId, this.site, m);
       }
-      if ("tags" in fields) {
-        body["tags"] = (fields["tags"] ?? "")
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean);
+      if (typeId === "downtime") {
+        const attributes: Record<string, unknown> = {};
+        if ("scope" in fields) attributes["scope"] = (fields["scope"] ?? "").trim() || "*";
+        if ("message" in fields) attributes["message"] = fields["message"] ?? "";
+        await ddFetch<unknown>(this.ctx, `/api/v2/downtime/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ data: { id, type: "downtime", attributes } }),
+        });
+        return runPluginEffect(this.getResource("downtime", resourceId, accountId));
       }
-      const m = await ddFetch<DdMonitor>(this.ctx, `/api/v1/monitor/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        body: JSON.stringify(body),
-      });
-      return mapMonitor(accountId, this.site, m);
-    }
-    if (typeId === "downtime") {
-      const attributes: Record<string, unknown> = {};
-      if ("scope" in fields) attributes["scope"] = (fields["scope"] ?? "").trim() || "*";
-      if ("message" in fields) attributes["message"] = fields["message"] ?? "";
-      await ddFetch<unknown>(this.ctx, `/api/v2/downtime/${encodeURIComponent(id)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ data: { id, type: "downtime", attributes } }),
-      });
-      return this.getResource("downtime", resourceId, accountId);
-    }
-    throw new Error(`Datadog plugin: "${typeId}" cannot be edited from Infrawrench`);
+      throw new Error(`Datadog plugin: "${typeId}" cannot be edited from Infrawrench`);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const id = encodeURIComponent(externalIdOf(resourceId));
-    switch (typeId) {
-      case "monitor":
-        await ddFetch<unknown>(this.ctx, `/api/v1/monitor/${id}`, { method: "DELETE" });
-        return;
-      case "downtime":
-        // Datadog keeps canceled downtimes for reference; DELETE cancels.
-        await ddFetch<unknown>(this.ctx, `/api/v2/downtime/${id}`, { method: "DELETE" });
-        return;
-      case "dashboard":
-        await ddFetch<unknown>(this.ctx, `/api/v1/dashboard/${id}`, { method: "DELETE" });
-        return;
-      case "slo":
-        await ddFetch<unknown>(this.ctx, `/api/v1/slo/${id}`, { method: "DELETE" });
-        return;
-      case "synthetics-test":
-        await ddFetch<unknown>(this.ctx, "/api/v1/synthetics/tests/delete", {
-          method: "POST",
-          body: JSON.stringify({ public_ids: [externalIdOf(resourceId)] }),
-        });
-        return;
-      case "api-key":
-        await ddFetch<unknown>(this.ctx, `/api/v2/api_keys/${id}`, { method: "DELETE" });
-        return;
-      case "application-key":
-        await ddFetch<unknown>(this.ctx, `/api/v2/application_keys/${id}`, { method: "DELETE" });
-        return;
-      default:
-        throw new Error(`Datadog plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    }
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = encodeURIComponent(externalIdOf(resourceId));
+      switch (typeId) {
+        case "monitor":
+          await ddFetch<unknown>(this.ctx, `/api/v1/monitor/${id}`, { method: "DELETE" });
+          return;
+        case "downtime":
+          // Datadog keeps canceled downtimes for reference; DELETE cancels.
+          await ddFetch<unknown>(this.ctx, `/api/v2/downtime/${id}`, { method: "DELETE" });
+          return;
+        case "dashboard":
+          await ddFetch<unknown>(this.ctx, `/api/v1/dashboard/${id}`, { method: "DELETE" });
+          return;
+        case "slo":
+          await ddFetch<unknown>(this.ctx, `/api/v1/slo/${id}`, { method: "DELETE" });
+          return;
+        case "synthetics-test":
+          await ddFetch<unknown>(this.ctx, "/api/v1/synthetics/tests/delete", {
+            method: "POST",
+            body: JSON.stringify({ public_ids: [externalIdOf(resourceId)] }),
+          });
+          return;
+        case "api-key":
+          await ddFetch<unknown>(this.ctx, `/api/v2/api_keys/${id}`, { method: "DELETE" });
+          return;
+        case "application-key":
+          await ddFetch<unknown>(this.ctx, `/api/v2/application_keys/${id}`, { method: "DELETE" });
+          return;
+        default:
+          throw new Error(`Datadog plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "monitor" && MONITOR_ACTIONS.has(actionId)) {
-      if (actionId === "unmute") return this.unmuteMonitor(id);
-      const hours = actionId === "mute-1h" ? 1 : actionId === "mute-1d" ? 24 : 0;
-      await ddFetch<unknown>(this.ctx, "/api/v2/downtime", {
-        method: "POST",
-        body: JSON.stringify({
-          data: {
-            type: "downtime",
-            attributes: {
-              scope: "*",
-              monitor_identifier: { monitor_id: Number(id) },
-              message: "Muted from Infrawrench.",
-              ...(hours > 0
-                ? { schedule: { end: new Date(Date.now() + hours * 3600_000).toISOString() } }
-                : {}),
-            },
-          },
-        }),
-      });
-      return;
-    }
-    if (typeId === "synthetics-test") {
-      if (actionId === "pause" || actionId === "resume") {
-        await ddFetch<unknown>(
-          this.ctx,
-          `/api/v1/synthetics/tests/${encodeURIComponent(id)}/status`,
-          {
-            method: "PUT",
-            body: JSON.stringify({ new_status: actionId === "pause" ? "paused" : "live" }),
-          },
-        );
-        return;
-      }
-      if (actionId === "run") {
-        await ddFetch<unknown>(this.ctx, "/api/v1/synthetics/tests/trigger", {
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "monitor" && MONITOR_ACTIONS.has(actionId)) {
+        if (actionId === "unmute") return this.unmuteMonitor(id);
+        const hours = actionId === "mute-1h" ? 1 : actionId === "mute-1d" ? 24 : 0;
+        await ddFetch<unknown>(this.ctx, "/api/v2/downtime", {
           method: "POST",
-          body: JSON.stringify({ tests: [{ public_id: id }] }),
+          body: JSON.stringify({
+            data: {
+              type: "downtime",
+              attributes: {
+                scope: "*",
+                monitor_identifier: { monitor_id: Number(id) },
+                message: "Muted from Infrawrench.",
+                ...(hours > 0
+                  ? { schedule: { end: new Date(Date.now() + hours * 3600_000).toISOString() } }
+                  : {}),
+              },
+            },
+          }),
         });
         return;
       }
-    }
-    if (typeId === "host" && (actionId === "mute" || actionId === "unmute")) {
-      await ddFetch<unknown>(this.ctx, `/api/v1/host/${encodeURIComponent(id)}/${actionId}`, {
-        method: "POST",
-        body: actionId === "mute" ? JSON.stringify({ message: "Muted from Infrawrench." }) : "{}",
-      });
-      return;
-    }
-    if (typeId === "user" && actionId === "disable") {
-      // DELETE /api/v2/users/{id} disables the user; Datadog keeps the record.
-      await ddFetch<unknown>(this.ctx, `/api/v2/users/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    throw new Error(`Datadog plugin: unknown action "${actionId}" for "${typeId}"`);
+      if (typeId === "synthetics-test") {
+        if (actionId === "pause" || actionId === "resume") {
+          await ddFetch<unknown>(
+            this.ctx,
+            `/api/v1/synthetics/tests/${encodeURIComponent(id)}/status`,
+            {
+              method: "PUT",
+              body: JSON.stringify({ new_status: actionId === "pause" ? "paused" : "live" }),
+            },
+          );
+          return;
+        }
+        if (actionId === "run") {
+          await ddFetch<unknown>(this.ctx, "/api/v1/synthetics/tests/trigger", {
+            method: "POST",
+            body: JSON.stringify({ tests: [{ public_id: id }] }),
+          });
+          return;
+        }
+      }
+      if (typeId === "host" && (actionId === "mute" || actionId === "unmute")) {
+        await ddFetch<unknown>(this.ctx, `/api/v1/host/${encodeURIComponent(id)}/${actionId}`, {
+          method: "POST",
+          body: actionId === "mute" ? JSON.stringify({ message: "Muted from Infrawrench." }) : "{}",
+        });
+        return;
+      }
+      if (typeId === "user" && actionId === "disable") {
+        // DELETE /api/v2/users/{id} disables the user; Datadog keeps the record.
+        await ddFetch<unknown>(this.ctx, `/api/v2/users/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      throw new Error(`Datadog plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
   /** Cancel every current downtime that targets this monitor by id. */
@@ -857,19 +894,23 @@ export class DatadogClient implements PluginClient {
   // Business metric source (see `business-metric-source.ts`)
   // -------------------------------------------------------------------------
 
-  async listBusinessMetricSourceOptions(
+  listBusinessMetricSourceOptions(
     _accountId: string,
     fieldKey: string,
     params: Record<string, string>,
-  ): Promise<BusinessMetricSourceOption[]> {
-    return listDatadogMetricSourceOptions(this.ctx, fieldKey, params);
+  ): PluginEffect<BusinessMetricSourceOption[]> {
+    return attempt(async () => {
+      return listDatadogMetricSourceOptions(this.ctx, fieldKey, params);
+    });
   }
 
-  async runBusinessMetricSource(
+  runBusinessMetricSource(
     _accountId: string,
     params: Record<string, string>,
     range: BusinessMetricSourceRange,
-  ): Promise<BusinessMetricSourceResult> {
-    return runDatadogMetricSource(this.ctx, params, range);
+  ): PluginEffect<BusinessMetricSourceResult> {
+    return attempt(async () => {
+      return runDatadogMetricSource(this.ctx, params, range);
+    });
   }
 }

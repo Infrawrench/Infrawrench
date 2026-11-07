@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { FireworksClient } from "./client.js";
 import { DeploymentResourceType } from "./resources/deployment.js";
@@ -27,9 +32,9 @@ import { UserResourceType } from "./resources/user.js";
 // NOTE: docs.fireworks.ai still serves the *old* teal→green gradient petals at
 // /favicon.svg. That subdomain has not been reskinned; it is not the current
 // mark and is deliberately not used here.
-const manifest: PluginManifest = {
+export const manifest = {
   id: "fireworks",
-  version: "0.1.0",
+  egressHosts: ["api.fireworks.ai"],
   displayName: "Fireworks AI",
   description:
     "Manage Fireworks AI deployments, routers, models, datasets, fine-tuning (SFT, DPO, RFT), evaluators and evaluation jobs, batch jobs, users, API keys, secrets and quotas, with usage costs.",
@@ -41,9 +46,7 @@ const manifest: PluginManifest = {
       <path d="M0 23.7766L0.931955 21.5781L10.6702 21.6324L3.83993 14.7234L4.77189 12.5249L12.2345 20.0838C12.8582 20.7145 13.0386 21.65 12.6918 22.4645C12.3484 23.2756 11.5513 23.7977 10.6702 23.7977L0.00350359 23.7731L0 23.7766Z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -66,7 +69,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Find your account id", url: "https://app.fireworks.ai/" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // `usageCosts:query` groups by DAY + MODEL, so a cost row's "service" is
@@ -75,7 +78,9 @@ const manifest: PluginManifest = {
     maxHistoryDays: 365,
     restatementDays: 3,
   },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   DeploymentResourceType,
@@ -95,8 +100,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   QuotaResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new FireworksClient(credentials, services),
-};
+  testCredentials: { apiKey: "fw_test_fireworks_key", accountId: "test-account" },
+});

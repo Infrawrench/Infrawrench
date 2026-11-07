@@ -380,10 +380,7 @@ export function DetailViewContainer({
               onModifySecretVersion,
             }
           : {})}
-        {...(resource?.pluginId === "kubernetes" &&
-        resource?.resourceTypeId === "k8s-pod" &&
-        activeCloudOrgId &&
-        cloudParentResourceId
+        {...(schema.execConsole && activeCloudOrgId && cloudParentResourceId
           ? { onOpenConsole }
           : {})}
         {...(schema.chatPanel ? { onChatStream } : {})}

@@ -1,9 +1,11 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialField,
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { parseAccount } from "./account.js";
@@ -44,16 +46,14 @@ function rateField(
 
 const CREDENTIAL_DEPS = ["account", "user", "credential"];
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "snowflake",
-  version: "0.1.0",
+  egressHosts: ["*.snowflakecomputing.com"],
   displayName: "Snowflake",
   description:
     "Data cloud. Track Snowflake spend by service and warehouse (billed when the role can read organization usage, estimated from credits otherwise), the remaining capacity balance, and query cost by tag, user and role; manage warehouses, databases, schemas, resource monitors, users, roles, tasks, pipes and dynamic tables, and run SQL.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "account",
       label: "Account",
@@ -125,7 +125,7 @@ const manifest: PluginManifest = {
       DEFAULT_RATES.currency,
     ),
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Billed from ORGANIZATION_USAGE when visible, else credits × the price
     // above (see cost-data.ts); service group, region, warehouse as
@@ -152,7 +152,9 @@ const manifest: PluginManifest = {
   statusFeed,
   warehouseSink: SNOWFLAKE_WAREHOUSE_SINK,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 /**
  * Role and warehouse pickers, filled from the half-entered form. Roles are
@@ -201,12 +203,17 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new SnowflakeClient(credentials, services),
+  testCredentials: {
+    account: "myorg-myaccount",
+    user: "INFRAWRENCH",
+    credential: "test-snowflake-pat",
+  },
   parseStatusFeed,
   terraformExport: snowflakeTerraformExport,
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   remediationCommands: snowflakeRemediationCommands,
-};
+});

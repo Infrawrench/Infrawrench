@@ -1,3 +1,6 @@
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import { Pool, type QueryConfig } from "pg";
 import {
   assertSingleSqlStatement,
@@ -137,13 +140,15 @@ export const driver = {
   id: "postgres",
   dialTargets,
 
-  async query(
+  query(
     connectionString: string,
     sql: string,
     options?: SqlNodeDriverOptions,
-  ): Promise<Record<string, unknown>[]> {
-    return runWithTimeout(connectionString, options, async (pool) => {
-      return (await pool.query(sql)).rows as Record<string, unknown>[];
+  ): PluginEffect<Record<string, unknown>[]> {
+    return attempt(async () => {
+      return runWithTimeout(connectionString, options, async (pool) => {
+        return (await pool.query(sql)).rows as Record<string, unknown>[];
+      });
     });
   },
 
@@ -154,39 +159,43 @@ export const driver = {
    * `COMMIT; DROP ...` cannot end the read-only transaction early. The
    * lexical single-statement check in front is belt and braces.
    */
-  async queryReadOnly(
+  queryReadOnly(
     connectionString: string,
     sql: string,
     options?: SqlNodeDriverOptions,
-  ): Promise<Record<string, unknown>[]> {
-    assertSingleSqlStatement(sql);
-    return runWithTimeout(connectionString, options, async (pool) => {
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN READ ONLY");
+  ): PluginEffect<Record<string, unknown>[]> {
+    return attempt(async () => {
+      assertSingleSqlStatement(sql);
+      return runWithTimeout(connectionString, options, async (pool) => {
+        const client = await pool.connect();
         try {
-          // pg honours `queryMode` (the peer range is well past where it
-          // landed) but @types/pg does not declare it.
-          const config = { text: sql, queryMode: "extended" } as QueryConfig;
-          const result = await client.query(config);
-          return result.rows as Record<string, unknown>[];
+          await client.query("BEGIN READ ONLY");
+          try {
+            // pg honours `queryMode` (the peer range is well past where it
+            // landed) but @types/pg does not declare it.
+            const config = { text: sql, queryMode: "extended" } as QueryConfig;
+            const result = await client.query(config);
+            return result.rows as Record<string, unknown>[];
+          } finally {
+            await client.query("ROLLBACK").catch(() => {});
+          }
         } finally {
-          await client.query("ROLLBACK").catch(() => {});
+          client.release();
         }
-      } finally {
-        client.release();
-      }
+      });
     });
   },
 
-  async execute(
+  execute(
     connectionString: string,
     sql: string,
     params: unknown[],
     options?: SqlNodeDriverOptions,
-  ): Promise<number> {
-    return runWithTimeout(connectionString, options, async (pool) => {
-      return (await pool.query(sql, params)).rowCount ?? 0;
+  ): PluginEffect<number> {
+    return attempt(async () => {
+      return runWithTimeout(connectionString, options, async (pool) => {
+        return (await pool.query(sql, params)).rowCount ?? 0;
+      });
     });
   },
 } satisfies SqlNodeDriver;
@@ -210,29 +219,43 @@ export const serverDriver = {
     assertSafeForServer(connectionString);
     return dialTargets(connectionString);
   },
-  async query(
+  query(
     connectionString: string,
     sql: string,
     options?: SqlNodeDriverOptions,
-  ): Promise<Record<string, unknown>[]> {
-    assertSafeForServer(connectionString);
-    return driver.query(connectionString, sql, options);
+  ): PluginEffect<Record<string, unknown>[]> {
+    return attempt(async () => {
+      assertSafeForServer(connectionString);
+      return runPluginEffect(driver.query(connectionString, sql, options));
+    });
   },
-  async queryReadOnly(
+  queryReadOnly(
     connectionString: string,
     sql: string,
     options?: SqlNodeDriverOptions,
-  ): Promise<Record<string, unknown>[]> {
-    assertSafeForServer(connectionString);
-    return driver.queryReadOnly(connectionString, sql, options);
+  ): PluginEffect<Record<string, unknown>[]> {
+    return attempt(async () => {
+      assertSafeForServer(connectionString);
+      return runPluginEffect(driver.queryReadOnly(connectionString, sql, options));
+    });
   },
-  async execute(
+  execute(
     connectionString: string,
     sql: string,
     params: unknown[],
     options?: SqlNodeDriverOptions,
-  ): Promise<number> {
-    assertSafeForServer(connectionString);
-    return driver.execute(connectionString, sql, params, options);
+  ): PluginEffect<number> {
+    return attempt(async () => {
+      assertSafeForServer(connectionString);
+      return runPluginEffect(driver.execute(connectionString, sql, params, options));
+    });
   },
 } satisfies SqlNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { sql: driver },
+  server: { sql: serverDriver },
+});

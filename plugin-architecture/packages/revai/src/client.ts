@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DashboardStat,
@@ -207,7 +210,7 @@ export class RevAiClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const accessToken = credentials["accessToken"];
     if (!accessToken) throw new Error("Rev AI plugin: missing accessToken credential");
     this.accessToken = accessToken;
@@ -319,206 +322,216 @@ export class RevAiClient implements PluginClient {
     return error instanceof Error ? error : new Error(message);
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "account":
-        return [await this.buildAccount(accountId)];
-      case "job": {
-        const jobs = await this.fetchJobs();
-        return jobs.map((job) => this.mapJob(accountId, job));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "account":
+          return [await this.buildAccount(accountId)];
+        case "job": {
+          const jobs = await this.fetchJobs();
+          return jobs.map((job) => this.mapJob(accountId, job));
+        }
+        case "vocabulary": {
+          if (!this.supportsVocabularies) return [];
+          const vocabularies = await this.fetchVocabularies();
+          return vocabularies.map((vocabulary) => this.mapVocabulary(accountId, vocabulary));
+        }
+        case "language-id-job":
+        case "sentiment-job":
+        case "topic-job":
+        case "alignment-job": {
+          const api = INSIGHT_APIS[typeId];
+          if (!this.supportsInsight(api)) return [];
+          const jobs = await this.fetchInsightJobs(api);
+          return jobs.map((job) => this.mapInsightJob(accountId, api, job));
+        }
+        default:
+          throw new Error(`Rev AI plugin: unknown resource type "${typeId}"`);
       }
-      case "vocabulary": {
-        if (!this.supportsVocabularies) return [];
-        const vocabularies = await this.fetchVocabularies();
-        return vocabularies.map((vocabulary) => this.mapVocabulary(accountId, vocabulary));
-      }
-      case "language-id-job":
-      case "sentiment-job":
-      case "topic-job":
-      case "alignment-job": {
-        const api = INSIGHT_APIS[typeId];
-        if (!this.supportsInsight(api)) return [];
-        const jobs = await this.fetchInsightJobs(api);
-        return jobs.map((job) => this.mapInsightJob(accountId, api, job));
-      }
-      default:
-        throw new Error(`Rev AI plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    if (typeId === "account") return this.buildAccount(accountId);
+      if (typeId === "account") return this.buildAccount(accountId);
 
-    if (typeId === "job") {
-      const job = await this.fetchJob(externalId);
-      const resource = this.mapJob(accountId, job);
-      // renderDetail is synchronous, so the transcript has to be fetched here
-      // and stashed in resolvedOutputs (Cloudflare's `__consumers__` pattern).
-      if (str(job.status) === "transcribed") {
-        try {
-          const transcript = await this.fetchTranscript(externalId);
-          resource.resolvedOutputs["__transcript__"] = assembleTranscript(transcript);
-        } catch {
-          // A transcript that can't be fetched shouldn't blank the whole page.
-          resource.resolvedOutputs["__transcript__"] = "";
+      if (typeId === "job") {
+        const job = await this.fetchJob(externalId);
+        const resource = this.mapJob(accountId, job);
+        // renderDetail is synchronous, so the transcript has to be fetched here
+        // and stashed in resolvedOutputs (Cloudflare's `__consumers__` pattern).
+        if (str(job.status) === "transcribed") {
+          try {
+            const transcript = await this.fetchTranscript(externalId);
+            resource.resolvedOutputs["__transcript__"] = assembleTranscript(transcript);
+          } catch {
+            // A transcript that can't be fetched shouldn't blank the whole page.
+            resource.resolvedOutputs["__transcript__"] = "";
+          }
         }
+        return resource;
       }
-      return resource;
-    }
 
-    if (typeId === "vocabulary") {
-      const vocabulary = await this.fetchVocabulary(externalId);
-      return this.mapVocabulary(accountId, vocabulary);
-    }
+      if (typeId === "vocabulary") {
+        const vocabulary = await this.fetchVocabulary(externalId);
+        return this.mapVocabulary(accountId, vocabulary);
+      }
 
-    if (isInsightType(typeId)) {
-      const api = INSIGHT_APIS[typeId];
-      const job = await this.fetchFrom<RevAiInsightJob>(
-        this.hostUrl,
-        `${api.prefix}/jobs/${encodeURIComponent(externalId)}`,
-      );
-      const resource = this.mapInsightJob(accountId, api, job);
-      if (str(job.status) === "completed") {
-        try {
-          const result = await this.fetchFrom<unknown>(
-            this.hostUrl,
-            `${api.prefix}/jobs/${encodeURIComponent(externalId)}/${api.resultPath}`,
-            undefined,
-            api.resultAccept,
-          );
-          this.applyInsightResult(resource, api, result);
-        } catch {
-          // A result that can't be fetched shouldn't blank the whole page.
+      if (isInsightType(typeId)) {
+        const api = INSIGHT_APIS[typeId];
+        const job = await this.fetchFrom<RevAiInsightJob>(
+          this.hostUrl,
+          `${api.prefix}/jobs/${encodeURIComponent(externalId)}`,
+        );
+        const resource = this.mapInsightJob(accountId, api, job);
+        if (str(job.status) === "completed") {
+          try {
+            const result = await this.fetchFrom<unknown>(
+              this.hostUrl,
+              `${api.prefix}/jobs/${encodeURIComponent(externalId)}/${api.resultPath}`,
+              undefined,
+              api.resultAccept,
+            );
+            this.applyInsightResult(resource, api, result);
+          } catch {
+            // A result that can't be fetched shouldn't blank the whole page.
+          }
         }
+        return resource;
       }
-      return resource;
-    }
 
-    throw new Error(`Rev AI plugin: unknown resource type "${typeId}"`);
+      throw new Error(`Rev AI plugin: unknown resource type "${typeId}"`);
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     _accountId: string,
-  ): Promise<string> {
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    if (typeId === "account") {
-      if (outputKey === "endpoint") return this.baseUrl;
-      if (outputKey === "email") return str((await this.fetchAccount()).email);
-    }
-
-    if (typeId === "job") {
-      if (outputKey === "jobId") return externalId;
-      if (outputKey === "transcriptUrl") {
-        return `${this.baseUrl}/jobs/${encodeURIComponent(externalId)}/transcript`;
+      if (typeId === "account") {
+        if (outputKey === "endpoint") return this.baseUrl;
+        if (outputKey === "email") return str((await this.fetchAccount()).email);
       }
-      if (outputKey === "transcriptText") {
-        const job = await this.fetchJob(externalId);
-        if (str(job.status) !== "transcribed") return "";
-        return assembleTranscript(await this.fetchTranscript(externalId));
+
+      if (typeId === "job") {
+        if (outputKey === "jobId") return externalId;
+        if (outputKey === "transcriptUrl") {
+          return `${this.baseUrl}/jobs/${encodeURIComponent(externalId)}/transcript`;
+        }
+        if (outputKey === "transcriptText") {
+          const job = await this.fetchJob(externalId);
+          if (str(job.status) !== "transcribed") return "";
+          return assembleTranscript(await this.fetchTranscript(externalId));
+        }
       }
-    }
 
-    if (typeId === "vocabulary" && outputKey === "vocabularyId") return externalId;
+      if (typeId === "vocabulary" && outputKey === "vocabularyId") return externalId;
 
-    if (isInsightType(typeId)) {
-      if (outputKey === "jobId") return externalId;
-      const resource = await this.getResource(typeId, resourceId, _accountId);
-      const value = resource.fields[outputKey];
-      if (value !== undefined) return String(value);
-    }
+      if (isInsightType(typeId)) {
+        if (outputKey === "jobId") return externalId;
+        const resource = await runPluginEffect(this.getResource(typeId, resourceId, _accountId));
+        const value = resource.fields[outputKey];
+        if (value !== undefined) return String(value);
+      }
 
-    throw new Error(`Rev AI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      throw new Error(`Rev AI plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    if (resourceTypeId === "account") {
-      // The USD balances are the live numbers; `balance_seconds` is deprecated
-      // and always 0, so it is never shown.
-      const account = await this.fetchAccount();
-      const total = num(account.total_balance) ?? 0;
-      return [
-        {
-          label: "Total balance",
-          value: usd(account.total_balance),
-          variant: total <= 0 ? "status-degraded" : "status-healthy",
-        },
-        { label: "Free", value: usd(account.free_balance) },
-        { label: "Purchased", value: usd(account.purchased_balance) },
-      ];
-    }
-
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const fields = resource.fields;
-
-    if (resourceTypeId === "job") {
-      const status = String(fields["status"] ?? "");
-      return [
-        {
-          label: "Status",
-          value: status,
-          variant:
-            status === "failed"
-              ? "status-error"
-              : status === "transcribed"
-                ? "status-healthy"
-                : "default",
-        },
-        { label: "Duration", value: `${round(Number(fields["durationSeconds"] ?? 0), 1)} s` },
-        { label: "Transcriber", value: String(fields["transcriber"] ?? "—") },
-      ];
-    }
-
-    if (resourceTypeId === "vocabulary") {
-      return [
-        { label: "Status", value: String(fields["status"] ?? "—") },
-        { label: "Created", value: String(fields["createdOn"] ?? "—") },
-      ];
-    }
-
-    if (isInsightType(resourceTypeId)) {
-      const status = String(fields["status"] ?? "");
-      const stats: DashboardStat[] = [
-        {
-          label: "Status",
-          value: status || "—",
-          variant:
-            status === "failed"
-              ? "status-error"
-              : status === "completed"
-                ? "status-healthy"
-                : "default",
-        },
-      ];
-      if (resourceTypeId === "language-id-job" && fields["topLanguage"]) {
-        stats.push({ label: "Top language", value: String(fields["topLanguage"]) });
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      if (resourceTypeId === "account") {
+        // The USD balances are the live numbers; `balance_seconds` is deprecated
+        // and always 0, so it is never shown.
+        const account = await this.fetchAccount();
+        const total = num(account.total_balance) ?? 0;
+        return [
+          {
+            label: "Total balance",
+            value: usd(account.total_balance),
+            variant: total <= 0 ? "status-degraded" : "status-healthy",
+          },
+          { label: "Free", value: usd(account.free_balance) },
+          { label: "Purchased", value: usd(account.purchased_balance) },
+        ];
       }
-      if (resourceTypeId === "sentiment-job") {
-        stats.push(
-          { label: "Positive", value: String(fields["positive"] ?? 0) },
-          { label: "Negative", value: String(fields["negative"] ?? 0) },
-        );
-      }
-      if (resourceTypeId === "topic-job") {
-        stats.push({ label: "Topics", value: String(fields["topicCount"] ?? 0) });
-      }
-      return stats;
-    }
 
-    return [];
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const fields = resource.fields;
+
+      if (resourceTypeId === "job") {
+        const status = String(fields["status"] ?? "");
+        return [
+          {
+            label: "Status",
+            value: status,
+            variant:
+              status === "failed"
+                ? "status-error"
+                : status === "transcribed"
+                  ? "status-healthy"
+                  : "default",
+          },
+          { label: "Duration", value: `${round(Number(fields["durationSeconds"] ?? 0), 1)} s` },
+          { label: "Transcriber", value: String(fields["transcriber"] ?? "—") },
+        ];
+      }
+
+      if (resourceTypeId === "vocabulary") {
+        return [
+          { label: "Status", value: String(fields["status"] ?? "—") },
+          { label: "Created", value: String(fields["createdOn"] ?? "—") },
+        ];
+      }
+
+      if (isInsightType(resourceTypeId)) {
+        const status = String(fields["status"] ?? "");
+        const stats: DashboardStat[] = [
+          {
+            label: "Status",
+            value: status || "—",
+            variant:
+              status === "failed"
+                ? "status-error"
+                : status === "completed"
+                  ? "status-healthy"
+                  : "default",
+          },
+        ];
+        if (resourceTypeId === "language-id-job" && fields["topLanguage"]) {
+          stats.push({ label: "Top language", value: String(fields["topLanguage"]) });
+        }
+        if (resourceTypeId === "sentiment-job") {
+          stats.push(
+            { label: "Positive", value: String(fields["positive"] ?? 0) },
+            { label: "Negative", value: String(fields["negative"] ?? 0) },
+          );
+        }
+        if (resourceTypeId === "topic-job") {
+          stats.push({ label: "Topics", value: String(fields["topicCount"] ?? 0) });
+        }
+        return stats;
+      }
+
+      return [];
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -581,106 +594,113 @@ export class RevAiClient implements PluginClient {
     };
   }
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "vocabulary") {
-      if (!this.supportsVocabularies) {
-        throw new Error(
-          "Rev AI plugin: the EU deployment has no /vocabularies collection. Supply phrases " +
-            "inline on the job via `custom_vocabularies` instead.",
-        );
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "vocabulary") {
+        if (!this.supportsVocabularies) {
+          throw new Error(
+            "Rev AI plugin: the EU deployment has no /vocabularies collection. Supply phrases " +
+              "inline on the job via `custom_vocabularies` instead.",
+          );
+        }
+        return {
+          fields: [
+            {
+              key: "phrases",
+              label: "Phrases",
+              kind: "string-list",
+              required: true,
+              description:
+                "Technical jargon, proper nouns and uncommon phrases Rev AI should bias toward.",
+            },
+            {
+              key: "metadata",
+              label: "Metadata",
+              kind: "text",
+              required: false,
+              description:
+                "Optional free-text label echoed back on the vocabulary (max 512 chars).",
+            },
+          ],
+        };
       }
-      return {
-        fields: [
-          {
-            key: "phrases",
-            label: "Phrases",
-            kind: "string-list",
-            required: true,
-            description:
-              "Technical jargon, proper nouns and uncommon phrases Rev AI should bias toward.",
-          },
-          {
-            key: "metadata",
-            label: "Metadata",
-            kind: "text",
-            required: false,
-            description: "Optional free-text label echoed back on the vocabulary (max 512 chars).",
-          },
-        ],
-      };
-    }
 
-    if (isInsightType(typeId)) return this.insightCreateConfig(INSIGHT_APIS[typeId]);
+      if (isInsightType(typeId)) return this.insightCreateConfig(INSIGHT_APIS[typeId]);
 
-    throw new Error(`Rev AI plugin: no create config for type "${typeId}"`);
+      throw new Error(`Rev AI plugin: no create config for type "${typeId}"`);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (isInsightType(typeId)) {
-      return this.createInsightJob(accountId, INSIGHT_APIS[typeId], fields);
-    }
-    if (typeId !== "vocabulary") {
-      throw new Error(`Rev AI plugin: cannot create type "${typeId}"`);
-    }
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (isInsightType(typeId)) {
+        return this.createInsightJob(accountId, INSIGHT_APIS[typeId], fields);
+      }
+      if (typeId !== "vocabulary") {
+        throw new Error(`Rev AI plugin: cannot create type "${typeId}"`);
+      }
 
-    const phrases = (fields["phrases"] ?? "")
-      .split(",")
-      .map((phrase) => phrase.trim())
-      .filter(Boolean);
-    if (phrases.length === 0) {
-      throw new Error("Rev AI plugin: a custom vocabulary needs at least one phrase");
-    }
+      const phrases = (fields["phrases"] ?? "")
+        .split(",")
+        .map((phrase) => phrase.trim())
+        .filter(Boolean);
+      if (phrases.length === 0) {
+        throw new Error("Rev AI plugin: a custom vocabulary needs at least one phrase");
+      }
 
-    const metadata = fields["metadata"] ?? "";
-    // POST /vocabularies: verified 2026-07-28 against
-    // https://docs.rev.ai/api/custom-vocabulary/reference/vocabularies/submitcustomvocabulary.md
-    const created = await this.fetch<RevAiVocabulary>("/vocabularies", {
-      method: "POST",
-      body: JSON.stringify({
-        custom_vocabularies: [{ phrases }],
-        ...(metadata ? { metadata } : {}),
-      }),
+      const metadata = fields["metadata"] ?? "";
+      // POST /vocabularies: verified 2026-07-28 against
+      // https://docs.rev.ai/api/custom-vocabulary/reference/vocabularies/submitcustomvocabulary.md
+      const created = await this.fetch<RevAiVocabulary>("/vocabularies", {
+        method: "POST",
+        body: JSON.stringify({
+          custom_vocabularies: [{ phrases }],
+          ...(metadata ? { metadata } : {}),
+        }),
+      });
+
+      return this.mapVocabulary(accountId, created);
     });
-
-    return this.mapVocabulary(accountId, created);
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    if (typeId === "job") {
-      // DELETE /jobs/{id}: 204 No Content. 409 when the job is still
-      // in_progress: only transcribed/failed jobs are deletable.
-      await this.requestVoid(`/jobs/${encodeURIComponent(externalId)}`, "DELETE");
-      return;
-    }
-
-    if (typeId === "vocabulary") {
-      if (!this.supportsVocabularies) {
-        throw new Error("Rev AI plugin: the EU deployment has no /vocabularies collection");
+      if (typeId === "job") {
+        // DELETE /jobs/{id}: 204 No Content. 409 when the job is still
+        // in_progress: only transcribed/failed jobs are deletable.
+        await this.requestVoid(`/jobs/${encodeURIComponent(externalId)}`, "DELETE");
+        return;
       }
-      // DELETE /vocabularies/{id}: 204 No Content, 409 while in_progress.
-      await this.requestVoid(`/vocabularies/${encodeURIComponent(externalId)}`, "DELETE");
-      return;
-    }
 
-    if (isInsightType(typeId)) {
-      const api = INSIGHT_APIS[typeId];
-      this.assertInsightAvailable(api);
-      // DELETE {prefix}/jobs/{id}: 204, 409 while the job is still in_progress.
-      await this.requestVoid(
-        `${api.prefix}/jobs/${encodeURIComponent(externalId)}`,
-        "DELETE",
-        this.hostUrl,
-      );
-      return;
-    }
+      if (typeId === "vocabulary") {
+        if (!this.supportsVocabularies) {
+          throw new Error("Rev AI plugin: the EU deployment has no /vocabularies collection");
+        }
+        // DELETE /vocabularies/{id}: 204 No Content, 409 while in_progress.
+        await this.requestVoid(`/vocabularies/${encodeURIComponent(externalId)}`, "DELETE");
+        return;
+      }
 
-    throw new Error(`Rev AI plugin: cannot delete type "${typeId}"`);
+      if (isInsightType(typeId)) {
+        const api = INSIGHT_APIS[typeId];
+        this.assertInsightAvailable(api);
+        // DELETE {prefix}/jobs/{id}: 204, 409 while the job is still in_progress.
+        await this.requestVoid(
+          `${api.prefix}/jobs/${encodeURIComponent(externalId)}`,
+          "DELETE",
+          this.hostUrl,
+        );
+        return;
+      }
+
+      throw new Error(`Rev AI plugin: cannot delete type "${typeId}"`);
+    });
   }
 
   /**
@@ -690,91 +710,93 @@ export class RevAiClient implements PluginClient {
    * a bounded poll loop; the panel is one request/response and never gets a
    * job id to poll on its own.
    */
-  async transcribeAudio(
+  transcribeAudio(
     typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    if (typeId !== "account") {
-      throw new Error(`Rev AI plugin: cannot transcribe audio for type "${typeId}"`);
-    }
-
-    const bytes = base64ToBytes(payload.audioBase64);
-    if (bytes.byteLength === 0) throw new Error("Rev AI plugin: empty audio payload");
-    if (bytes.byteLength > MAX_AUDIO_BYTES) {
-      throw new Error(
-        `Rev AI plugin: clip is ${bytes.byteLength} bytes, over the documented 2 GB multipart limit`,
-      );
-    }
-
-    const transcriber =
-      payload.modelId && payload.modelId.length > 0 ? payload.modelId : REVAI_DEFAULT_TRANSCRIBER;
-    const options: Record<string, unknown> = {
-      transcriber,
-      metadata: "Infrawrench Speech tab",
-    };
-    if (payload.language) options["language"] = payload.language;
-
-    const started = Date.now();
-    const submitted = await this.submitJob(
-      bytes,
-      payload.fileName ?? "clip",
-      payload.mimeType,
-      options,
-    );
-    const jobId = str(submitted.id);
-    if (!jobId) throw new Error("Rev AI plugin: POST /jobs returned no job id");
-
-    const job = await this.pollJob(jobId);
-    const transcript = await this.fetchTranscript(jobId);
-    const elapsedMs = Date.now() - started;
-
-    const words: TranscriptWord[] = [];
-    for (const monologue of transcript.monologues ?? []) {
-      const speaker =
-        typeof monologue.speaker === "number" ? `Speaker ${monologue.speaker}` : undefined;
-      for (const element of monologue.elements ?? []) {
-        // Only `text` elements carry timings; `punct` and `unknown` are
-        // structural and belong in the string, not the word table.
-        if (element.type !== "text") continue;
-        const text = str(element.value);
-        if (!text) continue;
-        words.push({
-          text,
-          ...(num(element.ts) !== undefined ? { start: num(element.ts)! } : {}),
-          ...(num(element.end_ts) !== undefined ? { end: num(element.end_ts)! } : {}),
-          ...(speaker ? { speaker } : {}),
-        });
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      if (typeId !== "account") {
+        throw new Error(`Rev AI plugin: cannot transcribe audio for type "${typeId}"`);
       }
-    }
 
-    const confidences = (transcript.monologues ?? [])
-      .flatMap((monologue) => monologue.elements ?? [])
-      .map((element) => num(element.confidence))
-      .filter((value): value is number => value !== undefined);
-    const confidence =
-      confidences.length > 0
-        ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
-        : undefined;
+      const bytes = base64ToBytes(payload.audioBase64);
+      if (bytes.byteLength === 0) throw new Error("Rev AI plugin: empty audio payload");
+      if (bytes.byteLength > MAX_AUDIO_BYTES) {
+        throw new Error(
+          `Rev AI plugin: clip is ${bytes.byteLength} bytes, over the documented 2 GB multipart limit`,
+        );
+      }
 
-    const duration = num(job.duration_seconds);
-    const language = str(job.language) || undefined;
+      const transcriber =
+        payload.modelId && payload.modelId.length > 0 ? payload.modelId : REVAI_DEFAULT_TRANSCRIBER;
+      const options: Record<string, unknown> = {
+        transcriber,
+        metadata: "Infrawrench Speech tab",
+      };
+      if (payload.language) options["language"] = payload.language;
 
-    const summaryParts = [`transcriber ${str(job.transcriber) || transcriber}`];
-    if (duration !== undefined) summaryParts.push(`${round(duration, 1)} s of audio`);
-    summaryParts.push(`${words.length} words`);
-    summaryParts.push(`${round(elapsedMs / 1000, 1)} s round-trip`);
+      const started = Date.now();
+      const submitted = await this.submitJob(
+        bytes,
+        payload.fileName ?? "clip",
+        payload.mimeType,
+        options,
+      );
+      const jobId = str(submitted.id);
+      if (!jobId) throw new Error("Rev AI plugin: POST /jobs returned no job id");
 
-    return {
-      text: assembleTranscript(transcript),
-      summary: summaryParts.join(" · "),
-      ...(language ? { language } : {}),
-      ...(duration !== undefined ? { durationSeconds: duration } : {}),
-      ...(confidence !== undefined ? { confidence } : {}),
-      ...(words.length > 0 ? { words } : {}),
-      requestId: jobId,
-    };
+      const job = await this.pollJob(jobId);
+      const transcript = await this.fetchTranscript(jobId);
+      const elapsedMs = Date.now() - started;
+
+      const words: TranscriptWord[] = [];
+      for (const monologue of transcript.monologues ?? []) {
+        const speaker =
+          typeof monologue.speaker === "number" ? `Speaker ${monologue.speaker}` : undefined;
+        for (const element of monologue.elements ?? []) {
+          // Only `text` elements carry timings; `punct` and `unknown` are
+          // structural and belong in the string, not the word table.
+          if (element.type !== "text") continue;
+          const text = str(element.value);
+          if (!text) continue;
+          words.push({
+            text,
+            ...(num(element.ts) !== undefined ? { start: num(element.ts)! } : {}),
+            ...(num(element.end_ts) !== undefined ? { end: num(element.end_ts)! } : {}),
+            ...(speaker ? { speaker } : {}),
+          });
+        }
+      }
+
+      const confidences = (transcript.monologues ?? [])
+        .flatMap((monologue) => monologue.elements ?? [])
+        .map((element) => num(element.confidence))
+        .filter((value): value is number => value !== undefined);
+      const confidence =
+        confidences.length > 0
+          ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
+          : undefined;
+
+      const duration = num(job.duration_seconds);
+      const language = str(job.language) || undefined;
+
+      const summaryParts = [`transcriber ${str(job.transcriber) || transcriber}`];
+      if (duration !== undefined) summaryParts.push(`${round(duration, 1)} s of audio`);
+      summaryParts.push(`${words.length} words`);
+      summaryParts.push(`${round(elapsedMs / 1000, 1)} s round-trip`);
+
+      return {
+        text: assembleTranscript(transcript),
+        summary: summaryParts.join(" · "),
+        ...(language ? { language } : {}),
+        ...(duration !== undefined ? { durationSeconds: duration } : {}),
+        ...(confidence !== undefined ? { confidence } : {}),
+        ...(words.length > 0 ? { words } : {}),
+        requestId: jobId,
+      };
+    });
   }
 
   /**
@@ -1018,116 +1040,122 @@ export class RevAiClient implements PluginClient {
    * failures, audio minutes per transcriber, and turnaround.
    * https://docs.rev.ai/api/asynchronous/reference/jobs/getlistofjobs
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     _resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "account") return [];
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 30 * DAY_MS;
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "account") return [];
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - 30 * DAY_MS;
 
-    const jobs: RevAiJob[] = [];
-    let cursor: string | undefined;
-    for (let page = 0; page < MAX_METRICS_PAGES; page++) {
-      const query = new URLSearchParams({ limit: String(METRICS_PAGE_SIZE) });
-      if (cursor) query.set("starting_after", cursor);
-      const batch = await this.fetch<RevAiJob[]>(`/jobs?${query.toString()}`);
-      if (!Array.isArray(batch) || batch.length === 0) break;
-      jobs.push(...batch);
-      const last = batch[batch.length - 1];
-      const oldest = Date.parse(str(last?.created_on));
-      if (!str(last?.id) || batch.length < METRICS_PAGE_SIZE) break;
-      if (Number.isFinite(oldest) && oldest < startMs) break;
-      cursor = str(last?.id);
-    }
+      const jobs: RevAiJob[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < MAX_METRICS_PAGES; page++) {
+        const query = new URLSearchParams({ limit: String(METRICS_PAGE_SIZE) });
+        if (cursor) query.set("starting_after", cursor);
+        const batch = await this.fetch<RevAiJob[]>(`/jobs?${query.toString()}`);
+        if (!Array.isArray(batch) || batch.length === 0) break;
+        jobs.push(...batch);
+        const last = batch[batch.length - 1];
+        const oldest = Date.parse(str(last?.created_on));
+        if (!str(last?.id) || batch.length < METRICS_PAGE_SIZE) break;
+        if (Number.isFinite(oldest) && oldest < startMs) break;
+        cursor = str(last?.id);
+      }
 
-    type Day = {
-      jobs: number;
-      failed: number;
-      minutes: number;
-      streamMinutes: number;
-      turnaroundSum: number;
-      turnaroundCount: number;
-      byTranscriber: Map<string, number>;
-    };
-    const days = new Map<number, Day>();
-    for (let t = Math.floor(startMs / DAY_MS) * DAY_MS; t <= endMs; t += DAY_MS) {
-      days.set(t, {
-        jobs: 0,
-        failed: 0,
-        minutes: 0,
-        streamMinutes: 0,
-        turnaroundSum: 0,
-        turnaroundCount: 0,
-        byTranscriber: new Map(),
+      type Day = {
+        jobs: number;
+        failed: number;
+        minutes: number;
+        streamMinutes: number;
+        turnaroundSum: number;
+        turnaroundCount: number;
+        byTranscriber: Map<string, number>;
+      };
+      const days = new Map<number, Day>();
+      for (let t = Math.floor(startMs / DAY_MS) * DAY_MS; t <= endMs; t += DAY_MS) {
+        days.set(t, {
+          jobs: 0,
+          failed: 0,
+          minutes: 0,
+          streamMinutes: 0,
+          turnaroundSum: 0,
+          turnaroundCount: 0,
+          byTranscriber: new Map(),
+        });
+      }
+      const transcribers = new Set<string>();
+      for (const job of jobs) {
+        const created = Date.parse(str(job.created_on));
+        if (!Number.isFinite(created) || created < startMs || created > endMs) continue;
+        const day = days.get(Math.floor(created / DAY_MS) * DAY_MS);
+        if (!day) continue;
+        day.jobs += 1;
+        if (str(job.status) === "failed") day.failed += 1;
+        const minutes = (num(job.duration_seconds) ?? 0) / 60;
+        day.minutes += minutes;
+        day.streamMinutes += (num(job.stream_duration_seconds) ?? 0) / 60;
+        const transcriber = str(job.transcriber);
+        if (transcriber && minutes > 0) {
+          transcribers.add(transcriber);
+          day.byTranscriber.set(transcriber, (day.byTranscriber.get(transcriber) ?? 0) + minutes);
+        }
+        const completed = Date.parse(str(job.completed_on));
+        if (
+          str(job.status) === "transcribed" &&
+          Number.isFinite(completed) &&
+          completed >= created
+        ) {
+          day.turnaroundSum += (completed - created) / 1000;
+          day.turnaroundCount += 1;
+        }
+      }
+
+      const stamps = [...days.keys()].sort((a, b) => a - b);
+      const line = (label: string, unit: string, read: (day: Day) => number): MetricSeries => ({
+        label,
+        unit,
+        points: stamps.map((t) => ({ timestamp: t, value: Number(read(days.get(t)!).toFixed(2)) })),
       });
-    }
-    const transcribers = new Set<string>();
-    for (const job of jobs) {
-      const created = Date.parse(str(job.created_on));
-      if (!Number.isFinite(created) || created < startMs || created > endMs) continue;
-      const day = days.get(Math.floor(created / DAY_MS) * DAY_MS);
-      if (!day) continue;
-      day.jobs += 1;
-      if (str(job.status) === "failed") day.failed += 1;
-      const minutes = (num(job.duration_seconds) ?? 0) / 60;
-      day.minutes += minutes;
-      day.streamMinutes += (num(job.stream_duration_seconds) ?? 0) / 60;
-      const transcriber = str(job.transcriber);
-      if (transcriber && minutes > 0) {
-        transcribers.add(transcriber);
-        day.byTranscriber.set(transcriber, (day.byTranscriber.get(transcriber) ?? 0) + minutes);
+      const series: MetricSeries[] = [
+        line("Jobs", "count", (d) => d.jobs),
+        line("Failed jobs", "count", (d) => d.failed),
+        line("Audio minutes", "minutes", (d) => d.minutes),
+      ];
+      // Transcribers bill at different rates, so the split is the useful view;
+      // it only adds information when more than one is in use.
+      if (transcribers.size > 1) {
+        for (const transcriber of [...transcribers].sort()) {
+          series.push(
+            line(
+              `Audio minutes: ${transcriber}`,
+              "minutes",
+              (d) => d.byTranscriber.get(transcriber) ?? 0,
+            ),
+          );
+        }
       }
-      const completed = Date.parse(str(job.completed_on));
-      if (str(job.status) === "transcribed" && Number.isFinite(completed) && completed >= created) {
-        day.turnaroundSum += (completed - created) / 1000;
-        day.turnaroundCount += 1;
+      const streaming = line("Streaming minutes", "minutes", (d) => d.streamMinutes);
+      if (streaming.points.some((p) => p.value !== 0)) series.push(streaming);
+      // Days without a finished job have no turnaround; omit them rather than
+      // plot a misleading zero.
+      const turnaround = stamps
+        .filter((t) => days.get(t)!.turnaroundCount > 0)
+        .map((t) => {
+          const day = days.get(t)!;
+          return {
+            timestamp: t,
+            value: Number((day.turnaroundSum / day.turnaroundCount).toFixed(1)),
+          };
+        });
+      if (turnaround.length > 0) {
+        series.push({ label: "Avg turnaround", unit: "seconds", points: turnaround });
       }
-    }
-
-    const stamps = [...days.keys()].sort((a, b) => a - b);
-    const line = (label: string, unit: string, read: (day: Day) => number): MetricSeries => ({
-      label,
-      unit,
-      points: stamps.map((t) => ({ timestamp: t, value: Number(read(days.get(t)!).toFixed(2)) })),
+      return series;
     });
-    const series: MetricSeries[] = [
-      line("Jobs", "count", (d) => d.jobs),
-      line("Failed jobs", "count", (d) => d.failed),
-      line("Audio minutes", "minutes", (d) => d.minutes),
-    ];
-    // Transcribers bill at different rates, so the split is the useful view;
-    // it only adds information when more than one is in use.
-    if (transcribers.size > 1) {
-      for (const transcriber of [...transcribers].sort()) {
-        series.push(
-          line(
-            `Audio minutes: ${transcriber}`,
-            "minutes",
-            (d) => d.byTranscriber.get(transcriber) ?? 0,
-          ),
-        );
-      }
-    }
-    const streaming = line("Streaming minutes", "minutes", (d) => d.streamMinutes);
-    if (streaming.points.some((p) => p.value !== 0)) series.push(streaming);
-    // Days without a finished job have no turnaround; omit them rather than
-    // plot a misleading zero.
-    const turnaround = stamps
-      .filter((t) => days.get(t)!.turnaroundCount > 0)
-      .map((t) => {
-        const day = days.get(t)!;
-        return {
-          timestamp: t,
-          value: Number((day.turnaroundSum / day.turnaroundCount).toFixed(1)),
-        };
-      });
-    if (turnaround.length > 0) {
-      series.push({ label: "Avg turnaround", unit: "seconds", points: turnaround });
-    }
-    return series;
   }
 
   private renderAccountDetail(resource: ResourceInstance): DetailViewSchema {

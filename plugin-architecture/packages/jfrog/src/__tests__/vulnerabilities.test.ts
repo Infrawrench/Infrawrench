@@ -5,6 +5,7 @@
  * - AQL: https://docs.jfrog.com/artifactory/docs/aql-query-execution
  * - Repository configurations: GET /artifactory/api/repositories/configurations
  */
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { VulnerabilityAccessError } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { JfrogClient } from "../client.js";
@@ -157,7 +158,7 @@ const SUMMARY_V2 = {
 
 function client(route: (call: Call) => unknown) {
   const { http, calls } = makeHttp(route);
-  return { c: new JfrogClient(creds, { http } as never), calls };
+  return { c: hostClient(new JfrogClient(creds, { http } as never)), calls };
 }
 
 function baseRoute(call: Call): unknown {

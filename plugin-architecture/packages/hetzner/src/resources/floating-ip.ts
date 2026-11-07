@@ -27,7 +27,7 @@ export const FloatingIpResourceType = rt({
     }),
     f("blocked", "Blocked", { kind: "boolean", required: false, editable: false }),
   ],
-  outputs: [o("ip", "IP Address")],
+  outputs: [o("ip", "IP Address", { dnsValue: "ipv4" })],
   dependsOn: [{ fieldKey: "serverId", targetTypeId: "server", label: "assigned to" }],
   supportsCreate: true,
   // Edit = `PUT` on the object itself (name, plus the fields left editable).

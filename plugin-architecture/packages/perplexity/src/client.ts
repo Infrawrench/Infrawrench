@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   ChatMessage,
@@ -158,7 +161,7 @@ export class PerplexityClient implements PluginClient {
   private readonly caCert: string;
   private readonly http: HttpHostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Perplexity plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -208,43 +211,45 @@ export class PerplexityClient implements PluginClient {
 
   // ------------------------------------------------------------- listing
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "perplexity-sonar-model":
-        return SONAR_MODELS.map((m) =>
-          this.instance(
-            accountId,
-            typeId,
-            m.id,
-            m.id,
-            { modelId: m.id, description: m.description },
-            {
-              modelId: m.id,
-              endpoint: `${API_BASE}/v1/sonar`,
-            },
-          ),
-        );
-      case "perplexity-agent-model": {
-        // GET /v1/models: models usable with POST /v1/agent.
-        const res = await this.fetch<{ data?: ListedModel[] }>("/v1/models");
-        return (res.data ?? [])
-          .filter((m) => m.id)
-          .map((m) => this.mapListed(accountId, typeId, m, "/v1/agent"));
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "perplexity-sonar-model":
+          return SONAR_MODELS.map((m) =>
+            this.instance(
+              accountId,
+              typeId,
+              m.id,
+              m.id,
+              { modelId: m.id, description: m.description },
+              {
+                modelId: m.id,
+                endpoint: `${API_BASE}/v1/sonar`,
+              },
+            ),
+          );
+        case "perplexity-agent-model": {
+          // GET /v1/models: models usable with POST /v1/agent.
+          const res = await this.fetch<{ data?: ListedModel[] }>("/v1/models");
+          return (res.data ?? [])
+            .filter((m) => m.id)
+            .map((m) => this.mapListed(accountId, typeId, m, "/v1/agent"));
+        }
+        case "perplexity-router-model": {
+          // GET /router/v1/models: OpenAI-compatible router catalogue with prices per 1M tokens.
+          const res = await this.fetch<{ data?: ListedModel[] }>("/router/v1/models");
+          return (res.data ?? [])
+            .filter((m) => m.id)
+            .map((m) => this.mapListed(accountId, typeId, m, "/router/v1/chat/completions"));
+        }
+        case "perplexity-async-request":
+          return this.listAsync(accountId);
+        case "perplexity-skill":
+          return this.listSkills(accountId);
+        default:
+          throw new Error(`Perplexity plugin: unknown resource type "${typeId}"`);
       }
-      case "perplexity-router-model": {
-        // GET /router/v1/models: OpenAI-compatible router catalogue with prices per 1M tokens.
-        const res = await this.fetch<{ data?: ListedModel[] }>("/router/v1/models");
-        return (res.data ?? [])
-          .filter((m) => m.id)
-          .map((m) => this.mapListed(accountId, typeId, m, "/router/v1/chat/completions"));
-      }
-      case "perplexity-async-request":
-        return this.listAsync(accountId);
-      case "perplexity-skill":
-        return this.listSkills(accountId);
-      default:
-        throw new Error(`Perplexity plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
   private mapListed(
@@ -347,145 +352,165 @@ export class PerplexityClient implements PluginClient {
 
   // ----------------------------------------------------------------- get
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    if (typeId === "perplexity-async-request") {
-      return this.mapAsync(
-        accountId,
-        await this.fetch<AsyncRequest>(`/v1/async/sonar/${encodeURIComponent(id)}`),
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      if (typeId === "perplexity-async-request") {
+        return this.mapAsync(
+          accountId,
+          await this.fetch<AsyncRequest>(`/v1/async/sonar/${encodeURIComponent(id)}`),
+        );
+      }
+      if (typeId === "perplexity-skill") {
+        return this.mapSkill(
+          accountId,
+          await this.fetch<Skill>(`/v1/skills/${encodeURIComponent(id)}`),
+        );
+      }
+      if (typeId === "perplexity-router-model") {
+        // Router ids contain a slash (perplexity/kimi-k3); the full id goes in the path.
+        return this.mapListed(
+          accountId,
+          typeId,
+          await this.fetch<ListedModel>(`/router/v1/models/${id}`),
+          "/router/v1/chat/completions",
+        );
+      }
+      const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
+        (r) => r.externalId === id,
       );
-    }
-    if (typeId === "perplexity-skill") {
-      return this.mapSkill(
-        accountId,
-        await this.fetch<Skill>(`/v1/skills/${encodeURIComponent(id)}`),
-      );
-    }
-    if (typeId === "perplexity-router-model") {
-      // Router ids contain a slash (perplexity/kimi-k3); the full id goes in the path.
-      return this.mapListed(
-        accountId,
-        typeId,
-        await this.fetch<ListedModel>(`/router/v1/models/${id}`),
-        "/router/v1/chat/completions",
-      );
-    }
-    const found = (await this.listResources(typeId, accountId)).find((r) => r.externalId === id);
-    if (!found)
-      throw Object.assign(new Error(`Perplexity plugin: ${typeId}/${id} not found`), {
-        status: 404,
-      });
-    return found;
+      if (!found)
+        throw Object.assign(new Error(`Perplexity plugin: ${typeId}/${id} not found`), {
+          status: 404,
+        });
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const r = await this.getResource(typeId, resourceId, accountId);
-    return s(r.resolvedOutputs[outputKey] ?? r.fields[outputKey]);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return s(r.resolvedOutputs[outputKey] ?? r.fields[outputKey]);
+    });
   }
 
   /** A skill's revision history: `GET /v1/skills/{id}/revisions`. */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    if (resource.resourceTypeId !== "perplexity-skill") return resource;
-    const res = await this.fetch<{ revisions?: Array<{ revision?: string; created_at?: string }> }>(
-      `/v1/skills/${encodeURIComponent(resource.externalId ?? "")}/revisions`,
-    ).catch(() => ({ revisions: [] }));
-    return {
-      ...resource,
-      resolvedOutputs: {
-        ...resource.resolvedOutputs,
-        __revisions__: JSON.stringify(res.revisions ?? []),
-      },
-    };
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (resource.resourceTypeId !== "perplexity-skill") return resource;
+      const res = await this.fetch<{
+        revisions?: Array<{ revision?: string; created_at?: string }>;
+      }>(`/v1/skills/${encodeURIComponent(resource.externalId ?? "")}/revisions`).catch(() => ({
+        revisions: [],
+      }));
+      return {
+        ...resource,
+        resolvedOutputs: {
+          ...resource.resolvedOutputs,
+          __revisions__: JSON.stringify(res.revisions ?? []),
+        },
+      };
+    });
   }
 
   // ------------------------------------------------------- create/delete
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "perplexity-async-request")
-      throw new Error(`Perplexity plugin: ${typeId} cannot be created`);
-    return {
-      fields: [
-        {
-          key: "model",
-          label: "Model",
-          kind: "select",
-          required: true,
-          defaultValue: "sonar-deep-research",
-          options: SONAR_MODELS.map((m) => ({ id: m.id, label: m.id, description: m.description })),
-        },
-        {
-          key: "prompt",
-          label: "Question",
-          kind: "text",
-          multiline: true,
-          required: true,
-          placeholder: "Compare the latest open-weight coding models and their licences.",
-        },
-        {
-          key: "searchRecency",
-          label: "Search Recency",
-          kind: "select",
-          required: false,
-          defaultValue: "",
-          options: [
-            { id: "", label: "Any time" },
-            { id: "day", label: "Past day" },
-            { id: "week", label: "Past week" },
-            { id: "month", label: "Past month" },
-            { id: "year", label: "Past year" },
-          ],
-        },
-      ],
-    };
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId !== "perplexity-async-request")
+        throw new Error(`Perplexity plugin: ${typeId} cannot be created`);
+      return {
+        fields: [
+          {
+            key: "model",
+            label: "Model",
+            kind: "select",
+            required: true,
+            defaultValue: "sonar-deep-research",
+            options: SONAR_MODELS.map((m) => ({
+              id: m.id,
+              label: m.id,
+              description: m.description,
+            })),
+          },
+          {
+            key: "prompt",
+            label: "Question",
+            kind: "text",
+            multiline: true,
+            required: true,
+            placeholder: "Compare the latest open-weight coding models and their licences.",
+          },
+          {
+            key: "searchRecency",
+            label: "Search Recency",
+            kind: "select",
+            required: false,
+            defaultValue: "",
+            options: [
+              { id: "", label: "Any time" },
+              { id: "day", label: "Past day" },
+              { id: "week", label: "Past week" },
+              { id: "month", label: "Past month" },
+              { id: "year", label: "Past year" },
+            ],
+          },
+        ],
+      };
+    });
   }
 
   /** `POST /v1/async/sonar {request: {model, messages, …}}` */
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "perplexity-async-request")
-      throw new Error(`Perplexity plugin: ${typeId} cannot be created`);
-    const prompt = (fields["prompt"] ?? "").trim();
-    if (!prompt) throw new Error("Perplexity plugin: a question is required");
-    const created = await this.fetch<AsyncRequest>("/v1/async/sonar", {
-      method: "POST",
-      body: JSON.stringify({
-        request: {
-          model: fields["model"] || "sonar-deep-research",
-          messages: [{ role: "user", content: prompt }],
-          ...(fields["searchRecency"] ? { search_recency_filter: fields["searchRecency"] } : {}),
-        },
-      }),
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "perplexity-async-request")
+        throw new Error(`Perplexity plugin: ${typeId} cannot be created`);
+      const prompt = (fields["prompt"] ?? "").trim();
+      if (!prompt) throw new Error("Perplexity plugin: a question is required");
+      const created = await this.fetch<AsyncRequest>("/v1/async/sonar", {
+        method: "POST",
+        body: JSON.stringify({
+          request: {
+            model: fields["model"] || "sonar-deep-research",
+            messages: [{ role: "user", content: prompt }],
+            ...(fields["searchRecency"] ? { search_recency_filter: fields["searchRecency"] } : {}),
+          },
+        }),
+      });
+      return this.mapAsync(accountId, created);
     });
-    return this.mapAsync(accountId, created);
   }
 
   /** `DELETE /v1/skills/{id}?expected_revision=` guarded by the current revision. */
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    if (typeId !== "perplexity-skill")
-      throw new Error(`Perplexity plugin: ${typeId} cannot be deleted`);
-    const id = externalIdOf(resourceId, accountId, typeId);
-    const current = await this.fetch<Skill>(`/v1/skills/${encodeURIComponent(id)}`);
-    await this.fetch(
-      `/v1/skills/${encodeURIComponent(id)}?expected_revision=${encodeURIComponent(s(current.revision))}`,
-      { method: "DELETE" },
-    );
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId !== "perplexity-skill")
+        throw new Error(`Perplexity plugin: ${typeId} cannot be deleted`);
+      const id = externalIdOf(resourceId, accountId, typeId);
+      const current = await this.fetch<Skill>(`/v1/skills/${encodeURIComponent(id)}`);
+      await this.fetch(
+        `/v1/skills/${encodeURIComponent(id)}?expected_revision=${encodeURIComponent(s(current.revision))}`,
+        { method: "DELETE" },
+      );
+    });
   }
 
   // ---------------------------------------------------------------- chat
 
-  async *streamChatMessage(
+  private async *streamChatMessageIterable(
     typeId: string,
     resourceId: string,
     accountId: string,
@@ -560,6 +585,17 @@ export class PerplexityClient implements PluginClient {
       return;
     }
     yield* streamOpenAiSseChat(res.body);
+  }
+
+  streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    messages: ChatMessage[],
+  ) {
+    return attemptStream(() =>
+      this.streamChatMessageIterable(typeId, resourceId, accountId, messages),
+    );
   }
 
   // -------------------------------------------------------------- render

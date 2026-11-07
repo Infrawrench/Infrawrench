@@ -1,0 +1,143 @@
+{
+  "documents": [
+    {
+      "name": "cloud",
+      "specUrl": "https://docs.hetzner.cloud/cloud.spec.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1servers~1{id}/get/responses/200/content/application~1json/schema/required",
+          "value": ["server"],
+          "why": "The document omits `required` here, unlike every sibling. The response always carries the server."
+        },
+        {
+          "pointer": "/paths/~1firewalls/post/responses/201/content/application~1json/schema/required",
+          "value": ["firewall"],
+          "why": "The document omits `required` here, unlike every sibling. The response always carries the firewall."
+        },
+        {
+          "pointer": "/paths/~1networks/post/responses/201/content/application~1json/schema/required",
+          "value": ["network"],
+          "why": "The document omits `required` here, unlike every sibling. The response always carries the network."
+        },
+        {
+          "pointer": "/paths/~1servers/post/requestBody/content/application~1json/schema/properties/ssh_keys/items",
+          "value": {
+            "type": ["integer", "string"]
+          },
+          "why": "Its own description says IDs (integer) or names (string); the schema only allows strings, and the plugin sends IDs."
+        },
+        {
+          "pointer": "/paths/~1volumes~1{id}~1actions~1attach/post/requestBody/content/application~1json/schema/required",
+          "value": [],
+          "why": "The plugin still sends the deprecated `server` rather than the `assignee` the document requires. Remove this when it moves over."
+        },
+        {
+          "pointer": "/paths/~1floating_ips/post/requestBody/content/application~1json/schema/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our select offers the valid values and Hetzner validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/paths/~1primary_ips/post/requestBody/content/application~1json/schema/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our select offers the valid values and Hetzner validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/paths/~1placement_groups/post/requestBody/content/application~1json/schema/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our select offers the valid values and Hetzner validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/paths/~1load_balancers/post/requestBody/content/application~1json/schema/properties/algorithm/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our select offers the valid values and Hetzner validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/paths/~1zones~1{id_or_name}~1rrsets/post/requestBody/content/application~1json/schema/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our select offers the valid values and Hetzner validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        }
+      ],
+      "paths": {
+        "/certificates": ["get", "post"],
+        "/certificates/{id}": ["put", "delete"],
+        "/certificates/{id}/actions/retry": ["post"],
+        "/firewalls": ["get", "post"],
+        "/firewalls/{id}": ["put", "delete"],
+        "/firewalls/{id}/actions/apply_to_resources": ["post"],
+        "/floating_ips": ["get", "post"],
+        "/floating_ips/{id}": ["get", "put", "delete"],
+        "/floating_ips/{id}/actions/assign": ["post"],
+        "/images": ["get"],
+        "/images/{id}": ["delete"],
+        "/load_balancer_types": ["get"],
+        "/load_balancers": ["get", "post"],
+        "/load_balancers/{id}": ["put", "delete"],
+        "/load_balancers/{id}/actions/add_target": ["post"],
+        "/load_balancers/{id}/actions/attach_to_network": ["post"],
+        "/load_balancers/{id}/metrics": ["get"],
+        "/locations": ["get"],
+        "/networks": ["get", "post"],
+        "/networks/{id}": ["put", "delete"],
+        "/placement_groups": ["get", "post"],
+        "/placement_groups/{id}": ["put", "delete"],
+        "/pricing": ["get"],
+        "/primary_ips": ["get", "post"],
+        "/primary_ips/{id}": ["put", "delete"],
+        "/primary_ips/{id}/actions/assign": ["post"],
+        "/server_types": ["get"],
+        "/servers": ["get", "post"],
+        "/servers/{id}": ["get", "put", "delete"],
+        "/servers/{id}/actions/add_to_placement_group": ["post"],
+        "/servers/{id}/actions/attach_to_network": ["post"],
+        "/servers/{id}/actions/change_protection": ["post"],
+        "/servers/{id}/actions/change_type": ["post"],
+        "/servers/{id}/actions/create_image": ["post"],
+        "/servers/{id}/actions/disable_backup": ["post"],
+        "/servers/{id}/actions/enable_backup": ["post"],
+        "/servers/{id}/actions/poweroff": ["post"],
+        "/servers/{id}/actions/poweron": ["post"],
+        "/servers/{id}/actions/reboot": ["post"],
+        "/servers/{id}/actions/reset": ["post"],
+        "/servers/{id}/actions/shutdown": ["post"],
+        "/servers/{id}/metrics": ["get"],
+        "/ssh_keys": ["get", "post"],
+        "/ssh_keys/{id}": ["put", "delete"],
+        "/volumes": ["get", "post"],
+        "/volumes/{id}": ["put", "delete"],
+        "/volumes/{id}/actions/attach": ["post"],
+        "/volumes/{id}/actions/resize": ["post"],
+        "/zones": ["get", "post"],
+        "/zones/{id_or_name}": ["get", "delete"],
+        "/zones/{id_or_name}/actions/change_ttl": ["post"],
+        "/zones/{id_or_name}/rrsets": ["get", "post"],
+        "/zones/{id_or_name}/rrsets/{rr_name}/{rr_type}": ["get", "delete"],
+        "/zones/{id_or_name}/rrsets/{rr_name}/{rr_type}/actions/change_ttl": ["post"],
+        "/zones/{id_or_name}/rrsets/{rr_name}/{rr_type}/actions/set_records": ["post"]
+      }
+    },
+    {
+      "name": "hetzner",
+      "specUrl": "https://docs.hetzner.cloud/hetzner.spec.json",
+      "paths": {
+        "/storage_box_types": ["get"],
+        "/storage_boxes": ["get", "post"],
+        "/storage_boxes/{id}": ["get", "put", "delete"],
+        "/storage_boxes/{id}/actions/change_protection": ["post"],
+        "/storage_boxes/{id}/actions/change_type": ["post"],
+        "/storage_boxes/{id}/actions/disable_snapshot_plan": ["post"],
+        "/storage_boxes/{id}/actions/update_access_settings": ["post"],
+        "/storage_boxes/{id}/snapshots": ["post"]
+      }
+    }
+  ]
+}

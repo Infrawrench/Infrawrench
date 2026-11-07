@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { NOMAD_PREFLIGHT, NomadClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,16 +7,15 @@ import { nomadRemediationCommands } from "./remediation.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { nomadTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "nomad",
-  version: "0.1.0",
+  // Nomad is self-hosted: the agent address is user-supplied, so there is no fixed egress host (same as kubernetes).
+  egressHosts: [],
   displayName: "HashiCorp Nomad",
   description:
     "Self-hosted Nomad: jobs with run, stop, scale, dispatch and revert, allocations with logs and restart, deployments with promote and fail, nodes with drain and eligibility, namespaces, node pools, variables, ACL policies and tokens, CSI and host volumes, and services.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "address",
       label: "Nomad Address",
@@ -47,15 +47,18 @@ const manifest: PluginManifest = {
       placeholder: "global",
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: NOMAD_PREFLIGHT,
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new NomadClient(credentials, services),
+  testCredentials: { address: "https://nomad.example.com:4646", token: "test" },
   terraformExport: nomadTerraformExport,
   remediationCommands: nomadRemediationCommands,
-};
+});

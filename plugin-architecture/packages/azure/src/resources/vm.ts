@@ -52,7 +52,11 @@ export const VMResourceType = rt({
       ],
     }),
   ],
-  outputs: [o("publicIp", "Public IP"), o("privateIp", "Private IP"), o("fqdn", "FQDN")],
+  outputs: [
+    o("publicIp", "Public IP", { dnsValue: "ipv4" }),
+    o("privateIp", "Private IP"),
+    o("fqdn", "FQDN", { dnsValue: "hostname" }),
+  ],
   dependsOn: [
     { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
     {

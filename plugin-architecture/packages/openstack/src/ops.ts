@@ -1,4 +1,5 @@
 /** Actions, form actions, edits, deletes and drag-to-attach. */
+import { runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { decodePromptArgs } from "@infrawrench/plugin-base";
 import { OpenStackApiError } from "./api.js";
@@ -544,7 +545,7 @@ export async function openstackUpdate(
       throw new Error(`OpenStack plugin: ${typeId} cannot be edited`);
   }
   c.invalidate();
-  return c.getResource(typeId, resourceId, accountId);
+  return runPluginEffect(c.getResource(typeId, resourceId, accountId));
 }
 
 export async function openstackAttach(

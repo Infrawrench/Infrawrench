@@ -1,4 +1,6 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt, attemptFn } from "@infrawrench/plugin-base/effect";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { resolveHost } from "./api.js";
 import { GitHubClient } from "./client.js";
@@ -11,16 +13,16 @@ import { githubRemediationCommands, githubSeatRemediationCommands } from "./reme
 import { COPILOT_PRODUCT } from "./seats.js";
 import { GITHUB_OAUTH, completeGitHubOAuth, validateOAuthHost } from "./oauth.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "github",
-  version: "0.1.0",
+  // api.github.com, or api.<subdomain>.ghe.com for data residency. Copilot
+  // metrics reports are signed download links on GitHub-owned hosts.
+  egressHosts: ["api.github.com", "*.ghe.com", "*.githubusercontent.com"],
   displayName: "GitHub",
   description:
     "GitHub billing and spend. Track Actions, Copilot, Codespaces, Packages, Git LFS and Advanced Security cost by product, SKU, repository and cost centre, chart Actions minutes and Copilot activity, and manage Copilot seats, runners, caches, codespaces, budgets and cost centres.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "token",
       label: "Personal Access Token",
@@ -52,7 +54,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["token", "host"] },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // The usage report: dated line items with gross, discount and net, by
     // product (service), repository (resource) and SKU / organization / cost
@@ -104,17 +106,22 @@ const manifest: PluginManifest = {
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 1 },
   oauth: GITHUB_OAUTH,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new GitHubClient(credentials, services),
+  testCredentials: { token: "github_pat_test", host: "github.com", owner: "org:octo-org" },
   parseStatusFeed,
   policyTemplate: githubPolicyTemplate,
-  listCredentialOptions: async (fieldKey, credentials, services) => {
-    if (fieldKey !== "owner") throw new Error(`GitHub plugin: "${fieldKey}" has no choices`);
-    return listOwnerOptions(credentials, services);
+  listCredentialOptions: (fieldKey, credentials, services) => {
+    return attempt(async () => {
+      if (fieldKey !== "owner") throw new Error(`GitHub plugin: "${fieldKey}" has no choices`);
+      return listOwnerOptions(credentials, services);
+    });
   },
   validateServerCredentials: (credentials) => {
     try {
@@ -126,5 +133,5 @@ export const plugin: Plugin = {
   },
   remediationCommands: githubRemediationCommands,
   seatRemediationCommands: githubSeatRemediationCommands,
-  completeOAuthConnection: completeGitHubOAuth,
-};
+  completeOAuthConnection: attemptFn(completeGitHubOAuth),
+});

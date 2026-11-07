@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -30,155 +33,170 @@ export class KafkaClient implements PluginClient {
   private readonly connectionString: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const cs = credentials["connectionString"];
     if (!cs) throw new Error("Kafka plugin: missing connectionString credential");
     this.connectionString = cs;
     this.services = services;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "kafka-cluster":
-        return this.listClusters(accountId);
-      case "kafka-topic":
-        return this.listTopics(accountId);
-      case "kafka-consumer-group":
-        return this.listConsumerGroups(accountId);
-      default:
-        throw new Error(`Kafka plugin: unknown resource type "${typeId}"`);
-    }
-  }
-
-  async getResource(
-    typeId: string,
-    resourceId: string,
-    accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Kafka plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
-  }
-
-  async resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string> {
-    if (typeId === "kafka-cluster") {
-      if (outputKey === "connectionString") return this.connectionString;
-      if (outputKey === "bootstrapServers") return parseBootstrapServers(this.connectionString);
-      if (outputKey === "clusterId") {
-        const kv = this.services?.kv;
-        if (!kv) return "";
-        try {
-          const raw = (await kv.command("describeCluster")) as { clusterId?: string };
-          return raw.clusterId ?? "";
-        } catch {
-          return "";
-        }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "kafka-cluster":
+          return this.listClusters(accountId);
+        case "kafka-topic":
+          return this.listTopics(accountId);
+        case "kafka-consumer-group":
+          return this.listConsumerGroups(accountId);
+        default:
+          throw new Error(`Kafka plugin: unknown resource type "${typeId}"`);
       }
-    }
-    if (typeId === "kafka-topic") {
-      const name = topicNameFromId(resourceId);
-      if (outputKey === "name") return name;
-      if (outputKey === "partitionCount") {
-        const kv = this.services?.kv;
-        if (!kv) return "";
-        try {
-          const raw = (await kv.command("describeTopic", name)) as {
-            partitions?: unknown[];
-          };
-          return String(raw.partitions?.length ?? 0);
-        } catch {
-          return "";
-        }
-      }
-    }
-    if (typeId === "kafka-consumer-group") {
-      if (outputKey === "groupId") return groupIdFromId(resourceId);
-    }
-    throw new Error(`Kafka plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
-  }
-
-  getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "kafka-topic") {
-      throw new Error(`Kafka plugin: createResource not supported for type "${typeId}"`);
-    }
-    return Promise.resolve({
-      fields: [
-        {
-          key: "name",
-          label: "Topic Name",
-          kind: "text",
-          required: true,
-          placeholder: "events",
-          description: "Letters, digits, `.`, `_`, and `-`. Must be unique within the cluster.",
-        },
-        {
-          key: "partitions",
-          label: "Partitions",
-          kind: "number",
-          required: true,
-          defaultValue: "3",
-          minValue: 1,
-          stepValue: 1,
-          description: "More partitions allow more parallel consumers; can't be reduced later.",
-        },
-        {
-          key: "replicationFactor",
-          label: "Replication Factor",
-          kind: "number",
-          required: true,
-          defaultValue: "1",
-          minValue: 1,
-          stepValue: 1,
-          description: "Copies of each partition. Must be ≤ the number of brokers in the cluster.",
-        },
-      ],
     });
   }
 
-  async createResource(
+  getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Kafka plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
+  }
+
+  resolveOutput(typeId: string, resourceId: string, outputKey: string): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "kafka-cluster") {
+        if (outputKey === "connectionString") return this.connectionString;
+        if (outputKey === "bootstrapServers") return parseBootstrapServers(this.connectionString);
+        if (outputKey === "clusterId") {
+          const kv = this.services?.kv;
+          if (!kv) return "";
+          try {
+            const raw = (await kv.command("describeCluster")) as { clusterId?: string };
+            return raw.clusterId ?? "";
+          } catch {
+            return "";
+          }
+        }
+      }
+      if (typeId === "kafka-topic") {
+        const name = topicNameFromId(resourceId);
+        if (outputKey === "name") return name;
+        if (outputKey === "partitionCount") {
+          const kv = this.services?.kv;
+          if (!kv) return "";
+          try {
+            const raw = (await kv.command("describeTopic", name)) as {
+              partitions?: unknown[];
+            };
+            return String(raw.partitions?.length ?? 0);
+          } catch {
+            return "";
+          }
+        }
+      }
+      if (typeId === "kafka-consumer-group") {
+        if (outputKey === "groupId") return groupIdFromId(resourceId);
+      }
+      throw new Error(`Kafka plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
+  }
+
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId !== "kafka-topic") {
+        throw new Error(`Kafka plugin: createResource not supported for type "${typeId}"`);
+      }
+      return Promise.resolve({
+        fields: [
+          {
+            key: "name",
+            label: "Topic Name",
+            kind: "text",
+            required: true,
+            placeholder: "events",
+            description: "Letters, digits, `.`, `_`, and `-`. Must be unique within the cluster.",
+          },
+          {
+            key: "partitions",
+            label: "Partitions",
+            kind: "number",
+            required: true,
+            defaultValue: "3",
+            minValue: 1,
+            stepValue: 1,
+            description: "More partitions allow more parallel consumers; can't be reduced later.",
+          },
+          {
+            key: "replicationFactor",
+            label: "Replication Factor",
+            kind: "number",
+            required: true,
+            defaultValue: "1",
+            minValue: 1,
+            stepValue: 1,
+            description:
+              "Copies of each partition. Must be ≤ the number of brokers in the cluster.",
+          },
+        ],
+      });
+    });
+  }
+
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceCreateReturn> {
-    if (typeId !== "kafka-topic") {
-      throw new Error(`Kafka plugin: createResource not supported for type "${typeId}"`);
-    }
-    const kv = this.services?.kv;
-    if (!kv) throw new Error("Kafka KV service not available");
-    const name = (fields["name"] ?? "").trim();
-    if (!name) throw new Error("Topic name is required");
-    const partitions = fields["partitions"] ? Number(fields["partitions"]) : 1;
-    const replicationFactor = fields["replicationFactor"] ? Number(fields["replicationFactor"]) : 1;
-    await kv.command("createTopic", name, partitions, replicationFactor);
-    const now = new Date().toISOString();
-    return {
-      id: topicId(accountId, name),
-      pluginId: "kafka",
-      resourceTypeId: "kafka-topic",
-      accountId,
-      displayName: name,
-      fields: { name, partitions, replicationFactor },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: name,
-      createdAt: now,
-      updatedAt: now,
-    };
+  ): PluginEffect<ResourceCreateReturn> {
+    return attempt(async () => {
+      if (typeId !== "kafka-topic") {
+        throw new Error(`Kafka plugin: createResource not supported for type "${typeId}"`);
+      }
+      const kv = this.services?.kv;
+      if (!kv) throw new Error("Kafka KV service not available");
+      const name = (fields["name"] ?? "").trim();
+      if (!name) throw new Error("Topic name is required");
+      const partitions = fields["partitions"] ? Number(fields["partitions"]) : 1;
+      const replicationFactor = fields["replicationFactor"]
+        ? Number(fields["replicationFactor"])
+        : 1;
+      await kv.command("createTopic", name, partitions, replicationFactor);
+      const now = new Date().toISOString();
+      return {
+        id: topicId(accountId, name),
+        pluginId: "kafka",
+        resourceTypeId: "kafka-topic",
+        accountId,
+        displayName: name,
+        fields: { name, partitions, replicationFactor },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: name,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const kv = this.services?.kv;
-    if (!kv) throw new Error("Kafka KV service not available");
-    if (typeId === "kafka-topic") {
-      await kv.command("deleteTopic", topicNameFromId(resourceId));
-      return;
-    }
-    if (typeId === "kafka-consumer-group") {
-      await kv.command("deleteGroup", groupIdFromId(resourceId));
-      return;
-    }
-    throw new Error(`Kafka plugin: deleteResource not supported for type "${typeId}"`);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const kv = this.services?.kv;
+      if (!kv) throw new Error("Kafka KV service not available");
+      if (typeId === "kafka-topic") {
+        await kv.command("deleteTopic", topicNameFromId(resourceId));
+        return;
+      }
+      if (typeId === "kafka-consumer-group") {
+        await kv.command("deleteGroup", groupIdFromId(resourceId));
+        return;
+      }
+      throw new Error(`Kafka plugin: deleteResource not supported for type "${typeId}"`);
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -202,102 +220,108 @@ export class KafkaClient implements PluginClient {
     };
   }
 
-  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
-    // Let listTopics throw: an empty cluster returns `[]`, so a thrown error
-    // means the connection/auth actually failed; surface it as a pane error
-    // instead of a misleading "connected, nothing to show". Consumer-group
-    // listing is secondary (separate ACLs on some clusters), so keep it soft.
-    const topics = await this.listTopics(context.accountId);
-    const groups = await this.listConsumerGroups(context.accountId).catch(() => []);
-    const toPeer = (instances: ResourceInstance[]): PeerPaneResource[] =>
-      instances.map((inst) => ({
-        id: inst.id,
-        pluginId: inst.pluginId,
-        resourceTypeId: inst.resourceTypeId,
-        displayName: inst.displayName,
-        subtitle: "",
-        status: "healthy",
-        fields: inst.fields,
-      }));
-    return {
-      resourceGroups: [
-        {
-          title: `Topics (${topics.length})`,
-          resourceTypeId: "kafka-topic",
-          pluginId: "kafka",
-          items: toPeer(topics),
-          // Surface a "+ Create" button (incl. when empty) so a fresh cluster
-          // isn't a dead-end: topics are created via the Admin API.
-          supportsCreate: true,
-        },
-        {
-          // Consumer groups aren't created directly (they materialise when a
-          // consumer subscribes) so no create button here.
-          title: `Consumer Groups (${groups.length})`,
-          resourceTypeId: "kafka-consumer-group",
-          pluginId: "kafka",
-          items: toPeer(groups),
-        },
-      ],
-    };
-  }
-
-  async fetchDashboardStats(
-    resourceTypeId: string,
-    _resourceId: string,
-    accountId: string,
-  ): Promise<DashboardStat[]> {
-    const kv = this.services?.kv;
-    if (!kv || resourceTypeId !== "kafka-cluster") {
-      return [
-        { label: "Brokers", value: "" },
-        { label: "Topics", value: "" },
-        { label: "Groups", value: "" },
-      ];
-    }
-    try {
-      const cluster = (await kv.command("describeCluster")) as {
-        brokers?: unknown[];
+  renderPeerPane(context: PeerPaneContext): PluginEffect<PeerPaneSchema> {
+    return attempt(async () => {
+      // Let listTopics throw: an empty cluster returns `[]`, so a thrown error
+      // means the connection/auth actually failed; surface it as a pane error
+      // instead of a misleading "connected, nothing to show". Consumer-group
+      // listing is secondary (separate ACLs on some clusters), so keep it soft.
+      const topics = await this.listTopics(context.accountId);
+      const groups = await this.listConsumerGroups(context.accountId).catch(() => []);
+      const toPeer = (instances: ResourceInstance[]): PeerPaneResource[] =>
+        instances.map((inst) => ({
+          id: inst.id,
+          pluginId: inst.pluginId,
+          resourceTypeId: inst.resourceTypeId,
+          displayName: inst.displayName,
+          subtitle: "",
+          status: "healthy",
+          fields: inst.fields,
+        }));
+      return {
+        resourceGroups: [
+          {
+            title: `Topics (${topics.length})`,
+            resourceTypeId: "kafka-topic",
+            pluginId: "kafka",
+            items: toPeer(topics),
+            // Surface a "+ Create" button (incl. when empty) so a fresh cluster
+            // isn't a dead-end: topics are created via the Admin API.
+            supportsCreate: true,
+          },
+          {
+            // Consumer groups aren't created directly (they materialise when a
+            // consumer subscribes) so no create button here.
+            title: `Consumer Groups (${groups.length})`,
+            resourceTypeId: "kafka-consumer-group",
+            pluginId: "kafka",
+            items: toPeer(groups),
+          },
+        ],
       };
-      const [topics, groups] = await Promise.all([
-        this.listTopics(accountId).catch(() => []),
-        this.listConsumerGroups(accountId).catch(() => []),
-      ]);
-      return [
-        { label: "Brokers", value: String(cluster.brokers?.length ?? 0) },
-        { label: "Topics", value: String(topics.length) },
-        { label: "Groups", value: String(groups.length) },
-      ];
-    } catch {
-      return [
-        { label: "Brokers", value: "" },
-        { label: "Topics", value: "" },
-        { label: "Groups", value: "" },
-      ];
-    }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchDashboardStats(
     resourceTypeId: string,
     _resourceId: string,
     accountId: string,
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "kafka-cluster") return [];
-    const kv = this.services?.kv;
-    if (!kv) return [];
-    const ts = Date.now();
-    try {
-      const cluster = (await kv.command("describeCluster")) as { brokers?: unknown[] };
-      const topics = await this.listTopics(accountId).catch(() => []);
-      const groups = await this.listConsumerGroups(accountId).catch(() => []);
-      return [
-        { label: "Brokers", points: [{ timestamp: ts, value: cluster.brokers?.length ?? 0 }] },
-        { label: "Topics", points: [{ timestamp: ts, value: topics.length }] },
-        { label: "Consumer groups", points: [{ timestamp: ts, value: groups.length }] },
-      ];
-    } catch {
-      return [];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const kv = this.services?.kv;
+      if (!kv || resourceTypeId !== "kafka-cluster") {
+        return [
+          { label: "Brokers", value: "" },
+          { label: "Topics", value: "" },
+          { label: "Groups", value: "" },
+        ];
+      }
+      try {
+        const cluster = (await kv.command("describeCluster")) as {
+          brokers?: unknown[];
+        };
+        const [topics, groups] = await Promise.all([
+          this.listTopics(accountId).catch(() => []),
+          this.listConsumerGroups(accountId).catch(() => []),
+        ]);
+        return [
+          { label: "Brokers", value: String(cluster.brokers?.length ?? 0) },
+          { label: "Topics", value: String(topics.length) },
+          { label: "Groups", value: String(groups.length) },
+        ];
+      } catch {
+        return [
+          { label: "Brokers", value: "" },
+          { label: "Topics", value: "" },
+          { label: "Groups", value: "" },
+        ];
+      }
+    });
+  }
+
+  fetchMetricSeries(
+    resourceTypeId: string,
+    _resourceId: string,
+    accountId: string,
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "kafka-cluster") return [];
+      const kv = this.services?.kv;
+      if (!kv) return [];
+      const ts = Date.now();
+      try {
+        const cluster = (await kv.command("describeCluster")) as { brokers?: unknown[] };
+        const topics = await this.listTopics(accountId).catch(() => []);
+        const groups = await this.listConsumerGroups(accountId).catch(() => []);
+        return [
+          { label: "Brokers", points: [{ timestamp: ts, value: cluster.brokers?.length ?? 0 }] },
+          { label: "Topics", points: [{ timestamp: ts, value: topics.length }] },
+          { label: "Consumer groups", points: [{ timestamp: ts, value: groups.length }] },
+        ];
+      } catch {
+        return [];
+      }
+    });
   }
 
   private async listClusters(accountId: string): Promise<ResourceInstance[]> {
@@ -526,52 +550,55 @@ export class KafkaClient implements PluginClient {
     };
   }
 
-  async publishMessage(
+  publishMessage(
     typeId: string,
     resourceId: string,
     _accountId: string,
     payload: PublishMessagePayload,
-  ): Promise<PublishMessageResult> {
-    if (typeId !== "kafka-topic") {
-      throw new Error(`Kafka plugin: publishMessage not supported for type "${typeId}"`);
-    }
-    const kv = this.services?.kv;
-    if (!kv) throw new Error("Kafka plugin: KV host services unavailable.");
-    const topic = topicNameFromId(resourceId);
-    const key = typeof payload.extras["key"] === "string" ? (payload.extras["key"] as string) : "";
-    const partition =
-      typeof payload.extras["partition"] === "string"
-        ? (payload.extras["partition"] as string).trim()
-        : "";
-    const headersObj =
-      payload.extras["headers"] && typeof payload.extras["headers"] === "object"
-        ? (payload.extras["headers"] as Record<string, string>)
-        : {};
-    // Drop blank header keys so the producer doesn't trip on them.
-    const cleanHeaders: Record<string, string> = {};
-    for (const [k, v] of Object.entries(headersObj)) {
-      if (k.trim()) cleanHeaders[k] = v;
-    }
-    const headersJson = Object.keys(cleanHeaders).length > 0 ? JSON.stringify(cleanHeaders) : "";
-    const result = (await kv.command(
-      "produce",
-      topic,
-      payload.body,
-      key,
-      headersJson,
-      partition,
-    )) as {
-      partition?: number;
-      offset?: string;
-    };
-    const id =
-      result.partition !== undefined && result.offset !== undefined
-        ? `partition ${result.partition} offset ${result.offset}`
-        : undefined;
-    return {
-      ...(id ? { id } : {}),
-      summary: id ? `Produced ${id}` : "Record produced.",
-    };
+  ): PluginEffect<PublishMessageResult> {
+    return attempt(async () => {
+      if (typeId !== "kafka-topic") {
+        throw new Error(`Kafka plugin: publishMessage not supported for type "${typeId}"`);
+      }
+      const kv = this.services?.kv;
+      if (!kv) throw new Error("Kafka plugin: KV host services unavailable.");
+      const topic = topicNameFromId(resourceId);
+      const key =
+        typeof payload.extras["key"] === "string" ? (payload.extras["key"] as string) : "";
+      const partition =
+        typeof payload.extras["partition"] === "string"
+          ? (payload.extras["partition"] as string).trim()
+          : "";
+      const headersObj =
+        payload.extras["headers"] && typeof payload.extras["headers"] === "object"
+          ? (payload.extras["headers"] as Record<string, string>)
+          : {};
+      // Drop blank header keys so the producer doesn't trip on them.
+      const cleanHeaders: Record<string, string> = {};
+      for (const [k, v] of Object.entries(headersObj)) {
+        if (k.trim()) cleanHeaders[k] = v;
+      }
+      const headersJson = Object.keys(cleanHeaders).length > 0 ? JSON.stringify(cleanHeaders) : "";
+      const result = (await kv.command(
+        "produce",
+        topic,
+        payload.body,
+        key,
+        headersJson,
+        partition,
+      )) as {
+        partition?: number;
+        offset?: string;
+      };
+      const id =
+        result.partition !== undefined && result.offset !== undefined
+          ? `partition ${result.partition} offset ${result.offset}`
+          : undefined;
+      return {
+        ...(id ? { id } : {}),
+        summary: id ? `Produced ${id}` : "Record produced.",
+      };
+    });
   }
 
   private renderConsumerGroupDetail(resource: ResourceInstance): DetailViewSchema {

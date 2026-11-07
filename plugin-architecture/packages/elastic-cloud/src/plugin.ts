@@ -1,20 +1,19 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ElasticCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "elastic-cloud",
-  version: "0.1.0",
+  egressHosts: ["api.elastic-cloud.com", "billing.elastic-cloud.com"],
   displayName: "Elastic Cloud",
   description:
     "Elastic Cloud Hosted and Serverless. Track spend by deployment, project and line item (capacity, data transfer, snapshot storage) with prepaid ECU burndown, and manage hosted deployments (resize, restart, traffic filters), serverless projects, traffic filters, extensions and budgets.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "Elastic Cloud API Key",
@@ -28,7 +27,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Billing API v2 instance costs, one request per day: line-item category
     // → service, the region from the capacity SKU → region, deployment or
@@ -48,11 +47,14 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new ElasticCloudClient(credentials, services),
+  testCredentials: { apiKey: "essu_test_elastic_cloud_key" },
   parseStatusFeed,
-};
+});

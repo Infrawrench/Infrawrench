@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { DevinClient } from "../client.js";
 import { mapComponent } from "../status-feed.js";
@@ -55,7 +56,7 @@ function api(self: Record<string, unknown> = { principal_type: "service_user", o
 }
 
 const client = (http: unknown, creds: Record<string, string> = {}) =>
-  new DevinClient({ apiKey: "cog_test", ...creds }, { http } as never);
+  hostClient(new DevinClient({ apiKey: "cog_test", ...creds }, { http } as never));
 
 describe("organization resolution", () => {
   it("uses the org an org-scoped service user names", async () => {

@@ -1,4 +1,6 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt } from "@infrawrench/plugin-base/effect";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { OpenStackApi } from "./api.js";
 import { OpenStackClient } from "./client.js";
 import { openstackRemediationCommands } from "./remediation.js";
@@ -13,16 +15,15 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     </g>
   </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "openstack",
-  version: "0.1.0",
+  // OpenStack clouds are user-chosen: Keystone and every catalog endpoint are per-cloud hosts, so there is no fixed egress list (same as kubernetes).
+  egressHosts: [],
   displayName: "OpenStack",
   description:
     "Any OpenStack cloud: Nova servers, Cinder volumes, Neutron networking, Octavia, Swift, Designate and Heat",
   logoSvg,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "authUrl",
       label: "Keystone URL",
@@ -114,46 +115,55 @@ const manifest: PluginManifest = {
       multiline: true,
       placeholder: "-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----",
     },
-  ],
+  ]),
   rateLimit: { capacity: 20, refillPerSecond: 10 },
   quotas: { label: "Quotas", partial: true },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new OpenStackClient(credentials, services),
+  testCredentials: {
+    authUrl: "https://keystone.example.com:5000/v3",
+    applicationCredentialId: "423f19a4ac1e4f48bbb4180756e6eb6c",
+    applicationCredentialSecret: "test-secret",
+  },
   terraformExport: openstackTerraformExport,
   remediationCommands: openstackRemediationCommands,
-  async listCredentialOptions(fieldKey, credentials, services) {
-    const api = new OpenStackApi(
-      {
-        authUrl: credentials["authUrl"] ?? "",
-        ...Object.fromEntries(
-          [
-            "applicationCredentialId",
-            "applicationCredentialSecret",
-            "username",
-            "password",
-            "userDomain",
-            "project",
-            "projectDomain",
-            "caCert",
-          ]
-            .filter((k) => credentials[k])
-            .map((k) => [k, credentials[k] as string]),
-        ),
-      },
-      services?.http,
-    );
-    if (fieldKey === "project") {
-      const projects = await api.listProjects();
-      return projects.map((p) => ({ id: p.name, label: p.name, description: p.id }));
-    }
-    if (fieldKey === "region") {
-      const token = await api.token();
-      return OpenStackApi.catalogRegions(token.catalog).map((r) => ({ id: r, label: r }));
-    }
-    throw new Error(`OpenStack plugin: no options for "${fieldKey}"`);
+  listCredentialOptions(fieldKey, credentials, services) {
+    return attempt(async () => {
+      const api = new OpenStackApi(
+        {
+          authUrl: credentials["authUrl"] ?? "",
+          ...Object.fromEntries(
+            [
+              "applicationCredentialId",
+              "applicationCredentialSecret",
+              "username",
+              "password",
+              "userDomain",
+              "project",
+              "projectDomain",
+              "caCert",
+            ]
+              .filter((k) => credentials[k])
+              .map((k) => [k, credentials[k] as string]),
+          ),
+        },
+        services?.http,
+      );
+      if (fieldKey === "project") {
+        const projects = await api.listProjects();
+        return projects.map((p) => ({ id: p.name, label: p.name, description: p.id }));
+      }
+      if (fieldKey === "region") {
+        const token = await api.token();
+        return OpenStackApi.catalogRegions(token.catalog).map((r) => ({ id: r, label: r }));
+      }
+      throw new Error(`OpenStack plugin: no options for "${fieldKey}"`);
+    });
   },
-};
+});

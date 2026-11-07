@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { GrafanaCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,15 +8,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { grafanaCloudTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "grafana-cloud",
-  version: "0.1.0",
+  // Cloud API on grafana.com; each stack's Grafana, Prometheus and Synthetic
+  // Monitoring APIs live under grafana.net.
+  egressHosts: ["grafana.com", "*.grafana.net"],
   displayName: "Grafana Cloud",
   description:
     "Hosted Grafana, metrics, logs, traces and profiles. Track spend by product and stack, chart active series and ingest, and manage stacks, plugins, access policies, members, and each connected stack's dashboards, alert rules, contact points, data sources and synthetic checks.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -34,7 +35,7 @@ const manifest: PluginManifest = {
       credentialFields: ["token"],
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "token",
       label: "Access Policy Token",
@@ -57,7 +58,7 @@ const manifest: PluginManifest = {
       placeholder: "acme",
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Billed usage per month (`/api/orgs/{org}/billed-usage`): product →
     // service, stack → resource and the `stack` tag, the stack's region →
@@ -74,13 +75,16 @@ const manifest: PluginManifest = {
   statusFeed,
   // The access policy routes allow 600 requests an hour per org.
   rateLimit: { capacity: 10, refillPerSecond: 0.5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new GrafanaCloudClient(credentials, services),
+  testCredentials: { token: "glc_test-grafana-cloud-token", orgSlug: "acme" },
   parseStatusFeed,
   policyTemplate: grafanaPolicyTemplate,
   terraformExport: grafanaCloudTerraformExport,
-};
+});

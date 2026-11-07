@@ -1,3 +1,4 @@
+import { hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Readable } from "node:stream";
 
@@ -23,7 +24,9 @@ vi.mock("node:stream/promises", () => ({
   pipeline: (...args: unknown[]) => mockPipeline(...(args as [])),
 }));
 
-import { nodeDriver } from "../node-driver.js";
+import { nodeDriver as contractNodeDriver } from "../node-driver.js";
+
+const nodeDriver = hostDriver(contractNodeDriver);
 
 const APP_ID = "abc123app";
 const KEY = "aaaa-bbbb";

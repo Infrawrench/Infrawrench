@@ -1,4 +1,10 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { LinodeClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -29,16 +35,16 @@ import { fetchLinodePriceCatalog, linodePriceCatalog } from "./price-catalog.js"
 import { linodeTerraformExport } from "./terraform.js";
 import { linodeRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "linode",
-  version: "0.1.0",
+  // The REST API, Cloud Pulse metrics, and the pre-signed Object Storage
+  // URLs the bucket browser uploads to and deletes through.
+  egressHosts: ["api.linode.com", "monitor-api.linode.com", "*.linodeobjects.com"],
   displayName: "Linode (Akamai Cloud)",
   description:
     "Akamai Cloud Computing, formerly Linode. Billed spend by service, resource and region, credit burndown, and Linodes, Block Storage, NodeBalancers, LKE, Object Storage, Managed Databases, Cloud Firewalls, DNS, VPCs, reserved IPs, images and StackScripts.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "Personal Access Token",
@@ -52,7 +58,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Billed spend from closed invoices (items spread over the days they
    * cover, tax and credits as their own charge types) plus the open billing
@@ -77,7 +83,9 @@ const manifest: PluginManifest = {
   priceCatalog: linodePriceCatalog,
   // Linode rate-limits per token and per endpoint; listers fan out at most 8 wide.
   rateLimit: { capacity: 40, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   LinodeInstanceResourceType,
@@ -98,13 +106,14 @@ const resourceTypes: ResourceTypeDefinition[] = [
   InvoiceResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new LinodeClient(credentials, resourceTypes, services),
+  testCredentials: { apiToken: "test-linode-token" },
   terraformExport: linodeTerraformExport,
   remediationCommands: linodeRemediationCommands,
   parseStatusFeed,
   policyTemplate: linodePolicyTemplate,
-  fetchPriceCatalog: fetchLinodePriceCatalog,
-};
+  fetchPriceCatalog: attemptFn(fetchLinodePriceCatalog),
+});

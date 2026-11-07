@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { ConsulApiError, normaliseAddress } from "../api.js";
 import { ConsulClient, configTemplate, pickerList } from "../client.js";
@@ -10,9 +11,11 @@ const ACCOUNT = "acct";
 function client(route: (call: Call) => unknown, creds: Record<string, string> = {}) {
   const { http, calls } = makeHttp(route);
   return {
-    c: new ConsulClient({ address: "consul.internal:8500/ui/", token: "tok", ...creds }, {
-      http,
-    } as never),
+    c: hostClient(
+      new ConsulClient({ address: "consul.internal:8500/ui/", token: "tok", ...creds }, {
+        http,
+      } as never),
+    ),
     calls,
   };
 }

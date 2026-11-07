@@ -1,62 +1,49 @@
 /**
- * Aggregates all plugin node drivers and re-exports typed maps for use in
- * server actions and API routes. Mirrors app/packages/desktop/electron/drivers.ts.
+ * Every plugin's node drivers, for the shared server pods. Each plugin decides
+ * what is safe here (`nodeDrivers.server`): Postgres, MongoDB and Kubernetes
+ * refuse connection strings that would read a local file or borrow this pod's
+ * own identity. Mirrors app/packages/desktop/electron/drivers.ts.
  */
-import type {
-  SqlNodeDriver,
-  KvNodeDriver,
-  DockerNodeDriver,
-  K8sNodeDriver,
-  StorageNodeDriver,
-} from "@infrawrench/plugin-base";
+import { collectNodeDrivers } from "@infrawrench/plugin-base/effect";
 
-// The restricted Postgres and MongoDB drivers: a connection string that
-// would read a local file or authenticate with this shared pod's own
-// identity is refused. The desktop uses the full ones.
-import { serverDriver as pgDriver } from "@infrawrench/plugin-postgres/driver";
-import { driver as mysqlDriver } from "@infrawrench/plugin-mysql/driver";
-import { driver as mssqlDriver } from "@infrawrench/plugin-mssql/driver";
-import { driver as redisDriver } from "@infrawrench/plugin-redis/driver";
-import { driver as kafkaDriver } from "@infrawrench/plugin-kafka/driver";
-import { driver as natsDriver } from "@infrawrench/plugin-nats/driver";
-import { driver as memcachedDriver } from "@infrawrench/plugin-memcached/driver";
-import { serverDriver as mongodbDriver } from "@infrawrench/plugin-mongodb/driver";
-import { driver as dockerDriver } from "@infrawrench/plugin-docker/driver";
-// The restricted driver: a kubeconfig that would run a command or read a
-// local file in this shared pod is refused. The desktop uses the full one.
-import { serverDriver as k8sDriver } from "@infrawrench/plugin-kubernetes/driver";
-import { driver as libsqlDriver } from "@infrawrench/plugin-turso/driver";
-import { driver as planetscaleDriver } from "@infrawrench/plugin-planetscale/driver";
-import { nodeDriver as gcpDriver } from "@infrawrench/plugin-gcp/node-driver";
-import { nodeDriver as uploadthingDriver } from "@infrawrench/plugin-uploadthing/node-driver";
+import { nodeDrivers as postgresPlugin } from "@infrawrench/plugin-postgres/driver";
+import { nodeDrivers as mysqlPlugin } from "@infrawrench/plugin-mysql/driver";
+import { nodeDrivers as mssqlPlugin } from "@infrawrench/plugin-mssql/driver";
+import { nodeDrivers as redisPlugin } from "@infrawrench/plugin-redis/driver";
+import { nodeDrivers as kafkaPlugin } from "@infrawrench/plugin-kafka/driver";
+import { nodeDrivers as natsPlugin } from "@infrawrench/plugin-nats/driver";
+import { nodeDrivers as memcachedPlugin } from "@infrawrench/plugin-memcached/driver";
+import { nodeDrivers as mongodbPlugin } from "@infrawrench/plugin-mongodb/driver";
+import { nodeDrivers as dockerPlugin } from "@infrawrench/plugin-docker/driver";
+import { nodeDrivers as kubernetesPlugin } from "@infrawrench/plugin-kubernetes/driver";
+import { nodeDrivers as tursoPlugin } from "@infrawrench/plugin-turso/driver";
+import { nodeDrivers as planetscalePlugin } from "@infrawrench/plugin-planetscale/driver";
+import { nodeDrivers as gcpPlugin } from "@infrawrench/plugin-gcp/node-driver";
+import { nodeDrivers as uploadthingPlugin } from "@infrawrench/plugin-uploadthing/node-driver";
 
-export const sqlDrivers = new Map<string, SqlNodeDriver>([
-  [pgDriver.id, pgDriver],
-  [mysqlDriver.id, mysqlDriver],
-  [mssqlDriver.id, mssqlDriver],
-  [libsqlDriver.id, libsqlDriver],
-  [planetscaleDriver.id, planetscaleDriver],
-]);
-
-export const kvDrivers = new Map<string, KvNodeDriver>([
-  [redisDriver.id, redisDriver],
-  [memcachedDriver.id, memcachedDriver],
-  [mongodbDriver.id, mongodbDriver],
-  [kafkaDriver.id, kafkaDriver],
-  [natsDriver.id, natsDriver],
-]);
-
-export const dockerDrivers = new Map<string, DockerNodeDriver>([[dockerDriver.id, dockerDriver]]);
-
-export const k8sDrivers = new Map<string, K8sNodeDriver>([[k8sDriver.id, k8sDriver]]);
+export const { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers, storageDrivers } =
+  collectNodeDrivers(
+    [
+      postgresPlugin,
+      mysqlPlugin,
+      mssqlPlugin,
+      redisPlugin,
+      kafkaPlugin,
+      natsPlugin,
+      memcachedPlugin,
+      mongodbPlugin,
+      dockerPlugin,
+      kubernetesPlugin,
+      tursoPlugin,
+      planetscalePlugin,
+      gcpPlugin,
+      uploadthingPlugin,
+    ],
+    "server",
+  );
 
 /**
- * The policy `k8sDriver` enforces, for server code that hands a kubeconfig
- * to kubectl or k9s rather than to the driver.
+ * The policy the Kubernetes driver enforces, for server code that hands a
+ * kubeconfig to kubectl or k9s rather than to the driver.
  */
 export { assertKubeconfigSafeForServer } from "@infrawrench/plugin-kubernetes/driver";
-
-export const storageDrivers = new Map<string, StorageNodeDriver>([
-  [gcpDriver.pluginId, gcpDriver],
-  [uploadthingDriver.pluginId, uploadthingDriver],
-]);

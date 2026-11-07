@@ -24,6 +24,8 @@
  * {@link createRateCardCache}.
  */
 
+import type { CloudApi, CloudResponse } from "./api.js";
+
 /** Number of decimal places kept in the fixed-point representation. */
 const SCALE_EXP = 12;
 
@@ -153,41 +155,11 @@ export interface HetznerRateCard {
   serverBackupPercent: Scaled;
 }
 
-/** Shape of the `{net, gross}` pair the API pairs every price into. */
-interface RawPrice {
-  net?: string;
-  gross?: string;
-}
-
-interface RawLocationPrice {
-  location?: string;
-  price_hourly?: RawPrice;
-  price_monthly?: RawPrice;
-  included_traffic?: number | null;
-  price_per_tb_traffic?: RawPrice;
-}
-
-interface RawTypeEntry {
-  name?: string;
-  type?: string;
-  prices?: RawLocationPrice[];
-}
-
-interface RawPricingResponse {
-  pricing?: {
-    currency?: string;
-    vat_rate?: string;
-    server_types?: RawTypeEntry[];
-    load_balancer_types?: RawTypeEntry[];
-    primary_ips?: RawTypeEntry[];
-    floating_ips?: RawTypeEntry[];
-    /** Deprecated since 2024-08-29 in favour of `floating_ips`. */
-    floating_ip?: { price_monthly?: RawPrice };
-    volume?: { price_per_gb_month?: RawPrice };
-    image?: { price_per_gb_month?: RawPrice };
-    server_backup?: { percentage?: string };
-  };
-}
+type RawPricingResponse = CloudResponse<"get_pricing">;
+type Pricing = RawPricingResponse["pricing"];
+/** The `{net, gross}` pair the API pairs every price into. */
+type RawPrice = Pricing["volume"]["price_per_gb_month"];
+type RawTypeEntry = Pricing["server_types"][number] | Pricing["load_balancer_types"][number];
 
 /**
  * Read `net` from a `{net, gross}` pair.
@@ -209,12 +181,11 @@ function optionalNet(price: RawPrice | undefined, field: string): Scaled {
 
 function cappedRates(
   entries: RawTypeEntry[] | undefined,
-  keyOf: (entry: RawTypeEntry) => string | undefined,
   label: string,
 ): Map<string, Map<string, ServerTypeRate>> {
   const out = new Map<string, Map<string, ServerTypeRate>>();
   for (const entry of entries ?? []) {
-    const key = keyOf(entry);
+    const key = entry.name;
     if (!key) continue;
     const byLocation = new Map<string, ServerTypeRate>();
     for (const price of entry.prices ?? []) {
@@ -267,12 +238,8 @@ function parseRateCard(body: RawPricingResponse): HetznerRateCard {
   return {
     currency: pricing.currency || "EUR",
     vatRatePercent: pricing.vat_rate ? parseDecimal(pricing.vat_rate, "vat_rate") : 0n,
-    serverTypes: cappedRates(pricing.server_types, (e) => e.name, "server type"),
-    loadBalancerTypes: cappedRates(
-      pricing.load_balancer_types,
-      (e) => e.name,
-      "load balancer type",
-    ),
+    serverTypes: cappedRates(pricing.server_types, "server type"),
+    loadBalancerTypes: cappedRates(pricing.load_balancer_types, "load balancer type"),
     primaryIps,
     floatingIps,
     floatingIpFallbackMonthly: pricing.floating_ip?.price_monthly?.net
@@ -286,14 +253,9 @@ function parseRateCard(body: RawPricingResponse): HetznerRateCard {
   };
 }
 
-/** The one capability {@link fetchRateCard} needs from the caller. */
-interface PricingFetcher {
-  fetch<T>(path: string): Promise<T>;
-}
-
 /** Fetch and parse the rate card. Uses the project token already held. */
-async function fetchRateCard(fetcher: PricingFetcher): Promise<HetznerRateCard> {
-  return parseRateCard(await fetcher.fetch<RawPricingResponse>("/pricing"));
+async function fetchRateCard(cloud: CloudApi): Promise<HetznerRateCard> {
+  return parseRateCard(await cloud.get("/pricing"));
 }
 
 /**
@@ -305,15 +267,15 @@ async function fetchRateCard(fetcher: PricingFetcher): Promise<HetznerRateCard> 
  * rejected promise is dropped so the next chunk retries.
  */
 export interface RateCardCache {
-  load(fetcher: PricingFetcher): Promise<HetznerRateCard>;
+  load(cloud: CloudApi): Promise<HetznerRateCard>;
 }
 
 export function createRateCardCache(): RateCardCache {
   let pending: Promise<HetznerRateCard> | undefined;
   return {
-    load(fetcher) {
+    load(cloud) {
       if (!pending) {
-        pending = fetchRateCard(fetcher).catch((error: unknown) => {
+        pending = fetchRateCard(cloud).catch((error: unknown) => {
           pending = undefined;
           throw error;
         });

@@ -14,7 +14,7 @@
  */
 import type {
   HostServices,
-  PluginClient,
+  HostPluginClient,
   PluginManifest,
   SecretHostServices,
 } from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
@@ -184,7 +184,7 @@ export async function createPluginClientFromCredentials(
   pluginId: string,
   credentials: Record<string, string>,
   extraServices: Partial<HostServices> = {},
-): Promise<PluginClient> {
+): Promise<HostPluginClient> {
   // Imported lazily: the plugin registry is large, and a CLI invocation that
   // never touches a plugin (login, orgs, costs) should not pay to load it.
   const { getPlugin } = await import("./plugins.js");
@@ -203,7 +203,7 @@ export async function createPluginClientFromCredentials(
 export async function createLocalPluginClient(
   accountId: string,
   pluginId: string,
-): Promise<PluginClient> {
+): Promise<HostPluginClient> {
   const credentials = await loadLocalAccountCredentials(accountId);
   const oauth: Partial<HostServices> =
     "__oauth" in credentials

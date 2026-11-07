@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { AivenClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,14 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { aivenTerraformExport } from "./terraform.js";
 import { aivenRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "aiven",
-  version: "0.1.0",
+  egressHosts: ["api.aiven.io"],
   displayName: "Aiven",
   description:
     "Manage Aiven projects and services of every type (PostgreSQL, MySQL, Kafka, OpenSearch, ClickHouse, Valkey, Grafana and more): plans, clouds, power, maintenance, users, databases, connection pools, Kafka topics, ACLs, connectors and schemas, integrations, VPCs and peering, with metrics, logs, invoice-based costs, credits and database consoles.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -27,7 +26,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Create an Aiven token", url: "https://console.aiven.io/profile/auth" },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Invoice lines (including the running estimate), spread over the days
     // they cover: service type, cloud, project/service and billing tags.
@@ -38,13 +37,16 @@ const manifest: PluginManifest = {
   },
   credits: { label: "Aiven credits", topUpUrl: "https://console.aiven.io/billing" },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new AivenClient(credentials, services),
+  testCredentials: { apiToken: "test-aiven-token" },
   parseStatusFeed: (body: string) => parseStatusFeed(body),
   terraformExport: aivenTerraformExport,
   remediationCommands: aivenRemediationCommands,
-};
+});

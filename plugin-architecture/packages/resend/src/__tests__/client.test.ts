@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { listAll, resendFetch } from "../api.js";
 import { ResendClient, WEBHOOK_EVENTS, parseList } from "../client.js";
@@ -10,7 +11,7 @@ const ACC = "acc";
 
 function client(route: (call: Call) => unknown, extra: Record<string, unknown> = {}) {
   const { http, calls } = makeHttp(route);
-  const c = new ResendClient({ apiKey: "re_KEY" }, { http, ...extra } as never);
+  const c = hostClient(new ResendClient({ apiKey: "re_KEY" }, { http, ...extra } as never));
   return { c, calls };
 }
 

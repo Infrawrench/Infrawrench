@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetAuthCaches } from "../api.js";
 import { MongoDBAtlasClient, withCredentials } from "../client.js";
@@ -95,7 +96,7 @@ function secretStore() {
 describe("listing", () => {
   it("maps dedicated clusters under their project and skips flex entries", async () => {
     const { http } = atlas();
-    const client = new MongoDBAtlasClient(CREDS, { http });
+    const client = hostClient(new MongoDBAtlasClient(CREDS, { http }));
     const clusters = await client.listResources("cluster", ACCOUNT);
     expect(clusters).toHaveLength(1);
     const c = clusters[0]!;
@@ -119,7 +120,7 @@ describe("listing", () => {
 
   it("lists the organization with its project count", async () => {
     const { http } = atlas();
-    const [org] = await new MongoDBAtlasClient(CREDS, { http }).listResources(
+    const [org] = await hostClient(new MongoDBAtlasClient(CREDS, { http })).listResources(
       "organization",
       ACCOUNT,
     );
@@ -132,7 +133,7 @@ describe("listing", () => {
         ? reply({ status: 403, body: {} })
         : undefined,
     );
-    const users = await new MongoDBAtlasClient(CREDS, { http }).listResources(
+    const users = await hostClient(new MongoDBAtlasClient(CREDS, { http })).listResources(
       "database-user",
       ACCOUNT,
     );
@@ -154,7 +155,7 @@ describe("listing", () => {
           }
         : undefined,
     );
-    const snaps = await new MongoDBAtlasClient(CREDS, { http }).listResources(
+    const snaps = await hostClient(new MongoDBAtlasClient(CREDS, { http })).listResources(
       "backup-snapshot",
       ACCOUNT,
     );
@@ -167,7 +168,7 @@ describe("listing", () => {
 describe("cluster detail", () => {
   it("offers only the tiers Atlas sells in the cluster's region", async () => {
     const { http } = atlas();
-    const client = new MongoDBAtlasClient(CREDS, { http });
+    const client = hostClient(new MongoDBAtlasClient(CREDS, { http }));
     const r = await client.getResource("cluster", "acct:cluster:g1/main", ACCOUNT);
     const detail = client.renderDetail(r);
     const scale = detail.headerActions?.find((a) => a.label === "Scale tier");
@@ -181,7 +182,7 @@ describe("cluster detail", () => {
 describe("cluster writes", () => {
   it("scales every electable and read-only spec in one PATCH without effective fields", async () => {
     const { http, calls } = atlas((call) => (call.method === "PATCH" ? {} : undefined));
-    const client = new MongoDBAtlasClient(CREDS, { http });
+    const client = hostClient(new MongoDBAtlasClient(CREDS, { http }));
     await client.executeNoSqlCommand("cluster", "acct:cluster:g1/main", ACCOUNT, "scale-tier", [
       JSON.stringify({ instanceSize: "M40" }),
     ]);
@@ -198,7 +199,7 @@ describe("cluster writes", () => {
 
   it("enables compute auto-scaling with bounds around the current tier", async () => {
     const { http, calls } = atlas((call) => (call.method === "PATCH" ? {} : undefined));
-    await new MongoDBAtlasClient(CREDS, { http }).updateResource(
+    await hostClient(new MongoDBAtlasClient(CREDS, { http })).updateResource(
       "cluster",
       "acct:cluster:g1/main",
       ACCOUNT,
@@ -222,7 +223,7 @@ describe("cluster writes", () => {
 
   it("pauses and resumes", async () => {
     const { http, calls } = atlas((call) => (call.method === "PATCH" ? {} : undefined));
-    const client = new MongoDBAtlasClient(CREDS, { http });
+    const client = hostClient(new MongoDBAtlasClient(CREDS, { http }));
     await client.invokeAction("cluster", "acct:cluster:g1/main", "pause", ACCOUNT);
     await client.invokeAction("cluster", "acct:cluster:g1/main", "resume", ACCOUNT);
     expect(calls.filter((c) => c.method === "PATCH").map((c) => c.body)).toEqual([
@@ -233,7 +234,7 @@ describe("cluster writes", () => {
 
   it("takes an on-demand snapshot with the requested retention", async () => {
     const { http, calls } = atlas((call) => (call.method === "POST" ? { id: "s9" } : undefined));
-    await new MongoDBAtlasClient(CREDS, { http }).executeNoSqlCommand(
+    await hostClient(new MongoDBAtlasClient(CREDS, { http })).executeNoSqlCommand(
       "cluster",
       "acct:cluster:g1/main",
       ACCOUNT,
@@ -251,7 +252,7 @@ describe("cluster writes", () => {
         ? { results: [{ cidrBlock: "203.0.113.7/32", comment: "vpn" }] }
         : undefined,
     );
-    await new MongoDBAtlasClient(CREDS, { http }).executeNoSqlCommand(
+    await hostClient(new MongoDBAtlasClient(CREDS, { http })).executeNoSqlCommand(
       "project",
       "acct:project:g1",
       ACCOUNT,
@@ -268,7 +269,7 @@ describe("MongoDB console hand-off", () => {
   it("creates a cluster-scoped connection user and builds the connection string from it", async () => {
     const { http, calls } = atlas((call) => (call.method === "POST" ? {} : undefined));
     const { secrets, store } = secretStore();
-    const client = new MongoDBAtlasClient(CREDS, { http, secrets });
+    const client = hostClient(new MongoDBAtlasClient(CREDS, { http, secrets }));
     await expect(
       client.resolveOutput("cluster", "acct:cluster:g1/main", "connectionString", ACCOUNT),
     ).rejects.toThrow(/Create connection user/);

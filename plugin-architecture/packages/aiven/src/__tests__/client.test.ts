@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AivenClient, metricsPeriod, parseTags } from "../client.js";
 import { chargeTypeOf, spreadLine } from "../cost-data.js";
@@ -84,7 +85,7 @@ describe("AivenClient", () => {
       },
       "GET /project/acme/service": { services: [pg] },
     });
-    const c = new AivenClient({ apiToken: "tok" });
+    const c = hostClient(new AivenClient({ apiToken: "tok" }));
     const [svc] = await c.listResources("aiven-service", ACC);
     expect(calls[0]!.headers["Authorization"]).toBe("aivenv1 tok");
     expect(svc!.externalId).toBe("acme/pg-main");
@@ -114,7 +115,7 @@ describe("AivenClient", () => {
         { status: 401 },
       ),
     });
-    const err = await new AivenClient({ apiToken: "x" })
+    const err = await hostClient(new AivenClient({ apiToken: "x" }))
       .listResources("aiven-project", ACC)
       .catch((e: unknown) => e);
     expect((err as { status?: number }).status).toBe(401);
@@ -123,7 +124,7 @@ describe("AivenClient", () => {
 
   it("powers a service off with PUT powered=false", async () => {
     const calls = mockFetch({ "PUT /project/acme/service/pg-main": { service: pg } });
-    await new AivenClient({ apiToken: "t" }).invokeAction(
+    await hostClient(new AivenClient({ apiToken: "t" })).invokeAction(
       "aiven-service",
       `${ACC}:aiven-service:acme/pg-main`,
       "power-off",
@@ -142,7 +143,7 @@ describe("AivenClient", () => {
         certificate: "-----BEGIN CERTIFICATE-----\nX\n-----END CERTIFICATE-----",
       },
     });
-    const c = new AivenClient({ apiToken: "t" });
+    const c = hostClient(new AivenClient({ apiToken: "t" }));
     const id = `${ACC}:aiven-service:acme/pg-main`;
     expect(await c.resolveOutput("aiven-service", id, "connectionString", ACC)).toContain(
       "sslmode=require",
@@ -154,7 +155,7 @@ describe("AivenClient", () => {
 
   it("creates a Kafka topic with retention in ms", async () => {
     const calls = mockFetch({ "POST /project/acme/service/kafka-1/topic": {} });
-    await new AivenClient({ apiToken: "t" }).createResource("aiven-kafka-topic", ACC, {
+    await hostClient(new AivenClient({ apiToken: "t" })).createResource("aiven-kafka-topic", ACC, {
       service: "acme/kafka-1",
       name: "orders",
       partitions: "6",

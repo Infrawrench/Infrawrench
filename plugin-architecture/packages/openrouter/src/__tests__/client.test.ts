@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { OpenRouterClient } from "../client.js";
@@ -42,10 +43,12 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client(withInferenceKey = true) {
-  return new OpenRouterClient({
-    managementKey: "sk-or-v1-management",
-    ...(withInferenceKey ? { apiKey: "sk-or-v1-inference" } : {}),
-  });
+  return hostClient(
+    new OpenRouterClient({
+      managementKey: "sk-or-v1-management",
+      ...(withInferenceKey ? { apiKey: "sk-or-v1-inference" } : {}),
+    }),
+  );
 }
 
 beforeEach(() => {
@@ -58,7 +61,9 @@ afterEach(() => {
 
 describe("credentials", () => {
   it("requires a management key", () => {
-    expect(() => new OpenRouterClient({})).toThrow(/management key or an inference API key/);
+    expect(() => hostClient(new OpenRouterClient({}))).toThrow(
+      /management key or an inference API key/,
+    );
   });
 
   it("works with only a management key", () => {

@@ -34,7 +34,7 @@ export const ALBResourceType = rt({
     }),
   ],
   outputs: [
-    o("dnsName", "DNS Name"),
+    o("dnsName", "DNS Name", { dnsValue: "hostname" }),
     o("loadBalancerArn", "Load Balancer ARN"),
     o("canonicalHostedZoneId", "Hosted Zone ID"),
   ],

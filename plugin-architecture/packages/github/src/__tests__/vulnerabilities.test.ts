@@ -1,3 +1,4 @@
+import { hostPlugin } from "@infrawrench/plugin-base/effect";
 import { VulnerabilityAccessError } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { plugin } from "../plugin.js";
@@ -218,7 +219,7 @@ describe("fetchDependabotFindings", () => {
 describe("manifest", () => {
   it("declares the Dependabot capability and the client implements it", () => {
     expect(plugin.manifest.vulnerabilities?.label).toBe("Dependabot");
-    const client = plugin.createClient({ token: "t", owner: "org:o" });
+    const client = hostPlugin(plugin).createClient({ token: "t", owner: "org:o" });
     expect(typeof client.listVulnerabilityFindings).toBe("function");
   });
 });

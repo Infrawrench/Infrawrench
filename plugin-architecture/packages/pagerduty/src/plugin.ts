@@ -1,4 +1,11 @@
-import type { CredentialFieldOption, Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt, attemptFn } from "@infrawrench/plugin-base/effect";
+import type {
+  CredentialFieldOption,
+  PluginManifest,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { pdList } from "./api.js";
 import { PagerDutyClient } from "./client.js";
@@ -9,16 +16,20 @@ import { PAGERDUTY_OAUTH, completePagerDutyOAuth, isPagerDutyOAuth } from "./oau
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { pagerdutyTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "pagerduty",
-  version: "0.1.0",
+  // REST API (US and EU service regions) and the Events API v2 the paging capability sends alerts through.
+  egressHosts: [
+    "api.pagerduty.com",
+    "api.eu.pagerduty.com",
+    "events.pagerduty.com",
+    "events.eu.pagerduty.com",
+  ],
   displayName: "PagerDuty",
   description:
     "Incident response and on-call. Manage services, escalation policies, schedules and overrides, teams, maintenance windows, business services and event orchestrations; acknowledge, resolve, reassign and annotate incidents; chart MTTA and MTTR. Alert routing rules can open PagerDuty incidents and page whoever is on call, and PagerDuty incidents show up in Infrawrench.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "REST API Key",
@@ -54,7 +65,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiKey"], emptyLabel: "Only act as the signed-in member" },
     },
     caCertCredentialField,
-  ],
+  ]),
   paging: {
     targetLabel: "Service",
     targetDescription:
@@ -65,36 +76,41 @@ const manifest: PluginManifest = {
     webhook: { mode: "managed" },
   },
   oauth: PAGERDUTY_OAUTH,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new PagerDutyClient(credentials, services),
+  testCredentials: { apiKey: "test-pagerduty-api-key" },
   terraformExport: pagerdutyTerraformExport,
-  verifyPagingWebhook: verifyWebhook,
-  completeOAuthConnection: completePagerDutyOAuth,
-  async listCredentialOptions(fieldKey, credentials, services): Promise<CredentialFieldOption[]> {
-    if (fieldKey !== "fromEmail") return [];
-    const apiKey = (credentials["apiKey"] ?? "").trim();
-    if (!apiKey) return [];
-    const users = await pdList<PdUser>(
-      {
-        apiKey,
-        ...(isPagerDutyOAuth(credentials) ? { bearer: true } : {}),
-        region: (credentials["region"] ?? "").trim() === "eu" ? "eu" : "us",
-        ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
-        ...(services?.http ? { http: services.http } : {}),
-      },
-      "/users",
-      "users",
-    );
-    return users
-      .filter((u) => u.email)
-      .map((u) => ({
-        id: u.email ?? "",
-        label: u.name ?? u.email ?? "",
-        description: u.email ?? "",
-      }));
+  verifyPagingWebhook: attemptFn(verifyWebhook),
+  completeOAuthConnection: attemptFn(completePagerDutyOAuth),
+  listCredentialOptions(fieldKey, credentials, services): PluginEffect<CredentialFieldOption[]> {
+    return attempt(async () => {
+      if (fieldKey !== "fromEmail") return [];
+      const apiKey = (credentials["apiKey"] ?? "").trim();
+      if (!apiKey) return [];
+      const users = await pdList<PdUser>(
+        {
+          apiKey,
+          ...(isPagerDutyOAuth(credentials) ? { bearer: true } : {}),
+          region: (credentials["region"] ?? "").trim() === "eu" ? "eu" : "us",
+          ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
+          ...(services?.http ? { http: services.http } : {}),
+        },
+        "/users",
+        "users",
+      );
+      return users
+        .filter((u) => u.email)
+        .map((u) => ({
+          id: u.email ?? "",
+          label: u.name ?? u.email ?? "",
+          description: u.email ?? "",
+        }));
+    });
   },
-};
+});

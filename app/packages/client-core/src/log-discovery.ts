@@ -20,7 +20,7 @@
 // plugin-base (the mobile bundle never pulls the manifest machinery in).
 import type {
   PeerPluginIntegration,
-  PluginClient,
+  HostPluginClient,
   ResourceInstance,
 } from "@infrawrench/plugin-base";
 
@@ -55,7 +55,7 @@ export interface SidecarLogDiscoveryDeps {
    * rewriters where the host has them). Null when the peer plugin isn't
    * registered; throwing is treated the same as unreachable.
    */
-  getPeerClient(parent: SidecarLogParent, pluginId: string): Promise<PluginClient | null>;
+  getPeerClient(parent: SidecarLogParent, pluginId: string): Promise<HostPluginClient | null>;
   /** The peer plugin's resource type ids, from its loaded definition. */
   peerResourceTypeIds(pluginId: string): Promise<string[]>;
   /** Discovery is best-effort but never silent: failures land here. */
@@ -147,7 +147,7 @@ export function __resetPeerLogCapabilityCache(): void {
 
 /** `renderDetail` probe on a synthetic instance: does this type declare logs? */
 function typeDeclaresLogs(
-  client: PluginClient,
+  client: HostPluginClient,
   pluginId: string,
   typeId: string,
   accountId: string,
@@ -215,7 +215,7 @@ async function discoverParent(
     const failedAt = peerBuildFailures.get(failureKey);
     if (failedAt !== undefined && now() - failedAt < RETRY_AFTER_FAILURE_MS) continue;
 
-    let client: PluginClient | null;
+    let client: HostPluginClient | null;
     try {
       client = await deps.getPeerClient(parent, integration.pluginId);
       if (ctl.aborted) return;

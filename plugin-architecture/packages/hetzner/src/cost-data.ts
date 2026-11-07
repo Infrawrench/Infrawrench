@@ -54,6 +54,7 @@
  */
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import type { CloudApi } from "./api.js";
 import {
   BYTES_PER_TB,
   createRateCardCache,
@@ -88,68 +89,16 @@ const SERVICE = {
  * runs in tests with no network and a frozen clock.
  */
 export interface HetznerCostContext {
-  /** Single GET against the Hetzner API, path relative to `/v1`. */
-  fetch<T>(path: string): Promise<T>;
-  /** Paginated GET, collecting `rootKey` across every page. */
-  fetchAll<T>(path: string, rootKey: string): Promise<T[]>;
+  cloud: CloudApi;
   /** The clock. Injected so "today" is deterministic under test. */
   now: Date;
   /** Shared per collection pass so `/pricing` is fetched once, not per chunk. */
   rateCard?: RateCardCache;
 }
 
-interface HetznerServer {
-  id: number;
-  name?: string;
-  status?: string;
-  created?: string;
-  server_type?: { name?: string };
-  /** Replaced `datacenter` on 2025-12-16; `datacenter` was removed 2026-07-01. */
-  location?: { name?: string };
+/** Replaced by `location` on 2025-12-16, removed from the API and the document 2026-07-01. */
+interface LegacyDatacenter {
   datacenter?: { name?: string; location?: { name?: string } };
-  /** Non-null exactly when backups are enabled, e.g. "22-02". */
-  backup_window?: string | null;
-  outgoing_traffic?: number | null;
-  included_traffic?: number | null;
-}
-
-interface HetznerVolume {
-  id: number;
-  size?: number;
-  created?: string;
-  location?: { name?: string };
-}
-
-interface HetznerLoadBalancer {
-  id: number;
-  created?: string;
-  load_balancer_type?: { name?: string };
-  location?: { name?: string };
-  outgoing_traffic?: number | null;
-  included_traffic?: number | null;
-}
-
-interface HetznerPrimaryIp {
-  id: number;
-  type?: string;
-  created?: string;
-  location?: { name?: string };
-  datacenter?: { name?: string; location?: { name?: string } };
-}
-
-interface HetznerFloatingIp {
-  id: number;
-  type?: string;
-  created?: string;
-  home_location?: { name?: string };
-}
-
-interface HetznerImage {
-  id: number;
-  type?: string;
-  created?: string;
-  /** Compressed size in GB: null while the snapshot is still being written. */
-  image_size?: number | null;
 }
 
 /** `YYYY-MM-DD` in UTC. */
@@ -200,6 +149,11 @@ function locationName(
     datacenter?.location?.name ??
     (datacenter?.name ? (datacenter.name.split("-")[0] ?? "") : "")
   );
+}
+
+/** A resource that may still name its location through a datacenter. */
+function regionWithDatacenter(resource: { location?: { name?: string } } & LegacyDatacenter) {
+  return locationName(resource.location, resource.datacenter);
 }
 
 /** Pick a location's rate, tolerating a location absent from the rate card. */
@@ -334,18 +288,19 @@ export async function fetchHetznerCostData(
   if (!emitDaily && !emitTraffic) return [];
 
   const cache = ctx.rateCard ?? createRateCardCache();
-  const card = await cache.load(ctx);
+  const card = await cache.load(ctx.cloud);
 
+  const { cloud } = ctx;
   const [servers, volumes, loadBalancers, primaryIps, floatingIps, snapshots] = await Promise.all([
-    ctx.fetchAll<HetznerServer>("/servers", "servers"),
-    emitDaily ? ctx.fetchAll<HetznerVolume>("/volumes", "volumes") : [],
-    ctx.fetchAll<HetznerLoadBalancer>("/load_balancers", "load_balancers"),
-    emitDaily ? ctx.fetchAll<HetznerPrimaryIp>("/primary_ips", "primary_ips") : [],
-    emitDaily ? ctx.fetchAll<HetznerFloatingIp>("/floating_ips", "floating_ips") : [],
+    cloud.getAll("/servers", "servers"),
+    emitDaily ? cloud.getAll("/volumes", "volumes") : [],
+    cloud.getAll("/load_balancers", "load_balancers"),
+    emitDaily ? cloud.getAll("/primary_ips", "primary_ips") : [],
+    emitDaily ? cloud.getAll("/floating_ips", "floating_ips") : [],
     // Filtered server-side: the unfiltered listing is the whole public image
     // catalogue, and only snapshots are billed per GB. Backups are billed as a
     // percentage of their server instead, below.
-    emitDaily ? ctx.fetchAll<HetznerImage>("/images?type=snapshot", "images") : [],
+    emitDaily ? cloud.getAll("/images", "images", { query: { type: ["snapshot"] } }) : [],
   ]);
 
   const acc = new RowAccumulator(card.currency);
@@ -355,7 +310,7 @@ export async function fetchHetznerCostData(
   const monthDays = daysInMonth(today);
 
   for (const server of servers) {
-    const region = locationName(server.location, server.datacenter);
+    const region = regionWithDatacenter(server);
     const typeName = server.server_type?.name ?? "";
     const rate = rateFor<ServerTypeRate>(card.serverTypes, typeName, region);
     if (!rate) continue;
@@ -445,7 +400,7 @@ export async function fetchHetznerCostData(
     }
 
     for (const ip of primaryIps) {
-      const region = locationName(ip.location, ip.datacenter);
+      const region = regionWithDatacenter(ip);
       const rate = rateFor<CappedRate>(card.primaryIps, ip.type ?? "", region);
       if (!rate) continue;
       // IPv6 primary IPs are free; their rate is zero and the row is dropped.

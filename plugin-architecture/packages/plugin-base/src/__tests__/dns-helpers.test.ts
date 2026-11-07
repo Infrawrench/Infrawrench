@@ -1,26 +1,9 @@
 import { describe, it, expect } from "vitest";
-import {
-  dnsContentField,
-  PICKABLE_DNS_TYPES,
-  DNS_IPV4_SOURCES,
-  DNS_IPV6_SOURCES,
-  DNS_HOSTNAME_SOURCES,
-} from "../dns-helpers.js";
+import { dnsContentField, PICKABLE_DNS_TYPES } from "../dns-helpers.js";
 
-describe("dns-helpers source constants", () => {
+describe("dns-helpers constants", () => {
   it("PICKABLE_DNS_TYPES contains A/AAAA/CNAME", () => {
     expect([...PICKABLE_DNS_TYPES]).toEqual(["A", "AAAA", "CNAME"]);
-  });
-
-  it("source arrays are non-empty and well-shaped", () => {
-    for (const sources of [DNS_IPV4_SOURCES, DNS_IPV6_SOURCES, DNS_HOSTNAME_SOURCES]) {
-      expect(sources.length).toBeGreaterThan(0);
-      for (const s of sources) {
-        expect(typeof s.pluginId).toBe("string");
-        expect(typeof s.resourceTypeId).toBe("string");
-        expect(typeof s.outputKey).toBe("string");
-      }
-    }
   });
 });
 
@@ -44,7 +27,7 @@ describe("dnsContentField", () => {
     expect(aPicker.kind).toBe("resource-picker");
     expect(aPicker.key).toBe("content");
     expect(aPicker.referenceMode).toBe(true);
-    expect(aPicker.associationSources).toBe(DNS_IPV4_SOURCES);
+    expect(aPicker.associationRole).toBe("dns-ipv4");
     expect(aPicker.showWhen).toEqual({
       allOf: [
         { fieldKey: "type", fieldValue: "A" },
@@ -52,8 +35,8 @@ describe("dnsContentField", () => {
       ],
     });
 
-    expect(aaaaPicker.associationSources).toBe(DNS_IPV6_SOURCES);
-    expect(cnamePicker.associationSources).toBe(DNS_HOSTNAME_SOURCES);
+    expect(aaaaPicker.associationRole).toBe("dns-ipv6");
+    expect(cnamePicker.associationRole).toBe("dns-hostname");
 
     expect(text.kind).toBe("text");
     expect(text.key).toBe("content");

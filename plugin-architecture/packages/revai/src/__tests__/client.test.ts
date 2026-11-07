@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RevAiClient } from "../client.js";
 
@@ -31,8 +33,8 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
   }) as typeof fetch);
 }
 
-function client(region = "us"): RevAiClient {
-  return new RevAiClient({ accessToken: "test-revai-access-token", region });
+function client(region = "us"): HostedMethods<RevAiClient> {
+  return hostClient(new RevAiClient({ accessToken: "test-revai-access-token", region }));
 }
 
 function headerOf(init: RequestInit | undefined, name: string): string {

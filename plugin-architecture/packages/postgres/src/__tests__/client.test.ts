@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import type { HostServices, ResourceInstance, SqlHostServices } from "@infrawrench/plugin-base";
 import { PostgresClient } from "../client.js";
@@ -43,12 +44,12 @@ describe("PostgresClient", () => {
 
   describe("constructor / requireConnection", () => {
     it("tolerates missing connectionString", () => {
-      const c = new PostgresClient({});
+      const c = hostClient(new PostgresClient({}));
       expect(c).toBeInstanceOf(PostgresClient);
     });
 
     it("renderPeerPane throws when connection missing", async () => {
-      const c = new PostgresClient({});
+      const c = hostClient(new PostgresClient({}));
       await expect(
         c.renderPeerPane({
           tabLabel: "x",
@@ -64,7 +65,7 @@ describe("PostgresClient", () => {
   describe("listResources", () => {
     it("queries the catalog when sql service present", async () => {
       sql.query.mockResolvedValue([{ datname: "appdb" }, { datname: "other" }]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       const res = await c.listResources("pg-database", "acct");
       expect(res).toHaveLength(2);
       expect(res[0]!.id).toBe("acct:pg-database:appdb");
@@ -74,7 +75,7 @@ describe("PostgresClient", () => {
 
     it("falls back to URL parsing when sql query throws", async () => {
       sql.query.mockRejectedValue(new Error("boom"));
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       const res = await c.listResources("pg-database", "acct");
       expect(res).toHaveLength(1);
       expect(res[0]!.displayName).toBe("appdb");
@@ -82,34 +83,34 @@ describe("PostgresClient", () => {
     });
 
     it("falls back when no sql service (URL parse)", async () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       const res = await c.listResources("pg-database", "acct");
       expect(res[0]!.fields["database"]).toBe("appdb");
     });
 
     it("uses defaults when connection string unparseable", async () => {
-      const c = new PostgresClient({ connectionString: "not a url" });
+      const c = hostClient(new PostgresClient({ connectionString: "not a url" }));
       const res = await c.listResources("pg-database", "acct");
       expect(res[0]!.displayName).toBe("postgres");
       expect(res[0]!.fields["host"]).toBe("unknown");
     });
 
     it("defaults db name to postgres when path empty", async () => {
-      const c = new PostgresClient({ connectionString: "postgresql://host:5432/" });
+      const c = hostClient(new PostgresClient({ connectionString: "postgresql://host:5432/" }));
       const res = await c.listResources("pg-database", "acct");
       expect(res[0]!.displayName).toBe("postgres");
     });
 
     it("catalog branch sets host=unknown when CS unparseable", async () => {
       sql.query.mockResolvedValue([{ datname: "x" }]);
-      const c = new PostgresClient({ connectionString: "garbage" }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: "garbage" }, services(sql)));
       const res = await c.listResources("pg-database", "acct");
       expect(res[0]!.fields["host"]).toBe("unknown");
     });
 
     it("queries schemas when sql service present", async () => {
       sql.query.mockResolvedValue([{ schema_name: "billing" }, { schema_name: "public" }]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       const res = await c.listResources("pg-schema", "acct");
       expect(res.map((schema) => schema.displayName)).toEqual(["billing", "public"]);
       expect(res[0]!.id).toBe("acct:pg-schema:billing");
@@ -125,20 +126,20 @@ describe("PostgresClient", () => {
 
     it("falls back to public schema when schema query throws", async () => {
       sql.query.mockRejectedValue(new Error("boom"));
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       const res = await c.listResources("pg-schema", "acct");
       expect(res.map((schema) => schema.displayName)).toEqual(["public"]);
       expect(res[0]!.fields).toMatchObject({ name: "public", database: "appdb" });
     });
 
     it("falls back to public schema when no sql service", async () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       const res = await c.listResources("pg-schema", "acct");
       expect(res[0]!.id).toBe("acct:pg-schema:public");
     });
 
     it("throws on unknown type", async () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       await expect(c.listResources("nope", "acct")).rejects.toThrow(/unknown resource type/);
     });
   });
@@ -146,14 +147,14 @@ describe("PostgresClient", () => {
   describe("getResource", () => {
     it("returns the matching resource", async () => {
       sql.query.mockResolvedValue([{ datname: "appdb" }]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       const r = await c.getResource("pg-database", "acct:pg-database:appdb", "acct");
       expect(r.displayName).toBe("appdb");
     });
 
     it("throws when not found", async () => {
       sql.query.mockResolvedValue([{ datname: "appdb" }]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       await expect(
         c.getResource("pg-database", "acct:pg-database:missing", "acct"),
       ).rejects.toThrow(/not found/);
@@ -162,26 +163,26 @@ describe("PostgresClient", () => {
 
   describe("resolveOutput", () => {
     it("returns the connection string", async () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       expect(await c.resolveOutput("pg-database", "x", "connectionString", "acct")).toBe(CS);
     });
     it("returns serverVersion", async () => {
       sql.query.mockResolvedValue([{ version: "PostgreSQL 16.2 on x86_64" }]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       expect(await c.resolveOutput("pg-database", "x", "serverVersion", "acct")).toBe(
         "PostgreSQL 16.2",
       );
     });
     it("returns schemaNames json", async () => {
       sql.query.mockResolvedValue([{ schema_name: "billing" }, { schema_name: "public" }]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       expect(await c.resolveOutput("pg-database", "x", "schemaNames", "acct")).toBe(
         '["billing","public"]',
       );
     });
     it("returns schema tableCount", async () => {
       sql.query.mockResolvedValue([{ n: "3" }]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       expect(
         await c.resolveOutput("pg-schema", "acct:pg-schema:billing", "tableCount", "acct"),
       ).toBe("3");
@@ -189,18 +190,18 @@ describe("PostgresClient", () => {
     });
     it("escapes schema names in tableCount output query", async () => {
       sql.query.mockResolvedValue([{ n: "1" }]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       await c.resolveOutput("pg-schema", "acct:pg-schema:client's", "tableCount", "acct");
       expect(sql.query).toHaveBeenCalledWith(expect.stringContaining("table_schema = 'client''s'"));
     });
     it("throws for unknown output", async () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       await expect(c.resolveOutput("pg-database", "x", "nope", "acct")).rejects.toThrow(
         /cannot resolve output/,
       );
     });
     it("throws for wrong type", async () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       await expect(c.resolveOutput("pg-schema", "x", "connectionString", "acct")).rejects.toThrow(
         /cannot resolve output/,
       );
@@ -209,61 +210,61 @@ describe("PostgresClient", () => {
 
   describe("deleteResource", () => {
     it("drops a database", async () => {
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       await c.deleteResource("pg-database", "acct:pg-database:appdb", "acct");
       expect(sql.execute).toHaveBeenCalledWith('DROP DATABASE "appdb"', []);
     });
 
     it("drops a schema with cascade", async () => {
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       await c.deleteResource("pg-schema", "acct:pg-schema:myschema", "acct");
       expect(sql.execute).toHaveBeenCalledWith('DROP SCHEMA "myschema" CASCADE', []);
     });
 
     it("refuses system databases", async () => {
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       await expect(
         c.deleteResource("pg-database", "a:pg-database:postgres", "acct"),
       ).rejects.toThrow(/system database/);
     });
 
     it("refuses system schemas", async () => {
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       await expect(c.deleteResource("pg-schema", "a:pg-schema:public", "acct")).rejects.toThrow(
         /system schema/,
       );
     });
 
     it("rejects identifiers with quotes", async () => {
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       await expect(
         c.deleteResource("pg-database", 'a:pg-database:bad"name', "acct"),
       ).rejects.toThrow(/Invalid identifier/);
     });
 
     it("throws when sql service missing", async () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       await expect(c.deleteResource("pg-database", "a:pg-database:x", "acct")).rejects.toThrow(
         /SQL service not available/,
       );
     });
 
     it("throws when name unparseable", async () => {
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       await expect(c.deleteResource("pg-database", "", "acct")).rejects.toThrow(
         /Cannot parse resource name/,
       );
     });
 
     it("throws on unsupported type", async () => {
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       await expect(c.deleteResource("other", "a:other:x", "acct")).rejects.toThrow(/not supported/);
     });
   });
 
   describe("renderDetail", () => {
     it("renders healthy with secret state and reroll-secret action", () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       const schema = c.renderDetail(
         makeResource({
           secretStates: [
@@ -278,13 +279,13 @@ describe("PostgresClient", () => {
     });
 
     it("renders reroll-parent-output action when no secret state but has connection", () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       const schema = c.renderDetail(makeResource());
       expect(JSON.stringify(schema)).toContain("reroll-parent-output");
     });
 
     it("renders info status and no reroll when no connection", () => {
-      const c = new PostgresClient({});
+      const c = hostClient(new PostgresClient({}));
       const schema = c.renderDetail(makeResource());
       expect(schema.status).toMatchObject({ status: "info" });
       const json = JSON.stringify(schema);
@@ -292,7 +293,7 @@ describe("PostgresClient", () => {
     });
 
     it("parses __tables__ json into sqlEditor tables", () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       const tables = [{ name: "users", columns: [{ name: "id", type: "int" }] }];
       const schema = c.renderDetail(
         makeResource({ resolvedOutputs: { __tables__: JSON.stringify(tables) } }),
@@ -301,13 +302,13 @@ describe("PostgresClient", () => {
     });
 
     it("ignores invalid __tables__ json", () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       const schema = c.renderDetail(makeResource({ resolvedOutputs: { __tables__: "{not json" } }));
       expect(schema.sqlEditor?.tables).toEqual([]);
     });
 
     it("uses fallback host/database labels", () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       const schema = c.renderDetail(makeResource({ fields: {} }));
       expect(schema.subtitle).toContain("PostgreSQL");
     });
@@ -315,7 +316,7 @@ describe("PostgresClient", () => {
 
   describe("renderSidebarItem", () => {
     it("returns id/label/status", () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       const item = c.renderSidebarItem(makeResource());
       expect(item).toMatchObject({ id: "acct:pg-database:appdb", label: "appdb" });
     });
@@ -326,7 +327,7 @@ describe("PostgresClient", () => {
       sql.query
         .mockResolvedValueOnce([{ datname: "appdb" }])
         .mockResolvedValueOnce([{ schema_name: "public" }, { schema_name: "billing" }]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       const pane = await c.renderPeerPane({
         tabLabel: "x",
         parentPluginId: "p",
@@ -340,7 +341,7 @@ describe("PostgresClient", () => {
     });
 
     it("returns empty groups when no sql service", async () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       const pane = await c.renderPeerPane({
         tabLabel: "x",
         parentPluginId: "p",
@@ -354,7 +355,7 @@ describe("PostgresClient", () => {
 
     it("tolerates unparseable connection string for host", async () => {
       sql.query.mockResolvedValue([]);
-      const c = new PostgresClient({ connectionString: "garbage" }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: "garbage" }, services(sql)));
       const pane = await c.renderPeerPane({
         tabLabel: "x",
         parentPluginId: "p",
@@ -368,7 +369,7 @@ describe("PostgresClient", () => {
 
   describe("introspect", () => {
     it("returns empty when no sql service", async () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       expect(await c.introspect()).toEqual([]);
     });
 
@@ -402,7 +403,7 @@ describe("PostgresClient", () => {
           { table_schema: "billing", table_name: "invoices", column_name: "id" },
           { table_schema: "public", table_name: "users", column_name: "id" },
         ]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       const meta = await c.introspect();
       expect(meta).toEqual([
         {
@@ -425,7 +426,7 @@ describe("PostgresClient", () => {
 
   describe("fetchDashboardStats", () => {
     it("returns placeholder stats with no sql service", async () => {
-      const c = new PostgresClient({ connectionString: CS });
+      const c = hostClient(new PostgresClient({ connectionString: CS }));
       const stats = await c.fetchDashboardStats("pg-database", "x", "acct");
       expect(stats).toEqual([
         { label: "Version", value: "" },
@@ -439,7 +440,7 @@ describe("PostgresClient", () => {
         .mockResolvedValueOnce([{ version: "PostgreSQL 16.2 on x86_64" }])
         .mockResolvedValueOnce([{ size: "42 MB" }])
         .mockResolvedValueOnce([{ n: 7 }]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       const stats = await c.fetchDashboardStats("pg-database", "x", "acct");
       expect(stats).toEqual([
         { label: "Version", value: "PostgreSQL 16.2" },
@@ -451,7 +452,7 @@ describe("PostgresClient", () => {
 
     it("handles empty result rows", async () => {
       sql.query.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const c = hostClient(new PostgresClient({ connectionString: CS }, services(sql)));
       const stats = await c.fetchDashboardStats("pg-database", "x", "acct");
       expect(stats).toEqual([
         { label: "Version", value: "" },

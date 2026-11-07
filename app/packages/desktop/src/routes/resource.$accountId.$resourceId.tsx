@@ -49,7 +49,11 @@ import { createPluginClient } from "../lib/plugin-client";
 import { makeResourceCarbonEstimator, makeResourceCostEstimator } from "../lib/cost-estimate";
 import { applyCredentialRewriters } from "../lib/credential-rewriters";
 import { invoke } from "../lib/invoke";
-import type { PluginClient, PeerPaneContext, AssociationSource } from "@infrawrench/plugin-base";
+import type {
+  HostPluginClient,
+  PeerPaneContext,
+  AssociationSource,
+} from "@infrawrench/plugin-base";
 import type { AgentLaunchDefaults, PeerPaneData } from "@infrawrench/ui";
 import {
   accountTabTarget,
@@ -183,13 +187,14 @@ export function ResourcePanel({
   const [kvConnected, setKvConnected] = useState(false);
   const [isKvPlugin, setIsKvPlugin] = useState(false);
   const [kvDriverName, setKvDriverName] = useState<string | null>(null);
+  const [kvDocumentBrowser, setKvDocumentBrowser] = useState(false);
   const [isDockerPlugin, setIsDockerPlugin] = useState(false);
   const [dockerDriverName, setDockerDriverName] = useState<string | null>(null);
   const [dockerHostRef] = useState({ current: "" });
 
   const connectionStringRef = useRef("");
   const sqlDriverIdRef = useRef("");
-  const clientRef = useRef<PluginClient | null>(null);
+  const clientRef = useRef<HostPluginClient | null>(null);
   const cloudCtxRef = useRef<CloudCtx | null>(null);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const [hasStorageToken, setHasStorageToken] = useState(false);
@@ -333,6 +338,7 @@ export function ResourcePanel({
       setKvConnected,
       setIsKvPlugin,
       setKvDriverName,
+      setKvDocumentBrowser,
       setIsDockerPlugin,
       setDockerDriverName,
       setHasStorageToken,
@@ -679,7 +685,7 @@ export function ResourcePanel({
   const loadPromptResources = useCallback(
     async (sources: AssociationSource[], acctId: string): Promise<ResourcePickerOption[]> => {
       const results: ResourcePickerOption[] = [];
-      const localClients = new Map<string, Promise<PluginClient>>();
+      const localClients = new Map<string, Promise<HostPluginClient>>();
       const getLocalClient = (a: string, p: string) => {
         const key = `${a}:${p}`;
         let existing = localClients.get(key);
@@ -1408,6 +1414,7 @@ export function ResourcePanel({
           activeCloudOrgId={activeCloudOrgId}
           isKvPlugin={isKvPlugin}
           kvDriverName={kvDriverName}
+          kvDocumentBrowser={kvDocumentBrowser}
           kvConnected={kvConnected}
           isDockerPlugin={isDockerPlugin}
           dockerDriverName={dockerDriverName}

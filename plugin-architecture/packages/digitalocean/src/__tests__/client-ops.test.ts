@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { DigitalOceanClient } from "../client.js";
 
@@ -28,7 +29,7 @@ function installFetch(route: (path: string, method: string, body?: string) => un
 
 const ACC = "acc1";
 const newClient = (creds: Record<string, string> = {}) =>
-  new DigitalOceanClient({ apiToken: "tok", ...creds });
+  hostClient(new DigitalOceanClient({ apiToken: "tok", ...creds }));
 
 afterEach(() => vi.restoreAllMocks());
 

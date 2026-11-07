@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -17,60 +20,66 @@ export class RedisClient implements PluginClient {
   private readonly connectionString: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const cs = credentials["connectionString"];
     if (!cs) throw new Error("Redis plugin: missing connectionString credential");
     this.connectionString = cs;
     this.services = services;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    if (typeId !== "redis-instance") {
-      throw new Error(`Redis plugin: unknown resource type "${typeId}"`);
-    }
-    const now = new Date().toISOString();
-    let host = "";
-    let dbNum = 0;
-    try {
-      const url = new URL(this.connectionString);
-      host = url.hostname + (url.port && url.port !== "6379" ? `:${url.port}` : "");
-      dbNum = parseInt(url.pathname.replace(/^\//, "") || "0", 10) || 0;
-    } catch {
-      /* ignore */
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      if (typeId !== "redis-instance") {
+        throw new Error(`Redis plugin: unknown resource type "${typeId}"`);
+      }
+      const now = new Date().toISOString();
+      let host = "";
+      let dbNum = 0;
+      try {
+        const url = new URL(this.connectionString);
+        host = url.hostname + (url.port && url.port !== "6379" ? `:${url.port}` : "");
+        dbNum = parseInt(url.pathname.replace(/^\//, "") || "0", 10) || 0;
+      } catch {
+        /* ignore */
+      }
 
-    return [
-      {
-        id: `${accountId}:redis-instance:db${dbNum}`,
-        pluginId: "redis",
-        resourceTypeId: "redis-instance",
-        accountId,
-        displayName: `DB ${dbNum}`,
-        fields: { host, db: dbNum },
-        resolvedOutputs: {},
-        secretStates: [],
-        createdAt: now,
-        updatedAt: now,
-      },
-    ];
+      return [
+        {
+          id: `${accountId}:redis-instance:db${dbNum}`,
+          pluginId: "redis",
+          resourceTypeId: "redis-instance",
+          accountId,
+          displayName: `DB ${dbNum}`,
+          fields: { host, db: dbNum },
+          resolvedOutputs: {},
+          secretStates: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`Redis plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`Redis plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(typeId: string, _resourceId: string, outputKey: string): Promise<string> {
-    if (typeId === "redis-instance" && outputKey === "connectionString") {
-      return this.connectionString;
-    }
-    throw new Error(`Redis plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  resolveOutput(typeId: string, _resourceId: string, outputKey: string): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "redis-instance" && outputKey === "connectionString") {
+        return this.connectionString;
+      }
+      throw new Error(`Redis plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -156,26 +165,30 @@ export class RedisClient implements PluginClient {
     };
   }
 
-  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
-    const instances = await this.listResources("redis-instance", context.accountId);
-    return {
-      resourceGroups: [
-        {
-          title: `Redis (${instances.length})`,
-          resourceTypeId: "redis-instance",
-          pluginId: "redis",
-          items: instances.map((inst) => ({
-            id: inst.id,
-            pluginId: inst.pluginId,
-            resourceTypeId: inst.resourceTypeId,
-            displayName: inst.displayName,
-            subtitle: String(inst.fields["host"] ?? ""),
-            status: "healthy",
-            fields: inst.fields,
-          })),
-        },
-      ],
-    };
+  renderPeerPane(context: PeerPaneContext): PluginEffect<PeerPaneSchema> {
+    return attempt(async () => {
+      const instances = await runPluginEffect(
+        this.listResources("redis-instance", context.accountId),
+      );
+      return {
+        resourceGroups: [
+          {
+            title: `Redis (${instances.length})`,
+            resourceTypeId: "redis-instance",
+            pluginId: "redis",
+            items: instances.map((inst) => ({
+              id: inst.id,
+              pluginId: inst.pluginId,
+              resourceTypeId: inst.resourceTypeId,
+              displayName: inst.displayName,
+              subtitle: String(inst.fields["host"] ?? ""),
+              status: "healthy",
+              fields: inst.fields,
+            })),
+          },
+        ],
+      };
+    });
   }
 
   /**
@@ -184,61 +197,65 @@ export class RedisClient implements PluginClient {
    * metrics, the host passes the parent's ids, and this client is already
    * bound to that database's connection string.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     _resourceTypeId: string,
     _resourceId: string,
     _accountId: string,
-  ): Promise<MetricSeries[]> {
-    const kv = this.services?.kv;
-    if (!kv) return [];
-    const raw = await kv.command("INFO", "all");
-    return infoSeries(parseRedisInfo(String(raw)), Date.now());
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const kv = this.services?.kv;
+      if (!kv) return [];
+      const raw = await kv.command("INFO", "all");
+      return infoSeries(parseRedisInfo(String(raw)), Date.now());
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     _resourceTypeId: string,
     _resourceId: string,
     _accountId: string,
-  ): Promise<DashboardStat[]> {
-    const kv = this.services?.kv;
-    if (!kv) {
-      return [
-        { label: "Version", value: "" },
-        { label: "Memory", value: "" },
-        { label: "Keys", value: "0" },
-        { label: "Databases", value: "0" },
-        { label: "Clients", value: "" },
-      ];
-    }
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const kv = this.services?.kv;
+      if (!kv) {
+        return [
+          { label: "Version", value: "" },
+          { label: "Memory", value: "" },
+          { label: "Keys", value: "0" },
+          { label: "Databases", value: "0" },
+          { label: "Clients", value: "" },
+        ];
+      }
 
-    try {
-      const infoRaw = await kv.command("INFO", "all");
-      const info = parseRedisInfo(String(infoRaw));
+      try {
+        const infoRaw = await kv.command("INFO", "all");
+        const info = parseRedisInfo(String(infoRaw));
 
-      const version = info["redis_version"] ?? "";
-      const usedMemory = info["used_memory_human"] ?? "";
-      const connectedClients = info["connected_clients"] ?? "";
-      // Count databases that have keys
-      const keyspaceEntries = Object.entries(info).filter(([k]) => /^db\d+$/.test(k));
-      const dbCount = keyspaceEntries.length;
-      const totalKeys = keyspaceEntries.reduce((sum, [, value]) => sum + parseKeyCount(value), 0);
+        const version = info["redis_version"] ?? "";
+        const usedMemory = info["used_memory_human"] ?? "";
+        const connectedClients = info["connected_clients"] ?? "";
+        // Count databases that have keys
+        const keyspaceEntries = Object.entries(info).filter(([k]) => /^db\d+$/.test(k));
+        const dbCount = keyspaceEntries.length;
+        const totalKeys = keyspaceEntries.reduce((sum, [, value]) => sum + parseKeyCount(value), 0);
 
-      return [
-        { label: "Version", value: version },
-        { label: "Memory", value: usedMemory },
-        { label: "Keys", value: String(totalKeys) },
-        { label: "Databases", value: String(dbCount) },
-        { label: "Clients", value: connectedClients },
-      ];
-    } catch {
-      return [
-        { label: "Version", value: "" },
-        { label: "Memory", value: "" },
-        { label: "Keys", value: "0" },
-        { label: "Databases", value: "0" },
-        { label: "Clients", value: "" },
-      ];
-    }
+        return [
+          { label: "Version", value: version },
+          { label: "Memory", value: usedMemory },
+          { label: "Keys", value: String(totalKeys) },
+          { label: "Databases", value: String(dbCount) },
+          { label: "Clients", value: connectedClients },
+        ];
+      } catch {
+        return [
+          { label: "Version", value: "" },
+          { label: "Memory", value: "" },
+          { label: "Keys", value: "0" },
+          { label: "Databases", value: "0" },
+          { label: "Clients", value: "" },
+        ];
+      }
+    });
   }
 }
 

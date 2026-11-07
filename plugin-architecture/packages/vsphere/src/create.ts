@@ -1,3 +1,4 @@
+import { runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -425,7 +426,9 @@ export async function vsphereCreateResource(
   const api = client.api;
   const done = async (id: string) => {
     client.invalidate();
-    return client.getResource(typeId, `${accountId}:${typeId}:${id}`, accountId).catch(() =>
+    return runPluginEffect(
+      client.getResource(typeId, `${accountId}:${typeId}:${id}`, accountId),
+    ).catch(() =>
       client.instance(accountId, typeId, id, fields["name"] ?? id, {
         name: fields["name"] ?? "",
       }),

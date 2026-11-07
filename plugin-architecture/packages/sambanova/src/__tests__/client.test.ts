@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { SambaNovaClient, modelKind } from "../client.js";
@@ -44,7 +45,7 @@ describe("SambaNova", () => {
         ],
       },
     }));
-    const items = await new SambaNovaClient({ apiKey: "k" }, { http }).listResources(
+    const items = await hostClient(new SambaNovaClient({ apiKey: "k" }, { http })).listResources(
       "sambanova-model",
       ACCOUNT,
     );
@@ -56,7 +57,7 @@ describe("SambaNova", () => {
   });
 
   it("offers chat for chat models and speech for Whisper", () => {
-    const client = new SambaNovaClient({ apiKey: "k" });
+    const client = hostClient(new SambaNovaClient({ apiKey: "k" }));
     const base = {
       pluginId: "sambanova",
       resourceTypeId: "sambanova-model",
@@ -91,7 +92,9 @@ describe("SambaNova", () => {
       status: 401,
       body: { error: { message: "Incorrect API key" } },
     }));
-    const result = await new SambaNovaClient({ apiKey: "bad" }, { http }).verifyCredentials();
+    const result = await hostClient(
+      new SambaNovaClient({ apiKey: "bad" }, { http }),
+    ).verifyCredentials();
     expect(result.checks[0]?.status).toBe("missing");
     expect(calls[0]?.url).toBe("https://api.sambanova.ai/v1/messages/count_tokens");
   });
@@ -99,7 +102,10 @@ describe("SambaNova", () => {
   it("attaches the HTTP status to thrown errors", async () => {
     const { http } = host(() => ({ status: 503, body: { error: "down" } }));
     await expect(
-      new SambaNovaClient({ apiKey: "k" }, { http }).listResources("sambanova-model", ACCOUNT),
+      hostClient(new SambaNovaClient({ apiKey: "k" }, { http })).listResources(
+        "sambanova-model",
+        ACCOUNT,
+      ),
     ).rejects.toMatchObject({ status: 503 });
   });
 

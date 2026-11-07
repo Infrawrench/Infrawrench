@@ -70,7 +70,7 @@ describe("plugin feature flags", () => {
 
   it("ssh plugin has hasSshTerminal", () => {
     const loaded = getPlugin("ssh");
-    const creds = makeMockCredentials("ssh");
+    const creds = makeMockCredentials(loaded.plugin);
     const client = loaded.plugin.createClient(creds);
     expect(typeof client.getSshConfig).toBe("function");
   });

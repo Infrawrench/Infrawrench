@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -270,7 +273,7 @@ export class CartesiaClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Cartesia plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -345,184 +348,194 @@ export class CartesiaClient implements PluginClient {
     return out;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "voice":
-        return (await this.fetchVoices()).map((voice) => this.mapVoice(accountId, voice));
-      case "pronunciation-dict":
-        return (await this.fetchPronunciationDicts()).map((dict) =>
-          this.mapPronunciationDict(accountId, dict),
-        );
-      case "api-key":
-        return (await this.fetchApiKeys()).map((key) => this.mapApiKey(accountId, key));
-      case "agent":
-        return (await this.fetchAgents()).map((agent) => mapAgent(accountId, agent));
-      case "phone-number":
-        return (await this.listPaginated<CartesiaPhoneNumber>("/agents/phone-numbers", {})).map(
-          (phone) => mapPhoneNumber(accountId, phone),
-        );
-      case "organization-user":
-        return (await this.fetchOrganizationUsers()).map((user) =>
-          this.mapOrganizationUser(accountId, user),
-        );
-      default:
-        throw new Error(`Cartesia plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "voice":
+          return (await this.fetchVoices()).map((voice) => this.mapVoice(accountId, voice));
+        case "pronunciation-dict":
+          return (await this.fetchPronunciationDicts()).map((dict) =>
+            this.mapPronunciationDict(accountId, dict),
+          );
+        case "api-key":
+          return (await this.fetchApiKeys()).map((key) => this.mapApiKey(accountId, key));
+        case "agent":
+          return (await this.fetchAgents()).map((agent) => mapAgent(accountId, agent));
+        case "phone-number":
+          return (await this.listPaginated<CartesiaPhoneNumber>("/agents/phone-numbers", {})).map(
+            (phone) => mapPhoneNumber(accountId, phone),
+          );
+        case "organization-user":
+          return (await this.fetchOrganizationUsers()).map((user) =>
+            this.mapOrganizationUser(accountId, user),
+          );
+        default:
+          throw new Error(`Cartesia plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const externalId = externalIdOf(resourceId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    if (typeId === "voice") {
-      // GET /voices/{id}: verified 2026-07-28 against
-      // https://docs.cartesia.ai/api-reference/voices/get
-      // `preview_file_url` stays null unless expand[] asks for it.
-      const query = new URLSearchParams();
-      query.append("expand[]", "preview_file_url");
-      const voice = await this.fetch<CartesiaVoice>(
-        `/voices/${encodeURIComponent(externalId)}?${query.toString()}`,
-      );
-      const instance = this.mapVoice(accountId, voice);
+      if (typeId === "voice") {
+        // GET /voices/{id}: verified 2026-07-28 against
+        // https://docs.cartesia.ai/api-reference/voices/get
+        // `preview_file_url` stays null unless expand[] asks for it.
+        const query = new URLSearchParams();
+        query.append("expand[]", "preview_file_url");
+        const voice = await this.fetch<CartesiaVoice>(
+          `/voices/${encodeURIComponent(externalId)}?${query.toString()}`,
+        );
+        const instance = this.mapVoice(accountId, voice);
 
-      // renderDetail is synchronous, so the Speech tab's voice picker has to be
-      // fetched here and stashed as JSON for renderDetail to parse back out.
-      const picker = await this.fetchVoicePickerOptions();
-      instance.resolvedOutputs = {
-        ...instance.resolvedOutputs,
-        __voices__: JSON.stringify(picker),
-      };
-      return instance;
-    }
+        // renderDetail is synchronous, so the Speech tab's voice picker has to be
+        // fetched here and stashed as JSON for renderDetail to parse back out.
+        const picker = await this.fetchVoicePickerOptions();
+        instance.resolvedOutputs = {
+          ...instance.resolvedOutputs,
+          __voices__: JSON.stringify(picker),
+        };
+        return instance;
+      }
 
-    if (typeId === "agent") {
-      // Deployments ride along as JSON for the synchronous renderDetail.
-      const [agent, deployments] = await Promise.all([
-        this.fetch<CartesiaAgent>(`/agents/${encodeURIComponent(externalId)}`),
-        this.fetch<CartesiaDeployment[]>(
-          `/agents/${encodeURIComponent(externalId)}/deployments`,
-        ).catch((): CartesiaDeployment[] => []),
-      ]);
-      const instance = mapAgent(accountId, agent);
-      instance.resolvedOutputs["__deployments__"] = JSON.stringify(
-        Array.isArray(deployments) ? deployments.slice(0, 20) : [],
-      );
-      return instance;
-    }
+      if (typeId === "agent") {
+        // Deployments ride along as JSON for the synchronous renderDetail.
+        const [agent, deployments] = await Promise.all([
+          this.fetch<CartesiaAgent>(`/agents/${encodeURIComponent(externalId)}`),
+          this.fetch<CartesiaDeployment[]>(
+            `/agents/${encodeURIComponent(externalId)}/deployments`,
+          ).catch((): CartesiaDeployment[] => []),
+        ]);
+        const instance = mapAgent(accountId, agent);
+        instance.resolvedOutputs["__deployments__"] = JSON.stringify(
+          Array.isArray(deployments) ? deployments.slice(0, 20) : [],
+        );
+        return instance;
+      }
 
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((resource) => resource.id === resourceId);
-    if (!found) throw new Error(`Cartesia plugin: resource ${typeId}/${externalId} not found`);
-    return found;
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((resource) => resource.id === resourceId);
+      if (!found) throw new Error(`Cartesia plugin: resource ${typeId}/${externalId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const f = resource.fields;
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const f = resource.fields;
 
-    if (typeId === "voice") {
-      if (outputKey === "voiceId") return str(f["voiceId"]);
-      if (outputKey === "voiceName") return str(f["name"]);
-      if (outputKey === "language") return str(f["language"]);
-      if (outputKey === "previewUrl") return str(f["previewUrl"]);
-    }
+      if (typeId === "voice") {
+        if (outputKey === "voiceId") return str(f["voiceId"]);
+        if (outputKey === "voiceName") return str(f["name"]);
+        if (outputKey === "language") return str(f["language"]);
+        if (outputKey === "previewUrl") return str(f["previewUrl"]);
+      }
 
-    if (typeId === "pronunciation-dict") {
-      if (outputKey === "dictId") return str(f["dictId"]);
-      if (outputKey === "dictName") return str(f["name"]);
-    }
+      if (typeId === "pronunciation-dict") {
+        if (outputKey === "dictId") return str(f["dictId"]);
+        if (outputKey === "dictName") return str(f["name"]);
+      }
 
-    if (typeId === "api-key" && outputKey === "keyId") return str(f["keyId"]);
+      if (typeId === "api-key" && outputKey === "keyId") return str(f["keyId"]);
 
-    if (typeId === "agent" && outputKey === "agentId") return str(f["agentId"]);
-    if (typeId === "phone-number") {
-      if (outputKey === "phoneNumber") return str(f["number"]);
-      if (outputKey === "phoneNumberId") return str(f["phoneNumberId"]);
-    }
-    if (typeId === "organization-user") {
-      if (outputKey === "userId") return str(f["userId"]);
-      if (outputKey === "email") return str(f["email"]);
-    }
+      if (typeId === "agent" && outputKey === "agentId") return str(f["agentId"]);
+      if (typeId === "phone-number") {
+        if (outputKey === "phoneNumber") return str(f["number"]);
+        if (outputKey === "phoneNumberId") return str(f["phoneNumberId"]);
+      }
+      if (typeId === "organization-user") {
+        if (outputKey === "userId") return str(f["userId"]);
+        if (outputKey === "email") return str(f["email"]);
+      }
 
-    throw new Error(`Cartesia plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+      throw new Error(`Cartesia plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const f = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const f = resource.fields;
 
-    if (resourceTypeId === "voice") {
-      return [
-        { label: "Language", value: str(f["language"]) || "—" },
-        { label: "Gender", value: str(f["gender"]) || "—" },
-        { label: "Access", value: str(f["accessType"]) || "—" },
-      ];
-    }
+      if (resourceTypeId === "voice") {
+        return [
+          { label: "Language", value: str(f["language"]) || "—" },
+          { label: "Gender", value: str(f["gender"]) || "—" },
+          { label: "Access", value: str(f["accessType"]) || "—" },
+        ];
+      }
 
-    if (resourceTypeId === "pronunciation-dict") {
-      return [
-        { label: "Entries", value: str(f["entryCount"] ?? 0) },
-        { label: "Access", value: str(f["accessType"]) || "—" },
-        { label: "Owner", value: f["isOwner"] === true ? "You" : "Shared" },
-      ];
-    }
+      if (resourceTypeId === "pronunciation-dict") {
+        return [
+          { label: "Entries", value: str(f["entryCount"] ?? 0) },
+          { label: "Access", value: str(f["accessType"]) || "—" },
+          { label: "Owner", value: f["isOwner"] === true ? "You" : "Shared" },
+        ];
+      }
 
-    if (resourceTypeId === "api-key") {
-      // Cartesia reports consumption only: there is no plan ceiling on this
-      // endpoint, so this is a spend figure and deliberately not a gauge.
-      const keyId = str(f["keyId"]);
-      const [keyCredits, orgCredits] = await Promise.all([
-        this.fetchCredits(keyId),
-        this.fetchCredits(),
-      ]);
-      return [
-        {
-          label: "Credits (30 d)",
-          value: keyCredits === null ? "admin key required" : keyCredits.toLocaleString(),
-        },
-        {
-          label: "Org credits (30 d)",
-          value: orgCredits === null ? "admin key required" : orgCredits.toLocaleString(),
-        },
-        { label: "Created by", value: str(f["creatorEmail"]) || "—" },
-      ];
-    }
+      if (resourceTypeId === "api-key") {
+        // Cartesia reports consumption only: there is no plan ceiling on this
+        // endpoint, so this is a spend figure and deliberately not a gauge.
+        const keyId = str(f["keyId"]);
+        const [keyCredits, orgCredits] = await Promise.all([
+          this.fetchCredits(keyId),
+          this.fetchCredits(),
+        ]);
+        return [
+          {
+            label: "Credits (30 d)",
+            value: keyCredits === null ? "admin key required" : keyCredits.toLocaleString(),
+          },
+          {
+            label: "Org credits (30 d)",
+            value: orgCredits === null ? "admin key required" : orgCredits.toLocaleString(),
+          },
+          { label: "Created by", value: str(f["creatorEmail"]) || "—" },
+        ];
+      }
 
-    if (resourceTypeId === "agent") {
-      return [
-        { label: "Language", value: str(f["ttsLanguage"]) || "-" },
-        { label: "Deployments", value: str(f["deploymentCount"] ?? 0) },
-        { label: "Phone", value: str(f["phoneNumbers"]) || "None" },
-      ];
-    }
+      if (resourceTypeId === "agent") {
+        return [
+          { label: "Language", value: str(f["ttsLanguage"]) || "-" },
+          { label: "Deployments", value: str(f["deploymentCount"] ?? 0) },
+          { label: "Phone", value: str(f["phoneNumbers"]) || "None" },
+        ];
+      }
 
-    if (resourceTypeId === "phone-number") {
-      return [
-        { label: "Agent", value: str(f["agentName"]) || "Unassigned" },
-        { label: "Provider", value: str(f["providerType"]) || "-" },
-      ];
-    }
+      if (resourceTypeId === "phone-number") {
+        return [
+          { label: "Agent", value: str(f["agentName"]) || "Unassigned" },
+          { label: "Provider", value: str(f["providerType"]) || "-" },
+        ];
+      }
 
-    if (resourceTypeId === "organization-user") {
-      return [
-        { label: "Role", value: str(f["role"]) || "-" },
-        { label: "Joined", value: str(f["joinedAt"]).slice(0, 10) || "-" },
-      ];
-    }
+      if (resourceTypeId === "organization-user") {
+        return [
+          { label: "Role", value: str(f["role"]) || "-" },
+          { label: "Joined", value: str(f["joinedAt"]).slice(0, 10) || "-" },
+        ];
+      }
 
-    return [];
+      return [];
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -591,107 +604,117 @@ export class CartesiaClient implements PluginClient {
     }
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const externalId = externalIdOf(resourceId);
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const externalId = externalIdOf(resourceId);
 
-    if (typeId === "voice") {
-      // DELETE /voices/{id}: verified 2026-07-28 against
-      // https://docs.cartesia.ai/api-reference/voices/delete (204 No Content).
-      await this.fetch(`/voices/${encodeURIComponent(externalId)}`, { method: "DELETE" });
-      return;
-    }
+      if (typeId === "voice") {
+        // DELETE /voices/{id}: verified 2026-07-28 against
+        // https://docs.cartesia.ai/api-reference/voices/delete (204 No Content).
+        await this.fetch(`/voices/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+        return;
+      }
 
-    if (typeId === "pronunciation-dict") {
-      // DELETE /pronunciation-dicts/{id}: verified 2026-07-28 against
-      // https://docs.cartesia.ai/api-reference/pronunciation-dicts/delete
-      // (no trailing slash here, unlike the list endpoint).
-      await this.fetch(`/pronunciation-dicts/${encodeURIComponent(externalId)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
+      if (typeId === "pronunciation-dict") {
+        // DELETE /pronunciation-dicts/{id}: verified 2026-07-28 against
+        // https://docs.cartesia.ai/api-reference/pronunciation-dicts/delete
+        // (no trailing slash here, unlike the list endpoint).
+        await this.fetch(`/pronunciation-dicts/${encodeURIComponent(externalId)}`, {
+          method: "DELETE",
+        });
+        return;
+      }
 
-    if (typeId === "agent") {
-      // DELETE /agents/{agent_id}: https://docs.cartesia.ai/api-reference/agents/agents/delete (204)
-      await this.fetch(`/agents/${encodeURIComponent(externalId)}`, { method: "DELETE" });
-      return;
-    }
+      if (typeId === "agent") {
+        // DELETE /agents/{agent_id}: https://docs.cartesia.ai/api-reference/agents/agents/delete (204)
+        await this.fetch(`/agents/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+        return;
+      }
 
-    if (typeId === "organization-user") {
-      // DELETE /organizations/users/{id}: admin key only, and refused for
-      // admins. https://docs.cartesia.ai/api-reference/organizations/remove-user
-      await this.fetch(
-        `/organizations/users/${encodeURIComponent(externalId)}`,
-        { method: "DELETE" },
-        true,
-      );
-      return;
-    }
+      if (typeId === "organization-user") {
+        // DELETE /organizations/users/{id}: admin key only, and refused for
+        // admins. https://docs.cartesia.ai/api-reference/organizations/remove-user
+        await this.fetch(
+          `/organizations/users/${encodeURIComponent(externalId)}`,
+          { method: "DELETE" },
+          true,
+        );
+        return;
+      }
 
-    throw new Error(`Cartesia plugin: cannot delete type "${typeId}"`);
+      throw new Error(`Cartesia plugin: cannot delete type "${typeId}"`);
+    });
   }
 
   // ---- Create and edit -----------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId === "pronunciation-dict") {
-      return {
-        fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          { key: "description", label: "Description", kind: "text", required: false },
-          {
-            key: "entries",
-            label: "Entries",
-            kind: "text",
-            multiline: true,
-            required: false,
-            description:
-              "One entry per line, written as text = pronunciation. The pronunciation can be a respelling or IPA.",
-            placeholder: "Cartesia = car-TEE-zha\nSQL = sequel",
-          },
-          {
-            key: "accessType",
-            label: "Access",
-            kind: "select",
-            required: true,
-            defaultValue: "private",
-            options: [
-              { id: "private", label: "Private", description: "Only your organization can use it" },
-              {
-                id: "public",
-                label: "Public",
-                description: "Anyone with the dictionary ID can use it",
-              },
-            ],
-          },
-        ],
-      };
-    }
-    throw new Error(`Cartesia plugin: cannot create resources of type "${typeId}"`);
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId === "pronunciation-dict") {
+        return {
+          fields: [
+            { key: "name", label: "Name", kind: "text", required: true },
+            { key: "description", label: "Description", kind: "text", required: false },
+            {
+              key: "entries",
+              label: "Entries",
+              kind: "text",
+              multiline: true,
+              required: false,
+              description:
+                "One entry per line, written as text = pronunciation. The pronunciation can be a respelling or IPA.",
+              placeholder: "Cartesia = car-TEE-zha\nSQL = sequel",
+            },
+            {
+              key: "accessType",
+              label: "Access",
+              kind: "select",
+              required: true,
+              defaultValue: "private",
+              options: [
+                {
+                  id: "private",
+                  label: "Private",
+                  description: "Only your organization can use it",
+                },
+                {
+                  id: "public",
+                  label: "Public",
+                  description: "Anyone with the dictionary ID can use it",
+                },
+              ],
+            },
+          ],
+        };
+      }
+      throw new Error(`Cartesia plugin: cannot create resources of type "${typeId}"`);
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId === "pronunciation-dict") {
-      const name = (fields["name"] ?? "").trim();
-      if (!name) throw new Error("Cartesia plugin: a pronunciation dictionary needs a name");
-      const items = parsePronunciationEntries(fields["entries"] ?? "");
-      // POST /pronunciation-dicts/: https://docs.cartesia.ai/api-reference/pronunciation-dicts/create
-      const created = await this.fetch<CartesiaPronunciationDict>("/pronunciation-dicts/", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          access: fields["accessType"] === "public" ? "public" : "private",
-          ...(fields["description"] ? { description: fields["description"] } : {}),
-          ...(items.length ? { items } : {}),
-        }),
-      });
-      return this.mapPronunciationDict(accountId, created);
-    }
-    throw new Error(`Cartesia plugin: cannot create resources of type "${typeId}"`);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "pronunciation-dict") {
+        const name = (fields["name"] ?? "").trim();
+        if (!name) throw new Error("Cartesia plugin: a pronunciation dictionary needs a name");
+        const items = parsePronunciationEntries(fields["entries"] ?? "");
+        // POST /pronunciation-dicts/: https://docs.cartesia.ai/api-reference/pronunciation-dicts/create
+        const created = await this.fetch<CartesiaPronunciationDict>("/pronunciation-dicts/", {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            access: fields["accessType"] === "public" ? "public" : "private",
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+            ...(items.length ? { items } : {}),
+          }),
+        });
+        return this.mapPronunciationDict(accountId, created);
+      }
+      throw new Error(`Cartesia plugin: cannot create resources of type "${typeId}"`);
+    });
   }
 
   /**
@@ -705,82 +728,87 @@ export class CartesiaClient implements PluginClient {
    * https://docs.cartesia.ai/api-reference/pronunciation-dicts/update
    * https://docs.cartesia.ai/api-reference/agents/agents/update
    */
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const encoded = encodeURIComponent(externalIdOf(resourceId));
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const encoded = encodeURIComponent(externalIdOf(resourceId));
 
-    if (typeId === "voice") {
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined)
-        body["name"] = requireNonEmpty(fields["name"], "voice name");
-      if (fields["tagline"] !== undefined) {
-        if (fields["tagline"].length > 32) {
-          throw new Error("Cartesia plugin: a voice tagline is at most 32 characters");
+      if (typeId === "voice") {
+        const body: Record<string, unknown> = {};
+        if (fields["name"] !== undefined)
+          body["name"] = requireNonEmpty(fields["name"], "voice name");
+        if (fields["tagline"] !== undefined) {
+          if (fields["tagline"].length > 32) {
+            throw new Error("Cartesia plugin: a voice tagline is at most 32 characters");
+          }
+          body["tagline"] = fields["tagline"];
         }
-        body["tagline"] = fields["tagline"];
+        if (fields["description"] !== undefined) body["description"] = fields["description"];
+        if (fields["gender"] !== undefined) body["gender"] = fields["gender"] || null;
+        if (fields["accessType"] !== undefined) body["access"] = fields["accessType"];
+        if (Object.keys(body).length) {
+          await this.fetch(`/voices/${encoded}`, { method: "PATCH", body: JSON.stringify(body) });
+        }
+        return runPluginEffect(this.getResource("voice", resourceId, accountId));
       }
-      if (fields["description"] !== undefined) body["description"] = fields["description"];
-      if (fields["gender"] !== undefined) body["gender"] = fields["gender"] || null;
-      if (fields["accessType"] !== undefined) body["access"] = fields["accessType"];
-      if (Object.keys(body).length) {
-        await this.fetch(`/voices/${encoded}`, { method: "PATCH", body: JSON.stringify(body) });
-      }
-      return this.getResource("voice", resourceId, accountId);
-    }
 
-    if (typeId === "pronunciation-dict") {
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined) {
-        body["name"] = requireNonEmpty(fields["name"], "dictionary name");
-      }
-      if (fields["description"] !== undefined) body["description"] = fields["description"];
-      if (fields["accessType"] !== undefined) body["access"] = fields["accessType"];
-      if (fields["entries"] !== undefined) {
-        const current = await this.getResource("pronunciation-dict", resourceId, accountId);
-        const previous = parsePronunciationItems(current.resolvedOutputs["__items__"]);
-        body["items"] = parsePronunciationEntries(fields["entries"]).map((entry) => {
-          const match = previous.find((item) => item.text === entry.text);
-          return match?.case_sensitive !== undefined
-            ? { ...entry, case_sensitive: match.case_sensitive }
-            : entry;
-        });
-      }
-      if (Object.keys(body).length) {
-        const updated = await this.fetch<CartesiaPronunciationDict>(
-          `/pronunciation-dicts/${encoded}`,
-          { method: "PATCH", body: JSON.stringify(body) },
-        );
-        if (updated?.id) return this.mapPronunciationDict(accountId, updated);
-      }
-      return this.getResource("pronunciation-dict", resourceId, accountId);
-    }
-
-    if (typeId === "agent") {
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined)
-        body["name"] = requireNonEmpty(fields["name"], "agent name");
-      if (fields["description"] !== undefined) body["description"] = fields["description"] || null;
-      if (fields["ttsLanguage"] !== undefined) body["tts_language"] = fields["ttsLanguage"];
-      if (fields["noiseSuppressionLevel"] !== undefined) {
-        const level = Number(fields["noiseSuppressionLevel"]);
-        if (!Number.isInteger(level) || level < 0 || level > 100) {
-          throw new Error(
-            "Cartesia plugin: noise suppression must be a whole number from 0 to 100",
+      if (typeId === "pronunciation-dict") {
+        const body: Record<string, unknown> = {};
+        if (fields["name"] !== undefined) {
+          body["name"] = requireNonEmpty(fields["name"], "dictionary name");
+        }
+        if (fields["description"] !== undefined) body["description"] = fields["description"];
+        if (fields["accessType"] !== undefined) body["access"] = fields["accessType"];
+        if (fields["entries"] !== undefined) {
+          const current = await runPluginEffect(
+            this.getResource("pronunciation-dict", resourceId, accountId),
           );
+          const previous = parsePronunciationItems(current.resolvedOutputs["__items__"]);
+          body["items"] = parsePronunciationEntries(fields["entries"]).map((entry) => {
+            const match = previous.find((item) => item.text === entry.text);
+            return match?.case_sensitive !== undefined
+              ? { ...entry, case_sensitive: match.case_sensitive }
+              : entry;
+          });
         }
-        body["noise_suppression_level"] = level;
+        if (Object.keys(body).length) {
+          const updated = await this.fetch<CartesiaPronunciationDict>(
+            `/pronunciation-dicts/${encoded}`,
+            { method: "PATCH", body: JSON.stringify(body) },
+          );
+          if (updated?.id) return this.mapPronunciationDict(accountId, updated);
+        }
+        return runPluginEffect(this.getResource("pronunciation-dict", resourceId, accountId));
       }
-      if (Object.keys(body).length) {
-        await this.fetch(`/agents/${encoded}`, { method: "PATCH", body: JSON.stringify(body) });
-      }
-      return this.getResource("agent", resourceId, accountId);
-    }
 
-    throw new Error(`Cartesia plugin: cannot update type "${typeId}"`);
+      if (typeId === "agent") {
+        const body: Record<string, unknown> = {};
+        if (fields["name"] !== undefined)
+          body["name"] = requireNonEmpty(fields["name"], "agent name");
+        if (fields["description"] !== undefined)
+          body["description"] = fields["description"] || null;
+        if (fields["ttsLanguage"] !== undefined) body["tts_language"] = fields["ttsLanguage"];
+        if (fields["noiseSuppressionLevel"] !== undefined) {
+          const level = Number(fields["noiseSuppressionLevel"]);
+          if (!Number.isInteger(level) || level < 0 || level > 100) {
+            throw new Error(
+              "Cartesia plugin: noise suppression must be a whole number from 0 to 100",
+            );
+          }
+          body["noise_suppression_level"] = level;
+        }
+        if (Object.keys(body).length) {
+          await this.fetch(`/agents/${encoded}`, { method: "PATCH", body: JSON.stringify(body) });
+        }
+        return runPluginEffect(this.getResource("agent", resourceId, accountId));
+      }
+
+      throw new Error(`Cartesia plugin: cannot update type "${typeId}"`);
+    });
   }
 
   // ---- Metrics -------------------------------------------------------------
@@ -795,133 +823,139 @@ export class CartesiaClient implements PluginClient {
    * series.
    * https://docs.cartesia.ai/api-reference/usage/credits
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (!this.hasAdminKey) return [];
-    if (resourceTypeId !== "api-key" && resourceTypeId !== "voice") return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (!this.hasAdminKey) return [];
+      if (resourceTypeId !== "api-key" && resourceTypeId !== "voice") return [];
 
-    const externalId = externalIdOf(resourceId);
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - 30 * 24 * 60 * 60 * 1000;
-    const credits = (params: Record<string, string>): Promise<CartesiaCreditsResponse> => {
-      const query = new URLSearchParams();
-      query.set("start_ts", new Date(startMs).toISOString());
-      query.set("end_ts", new Date(endMs).toISOString());
-      query.set("interval", "day");
-      for (const [key, value] of Object.entries(params)) query.set(key, value);
-      return this.fetch<CartesiaCreditsResponse>(
-        `/usage/credits?${query.toString()}`,
-        undefined,
-        true,
-      );
-    };
+      const externalId = externalIdOf(resourceId);
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - 30 * 24 * 60 * 60 * 1000;
+      const credits = (params: Record<string, string>): Promise<CartesiaCreditsResponse> => {
+        const query = new URLSearchParams();
+        query.set("start_ts", new Date(startMs).toISOString());
+        query.set("end_ts", new Date(endMs).toISOString());
+        query.set("interval", "day");
+        for (const [key, value] of Object.entries(params)) query.set(key, value);
+        return this.fetch<CartesiaCreditsResponse>(
+          `/usage/credits?${query.toString()}`,
+          undefined,
+          true,
+        );
+      };
 
-    if (resourceTypeId === "voice") {
-      const body = await credits({ group_by: "voice" });
-      const buckets = (body.data ?? []).find((series) => series.id === externalId)?.buckets ?? [];
-      return [{ label: "Credits", unit: "credits", points: creditPoints(buckets) }];
-    }
+      if (resourceTypeId === "voice") {
+        const body = await credits({ group_by: "voice" });
+        const buckets = (body.data ?? []).find((series) => series.id === externalId)?.buckets ?? [];
+        return [{ label: "Credits", unit: "credits", points: creditPoints(buckets) }];
+      }
 
-    const [total, byCapability] = await Promise.all([
-      credits({ api_key_id: externalId }),
-      // The split is an extra: a refusal there must not blank the total.
-      credits({ api_key_id: externalId, group_by: "capability" }).catch(
-        (): CartesiaCreditsResponse => ({}),
-      ),
-    ]);
-    const series: MetricSeries[] = [
-      { label: "Credits", unit: "credits", points: creditPoints(total.data ?? []) },
-    ];
-    for (const entry of byCapability.data ?? []) {
-      const points = creditPoints(entry.buckets ?? []);
-      if (!entry.id || !points.some((p) => p.value !== 0)) continue;
-      series.push({
-        label: `Credits: ${str(entry.label) || entry.id}`,
-        unit: "credits",
-        points,
-      });
-    }
-    return series;
+      const [total, byCapability] = await Promise.all([
+        credits({ api_key_id: externalId }),
+        // The split is an extra: a refusal there must not blank the total.
+        credits({ api_key_id: externalId, group_by: "capability" }).catch(
+          (): CartesiaCreditsResponse => ({}),
+        ),
+      ]);
+      const series: MetricSeries[] = [
+        { label: "Credits", unit: "credits", points: creditPoints(total.data ?? []) },
+      ];
+      for (const entry of byCapability.data ?? []) {
+        const points = creditPoints(entry.buckets ?? []);
+        if (!entry.id || !points.some((p) => p.value !== 0)) continue;
+        series.push({
+          label: `Credits: ${str(entry.label) || entry.id}`,
+          unit: "credits",
+          points,
+        });
+      }
+      return series;
+    });
   }
 
   // ---- Speech tab ----------------------------------------------------------
 
-  async synthesizeSpeech(
+  synthesizeSpeech(
     typeId: string,
     resourceId: string,
     _accountId: string,
     payload: SynthesizeSpeechPayload,
-  ): Promise<SynthesizeSpeechResult> {
-    if (typeId !== "voice") {
-      throw new Error(`Cartesia plugin: cannot synthesize speech for type "${typeId}"`);
-    }
+  ): PluginEffect<SynthesizeSpeechResult> {
+    return attempt(async () => {
+      if (typeId !== "voice") {
+        throw new Error(`Cartesia plugin: cannot synthesize speech for type "${typeId}"`);
+      }
 
-    const voiceId = payload.voiceId || externalIdOf(resourceId);
-    if (!voiceId) throw new Error("Cartesia plugin: no voice selected for synthesis");
-    const modelId = payload.modelId || DEFAULT_MODEL;
+      const voiceId = payload.voiceId || externalIdOf(resourceId);
+      if (!voiceId) throw new Error("Cartesia plugin: no voice selected for synthesis");
+      const modelId = payload.modelId || DEFAULT_MODEL;
 
-    const started = Date.now();
-    const { bytes, requestId } = await this.ttsBytes({
-      model_id: modelId,
-      transcript: payload.text,
-      // The voice is part of the body, not the path, and always arrives as an
-      // object rather than a bare id.
-      voice: { id: voiceId },
-      // Required: Cartesia has no server-side default. For mp3 the object is
-      // container/sample_rate/bit_rate only; adding an `encoding` key here is
-      // rejected with a 400.
-      output_format: { container: "mp3", sample_rate: 44100, bit_rate: 128000 },
+      const started = Date.now();
+      const { bytes, requestId } = await this.ttsBytes({
+        model_id: modelId,
+        transcript: payload.text,
+        // The voice is part of the body, not the path, and always arrives as an
+        // object rather than a bare id.
+        voice: { id: voiceId },
+        // Required: Cartesia has no server-side default. For mp3 the object is
+        // container/sample_rate/bit_rate only; adding an `encoding` key here is
+        // rejected with a 400.
+        output_format: { container: "mp3", sample_rate: 44100, bit_rate: 128000 },
+      });
+      const elapsedMs = Date.now() - started;
+
+      const characters = payload.text.length;
+      return {
+        audioBase64: bytesToBase64(bytes),
+        mimeType: "audio/mpeg",
+        fileName: `cartesia-${voiceId}.mp3`,
+        summary: `${modelId} · ${characters.toLocaleString()} characters · mp3 44.1 kHz 128 kbps · ${elapsedMs} ms`,
+        characters,
+        ...(requestId ? { requestId } : {}),
+      };
     });
-    const elapsedMs = Date.now() - started;
-
-    const characters = payload.text.length;
-    return {
-      audioBase64: bytesToBase64(bytes),
-      mimeType: "audio/mpeg",
-      fileName: `cartesia-${voiceId}.mp3`,
-      summary: `${modelId} · ${characters.toLocaleString()} characters · mp3 44.1 kHz 128 kbps · ${elapsedMs} ms`,
-      characters,
-      ...(requestId ? { requestId } : {}),
-    };
   }
 
-  async transcribeAudio(
+  transcribeAudio(
     typeId: string,
     _resourceId: string,
     _accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult> {
-    if (typeId !== "voice") {
-      throw new Error(`Cartesia plugin: cannot transcribe audio for type "${typeId}"`);
-    }
+  ): PluginEffect<TranscribeAudioResult> {
+    return attempt(async () => {
+      if (typeId !== "voice") {
+        throw new Error(`Cartesia plugin: cannot transcribe audio for type "${typeId}"`);
+      }
 
-    const result = await this.sttTranscribe(payload);
+      const result = await this.sttTranscribe(payload);
 
-    const words: TranscriptWord[] = (result.words ?? [])
-      .filter((word) => typeof word.word === "string")
-      .map((word) => ({
-        text: str(word.word),
-        ...(typeof word.start === "number" ? { start: word.start } : {}),
-        ...(typeof word.end === "number" ? { end: word.end } : {}),
-      }));
+      const words: TranscriptWord[] = (result.words ?? [])
+        .filter((word) => typeof word.word === "string")
+        .map((word) => ({
+          text: str(word.word),
+          ...(typeof word.start === "number" ? { start: word.start } : {}),
+          ...(typeof word.end === "number" ? { end: word.end } : {}),
+        }));
 
-    const duration = typeof result.duration === "number" ? result.duration : undefined;
-    const summaryParts = [STT_MODEL];
-    if (duration !== undefined) summaryParts.push(`${duration.toFixed(1)} s of audio`);
-    if (words.length > 0) summaryParts.push(`${words.length} words`);
+      const duration = typeof result.duration === "number" ? result.duration : undefined;
+      const summaryParts = [STT_MODEL];
+      if (duration !== undefined) summaryParts.push(`${duration.toFixed(1)} s of audio`);
+      if (words.length > 0) summaryParts.push(`${words.length} words`);
 
-    return {
-      text: str(result.text),
-      summary: summaryParts.join(" · "),
-      ...(result.language ? { language: result.language } : {}),
-      ...(duration !== undefined ? { durationSeconds: duration } : {}),
-      ...(words.length > 0 ? { words } : {}),
-      ...(result.request_id ? { requestId: result.request_id } : {}),
-    };
+      return {
+        text: str(result.text),
+        summary: summaryParts.join(" · "),
+        ...(result.language ? { language: result.language } : {}),
+        ...(duration !== undefined ? { durationSeconds: duration } : {}),
+        ...(words.length > 0 ? { words } : {}),
+        ...(result.request_id ? { requestId: result.request_id } : {}),
+      };
+    });
   }
 
   /**
@@ -1098,19 +1132,21 @@ export class CartesiaClient implements PluginClient {
    * endpoint is unreachable and the account would otherwise report no spend
    * forever rather than telling the user what to do.
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    if (!this.hasAdminKey) throw cartesiaCostSetupError();
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      if (!this.hasAdminKey) throw cartesiaCostSetupError();
 
-    return fetchCartesiaCostData(
-      {
-        adminApiKey: this.adminApiKey,
-        apiVersion: CARTESIA_VERSION,
-        baseUrl: BASE_URL,
-        ...(this.services?.http ? { http: this.services.http } : {}),
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-      },
-      range,
-    );
+      return fetchCartesiaCostData(
+        {
+          adminApiKey: this.adminApiKey,
+          apiVersion: CARTESIA_VERSION,
+          baseUrl: BASE_URL,
+          ...(this.services?.http ? { http: this.services.http } : {}),
+          ...(this.caCert ? { caCert: this.caCert } : {}),
+        },
+        range,
+      );
+    });
   }
 
   // ---- Mapping -------------------------------------------------------------

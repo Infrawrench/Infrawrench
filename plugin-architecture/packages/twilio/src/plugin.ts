@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { TwilioClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,15 +7,18 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { twilioRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "twilio",
-  version: "0.1.0",
+  egressHosts: [
+    "api.twilio.com",
+    "messaging.twilio.com",
+    "verify.twilio.com",
+    "pricing.twilio.com",
+  ],
   displayName: "Twilio",
   description:
     "Communications APIs. Track Twilio spend by product, usage category and subaccount, watch the account balance, chart daily message and call volume, and manage phone numbers, messaging and Verify services, TwiML apps, subaccounts, usage triggers and API keys.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -27,7 +31,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://console.twilio.com/us1/account/keys-credentials/api-keys",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accountSid",
       label: "Account SID",
@@ -70,7 +74,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Usage Records API: product family → service, usage category and
     // subaccount → tags, the subaccount's SID → resource. Prices are what
@@ -87,12 +91,19 @@ const manifest: PluginManifest = {
   statusFeed,
   // Twilio limits concurrency per account rather than publishing a rate.
   rateLimit: { capacity: 20, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new TwilioClient(credentials, services),
+  testCredentials: {
+    accountSid: "AC00000000000000000000000000000000",
+    apiKeySid: "SK00000000000000000000000000000000",
+    apiKeySecret: "test-twilio-api-key-secret",
+  },
   parseStatusFeed,
   remediationCommands: twilioRemediationCommands,
-};
+});

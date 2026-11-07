@@ -1,8 +1,10 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import type { BitbucketContext } from "./api.js";
 import { bbPaged, isPermissionError } from "./api.js";
@@ -15,16 +17,15 @@ import type { BbWorkspaceAccess } from "./types.js";
 import { BITBUCKET_OAUTH, completeBitbucketOAuth, emailFor, isOAuthConnected } from "./oauth.js";
 import { bitbucketDeployEvents } from "./deploy-events.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "bitbucket",
-  version: "0.1.0",
+  // finished Pipelines step logs redirect (307) to S3 long-term storage
+  egressHosts: ["api.bitbucket.org", "*.s3.amazonaws.com"],
   displayName: "Bitbucket",
   description:
     "Bitbucket Cloud. Manage workspaces, projects and repositories, run and stop Pipelines with step logs, and manage pipeline, workspace and deployment variables, deployment environments, schedules, caches, branch restrictions, webhooks, deploy keys and self-hosted runners, with pipeline and build-minute metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "email",
       label: "Atlassian Account Email",
@@ -54,13 +55,15 @@ const manifest: PluginManifest = {
       placeholder: "workspace-slug",
       providerOptions: { dependsOn: ["email", "token"] },
     },
-  ],
+  ]),
   statusFeed,
   // Bitbucket meters most repository data at about 1,000 requests an hour per
   // user (more on paid plans); stay under it.
   rateLimit: { capacity: 10, refillPerSecond: 0.25 },
   oauth: BITBUCKET_OAUTH,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 /**
  * Options for the workspace picker: `GET /user/workspaces`, which needs
@@ -106,13 +109,14 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   deployEvents: bitbucketDeployEvents,
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new BitbucketClient(credentials, services),
+  testCredentials: { email: "dev@example.com", token: "ATATT-test-token", workspace: "acme" },
   parseStatusFeed,
-  listCredentialOptions,
+  listCredentialOptions: attemptFn(listCredentialOptions),
   remediationCommands: bitbucketRemediationCommands,
-  completeOAuthConnection: completeBitbucketOAuth,
-};
+  completeOAuthConnection: attemptFn(completeBitbucketOAuth),
+});

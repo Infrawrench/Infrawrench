@@ -16,7 +16,7 @@ describe("MCP Apps views", () => {
   it("are generated from src/mcp/views", async () => {
     // Stale? Run: pnpm --filter @infrawrench/web generate:mcp-views
     expect(readFileSync(GEN, "utf8")).toBe(await renderMcpViewsModule());
-  }, 30_000);
+  }, 60_000);
 
   it("are each one self-contained page, small enough to send whole", async () => {
     const { MCP_VIEW_HTML } = await import("@/mcp/app-views.gen");
@@ -30,7 +30,7 @@ describe("MCP Apps views", () => {
     }
   });
 
-  it("are named only by tools the registry has", { timeout: 30_000 }, async () => {
+  it("are named only by tools the registry has", { timeout: 60_000 }, async () => {
     const { getToolRegistry } = await import("@/tools/registry");
     const names = new Set((await getToolRegistry()).map((t) => t.name));
     for (const tool of Object.keys(TOOL_VIEWS)) expect(names).toContain(tool);

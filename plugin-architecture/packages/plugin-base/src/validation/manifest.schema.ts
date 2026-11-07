@@ -1,7 +1,22 @@
-import { z } from "zod";
+import { Schema } from "effect";
 
-import { FOCUS_SERVICE_CATEGORIES, isValidFocusClassification } from "../focus.js";
+import {
+  FOCUS_SERVICE_CATEGORIES,
+  isValidFocusClassification,
+  type FocusServiceClassification,
+} from "../focus.js";
 import { findUnsafeSvgConstructs } from "../svg-safety.js";
+import {
+  NonEmpty,
+  NonNegative,
+  Num,
+  Positive,
+  PositiveInt,
+  Url,
+  httpsUrl,
+  uniqueBy,
+  rule,
+} from "./primitives.js";
 
 /**
  * `logoSvg` is injected verbatim with `dangerouslySetInnerHTML` by every host
@@ -12,416 +27,475 @@ import { findUnsafeSvgConstructs } from "../svg-safety.js";
  * anything never reaches a renderer. See `../svg-safety.ts` for the rules and
  * `web/src/api/security-headers.ts` for why there is no script CSP behind it.
  */
-function logoSvgIsInert(value: string, ctx: z.RefinementCtx): void {
-  for (const problem of findUnsafeSvgConstructs(value)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `logoSvg is not inert: ${problem}` });
-  }
-}
-
-const inertSvg = z.string().min(1).superRefine(logoSvgIsInert);
+const inertSvg = NonEmpty.check(
+  Schema.makeFilter((value: string) =>
+    findUnsafeSvgConstructs(value).map((problem) => `logoSvg is not inert: ${problem}`),
+  ),
+);
 
 /**
  * A FOCUS category/subcategory pair. Both are closed lists in the
  * specification and the subcategory must be a child of the category, so a
  * typo here would otherwise ship as a non-conformant export.
  */
-const focusClassificationShape = z.object({
-  category: z.enum(FOCUS_SERVICE_CATEGORIES),
-  subcategory: z.string(),
-});
+const focusClassificationFields = {
+  category: Schema.Literals(FOCUS_SERVICE_CATEGORIES),
+  subcategory: Schema.String,
+};
 const FOCUS_PAIR_MESSAGE = "subcategory must be one of the FOCUS v1.3 children of category";
-const focusClassification = focusClassificationShape.refine(isValidFocusClassification, {
-  message: FOCUS_PAIR_MESSAGE,
-});
-const focusServiceRule = focusClassificationShape
-  .extend({ match: z.string().min(1) })
-  .refine(isValidFocusClassification, { message: FOCUS_PAIR_MESSAGE });
+const focusClassification = Schema.Struct(focusClassificationFields).pipe(
+  Schema.refine(isValidFocusClassification, { message: FOCUS_PAIR_MESSAGE }),
+);
+const focusServiceRule = Schema.Struct({
+  ...focusClassificationFields,
+  match: NonEmpty,
+}).pipe(
+  Schema.refine((c): c is typeof c & FocusServiceClassification => isValidFocusClassification(c), {
+    message: FOCUS_PAIR_MESSAGE,
+  }),
+);
 
-export const pluginManifestSchema = z.object({
-  sshInstall: z
-    .object({ description: z.string().min(1), messages: z.array(z.string()).optional() })
-    .optional(),
-  id: z
-    .string()
-    .min(1)
-    .regex(/^[a-z][a-z0-9-]*$/, "id must be lowercase kebab-case"),
-  version: z.string().regex(/^\d+\.\d+\.\d+/, "version must be semver"),
-  displayName: z.string().min(1),
-  description: z.string().optional(),
+const driverFields = { driver: NonEmpty, credentialKey: NonEmpty };
+
+const networkFlowScopes = Schema.Literals([
+  "intra_zone",
+  "cross_zone",
+  "cross_region",
+  "internet_egress",
+  "internet_ingress",
+  "provider_service",
+  "nat_gateway",
+  "private_interconnect",
+  "unknown",
+]);
+const perScopeRate = Schema.Record(networkFlowScopes, Schema.optional(Num));
+const networkFlowRateCard = Schema.Struct({
+  currency: Schema.String,
+  asOf: Schema.String,
+  perGb: perScopeRate,
+  perRegion: Schema.optional(Schema.Record(Schema.String, perScopeRate)),
+});
+
+export const pluginManifestSchema = Schema.Struct({
+  sshInstall: Schema.optional(
+    Schema.Struct({
+      description: NonEmpty,
+      messages: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
+  id: NonEmpty.check(
+    Schema.isPattern(/^[a-z][a-z0-9-]*$/, { message: "id must be lowercase kebab-case" }),
+  ),
+  displayName: NonEmpty,
+  description: Schema.optional(Schema.String),
   logoSvg: inertSvg,
-  author: z.string().min(1),
-  minHostVersion: z.string().regex(/^\d+\.\d+\.\d+/),
-  peerPlugins: z.array(z.string()).optional(),
-  credentialFields: z
-    .array(
-      z.object({
-        key: z.string(),
-        label: z.string(),
-        description: z.string().optional(),
-        sensitive: z.boolean(),
-        placeholder: z.string().optional(),
-        multiline: z.boolean().optional(),
-        defaultValue: z.string().optional(),
-        regions: z
-          .array(
-            z.object({
-              id: z.string(),
-              label: z.string(),
-              location: z.string().optional(),
-              flag: z.string().optional(),
-            }),
-          )
-          .optional(),
-        accountReference: z
-          .object({
-            pluginId: z.string().min(1),
-          })
-          .optional(),
-        providerOptions: z
-          .object({
-            dependsOn: z.array(z.string().min(1)),
-            emptyLabel: z.string().optional(),
-            multiple: z.boolean().optional(),
-          })
-          .optional(),
-        optional: z.boolean().optional(),
-      }),
-    )
-    .optional(),
-  sqlDriver: z
-    .object({
-      driver: z.string().min(1),
-      credentialKey: z.string().min(1),
-    })
-    .optional(),
-  kvDriver: z
-    .object({
-      driver: z.string().min(1),
-      credentialKey: z.string().min(1),
-    })
-    .optional(),
-  dockerDriver: z
-    .object({
-      driver: z.string().min(1),
-      credentialKey: z.string().min(1),
-    })
-    .optional(),
-  supportsSecretImport: z.boolean().optional(),
-  rateLimit: z
-    .object({
-      capacity: z.number().positive(),
-      refillPerSecond: z.number().positive(),
-    })
-    .optional(),
-  costs: z
-    .object({
-      dimensions: z.array(z.enum(["service", "region", "resource", "tag"])),
-      maxHistoryDays: z.number().int().positive().optional(),
-      restatementDays: z.number().int().positive().optional(),
-      periodNative: z.boolean().optional(),
-      /** This provider distinguishes charge types (usage vs credit vs tax…). */
-      chargeTypes: z.boolean().optional(),
-      /** This provider reports amortized amounts distinct from cash amounts. */
-      amortization: z.boolean().optional(),
-      /** Amounts are derived (inventory × rate card, usage × list prices). */
-      estimated: z.boolean().optional(),
-      /** FOCUS service classification for FOCUS-schema exports. */
-      focus: z
-        .object({
-          services: z.array(focusServiceRule).optional(),
-          default: focusClassification.optional(),
-        })
-        .optional(),
-    })
-    .optional(),
-  aiRequestLogs: z
-    .object({
-      sourceKinds: z
-        .array(
-          z.object({
-            id: z.string().min(1),
-            label: z.string().min(1),
-            description: z.string(),
-            locationLabel: z.string().min(1),
-            maxHistoryDays: z.number().int().positive(),
-            queriesBillable: z.boolean().optional(),
-            acceptsPrefix: z.boolean().optional(),
-            helpUrl: z
-              .string()
-              .url()
-              .refine((u) => u.startsWith("https://"), { message: "helpUrl must be https://" })
-              .optional(),
+  egressHosts: Schema.Array(Schema.String),
+  sshTunnel: Schema.optional(
+    Schema.Struct({
+      label: Schema.String,
+      defaultPort: Num,
+      credentials: Schema.Record(Schema.String, Schema.String),
+    }),
+  ),
+  jumpHost: Schema.optional(Schema.Boolean),
+  peerPlugins: Schema.optional(Schema.Array(Schema.String)),
+  credentialFields: Schema.Array(
+    Schema.Struct({
+      key: Schema.String,
+      label: Schema.String,
+      description: Schema.optional(Schema.String),
+      sensitive: Schema.Boolean,
+      placeholder: Schema.optional(Schema.String),
+      multiline: Schema.optional(Schema.Boolean),
+      defaultValue: Schema.optional(Schema.String),
+      regions: Schema.optional(
+        Schema.Array(
+          Schema.Struct({
+            id: Schema.String,
+            label: Schema.String,
+            location: Schema.optional(Schema.String),
+            flag: Schema.optional(Schema.String),
           }),
-        )
-        .min(1),
-    })
-    .optional(),
-  aiModelRates: z
-    .object({
-      provider: z.string().min(1),
-      currency: z.string().min(1),
-      asOf: z.string().min(1),
-      models: z.record(
-        z.string(),
-        z.object({
-          input: z.number().nonnegative(),
-          output: z.number().nonnegative(),
-          cacheRead: z.number().nonnegative().optional(),
-          cacheWrite: z.number().nonnegative().optional(),
-          reasoning: z.number().nonnegative().optional(),
+        ),
+      ),
+      accountReference: Schema.optional(Schema.Struct({ pluginId: NonEmpty })),
+      providerOptions: Schema.optional(
+        Schema.Struct({
+          dependsOn: Schema.Array(NonEmpty),
+          emptyLabel: Schema.optional(Schema.String),
+          multiple: Schema.optional(Schema.Boolean),
         }),
       ),
-    })
-    .optional(),
-  commitments: z
-    .object({
-      kinds: z.array(z.enum(["reservation", "savings_plan", "committed_use"])).min(1),
-    })
-    .optional(),
-  seats: z
-    .object({
-      products: z.array(z.string().min(1)).min(1),
-      removal: z.boolean().optional(),
-    })
-    .optional(),
-  credits: z
-    .object({
-      label: z.string().optional(),
-      topUpUrl: z.string().url().optional(),
-      requiresElevatedCredential: z.boolean().optional(),
-    })
-    .optional(),
-  quotas: z
-    .object({
-      label: z.string().optional(),
-      // `.url()` alone is not a scheme guard: it is `new URL()` in a
-      // try/catch, so `javascript:alert(1)` and `data:text/html,…` both pass
-      // it. This value is rendered as a link the host opens, so the scheme is
-      // pinned here as well as at the two runtime boundaries.
-      increaseUrl: z
-        .string()
-        .url()
-        .refine((u) => u.startsWith("https://"), {
-          message: "increaseUrl must be an https:// URL",
-        })
-        .optional(),
-      /** The reported set is representative, not every quota the provider enforces. */
-      partial: z.boolean().optional(),
-      requiresElevatedCredential: z.boolean().optional(),
-    })
-    .optional(),
-  idleFindings: z
-    .object({
-      rules: z
-        .array(
-          z.object({
-            id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
-            label: z.string().min(1),
-            description: z.string().min(1),
-            resourceTypeIds: z.array(z.string().min(1)),
-            action: z.enum(["remove", "reconfigure", "stop"]),
-            thresholds: z
-              .array(
-                z
-                  .object({
-                    key: z.string().regex(/^[A-Za-z][A-Za-z0-9]{0,63}$/),
-                    label: z.string().min(1),
-                    description: z.string().optional(),
-                    unit: z.enum(["count", "bytes", "percent", "days"]),
-                    default: z.number().finite(),
-                    min: z.number().finite(),
-                    max: z.number().finite(),
-                  })
-                  .refine((t) => t.min <= t.default && t.default <= t.max, {
-                    message: "idle threshold default must sit within [min, max]",
-                  }),
-              )
-              .refine((list) => new Set(list.map((t) => t.key)).size === list.length, {
-                message: "idle threshold keys must be unique within a rule",
-              }),
+      optional: Schema.optional(Schema.Boolean),
+      advanced: Schema.optional(Schema.Boolean),
+      helpLink: Schema.optional(Schema.Struct({ label: Schema.String, url: Schema.String })),
+    }),
+  ),
+  oauth: Schema.optional(
+    Schema.Struct({
+      authorizeUrl: Schema.String,
+      tokenUrl: Schema.String,
+      scopes: Schema.Array(Schema.String),
+      scopeSeparator: Schema.optional(Schema.String),
+      authorizeParams: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+      tokenField: Schema.String,
+      clients: Schema.Struct({
+        server: Schema.optional(
+          Schema.Struct({
+            auth: Schema.optional(
+              Schema.Literals(["client_secret_post", "client_secret_basic", "none"]),
+            ),
+            pkce: Schema.optional(Schema.Boolean),
           }),
-        )
-        .min(1)
-        .refine((list) => new Set(list.map((r) => r.id)).size === list.length, {
-          message: "idle rule ids must be unique",
-        }),
-    })
-    .optional(),
-  vulnerabilities: z
-    .object({
-      label: z.string().min(1),
-      // Rendered as a link the host opens; pinned to https like `increaseUrl`.
-      consoleUrl: z
-        .string()
-        .url()
-        .refine((u) => u.startsWith("https://"), {
-          message: "consoleUrl must be an https:// URL",
-        })
-        .optional(),
-      requiresElevatedCredential: z.boolean().optional(),
-      partial: z.boolean().optional(),
-    })
-    .optional(),
-  warehouseSink: z
-    .object({
-      label: z.string().min(1),
-      description: z.string().optional(),
-      targetFields: z
-        .array(
-          z.object({
-            key: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/),
-            label: z.string().min(1),
-            description: z.string().optional(),
-            dependsOn: z.array(z.string()).optional(),
-            optional: z.boolean().optional(),
-            allowCustom: z.boolean().optional(),
-            placeholder: z.string().optional(),
-            emptyLabel: z.string().optional(),
+        ),
+        desktop: Schema.optional(
+          Schema.Struct({
+            loopbackHost: Schema.optional(Schema.Literals(["127.0.0.1", "localhost"])),
           }),
-        )
-        .min(1),
-    })
-    .optional(),
-  priceCatalog: z
-    .object({
-      requiresCredentials: z.boolean(),
-      permission: z.string().min(1).optional(),
-      source: z.object({
-        name: z.string().min(1),
-        // Rendered as a link on the catalog's coverage note, so the scheme is
-        // pinned like `quotas.increaseUrl`.
-        url: z
-          .string()
-          .url()
-          .refine((u) => u.startsWith("https://"), {
-            message: "priceCatalog.source.url must be an https:// URL",
-          }),
+        ),
       }),
-      refreshHours: z
-        .number()
-        .positive()
-        .max(24 * 31),
-      regionScoped: z.boolean().optional(),
-      services: z
-        .array(
-          z.object({
-            id: z.string().min(1),
-            label: z.string().min(1),
-            family: z.enum(["compute", "gpu", "database", "kubernetes-node", "storage"]),
-          }),
-        )
-        .min(1)
-        .refine((list) => new Set(list.map((s) => s.id)).size === list.length, {
-          message: "priceCatalog service ids must be unique",
+      access: Schema.Literals(["read-only", "read-write", "full"]),
+      refresh: Schema.Literals(["rotating", "reusable", "none"]),
+      docsUrl: Schema.optional(Schema.String),
+      clientRegistration: Schema.optional(Schema.Literals(["static", "none", "dynamic"])),
+      defaultExpiresIn: Schema.optional(Num),
+      existingGrantsOnly: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  sqlDriver: Schema.optional(
+    Schema.Struct({ ...driverFields, caCertKey: Schema.optional(Schema.String) }),
+  ),
+  kvDriver: Schema.optional(
+    Schema.Struct({
+      ...driverFields,
+      browser: Schema.optional(Schema.Literals(["keys", "documents"])),
+    }),
+  ),
+  dockerDriver: Schema.optional(Schema.Struct(driverFields)),
+  kubernetesDriver: Schema.optional(Schema.Struct(driverFields)),
+  supportsSecretImport: Schema.optional(Schema.Boolean),
+  rateLimit: Schema.optional(
+    Schema.Struct({
+      capacity: Positive,
+      refillPerSecond: Positive,
+    }),
+  ),
+  costs: Schema.optional(
+    Schema.Struct({
+      dimensions: Schema.Array(Schema.Literals(["service", "region", "resource", "tag"])),
+      maxHistoryDays: Schema.optional(PositiveInt),
+      restatementDays: Schema.optional(PositiveInt),
+      periodNative: Schema.optional(Schema.Boolean),
+      /** This provider distinguishes charge types (usage vs credit vs tax…). */
+      chargeTypes: Schema.optional(Schema.Boolean),
+      /** This provider reports amortized amounts distinct from cash amounts. */
+      amortization: Schema.optional(Schema.Boolean),
+      blending: Schema.optional(Schema.Boolean),
+      /** Amounts are derived (inventory × rate card, usage × list prices). */
+      estimated: Schema.optional(Schema.Boolean),
+      /** FOCUS service classification for FOCUS-schema exports. */
+      focus: Schema.optional(
+        Schema.Struct({
+          services: Schema.optional(Schema.Array(focusServiceRule)),
+          default: Schema.optional(focusClassification),
         }),
-      regions: z
-        .array(
-          z.object({
-            id: z.string().min(1),
-            label: z.string().min(1),
-            area: z.enum([
-              "north-america",
-              "south-america",
-              "europe",
-              "asia-pacific",
-              "middle-east",
-              "africa",
-              "oceania",
-            ]),
-          }),
-        )
-        .min(1)
-        .refine((list) => new Set(list.map((r) => r.id)).size === list.length, {
-          message: "priceCatalog region ids must be unique",
+      ),
+    }),
+  ),
+  aiRequestLogs: Schema.optional(
+    Schema.Struct({
+      sourceKinds: Schema.Array(
+        Schema.Struct({
+          id: NonEmpty,
+          label: NonEmpty,
+          description: Schema.String,
+          locationLabel: NonEmpty,
+          maxHistoryDays: PositiveInt,
+          queriesBillable: Schema.optional(Schema.Boolean),
+          acceptsPrefix: Schema.optional(Schema.Boolean),
+          helpUrl: Schema.optional(httpsUrl("helpUrl must be https://")),
         }),
-    })
-    .optional(),
-  paging: z
-    .object({
-      targetLabel: z.string().min(1),
-      targetDescription: z.string().optional(),
-      supportsAcknowledgeEvent: z.boolean(),
-      onCall: z.object({ sourceLabel: z.string().min(1) }).optional(),
-      incidents: z
-        .object({
-          label: z.string().min(1),
-          canAcknowledge: z.boolean(),
-          canResolve: z.boolean(),
-        })
-        .optional(),
-      webhook: z
-        .object({
-          mode: z.enum(["managed", "manual"]),
-          setupHelp: z.string().optional(),
-        })
-        .optional(),
-    })
-    .optional(),
-  jitAccess: z
-    .object({
-      scopeLabel: z.string().min(1),
-      roleLabel: z.string().min(1),
-      principalLabel: z.string().min(1),
-      description: z.string().optional(),
-      providerEnforcedExpiry: z.boolean(),
-      principalPicker: z.boolean(),
-    })
-    .optional(),
-  secretScanning: z
-    .object({
-      label: z.string().min(1),
-      description: z.string().optional(),
-      canResolve: z.boolean(),
-      returnsSecretValue: z.boolean(),
-    })
-    .optional(),
-  tokenFormats: z
-    .array(
-      z.object({
-        id: z.string().min(1),
-        label: z.string().min(1),
-        scannerTypes: z.array(z.string().min(1)),
-        prefixes: z.array(z.string().min(4)).optional(),
-        credentialFields: z.array(z.string().min(1)).optional(),
-        manageUrl: z.string().url().optional(),
-      }),
-    )
-    .optional(),
-  statusFeed: z
-    .object({
-      url: z.string().url(),
-      format: z.enum(["statuspage-v2", "custom-json", "rss", "atom"]),
-      statusPageUrl: z.string().url().optional(),
-      reachableFromEdge: z.boolean().optional(),
-    })
-    .optional(),
-  preflight: z
-    .object({
-      capabilities: z
-        .array(
-          z.object({
-            id: z.string().min(1),
-            label: z.string().min(1),
-            description: z.string().optional(),
-            requiredPermissions: z.array(
-              z.object({
-                id: z.string().min(1),
-                label: z.string().min(1),
+      ).check(Schema.isMinLength(1)),
+    }),
+  ),
+  aiModelRates: Schema.optional(
+    Schema.Struct({
+      provider: NonEmpty,
+      currency: NonEmpty,
+      asOf: NonEmpty,
+      models: Schema.Record(
+        Schema.String,
+        Schema.Struct({
+          input: NonNegative,
+          output: NonNegative,
+          cacheRead: Schema.optional(NonNegative),
+          cacheWrite: Schema.optional(NonNegative),
+          reasoning: Schema.optional(NonNegative),
+        }),
+      ),
+    }),
+  ),
+  businessMetricSource: Schema.optional(
+    Schema.Struct({
+      label: Schema.String,
+      description: Schema.optional(Schema.String),
+      kind: Schema.Literals(["sql", "metric"]),
+      fields: Schema.Array(
+        Schema.Struct({
+          key: Schema.String,
+          label: Schema.String,
+          type: Schema.Literals(["select", "sql", "text", "number"]),
+          required: Schema.optional(Schema.Boolean),
+          description: Schema.optional(Schema.String),
+          placeholder: Schema.optional(Schema.String),
+          defaultValue: Schema.optional(Schema.String),
+          options: Schema.optional(
+            Schema.Array(
+              Schema.Struct({
+                id: Schema.String,
+                label: Schema.String,
+                description: Schema.optional(Schema.String),
               }),
             ),
-            essential: z.boolean().optional(),
-          }),
-        )
-        .min(1)
-        .refine((caps) => new Set(caps.map((c) => c.id)).size === caps.length, {
-          message: "capability ids must be unique within the plugin",
+          ),
+          dependsOn: Schema.optional(Schema.Array(Schema.String)),
+          allowCustom: Schema.optional(Schema.Boolean),
         }),
-      templateFormat: z
-        .object({
-          label: z.string().min(1),
-          language: z.enum(["json", "yaml", "text"]),
-        })
-        .optional(),
-    })
-    .optional(),
+      ),
+      sqlDialect: Schema.optional(Schema.String),
+      readOnly: Schema.optional(Schema.Literals(["enforced", "validated"])),
+      supportsDryRun: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  networkFlows: Schema.optional(
+    Schema.Struct({
+      rates: networkFlowRateCard,
+      maxPairsPerDay: Num,
+      maxHistoryDays: Num,
+      queriesBillable: Schema.optional(Schema.Boolean),
+      sampled: Schema.optional(Schema.Boolean),
+      recut: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  transferRates: Schema.optional(networkFlowRateCard),
+  commitments: Schema.optional(
+    Schema.Struct({
+      kinds: Schema.Array(Schema.Literals(["reservation", "savings_plan", "committed_use"])).check(
+        Schema.isMinLength(1),
+      ),
+      discount: Schema.optional(
+        Schema.Struct({
+          min: Schema.optional(Num),
+          max: Num,
+          basis: Schema.Literals(["range", "upper_bound"]),
+        }),
+      ),
+    }),
+  ),
+  seats: Schema.optional(
+    Schema.Struct({
+      products: Schema.Array(NonEmpty).check(Schema.isMinLength(1)),
+      removal: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  credits: Schema.optional(
+    Schema.Struct({
+      label: Schema.optional(Schema.String),
+      topUpUrl: Schema.optional(Url),
+      requiresElevatedCredential: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  quotas: Schema.optional(
+    Schema.Struct({
+      label: Schema.optional(Schema.String),
+      increaseUrl: Schema.optional(httpsUrl("increaseUrl must be an https:// URL")),
+      /** The reported set is representative, not every quota the provider enforces. */
+      partial: Schema.optional(Schema.Boolean),
+      requiresElevatedCredential: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  idleFindings: Schema.optional(
+    Schema.Struct({
+      rules: Schema.Array(
+        Schema.Struct({
+          id: Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,63}$/)),
+          label: NonEmpty,
+          description: NonEmpty,
+          resourceTypeIds: Schema.Array(NonEmpty),
+          action: Schema.Literals(["remove", "reconfigure", "stop"]),
+          thresholds: Schema.Array(
+            Schema.Struct({
+              key: Schema.String.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9]{0,63}$/)),
+              label: NonEmpty,
+              description: Schema.optional(Schema.String),
+              unit: Schema.Literals(["count", "bytes", "percent", "days"]),
+              default: Schema.Finite,
+              min: Schema.Finite,
+              max: Schema.Finite,
+            }).check(
+              rule(
+                (t) => t.min <= t.default && t.default <= t.max,
+                "idle threshold default must sit within [min, max]",
+              ),
+            ),
+          ).check(uniqueBy((t) => t.key, "idle threshold keys must be unique within a rule")),
+        }),
+      ).check(
+        Schema.isMinLength(1),
+        uniqueBy((r) => r.id, "idle rule ids must be unique"),
+      ),
+    }),
+  ),
+  vulnerabilities: Schema.optional(
+    Schema.Struct({
+      label: NonEmpty,
+      consoleUrl: Schema.optional(httpsUrl("consoleUrl must be an https:// URL")),
+      requiresElevatedCredential: Schema.optional(Schema.Boolean),
+      partial: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  warehouseSink: Schema.optional(
+    Schema.Struct({
+      label: NonEmpty,
+      description: Schema.optional(Schema.String),
+      targetFields: Schema.Array(
+        Schema.Struct({
+          key: Schema.String.check(Schema.isPattern(/^[A-Za-z][A-Za-z0-9_]{0,63}$/)),
+          label: NonEmpty,
+          description: Schema.optional(Schema.String),
+          dependsOn: Schema.optional(Schema.Array(Schema.String)),
+          optional: Schema.optional(Schema.Boolean),
+          allowCustom: Schema.optional(Schema.Boolean),
+          placeholder: Schema.optional(Schema.String),
+          emptyLabel: Schema.optional(Schema.String),
+        }),
+      ).check(Schema.isMinLength(1)),
+    }),
+  ),
+  priceCatalog: Schema.optional(
+    Schema.Struct({
+      requiresCredentials: Schema.Boolean,
+      permission: Schema.optional(NonEmpty),
+      source: Schema.Struct({
+        name: NonEmpty,
+        url: httpsUrl("priceCatalog.source.url must be an https:// URL"),
+      }),
+      refreshHours: Positive.check(Schema.isLessThanOrEqualTo(24 * 31)),
+      regionScoped: Schema.optional(Schema.Boolean),
+      services: Schema.Array(
+        Schema.Struct({
+          id: NonEmpty,
+          label: NonEmpty,
+          family: Schema.Literals(["compute", "gpu", "database", "kubernetes-node", "storage"]),
+        }),
+      ).check(
+        Schema.isMinLength(1),
+        uniqueBy((s) => s.id, "priceCatalog service ids must be unique"),
+      ),
+      regions: Schema.Array(
+        Schema.Struct({
+          id: NonEmpty,
+          label: NonEmpty,
+          area: Schema.Literals([
+            "north-america",
+            "south-america",
+            "europe",
+            "asia-pacific",
+            "middle-east",
+            "africa",
+            "oceania",
+          ]),
+        }),
+      ).check(
+        Schema.isMinLength(1),
+        uniqueBy((r) => r.id, "priceCatalog region ids must be unique"),
+      ),
+    }),
+  ),
+  paging: Schema.optional(
+    Schema.Struct({
+      targetLabel: NonEmpty,
+      targetDescription: Schema.optional(Schema.String),
+      supportsAcknowledgeEvent: Schema.Boolean,
+      onCall: Schema.optional(Schema.Struct({ sourceLabel: NonEmpty })),
+      incidents: Schema.optional(
+        Schema.Struct({
+          label: NonEmpty,
+          canAcknowledge: Schema.Boolean,
+          canResolve: Schema.Boolean,
+        }),
+      ),
+      webhook: Schema.optional(
+        Schema.Struct({
+          mode: Schema.Literals(["managed", "manual"]),
+          setupHelp: Schema.optional(Schema.String),
+        }),
+      ),
+    }),
+  ),
+  jitAccess: Schema.optional(
+    Schema.Struct({
+      scopeLabel: NonEmpty,
+      roleLabel: NonEmpty,
+      principalLabel: NonEmpty,
+      description: Schema.optional(Schema.String),
+      providerEnforcedExpiry: Schema.Boolean,
+      principalPicker: Schema.Boolean,
+    }),
+  ),
+  secretScanning: Schema.optional(
+    Schema.Struct({
+      label: NonEmpty,
+      description: Schema.optional(Schema.String),
+      canResolve: Schema.Boolean,
+      returnsSecretValue: Schema.Boolean,
+    }),
+  ),
+  tokenFormats: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: NonEmpty,
+        label: NonEmpty,
+        scannerTypes: Schema.Array(NonEmpty),
+        prefixes: Schema.optional(Schema.Array(Schema.String.check(Schema.isMinLength(4)))),
+        credentialFields: Schema.optional(Schema.Array(NonEmpty)),
+        manageUrl: Schema.optional(Url),
+      }),
+    ),
+  ),
+  statusFeed: Schema.optional(
+    Schema.Struct({
+      url: Url,
+      format: Schema.Literals(["statuspage-v2", "custom-json", "rss", "atom"]),
+      statusPageUrl: Schema.optional(Url),
+      reachableFromEdge: Schema.optional(Schema.Boolean),
+    }),
+  ),
+  preflight: Schema.optional(
+    Schema.Struct({
+      capabilities: Schema.Array(
+        Schema.Struct({
+          id: NonEmpty,
+          label: NonEmpty,
+          description: Schema.optional(Schema.String),
+          requiredPermissions: Schema.Array(
+            Schema.Struct({
+              id: NonEmpty,
+              label: NonEmpty,
+            }),
+          ),
+          essential: Schema.optional(Schema.Boolean),
+        }),
+      ).check(
+        Schema.isMinLength(1),
+        uniqueBy((c) => c.id, "capability ids must be unique within the plugin"),
+      ),
+      templateFormat: Schema.optional(
+        Schema.Struct({
+          label: NonEmpty,
+          language: Schema.Literals(["json", "yaml", "text"]),
+        }),
+      ),
+    }),
+  ),
 });

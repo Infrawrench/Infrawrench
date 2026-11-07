@@ -18,12 +18,13 @@ import {
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "../lib/sql-drivers";
+import { sshTunnelServiceForDrop } from "../lib/ssh-tunnel-drop";
 import {
   listCloudAccounts,
   listCloudAccountResources,
   syncCloudAccountType,
 } from "../lib/cloud-api";
-import { SshTunnelModal, type PresetKey } from "./SshTunnelModal";
+import { SshTunnelModal } from "./SshTunnelModal";
 import { DockerSetupModal } from "./DockerSetupModal";
 import { SecretExportModal } from "./SecretExportModal";
 import { SshEnvDeployModal } from "./SshEnvDeployModal";
@@ -96,7 +97,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     sshHost: string;
     sshDefaultUsername?: string;
     sourceAccountId: string;
-    defaultService?: PresetKey;
+    defaultService?: string;
   } | null>(null);
   const [dockerSetupTarget, setDockerSetupTarget] = useState<{
     sshHost: string;
@@ -516,34 +517,22 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         const sshHost = resourceSshHosts[targetId];
         const sshDefaultUsername = resourceSshUsernames[targetId];
         if (sshHost && !kubeconfigTypeIds.has(targetResource.resourceTypeId)) {
-          const TUNNEL_PLUGINS = new Set(["docker", "postgres", "mysql", "redis", "memcached"]);
-          const sourcePlugin =
-            source.pluginId === "__account__"
-              ? String(source.fields["pluginId"] ?? "")
-              : source.pluginId;
-          if (TUNNEL_PLUGINS.has(sourcePlugin)) {
-            const pluginToPreset: Record<string, PresetKey> = {
-              docker: "docker",
-              postgres: "postgres",
-              mysql: "mysql",
-              redis: "redis",
-              memcached: "memcached",
-            };
-            setTunnelTarget({
-              sshHost,
-              ...(sshDefaultUsername ? { sshDefaultUsername } : {}),
-              sourceAccountId: targetResource.accountId,
-              ...(pluginToPreset[sourcePlugin] !== undefined
-                ? { defaultService: pluginToPreset[sourcePlugin] }
-                : {}),
-            });
-          } else {
-            setEnvDeployDrop({
-              source,
-              sshHost,
-              ...(sshDefaultUsername ? { sshDefaultUsername } : {}),
-            });
-          }
+          void sshTunnelServiceForDrop(source).then((defaultService) => {
+            if (defaultService) {
+              setTunnelTarget({
+                sshHost,
+                ...(sshDefaultUsername ? { sshDefaultUsername } : {}),
+                sourceAccountId: targetResource.accountId,
+                defaultService,
+              });
+            } else {
+              setEnvDeployDrop({
+                source,
+                sshHost,
+                ...(sshDefaultUsername ? { sshDefaultUsername } : {}),
+              });
+            }
+          });
           return;
         }
 

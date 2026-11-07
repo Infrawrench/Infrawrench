@@ -1,20 +1,19 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { PostmarkClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "postmark",
-  version: "0.1.0",
+  egressHosts: ["api.postmarkapp.com"],
   displayName: "Postmark",
   description:
     "Transactional and broadcast email. Manage servers, message streams, sending domains with their DKIM and Return-Path DNS records, sender signatures, webhooks, templates, suppressions and inbound rules, and chart daily sends, bounces, spam complaints, opens and clicks.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "accountToken",
       label: "Account API Token",
@@ -38,13 +37,16 @@ const manifest: PluginManifest = {
       placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
     },
     caCertCredentialField,
-  ],
+  ]),
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new PostmarkClient(credentials, services),
+  testCredentials: { accountToken: "test-postmark-account-token" },
   parseStatusFeed,
-};
+});

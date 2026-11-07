@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { BackblazeB2Client } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -7,16 +8,15 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { b2TerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "backblaze-b2",
-  version: "0.1.0",
+  // B2 hands out a per-cluster apiNNN/fNNN/podNNN host at authorize time
+  egressHosts: ["api.backblazeb2.com", "*.backblazeb2.com"],
   displayName: "Backblaze B2",
   description:
     "Object storage. Browse and upload files, manage buckets with lifecycle, CORS, replication and event notification rules, default encryption and Object Lock, mint bucket-scoped keys, and chart usage and estimated spend from the daily usage reports.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "applicationKeyId",
       label: "Application Key ID",
@@ -37,7 +37,7 @@ const manifest: PluginManifest = {
       placeholder: "K005…",
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Estimated at list price from the daily usage reports: storage from
     // byte-hours, the download overage beyond 3x average storage, and Class D
@@ -51,13 +51,19 @@ const manifest: PluginManifest = {
   preflight: B2_PREFLIGHT,
   statusFeed,
   rateLimit: { capacity: 10, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new BackblazeB2Client(credentials, services),
+  testCredentials: {
+    applicationKeyId: "005testkeyid0000000000001",
+    applicationKey: "K005testapplicationkey",
+  },
   parseStatusFeed: (body) => parseStatusFeed(body),
   policyTemplate: b2PolicyTemplate,
   terraformExport: b2TerraformExport,
-};
+});

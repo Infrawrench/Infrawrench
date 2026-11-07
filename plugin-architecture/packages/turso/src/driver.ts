@@ -1,3 +1,6 @@
+import { attempt } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import { createClient, type ResultSet } from "@libsql/client";
 import {
   assertSingleSqlStatement,
@@ -60,13 +63,15 @@ export const driver = {
   id: "libsql",
   dialTargets,
 
-  async query(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
-    const client = buildClient(connectionString);
-    try {
-      return toRows(await client.execute(sql));
-    } finally {
-      client.close();
-    }
+  query(connectionString: string, sql: string): PluginEffect<Record<string, unknown>[]> {
+    return attempt(async () => {
+      const client = buildClient(connectionString);
+      try {
+        return toRows(await client.execute(sql));
+      } finally {
+        client.close();
+      }
+    });
   },
 
   /**
@@ -74,32 +79,44 @@ export const driver = {
    * extension of SQLite's BEGIN), in which any write fails; the transaction
    * is rolled back afterwards regardless.
    */
-  async queryReadOnly(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
-    assertSingleSqlStatement(sql);
-    const client = buildClient(connectionString);
-    try {
-      const tx = await client.transaction("read");
+  queryReadOnly(connectionString: string, sql: string): PluginEffect<Record<string, unknown>[]> {
+    return attempt(async () => {
+      assertSingleSqlStatement(sql);
+      const client = buildClient(connectionString);
       try {
-        return toRows(await tx.execute(sql));
+        const tx = await client.transaction("read");
+        try {
+          return toRows(await tx.execute(sql));
+        } finally {
+          await tx.rollback().catch(() => {});
+          tx.close();
+        }
       } finally {
-        await tx.rollback().catch(() => {});
-        tx.close();
+        client.close();
       }
-    } finally {
-      client.close();
-    }
+    });
   },
 
-  async execute(connectionString: string, sql: string, params: unknown[]): Promise<number> {
-    const client = buildClient(connectionString);
-    try {
-      const result = await client.execute({
-        sql,
-        args: params as Array<string | number | null | bigint | ArrayBuffer>,
-      });
-      return result.rowsAffected;
-    } finally {
-      client.close();
-    }
+  execute(connectionString: string, sql: string, params: unknown[]): PluginEffect<number> {
+    return attempt(async () => {
+      const client = buildClient(connectionString);
+      try {
+        const result = await client.execute({
+          sql,
+          args: params as Array<string | number | null | bigint | ArrayBuffer>,
+        });
+        return result.rowsAffected;
+      } finally {
+        client.close();
+      }
+    });
   },
 } satisfies SqlNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { sql: driver },
+  server: { sql: driver },
+});

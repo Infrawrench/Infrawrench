@@ -251,7 +251,6 @@ export type {
   PreflightPermission,
   PreflightResult,
 } from "./preflight.js";
-export { validatePreflightContract } from "./preflight.js";
 
 export type {
   StatusFeedDeclaration,
@@ -526,6 +525,37 @@ export type {
 
 export { isSingleSqlStatement, assertSingleSqlStatement } from "./sql-statements.js";
 
+export { commaSeparated, createApiClient, pathEncode, withPagination } from "./api-client.js";
+export type {
+  ApiBody,
+  ApiClient,
+  ApiClientOptions,
+  ApiResponse,
+  NoSlashString,
+  PageNumberPagination,
+  PaginatedApiClient,
+} from "./api-client.js";
+export type {
+  Hosted,
+  HostedMethods,
+  HostPlugin,
+  HostPluginClient,
+  PluginEffect,
+  PluginFailure,
+  PluginStream,
+} from "./contract-effect.js";
+export {
+  clientContractProblems,
+  defineCredential,
+  defineCredentials,
+  defineNodeDrivers,
+  definePlugin,
+  MANIFEST_REQUIREMENTS,
+  RESOURCE_TYPE_REQUIREMENTS,
+  validatePluginContract,
+} from "./define-plugin.js";
+export type { ClientFor, CredentialsOf, PluginDefinition } from "./define-plugin.js";
+
 export type {
   SqlNodeDriver,
   SqlNodeDriverOptions,
@@ -535,6 +565,7 @@ export type {
   StorageNodeDriver,
   StorageDownloadOptions,
   PluginNodeDriver,
+  PluginNodeDrivers,
 } from "./node-driver.js";
 
 export {
@@ -545,6 +576,7 @@ export {
 } from "./dial-targets.js";
 
 export type {
+  AssociationRole,
   CreateResourceConfig,
   CreateCarbonHint,
   CreateSizePricingRequest,
@@ -590,13 +622,7 @@ export {
 } from "./dns.js";
 export type { DnsRecordDetailOptions } from "./dns.js";
 
-export {
-  dnsContentField,
-  PICKABLE_DNS_TYPES,
-  DNS_IPV4_SOURCES,
-  DNS_IPV6_SOURCES,
-  DNS_HOSTNAME_SOURCES,
-} from "./dns-helpers.js";
+export { dnsContentField, PICKABLE_DNS_TYPES } from "./dns-helpers.js";
 export type { DnsContentFieldOptions } from "./dns-helpers.js";
 
 export { jsonRestFetch, formatBytes, caCertCredentialField } from "./http.js";
@@ -679,21 +705,6 @@ export type {
   TerraformExportedResource,
   TerraformUnsupportedResource,
 } from "./terraform-export.js";
-
-export {
-  pluginManifestSchema,
-  terraformExportCapabilitySchema,
-  resourceTypeDefinitionSchema,
-  fieldDefinitionSchema,
-  schemaNodeSchema,
-  dashboardCardSchema,
-  detailViewSchema,
-  metricSeriesSchema,
-  metricSeriesPointSchema,
-  queryCostEstimateSchema,
-  queryResultSchema,
-  queryExecuteResultSchema,
-} from "./validation/index.js";
 
 export { isInertSvg, findUnsafeSvgConstructs } from "./svg-safety.js";
 

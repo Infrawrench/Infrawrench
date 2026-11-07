@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { TimescaleClient, configUpdateFrom, exporterCreateBody } from "../client.js";
@@ -62,7 +63,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("TimescaleClient", () => {
   it("authenticates with HTTP Basic over the public key and secret", async () => {
     const { calls } = mockFetch(base);
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
     await client.listResources("ts-project", "acc");
     expect(calls[0]!.headers["Authorization"]).toBe(`Basic ${btoa("pub:sec")}`);
     expect(calls[0]!.url.host).toBe("console.cloud.tigerdata.com");
@@ -70,7 +71,7 @@ describe("TimescaleClient", () => {
 
   it("maps services with compute, HA, pooler, VPC and retention", async () => {
     mockFetch(base);
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
     const [svc] = await client.listResources("ts-service", "acc");
     expect(svc!.id).toBe("acc:ts-service:rp1pz7uyae/kd9w2xp4mz");
     expect(svc!.parentResourceId).toBe("acc:ts-project:rp1pz7uyae");
@@ -91,7 +92,7 @@ describe("TimescaleClient", () => {
 
   it("lists read replica sets from the embedded array", async () => {
     mockFetch(base);
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
     const replicas = await client.listResources("ts-read-replica", "acc");
     expect(replicas).toHaveLength(1);
     expect(replicas[0]!.externalId).toBe("rp1pz7uyae/kd9w2xp4mz/alb8jicdpr");
@@ -106,7 +107,7 @@ describe("TimescaleClient", () => {
       }),
       "GET /projects/rp1pz7uyae/allow-lists": new Response('{"code":"FORBIDDEN"}', { status: 403 }),
     });
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
     expect(await client.listResources("ts-exporter", "acc")).toEqual([]);
     expect(await client.listResources("ts-allow-list", "acc")).toEqual([]);
   });
@@ -115,7 +116,7 @@ describe("TimescaleClient", () => {
     mockFetch({
       "GET /projects": new Response('{"code":"UNAUTHORIZED","message":"Invalid"}', { status: 401 }),
     });
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "bad" });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "bad" }));
     const err = await client.listResources("ts-project", "acc").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(TigerApiError);
     expect((err as TigerApiError).status).toBe(401);
@@ -126,7 +127,9 @@ describe("TimescaleClient", () => {
     const { secrets } = secretsStore();
     const created = { ...SERVICE, status: "QUEUED", initial_password: "p@ss word" };
     const { calls } = mockFetch({ ...base, "POST /projects/rp1pz7uyae/services": created });
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" }, { secrets });
+    const client = hostClient(
+      new TimescaleClient({ accessKey: "pub", secretKey: "sec" }, { secrets }),
+    );
     const r = await client.createResource("ts-service", "acc", {
       projectId: "rp1pz7uyae",
       name: "metrics-prod",
@@ -155,7 +158,9 @@ describe("TimescaleClient", () => {
 
   it("explains a missing password instead of returning a URI without one", async () => {
     mockFetch(base);
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" }, secretsStore());
+    const client = hostClient(
+      new TimescaleClient({ accessKey: "pub", secretKey: "sec" }, secretsStore()),
+    );
     await expect(
       client.resolveOutput(
         "ts-service",
@@ -172,7 +177,9 @@ describe("TimescaleClient", () => {
       ...base,
       "POST /projects/rp1pz7uyae/services/kd9w2xp4mz/updatePassword": null,
     });
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" }, { secrets });
+    const client = hostClient(
+      new TimescaleClient({ accessKey: "pub", secretKey: "sec" }, { secrets }),
+    );
     await client.executeNoSqlCommand(
       "ts-service",
       "acc:ts-service:rp1pz7uyae/kd9w2xp4mz",
@@ -197,7 +204,7 @@ describe("TimescaleClient", () => {
         retention_days: 30,
       },
     });
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
     await client.updateResource("ts-service", "acc:ts-service:rp1pz7uyae/kd9w2xp4mz", "acc", {
       name: "renamed",
       computeSize: "4000/16",
@@ -220,7 +227,7 @@ describe("TimescaleClient", () => {
 
   it("refuses a synchronous replica without two HA replicas, and sizes off the list", async () => {
     mockFetch(base);
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
     await expect(
       client.updateResource("ts-service", "acc:ts-service:rp1pz7uyae/kd9w2xp4mz", "acc", {
         haReplicas: "1",
@@ -240,7 +247,7 @@ describe("TimescaleClient", () => {
       "POST /projects/rp1pz7uyae/services/kd9w2xp4mz/stop": SERVICE,
       "POST /projects/rp1pz7uyae/services/kd9w2xp4mz/start": SERVICE,
     });
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
     await client.invokeAction("ts-service", "acc:ts-service:rp1pz7uyae/kd9w2xp4mz", "pause", "acc");
     await client.invokeAction(
       "ts-service",
@@ -262,7 +269,9 @@ describe("TimescaleClient", () => {
         name: "recovery",
       },
     });
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" }, { secrets });
+    const client = hostClient(
+      new TimescaleClient({ accessKey: "pub", secretKey: "sec" }, { secrets }),
+    );
     await client.executeNoSqlCommand(
       "ts-service",
       "acc:ts-service:rp1pz7uyae/kd9w2xp4mz",
@@ -297,7 +306,7 @@ describe("TimescaleClient", () => {
         };
       },
     });
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
     const logs = await client.getLogs("ts-service", "acc:ts-service:rp1pz7uyae/kd9w2xp4mz", "acc", {
       tailLines: 10,
     });
@@ -332,7 +341,7 @@ describe("TimescaleClient", () => {
         ];
       },
     });
-    const client = new TimescaleClient({ accessKey: "pub", secretKey: "sec" });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
     const series = await client.fetchMetricSeries(
       "ts-service",
       "acc:ts-service:rp1pz7uyae/kd9w2xp4mz",

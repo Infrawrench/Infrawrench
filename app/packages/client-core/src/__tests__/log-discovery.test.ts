@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
+import type { HostPluginClient, ResourceInstance } from "@infrawrench/plugin-base";
 import {
   __resetPeerLogCapabilityCache,
   discoverSidecarLogStreams,
@@ -25,7 +25,7 @@ function instance(over: Partial<ResourceInstance> = {}): ResourceInstance {
 }
 
 /** A peer client whose `k8s-pod` type declares logs and lists two pods. */
-function peerClient(over: Partial<PluginClient> = {}): PluginClient {
+function peerClient(over: Partial<HostPluginClient> = {}): HostPluginClient {
   return {
     listResources: vi.fn(async (typeId: string) =>
       typeId === "k8s-pod"
@@ -39,7 +39,7 @@ function peerClient(over: Partial<PluginClient> = {}): PluginClient {
     ),
     getLogs: vi.fn(),
     ...over,
-  } as unknown as PluginClient;
+  } as unknown as HostPluginClient;
 }
 
 function parent(over: Partial<SidecarLogParent> = {}): SidecarLogParent {
@@ -114,7 +114,7 @@ describe("discoverSidecarLogStreams", () => {
     ]);
     // Only the log-capable type is listed: k8s-namespace renders no logs tab.
     const client = (await (d.getPeerClient as ReturnType<typeof vi.fn>).mock.results[0]!
-      .value) as PluginClient;
+      .value) as HostPluginClient;
     expect(client.listResources).toHaveBeenCalledTimes(1);
   });
 

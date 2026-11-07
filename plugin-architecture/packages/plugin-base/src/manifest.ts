@@ -1,3 +1,4 @@
+import type { PluginEffect, PluginStream } from "./contract-effect.js";
 import type { ResourceTypeDefinition } from "./resource.js";
 
 export interface CredentialFieldRegion {
@@ -28,7 +29,7 @@ export interface CredentialField {
   /** Use a textarea instead of a single-line input (e.g. kubeconfig YAML) */
   multiline?: boolean;
   /** When provided, the field is rendered as the searchable region picker */
-  regions?: CredentialFieldRegion[];
+  regions?: readonly CredentialFieldRegion[];
   /**
    * When set, the field is rendered as a picker of existing accounts in the same
    * organization. The stored value is the selected account's id (or empty for
@@ -47,7 +48,7 @@ export interface CredentialField {
    * `multiple` lets the user pick several options; the stored value is their
    * ids joined with `, ` (empty when none are picked).
    */
-  providerOptions?: { dependsOn: string[]; emptyLabel?: string; multiple?: boolean };
+  providerOptions?: { dependsOn: readonly string[]; emptyLabel?: string; multiple?: boolean };
   /** Field is optional: the modal accepts an empty value and skips validation. */
   optional?: boolean;
   /**
@@ -99,6 +100,11 @@ export interface KvDriverDeclaration {
   driver: string;
   /** The key in the account credentials that holds the connection string/URI. */
   credentialKey: string;
+  /**
+   * Which browser the host opens for a connection: `documents` for collections
+   * of JSON documents, `keys` (the default) for the key-value console.
+   */
+  browser?: "keys" | "documents";
 }
 
 /**
@@ -129,18 +135,28 @@ export interface PluginManifest {
   sshInstall?: { description: string; messages?: string[] };
   /** Unique plugin identifier, e.g. "digitalocean" */
   id: string;
-  version: string;
   displayName: string;
   description?: string;
   /** Raw SVG string: injected by the host into dashboard cards */
   logoSvg: string;
-  author: string;
   /** Minimum infrawrench host version required (semver) */
-  minHostVersion: string;
+  /**
+   * Hosts this plugin's own code talks to, for a bastion-routed account's egress
+   * allowlist: exact names or `*.suffix` wildcards. Empty means there is no fixed
+   * host, because the URL is user-supplied or the plugin never makes HTTP calls.
+   */
+  egressHosts: readonly string[];
+  /**
+   * Offer this plugin in the "Connect to service via SSH" modal. `credentials`
+   * is what a tunneled account stores, with `{port}` standing for the local end.
+   */
+  sshTunnel?: { label: string; defaultPort: number; credentials: Readonly<Record<string, string>> };
+  /** This plugin's accounts are SSH hosts another account can connect through. */
+  jumpHost?: boolean;
   /** Plugin IDs this plugin may receive associations from */
   peerPlugins?: string[];
   /** Fields the host must collect from the user when adding an account */
-  credentialFields: CredentialField[];
+  credentialFields: readonly CredentialField[];
   /**
    * If present, the host offers "Connect with <provider>" beside the manual
    * credential form: an OAuth flow whose access token fills `oauth.tokenField`.
@@ -527,13 +543,13 @@ export interface PluginClient {
   /** Install/enroll this service on a host. Provider logic stays inside the plugin. */
   installOnSsh?(
     context: import("./ssh-install.js").SshInstallContext,
-  ): Promise<import("./ssh-install.js").SshInstallResult>;
+  ): PluginEffect<import("./ssh-install.js").SshInstallResult>;
   /**
    * Undo an install whose server is being destroyed, given the `ref` it
    * returned (e.g. remove the device from the tailnet). Must tolerate a ref
    * that is already gone.
    */
-  releaseSshInstall?(ref: string): Promise<void>;
+  releaseSshInstall?(ref: string): PluginEffect<void>;
   /**
    * Probe the provider with this client's credentials and report what each
    * declared capability can actually do: ok / missing (with which
@@ -543,7 +559,7 @@ export interface PluginClient {
    * Failures to reach the provider at all should be reported as `unknown`
    * checks rather than thrown, so a partial probe still renders.
    */
-  verifyCredentials?(): Promise<PreflightResult>;
+  verifyCredentials?(): PluginEffect<PreflightResult>;
   /**
    * List all instances of a resource type for an account.
    *
@@ -558,16 +574,20 @@ export interface PluginClient {
     typeId: string,
     accountId: string,
     opts?: { regionHint?: string },
-  ): Promise<ResourceInstance[]>;
+  ): PluginEffect<ResourceInstance[]>;
   /** Fetch a single resource's current state */
-  getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
+  getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): PluginEffect<ResourceInstance>;
   /** Resolve an output value: called by the host's SecretResolver */
   resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string>;
+  ): PluginEffect<string>;
   /**
    * Optional async enrichment hook called by the host immediately before
    * `renderDetail` on the resource detail view. Plugins can make additional
@@ -576,7 +596,7 @@ export interface PluginClient {
    * `renderDetail`. Failures should throw: the host will fall back to the
    * un-enriched resource.
    */
-  enrichDetail?(resource: ResourceInstance): Promise<ResourceInstance>;
+  enrichDetail?(resource: ResourceInstance): PluginEffect<ResourceInstance>;
   /** Return the component schema for a resource's detail view */
   renderDetail(resource: ResourceInstance): DetailViewSchema;
   /**
@@ -584,26 +604,26 @@ export interface PluginClient {
    * as a secondary tab inside another plugin's resource detail view.
    * The client's credentials have already been resolved from the parent resource's outputs.
    */
-  renderPeerPane?(context: PeerPaneContext): PeerPaneSchema | Promise<PeerPaneSchema>;
+  renderPeerPane?(context: PeerPaneContext): PeerPaneSchema | PluginEffect<PeerPaneSchema>;
   /** Return the sidebar item schema for a resource */
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema;
   /** Fetch table/column schema for the SQL editor, only when sql services are injected */
-  introspect?(): Promise<SqlTableMeta[]>;
+  introspect?(): PluginEffect<SqlTableMeta[]>;
   /** Fetch connection stats (version, size) for SQL/KV/Docker resources. */
-  fetchStats?(): Promise<{ version: string; size: string }>;
+  fetchStats?(): PluginEffect<{ version: string; size: string }>;
   /** Fetch generic labelled stats for a dashboard card. */
   fetchDashboardStats?(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]>;
+  ): PluginEffect<DashboardStat[]>;
   /** Fetch time-series metric data for a resource (e.g. CPU, memory, request rate). */
   fetchMetricSeries?(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]>;
+  ): PluginEffect<MetricSeries[]>;
   /**
    * Fetch normalized daily cost rows for an account over an inclusive date
    * range. Only called when the manifest declares `costs`. The host invokes
@@ -617,7 +637,10 @@ export interface PluginClient {
    * so it can flag a degraded pass, which stops the host from treating the
    * coarser rows as evidence that the finer ones are gone.
    */
-  fetchCostData?(accountId: string, range: CostFetchRange): Promise<CostRow[] | CostFetchResult>;
+  fetchCostData?(
+    accountId: string,
+    range: CostFetchRange,
+  ): PluginEffect<CostRow[] | CostFetchResult>;
   /**
    * List every commitment the provider reports for this account: active,
    * queued, and expired alike. Only called when the manifest declares
@@ -630,7 +653,7 @@ export interface PluginClient {
    * reads as commitments having ended. A per-region failure fails the whole
    * fetch.
    */
-  fetchCommitments?(accountId: string): Promise<CommitmentRecord[]>;
+  fetchCommitments?(accountId: string): PluginEffect<CommitmentRecord[]>;
   /**
    * Read the account's prepaid credit balance(s). Only called when the
    * manifest declares `credits`. Called on a low-frequency background pass
@@ -640,7 +663,7 @@ export interface PluginClient {
    * Throw {@link CreditAccessError} when the credential cannot see the balance:
    * that is a different situation from a failure and the host says so.
    */
-  fetchCreditBalance?(accountId: string): Promise<CreditBalance[]>;
+  fetchCreditBalance?(accountId: string): PluginEffect<CreditBalance[]>;
   /**
    * List every paid seat on the account. Only called when the manifest
    * declares `seats`, from a daily background pass that stores the result.
@@ -651,13 +674,13 @@ export interface PluginClient {
    * Free members (unpaid admins, guests) are left out, not returned at $0.
    * See `seats.ts` for the activity-evidence rules.
    */
-  fetchSeats?(accountId: string, options: SeatFetchOptions): Promise<SeatRecord[]>;
+  fetchSeats?(accountId: string, options: SeatFetchOptions): PluginEffect<SeatRecord[]>;
   /**
    * Remove (or unassign) one seat. Only offered when the manifest declares
    * `seats.removal` and the seat's `removable` is true. Throw a user-facing
    * error when the provider refuses (a seat granted through a team, say).
    */
-  removeSeat?(accountId: string, seat: SeatRef): Promise<SeatRemovalResult>;
+  removeSeat?(accountId: string, seat: SeatRef): PluginEffect<SeatRemovalResult>;
   /**
    * Read how close this account is to the limits the provider enforces. Only
    * called when the manifest declares `quotas`. Called on a low-frequency
@@ -688,7 +711,7 @@ export interface PluginClient {
    * missing what this needs (an unattached policy, a disabled API) so the host
    * can stop retrying on a tight loop and show the fix.
    */
-  fetchQuotas?(accountId: string): Promise<QuotaUsage[]>;
+  fetchQuotas?(accountId: string): PluginEffect<QuotaUsage[]>;
   /**
    * Judge the account's resources against the enabled idle rules over the
    * requested window. Only called when the manifest declares `idleFindings`,
@@ -703,7 +726,10 @@ export interface PluginClient {
    * Throw {@link IdleFindingAccessError} when the credential cannot read the
    * metrics, so the host shows the fix rather than an empty list.
    */
-  fetchIdleFindings?(accountId: string, request: IdleScanRequest): Promise<IdleFindingRecord[]>;
+  fetchIdleFindings?(
+    accountId: string,
+    request: IdleScanRequest,
+  ): PluginEffect<IdleFindingRecord[]>;
   /**
    * Read the provider scanner's current open vulnerability findings for this
    * account. Only called when the manifest declares `vulnerabilities`, on a
@@ -720,7 +746,7 @@ export interface PluginClient {
    * credential lacks the permission, so the host can show the fix instead of
    * an empty, clean-looking list.
    */
-  listVulnerabilityFindings?(accountId: string): Promise<VulnerabilityFinding[]>;
+  listVulnerabilityFindings?(accountId: string): PluginEffect<VulnerabilityFinding[]>;
   /**
    * Options for one target field of `manifest.warehouseSink`, given the values
    * chosen so far. Read-only metadata calls; must not resume compute where the
@@ -730,7 +756,7 @@ export interface PluginClient {
     accountId: string,
     fieldKey: string,
     target: Record<string, string>,
-  ): Promise<CredentialFieldOption[]>;
+  ): PluginEffect<CredentialFieldOption[]>;
   /**
    * Atomically replace one slice of a warehouse table with the streamed rows,
    * creating the table (and any missing columns) first. Only called when the
@@ -740,7 +766,7 @@ export interface PluginClient {
   loadWarehouseRows?(
     accountId: string,
     request: WarehouseLoadRequest,
-  ): Promise<WarehouseLoadResult>;
+  ): PluginEffect<WarehouseLoadResult>;
   /**
    * The least-privilege grants the connected principal needs for a target,
    * personalised with the account's role or user where the plugin can tell.
@@ -748,7 +774,7 @@ export interface PluginClient {
   describeWarehouseSetup?(
     accountId: string,
     target: Record<string, string>,
-  ): Promise<WarehouseSetupGuide>;
+  ): PluginEffect<WarehouseSetupGuide>;
   /**
    * The credentialed half of the price catalog: only called when the
    * manifest declares `priceCatalog` with `requiresCredentials: true`. The
@@ -757,7 +783,7 @@ export interface PluginClient {
    * Prices are the provider's published list prices, not the account's
    * negotiated ones: the account only unlocks the API.
    */
-  fetchPriceCatalog?(request: PriceCatalogRequest): Promise<PriceCatalogResult>;
+  fetchPriceCatalog?(request: PriceCatalogRequest): PluginEffect<PriceCatalogResult>;
   /**
    * Return the extended-support surcharges the provider actually billed this
    * account over `range` (inclusive `start`, exclusive `end`, `YYYY-MM-DD`),
@@ -776,7 +802,7 @@ export interface PluginClient {
   fetchExtendedSupportCharges?(
     accountId: string,
     range: { start: string; end: string },
-  ): Promise<ExtendedSupportCharge[]>;
+  ): PluginEffect<ExtendedSupportCharge[]>;
   /**
    * Return **aggregated** source→destination flows for one closed UTC day.
    * Only called when the manifest declares `networkFlows`.
@@ -815,7 +841,7 @@ export interface PluginClient {
   listAiRequestLogLocations?(
     accountId: string,
     sourceKindId: string,
-  ): Promise<AiRequestLogLocation[]>;
+  ): PluginEffect<AiRequestLogLocation[]>;
   /**
    * Read one closed UTC day of request logs from a configured location and
    * return it **aggregated** (fold records through `AiRequestAccumulator`;
@@ -825,11 +851,11 @@ export interface PluginClient {
   fetchAiRequestLogs?(
     accountId: string,
     range: AiRequestLogFetchRange,
-  ): Promise<AiRequestLogFetchResult>;
+  ): PluginEffect<AiRequestLogFetchResult>;
   fetchNetworkFlows?(
     accountId: string,
     range: NetworkFlowFetchRange,
-  ): Promise<NetworkFlowRecord[] | NetworkFlowFetchResult>;
+  ): PluginEffect<NetworkFlowRecord[] | NetworkFlowFetchResult>;
   /**
    * Choices for a `select` field of `manifest.businessMetricSource`, given the
    * values picked so far (`params`). Only called when the manifest declares a
@@ -839,7 +865,7 @@ export interface PluginClient {
     accountId: string,
     fieldKey: string,
     params: Record<string, string>,
-  ): Promise<BusinessMetricSourceOption[]>;
+  ): PluginEffect<BusinessMetricSourceOption[]>;
   /**
    * Read a business metric's raw points over `range`. Only called when the
    * manifest declares `businessMetricSource`. Read only, bounded by
@@ -850,7 +876,7 @@ export interface PluginClient {
     accountId: string,
     params: Record<string, string>,
     range: BusinessMetricSourceRange,
-  ): Promise<BusinessMetricSourceResult>;
+  ): PluginEffect<BusinessMetricSourceResult>;
   /**
    * Validate the query with the provider without reading data (BigQuery's dry
    * run). Only called when `businessMetricSource.supportsDryRun` is set.
@@ -859,22 +885,22 @@ export interface PluginClient {
     accountId: string,
     params: Record<string, string>,
     range: BusinessMetricSourceRange,
-  ): Promise<BusinessMetricSourceDryRun>;
+  ): PluginEffect<BusinessMetricSourceDryRun>;
   /** List objects in a storage bucket at a given prefix (delimiter="/") */
-  listStorageObjects?(bucket: string, prefix: string): Promise<StorageObject[]>;
+  listStorageObjects?(bucket: string, prefix: string): PluginEffect<StorageObject[]>;
   /** Upload a file to the given key within a bucket */
   uploadStorageObject?(
     bucket: string,
     key: string,
     file: File,
     onProgress?: (pct: number) => void,
-  ): Promise<void>;
+  ): PluginEffect<void>;
   /** Create a folder placeholder (zero-byte object with trailing slash) */
-  makeStorageFolder?(bucket: string, key: string): Promise<void>;
+  makeStorageFolder?(bucket: string, key: string): PluginEffect<void>;
   /** Delete an object. If key ends with "/" deletes all objects under that prefix. */
-  deleteStorageObject?(bucket: string, key: string): Promise<void>;
+  deleteStorageObject?(bucket: string, key: string): PluginEffect<void>;
   /** Return a short-lived bearer token the host can use for direct storage API calls (e.g. batch download via IPC). */
-  getStorageAccessToken?(): Promise<string>;
+  getStorageAccessToken?(): PluginEffect<string>;
   /**
    * List keys inside a provider KV namespace. Called by the host's "Keys" tab
    * when the detail view declares a `kvBrowser` capability. Implementations
@@ -889,14 +915,14 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     params?: { prefix?: string; cursor?: string; limit?: number },
-  ): Promise<KvListResult>;
+  ): PluginEffect<KvListResult>;
   /** Fetch the value stored under a single key as a UTF-8 string. */
   getKvValue?(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     key: string,
-  ): Promise<string>;
+  ): PluginEffect<string>;
   /** Create or overwrite the value stored under a single key. */
   putKvValue?(
     resourceTypeId: string,
@@ -904,20 +930,20 @@ export interface PluginClient {
     accountId: string,
     key: string,
     value: string,
-  ): Promise<void>;
+  ): PluginEffect<void>;
   /** Delete a single key from the namespace. */
   deleteKvKey?(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     key: string,
-  ): Promise<void>;
+  ): PluginEffect<void>;
   /** Return SSH connection details for terminal access, only when the resource type declares supportsTerminal */
   getSshConfig?(): { host: string; port: number; username: string; privateKey: string };
   /** Fetch a fully-populated create form config for a resource type (regions, sizes, etc. from live API).
    * When creating a child resource from its parent's detail page, `parentResourceId` is the full
    * `{accountId}:{typeId}:{externalId}` id of the parent so the plugin can omit fields implied by it. */
-  getCreateConfig?(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig>;
+  getCreateConfig?(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig>;
   /**
    * Optionally resolve size pricing after initial form load.
    * Hosts may call this asynchronously to avoid blocking create modal rendering.
@@ -925,7 +951,7 @@ export interface PluginClient {
   getCreateSizePricing?(
     typeId: string,
     request: CreateSizePricingRequest,
-  ): Promise<Record<string, number>>;
+  ): PluginEffect<Record<string, number>>;
   /**
    * Estimate what a configuration would cost per month, as a total plus the
    * line items that make it up. See {@link CostEstimate}.
@@ -945,7 +971,7 @@ export interface PluginClient {
    * quote a partial estimate (never a guessed one) when only some components
    * have known rates.
    */
-  estimateCost?(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null>;
+  estimateCost?(typeId: string, fields: Record<string, string>): PluginEffect<CostEstimate | null>;
   /**
    * Execute an in-form field action (declared via `CreateFieldConfig.actions`).
    * Plugins typically use this to mint a dependency mid-form, e.g. generate
@@ -965,9 +991,9 @@ export interface PluginClient {
      * action has no form panel.
      */
     actionFields?: Record<string, string>,
-  ): Promise<FieldActionResult>;
+  ): PluginEffect<FieldActionResult>;
   /** Permanently delete a resource. The host is responsible for confirming with the user first. */
-  deleteResource?(typeId: string, resourceId: string, accountId: string): Promise<void>;
+  deleteResource?(typeId: string, resourceId: string, accountId: string): PluginEffect<void>;
   /**
    * Apply a freshly-rerolled secret to the upstream provider before the host
    * persists it locally. Called when the user picks a literal value for a
@@ -982,7 +1008,7 @@ export interface PluginClient {
     accountId: string,
     fieldKey: string,
     plaintext: string,
-  ): Promise<void>;
+  ): PluginEffect<void>;
   /**
    * Reissue an output value upstream, e.g. reset the role password backing
    * the `connectionString` output. Called by the host when a peer plugin's
@@ -999,18 +1025,18 @@ export interface PluginClient {
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<void>;
+  ): PluginEffect<void>;
   /**
    * Secrets this scanner account found committed to code. Required when the
    * manifest declares `secretScanning`. See `leaked-secrets.ts`.
    */
-  listLeakedSecrets?(query: LeakedSecretQuery): Promise<LeakedSecretPage>;
+  listLeakedSecrets?(query: LeakedSecretQuery): PluginEffect<LeakedSecretPage>;
   /**
    * Close one finding upstream (`ref` from `listLeakedSecrets`). Required when
    * `secretScanning.canResolve` is set. Resolving an already resolved finding
    * must succeed.
    */
-  resolveLeakedSecret?(ref: string, resolution: LeakedSecretResolution): Promise<void>;
+  resolveLeakedSecret?(ref: string, resolution: LeakedSecretResolution): PluginEffect<void>;
   /**
    * Invoke a plugin-defined action against a resource, e.g. restart VMs in an
    * instance group. `actionId` is plugin-specific. The host calls this in
@@ -1021,7 +1047,7 @@ export interface PluginClient {
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void>;
+  ): PluginEffect<void>;
   /**
    * Execute a NoSQL document-browser command against a resource. Called by
    * the host when the detail view declares a `noSqlBrowser` capability.
@@ -1035,7 +1061,7 @@ export interface PluginClient {
     accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown>;
+  ): PluginEffect<unknown>;
   /**
    * Send one round-trip in a chat conversation, streaming token deltas back
    * to the host. Called by the host's Playground tab when the user submits a
@@ -1060,69 +1086,72 @@ export interface PluginClient {
      * whose model is fixed by the resource can ignore it.
      */
     options?: { model?: string },
-  ): AsyncIterable<ChatStreamEvent>;
+  ): PluginStream<ChatStreamEvent>;
   /**
    * Paging: the places an alert can be sent (services, alert sources). Required
    * when the manifest declares `paging`. See `paging.ts`.
    */
-  listPagingTargets?(): Promise<PagingTarget[]>;
+  listPagingTargets?(): PluginEffect<PagingTarget[]>;
   /**
    * Paging: trigger, acknowledge or resolve one alert on a target under the
    * host's dedup key. The plugin resolves whatever secret the provider needs
    * (a routing key, a source token) from the target id. Throws with a numeric
    * `status` on failure so the host can tell retryable errors from permanent ones.
    */
-  sendPagingEvent?(targetId: string, event: PagingEvent): Promise<PagingEventResult>;
+  sendPagingEvent?(targetId: string, event: PagingEvent): PluginEffect<PagingEventResult>;
   /** Paging: schedules and escalation policies that can name who is on call. */
-  listPagingOnCallSources?(): Promise<PagingOnCallSource[]>;
+  listPagingOnCallSources?(): PluginEffect<PagingOnCallSource[]>;
   /** Paging: who is on call on one source at `at` (first level first). */
-  resolvePagingOnCall?(sourceId: string, at: Date): Promise<PagingOnCallPerson[]>;
+  resolvePagingOnCall?(sourceId: string, at: Date): PluginEffect<PagingOnCallPerson[]>;
   /** Paging: incidents created or changed since `query.since`. */
-  listPagingIncidents?(query: PagingIncidentQuery): Promise<PagingIncident[]>;
+  listPagingIncidents?(query: PagingIncidentQuery): PluginEffect<PagingIncident[]>;
   /** Paging: one incident's current state, or null when it no longer exists. */
-  getPagingIncident?(incidentId: string): Promise<PagingIncident | null>;
+  getPagingIncident?(incidentId: string): PluginEffect<PagingIncident | null>;
   /** Paging: acknowledge or resolve an incident, returning its new state. */
-  updatePagingIncident?(incidentId: string, update: PagingIncidentUpdate): Promise<PagingIncident>;
+  updatePagingIncident?(
+    incidentId: string,
+    update: PagingIncidentUpdate,
+  ): PluginEffect<PagingIncident>;
   /** Paging: subscribe `url` to incident events (`webhook.mode: "managed"`). */
-  registerPagingWebhook?(url: string): Promise<PagingWebhookRegistration>;
+  registerPagingWebhook?(url: string): PluginEffect<PagingWebhookRegistration>;
   /** Paging: remove a subscription made by `registerPagingWebhook`. */
-  removePagingWebhook?(webhookId: string): Promise<void>;
+  removePagingWebhook?(webhookId: string): PluginEffect<void>;
   /**
    * Just-in-time access: the places a role can be granted (accounts,
    * projects, namespaces). Required when the manifest declares `jitAccess`.
    */
-  listJitScopes?(): Promise<JitScope[]>;
+  listJitScopes?(): PluginEffect<JitScope[]>;
   /** Just-in-time access: the roles grantable inside one scope. Required with `jitAccess`. */
-  listJitRoles?(scopeId: string): Promise<JitRole[]>;
+  listJitRoles?(scopeId: string): PluginEffect<JitRole[]>;
   /**
    * Just-in-time access: the provider principal for a host member, matched by
    * email, or null when the provider has nobody by that address. Required
    * with `jitAccess`.
    */
-  resolveJitPrincipal?(identity: JitIdentity): Promise<JitPrincipal | null>;
+  resolveJitPrincipal?(identity: JitIdentity): PluginEffect<JitPrincipal | null>;
   /**
    * Just-in-time access: principals a requester may pick when their name in
    * the provider is not their email. Required when `jitAccess.principalPicker`.
    */
-  listJitPrincipals?(query?: string): Promise<JitPrincipal[]>;
+  listJitPrincipals?(query?: string): PluginEffect<JitPrincipal[]>;
   /**
    * Just-in-time access: create (or, on a retry, find) the grant. Idempotent
    * by `spec.grantId`; calling it again with a later `expiresAt` extends a
    * provider-enforced expiry. Required with `jitAccess`.
    */
-  grantJitAccess?(spec: JitGrantSpec): Promise<JitGrantResult>;
+  grantJitAccess?(spec: JitGrantSpec): PluginEffect<JitGrantResult>;
   /**
    * Just-in-time access: remove the grant. Idempotent: a grant that is
    * already gone (or never finished being created) is a success. Must not
    * need `spec.ref`. Required with `jitAccess`.
    */
-  revokeJitAccess?(spec: JitGrantSpec): Promise<void>;
+  revokeJitAccess?(spec: JitGrantSpec): PluginEffect<void>;
   /**
    * Just-in-time access: whether the grant's access exists upstream. Called
    * before granting (so standing access is never revoked) and after revoking
    * (so a revoke that did not take is raised). Required with `jitAccess`.
    */
-  checkJitAccess?(spec: JitGrantSpec): Promise<JitAccessPresence>;
+  checkJitAccess?(spec: JitGrantSpec): PluginEffect<JitAccessPresence>;
   /**
    * Publish one message to a pub/sub resource: Cloudflare Queue, AWS SQS/SNS/
    * Kinesis/EventBridge, GCP Pub/Sub topic, GCP Cloud Tasks, Azure Service
@@ -1137,7 +1166,7 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     payload: PublishMessagePayload,
-  ): Promise<PublishMessageResult>;
+  ): PluginEffect<PublishMessageResult>;
   /**
    * Synthesise one clip of speech for the Speech tab's TTS half. Called when
    * the user clicks Synthesize. Return audio the browser can play directly:
@@ -1150,7 +1179,7 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     payload: SynthesizeSpeechPayload,
-  ): Promise<SynthesizeSpeechResult>;
+  ): PluginEffect<SynthesizeSpeechResult>;
   /**
    * Transcribe one clip for the Speech tab's STT half. The clip arrives
    * base64-encoded from either the microphone recorder or a file picker; the
@@ -1164,7 +1193,7 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     payload: TranscribeAudioPayload,
-  ): Promise<TranscribeAudioResult>;
+  ): PluginEffect<TranscribeAudioResult>;
   /**
    * Attach a resource of `sourceTypeId` onto a resource of `targetTypeId`, e.g. a
    * persistent disk onto a VM. Only called when both resources live in the same
@@ -1176,7 +1205,7 @@ export interface PluginClient {
     targetTypeId: string,
     targetResourceId: string,
     accountId: string,
-  ): Promise<void>;
+  ): PluginEffect<void>;
   /** Create a new resource of the given type. Fields are the raw form values.
    * When creating a child resource from its parent's detail page, `parentResourceId` is the full
    * `{accountId}:{typeId}:{externalId}` id of the parent. */
@@ -1185,7 +1214,7 @@ export interface PluginClient {
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceCreateReturn>;
+  ): PluginEffect<ResourceCreateReturn>;
   /**
    * Apply edits to an existing resource. `fields` carries only the keys the
    * user changed (host diffs the form against the current values); plugins
@@ -1200,7 +1229,7 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance>;
+  ): PluginEffect<ResourceInstance>;
   /**
    * Execute a SQL query against a specific resource without using the node SQL driver.
    * Used for providers with REST-based query APIs (e.g. BigQuery).
@@ -1210,12 +1239,12 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     sql: string,
-  ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }>;
+  ): PluginEffect<{ rows: Record<string, unknown>[]; durationMs: number }>;
   /**
    * Introspect a specific resource's schema (tables, columns) for SQL autocomplete.
    * Counterpart to introspect() but resource-scoped, for REST-based query providers.
    */
-  introspectResource?(resourceId: string, accountId: string): Promise<SqlTableMeta[]>;
+  introspectResource?(resourceId: string, accountId: string): PluginEffect<SqlTableMeta[]>;
   /**
    * Estimate the cost of running a SQL query without executing it (a "dry run").
    * Used by backends that charge per byte scanned (e.g. BigQuery). The host
@@ -1225,7 +1254,7 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     sql: string,
-  ): Promise<QueryCostEstimate>;
+  ): PluginEffect<QueryCostEstimate>;
   /**
    * Import secret data into this plugin's target (e.g. create a K8s Secret).
    * Called by the host after resolving all output values from the source resource.
@@ -1233,34 +1262,34 @@ export interface PluginClient {
   importSecret?(
     accountId: string,
     config: { namespace: string; secretName: string; data: Record<string, string> },
-  ): Promise<void>;
+  ): PluginEffect<void>;
   /**
    * List namespaces available for secret import targeting.
    * The host uses this to populate the namespace dropdown in the secret export modal.
    */
-  listNamespacesForImport?(accountId: string): Promise<string[]>;
+  listNamespacesForImport?(accountId: string): PluginEffect<string[]>;
   /**
    * Fetch the full manifest for a resource as a text string (JSON or YAML).
    * Called when the user opens the manifest editor tab.
    */
-  getManifest?(resourceId: string, accountId: string): Promise<string>;
+  getManifest?(resourceId: string, accountId: string): PluginEffect<string>;
   /**
    * Apply an updated manifest back to the resource.
    * The host is responsible for confirming destructive changes with the user first.
    */
-  applyManifest?(resourceId: string, accountId: string, manifest: string): Promise<void>;
+  applyManifest?(resourceId: string, accountId: string, manifest: string): PluginEffect<void>;
   /**
    * Apply arbitrary (possibly multi-document) YAML to this account's target:
    * `kubectl apply -f` equivalent. Used for bulk import of resources by pasting
    * YAML. Returns the number of documents applied.
    */
-  importYaml?(accountId: string, yaml: string): Promise<{ applied: number }>;
+  importYaml?(accountId: string, yaml: string): PluginEffect<{ applied: number }>;
   /**
    * Return a plain-text "describe" summary for a resource; in the spirit of
    * `kubectl describe`: object status, events, related objects, etc. Called
    * when the user opens the Describe tab.
    */
-  describeResource?(typeId: string, resourceId: string, accountId: string): Promise<string>;
+  describeResource?(typeId: string, resourceId: string, accountId: string): PluginEffect<string>;
   /**
    * Fetch the last N lines of log output for a resource; in the spirit of
    * `kubectl logs`: stdout + stderr of a pod/container. The host polls this
@@ -1272,7 +1301,7 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult>;
+  ): PluginEffect<LogsFetchResult>;
   /**
    * List artifacts (images/packages/versions) inside a registry-shaped resource.
    * Only called when the resource's DetailViewSchema declares an artifactRegistry
@@ -1284,7 +1313,7 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     params?: { pageToken?: string; prefix?: string },
-  ): Promise<{ items: ArtifactEntry[]; nextPageToken?: string }>;
+  ): PluginEffect<{ items: ArtifactEntry[]; nextPageToken?: string }>;
   /**
    * Generate downloadable credentials for a resource (e.g. AWS access key, GCP SA JSON key).
    * Only called for resource types that declare `credentialFormats`. The host is responsible
@@ -1295,7 +1324,7 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     formatId: string,
-  ): Promise<CredentialExport>;
+  ): PluginEffect<CredentialExport>;
   /**
    * List the versions of a secret-shaped resource (e.g. GCP Secret Manager Secret,
    * AWS Secrets Manager Secret). Only called when the detail view declares
@@ -1305,7 +1334,7 @@ export interface PluginClient {
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<SecretVersion[]>;
+  ): PluginEffect<SecretVersion[]>;
   /**
    * Return the decoded plaintext value of a specific version. Plugins should
    * surface an error for versions in `destroyed` state.
@@ -1315,7 +1344,7 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     versionId: string,
-  ): Promise<string>;
+  ): PluginEffect<string>;
   /**
    * Add a new version to a secret with the given plaintext value. The new
    * version becomes the latest enabled version.
@@ -1325,7 +1354,7 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     value: string,
-  ): Promise<SecretVersion>;
+  ): PluginEffect<SecretVersion>;
   /**
    * Enable, disable, or destroy a specific version. The host confirms the
    * destructive action before dispatching.
@@ -1336,7 +1365,7 @@ export interface PluginClient {
     accountId: string,
     versionId: string,
     action: SecretVersionMutation,
-  ): Promise<SecretVersion>;
+  ): PluginEffect<SecretVersion>;
 }
 
 /** A single field in a credential export, e.g. "Access Key ID" and "Secret Access Key". */
@@ -1393,6 +1422,11 @@ export interface Plugin extends OAuthPluginHooks {
   /** Create a scoped client for a set of credentials: host never exposes raw credentials */
   createClient(credentials: Record<string, string>, services?: HostServices): PluginClient;
   /**
+   * Made-up credentials that construct a client without contacting anything, for
+   * the conformance tests. Must never match a real token format.
+   */
+  testCredentials: Readonly<Record<string, string>>;
+  /**
    * Optional "eject to Terraform" capability. Declared on the plugin (not the
    * client) because mapping works purely from stored resource state (no
    * credentials or provider API calls) so hosts can export from persisted
@@ -1444,7 +1478,7 @@ export interface Plugin extends OAuthPluginHooks {
   fetchPriceCatalog?(
     request: PriceCatalogRequest,
     services?: HostServices,
-  ): Promise<PriceCatalogResult>;
+  ): PluginEffect<PriceCatalogResult>;
   /**
    * Build the paste-ready least-privilege credential document scoped to the
    * given capability ids (a subset of `manifest.preflight.capabilities`).
@@ -1453,6 +1487,14 @@ export interface Plugin extends OAuthPluginHooks {
    * credentials: the host offers it even before the user has working keys.
    */
   policyTemplate?(capabilityIds: string[]): PolicyTemplate;
+  /**
+   * A resource the user just created in the peer pane, as a row of its group, so
+   * the host can show it before the next `renderPeerPane`. Pure work over the
+   * created resource (no credentials, no API calls), so it lives on the Plugin
+   * and works for a cloud account as well as a local one. Omit it and the host
+   * draws a plain row from the resource's name and fields.
+   */
+  peerPaneResource?(resource: ResourceInstance): PeerPaneResource;
   /**
    * Reject credentials that are fine on a user's own machine but unsafe on
    * a shared, multi-tenant server host: anything that would make the host
@@ -1479,14 +1521,14 @@ export interface Plugin extends OAuthPluginHooks {
     fieldKey: string,
     credentials: Record<string, string>,
     services?: HostServices,
-  ): Promise<CredentialFieldOption[]>;
+  ): PluginEffect<CredentialFieldOption[]>;
   /**
    * Verify and interpret one inbound paging webhook delivery. Required when
    * `manifest.paging.webhook` is set. Lives on the Plugin rather than the
    * client because it needs only the signing secret, not the account's
    * credentials. Must return `valid: false` (never throw) for a bad signature.
    */
-  verifyPagingWebhook?(request: PagingWebhookRequest): Promise<PagingWebhookResult>;
+  verifyPagingWebhook?(request: PagingWebhookRequest): PluginEffect<PagingWebhookResult>;
 }
 
 // Forward declarations: defined in their own modules but used here
@@ -1575,6 +1617,7 @@ import type {
   DetailViewSchema,
   KvListResult,
   MetricSeries,
+  PeerPaneResource,
   PeerPaneSchema,
   PublishMessagePayload,
   PublishMessageResult,

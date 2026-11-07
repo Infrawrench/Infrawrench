@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   PluginClient,
   HostServices,
@@ -168,7 +171,7 @@ export class DeepSeekClient implements PluginClient {
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("DeepSeek plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -191,17 +194,19 @@ export class DeepSeekClient implements PluginClient {
     });
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "model":
-        return this.listModels(accountId);
-      case "balance":
-        return this.listBalances(accountId);
-      case "file":
-        return this.listFiles(accountId);
-      default:
-        throw new Error(`DeepSeek plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "model":
+          return this.listModels(accountId);
+        case "balance":
+          return this.listBalances(accountId);
+        case "file":
+          return this.listFiles(accountId);
+        default:
+          throw new Error(`DeepSeek plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /**
@@ -357,18 +362,23 @@ export class DeepSeekClient implements PluginClient {
    * response is `{id, object, deleted}`; a `deleted: false` is surfaced
    * rather than swallowed.
    */
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId !== "file") {
-      throw new Error(`DeepSeek plugin: ${typeId} cannot be deleted`);
-    }
-    const fileId = externalIdOf(resourceId);
-    if (!fileId) throw new Error(`DeepSeek plugin: cannot parse resource id "${resourceId}"`);
-    const result = await this.fetch<{ deleted?: boolean }>(`/files/${encodeURIComponent(fileId)}`, {
-      method: "DELETE",
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId !== "file") {
+        throw new Error(`DeepSeek plugin: ${typeId} cannot be deleted`);
+      }
+      const fileId = externalIdOf(resourceId);
+      if (!fileId) throw new Error(`DeepSeek plugin: cannot parse resource id "${resourceId}"`);
+      const result = await this.fetch<{ deleted?: boolean }>(
+        `/files/${encodeURIComponent(fileId)}`,
+        {
+          method: "DELETE",
+        },
+      );
+      if (result.deleted === false) {
+        throw new Error(`DeepSeek plugin: file ${fileId} was not deleted`);
+      }
     });
-    if (result.deleted === false) {
-      throw new Error(`DeepSeek plugin: file ${fileId} was not deleted`);
-    }
   }
 
   /**
@@ -384,47 +394,53 @@ export class DeepSeekClient implements PluginClient {
    * it is deliberately not reported as `granted`: a "12 of 50 remaining" bar
    * built on it would be wrong for any account that has topped up.
    */
-  async fetchCreditBalance(): Promise<CreditBalance[]> {
-    const body = await this.fetch<DeepSeekBalance>("/user/balance");
-    return (body.balance_infos ?? []).map((info) => {
-      const currency = str(info.currency) || "USD";
-      return {
-        key: currency,
-        label: `${currency} balance`,
-        remaining: money(info.total_balance),
-        currency,
-      } satisfies CreditBalance;
+  fetchCreditBalance(): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      const body = await this.fetch<DeepSeekBalance>("/user/balance");
+      return (body.balance_infos ?? []).map((info) => {
+        const currency = str(info.currency) || "USD";
+        return {
+          key: currency,
+          label: `${currency} balance`,
+          remaining: money(info.total_balance),
+          currency,
+        } satisfies CreditBalance;
+      });
     });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId);
-    if (!found) throw new Error(`DeepSeek plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId);
+      if (!found) throw new Error(`DeepSeek plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (
-      (typeId === "model" && outputKey === "modelId") ||
-      (typeId === "file" && outputKey === "fileId")
-    ) {
-      // Cheap path: the model id and the file id *are* the external id.
-      return externalIdOf(resourceId);
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const value = resource.resolvedOutputs[outputKey];
-    if (value !== undefined) return value;
-    throw new Error(`DeepSeek plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (
+        (typeId === "model" && outputKey === "modelId") ||
+        (typeId === "file" && outputKey === "fileId")
+      ) {
+        // Cheap path: the model id and the file id *are* the external id.
+        return externalIdOf(resourceId);
+      }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const value = resource.resolvedOutputs[outputKey];
+      if (value !== undefined) return value;
+      throw new Error(`DeepSeek plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   /**
@@ -435,53 +451,57 @@ export class DeepSeekClient implements PluginClient {
    * is only ever called for those drivers: the generic labelled-stat surface
    * the host renders on cards is this one.)
    */
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const fields = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const fields = resource.fields;
 
-    if (resourceTypeId === "balance") {
-      const currency = str(fields["currency"]);
-      const total = Number(fields["totalBalance"]) || 0;
-      return [
-        {
-          label: "Balance",
-          value: formatMoney(total, currency),
-          variant: fields["isAvailable"] ? "status-healthy" : "status-error",
-        },
-        { label: "Granted", value: formatMoney(Number(fields["grantedBalance"]) || 0, currency) },
-        {
-          label: "Topped up",
-          value: formatMoney(Number(fields["toppedUpBalance"]) || 0, currency),
-        },
-      ];
-    }
+      if (resourceTypeId === "balance") {
+        const currency = str(fields["currency"]);
+        const total = Number(fields["totalBalance"]) || 0;
+        return [
+          {
+            label: "Balance",
+            value: formatMoney(total, currency),
+            variant: fields["isAvailable"] ? "status-healthy" : "status-error",
+          },
+          { label: "Granted", value: formatMoney(Number(fields["grantedBalance"]) || 0, currency) },
+          {
+            label: "Topped up",
+            value: formatMoney(Number(fields["toppedUpBalance"]) || 0, currency),
+          },
+        ];
+      }
 
-    if (resourceTypeId === "model") {
-      const limit = Number(fields["concurrencyLimit"]) || 0;
-      const contextWindow = Number(fields["contextWindow"]) || 0;
-      const maxOutput = Number(fields["maxOutputTokens"]) || 0;
-      return [
-        { label: "Model", value: str(fields["modelId"]) },
-        ...(contextWindow ? [{ label: "Context", value: formatTokens(contextWindow) }] : []),
-        ...(maxOutput ? [{ label: "Max output", value: formatTokens(maxOutput) }] : []),
-        { label: "Concurrency", value: limit ? String(limit) : "see docs" },
-      ];
-    }
+      if (resourceTypeId === "model") {
+        const limit = Number(fields["concurrencyLimit"]) || 0;
+        const contextWindow = Number(fields["contextWindow"]) || 0;
+        const maxOutput = Number(fields["maxOutputTokens"]) || 0;
+        return [
+          { label: "Model", value: str(fields["modelId"]) },
+          ...(contextWindow ? [{ label: "Context", value: formatTokens(contextWindow) }] : []),
+          ...(maxOutput ? [{ label: "Max output", value: formatTokens(maxOutput) }] : []),
+          { label: "Concurrency", value: limit ? String(limit) : "see docs" },
+        ];
+      }
 
-    if (resourceTypeId === "file") {
-      const bytes = Number(fields["bytes"]) || 0;
-      const expires = str(fields["expiresAt"]);
-      return [
-        { label: "Size", value: bytes ? formatBytes(bytes) : "unknown" },
-        { label: "Expires", value: expires || "never" },
-      ];
-    }
+      if (resourceTypeId === "file") {
+        const bytes = Number(fields["bytes"]) || 0;
+        const expires = str(fields["expiresAt"]);
+        return [
+          { label: "Size", value: bytes ? formatBytes(bytes) : "unknown" },
+          { label: "Expires", value: expires || "never" },
+        ];
+      }
 
-    return [];
+      return [];
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

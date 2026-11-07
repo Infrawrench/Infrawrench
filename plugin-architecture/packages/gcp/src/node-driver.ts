@@ -2,6 +2,8 @@
  * GCP Node.js-side driver: runs in the Electron main process.
  * Owns all GCS-specific download logic so the host stays provider-agnostic.
  */
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
 import https from "node:https";
 import fs from "node:fs";
 import path from "node:path";
@@ -43,5 +45,13 @@ function downloadFile(
 
 export const nodeDriver = {
   pluginId: "gcp",
-  downloadFile,
+  downloadFile: attemptFn(downloadFile),
 } satisfies StorageNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { storage: nodeDriver },
+  server: { storage: nodeDriver },
+});

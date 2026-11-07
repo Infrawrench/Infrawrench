@@ -32,7 +32,7 @@ import type {
   WorkflowHost,
   WorkflowPluginInfo,
 } from "@infrawrench/workflow-runtime" with { "resolution-mode": "import" };
-import type { PluginClient, ResourceTypeDefinition } from "@infrawrench/plugin-base" with {
+import type { HostPluginClient, ResourceTypeDefinition } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
 
@@ -300,7 +300,7 @@ async function listPluginTree(ctx: CliContext): Promise<DeployPluginTree> {
  */
 async function resolveLocalClient(
   accountId: string,
-): Promise<{ client: PluginClient; pluginId: string }> {
+): Promise<{ client: HostPluginClient; pluginId: string }> {
   const accounts = await listLocalAccounts();
   const account = accounts.find((a) => a.id === accountId);
   if (!account) throw new Error(`Account "${accountId}" not found.`);

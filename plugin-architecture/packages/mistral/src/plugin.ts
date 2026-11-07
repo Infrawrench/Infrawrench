@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { MistralClient } from "./client.js";
 import { MistralApiKeyResourceType } from "./resources/api-key.js";
@@ -10,9 +15,9 @@ import { MistralVoiceResourceType } from "./resources/voice.js";
 import { MistralAgentResourceType } from "./resources/agent.js";
 import { MistralLibraryResourceType } from "./resources/library.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "mistral",
-  version: "0.1.0",
+  egressHosts: ["api.mistral.ai"],
   displayName: "Mistral AI",
   // Mistral's own favicon mark (mistral.ai/favicon.svg): the five-band
   // tricolour "M", rescaled from its native 183×183 box onto a dark tile.
@@ -31,9 +36,7 @@ const manifest: PluginManifest = {
       <rect x="104" y="127" width="70" height="23" fill="#C4001D"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -60,7 +63,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     focus: { default: { category: "AI and Machine Learning", subcategory: "Generative AI" } },
     // `GET /v1/admin/usage` breaks spend down by service (chat, ocr, audio,
@@ -93,7 +96,9 @@ const manifest: PluginManifest = {
      */
     restatementDays: 62,
   },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   MistralModelResourceType,
@@ -106,8 +111,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   MistralApiKeyResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new MistralClient(credentials, services),
-};
+  testCredentials: { apiKey: "test-mistral-key", adminApiKey: "test-mistral-admin-key" },
+});

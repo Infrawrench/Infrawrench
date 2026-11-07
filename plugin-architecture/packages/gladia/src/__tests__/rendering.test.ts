@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -6,8 +8,8 @@ import { GladiaClient } from "../client.js";
 
 const ACCOUNT = "acct-1";
 
-function client(): GladiaClient {
-  return new GladiaClient({ apiKey: "test-gladia-key" });
+function client(): HostedMethods<GladiaClient> {
+  return hostClient(new GladiaClient({ apiKey: "test-gladia-key" }));
 }
 
 function transcription(overrides: Partial<ResourceInstance> = {}): ResourceInstance {

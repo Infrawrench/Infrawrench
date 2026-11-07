@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MistralClient } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -32,7 +33,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client(adminApiKey = "") {
-  return new MistralClient({ apiKey: "test-key", adminApiKey });
+  return hostClient(new MistralClient({ apiKey: "test-key", adminApiKey }));
 }
 
 beforeEach(() => {

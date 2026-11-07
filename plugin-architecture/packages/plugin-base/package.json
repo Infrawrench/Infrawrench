@@ -7,6 +7,26 @@
     "./test-harness": {
       "import": "./src/test-harness.ts"
     },
+    "./effect": {
+      "import": {
+        "types": "./dist/effect.d.ts",
+        "default": "./dist/effect.js"
+      },
+      "require": {
+        "types": "./dist/effect.d.cts",
+        "default": "./dist/effect.cjs"
+      }
+    },
+    "./validation": {
+      "import": {
+        "types": "./dist/validation/index.d.ts",
+        "default": "./dist/validation/index.js"
+      },
+      "require": {
+        "types": "./dist/validation/index.d.cts",
+        "default": "./dist/validation/index.cjs"
+      }
+    },
     ".": {
       "import": {
         "types": "./dist/index.d.ts",
@@ -35,7 +55,7 @@
     "@aws-crypto/sha256-js": "^5.2.0",
     "@smithy/protocol-http": "^5.5.16",
     "@smithy/signature-v4": "^5.6.12",
-    "zod": "^3.25.76"
+    "effect": "catalog:"
   },
   "devDependencies": {
     "tsdown": "^0.22.14",

@@ -1,3 +1,6 @@
+import { attempt } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import Redis from "ioredis";
 import { unbracketHost, type DialTarget, type KvNodeDriver } from "@infrawrench/plugin-base";
 
@@ -120,20 +123,26 @@ export const driver = {
   id: "redis",
   dialTargets,
 
-  async command(
-    connectionString: string,
-    cmd: string,
-    args: (string | number)[],
-  ): Promise<unknown> {
-    try {
-      return await runOnce(connectionString, cmd, args);
-    } catch (err) {
-      if (!isTransientError(err)) throw describeFailure(err, connectionString);
+  command(connectionString: string, cmd: string, args: (string | number)[]): PluginEffect<unknown> {
+    return attempt(async () => {
       try {
         return await runOnce(connectionString, cmd, args);
-      } catch (retryErr) {
-        throw describeFailure(retryErr, connectionString);
+      } catch (err) {
+        if (!isTransientError(err)) throw describeFailure(err, connectionString);
+        try {
+          return await runOnce(connectionString, cmd, args);
+        } catch (retryErr) {
+          throw describeFailure(retryErr, connectionString);
+        }
       }
-    }
+    });
   },
 } satisfies KvNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { kv: driver },
+  server: { kv: driver },
+});

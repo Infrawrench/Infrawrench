@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SpeechmaticsClient } from "../client.js";
 
@@ -31,7 +32,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 function client(overrides: Record<string, string> = {}) {
-  return new SpeechmaticsClient({ apiKey: "sm-key", region: "eu1", ...overrides });
+  return hostClient(new SpeechmaticsClient({ apiKey: "sm-key", region: "eu1", ...overrides }));
 }
 
 function authHeader(init?: RequestInit): string {
@@ -52,7 +53,9 @@ afterEach(() => {
 
 describe("construction", () => {
   it("rejects an unknown region rather than building a bad host", () => {
-    expect(() => new SpeechmaticsClient({ apiKey: "k", region: "uk1" })).toThrow(/unknown region/);
+    expect(() => hostClient(new SpeechmaticsClient({ apiKey: "k", region: "uk1" }))).toThrow(
+      /unknown region/,
+    );
   });
 
   it("defaults to eu1 and builds the regional base URL", async () => {

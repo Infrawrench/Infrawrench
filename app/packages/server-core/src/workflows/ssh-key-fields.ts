@@ -10,7 +10,7 @@
  *
  * Shared by the cloud web host and the poller.
  */
-import type { PluginClient } from "@infrawrench/plugin-base";
+import type { HostPluginClient } from "@infrawrench/plugin-base";
 import { and, eq, or } from "drizzle-orm";
 
 import { db } from "../db/client";
@@ -62,7 +62,7 @@ export function buildSshKeyFieldResolver(
   organizationId: string,
   getAccountClient: (
     accountId: string,
-  ) => Promise<{ client: PluginClient; pluginId: string } | null>,
+  ) => Promise<{ client: HostPluginClient; pluginId: string } | null>,
 ) {
   return async (
     accountId: string,

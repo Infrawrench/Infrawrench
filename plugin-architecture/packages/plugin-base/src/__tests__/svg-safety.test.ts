@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { findUnsafeSvgConstructs, isInertSvg } from "../svg-safety.js";
-import { pluginManifestSchema } from "../validation/index.js";
+import { pluginManifestSchema, validate } from "../validation/index.js";
 
 /**
  * The shapes real plugin logos take. Every construct here appears in at least
@@ -240,34 +240,30 @@ describe("findUnsafeSvgConstructs", () => {
 describe("pluginManifestSchema logoSvg refinement", () => {
   const manifest = {
     id: "example",
-    version: "1.0.0",
     displayName: "Example",
     logoSvg: "<svg/>",
-    author: "Infrawrench",
-    minHostVersion: "0.1.0",
+    egressHosts: [],
     credentialFields: [],
   };
 
   it("accepts an inert logo", () => {
-    expect(pluginManifestSchema.safeParse(manifest).success).toBe(true);
+    expect(validate(pluginManifestSchema, manifest).success).toBe(true);
   });
 
   it("rejects a logo carrying a script", () => {
-    const result = pluginManifestSchema.safeParse({
+    const result = validate(pluginManifestSchema, {
       ...manifest,
       logoSvg: `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`,
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.some((i) => i.message.includes("logoSvg is not inert"))).toBe(
-        true,
-      );
+      expect(result.issues.some((issue) => issue.includes("logoSvg is not inert"))).toBe(true);
     }
   });
 
   it("rejects a logo carrying an event handler", () => {
     expect(
-      pluginManifestSchema.safeParse({
+      validate(pluginManifestSchema, {
         ...manifest,
         logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>`,
       }).success,
@@ -275,6 +271,6 @@ describe("pluginManifestSchema logoSvg refinement", () => {
   });
 
   it("still rejects an empty logo", () => {
-    expect(pluginManifestSchema.safeParse({ ...manifest, logoSvg: "" }).success).toBe(false);
+    expect(validate(pluginManifestSchema, { ...manifest, logoSvg: "" }).success).toBe(false);
   });
 });

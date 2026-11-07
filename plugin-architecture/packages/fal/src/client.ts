@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   CostFetchRange,
@@ -301,7 +304,7 @@ export class FalClient implements PluginClient {
   private readonly caCert: string;
   private readonly http: HttpHostServices | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("fal plugin: missing apiKey credential");
     this.apiKey = apiKey;
@@ -369,21 +372,23 @@ export class FalClient implements PluginClient {
 
   // ------------------------------------------------------------- listing
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "fal-model":
-        return this.listModels(accountId);
-      case "fal-app":
-        return this.listApps(accountId);
-      case "fal-compute-instance":
-        return this.adminOnly(() => this.listInstances(accountId));
-      case "fal-api-key":
-        return this.adminOnly(() => this.listKeys(accountId));
-      case "fal-workflow":
-        return this.listWorkflows(accountId);
-      default:
-        throw new Error(`fal plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "fal-model":
+          return this.listModels(accountId);
+        case "fal-app":
+          return this.listApps(accountId);
+        case "fal-compute-instance":
+          return this.adminOnly(() => this.listInstances(accountId));
+        case "fal-api-key":
+          return this.adminOnly(() => this.listKeys(accountId));
+        case "fal-workflow":
+          return this.listWorkflows(accountId);
+        default:
+          throw new Error(`fal plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   private async adminOnly(run: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
@@ -601,188 +606,206 @@ export class FalClient implements PluginClient {
 
   // ----------------------------------------------------------------- get
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    if (typeId === "fal-compute-instance") {
-      return this.mapInstance(
-        accountId,
-        await this.fetch<Instance>(`/compute/instances/${encodeURIComponent(id)}`),
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      if (typeId === "fal-compute-instance") {
+        return this.mapInstance(
+          accountId,
+          await this.fetch<Instance>(`/compute/instances/${encodeURIComponent(id)}`),
+        );
+      }
+      const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
+        (r) => r.externalId === id,
       );
-    }
-    const found = (await this.listResources(typeId, accountId)).find((r) => r.externalId === id);
-    if (!found)
-      throw Object.assign(new Error(`fal plugin: ${typeId}/${id} not found`), { status: 404 });
-    return found;
+      if (!found)
+        throw Object.assign(new Error(`fal plugin: ${typeId}/${id} not found`), { status: 404 });
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const r = await this.getResource(typeId, resourceId, accountId);
-    return s(r.resolvedOutputs[outputKey] ?? r.fields[outputKey]);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return s(r.resolvedOutputs[outputKey] ?? r.fields[outputKey]);
+    });
   }
 
   /** Recent requests for models; queue size and revisions for apps. */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const id = resource.externalId ?? "";
-    const out = { ...resource, resolvedOutputs: { ...resource.resolvedOutputs } };
-    if (resource.resourceTypeId === "fal-model" || resource.resourceTypeId === "fal-app") {
-      const base = resource.resourceTypeId === "fal-model" ? "/models" : "/serverless";
-      const reqs = await this.fetch<{ items?: RequestItem[] }>(
-        `${base}/requests/by-endpoint?${qs({ endpoint_id: id, limit: "20", sort_by: "ended_at" })}`,
-      ).catch(() => ({ items: [] as RequestItem[] }));
-      out.resolvedOutputs["__requests__"] = JSON.stringify(reqs.items ?? []);
-    }
-    if (resource.resourceTypeId === "fal-app") {
-      const [owner, ...rest] = id.split("/");
-      const path = `/serverless/apps/${encodeURIComponent(owner ?? "")}/${encodeURIComponent(rest.join("/"))}`;
-      const [queue, revisions] = await Promise.all([
-        this.fetch<{ queue_size?: number }>(`${path}/queue`).catch(
-          () => ({}) as { queue_size?: number },
-        ),
-        this.fetch<{ revisions?: unknown[] }>(`${path}/revisions?limit=20`).catch(() => ({
-          revisions: [],
-        })),
-      ]);
-      if (typeof queue.queue_size === "number")
-        out.resolvedOutputs["__queue__"] = String(queue.queue_size);
-      out.resolvedOutputs["__revisions__"] = JSON.stringify(revisions.revisions ?? []);
-    }
-    return out;
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = resource.externalId ?? "";
+      const out = { ...resource, resolvedOutputs: { ...resource.resolvedOutputs } };
+      if (resource.resourceTypeId === "fal-model" || resource.resourceTypeId === "fal-app") {
+        const base = resource.resourceTypeId === "fal-model" ? "/models" : "/serverless";
+        const reqs = await this.fetch<{ items?: RequestItem[] }>(
+          `${base}/requests/by-endpoint?${qs({ endpoint_id: id, limit: "20", sort_by: "ended_at" })}`,
+        ).catch(() => ({ items: [] as RequestItem[] }));
+        out.resolvedOutputs["__requests__"] = JSON.stringify(reqs.items ?? []);
+      }
+      if (resource.resourceTypeId === "fal-app") {
+        const [owner, ...rest] = id.split("/");
+        const path = `/serverless/apps/${encodeURIComponent(owner ?? "")}/${encodeURIComponent(rest.join("/"))}`;
+        const [queue, revisions] = await Promise.all([
+          this.fetch<{ queue_size?: number }>(`${path}/queue`).catch(
+            () => ({}) as { queue_size?: number },
+          ),
+          this.fetch<{ revisions?: unknown[] }>(`${path}/revisions?limit=20`).catch(() => ({
+            revisions: [],
+          })),
+        ]);
+        if (typeof queue.queue_size === "number")
+          out.resolvedOutputs["__queue__"] = String(queue.queue_size);
+        out.resolvedOutputs["__revisions__"] = JSON.stringify(revisions.revisions ?? []);
+      }
+      return out;
+    });
   }
 
   // ------------------------------------------------------- mutations
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    const id = externalIdOf(resourceId, accountId, typeId);
-    if (typeId === "fal-compute-instance") {
-      await this.fetch(`/compute/instances/${encodeURIComponent(id)}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "fal-api-key") {
-      await this.fetch(`/keys/${encodeURIComponent(id)}`, { method: "DELETE" });
-      return;
-    }
-    throw new Error(`fal plugin: ${typeId} cannot be deleted`);
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId, accountId, typeId);
+      if (typeId === "fal-compute-instance") {
+        await this.fetch(`/compute/instances/${encodeURIComponent(id)}`, { method: "DELETE" });
+        return;
+      }
+      if (typeId === "fal-api-key") {
+        await this.fetch(`/keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+        return;
+      }
+      throw new Error(`fal plugin: ${typeId} cannot be deleted`);
+    });
   }
 
   /** `DELETE /serverless/apps/{owner}/{name}/queue` flushes pending requests. */
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    if (typeId === "fal-app" && actionId === "flush-queue") {
-      const [owner, ...rest] = externalIdOf(resourceId, accountId, typeId).split("/");
-      await this.fetch(
-        `/serverless/apps/${encodeURIComponent(owner ?? "")}/${encodeURIComponent(rest.join("/"))}/queue`,
-        { method: "DELETE" },
-      );
-      return;
-    }
-    throw new Error(`fal plugin: unknown action "${actionId}" for ${typeId}`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "fal-app" && actionId === "flush-queue") {
+        const [owner, ...rest] = externalIdOf(resourceId, accountId, typeId).split("/");
+        await this.fetch(
+          `/serverless/apps/${encodeURIComponent(owner ?? "")}/${encodeURIComponent(rest.join("/"))}/queue`,
+          { method: "DELETE" },
+        );
+        return;
+      }
+      throw new Error(`fal plugin: unknown action "${actionId}" for ${typeId}`);
+    });
   }
 
   /** `POST /keys {alias}`: the secret is returned once. */
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    if (typeId !== "fal-api-key" || formatId !== "replacement-key") {
-      throw new Error(`fal plugin: no credential format "${formatId}" for ${typeId}`);
-    }
-    const current = await this.getResource(typeId, resourceId, accountId);
-    const alias =
-      s(current.fields["alias"]) || `infrawrench-${new Date().toISOString().slice(0, 10)}`;
-    const created = await this.fetch<{ key_id?: string; key_secret?: string; key?: string }>(
-      "/keys",
-      {
-        method: "POST",
-        body: JSON.stringify({ alias }),
-      },
-    );
-    const key =
-      s(created.key) ||
-      (created.key_id && created.key_secret ? `${created.key_id}:${created.key_secret}` : "");
-    if (!key) throw new Error("fal plugin: the key was created but no secret came back");
-    return {
-      content: key,
-      filename: `fal-${s(created.key_id)}.txt`,
-      mimeType: "text/plain",
-      fields: [
-        { label: "Key ID", value: s(created.key_id) },
-        { label: "Alias", value: alias },
-        { label: "API Key", value: key, sensitive: true, hint: "Only shown once" },
-      ],
-      warning:
-        "Save this key now: fal never shows the secret again. Delete the old key once nothing uses it.",
-    };
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      if (typeId !== "fal-api-key" || formatId !== "replacement-key") {
+        throw new Error(`fal plugin: no credential format "${formatId}" for ${typeId}`);
+      }
+      const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const alias =
+        s(current.fields["alias"]) || `infrawrench-${new Date().toISOString().slice(0, 10)}`;
+      const created = await this.fetch<{ key_id?: string; key_secret?: string; key?: string }>(
+        "/keys",
+        {
+          method: "POST",
+          body: JSON.stringify({ alias }),
+        },
+      );
+      const key =
+        s(created.key) ||
+        (created.key_id && created.key_secret ? `${created.key_id}:${created.key_secret}` : "");
+      if (!key) throw new Error("fal plugin: the key was created but no secret came back");
+      return {
+        content: key,
+        filename: `fal-${s(created.key_id)}.txt`,
+        mimeType: "text/plain",
+        fields: [
+          { label: "Key ID", value: s(created.key_id) },
+          { label: "Alias", value: alias },
+          { label: "API Key", value: key, sensitive: true, hint: "Only shown once" },
+        ],
+        warning:
+          "Save this key now: fal never shows the secret again. Delete the old key once nothing uses it.",
+      };
+    });
   }
 
   // ------------------------------------------------------ metrics/logs
 
   /** `GET /models/analytics` or `/serverless/analytics` for one endpoint. */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "fal-model" && resourceTypeId !== "fal-app") return [];
-    const id = externalIdOf(resourceId, accountId, resourceTypeId);
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
-    const path = resourceTypeId === "fal-model" ? "/models/analytics" : "/serverless/analytics";
-    try {
-      const pages = await this.pages<AnalyticsPage>(
-        path,
-        {
-          endpoint_id: id,
-          start: new Date(startMs).toISOString(),
-          end: new Date(endMs).toISOString(),
-          timezone: "UTC",
-          expand: ["time_series", ...ANALYTICS_METRICS],
-        },
-        10,
-      );
-      return analyticsSeries(pages);
-    } catch (err) {
-      if (statusOf(err) === 403 || statusOf(err) === 404) return [];
-      throw err;
-    }
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "fal-model" && resourceTypeId !== "fal-app") return [];
+      const id = externalIdOf(resourceId, accountId, resourceTypeId);
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
+      const path = resourceTypeId === "fal-model" ? "/models/analytics" : "/serverless/analytics";
+      try {
+        const pages = await this.pages<AnalyticsPage>(
+          path,
+          {
+            endpoint_id: id,
+            start: new Date(startMs).toISOString(),
+            end: new Date(endMs).toISOString(),
+            timezone: "UTC",
+            expand: ["time_series", ...ANALYTICS_METRICS],
+          },
+          10,
+        );
+        return analyticsSeries(pages);
+      } catch (err) {
+        if (statusOf(err) === 403 || statusOf(err) === 404) return [];
+        throw err;
+      }
+    });
   }
 
   /** `POST /serverless/logs/history?app_id=&limit=` with no label filters. */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId !== "fal-app") return { text: "", containers: [], activeContainer: "" };
-    const id = externalIdOf(resourceId, accountId, typeId);
-    const res = await this.fetch<{
-      items?: Array<{ timestamp?: string; level?: string; message?: string; revision?: string }>;
-    }>(
-      `/serverless/logs/history?${qs({ app_id: id, limit: String(Math.min(params.tailLines ?? 500, 1000)) })}`,
-      { method: "POST", body: "[]" },
-    );
-    const text = (res.items ?? [])
-      .slice()
-      .reverse()
-      .map((l) => `${s(l.timestamp)} ${s(l.level).toUpperCase()} ${s(l.message)}\n`)
-      .join("");
-    return { text, containers: [id], activeContainer: id };
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId !== "fal-app") return { text: "", containers: [], activeContainer: "" };
+      const id = externalIdOf(resourceId, accountId, typeId);
+      const res = await this.fetch<{
+        items?: Array<{ timestamp?: string; level?: string; message?: string; revision?: string }>;
+      }>(
+        `/serverless/logs/history?${qs({ app_id: id, limit: String(Math.min(params.tailLines ?? 500, 1000)) })}`,
+        { method: "POST", body: "[]" },
+      );
+      const text = (res.items ?? [])
+        .slice()
+        .reverse()
+        .map((l) => `${s(l.timestamp)} ${s(l.level).toUpperCase()} ${s(l.message)}\n`)
+        .join("");
+      return { text, containers: [id], activeContainer: id };
+    });
   }
 
   // ---------------------------------------------------------- billing
@@ -791,42 +814,46 @@ export class FalClient implements PluginClient {
    * Billed usage: `GET /models/usage` and `GET /serverless/usage`, daily
    * buckets in UTC, `cost_total` (after discounts). Both need an ADMIN key.
    */
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    const end = new Date(Date.parse(`${range.toDate}T00:00:00Z`) + 86_400_000)
-      .toISOString()
-      .slice(0, 10);
-    const params = {
-      start: range.fromDate,
-      end,
-      timezone: "UTC",
-      timeframe: "day",
-      expand: "time_series",
-      limit: "1000",
-    };
-    const [models, serverless] = await Promise.all([
-      this.pages<UsagePage>(
-        "/models/usage",
-        { ...params, expand: ["time_series", "auth_method"] },
-        50,
-      ),
-      this.pages<UsagePage>("/serverless/usage", params, 50).catch((err) => {
-        if (statusOf(err) === 403 || statusOf(err) === 404) return [] as UsagePage[];
-        throw err;
-      }),
-    ]);
-    return [...modelUsageRows(models, range), ...serverlessUsageRows(serverless, range)];
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      const end = new Date(Date.parse(`${range.toDate}T00:00:00Z`) + 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      const params = {
+        start: range.fromDate,
+        end,
+        timezone: "UTC",
+        timeframe: "day",
+        expand: "time_series",
+        limit: "1000",
+      };
+      const [models, serverless] = await Promise.all([
+        this.pages<UsagePage>(
+          "/models/usage",
+          { ...params, expand: ["time_series", "auth_method"] },
+          50,
+        ),
+        this.pages<UsagePage>("/serverless/usage", params, 50).catch((err) => {
+          if (statusOf(err) === 403 || statusOf(err) === 404) return [] as UsagePage[];
+          throw err;
+        }),
+      ]);
+      return [...modelUsageRows(models, range), ...serverlessUsageRows(serverless, range)];
+    });
   }
 
   /** `GET /account/billing?expand=credits` */
-  async fetchCreditBalance(_accountId: string): Promise<CreditBalance[]> {
-    const res = await this.fetch<{ credits?: { current_balance?: number; currency?: string } }>(
-      "/account/billing?expand=credits",
-    );
-    if (!res.credits || typeof res.credits.current_balance !== "number") return [];
-    const currency = (res.credits.currency || "USD").toUpperCase();
-    return [
-      { key: currency, label: "fal credits", remaining: res.credits.current_balance, currency },
-    ];
+  fetchCreditBalance(_accountId: string): PluginEffect<CreditBalance[]> {
+    return attempt(async () => {
+      const res = await this.fetch<{ credits?: { current_balance?: number; currency?: string } }>(
+        "/account/billing?expand=credits",
+      );
+      if (!res.credits || typeof res.credits.current_balance !== "number") return [];
+      const currency = (res.credits.currency || "USD").toUpperCase();
+      return [
+        { key: currency, label: "fal credits", remaining: res.credits.current_balance, currency },
+      ];
+    });
   }
 
   // ----------------------------------------------------------- render

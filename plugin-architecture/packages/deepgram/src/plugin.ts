@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DeepgramClient } from "./client.js";
 import { ProjectResourceType } from "./resources/project.js";
@@ -34,16 +39,14 @@ const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   </g>
 </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "deepgram",
-  version: "0.1.0",
+  egressHosts: ["api.deepgram.com"],
   displayName: "Deepgram",
   description:
     "Speech-to-text, text-to-speech and voice agents. Manage projects, keys, members, invites, balances and Voice Agent configurations, chart usage, read the request log, and try Nova transcription and Aura voices.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -57,7 +60,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   credits: {
     label: "Balance",
     topUpUrl: "https://console.deepgram.com/",
@@ -80,7 +83,9 @@ const manifest: PluginManifest = {
     maxHistoryDays: 365,
     restatementDays: 3,
   },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   ProjectResourceType,
@@ -95,8 +100,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   DistributionCredentialResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new DeepgramClient(credentials, services),
-};
+  testCredentials: { apiKey: "test-deepgram-key" },
+});

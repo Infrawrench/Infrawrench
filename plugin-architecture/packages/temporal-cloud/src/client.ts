@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -134,7 +137,7 @@ export class TemporalCloudClient implements PluginClient {
   private readonly rates: TemporalRates;
   private collector?: TemporalCostCollector;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Temporal Cloud plugin: missing apiKey credential");
     const metricsApiKey = (credentials["metricsApiKey"] ?? "").trim() || apiKey;
@@ -259,63 +262,71 @@ export class TemporalCloudClient implements PluginClient {
     }
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "account":
-        return [await this.loadAccount(accountId, false)];
-      case "namespace":
-        return this.scoped(async () =>
-          (await this.fetchNamespaces()).map((ns) => mapNamespace(accountId, ns)),
-        );
-      case "export-sink":
-        return this.scoped(async () => {
-          const out: ResourceInstance[] = [];
-          for (const ns of await this.fetchNamespaces()) {
-            const id = ns.namespace ?? "";
-            if (!id) continue;
-            const sinks = await tcPaged<TcExportSink>(
-              this.ctx,
-              `/cloud/namespaces/${q(id)}/export-sinks`,
-              "sinks",
-            ).catch((err: unknown) => {
-              if (statusOf(err) === 403 || statusOf(err) === 404) return [] as TcExportSink[];
-              throw err;
-            });
-            out.push(...sinks.map((s) => mapExportSink(accountId, id, s)));
-          }
-          return out;
-        });
-      case "user":
-        return this.scoped(async () => (await this.fetchUsers()).map((u) => mapUser(accountId, u)));
-      case "service-account":
-        return this.scoped(async () =>
-          (await this.fetchServiceAccounts()).map((s) => mapServiceAccount(accountId, s)),
-        );
-      case "api-key":
-        return this.scoped(async () => {
-          const [keys, owners] = await Promise.all([
-            tcPaged<TcApiKey>(this.ctx, "/cloud/api-keys", "apiKeys"),
-            this.ownerNames(),
-          ]);
-          return keys.map((k) => mapApiKey(accountId, k, owners));
-        });
-      case "nexus-endpoint":
-        return this.scoped(async () =>
-          (await tcPaged<TcNexusEndpoint>(this.ctx, "/cloud/nexus/endpoints", "endpoints")).map(
-            (e) => mapNexusEndpoint(accountId, e),
-          ),
-        );
-      case "connectivity-rule":
-        return this.scoped(async () => {
-          const [rules, namespaces] = await Promise.all([
-            tcPaged<TcConnectivityRule>(this.ctx, "/cloud/connectivity-rules", "connectivityRules"),
-            this.fetchNamespaces().catch(() => [] as TcNamespace[]),
-          ]);
-          return rules.map((r) => mapConnectivityRule(accountId, r, attachedRules(namespaces)));
-        });
-      default:
-        throw new Error(`Temporal Cloud plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "account":
+          return [await this.loadAccount(accountId, false)];
+        case "namespace":
+          return this.scoped(async () =>
+            (await this.fetchNamespaces()).map((ns) => mapNamespace(accountId, ns)),
+          );
+        case "export-sink":
+          return this.scoped(async () => {
+            const out: ResourceInstance[] = [];
+            for (const ns of await this.fetchNamespaces()) {
+              const id = ns.namespace ?? "";
+              if (!id) continue;
+              const sinks = await tcPaged<TcExportSink>(
+                this.ctx,
+                `/cloud/namespaces/${q(id)}/export-sinks`,
+                "sinks",
+              ).catch((err: unknown) => {
+                if (statusOf(err) === 403 || statusOf(err) === 404) return [] as TcExportSink[];
+                throw err;
+              });
+              out.push(...sinks.map((s) => mapExportSink(accountId, id, s)));
+            }
+            return out;
+          });
+        case "user":
+          return this.scoped(async () =>
+            (await this.fetchUsers()).map((u) => mapUser(accountId, u)),
+          );
+        case "service-account":
+          return this.scoped(async () =>
+            (await this.fetchServiceAccounts()).map((s) => mapServiceAccount(accountId, s)),
+          );
+        case "api-key":
+          return this.scoped(async () => {
+            const [keys, owners] = await Promise.all([
+              tcPaged<TcApiKey>(this.ctx, "/cloud/api-keys", "apiKeys"),
+              this.ownerNames(),
+            ]);
+            return keys.map((k) => mapApiKey(accountId, k, owners));
+          });
+        case "nexus-endpoint":
+          return this.scoped(async () =>
+            (await tcPaged<TcNexusEndpoint>(this.ctx, "/cloud/nexus/endpoints", "endpoints")).map(
+              (e) => mapNexusEndpoint(accountId, e),
+            ),
+          );
+        case "connectivity-rule":
+          return this.scoped(async () => {
+            const [rules, namespaces] = await Promise.all([
+              tcPaged<TcConnectivityRule>(
+                this.ctx,
+                "/cloud/connectivity-rules",
+                "connectivityRules",
+              ),
+              this.fetchNamespaces().catch(() => [] as TcNamespace[]),
+            ]);
+            return rules.map((r) => mapConnectivityRule(accountId, r, attachedRules(namespaces)));
+          });
+        default:
+          throw new Error(`Temporal Cloud plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   private async ownerNames(): Promise<Map<string, string>> {
@@ -378,160 +389,178 @@ export class TemporalCloudClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "account":
-        return this.loadAccount(accountId, true);
-      case "namespace": {
-        const [ns, capacity, regions, rules] = await Promise.all([
-          this.fetchNamespace(id),
-          tcFetch<{ capacityInfo?: TcCapacityInfo }>(
-            this.ctx,
-            `/cloud/namespaces/${q(id)}/capacity-info`,
-          )
-            .then((r) => r.capacityInfo)
-            .catch(() => undefined),
-          this.fetchRegions().catch(() => [] as TcRegion[]),
-          tcPaged<TcConnectivityRule>(this.ctx, "/cloud/connectivity-rules", "connectivityRules")
-            .then((list) => list.map((r) => mapConnectivityRule(accountId, r, new Map())))
-            .catch(() => [] as ResourceInstance[]),
-        ]);
-        const r = mapNamespace(accountId, ns);
-        if (capacity) r.resolvedOutputs[CAPACITY_KEY] = JSON.stringify(capacity);
-        r.resolvedOutputs[REGIONS_KEY] = JSON.stringify(regions);
-        r.resolvedOutputs["__ruleOptions__"] = JSON.stringify(
-          rules.map((x) => ({ id: x.externalId, label: x.displayName })),
-        );
-        return r;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "account":
+          return this.loadAccount(accountId, true);
+        case "namespace": {
+          const [ns, capacity, regions, rules] = await Promise.all([
+            this.fetchNamespace(id),
+            tcFetch<{ capacityInfo?: TcCapacityInfo }>(
+              this.ctx,
+              `/cloud/namespaces/${q(id)}/capacity-info`,
+            )
+              .then((r) => r.capacityInfo)
+              .catch(() => undefined),
+            this.fetchRegions().catch(() => [] as TcRegion[]),
+            tcPaged<TcConnectivityRule>(this.ctx, "/cloud/connectivity-rules", "connectivityRules")
+              .then((list) => list.map((r) => mapConnectivityRule(accountId, r, new Map())))
+              .catch(() => [] as ResourceInstance[]),
+          ]);
+          const r = mapNamespace(accountId, ns);
+          if (capacity) r.resolvedOutputs[CAPACITY_KEY] = JSON.stringify(capacity);
+          r.resolvedOutputs[REGIONS_KEY] = JSON.stringify(regions);
+          r.resolvedOutputs["__ruleOptions__"] = JSON.stringify(
+            rules.map((x) => ({ id: x.externalId, label: x.displayName })),
+          );
+          return r;
+        }
+        case "export-sink": {
+          const { namespaceId, name } = parseExportSinkId(id);
+          return mapExportSink(
+            accountId,
+            namespaceId,
+            await this.fetchExportSink(namespaceId, name),
+          );
+        }
+        case "user":
+        case "service-account": {
+          const [mapped, namespaces] = await Promise.all([
+            typeId === "user"
+              ? this.fetchUser(id).then((u) => mapUser(accountId, u))
+              : this.fetchServiceAccount(id).then((s) => mapServiceAccount(accountId, s)),
+            this.fetchNamespaces().catch(() => [] as TcNamespace[]),
+          ]);
+          mapped.resolvedOutputs[NAMESPACE_IDS_KEY] = JSON.stringify(
+            namespaces.map((n) => n.namespace ?? "").filter(Boolean),
+          );
+          return mapped;
+        }
+        case "api-key":
+          return mapApiKey(accountId, await this.fetchApiKey(id), await this.ownerNames());
+        case "nexus-endpoint":
+          return mapNexusEndpoint(accountId, await this.fetchNexusEndpoint(id));
+        case "connectivity-rule": {
+          const [rule, namespaces] = await Promise.all([
+            this.fetchConnectivityRule(id),
+            this.fetchNamespaces().catch(() => [] as TcNamespace[]),
+          ]);
+          return mapConnectivityRule(accountId, rule, attachedRules(namespaces));
+        }
+        default:
+          throw new Error(`Temporal Cloud plugin: unknown resource type "${typeId}"`);
       }
-      case "export-sink": {
-        const { namespaceId, name } = parseExportSinkId(id);
-        return mapExportSink(accountId, namespaceId, await this.fetchExportSink(namespaceId, name));
-      }
-      case "user":
-      case "service-account": {
-        const [mapped, namespaces] = await Promise.all([
-          typeId === "user"
-            ? this.fetchUser(id).then((u) => mapUser(accountId, u))
-            : this.fetchServiceAccount(id).then((s) => mapServiceAccount(accountId, s)),
-          this.fetchNamespaces().catch(() => [] as TcNamespace[]),
-        ]);
-        mapped.resolvedOutputs[NAMESPACE_IDS_KEY] = JSON.stringify(
-          namespaces.map((n) => n.namespace ?? "").filter(Boolean),
-        );
-        return mapped;
-      }
-      case "api-key":
-        return mapApiKey(accountId, await this.fetchApiKey(id), await this.ownerNames());
-      case "nexus-endpoint":
-        return mapNexusEndpoint(accountId, await this.fetchNexusEndpoint(id));
-      case "connectivity-rule": {
-        const [rule, namespaces] = await Promise.all([
-          this.fetchConnectivityRule(id),
-          this.fetchNamespaces().catch(() => [] as TcNamespace[]),
-        ]);
-        return mapConnectivityRule(accountId, rule, attachedRules(namespaces));
-      }
-      default:
-        throw new Error(`Temporal Cloud plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    if (outputKey === "endpointId" || outputKey === "keyId" || outputKey === "ruleId") {
-      return resource.externalId ?? "";
-    }
-    throw new Error(
-      `Temporal Cloud plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
+      if (outputKey === "endpointId" || outputKey === "keyId" || outputKey === "ruleId") {
+        return resource.externalId ?? "";
+      }
+      throw new Error(
+        `Temporal Cloud plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics and costs
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    if (resourceTypeId === "namespace") {
-      const id = externalIdOf(resourceId);
-      const [ns, samples] = await Promise.all([
-        this.fetchNamespace(id),
-        scrapeMetrics(this.ctx).catch(() => []),
-      ]);
-      const series = namespaceSeries(samples, id);
-      const value = (label: string) => series.find((s) => s.label === label)?.points[0]?.value;
-      const aps = value("Actions/s");
-      const failed = value("Workflows failed/s");
-      return [
-        {
-          label: "State",
-          value: (ns.state ?? "").replace(/^RESOURCE_STATE_/, "").toLowerCase() || "unknown",
-          variant: ns.state === "RESOURCE_STATE_ACTIVE" ? "status-healthy" : "status-degraded",
-        },
-        { label: "Actions/s", value: aps !== undefined ? aps.toFixed(1) : "—" },
-        {
-          label: "Failed/s",
-          value: failed !== undefined ? failed.toFixed(2) : "—",
-          ...(failed !== undefined && failed > 0 ? { variant: "status-degraded" as const } : {}),
-        },
-        { label: "Retention", value: `${ns.spec?.retentionDays ?? "?"} d` },
-      ];
-    }
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    switch (resourceTypeId) {
-      case "account":
-        return [
-          { label: "Namespaces", value: String(r.fields["namespaceCount"] ?? 0) },
-          { label: "Key role", value: String(r.fields["identityRole"] ?? "—") },
-        ];
-      case "export-sink":
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      if (resourceTypeId === "namespace") {
+        const id = externalIdOf(resourceId);
+        const [ns, samples] = await Promise.all([
+          this.fetchNamespace(id),
+          scrapeMetrics(this.ctx).catch(() => []),
+        ]);
+        const series = namespaceSeries(samples, id);
+        const value = (label: string) => series.find((s) => s.label === label)?.points[0]?.value;
+        const aps = value("Actions/s");
+        const failed = value("Workflows failed/s");
         return [
           {
-            label: "Health",
-            value: String(r.fields["health"] ?? "—"),
-            variant: r.fields["health"] === "ok" ? "status-healthy" : "status-degraded",
+            label: "State",
+            value: (ns.state ?? "").replace(/^RESOURCE_STATE_/, "").toLowerCase() || "unknown",
+            variant: ns.state === "RESOURCE_STATE_ACTIVE" ? "status-healthy" : "status-degraded",
           },
-          { label: "Enabled", value: r.fields["enabled"] === true ? "Yes" : "No" },
+          { label: "Actions/s", value: aps !== undefined ? aps.toFixed(1) : "—" },
+          {
+            label: "Failed/s",
+            value: failed !== undefined ? failed.toFixed(2) : "—",
+            ...(failed !== undefined && failed > 0 ? { variant: "status-degraded" as const } : {}),
+          },
+          { label: "Retention", value: `${ns.spec?.retentionDays ?? "?"} d` },
         ];
-      default:
-        return [{ label: "State", value: String(r.fields["state"] ?? "—") }];
-    }
+      }
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      switch (resourceTypeId) {
+        case "account":
+          return [
+            { label: "Namespaces", value: String(r.fields["namespaceCount"] ?? 0) },
+            { label: "Key role", value: String(r.fields["identityRole"] ?? "—") },
+          ];
+        case "export-sink":
+          return [
+            {
+              label: "Health",
+              value: String(r.fields["health"] ?? "—"),
+              variant: r.fields["health"] === "ok" ? "status-healthy" : "status-degraded",
+            },
+            { label: "Enabled", value: r.fields["enabled"] === true ? "Yes" : "No" },
+          ];
+        default:
+          return [{ label: "State", value: String(r.fields["state"] ?? "—") }];
+      }
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "namespace") return [];
-    return namespaceSeries(await scrapeMetrics(this.ctx), externalIdOf(resourceId));
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "namespace") return [];
+      return namespaceSeries(await scrapeMetrics(this.ctx), externalIdOf(resourceId));
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    this.collector ??= new TemporalCostCollector(this.ctx, this.rates, () => this.namespaceIndex());
-    return this.collector.fetch(range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      this.collector ??= new TemporalCostCollector(this.ctx, this.rates, () =>
+        this.namespaceIndex(),
+      );
+      return this.collector.fetch(range);
+    });
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    return verifyTemporalCredentials(this.ctx);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return verifyTemporalCredentials(this.ctx);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -545,438 +574,446 @@ export class TemporalCloudClient implements PluginClient {
       .sort((a, b) => a.label.localeCompare(b.label));
   }
 
-  async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "namespace": {
-        const regions = await this.fetchRegions().catch(() => [] as TcRegion[]);
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "payments-prod",
-              description:
-                "2 to 39 lowercase letters, digits and hyphens. The account id is appended to form the namespace id. It cannot be changed later.",
-            },
-            {
-              key: "region",
-              label: "Region",
-              kind: "region-picker",
-              required: true,
-              regions: regions.map(regionOption),
-            },
-            {
-              key: "retentionDays",
-              label: "Retention (days)",
-              kind: "number",
-              required: true,
-              defaultValue: "30",
-              minValue: 1,
-              maxValue: 90,
-              stepValue: 1,
-              description: "How long closed workflow histories are kept.",
-            },
-            {
-              key: "auth",
-              label: "Client Authentication",
-              kind: "select",
-              required: true,
-              defaultValue: "api-key",
-              options: [
-                { id: "api-key", label: "API keys" },
-                { id: "mtls", label: "mTLS certificates" },
-                { id: "both", label: "API keys and mTLS" },
-              ],
-            },
-            {
-              key: "caCertificate",
-              label: "CA Certificate (PEM)",
-              kind: "text",
-              multiline: true,
-              required: false,
-              showWhen: { fieldKey: "auth", fieldValues: ["mtls", "both"] },
-              placeholder: "-----BEGIN CERTIFICATE-----",
-              description: "The CA that signs your clients' certificates.",
-            },
-            {
-              key: "description",
-              label: "Description",
-              kind: "text",
-              required: false,
-            },
-            {
-              key: "deleteProtection",
-              label: "Delete Protection",
-              kind: "select",
-              required: false,
-              defaultValue: "true",
-              options: [
-                { id: "true", label: "On" },
-                { id: "false", label: "Off" },
-              ],
-            },
-          ],
-        };
-      }
-      case "export-sink":
-        return {
-          fields: [
-            ...(parentResourceId
-              ? []
-              : [
+  getCreateConfig(typeId: string, parentResourceId?: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "namespace": {
+          const regions = await this.fetchRegions().catch(() => [] as TcRegion[]);
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "payments-prod",
+                description:
+                  "2 to 39 lowercase letters, digits and hyphens. The account id is appended to form the namespace id. It cannot be changed later.",
+              },
+              {
+                key: "region",
+                label: "Region",
+                kind: "region-picker",
+                required: true,
+                regions: regions.map(regionOption),
+              },
+              {
+                key: "retentionDays",
+                label: "Retention (days)",
+                kind: "number",
+                required: true,
+                defaultValue: "30",
+                minValue: 1,
+                maxValue: 90,
+                stepValue: 1,
+                description: "How long closed workflow histories are kept.",
+              },
+              {
+                key: "auth",
+                label: "Client Authentication",
+                kind: "select",
+                required: true,
+                defaultValue: "api-key",
+                options: [
+                  { id: "api-key", label: "API keys" },
+                  { id: "mtls", label: "mTLS certificates" },
+                  { id: "both", label: "API keys and mTLS" },
+                ],
+              },
+              {
+                key: "caCertificate",
+                label: "CA Certificate (PEM)",
+                kind: "text",
+                multiline: true,
+                required: false,
+                showWhen: { fieldKey: "auth", fieldValues: ["mtls", "both"] },
+                placeholder: "-----BEGIN CERTIFICATE-----",
+                description: "The CA that signs your clients' certificates.",
+              },
+              {
+                key: "description",
+                label: "Description",
+                kind: "text",
+                required: false,
+              },
+              {
+                key: "deleteProtection",
+                label: "Delete Protection",
+                kind: "select",
+                required: false,
+                defaultValue: "true",
+                options: [
+                  { id: "true", label: "On" },
+                  { id: "false", label: "Off" },
+                ],
+              },
+            ],
+          };
+        }
+        case "export-sink":
+          return {
+            fields: [
+              ...(parentResourceId
+                ? []
+                : [
+                    {
+                      key: "namespace",
+                      label: "Namespace",
+                      kind: "select" as const,
+                      required: true,
+                      options: await this.namespaceOptions(),
+                    },
+                  ]),
+              {
+                key: "name",
+                label: "Sink Name",
+                kind: "text",
+                required: true,
+                description: "Unique within the namespace; it cannot be changed later.",
+              },
+              {
+                key: "destination",
+                label: "Destination",
+                kind: "select",
+                required: true,
+                defaultValue: "s3",
+                options: [
+                  { id: "s3", label: "Amazon S3" },
+                  { id: "gcs", label: "Google Cloud Storage" },
+                ],
+              },
+              { key: "bucketName", label: "Bucket", kind: "text", required: true },
+              {
+                key: "bucketRegion",
+                label: "Bucket Region",
+                kind: "text",
+                required: true,
+                placeholder: "us-east-1",
+              },
+              {
+                key: "roleName",
+                label: "IAM Role Name",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "destination", fieldValue: "s3" },
+                description: "The role Temporal Cloud assumes to write to the bucket.",
+              },
+              {
+                key: "awsAccountId",
+                label: "AWS Account ID",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "destination", fieldValue: "s3" },
+              },
+              {
+                key: "kmsArn",
+                label: "KMS Key ARN",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "destination", fieldValue: "s3" },
+              },
+              {
+                key: "gcpProjectId",
+                label: "GCP Project ID",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "destination", fieldValue: "gcs" },
+              },
+              {
+                key: "serviceAccountId",
+                label: "Service Account ID",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "destination", fieldValue: "gcs" },
+                description: "The service account Temporal Cloud impersonates to write.",
+              },
+            ],
+          };
+        case "user":
+          return {
+            fields: [
+              { key: "email", label: "Email", kind: "text", required: true },
+              {
+                key: "accountRole",
+                label: "Account Role",
+                kind: "select",
+                required: true,
+                defaultValue: "developer",
+                options: ROLE_OPTIONS,
+              },
+            ],
+          };
+        case "service-account":
+          return {
+            fields: [
+              { key: "name", label: "Name", kind: "text", required: true },
+              { key: "description", label: "Description", kind: "text", required: false },
+              {
+                key: "scope",
+                label: "Scope",
+                kind: "select",
+                required: true,
+                defaultValue: "account",
+                options: [
+                  { id: "account", label: "Account", description: "Account role plus namespaces" },
                   {
-                    key: "namespace",
-                    label: "Namespace",
-                    kind: "select" as const,
-                    required: true,
-                    options: await this.namespaceOptions(),
+                    id: "namespace",
+                    label: "One namespace",
+                    description: "Bound to one namespace",
                   },
-                ]),
-            {
-              key: "name",
-              label: "Sink Name",
-              kind: "text",
-              required: true,
-              description: "Unique within the namespace; it cannot be changed later.",
-            },
-            {
-              key: "destination",
-              label: "Destination",
-              kind: "select",
-              required: true,
-              defaultValue: "s3",
-              options: [
-                { id: "s3", label: "Amazon S3" },
-                { id: "gcs", label: "Google Cloud Storage" },
-              ],
-            },
-            { key: "bucketName", label: "Bucket", kind: "text", required: true },
-            {
-              key: "bucketRegion",
-              label: "Bucket Region",
-              kind: "text",
-              required: true,
-              placeholder: "us-east-1",
-            },
-            {
-              key: "roleName",
-              label: "IAM Role Name",
-              kind: "text",
-              required: false,
-              showWhen: { fieldKey: "destination", fieldValue: "s3" },
-              description: "The role Temporal Cloud assumes to write to the bucket.",
-            },
-            {
-              key: "awsAccountId",
-              label: "AWS Account ID",
-              kind: "text",
-              required: false,
-              showWhen: { fieldKey: "destination", fieldValue: "s3" },
-            },
-            {
-              key: "kmsArn",
-              label: "KMS Key ARN",
-              kind: "text",
-              required: false,
-              showWhen: { fieldKey: "destination", fieldValue: "s3" },
-            },
-            {
-              key: "gcpProjectId",
-              label: "GCP Project ID",
-              kind: "text",
-              required: false,
-              showWhen: { fieldKey: "destination", fieldValue: "gcs" },
-            },
-            {
-              key: "serviceAccountId",
-              label: "Service Account ID",
-              kind: "text",
-              required: false,
-              showWhen: { fieldKey: "destination", fieldValue: "gcs" },
-              description: "The service account Temporal Cloud impersonates to write.",
-            },
-          ],
-        };
-      case "user":
-        return {
-          fields: [
-            { key: "email", label: "Email", kind: "text", required: true },
-            {
-              key: "accountRole",
-              label: "Account Role",
-              kind: "select",
-              required: true,
-              defaultValue: "developer",
-              options: ROLE_OPTIONS,
-            },
-          ],
-        };
-      case "service-account":
-        return {
-          fields: [
-            { key: "name", label: "Name", kind: "text", required: true },
-            { key: "description", label: "Description", kind: "text", required: false },
-            {
-              key: "scope",
-              label: "Scope",
-              kind: "select",
-              required: true,
-              defaultValue: "account",
-              options: [
-                { id: "account", label: "Account", description: "Account role plus namespaces" },
-                { id: "namespace", label: "One namespace", description: "Bound to one namespace" },
-              ],
-            },
-            {
-              key: "accountRole",
-              label: "Account Role",
-              kind: "select",
-              required: false,
-              defaultValue: "read",
-              options: ROLE_OPTIONS,
-              showWhen: { fieldKey: "scope", fieldValue: "account" },
-            },
-            {
-              key: "namespace",
-              label: "Namespace",
-              kind: "select",
-              required: false,
-              options: await this.namespaceOptions(),
-              showWhen: { fieldKey: "scope", fieldValue: "namespace" },
-            },
-            {
-              key: "permission",
-              label: "Namespace Permission",
-              kind: "select",
-              required: false,
-              defaultValue: "write",
-              options: PERMISSION_OPTIONS,
-              showWhen: { fieldKey: "scope", fieldValue: "namespace" },
-            },
-          ],
-        };
-      case "nexus-endpoint": {
-        const namespaces = await this.namespaceOptions();
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "payments-api",
-            },
-            {
-              key: "targetNamespace",
-              label: "Target Namespace",
-              kind: "select",
-              required: true,
-              options: namespaces,
-            },
-            { key: "taskQueue", label: "Target Task Queue", kind: "text", required: true },
-            {
-              key: "allowedCallers",
-              label: "Allowed Caller Namespaces",
-              kind: "policy-picker",
-              required: false,
-              policies: namespaces.map((n) => ({ id: n.id, label: n.label })),
-            },
-            {
-              key: "description",
-              label: "Description",
-              kind: "text",
-              multiline: true,
-              required: false,
-            },
-          ],
-        };
+                ],
+              },
+              {
+                key: "accountRole",
+                label: "Account Role",
+                kind: "select",
+                required: false,
+                defaultValue: "read",
+                options: ROLE_OPTIONS,
+                showWhen: { fieldKey: "scope", fieldValue: "account" },
+              },
+              {
+                key: "namespace",
+                label: "Namespace",
+                kind: "select",
+                required: false,
+                options: await this.namespaceOptions(),
+                showWhen: { fieldKey: "scope", fieldValue: "namespace" },
+              },
+              {
+                key: "permission",
+                label: "Namespace Permission",
+                kind: "select",
+                required: false,
+                defaultValue: "write",
+                options: PERMISSION_OPTIONS,
+                showWhen: { fieldKey: "scope", fieldValue: "namespace" },
+              },
+            ],
+          };
+        case "nexus-endpoint": {
+          const namespaces = await this.namespaceOptions();
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "payments-api",
+              },
+              {
+                key: "targetNamespace",
+                label: "Target Namespace",
+                kind: "select",
+                required: true,
+                options: namespaces,
+              },
+              { key: "taskQueue", label: "Target Task Queue", kind: "text", required: true },
+              {
+                key: "allowedCallers",
+                label: "Allowed Caller Namespaces",
+                kind: "policy-picker",
+                required: false,
+                policies: namespaces.map((n) => ({ id: n.id, label: n.label })),
+              },
+              {
+                key: "description",
+                label: "Description",
+                kind: "text",
+                multiline: true,
+                required: false,
+              },
+            ],
+          };
+        }
+        case "connectivity-rule": {
+          const regions = await this.fetchRegions().catch(() => [] as TcRegion[]);
+          return {
+            fields: [
+              {
+                key: "type",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "private",
+                options: [
+                  { id: "private", label: "Private connection" },
+                  { id: "public", label: "Public internet" },
+                ],
+              },
+              {
+                key: "stableIps",
+                label: "Stable IPs",
+                kind: "select",
+                required: false,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "Off" },
+                  { id: "true", label: "On" },
+                ],
+                showWhen: { fieldKey: "type", fieldValue: "public" },
+              },
+              {
+                key: "region",
+                label: "Region",
+                kind: "region-picker",
+                required: false,
+                regions: regions.map(regionOption),
+                showWhen: { fieldKey: "type", fieldValue: "private" },
+              },
+              {
+                key: "connectionId",
+                label: "Connection ID",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "type", fieldValue: "private" },
+                description:
+                  "AWS: the VPC endpoint id (vpce-…). GCP: the Private Service Connect connection id.",
+              },
+              {
+                key: "gcpProjectId",
+                label: "GCP Project ID",
+                kind: "text",
+                required: false,
+                showWhen: { fieldKey: "type", fieldValue: "private" },
+                description: "Only for GCP regions.",
+              },
+            ],
+          };
+        }
+        default:
+          throw new Error(`Temporal Cloud plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      case "connectivity-rule": {
-        const regions = await this.fetchRegions().catch(() => [] as TcRegion[]);
-        return {
-          fields: [
-            {
-              key: "type",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "private",
-              options: [
-                { id: "private", label: "Private connection" },
-                { id: "public", label: "Public internet" },
-              ],
-            },
-            {
-              key: "stableIps",
-              label: "Stable IPs",
-              kind: "select",
-              required: false,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "Off" },
-                { id: "true", label: "On" },
-              ],
-              showWhen: { fieldKey: "type", fieldValue: "public" },
-            },
-            {
-              key: "region",
-              label: "Region",
-              kind: "region-picker",
-              required: false,
-              regions: regions.map(regionOption),
-              showWhen: { fieldKey: "type", fieldValue: "private" },
-            },
-            {
-              key: "connectionId",
-              label: "Connection ID",
-              kind: "text",
-              required: false,
-              showWhen: { fieldKey: "type", fieldValue: "private" },
-              description:
-                "AWS: the VPC endpoint id (vpce-…). GCP: the Private Service Connect connection id.",
-            },
-            {
-              key: "gcpProjectId",
-              label: "GCP Project ID",
-              kind: "text",
-              required: false,
-              showWhen: { fieldKey: "type", fieldValue: "private" },
-              description: "Only for GCP regions.",
-            },
-          ],
-        };
-      }
-      default:
-        throw new Error(`Temporal Cloud plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
     parentResourceId?: string,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "namespace":
-        return this.createNamespace(accountId, fields);
-      case "export-sink": {
-        const namespaceId =
-          (fields["namespace"] ?? "").trim() ||
-          (parentResourceId ? externalIdOf(parentResourceId) : "");
-        if (!namespaceId) throw new Error("Pick the namespace to export from");
-        const spec = exportSinkSpec(fields, true);
-        const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          `/cloud/namespaces/${q(namespaceId)}/export-sinks`,
-          { method: "POST", body: { spec } },
-        );
-        await waitForOperation(this.ctx, res.asyncOperation, 10_000);
-        return this.fetchExportSink(namespaceId, spec.name)
-          .then((s) => mapExportSink(accountId, namespaceId, s))
-          .catch(() => mapExportSink(accountId, namespaceId, { name: spec.name, spec }));
-      }
-      case "user": {
-        const email = (fields["email"] ?? "").trim();
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Enter a valid email");
-        const res = await tcFetch<{ userId?: string; asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          "/cloud/users",
-          {
-            method: "POST",
-            body: {
-              spec: {
-                email,
-                access: { accountAccess: { role: roleEnum(fields["accountRole"] || "read") } },
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "namespace":
+          return this.createNamespace(accountId, fields);
+        case "export-sink": {
+          const namespaceId =
+            (fields["namespace"] ?? "").trim() ||
+            (parentResourceId ? externalIdOf(parentResourceId) : "");
+          if (!namespaceId) throw new Error("Pick the namespace to export from");
+          const spec = exportSinkSpec(fields, true);
+          const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
+            this.ctx,
+            `/cloud/namespaces/${q(namespaceId)}/export-sinks`,
+            { method: "POST", body: { spec } },
+          );
+          await waitForOperation(this.ctx, res.asyncOperation, 10_000);
+          return this.fetchExportSink(namespaceId, spec.name)
+            .then((s) => mapExportSink(accountId, namespaceId, s))
+            .catch(() => mapExportSink(accountId, namespaceId, { name: spec.name, spec }));
+        }
+        case "user": {
+          const email = (fields["email"] ?? "").trim();
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Enter a valid email");
+          const res = await tcFetch<{ userId?: string; asyncOperation?: AsyncOperation }>(
+            this.ctx,
+            "/cloud/users",
+            {
+              method: "POST",
+              body: {
+                spec: {
+                  email,
+                  access: { accountAccess: { role: roleEnum(fields["accountRole"] || "read") } },
+                },
               },
             },
-          },
-        );
-        await waitForOperation(this.ctx, res.asyncOperation, 10_000);
-        if (!res.userId) throw new Error("Temporal Cloud returned no user id");
-        return mapUser(accountId, await this.fetchUser(res.userId));
-      }
-      case "service-account": {
-        const name = (fields["name"] ?? "").trim();
-        if (!name) throw new Error("A service account needs a name");
-        const scoped = fields["scope"] === "namespace";
-        const namespace = (fields["namespace"] ?? "").trim();
-        if (scoped && !namespace) throw new Error("Pick the namespace to scope it to");
-        const spec: Record<string, unknown> = {
-          name,
-          ...(fields["description"] ? { description: fields["description"] } : {}),
-          ...(scoped
-            ? {
-                namespaceScopedAccess: {
-                  namespace,
-                  access: { permission: permissionEnum(fields["permission"] || "write") },
-                },
-              }
-            : {
-                access: { accountAccess: { role: roleEnum(fields["accountRole"] || "read") } },
-              }),
-        };
-        const res = await tcFetch<{ serviceAccountId?: string; asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          "/cloud/service-accounts",
-          { method: "POST", body: { spec } },
-        );
-        await waitForOperation(this.ctx, res.asyncOperation, 10_000);
-        if (!res.serviceAccountId) throw new Error("Temporal Cloud returned no service account id");
-        return mapServiceAccount(accountId, await this.fetchServiceAccount(res.serviceAccountId));
-      }
-      case "nexus-endpoint": {
-        const spec = nexusSpec(fields);
-        const res = await tcFetch<{ endpointId?: string; asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          "/cloud/nexus/endpoints",
-          { method: "POST", body: { spec } },
-        );
-        await waitForOperation(this.ctx, res.asyncOperation, 10_000);
-        if (!res.endpointId) throw new Error("Temporal Cloud returned no endpoint id");
-        return mapNexusEndpoint(accountId, await this.fetchNexusEndpoint(res.endpointId));
-      }
-      case "connectivity-rule": {
-        let spec: Record<string, unknown>;
-        if (fields["type"] === "public") {
-          spec = { publicRule: { enableStableIps: bool(fields["stableIps"]) } };
-        } else {
-          const region = (fields["region"] ?? "").trim();
-          if (!region) throw new Error("Pick the region of the private connection");
-          const isGcp = region.startsWith("gcp-");
-          const connectionId = (fields["connectionId"] ?? "").trim();
-          if (!connectionId && !region.startsWith("azure-")) {
-            throw new Error("Enter the connection id of the private endpoint");
-          }
-          if (isGcp && !(fields["gcpProjectId"] ?? "").trim()) {
-            throw new Error("GCP private connections need the GCP project id");
-          }
-          spec = {
-            privateRule: {
-              region,
-              ...(connectionId ? { connectionId } : {}),
-              ...(isGcp ? { gcpProjectId: fields["gcpProjectId"]?.trim() } : {}),
-            },
-          };
+          );
+          await waitForOperation(this.ctx, res.asyncOperation, 10_000);
+          if (!res.userId) throw new Error("Temporal Cloud returned no user id");
+          return mapUser(accountId, await this.fetchUser(res.userId));
         }
-        const res = await tcFetch<{ connectivityRuleId?: string; asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          "/cloud/connectivity-rules",
-          { method: "POST", body: { spec } },
-        );
-        await waitForOperation(this.ctx, res.asyncOperation, 10_000);
-        if (!res.connectivityRuleId) throw new Error("Temporal Cloud returned no rule id");
-        return mapConnectivityRule(
-          accountId,
-          await this.fetchConnectivityRule(res.connectivityRuleId),
-          new Map(),
-        );
+        case "service-account": {
+          const name = (fields["name"] ?? "").trim();
+          if (!name) throw new Error("A service account needs a name");
+          const scoped = fields["scope"] === "namespace";
+          const namespace = (fields["namespace"] ?? "").trim();
+          if (scoped && !namespace) throw new Error("Pick the namespace to scope it to");
+          const spec: Record<string, unknown> = {
+            name,
+            ...(fields["description"] ? { description: fields["description"] } : {}),
+            ...(scoped
+              ? {
+                  namespaceScopedAccess: {
+                    namespace,
+                    access: { permission: permissionEnum(fields["permission"] || "write") },
+                  },
+                }
+              : {
+                  access: { accountAccess: { role: roleEnum(fields["accountRole"] || "read") } },
+                }),
+          };
+          const res = await tcFetch<{ serviceAccountId?: string; asyncOperation?: AsyncOperation }>(
+            this.ctx,
+            "/cloud/service-accounts",
+            { method: "POST", body: { spec } },
+          );
+          await waitForOperation(this.ctx, res.asyncOperation, 10_000);
+          if (!res.serviceAccountId)
+            throw new Error("Temporal Cloud returned no service account id");
+          return mapServiceAccount(accountId, await this.fetchServiceAccount(res.serviceAccountId));
+        }
+        case "nexus-endpoint": {
+          const spec = nexusSpec(fields);
+          const res = await tcFetch<{ endpointId?: string; asyncOperation?: AsyncOperation }>(
+            this.ctx,
+            "/cloud/nexus/endpoints",
+            { method: "POST", body: { spec } },
+          );
+          await waitForOperation(this.ctx, res.asyncOperation, 10_000);
+          if (!res.endpointId) throw new Error("Temporal Cloud returned no endpoint id");
+          return mapNexusEndpoint(accountId, await this.fetchNexusEndpoint(res.endpointId));
+        }
+        case "connectivity-rule": {
+          let spec: Record<string, unknown>;
+          if (fields["type"] === "public") {
+            spec = { publicRule: { enableStableIps: bool(fields["stableIps"]) } };
+          } else {
+            const region = (fields["region"] ?? "").trim();
+            if (!region) throw new Error("Pick the region of the private connection");
+            const isGcp = region.startsWith("gcp-");
+            const connectionId = (fields["connectionId"] ?? "").trim();
+            if (!connectionId && !region.startsWith("azure-")) {
+              throw new Error("Enter the connection id of the private endpoint");
+            }
+            if (isGcp && !(fields["gcpProjectId"] ?? "").trim()) {
+              throw new Error("GCP private connections need the GCP project id");
+            }
+            spec = {
+              privateRule: {
+                region,
+                ...(connectionId ? { connectionId } : {}),
+                ...(isGcp ? { gcpProjectId: fields["gcpProjectId"]?.trim() } : {}),
+              },
+            };
+          }
+          const res = await tcFetch<{
+            connectivityRuleId?: string;
+            asyncOperation?: AsyncOperation;
+          }>(this.ctx, "/cloud/connectivity-rules", { method: "POST", body: { spec } });
+          await waitForOperation(this.ctx, res.asyncOperation, 10_000);
+          if (!res.connectivityRuleId) throw new Error("Temporal Cloud returned no rule id");
+          return mapConnectivityRule(
+            accountId,
+            await this.fetchConnectivityRule(res.connectivityRuleId),
+            new Map(),
+          );
+        }
+        default:
+          throw new Error(`Temporal Cloud plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      default:
-        throw new Error(`Temporal Cloud plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
   private async createNamespace(
@@ -1022,103 +1059,109 @@ export class TemporalCloudClient implements PluginClient {
   // Update
   // -------------------------------------------------------------------------
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    switch (typeId) {
-      case "namespace":
-        await this.updateNamespace(id, fields);
-        return mapNamespace(accountId, await this.fetchNamespace(id));
-      case "export-sink": {
-        const { namespaceId, name } = parseExportSinkId(id);
-        const current = await this.fetchExportSink(namespaceId, name);
-        const merged = { ...exportSinkFields(current), ...fields };
-        const spec = exportSinkSpec(merged, false);
-        const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          `/cloud/namespaces/${q(namespaceId)}/export-sinks/${q(name)}`,
-          { method: "POST", body: { spec, resourceVersion: current.resourceVersion } },
-        );
-        await waitForOperation(this.ctx, res.asyncOperation, 10_000);
-        return mapExportSink(accountId, namespaceId, await this.fetchExportSink(namespaceId, name));
-      }
-      case "user": {
-        const user = await this.fetchUser(id);
-        if ("accountRole" in fields) {
-          await this.saveUser(user, {
-            ...user.spec?.access,
-            accountAccess: {
-              ...user.spec?.access?.accountAccess,
-              role: roleEnum(fields["accountRole"] ?? ""),
-            },
-          });
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      switch (typeId) {
+        case "namespace":
+          await this.updateNamespace(id, fields);
+          return mapNamespace(accountId, await this.fetchNamespace(id));
+        case "export-sink": {
+          const { namespaceId, name } = parseExportSinkId(id);
+          const current = await this.fetchExportSink(namespaceId, name);
+          const merged = { ...exportSinkFields(current), ...fields };
+          const spec = exportSinkSpec(merged, false);
+          const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
+            this.ctx,
+            `/cloud/namespaces/${q(namespaceId)}/export-sinks/${q(name)}`,
+            { method: "POST", body: { spec, resourceVersion: current.resourceVersion } },
+          );
+          await waitForOperation(this.ctx, res.asyncOperation, 10_000);
+          return mapExportSink(
+            accountId,
+            namespaceId,
+            await this.fetchExportSink(namespaceId, name),
+          );
         }
-        return mapUser(accountId, await this.fetchUser(id));
-      }
-      case "service-account": {
-        const sa = await this.fetchServiceAccount(id);
-        const spec = { ...sa.spec };
-        if ("name" in fields) {
-          const name = (fields["name"] ?? "").trim();
-          if (!name) throw new Error("A service account needs a name");
-          spec.name = name;
-        }
-        if ("description" in fields) spec.description = fields["description"] ?? "";
-        if ("accountRole" in fields && fields["accountRole"] && !spec.namespaceScopedAccess) {
-          spec.access = {
-            ...spec.access,
-            accountAccess: {
-              ...spec.access?.accountAccess,
-              role: roleEnum(fields["accountRole"]),
-            },
-          };
-        }
-        await this.saveServiceAccount(sa, spec);
-        return mapServiceAccount(accountId, await this.fetchServiceAccount(id));
-      }
-      case "api-key": {
-        const key = await this.fetchApiKey(id);
-        const spec = { ...key.spec };
-        if ("displayName" in fields) spec.displayName = (fields["displayName"] ?? "").trim();
-        if ("description" in fields) spec.description = fields["description"] ?? "";
-        await this.saveApiKey(key, spec);
-        return mapApiKey(accountId, await this.fetchApiKey(id), await this.ownerNames());
-      }
-      case "nexus-endpoint": {
-        const current = await this.fetchNexusEndpoint(id);
-        const merged = {
-          ...Object.fromEntries(
-            Object.entries(mapNexusEndpoint(accountId, current).fields).map(([k, v]) => [
-              k,
-              String(v),
-            ]),
-          ),
-          ...fields,
-        };
-        const known = new Set((await this.namespaceOptions()).map((n) => n.id));
-        for (const ns of splitList(merged["allowedCallers"])) {
-          if (known.size > 0 && !known.has(ns)) {
-            throw new Error(`"${ns}" is not a namespace in this account`);
+        case "user": {
+          const user = await this.fetchUser(id);
+          if ("accountRole" in fields) {
+            await this.saveUser(user, {
+              ...user.spec?.access,
+              accountAccess: {
+                ...user.spec?.access?.accountAccess,
+                role: roleEnum(fields["accountRole"] ?? ""),
+              },
+            });
           }
+          return mapUser(accountId, await this.fetchUser(id));
         }
-        const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
-          this.ctx,
-          `/cloud/nexus/endpoints/${q(id)}`,
-          {
-            method: "POST",
-            body: { spec: nexusSpec(merged), resourceVersion: current.resourceVersion },
-          },
-        );
-        await waitForOperation(this.ctx, res.asyncOperation, 10_000);
-        return mapNexusEndpoint(accountId, await this.fetchNexusEndpoint(id));
+        case "service-account": {
+          const sa = await this.fetchServiceAccount(id);
+          const spec = { ...sa.spec };
+          if ("name" in fields) {
+            const name = (fields["name"] ?? "").trim();
+            if (!name) throw new Error("A service account needs a name");
+            spec.name = name;
+          }
+          if ("description" in fields) spec.description = fields["description"] ?? "";
+          if ("accountRole" in fields && fields["accountRole"] && !spec.namespaceScopedAccess) {
+            spec.access = {
+              ...spec.access,
+              accountAccess: {
+                ...spec.access?.accountAccess,
+                role: roleEnum(fields["accountRole"]),
+              },
+            };
+          }
+          await this.saveServiceAccount(sa, spec);
+          return mapServiceAccount(accountId, await this.fetchServiceAccount(id));
+        }
+        case "api-key": {
+          const key = await this.fetchApiKey(id);
+          const spec = { ...key.spec };
+          if ("displayName" in fields) spec.displayName = (fields["displayName"] ?? "").trim();
+          if ("description" in fields) spec.description = fields["description"] ?? "";
+          await this.saveApiKey(key, spec);
+          return mapApiKey(accountId, await this.fetchApiKey(id), await this.ownerNames());
+        }
+        case "nexus-endpoint": {
+          const current = await this.fetchNexusEndpoint(id);
+          const merged = {
+            ...Object.fromEntries(
+              Object.entries(mapNexusEndpoint(accountId, current).fields).map(([k, v]) => [
+                k,
+                String(v),
+              ]),
+            ),
+            ...fields,
+          };
+          const known = new Set((await this.namespaceOptions()).map((n) => n.id));
+          for (const ns of splitList(merged["allowedCallers"])) {
+            if (known.size > 0 && !known.has(ns)) {
+              throw new Error(`"${ns}" is not a namespace in this account`);
+            }
+          }
+          const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(
+            this.ctx,
+            `/cloud/nexus/endpoints/${q(id)}`,
+            {
+              method: "POST",
+              body: { spec: nexusSpec(merged), resourceVersion: current.resourceVersion },
+            },
+          );
+          await waitForOperation(this.ctx, res.asyncOperation, 10_000);
+          return mapNexusEndpoint(accountId, await this.fetchNexusEndpoint(id));
+        }
+        default:
+          throw new Error(`Temporal Cloud plugin: "${typeId}" cannot be edited from Infrawrench`);
       }
-      default:
-        throw new Error(`Temporal Cloud plugin: "${typeId}" cannot be edited from Infrawrench`);
-    }
+    });
   }
 
   private async updateNamespace(id: string, fields: Record<string, string>): Promise<void> {
@@ -1232,107 +1275,122 @@ export class TemporalCloudClient implements PluginClient {
   // Delete
   // -------------------------------------------------------------------------
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const id = externalIdOf(resourceId);
-    let path: string;
-    let version: string | undefined;
-    switch (typeId) {
-      case "namespace": {
-        const ns = await this.fetchNamespace(id);
-        if (ns.spec?.lifecycle?.enableDeleteProtection) {
-          throw new Error(
-            "Delete protection is on for this namespace. Turn it off with Edit first; deleting a namespace removes all of its workflow data for good.",
-          );
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      let path: string;
+      let version: string | undefined;
+      switch (typeId) {
+        case "namespace": {
+          const ns = await this.fetchNamespace(id);
+          if (ns.spec?.lifecycle?.enableDeleteProtection) {
+            throw new Error(
+              "Delete protection is on for this namespace. Turn it off with Edit first; deleting a namespace removes all of its workflow data for good.",
+            );
+          }
+          path = `/cloud/namespaces/${q(id)}`;
+          version = ns.resourceVersion;
+          break;
         }
-        path = `/cloud/namespaces/${q(id)}`;
-        version = ns.resourceVersion;
-        break;
+        case "export-sink": {
+          const { namespaceId, name } = parseExportSinkId(id);
+          path = `/cloud/namespaces/${q(namespaceId)}/export-sinks/${q(name)}`;
+          version = (await this.fetchExportSink(namespaceId, name)).resourceVersion;
+          break;
+        }
+        case "user":
+          path = `/cloud/users/${q(id)}`;
+          version = (await this.fetchUser(id)).resourceVersion;
+          break;
+        case "service-account":
+          path = `/cloud/service-accounts/${q(id)}`;
+          version = (await this.fetchServiceAccount(id)).resourceVersion;
+          break;
+        case "api-key":
+          path = `/cloud/api-keys/${q(id)}`;
+          version = (await this.fetchApiKey(id)).resourceVersion;
+          break;
+        case "nexus-endpoint":
+          path = `/cloud/nexus/endpoints/${q(id)}`;
+          version = (await this.fetchNexusEndpoint(id)).resourceVersion;
+          break;
+        case "connectivity-rule":
+          path = `/cloud/connectivity-rules/${q(id)}`;
+          version = (await this.fetchConnectivityRule(id)).resourceVersion;
+          break;
+        default:
+          throw new Error(`Temporal Cloud plugin: "${typeId}" cannot be deleted from Infrawrench`);
       }
-      case "export-sink": {
-        const { namespaceId, name } = parseExportSinkId(id);
-        path = `/cloud/namespaces/${q(namespaceId)}/export-sinks/${q(name)}`;
-        version = (await this.fetchExportSink(namespaceId, name)).resourceVersion;
-        break;
-      }
-      case "user":
-        path = `/cloud/users/${q(id)}`;
-        version = (await this.fetchUser(id)).resourceVersion;
-        break;
-      case "service-account":
-        path = `/cloud/service-accounts/${q(id)}`;
-        version = (await this.fetchServiceAccount(id)).resourceVersion;
-        break;
-      case "api-key":
-        path = `/cloud/api-keys/${q(id)}`;
-        version = (await this.fetchApiKey(id)).resourceVersion;
-        break;
-      case "nexus-endpoint":
-        path = `/cloud/nexus/endpoints/${q(id)}`;
-        version = (await this.fetchNexusEndpoint(id)).resourceVersion;
-        break;
-      case "connectivity-rule":
-        path = `/cloud/connectivity-rules/${q(id)}`;
-        version = (await this.fetchConnectivityRule(id)).resourceVersion;
-        break;
-      default:
-        throw new Error(`Temporal Cloud plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    }
-    const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(this.ctx, path, {
-      method: "DELETE",
-      query: { resourceVersion: version },
+      const res = await tcFetch<{ asyncOperation?: AsyncOperation }>(this.ctx, path, {
+        method: "DELETE",
+        query: { resourceVersion: version },
+      });
+      await waitForOperation(this.ctx, res?.asyncOperation, 10_000);
     });
-    await waitForOperation(this.ctx, res?.asyncOperation, 10_000);
   }
 
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "api-key" && (actionId === "disable" || actionId === "enable")) {
-      const key = await this.fetchApiKey(id);
-      await this.saveApiKey(key, { ...key.spec, disabled: actionId === "disable" });
-      return;
-    }
-    if (typeId === "export-sink" && (actionId === "enable" || actionId === "disable")) {
-      await this.updateResource(typeId, resourceId, _accountId, {
-        enabled: String(actionId === "enable"),
-      });
-      return;
-    }
-    if (typeId === "export-sink" && actionId === "validate") {
-      const { namespaceId, name } = parseExportSinkId(id);
-      const sink = await this.fetchExportSink(namespaceId, name);
-      await tcFetch<unknown>(this.ctx, `/cloud/namespaces/${q(namespaceId)}/export-sink-validate`, {
-        method: "POST",
-        body: { spec: sink.spec },
-      });
-      return;
-    }
-    throw new Error(`Temporal Cloud plugin: unknown action "${actionId}" for "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "api-key" && (actionId === "disable" || actionId === "enable")) {
+        const key = await this.fetchApiKey(id);
+        await this.saveApiKey(key, { ...key.spec, disabled: actionId === "disable" });
+        return;
+      }
+      if (typeId === "export-sink" && (actionId === "enable" || actionId === "disable")) {
+        await runPluginEffect(
+          this.updateResource(typeId, resourceId, _accountId, {
+            enabled: String(actionId === "enable"),
+          }),
+        );
+        return;
+      }
+      if (typeId === "export-sink" && actionId === "validate") {
+        const { namespaceId, name } = parseExportSinkId(id);
+        const sink = await this.fetchExportSink(namespaceId, name);
+        await tcFetch<unknown>(
+          this.ctx,
+          `/cloud/namespaces/${q(namespaceId)}/export-sink-validate`,
+          {
+            method: "POST",
+            body: { spec: sink.spec },
+          },
+        );
+        return;
+      }
+      throw new Error(`Temporal Cloud plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
   /** Parameterised actions, posted by `prompt-nosql-command` forms. */
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const id = externalIdOf(resourceId);
-    const form = decodePromptArgs(args);
-    if (typeId === "namespace") return this.namespaceCommand(id, command, form);
-    if ((typeId === "user" || typeId === "service-account") && command === "set-namespace-access") {
-      return this.setNamespaceAccess(typeId, id, form);
-    }
-    throw new Error(`Temporal Cloud plugin: command "${command}" not supported for "${typeId}"`);
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const form = decodePromptArgs(args);
+      if (typeId === "namespace") return this.namespaceCommand(id, command, form);
+      if (
+        (typeId === "user" || typeId === "service-account") &&
+        command === "set-namespace-access"
+      ) {
+        return this.setNamespaceAccess(typeId, id, form);
+      }
+      throw new Error(`Temporal Cloud plugin: command "${command}" not supported for "${typeId}"`);
+    });
   }
 
   private async namespaceCommand(

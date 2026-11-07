@@ -1,3 +1,6 @@
+import { attempt } from "@infrawrench/plugin-base/effect";
+import { defineNodeDrivers } from "@infrawrench/plugin-base";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import {
   createConnection,
   type FieldPacket,
@@ -47,29 +50,41 @@ export const driver = {
   id: "mysql-planetscale",
   dialTargets,
 
-  async query(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
-    const conn = await createConnection({
-      uri: connectionString,
-      ssl: { rejectUnauthorized: true },
+  query(connectionString: string, sql: string): PluginEffect<Record<string, unknown>[]> {
+    return attempt(async () => {
+      const conn = await createConnection({
+        uri: connectionString,
+        ssl: { rejectUnauthorized: true },
+      });
+      try {
+        const [rows] = await (conn as unknown as Queryable).query(sql);
+        return rows;
+      } finally {
+        await conn.end();
+      }
     });
-    try {
-      const [rows] = await (conn as unknown as Queryable).query(sql);
-      return rows;
-    } finally {
-      await conn.end();
-    }
   },
 
-  async execute(connectionString: string, sql: string, params: unknown[]): Promise<number> {
-    const conn = await createConnection({
-      uri: connectionString,
-      ssl: { rejectUnauthorized: true },
+  execute(connectionString: string, sql: string, params: unknown[]): PluginEffect<number> {
+    return attempt(async () => {
+      const conn = await createConnection({
+        uri: connectionString,
+        ssl: { rejectUnauthorized: true },
+      });
+      try {
+        const [result] = await (conn as unknown as Queryable).execute(sql, params);
+        return result.affectedRows;
+      } finally {
+        await conn.end();
+      }
     });
-    try {
-      const [result] = await (conn as unknown as Queryable).execute(sql, params);
-      return result.affectedRows;
-    } finally {
-      await conn.end();
-    }
   },
 } satisfies SqlNodeDriver;
+
+/**
+ * What this plugin contributes to each kind of host. See `PluginNodeDrivers`.
+ */
+export const nodeDrivers = defineNodeDrivers({
+  desktop: { sql: driver },
+  server: { sql: driver },
+});

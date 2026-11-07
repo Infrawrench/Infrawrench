@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UpstashClient, statsPeriod } from "../client.js";
 import { parseUpstashTime, redisConnectionString } from "../mappers.js";
@@ -62,7 +63,7 @@ describe("Developer API", () => {
         },
       ],
     });
-    const [db] = await new UpstashClient(creds).listResources("upstash-redis", ACC);
+    const [db] = await hostClient(new UpstashClient(creds)).listResources("upstash-redis", ACC);
     expect(calls[0]!.headers["Authorization"]).toBe(`Basic ${btoa("me@example.com:key")}`);
     expect(db!.fields).toMatchObject({
       region: "eu-west-1",
@@ -76,7 +77,7 @@ describe("Developer API", () => {
 
   it("explains a 401 and carries the status", async () => {
     mockFetch({ [`GET ${API}/redis/databases`]: new Response("Unauthorized", { status: 401 }) });
-    const err = await new UpstashClient(creds)
+    const err = await hostClient(new UpstashClient(creds))
       .listResources("upstash-redis", ACC)
       .catch((e: unknown) => e);
     expect((err as { status?: number }).status).toBe(401);
@@ -94,7 +95,7 @@ describe("Developer API", () => {
         rest_token: "rt",
       },
     });
-    const c = new UpstashClient(creds);
+    const c = hostClient(new UpstashClient(creds));
     const id = `${ACC}:upstash-redis:db1`;
     expect(await c.resolveOutput("upstash-redis", id, "connectionString", ACC)).toBe(
       "rediss://default:p%40ss@happy-cat-123.upstash.io:6379",
@@ -110,7 +111,7 @@ describe("Developer API", () => {
       [`GET ${API}/redis/database/db1`]: { database_id: "db1", primary_region: "us-east-1" },
     });
     await expect(
-      new UpstashClient(creds).executeNoSqlCommand(
+      hostClient(new UpstashClient(creds)).executeNoSqlCommand(
         "upstash-redis",
         `${ACC}:upstash-redis:db1`,
         ACC,
@@ -134,7 +135,7 @@ describe("Developer API", () => {
         ],
       },
     });
-    const rows = await new UpstashClient(creds).fetchCostData(ACC, {
+    const rows = await hostClient(new UpstashClient(creds)).fetchCostData(ACC, {
       fromDate: "2026-10-01",
       toDate: "2026-10-05",
     });
@@ -176,7 +177,10 @@ describe("QStash", () => {
         },
       ],
     });
-    const [s] = await new UpstashClient(creds).listResources("upstash-qstash-schedule", ACC);
+    const [s] = await hostClient(new UpstashClient(creds)).listResources(
+      "upstash-qstash-schedule",
+      ACC,
+    );
     expect(s!.externalId).toBe("q1/s1");
     expect(s!.fields["paused"]).toBe(true);
     expect(s!.parentResourceId).toBe(`${ACC}:upstash-qstash:q1`);
@@ -193,13 +197,17 @@ describe("QStash", () => {
         destination: "https://x.dev/h",
       },
     });
-    const r = await new UpstashClient(creds).createResource("upstash-qstash-schedule", ACC, {
-      qstashId: "q1",
-      destination: "https://x.dev/h",
-      cron: "*/5 * * * *",
-      retries: "2",
-      body: '{"a":1}',
-    });
+    const r = await hostClient(new UpstashClient(creds)).createResource(
+      "upstash-qstash-schedule",
+      ACC,
+      {
+        qstashId: "q1",
+        destination: "https://x.dev/h",
+        cron: "*/5 * * * *",
+        retries: "2",
+        body: '{"a":1}',
+      },
+    );
     expect(r.externalId).toBe("q1/s9");
     const post = calls.find((c) => c.method === "POST")!;
     expect(post.headers["Upstash-Cron"]).toBe("*/5 * * * *");
@@ -217,7 +225,7 @@ describe("QStash", () => {
       "POST qstash-us-east-1.upstash.io/v2/topics/g/endpoints": {},
       "DELETE qstash-us-east-1.upstash.io/v2/topics/g/endpoints": {},
     });
-    await new UpstashClient(creds).updateResource(
+    await hostClient(new UpstashClient(creds)).updateResource(
       "upstash-qstash-url-group",
       `${ACC}:upstash-qstash-url-group:q1/g`,
       ACC,
@@ -241,7 +249,7 @@ describe("QStash", () => {
       "GET qstash-us-east-1.upstash.io/v2/queues": [],
       "GET qstash-us-east-1.upstash.io/v2/topics": [],
     });
-    const quotas = await new UpstashClient(creds).fetchQuotas(ACC);
+    const quotas = await hostClient(new UpstashClient(creds)).fetchQuotas(ACC);
     expect(quotas.map((q) => [q.name, q.used, q.limit])).toEqual([
       ["Schedules", 2, 10],
       ["Queues", 0, 5],

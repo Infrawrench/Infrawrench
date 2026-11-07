@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { labelsKey, normaliseUrl, PromApiError } from "../api.js";
 import {
@@ -15,14 +16,16 @@ const ACCOUNT = "acct";
 function client(route: (call: Call) => unknown, creds: Record<string, string> = {}) {
   const { http, calls } = makeHttp(route);
   return {
-    c: new PromClient(
-      {
-        url: "prom.internal:9090/graph",
-        alertmanagerUrl: "am.internal:9093",
-        tenantId: "team-a",
-        ...creds,
-      },
-      { http } as never,
+    c: hostClient(
+      new PromClient(
+        {
+          url: "prom.internal:9090/graph",
+          alertmanagerUrl: "am.internal:9093",
+          tenantId: "team-a",
+          ...creds,
+        },
+        { http } as never,
+      ),
     ),
     calls,
   };

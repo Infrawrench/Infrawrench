@@ -1,5 +1,6 @@
+import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
-import { pluginManifestSchema } from "@infrawrench/plugin-base";
 import { doPriceCatalog, doSizeToProduct, fetchDoPriceCatalog } from "../price-catalog.js";
 import { plugin } from "../plugin.js";
 import { DigitalOceanClient } from "../client.js";
@@ -97,11 +98,11 @@ describe("price catalog wiring", () => {
     expect(plugin.manifest.priceCatalog).toBe(doPriceCatalog);
     expect(doPriceCatalog.requiresCredentials).toBe(true);
     expect(doPriceCatalog.regionScoped).toBe(false);
-    expect(pluginManifestSchema.safeParse(plugin.manifest).success).toBe(true);
+    expect(validate(pluginManifestSchema, plugin.manifest).success).toBe(true);
   });
 
   it("exposes fetchPriceCatalog on the client", async () => {
-    const client = new DigitalOceanClient({ apiToken: "dop_v1_fake" });
+    const client = hostClient(new DigitalOceanClient({ apiToken: "dop_v1_fake" }));
     const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ sizes: [BASIC], meta: { total: 1 } }), {
         status: 200,

@@ -74,7 +74,11 @@ export const ServerResourceType = rt({
     }),
     f("rescueEnabled", "Rescue Mode", { kind: "boolean", required: false, editable: false }),
   ],
-  outputs: [o("ipv4", "Public IPv4"), o("ipv6", "Public IPv6"), o("ipv4Private", "Private IPv4")],
+  outputs: [
+    o("ipv4", "Public IPv4", { dnsValue: "ipv4" }),
+    o("ipv6", "Public IPv6", { dnsValue: "ipv6" }),
+    o("ipv4Private", "Private IPv4"),
+  ],
   // All three are ids straight off the /servers payload; each target type's
   // externalId is the same numeric id stringified.
   dependsOn: [

@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { REALMS } from "./api.js";
 import { SplunkObservabilityClient } from "./client.js";
@@ -7,16 +8,15 @@ import { SPLUNK_PREFLIGHT } from "./preflight.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { splunkTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "splunk-observability",
-  version: "0.1.0",
+  // api.<realm> for REST, stream.<realm> for SignalFlow; signalfx.com is the legacy alias of the same hosts.
+  egressHosts: ["*.observability.splunkcloud.com", "*.signalfx.com"],
   displayName: "Splunk Observability Cloud",
   description:
     "Infrastructure monitoring, APM and synthetics from Splunk. Manage detectors, alerts, muting rules, dashboards and charts, teams, members, integrations, access tokens, SLOs and synthetic tests, chart any detector or chart's SignalFlow, and track usage against your organization's limits.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "realm",
       label: "Realm",
@@ -39,18 +39,21 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   quotas: {
     label: "Organization limits",
     partial: true,
   },
   preflight: SPLUNK_PREFLIGHT,
   rateLimit: { capacity: 10, refillPerSecond: 2 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new SplunkObservabilityClient(credentials, services),
+  testCredentials: { realm: "us1", token: "sf-test-token" },
   terraformExport: splunkTerraformExport,
-};
+});

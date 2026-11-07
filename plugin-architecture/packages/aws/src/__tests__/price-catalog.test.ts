@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AWS_PRICE_CATALOG,
@@ -313,11 +314,13 @@ describe("AWSClient.fetchPriceCatalog", () => {
         { status: 200 },
       );
     });
-    const client = new AWSClient({
-      accessKeyId: "AKIAFAKEFAKEFAKE",
-      secretAccessKey: "fake-secret",
-      region: "eu-west-1",
-    });
+    const client = hostClient(
+      new AWSClient({
+        accessKeyId: "AKIAFAKEFAKEFAKE",
+        secretAccessKey: "fake-secret",
+        region: "eu-west-1",
+      }),
+    );
     const result = await client.fetchPriceCatalog({ serviceId: "ec2", region: "eu-west-1" });
     expect(result.products.map((p) => p.sku)).toEqual(["m7g.large"]);
     const urls = fetchMock.mock.calls.map((c) => String(c[0]));

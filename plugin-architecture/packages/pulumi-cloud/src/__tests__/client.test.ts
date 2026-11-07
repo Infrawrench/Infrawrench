@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { consoleUrl, normaliseApiUrl, puPaged, statusOf } from "../api.js";
 import { PulumiCloudClient, decodePlaintext, tailLines, unwrapEscValue } from "../client.js";
@@ -33,9 +34,11 @@ function client(
       : {}),
   };
   return {
-    c: new PulumiCloudClient(
-      { accessToken: "pul-t", organization: "acme", ...creds },
-      services as never,
+    c: hostClient(
+      new PulumiCloudClient(
+        { accessToken: "pul-t", organization: "acme", ...creds },
+        services as never,
+      ),
     ),
     calls,
   };
@@ -87,9 +90,13 @@ describe("organization picker", () => {
       organizations: [{ githubLogin: "zeta", name: "Zeta", role: "admin" }],
       tokenInfo: { organization: "acme", name: "ci", team: "" },
     }));
-    const opts = await plugin.listCredentialOptions!("organization", { accessToken: "t" }, {
-      http,
-    } as never);
+    const opts = await hostPlugin(plugin).listCredentialOptions!(
+      "organization",
+      { accessToken: "t" },
+      {
+        http,
+      } as never,
+    );
     expect(opts.map((o) => o.id)).toEqual(["acme", "zeta"]);
   });
 });

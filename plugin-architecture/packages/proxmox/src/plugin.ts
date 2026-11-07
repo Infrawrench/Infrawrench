@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { ProxmoxClient } from "./client.js";
 import { resourceTypes } from "./resources.js";
 import { PREFLIGHT, proxmoxPolicyTemplate } from "./preflight.js";
@@ -12,16 +13,15 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     </g>
   </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "proxmox",
-  version: "0.1.0",
+  // Proxmox VE is self-hosted: the API URL is user-supplied, so there is no fixed egress host (same as kubernetes).
+  egressHosts: [],
   displayName: "Proxmox VE",
   description:
     "Self-hosted Proxmox Virtual Environment: nodes, VMs, containers, storage, backups, HA and firewall",
   logoSvg,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "url",
       label: "Proxmox VE URL",
@@ -56,17 +56,24 @@ const manifest: PluginManifest = {
       multiline: true,
       placeholder: "-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----",
     },
-  ],
+  ]),
   // The cluster runs on the customer's hardware: no rate card, no billing
   // API and no vendor status page exist for it.
   rateLimit: { capacity: 20, refillPerSecond: 10 },
   preflight: PREFLIGHT,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new ProxmoxClient(credentials, services),
+  testCredentials: {
+    url: "https://pve.example.com:8006",
+    tokenId: "infrawrench@pve!infrawrench",
+    tokenSecret: "00000000-0000-0000-0000-000000000000",
+  },
   policyTemplate: proxmoxPolicyTemplate,
   remediationCommands: proxmoxRemediationCommands,
-};
+});

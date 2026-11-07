@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RemediationSeat } from "@infrawrench/plugin-base";
 import { AnthropicClient } from "../client.js";
@@ -57,11 +58,13 @@ const ENTERPRISE_USERS = [
 ];
 
 function client(extra: Record<string, string> = {}) {
-  return new AnthropicClient({
-    apiKey: "sk-ant-api03-test",
-    adminApiKey: "sk-ant-admin01-test",
-    ...extra,
-  });
+  return hostClient(
+    new AnthropicClient({
+      apiKey: "sk-ant-api03-test",
+      adminApiKey: "sk-ant-admin01-test",
+      ...extra,
+    }),
+  );
 }
 
 beforeEach(() => {
@@ -230,7 +233,7 @@ describe("fetchSeats", () => {
       }),
     );
     expect(await client().fetchSeats("acc", { lookbackDays: 30 })).toEqual([]);
-    const noAdmin = new AnthropicClient({ apiKey: "sk-ant-api03-test" });
+    const noAdmin = hostClient(new AnthropicClient({ apiKey: "sk-ant-api03-test" }));
     expect(await noAdmin.fetchSeats("acc", { lookbackDays: 30 })).toEqual([]);
     expect(calls).toHaveLength(1);
   });

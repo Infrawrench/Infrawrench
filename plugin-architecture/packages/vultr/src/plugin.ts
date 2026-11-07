@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { VultrClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -8,16 +9,14 @@ import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { vultrRemediationCommands } from "./remediation.js";
 import { vultrTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "vultr",
-  version: "0.1.0",
+  egressHosts: ["api.vultr.com"],
   displayName: "Vultr",
   description:
     "Vultr cloud: billed spend from invoices and month-to-date charges, account credit, and instances, bare metal, block storage, snapshots, backups, Kubernetes (VKE), Managed Databases, load balancers, firewall groups, VPCs, reserved IPs, DNS, Object Storage, SSH keys and startup scripts.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -28,7 +27,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Open API settings", url: "https://my.vultr.com/settings/#settingsapi" },
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Billed spend: closed invoices' line items spread over the days they
    * cover, plus the open month from pending charges. See `cost-data.ts`.
@@ -49,13 +48,16 @@ const manifest: PluginManifest = {
   statusFeed,
   // Vultr allows 30 requests per second per key; listers fan out at most 6 wide.
   rateLimit: { capacity: 30, refillPerSecond: 20 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new VultrClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiKey: "TESTKEY000000000000000000000000000000" },
   terraformExport: vultrTerraformExport,
   parseStatusFeed,
   remediationCommands: vultrRemediationCommands,
-};
+});

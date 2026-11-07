@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { SupabaseApiError, statusOf } from "../api.js";
@@ -86,7 +87,7 @@ const project = {
 
 function client(routes: Route[], secrets?: Record<string, string>) {
   const fake = fakeServices(routes, secrets);
-  return { c: new SupabaseClient({ accessToken: "sbp_x" }, fake.services), ...fake };
+  return { c: hostClient(new SupabaseClient({ accessToken: "sbp_x" }, fake.services)), ...fake };
 }
 
 describe("SupabaseClient", () => {

@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { BUSINESS_METRIC_SOURCE } from "./business-metric.js";
 import { MetronomeClient } from "./client.js";
@@ -6,16 +11,14 @@ import { METRONOME_LOGO_SVG } from "./logo.js";
 import { BillableMetricResourceType } from "./resources/billable-metric.js";
 import { CustomerResourceType } from "./resources/customer.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "metronome",
-  version: "0.1.0",
+  egressHosts: ["api.metronome.com"],
   displayName: "Metronome",
   description:
     "Metronome usage-based billing: lists customers and billable metrics, and imports a billable metric's daily usage or each day's invoiced revenue as a business metric for unit costs.",
   logoSvg: METRONOME_LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiToken",
       label: "API Token",
@@ -28,14 +31,17 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   businessMetricSource: BUSINESS_METRIC_SOURCE,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [CustomerResourceType, BillableMetricResourceType];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new MetronomeClient(credentials, services),
-};
+  testCredentials: { apiToken: "test-metronome-token" },
+});

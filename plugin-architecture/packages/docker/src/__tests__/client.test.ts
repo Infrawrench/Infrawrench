@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi, type Mock } from "vitest";
 import { DockerClient } from "../client.js";
 import type { HostServices, ResourceInstance } from "@infrawrench/plugin-base";
@@ -71,7 +72,9 @@ const sampleNetwork = {
 describe("DockerClient.listResources", () => {
   it("maps containers to ResourceInstances with formatted ports and slugged id", async () => {
     const { services } = makeServices((op) => (op === "listContainers" ? [sampleContainer] : []));
-    const client = new DockerClient({ dockerHost: "unix:///var/run/docker.sock" }, services);
+    const client = hostClient(
+      new DockerClient({ dockerHost: "unix:///var/run/docker.sock" }, services),
+    );
     const list = await client.listResources("docker-container", "acct");
     expect(list).toHaveLength(1);
     const r = list[0]!;
@@ -94,25 +97,25 @@ describe("DockerClient.listResources", () => {
 
   it("falls back to the short id for display name when there is no name", async () => {
     const { services } = makeServices(() => [{ ...sampleContainer, Names: [], Ports: [] }]);
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     const [r] = await client.listResources("docker-container", "a");
     expect(r!.displayName).toBe("abcdef012345");
     expect(r!.fields["ports"]).toBe("");
   });
 
   it("returns an empty array when no docker service is injected", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     expect(await client.listResources("docker-container", "a")).toEqual([]);
   });
 
   it("throws for unknown resource types", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     await expect(client.listResources("widget", "a")).rejects.toThrow(/unknown resource type/);
   });
 
   it("maps images to ResourceInstances with encoded Docker ids", async () => {
     const { services } = makeServices((op) => (op === "listImages" ? [sampleImage] : []));
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
 
     const [r] = await client.listResources("docker-image", "acct");
 
@@ -132,7 +135,7 @@ describe("DockerClient.listResources", () => {
       if (op === "listNetworks") return [sampleNetwork];
       return [];
     });
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
 
     const [volume] = await client.listResources("docker-volume", "acct");
     const [network] = await client.listResources("docker-network", "acct");
@@ -166,7 +169,7 @@ describe("DockerClient.listResources", () => {
 describe("DockerClient.getResource", () => {
   it("returns the matching resource", async () => {
     const { services } = makeServices(() => [sampleContainer]);
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     const r = await client.getResource(
       "docker-container",
       "acct:docker-container:abcdef012345",
@@ -177,7 +180,7 @@ describe("DockerClient.getResource", () => {
 
   it("throws when the resource id is not found", async () => {
     const { services } = makeServices(() => [sampleContainer]);
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     await expect(client.getResource("docker-container", "missing", "acct")).rejects.toThrow(
       /not found/,
     );
@@ -186,7 +189,7 @@ describe("DockerClient.getResource", () => {
 
 describe("DockerClient.resolveOutput", () => {
   it("throws not supported", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     await expect(client.resolveOutput("docker-container", "x", "y")).rejects.toThrow(
       /not supported/,
     );
@@ -212,7 +215,7 @@ function instance(overrides: Partial<ResourceInstance> = {}): ResourceInstance {
 
 describe("DockerClient.renderDetail", () => {
   it("renders container detail with running status dot and key-value list", () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     const detail = client.renderDetail(instance());
     expect(detail.title).toBe("web");
     expect(detail.subtitle).toBe("nginx:latest");
@@ -235,7 +238,7 @@ describe("DockerClient.renderDetail", () => {
   });
 
   it("uses placeholders and external id when fields/outputs are missing", () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     const detail = client.renderDetail(
       instance({
         fields: { name: "" },
@@ -254,7 +257,7 @@ describe("DockerClient.renderDetail", () => {
 
 describe("DockerClient.renderSidebarItem", () => {
   it("maps id, label and a status dot based on state", () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     expect(client.renderSidebarItem(instance())).toEqual({
       id: "acct:docker-container:abcdef012345",
       label: "web",
@@ -263,7 +266,7 @@ describe("DockerClient.renderSidebarItem", () => {
   });
 
   it("maps paused/exited/created/unknown states to the right status", () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     const status = (state: string) =>
       client.renderSidebarItem(instance({ resolvedOutputs: { status: state } })).status;
     expect(status("paused")).toMatchObject({ status: "degraded" });
@@ -280,7 +283,7 @@ describe("DockerClient.getCreateConfig", () => {
         ? [{ RepoTags: ["nginx:latest", "<none>:<none>"] }, { RepoTags: ["redis:7"] }, {}]
         : [],
     );
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     const cfg = await client.getCreateConfig("docker-container");
     const imageField = cfg.fields.find((f) => f.key === "image")!;
     expect(imageField.kind).toBe("select");
@@ -292,7 +295,7 @@ describe("DockerClient.getCreateConfig", () => {
   });
 
   it("falls back to a text image field when no images / no docker service", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     const cfg = await client.getCreateConfig("docker-container");
     const imageField = cfg.fields.find((f) => f.key === "image")!;
     expect(imageField.kind).toBe("text");
@@ -300,12 +303,12 @@ describe("DockerClient.getCreateConfig", () => {
   });
 
   it("throws for unsupported types", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     await expect(client.getCreateConfig("widget")).rejects.toThrow(/not supported/);
   });
 
   it("returns create configs for volumes and networks", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
 
     expect((await client.getCreateConfig("docker-volume")).fields.map((f) => f.key)).toEqual([
       "name",
@@ -339,7 +342,7 @@ describe("DockerClient.createResource", () => {
       }
       return {};
     });
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     const r = await client.createResource("docker-container", "acct", {
       image: "nginx:latest",
       name: "web",
@@ -370,7 +373,7 @@ describe("DockerClient.createResource", () => {
       }
       return {};
     });
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     const r = await client.createResource("docker-container", "acct", {
       image: "redis:7",
       start: "false",
@@ -390,7 +393,7 @@ describe("DockerClient.createResource", () => {
       }
       return {};
     });
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     await client.createResource("docker-container", "a", {
       image: "i",
       ports: "8080,:80, ",
@@ -398,14 +401,14 @@ describe("DockerClient.createResource", () => {
   });
 
   it("throws when no docker service is available", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     await expect(client.createResource("docker-container", "a", { image: "i" })).rejects.toThrow(
       /not available/,
     );
   });
 
   it("throws for unsupported types", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     await expect(client.createResource("widget", "a", {})).rejects.toThrow(/not supported/);
   });
 
@@ -417,7 +420,7 @@ describe("DockerClient.createResource", () => {
       }
       return {};
     });
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
 
     const r = await client.createResource("docker-volume", "acct", {
       name: "app-data",
@@ -440,7 +443,7 @@ describe("DockerClient.createResource", () => {
       }
       return {};
     });
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
 
     const r = await client.createResource("docker-network", "acct", {
       name: "frontend",
@@ -461,14 +464,14 @@ describe("DockerClient.createResource", () => {
 describe("DockerClient.deleteResource", () => {
   it("removes the container by parsing the trailing id segment", async () => {
     const { services, docker } = makeServices(() => ({ ok: true }));
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     await client.deleteResource("docker-container", "acct:docker-container:abcdef012345", "acct");
     expect(docker.command).toHaveBeenCalledWith("removeContainer", { id: "abcdef012345" });
   });
 
   it("removes images, volumes, and networks with decoded ids", async () => {
     const { services, docker } = makeServices(() => ({ ok: true }));
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
 
     await client.deleteResource(
       "docker-image",
@@ -490,12 +493,12 @@ describe("DockerClient.deleteResource", () => {
   });
 
   it("throws for unsupported types", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     await expect(client.deleteResource("widget", "x", "a")).rejects.toThrow(/not supported/);
   });
 
   it("throws when no docker service available", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     await expect(client.deleteResource("docker-container", "a:b:c", "a")).rejects.toThrow(
       /not available/,
     );
@@ -505,7 +508,7 @@ describe("DockerClient.deleteResource", () => {
 describe("DockerClient.fetchDashboardStats", () => {
   it("returns per-container stats from the resource fields", async () => {
     const { services } = makeServices(() => [sampleContainer]);
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     const stats = await client.fetchDashboardStats(
       "docker-container",
       "acct:docker-container:abcdef012345",
@@ -521,7 +524,7 @@ describe("DockerClient.fetchDashboardStats", () => {
   it("marks exited containers as error variant", async () => {
     const exited = { ...sampleContainer, Status: "Exited (0)", State: "exited", Ports: [] };
     const { services } = makeServices(() => [exited]);
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     const stats = await client.fetchDashboardStats(
       "docker-container",
       "acct:docker-container:abcdef012345",
@@ -541,7 +544,7 @@ describe("DockerClient.fetchDashboardStats", () => {
 
   it("returns empty array when the per-container resource lookup fails", async () => {
     const { services } = makeServices(() => []);
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     const stats = await client.fetchDashboardStats("docker-container", "missing", "acct");
     expect(stats).toEqual([]);
   });
@@ -557,7 +560,7 @@ describe("DockerClient.fetchDashboardStats", () => {
         ];
       return [];
     });
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     const stats = await client.fetchDashboardStats("account", "acct", "acct");
     expect(stats).toEqual([
       { label: "Version", value: "24.0.7" },
@@ -566,7 +569,7 @@ describe("DockerClient.fetchDashboardStats", () => {
   });
 
   it("returns empty array when no docker service for account-level stats", async () => {
-    const client = new DockerClient({ dockerHost: "" });
+    const client = hostClient(new DockerClient({ dockerHost: "" }));
     expect(await client.fetchDashboardStats("account", "acct", "acct")).toEqual([]);
   });
 
@@ -575,7 +578,7 @@ describe("DockerClient.fetchDashboardStats", () => {
       if (op === "version") throw new Error("daemon down");
       return [];
     });
-    const client = new DockerClient({ dockerHost: "" }, services);
+    const client = hostClient(new DockerClient({ dockerHost: "" }, services));
     expect(await client.fetchDashboardStats("account", "acct", "acct")).toEqual([]);
   });
 });

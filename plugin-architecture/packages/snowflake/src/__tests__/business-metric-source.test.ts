@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseAccount } from "../account.js";
 import type { SnowflakeContext } from "../api.js";
@@ -53,7 +54,7 @@ describe("snowflake business metric source manifest", () => {
   });
 
   it("is wired into the client", () => {
-    const client = new SnowflakeClient(CREDS);
+    const client = hostClient(new SnowflakeClient(CREDS));
     expect(typeof client.runBusinessMetricSource).toBe("function");
     expect(typeof client.listBusinessMetricSourceOptions).toBe("function");
   });

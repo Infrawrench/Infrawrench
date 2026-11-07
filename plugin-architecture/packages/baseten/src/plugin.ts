@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { BasetenClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
@@ -6,16 +7,14 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { basetenRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "baseten",
-  version: "0.1.0",
+  egressHosts: ["api.baseten.co"],
   displayName: "Baseten",
   description:
     "Model inference platform. Track billed Baseten spend by model, deployment, instance type, training job and Model API, find deployments keeping idle replicas warm, and manage models, deployments, environments, autoscaling, promotions, chains, training jobs and secrets.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -29,7 +28,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Billed spend from `GET /v1/billing/usage_summary`: dedicated inference per
    * deployment and chainlet, training per job and Model APIs per model, daily.
@@ -48,12 +47,15 @@ const manifest: PluginManifest = {
     partial: true,
   },
   statusFeed,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new BasetenClient(credentials, RESOURCE_TYPES, services),
+  testCredentials: { apiKey: "test-baseten-key" },
   parseStatusFeed,
   remediationCommands: basetenRemediationCommands,
-};
+});

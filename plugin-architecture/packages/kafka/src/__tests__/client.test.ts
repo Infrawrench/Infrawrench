@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostServices, KvHostServices, PublishMessagePayload } from "@infrawrench/plugin-base";
 import { describe, expect, it, vi } from "vitest";
 import { KafkaClient } from "../client.js";
@@ -24,9 +25,8 @@ describe("KafkaClient", () => {
       throw new Error(`unexpected ${cmd}`);
     });
 
-    const client = new KafkaClient(
-      { connectionString: "kafka://broker1:9092" },
-      servicesFor(command),
+    const client = hostClient(
+      new KafkaClient({ connectionString: "kafka://broker1:9092" }, servicesFor(command)),
     );
 
     const topics = await client.listResources("kafka-topic", "acct");
@@ -46,9 +46,8 @@ describe("KafkaClient", () => {
       throw new Error(`unexpected ${cmd}`);
     });
 
-    const client = new KafkaClient(
-      { connectionString: "kafka://broker1:9092" },
-      servicesFor(command),
+    const client = hostClient(
+      new KafkaClient({ connectionString: "kafka://broker1:9092" }, servicesFor(command)),
     );
 
     const topics = await client.listResources("kafka-topic", "acct");
@@ -58,9 +57,8 @@ describe("KafkaClient", () => {
 
   it("forwards optional produce partition to the KV driver", async () => {
     const command = vi.fn(async () => ({ partition: 2, offset: "42" }));
-    const client = new KafkaClient(
-      { connectionString: "kafka://broker1:9092" },
-      servicesFor(command),
+    const client = hostClient(
+      new KafkaClient({ connectionString: "kafka://broker1:9092" }, servicesFor(command)),
     );
     const payload: PublishMessagePayload = {
       body: "hello",

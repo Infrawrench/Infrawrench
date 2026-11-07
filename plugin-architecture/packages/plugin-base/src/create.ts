@@ -115,6 +115,13 @@ export type CreateFieldKind =
  */
 export type DatetimeMode = "datetime" | "date" | "epoch-ms";
 
+/**
+ * A kind of output a picker can ask for without naming plugins. Resource types
+ * opt in with a flag on the output (`dnsValue`); the host's loader fills
+ * `associationSources` from every loaded plugin that declares one.
+ */
+export type AssociationRole = "dns-ipv4" | "dns-ipv6" | "dns-hostname";
+
 /** Describes a specific plugin/resource-type/output that can provide a value */
 export interface AssociationSource {
   pluginId: string;
@@ -218,6 +225,8 @@ export interface CreateFieldConfig {
   disks?: DiskOption[];
   /** `resource-picker`: resources to pick from (filtered by association sources from the resource type definition) */
   associationSources?: AssociationSource[];
+  /** `resource-picker`: fill `associationSources` from outputs flagged with this role. */
+  associationRole?: AssociationRole;
   /**
    * `resource-picker`, when set, the picker reads the current form value of
    * this field and passes it to the host as a regional scope hint. Used to

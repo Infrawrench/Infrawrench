@@ -1,566 +1,640 @@
-import { z } from "zod";
+import { Schema } from "effect";
+import { associationSourceSchema, peerGuidanceActionSchema } from "./create.schema.js";
+import { Int, NonEmpty, Positive, PositiveInt, Url, rule } from "./primitives.js";
 
-const associationSourceSchema = z.object({
-  pluginId: z.string(),
-  resourceTypeId: z.string(),
-  outputKey: z.string(),
+export const fieldDefinitionSchema = Schema.Struct({
+  key: NonEmpty,
+  label: NonEmpty,
+  kind: Schema.Literals([
+    "string",
+    "number",
+    "boolean",
+    "enum",
+    "secret",
+    "association",
+    "password",
+  ]),
+  required: Schema.Boolean,
+  description: Schema.optional(Schema.String),
+  enumValues: Schema.optional(Schema.Array(Schema.String)),
+  resolvableOutputKeys: Schema.optional(Schema.Array(Schema.String)),
+  resolvableFrom: Schema.optional(Schema.Array(associationSourceSchema)),
+  allowLiteral: Schema.optional(Schema.Boolean),
+  editable: Schema.optional(Schema.Boolean),
+  showcase: Schema.optional(Schema.Boolean),
+}).check(
+  rule(
+    (f) => !f.showcase || (f.kind !== "secret" && f.kind !== "password"),
+    "a secret or password field can't be shown on a tile",
+    ["showcase"],
+  ),
+);
+
+const resourceOutputSchema = Schema.Struct({
+  key: NonEmpty,
+  label: NonEmpty,
+  sensitive: Schema.Boolean,
+  description: Schema.optional(Schema.String),
+  hidden: Schema.optional(Schema.Boolean),
+  dnsValue: Schema.optional(Schema.Literals(["ipv4", "ipv6", "hostname"])),
 });
 
-export const fieldDefinitionSchema = z
-  .object({
-    key: z.string().min(1),
-    label: z.string().min(1),
-    kind: z.enum(["string", "number", "boolean", "enum", "secret", "association", "password"]),
-    required: z.boolean(),
-    description: z.string().optional(),
-    enumValues: z.array(z.string()).optional(),
-    resolvableOutputKeys: z.array(z.string()).optional(),
-    resolvableFrom: z.array(associationSourceSchema).optional(),
-    allowLiteral: z.boolean().optional(),
-    showcase: z.boolean().optional(),
-  })
-  .refine((f) => !f.showcase || (f.kind !== "secret" && f.kind !== "password"), {
-    message: "a secret or password field can't be shown on a tile",
-    path: ["showcase"],
-  });
-
-const resourceOutputSchema = z.object({
-  key: z.string().min(1),
-  label: z.string().min(1),
-  sensitive: z.boolean(),
-  description: z.string().optional(),
-});
-
-const peerPluginIntegrationSchema = z.object({
-  pluginId: z.string().min(1),
-  credentialMappings: z.array(
-    z.object({
-      outputKey: z.string().min(1),
-      credentialKey: z.string().min(1),
+const peerPluginIntegrationSchema = Schema.Struct({
+  pluginId: NonEmpty,
+  credentialMappings: Schema.Array(
+    Schema.Struct({
+      outputKey: NonEmpty,
+      credentialKey: NonEmpty,
     }),
   ),
-  tabLabel: z.string().min(1),
-  showWhen: z
-    .object({
-      fieldKey: z.string().min(1),
-      equals: z.string().optional(),
-      prefix: z.string().optional(),
-    })
-    .optional(),
-  requiresFields: z.array(z.string().min(1)).optional(),
-  unreachableWhen: z
-    .object({
-      fieldsEmpty: z.array(z.string().min(1)).min(1),
-      title: z.string().min(1),
-      suggestions: z.array(z.string().min(1)),
-    })
-    .optional(),
-  exposeMetricsToParent: z.boolean().optional(),
+  tabLabel: NonEmpty,
+  showWhen: Schema.optional(
+    Schema.Struct({
+      fieldKey: NonEmpty,
+      equals: Schema.optional(Schema.String),
+      prefix: Schema.optional(Schema.String),
+    }),
+  ),
+  requiresFields: Schema.optional(Schema.Array(NonEmpty)),
+  unreachableWhen: Schema.optional(
+    Schema.Struct({
+      fieldsEmpty: Schema.Array(NonEmpty).check(Schema.isMinLength(1)),
+      title: NonEmpty,
+      suggestions: Schema.Array(NonEmpty),
+    }),
+  ),
+  credentialSetupAction: Schema.optional(peerGuidanceActionSchema),
+  exposeMetricsToParent: Schema.optional(Schema.Boolean),
 });
 
-const secretExportEntrySchema = z.object({
-  envKey: z.string().min(1),
-  outputKey: z.string().min(1),
-  description: z.string().optional(),
+const secretExportTemplateSchema = Schema.Struct({
+  id: NonEmpty,
+  displayName: NonEmpty,
+  description: Schema.optional(Schema.String),
+  entries: Schema.Array(
+    Schema.Struct({
+      envKey: NonEmpty,
+      outputKey: NonEmpty,
+      description: Schema.optional(Schema.String),
+    }),
+  ).check(Schema.isMinLength(1)),
 });
 
-const secretExportTemplateSchema = z.object({
-  id: z.string().min(1),
-  displayName: z.string().min(1),
-  description: z.string().optional(),
-  entries: z.array(secretExportEntrySchema).min(1),
+const attachTargetSchema = Schema.Struct({
+  pluginId: NonEmpty,
+  resourceTypeId: NonEmpty,
+  matchField: Schema.optional(Schema.String),
+  verb: Schema.optional(Schema.String),
 });
 
-const attachTargetSchema = z.object({
-  pluginId: z.string().min(1),
-  resourceTypeId: z.string().min(1),
-  matchField: z.string().optional(),
-  verb: z.string().optional(),
-});
-
-const orphanConditionSchema = z
-  .object({
-    fieldKey: z.string().min(1),
-    when: z.enum(["empty", "equals", "notEquals"]),
-    value: z.string().optional(),
-  })
+const orphanConditionSchema = Schema.Struct({
+  fieldKey: NonEmpty,
+  when: Schema.Literals(["empty", "equals", "notEquals"]),
+  value: Schema.optional(Schema.String),
+}).check(
   // `evaluateOrphanRule` falls back to comparing against "" when `value` is
   // absent, so an author who forgets it would silently get a rule that matches
   // empty-valued fields instead of a manifest error.
-  .refine((c) => c.when === "empty" || c.value !== undefined, {
-    message: "orphan condition requires `value` when `when` is 'equals' or 'notEquals'",
-    path: ["value"],
-  });
+  rule(
+    (c) => c.when === "empty" || c.value !== undefined,
+    "orphan condition requires `value` when `when` is 'equals' or 'notEquals'",
+    ["value"],
+  ),
+);
 
-const expiryFieldRuleSchema = z
-  .object({
-    fieldKey: z.string().min(1),
-    from: z.enum(["expiry", "created"]),
-    kind: z.enum([
-      "tls-cert",
-      "domain",
-      "api-token",
-      "access-key",
-      "k8s-cert",
-      "ssh-key",
-      "secret-version",
-      // "lease" is deliberately absent: leases are host-managed rows, not a
-      // kind a plugin's lister can declare a field for.
-      "other",
-    ]),
-    label: z.string().min(1),
-    maxAgeDays: z.number().int().positive().optional(),
-    fallbackFieldKey: z.string().min(1).optional(),
-  })
-  // A budget on an absolute deadline is dead config: the author almost
-  // certainly meant `from: "created"`, so fail the manifest instead of
-  // silently ignoring it.
-  .refine((r) => r.from === "created" || r.maxAgeDays === undefined, {
-    message: 'maxAgeDays only applies to `from: "created"` rules',
-    path: ["maxAgeDays"],
-  })
-  .refine((r) => r.from === "created" || r.fallbackFieldKey === undefined, {
-    message: 'fallbackFieldKey only applies to `from: "created"` rules',
-    path: ["fallbackFieldKey"],
-  });
+const expiryFieldRuleSchema = Schema.Struct({
+  fieldKey: NonEmpty,
+  from: Schema.Literals(["expiry", "created"]),
+  kind: Schema.Literals([
+    "tls-cert",
+    "domain",
+    "api-token",
+    "access-key",
+    "k8s-cert",
+    "ssh-key",
+    "secret-version",
+    // "lease" and "extended-support" are deliberately absent: hosts derive those
+    // rows, they are not kinds a plugin's lister can declare a field for.
+    "other",
+  ]),
+  label: NonEmpty,
+  maxAgeDays: Schema.optional(PositiveInt),
+  fallbackFieldKey: Schema.optional(NonEmpty),
+}).check(
+  // A budget on an absolute deadline is dead config: the author almost certainly
+  // meant `from: "created"`, so fail the manifest instead of silently ignoring it.
+  rule(
+    (r) => r.from === "created" || r.maxAgeDays === undefined,
+    'maxAgeDays only applies to `from: "created"` rules',
+    ["maxAgeDays"],
+  ),
+  rule(
+    (r) => r.from === "created" || r.fallbackFieldKey === undefined,
+    'fallbackFieldKey only applies to `from: "created"` rules',
+    ["fallbackFieldKey"],
+  ),
+);
 
-const orphanRuleSchema = z.object({
-  conditions: z.array(orphanConditionSchema).min(1),
-  reason: z.string().min(1),
+const orphanRuleSchema = Schema.Struct({
+  conditions: Schema.Array(orphanConditionSchema).check(Schema.isMinLength(1)),
+  reason: NonEmpty,
 });
 
-const postureConditionSchema = z.union([
-  z
-    .object({
-      fieldKey: z.string().min(1),
-      when: z.enum(["empty", "equals", "notEquals", "truthy", "falsy"]),
-      value: z.string().optional(),
-    })
-    // Same stance as orphan conditions: `evaluatePostureCondition` falls back
-    // to comparing against "" when `value` is absent, so an author who forgets
-    // it would silently get a rule that matches empty-valued fields instead of
-    // a manifest error.
-    .refine((c) => (c.when !== "equals" && c.when !== "notEquals") || c.value !== undefined, {
-      message: "posture condition requires `value` when `when` is 'equals' or 'notEquals'",
-      path: ["value"],
-    })
-    .refine((c) => c.when === "equals" || c.when === "notEquals" || c.value === undefined, {
-      message: "`value` only applies to 'equals' / 'notEquals' posture conditions",
-      path: ["value"],
-    }),
-  z.object({
-    fieldKey: z.string().min(1),
-    when: z.literal("olderThanDays"),
-    days: z.number().int().positive(),
+const severitySchema = Schema.Literals(["critical", "high", "medium", "low"]);
+
+const postureConditionSchema = Schema.Union([
+  Schema.Struct({
+    fieldKey: NonEmpty,
+    when: Schema.Literals(["empty", "equals", "notEquals", "truthy", "falsy"]),
+    value: Schema.optional(Schema.String),
+  }).check(
+    // Same stance as orphan conditions: `evaluatePostureCondition` falls back to
+    // comparing against "" when `value` is absent.
+    rule(
+      (c) => (c.when !== "equals" && c.when !== "notEquals") || c.value !== undefined,
+      "posture condition requires `value` when `when` is 'equals' or 'notEquals'",
+      ["value"],
+    ),
+    rule(
+      (c) => c.when === "equals" || c.when === "notEquals" || c.value === undefined,
+      "`value` only applies to 'equals' / 'notEquals' posture conditions",
+      ["value"],
+    ),
+  ),
+  Schema.Struct({
+    fieldKey: NonEmpty,
+    when: Schema.Literal("olderThanDays"),
+    days: PositiveInt,
   }),
 ]);
 
-const postureCheckRuleSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().min(1),
-  severity: z.enum(["critical", "high", "medium", "low"]),
-  category: z.enum(["public-exposure", "encryption", "credential-age", "data-protection", "other"]),
-  conditions: z.array(postureConditionSchema).min(1),
-  reason: z.string().min(1),
+const postureCheckRuleSchema = Schema.Struct({
+  id: NonEmpty,
+  title: NonEmpty,
+  severity: severitySchema,
+  category: Schema.Literals([
+    "public-exposure",
+    "encryption",
+    "credential-age",
+    "data-protection",
+    "other",
+  ]),
+  conditions: Schema.Array(postureConditionSchema).check(Schema.isMinLength(1)),
+  reason: NonEmpty,
 });
 
-// A plain union, not `discriminatedUnion`: the zone arm carries `.refine`s,
-// and a refined option isn't a valid discriminated-union member in zod 3.
-const dnsRoleSchema = z.union([
-  z
-    .object({
-      role: z.literal("zone"),
-      domainKey: z.string().min(1).optional(),
-      recordCountKey: z.string().min(1).optional(),
-      statusKey: z.string().min(1).optional(),
-      privateKey: z.string().min(1).optional(),
-      privateValues: z.array(z.string().min(1)).min(1).optional(),
-      isPrivate: z.boolean().optional(),
-    })
+const dnsRoleSchema = Schema.Union([
+  Schema.Struct({
+    role: Schema.Literal("zone"),
+    domainKey: Schema.optional(NonEmpty),
+    recordCountKey: Schema.optional(NonEmpty),
+    statusKey: Schema.optional(NonEmpty),
+    privateKey: Schema.optional(NonEmpty),
+    privateValues: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+    isPrivate: Schema.optional(Schema.Boolean),
+  }).check(
     // A value list with no field to read is dead config; the `maxAgeDays` and
     // `runningValues` stance: fail the manifest rather than never match.
-    .refine((r) => r.privateKey !== undefined || r.privateValues === undefined, {
-      message: "privateValues requires privateKey",
-      path: ["privateKey"],
-    })
+    rule(
+      (r) => r.privateKey !== undefined || r.privateValues === undefined,
+      "privateValues requires privateKey",
+      ["privateKey"],
+    ),
     // Two answers to one question: which wins is a coin flip the author didn't
     // intend, so fail rather than pick.
-    .refine((r) => r.isPrivate === undefined || r.privateKey === undefined, {
-      message: "isPrivate and privateKey are mutually exclusive",
-      path: ["isPrivate"],
-    }),
-  z.object({
-    role: z.literal("record"),
-    nameKey: z.string().min(1).optional(),
-    typeKey: z.string().min(1).optional(),
-    contentKey: z.string().min(1).optional(),
-    ttlKey: z.string().min(1).optional(),
-    priorityKey: z.string().min(1).optional(),
-    proxiedKey: z.string().min(1).optional(),
-    zoneKey: z.string().min(1).optional(),
+    rule(
+      (r) => r.isPrivate === undefined || r.privateKey === undefined,
+      "isPrivate and privateKey are mutually exclusive",
+      ["isPrivate"],
+    ),
+  ),
+  Schema.Struct({
+    role: Schema.Literal("record"),
+    nameKey: Schema.optional(NonEmpty),
+    typeKey: Schema.optional(NonEmpty),
+    contentKey: Schema.optional(NonEmpty),
+    ttlKey: Schema.optional(NonEmpty),
+    priorityKey: Schema.optional(NonEmpty),
+    proxiedKey: Schema.optional(NonEmpty),
+    zoneKey: Schema.optional(NonEmpty),
   }),
-]);
+]).annotate({ expected: "a DNS role (zone or record)" });
 
-const dnsServiceHostSchema = z
-  .object({
-    id: z.string().min(1),
-    label: z.string().min(1),
-    hostPattern: z.string().min(1),
-    labelIs: z.enum(["name", "opaque"]).optional(),
-    hostKeys: z.array(z.string().min(1)).min(1).optional(),
-    severity: z.enum(["critical", "high", "medium", "low"]).optional(),
-    reason: z.string().min(1),
-  })
+const compilesAsRegex = (pattern: string): boolean => {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// Count *actual* capturing groups structurally: appending an empty alternative
+// makes the regex match "", and the match array's length is 1 + the number of
+// capturing groups (named ones included). A source scan would miscount `(?=…)` /
+// `(?!…)` lookarounds and escaped parens.
+const hasCaptureGroup = (pattern: string): boolean => {
+  try {
+    return (new RegExp(`${pattern}|`).exec("")?.length ?? 1) > 1;
+  } catch {
+    return false;
+  }
+};
+
+const dnsServiceHostSchema = Schema.Struct({
+  id: NonEmpty,
+  label: NonEmpty,
+  hostPattern: NonEmpty,
+  labelIs: Schema.optional(Schema.Literals(["name", "opaque"])),
+  hostKeys: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+  severity: Schema.optional(severitySchema),
+  reason: NonEmpty,
+}).check(
   // Same stance as `sizeFamilyPattern`: a pattern that doesn't compile, or has
   // nothing to capture, would silently classify every record as unmatched.
-  .refine(
-    (r) => {
-      try {
-        new RegExp(r.hostPattern);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    { message: "hostPattern must be a valid regular expression", path: ["hostPattern"] },
-  )
-  .refine(
-    (r) => {
-      try {
-        return (new RegExp(`${r.hostPattern}|`).exec("")?.length ?? 1) > 1;
-      } catch {
-        return false; // invalid regex: already reported above
-      }
-    },
-    { message: "hostPattern must contain at least one capture group", path: ["hostPattern"] },
-  )
+  rule((r) => compilesAsRegex(r.hostPattern), "hostPattern must be a valid regular expression", [
+    "hostPattern",
+  ]),
+  rule(
+    (r) => hasCaptureGroup(r.hostPattern),
+    "hostPattern must contain at least one capture group",
+    ["hostPattern"],
+  ),
   // An opaque provider-minted label can never be matched by name, so without a
-  // field holding the full hostname nothing could ever claim it and every
-  // record into the namespace would read as dangling.
-  .refine((r) => r.labelIs !== "opaque" || (r.hostKeys?.length ?? 0) > 0, {
-    message: '`labelIs: "opaque"` requires hostKeys',
-    path: ["hostKeys"],
-  });
+  // field holding the full hostname nothing could ever claim it and every record
+  // into the namespace would read as dangling.
+  rule(
+    (r) => r.labelIs !== "opaque" || (r.hostKeys?.length ?? 0) > 0,
+    '`labelIs: "opaque"` requires hostKeys',
+    ["hostKeys"],
+  ),
+);
 
-const backupRoleSchema = z
-  .object({
-    role: z.literal("snapshot"),
-    backupTypeKey: z.string().min(1).optional(),
-    backupTypeValues: z.array(z.string().min(1)).min(1).optional(),
-    sourceKey: z.string().min(1).optional(),
-    sourceTemplate: z.string().min(1).optional(),
-    createdKey: z.string().min(1).optional(),
-    sizeKey: z.string().min(1).optional(),
-    sizeUnit: z.enum(["gib", "bytes"]).optional(),
-  })
+const backupRoleSchema = Schema.Struct({
+  role: Schema.Literal("snapshot"),
+  backupTypeKey: Schema.optional(NonEmpty),
+  backupTypeValues: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+  sourceKey: Schema.optional(NonEmpty),
+  sourceTemplate: Schema.optional(NonEmpty),
+  createdKey: Schema.optional(NonEmpty),
+  sizeKey: Schema.optional(NonEmpty),
+  sizeUnit: Schema.optional(Schema.Literals(["gib", "bytes"])),
+}).check(
   // Neither half of the narrowing is usable alone (the `privateValues requires
   // privateKey` stance, in both directions here: a key with no list would let
   // nothing through).
-  .refine((r) => (r.backupTypeKey === undefined) === (r.backupTypeValues === undefined), {
-    message: "backupTypeKey and backupTypeValues must be declared together",
-    path: ["backupTypeValues"],
-  })
+  rule(
+    (r) => (r.backupTypeKey === undefined) === (r.backupTypeValues === undefined),
+    "backupTypeKey and backupTypeValues must be declared together",
+    ["backupTypeValues"],
+  ),
   // Two answers to "what does this protect?", which wins is a coin flip the
   // author didn't intend, so fail rather than pick (the `isPrivate` stance).
-  .refine((r) => r.sourceKey === undefined || r.sourceTemplate === undefined, {
-    message: "sourceKey and sourceTemplate are mutually exclusive",
-    path: ["sourceTemplate"],
-  })
+  rule(
+    (r) => r.sourceKey === undefined || r.sourceTemplate === undefined,
+    "sourceKey and sourceTemplate are mutually exclusive",
+    ["sourceTemplate"],
+  ),
   // A template with nothing to interpolate is a literal, which would match the
   // same resource for every backup of the type: silently attributing every
   // snapshot to one volume.
-  .refine((r) => r.sourceTemplate === undefined || /\{[^}]+\}/.test(r.sourceTemplate), {
-    message: "sourceTemplate must interpolate at least one {field}",
-    path: ["sourceTemplate"],
-  })
+  rule(
+    (r) => r.sourceTemplate === undefined || /\{[^}]+\}/.test(r.sourceTemplate),
+    "sourceTemplate must interpolate at least one {field}",
+    ["sourceTemplate"],
+  ),
   // A unit with no size field to apply it to is dead config (the `maxAgeDays`
   // stance).
-  .refine((r) => r.sizeUnit === undefined || r.sizeKey !== undefined, {
-    message: "sizeUnit requires sizeKey",
-    path: ["sizeKey"],
-  });
+  rule((r) => r.sizeUnit === undefined || r.sizeKey !== undefined, "sizeUnit requires sizeKey", [
+    "sizeKey",
+  ]),
+);
 
-const backupPolicySchema = z
-  .object({
-    protectedBy: z.array(z.string().min(1)),
-    automatedBackupFieldKey: z.string().min(1).optional(),
-    automatedBackupWhen: z.enum(["truthy", "present"]).optional(),
-    retentionDaysFieldKey: z.string().min(1).optional(),
-  })
+const backupPolicySchema = Schema.Struct({
+  protectedBy: Schema.Array(NonEmpty),
+  automatedBackupFieldKey: Schema.optional(NonEmpty),
+  automatedBackupWhen: Schema.optional(Schema.Literals(["truthy", "present"])),
+  retentionDaysFieldKey: Schema.optional(NonEmpty),
+}).check(
   // A reading with no field to read is dead config, same stance again.
-  .refine((p) => p.automatedBackupWhen === undefined || p.automatedBackupFieldKey !== undefined, {
-    message: "automatedBackupWhen requires automatedBackupFieldKey",
-    path: ["automatedBackupFieldKey"],
-  })
-  // A policy that names no protector type and no provider-native backup field
-  // can never be judged either way: the type would sit on the surface as a
-  // permanent "unknown". That is dead config, so fail the manifest (the
-  // `maxAgeDays` / `runningValues` stance) rather than ship a row that means
-  // nothing.
-  .refine(
+  rule(
+    (p) => p.automatedBackupWhen === undefined || p.automatedBackupFieldKey !== undefined,
+    "automatedBackupWhen requires automatedBackupFieldKey",
+    ["automatedBackupFieldKey"],
+  ),
+  // A policy that names no protector type and no provider-native backup field can
+  // never be judged either way: the type would sit on the surface as a permanent
+  // "unknown". That is dead config, so fail the manifest (the `maxAgeDays` /
+  // `runningValues` stance) rather than ship a row that means nothing.
+  rule(
     (p) =>
       p.protectedBy.length > 0 ||
       p.automatedBackupFieldKey !== undefined ||
       p.retentionDaysFieldKey !== undefined,
-    {
-      message:
-        "backupPolicy needs at least one of protectedBy, automatedBackupFieldKey or retentionDaysFieldKey",
-      path: ["protectedBy"],
-    },
-  );
+    "backupPolicy needs at least one of protectedBy, automatedBackupFieldKey or retentionDaysFieldKey",
+    ["protectedBy"],
+  ),
+);
 
-const lifecycleActionsSchema = z
-  .object({
-    startActionId: z.string().min(1),
-    stopActionId: z.string().min(1),
-    statusFieldKey: z.string().min(1).optional(),
-    runningValues: z.array(z.string().min(1)).min(1).optional(),
-    stoppedValues: z.array(z.string().min(1)).min(1).optional(),
-  })
-  // A single action can't both stop and start: an identical pair is a typo
-  // that would make every scheduled transition a no-op or a flap.
-  .refine((l) => l.startActionId !== l.stopActionId, {
-    message: "startActionId and stopActionId must differ",
-    path: ["stopActionId"],
-  })
-  // Value lists without a field to read are dead config; fail the manifest
-  // rather than silently never matching (the `maxAgeDays` stance).
-  .refine((l) => l.statusFieldKey !== undefined || (!l.runningValues && !l.stoppedValues), {
-    message: "runningValues/stoppedValues require statusFieldKey",
-    path: ["statusFieldKey"],
-  });
-
-const carbonSchema = z.object({
-  role: z.enum(["instance", "aggregate"]).optional(),
-  regionFieldKey: z.string().min(1),
-  grid: z.string().min(1).optional(),
-  gridFieldKey: z.string().min(1).optional(),
-  vcpus: z.discriminatedUnion("from", [
-    z.object({
-      from: z.literal("field"),
-      fieldKey: z.string().min(1),
-      format: z.enum(["number", "k8s-quantity"]).optional(),
-    }),
-    z.object({
-      from: z.literal("size"),
-      sizeFieldKey: z.string().min(1),
-      catalogueTypeId: z.string().min(1).optional(),
-      catalogueFieldKey: z.string().min(1).optional(),
-      matchBy: z.enum(["id", "label"]).optional(),
-      stripPrefix: z.string().min(1).optional(),
-      stripSuffix: z.string().min(1).optional(),
-      list: z.boolean().optional(),
-    }),
+const lifecycleActionsSchema = Schema.Struct({
+  startActionId: NonEmpty,
+  stopActionId: NonEmpty,
+  statusFieldKey: Schema.optional(NonEmpty),
+  runningValues: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+  stoppedValues: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+}).check(
+  // A single action can't both stop and start: an identical pair is a typo that
+  // would make every scheduled transition a no-op or a flap.
+  rule((l) => l.startActionId !== l.stopActionId, "startActionId and stopActionId must differ", [
+    "stopActionId",
   ]),
-  countFieldKey: z.string().min(1).optional(),
-  countOffset: z.number().int().min(0).optional(),
+  // Value lists without a field to read are dead config; fail the manifest rather
+  // than silently never matching (the `maxAgeDays` stance).
+  rule(
+    (l) => l.statusFieldKey !== undefined || (!l.runningValues && !l.stoppedValues),
+    "runningValues/stoppedValues require statusFieldKey",
+    ["statusFieldKey"],
+  ),
+);
+
+const carbonSchema = Schema.Struct({
+  role: Schema.optional(Schema.Literals(["instance", "aggregate"])),
+  mayDuplicateInstance: Schema.optional(Schema.Boolean),
+  regionFieldKey: NonEmpty,
+  grid: Schema.optional(NonEmpty),
+  gridFieldKey: Schema.optional(NonEmpty),
+  vcpus: Schema.Union([
+    Schema.Struct({
+      from: Schema.Literal("field"),
+      fieldKey: NonEmpty,
+      format: Schema.optional(Schema.Literals(["number", "k8s-quantity"])),
+    }),
+    Schema.Struct({
+      from: Schema.Literal("size"),
+      sizeFieldKey: NonEmpty,
+      catalogueTypeId: Schema.optional(NonEmpty),
+      catalogueFieldKey: Schema.optional(NonEmpty),
+      matchBy: Schema.optional(Schema.Literals(["id", "label"])),
+      stripPrefix: Schema.optional(NonEmpty),
+      stripSuffix: Schema.optional(NonEmpty),
+      list: Schema.optional(Schema.Boolean),
+    }),
+  ]).annotate({ expected: "a vCPU source (field or size)" }),
+  countFieldKey: Schema.optional(NonEmpty),
+  countOffset: Schema.optional(Int.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
-const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
+const isoDay = Schema.String.check(
+  Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/, { message: "expected YYYY-MM-DD" }),
+);
 
-const extendedSupportConditionSchema = z
-  .object({
-    fieldKey: z.string().min(1),
-    in: z.array(z.string().min(1)).min(1).optional(),
-    notIn: z.array(z.string().min(1)).min(1).optional(),
-  })
+const extendedSupportConditionSchema = Schema.Struct({
+  fieldKey: NonEmpty,
+  in: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+  notIn: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+}).check(
   // A condition with neither list would always pass, which is a silent no-op.
-  .refine((c) => (c.in === undefined) !== (c.notIn === undefined), {
-    message: "extended support condition needs exactly one of `in` / `notIn`",
-  });
+  rule(
+    (c) => (c.in === undefined) !== (c.notIn === undefined),
+    "extended support condition needs exactly one of `in` / `notIn`",
+  ),
+);
 
-const extendedSupportReleaseSchema = z
-  .object({
-    id: z.string().min(1),
-    product: z.string().min(1),
-    engines: z.array(z.string().min(1)).min(1).optional(),
-    versions: z.array(z.string().min(1)).min(1),
-    standardSupportEnds: isoDay,
-    extendedSupportEnds: isoDay.optional(),
-    targetVersion: z.string().min(1),
-    surcharge: z
-      .object({
-        unit: z.enum([
-          "cluster-hour",
-          "vcpu-hour",
-          "vcore-hour",
-          "node-hour",
-          "instance-hour",
-          "acu-hour",
-        ]),
-        currency: z.string().length(3),
-        tiers: z
-          .array(
-            z.object({
-              from: isoDay,
-              rate: z.number().positive().optional(),
-              label: z.string().min(1),
-            }),
-          )
-          .min(1)
-          // Hosts pick "the last tier whose `from` has passed", which only
-          // works over an ascending list.
-          .refine((tiers) => tiers.every((t, i) => i === 0 || tiers[i - 1]!.from < t.from), {
-            message: "surcharge tiers must be strictly ascending by `from`",
-          }),
-        pricingUrl: z.string().url(),
-        priceNote: z.string().min(1).optional(),
-      })
-      .optional(),
-    upgradeUrl: z.string().url(),
-    note: z.string().min(1).optional(),
-  })
-  .refine((r) => !r.extendedSupportEnds || r.extendedSupportEnds > r.standardSupportEnds, {
-    message: "extendedSupportEnds must be after standardSupportEnds",
-    path: ["extendedSupportEnds"],
-  });
-
-const extendedSupportSchema = z
-  .object({
-    versionFieldKey: z.string().min(1),
-    engineFieldKey: z.string().min(1).optional(),
-    quantityFieldKey: z.string().min(1).optional(),
-    regionFieldKey: z.string().min(1).optional(),
-    chargedWhen: z.array(extendedSupportConditionSchema).min(1).optional(),
-    notChargedNote: z.string().min(1).optional(),
-    releases: z.array(extendedSupportReleaseSchema).min(1),
-  })
-  .refine((d) => new Set(d.releases.map((r) => r.id)).size === d.releases.length, {
-    message: "extended support release ids must be unique within the type",
-    path: ["releases"],
-  })
-  // Engine-scoped releases need somewhere to read the engine from, or they
-  // would never match and the author would never find out why.
-  .refine((d) => d.engineFieldKey !== undefined || d.releases.every((r) => !r.engines), {
-    message: "releases with `engines` need `engineFieldKey` on the declaration",
-    path: ["engineFieldKey"],
-  });
-
-const rightsizingSchema = z
-  .object({
-    sizeFieldKey: z.string().min(1),
-    createSizeFieldKey: z.string().min(1).optional(),
-    regionFieldKey: z.string().min(1).optional(),
-    diskFieldKey: z.string().min(1).optional(),
-    cpuMetric: z.object({
-      seriesLabel: z.string().min(1),
-      scale: z.enum(["percent", "fraction"]).optional(),
+const extendedSupportReleaseSchema = Schema.Struct({
+  id: NonEmpty,
+  product: NonEmpty,
+  engines: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+  versions: Schema.Array(NonEmpty).check(Schema.isMinLength(1)),
+  standardSupportEnds: isoDay,
+  extendedSupportEnds: Schema.optional(isoDay),
+  targetVersion: NonEmpty,
+  surcharge: Schema.optional(
+    Schema.Struct({
+      unit: Schema.Literals([
+        "cluster-hour",
+        "vcpu-hour",
+        "vcore-hour",
+        "node-hour",
+        "instance-hour",
+        "acu-hour",
+      ]),
+      currency: Schema.String.check(Schema.isBetweenLength(3, 3)),
+      tiers: Schema.Array(
+        Schema.Struct({
+          from: isoDay,
+          rate: Schema.optional(Positive),
+          label: NonEmpty,
+        }),
+      ).check(
+        Schema.isMinLength(1),
+        // Hosts pick "the last tier whose `from` has passed", which only works
+        // over an ascending list.
+        rule(
+          (tiers) => tiers.every((t, i) => i === 0 || tiers[i - 1]!.from < t.from),
+          "surcharge tiers must be strictly ascending by `from`",
+        ),
+      ),
+      pricingUrl: Url,
+      priceNote: Schema.optional(NonEmpty),
     }),
-    memoryMetric: z
-      .object({
-        seriesLabel: z.string().min(1),
-        interpretation: z.enum(["percent", "used-bytes", "available-bytes"]),
-      })
-      .optional(),
-    priceCurrency: z.string().length(3).optional(),
-    sizeFamilyPattern: z.string().min(1).optional(),
-    resizeNote: z.string().min(1).optional(),
-  })
-  // A family guard that doesn't compile, or has nothing to capture, would
-  // silently disable (or worse, never constrain) candidate filtering: fail
-  // the manifest instead (the `maxAgeDays` stance).
-  .refine(
-    (r) => {
-      if (r.sizeFamilyPattern === undefined) return true;
-      try {
-        return new RegExp(r.sizeFamilyPattern).exec("probe") !== undefined;
-      } catch {
-        return false;
-      }
-    },
-    {
-      message: "sizeFamilyPattern must be a valid regular expression",
-      path: ["sizeFamilyPattern"],
-    },
-  )
-  .refine(
-    (r) => {
-      if (r.sizeFamilyPattern === undefined) return true;
-      // Count *actual* capturing groups structurally: appending an empty
-      // alternative makes the regex match "", and the match array's length is
-      // 1 + the number of capturing groups (named ones included). A source
-      // scan would miscount `(?=…)` / `(?!…)` lookarounds and escaped parens.
-      try {
-        return (new RegExp(`${r.sizeFamilyPattern}|`).exec("")?.length ?? 1) > 1;
-      } catch {
-        return false; // invalid regex: already reported by the refine above
-      }
-    },
-    {
-      message: "sizeFamilyPattern must contain at least one capture group",
-      path: ["sizeFamilyPattern"],
-    },
-  );
+  ),
+  upgradeUrl: Url,
+  note: Schema.optional(NonEmpty),
+}).check(
+  rule(
+    (r) => !r.extendedSupportEnds || r.extendedSupportEnds > r.standardSupportEnds,
+    "extendedSupportEnds must be after standardSupportEnds",
+    ["extendedSupportEnds"],
+  ),
+);
 
-const principalRoleSchema = z
-  .object({
-    role: z.enum(["user", "group", "role", "service-account", "key", "binding"]),
-    lastUsedKey: z.string().min(1).optional(),
-    createdKey: z.string().min(1).optional(),
-    adminIndicatorKey: z.string().min(1).optional(),
-    adminValues: z.array(z.string().min(1)).min(1).optional(),
-    parentKey: z.string().min(1).optional(),
-    mfaKey: z.string().min(1).optional(),
-    revokeActionId: z.string().min(1).optional(),
-  })
+const extendedSupportSchema = Schema.Struct({
+  versionFieldKey: NonEmpty,
+  engineFieldKey: Schema.optional(NonEmpty),
+  quantityFieldKey: Schema.optional(NonEmpty),
+  regionFieldKey: Schema.optional(NonEmpty),
+  chargedWhen: Schema.optional(
+    Schema.Array(extendedSupportConditionSchema).check(Schema.isMinLength(1)),
+  ),
+  notChargedNote: Schema.optional(NonEmpty),
+  releases: Schema.Array(extendedSupportReleaseSchema).check(Schema.isMinLength(1)),
+}).check(
+  rule(
+    (d) => new Set(d.releases.map((r) => r.id)).size === d.releases.length,
+    "extended support release ids must be unique within the type",
+    ["releases"],
+  ),
+  // Engine-scoped releases need somewhere to read the engine from, or they would
+  // never match and the author would never find out why.
+  rule(
+    (d) => d.engineFieldKey !== undefined || d.releases.every((r) => !r.engines),
+    "releases with `engines` need `engineFieldKey` on the declaration",
+    ["engineFieldKey"],
+  ),
+);
+
+const rightsizingSchema = Schema.Struct({
+  sizeFieldKey: NonEmpty,
+  createSizeFieldKey: Schema.optional(NonEmpty),
+  regionFieldKey: Schema.optional(NonEmpty),
+  diskFieldKey: Schema.optional(NonEmpty),
+  cpuMetric: Schema.Struct({
+    seriesLabel: NonEmpty,
+    scale: Schema.optional(Schema.Literals(["percent", "fraction"])),
+  }),
+  memoryMetric: Schema.optional(
+    Schema.Struct({
+      seriesLabel: NonEmpty,
+      interpretation: Schema.Literals(["percent", "used-bytes", "available-bytes"]),
+    }),
+  ),
+  priceCurrency: Schema.optional(Schema.String.check(Schema.isBetweenLength(3, 3))),
+  sizeFamilyPattern: Schema.optional(NonEmpty),
+  resizeNote: Schema.optional(NonEmpty),
+}).check(
+  // A family guard that doesn't compile, or has nothing to capture, would silently
+  // disable (or worse, never constrain) candidate filtering: fail the manifest
+  // instead (the `maxAgeDays` stance).
+  rule(
+    (r) => r.sizeFamilyPattern === undefined || compilesAsRegex(r.sizeFamilyPattern),
+    "sizeFamilyPattern must be a valid regular expression",
+    ["sizeFamilyPattern"],
+  ),
+  rule(
+    (r) => r.sizeFamilyPattern === undefined || hasCaptureGroup(r.sizeFamilyPattern),
+    "sizeFamilyPattern must contain at least one capture group",
+    ["sizeFamilyPattern"],
+  ),
+);
+
+const principalRoleSchema = Schema.Struct({
+  role: Schema.Literals(["user", "group", "role", "service-account", "key", "binding"]),
+  lastUsedKey: Schema.optional(NonEmpty),
+  createdKey: Schema.optional(NonEmpty),
+  adminIndicatorKey: Schema.optional(NonEmpty),
+  adminValues: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+  parentKey: Schema.optional(NonEmpty),
+  mfaKey: Schema.optional(NonEmpty),
+  revokeActionId: Schema.optional(NonEmpty),
+}).check(
   // A value list with no field to read is dead config; the `privateValues` /
-  // `runningValues` / `maxAgeDays` stance: fail the manifest rather than
-  // silently never match.
-  .refine((p) => p.adminIndicatorKey !== undefined || p.adminValues === undefined, {
-    message: "adminValues requires adminIndicatorKey",
-    path: ["adminIndicatorKey"],
-  })
-  // Only a human sign-in identity can enrol a second factor. An `mfaKey` on a
-  // key, a binding or a service account is a field that can never mean what
-  // the author thought, and the "no MFA" finding it produced would be a
-  // permanent false accusation.
-  .refine((p) => p.mfaKey === undefined || p.role === "user", {
-    message: 'mfaKey only applies to `role: "user"` principals',
-    path: ["mfaKey"],
-  });
+  // `runningValues` / `maxAgeDays` stance: fail the manifest rather than silently
+  // never match.
+  rule(
+    (p) => p.adminIndicatorKey !== undefined || p.adminValues === undefined,
+    "adminValues requires adminIndicatorKey",
+    ["adminIndicatorKey"],
+  ),
+  // Only a human sign-in identity can enrol a second factor. An `mfaKey` on a key,
+  // a binding or a service account is a field that can never mean what the author
+  // thought, and the "no MFA" finding it produced would be a permanent false
+  // accusation.
+  rule(
+    (p) => p.mfaKey === undefined || p.role === "user",
+    'mfaKey only applies to `role: "user"` principals',
+    ["mfaKey"],
+  ),
+);
 
-const runningImagesSchema = z
-  .object({
-    imageKeys: z.array(z.string().min(1)).min(1),
-    digestKeys: z.array(z.string().min(1)).min(1).optional(),
-    runningKey: z.string().min(1).optional(),
-    runningValues: z.array(z.string().min(1)).min(1).optional(),
-  })
-  // A running field with no values (or values with no field) is dead config:
-  // the `adminValues` stance.
-  .refine((d) => (d.runningKey === undefined) === (d.runningValues === undefined), {
-    message: "runningKey and runningValues must be declared together",
-    path: ["runningValues"],
-  });
+const runningImagesSchema = Schema.Struct({
+  imageKeys: Schema.Array(NonEmpty).check(Schema.isMinLength(1)),
+  digestKeys: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+  runningKey: Schema.optional(NonEmpty),
+  runningValues: Schema.optional(Schema.Array(NonEmpty).check(Schema.isMinLength(1))),
+}).check(
+  // A running field with no values (or values with no field) is dead config: the
+  // `adminValues` stance.
+  rule(
+    (d) => (d.runningKey === undefined) === (d.runningValues === undefined),
+    "runningKey and runningValues must be declared together",
+    ["runningValues"],
+  ),
+);
 
-export const resourceTypeDefinitionSchema = z.object({
-  id: z.string().min(1),
-  displayName: z.string().min(1),
-  pluralDisplayName: z.string().min(1),
-  description: z.string().min(1),
-  fields: z.array(fieldDefinitionSchema),
-  outputs: z.array(resourceOutputSchema),
-  parentTypeId: z.string().optional(),
-  showInSidebar: z.boolean().optional(),
-  accountRoot: z.boolean().optional(),
-  dashboardPinnable: z.boolean(),
-  iconKey: z.string().optional(),
-  peerIntegrations: z.array(peerPluginIntegrationSchema).optional(),
-  secretExportTemplates: z.array(secretExportTemplateSchema).optional(),
-  attachTargets: z.array(attachTargetSchema).optional(),
-  eventSink: z.boolean().optional(),
-  supportsMetrics: z.boolean().optional(),
-  orphanRule: orphanRuleSchema.optional(),
-  postureChecks: z.array(postureCheckRuleSchema).optional(),
-  expiryFields: z.array(expiryFieldRuleSchema).optional(),
-  dnsRole: dnsRoleSchema.optional(),
-  dnsServiceHosts: z.array(dnsServiceHostSchema).optional(),
-  backupRole: backupRoleSchema.optional(),
-  backupPolicy: backupPolicySchema.optional(),
-  lifecycle: lifecycleActionsSchema.optional(),
-  rightsizing: rightsizingSchema.optional(),
-  extendedSupport: extendedSupportSchema.optional(),
-  carbon: carbonSchema.optional(),
-  principalRole: principalRoleSchema.optional(),
-  runningImages: runningImagesSchema.optional(),
+export const resourceTypeDefinitionSchema = Schema.Struct({
+  id: NonEmpty,
+  displayName: NonEmpty,
+  pluralDisplayName: NonEmpty,
+  description: NonEmpty,
+  fields: Schema.Array(fieldDefinitionSchema),
+  outputs: Schema.Array(resourceOutputSchema),
+  dependsOn: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        fieldKey: Schema.String,
+        from: Schema.optional(Schema.Literals(["fields", "outputs"])),
+        targetTypeId: Schema.optional(Schema.String),
+        targetPluginId: Schema.optional(Schema.String),
+        targetKey: Schema.optional(Schema.String),
+        matchTemplate: Schema.optional(Schema.String),
+        label: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
+  expiryFields: Schema.optional(Schema.Array(expiryFieldRuleSchema)),
+  parentTypeId: Schema.optional(Schema.String),
+  showInSidebar: Schema.optional(Schema.Boolean),
+  accountRoot: Schema.optional(Schema.Boolean),
+  dashboardPinnable: Schema.Boolean,
+  iconKey: Schema.optional(Schema.String),
+  peerIntegrations: Schema.optional(Schema.Array(peerPluginIntegrationSchema)),
+  sshEndpoint: Schema.optional(
+    Schema.Struct({
+      hostOutputKey: Schema.String,
+      privateHostOutputKey: Schema.optional(Schema.String),
+      runningWhen: Schema.optional(
+        Schema.Struct({ fieldKey: Schema.String, value: Schema.String }),
+      ),
+      defaultUsername: Schema.optional(Schema.String),
+      usernameFieldKey: Schema.optional(Schema.String),
+    }),
+  ),
+  agentVm: Schema.optional(
+    Schema.Struct({
+      sshKeyFieldKey: Schema.String,
+      defaultUsername: Schema.String,
+      defaultFields: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+      defaultFieldLabels: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+      linuxImageDefaults: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+      hiddenFieldKeys: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
+  sshTunnelAttachSource: Schema.optional(Schema.Boolean),
+  supportsStorageBrowser: Schema.optional(Schema.Boolean),
+  supportsCreate: Schema.optional(Schema.Boolean),
+  supportsDelete: Schema.optional(Schema.Boolean),
+  supportsUpdate: Schema.optional(Schema.Boolean),
+  supportsTerminal: Schema.optional(Schema.Boolean),
+  supportsSftpBrowser: Schema.optional(Schema.Boolean),
+  secretExportTemplates: Schema.optional(Schema.Array(secretExportTemplateSchema)),
+  resourceSqlDriver: Schema.optional(
+    Schema.Struct({ driver: Schema.String, connectionStringOutputKey: Schema.String }),
+  ),
+  supportsRestQuery: Schema.optional(Schema.Boolean),
+  eventSink: Schema.optional(Schema.Boolean),
+  supportsMetrics: Schema.optional(Schema.Boolean),
+  credentialFormats: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        label: Schema.String,
+        description: Schema.optional(Schema.String),
+        mediaType: Schema.Literals(["json", "text", "ini", "binary-base64"]),
+        filenameTemplate: Schema.optional(Schema.String),
+      }),
+    ),
+  ),
+  attachTargets: Schema.optional(Schema.Array(attachTargetSchema)),
+  orphanRule: Schema.optional(orphanRuleSchema),
+  postureChecks: Schema.optional(Schema.Array(postureCheckRuleSchema)),
+  dnsRole: Schema.optional(dnsRoleSchema),
+  dnsServiceHosts: Schema.optional(Schema.Array(dnsServiceHostSchema)),
+  backupRole: Schema.optional(backupRoleSchema),
+  backupPolicy: Schema.optional(backupPolicySchema),
+  lifecycle: Schema.optional(lifecycleActionsSchema),
+  rightsizing: Schema.optional(rightsizingSchema),
+  extendedSupport: Schema.optional(extendedSupportSchema),
+  carbon: Schema.optional(carbonSchema),
+  principalRole: Schema.optional(principalRoleSchema),
+  runningImages: Schema.optional(runningImagesSchema),
 });

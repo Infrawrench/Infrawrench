@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fieldDefinitionSchema } from "../validation/index.js";
+import { fieldDefinitionSchema, validate } from "../validation/index.js";
 import {
   buildResourceShowcase,
   omitLiveShowcaseStats,
@@ -26,12 +26,12 @@ describe("showcaseFields", () => {
 describe("the field schema", () => {
   it.each(["secret", "password"])("refuses to mark a %s field", (kind) => {
     const field = { key: "k", label: "K", kind, required: true, showcase: true };
-    expect(fieldDefinitionSchema.safeParse(field).success).toBe(false);
+    expect(validate(fieldDefinitionSchema, field).success).toBe(false);
   });
 
   it("accepts a marked string field", () => {
     const field = { key: "k", label: "K", kind: "string", required: true, showcase: true };
-    expect(fieldDefinitionSchema.safeParse(field).success).toBe(true);
+    expect(validate(fieldDefinitionSchema, field).success).toBe(true);
   });
 });
 

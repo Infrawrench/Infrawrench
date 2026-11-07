@@ -123,6 +123,7 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
   setters.setPgConnected(sqlReady);
   setters.setIsKvPlugin(!!peerKvDriver);
   setters.setKvDriverName(peerKvDriver?.driver ?? null);
+  setters.setKvDocumentBrowser(peerKvDriver?.browser === "documents");
   setters.setKvConnected(!!peerKvConnectionString);
   setters.setIsDockerPlugin(false);
   setters.setDockerDriverName(null);

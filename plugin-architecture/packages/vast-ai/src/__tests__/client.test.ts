@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VastClient } from "../client.js";
 import { VastApiError } from "../api.js";
@@ -54,7 +55,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-const client = () => new VastClient({ apiKey: "KEY" }, RESOURCE_TYPES);
+const client = () => hostClient(new VastClient({ apiKey: "KEY" }, RESOURCE_TYPES));
 
 const INSTANCE = {
   id: 312,

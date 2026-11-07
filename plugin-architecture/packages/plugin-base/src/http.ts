@@ -1,3 +1,4 @@
+import { defineCredential } from "./define-plugin.js";
 /**
  * Shared HTTP helpers for plugin clients.
  *
@@ -25,7 +26,7 @@ import type { CredentialField, HttpHostServices } from "./manifest.js";
  * Non-empty value → request is routed through the Node host's `https` agent
  * with the supplied PEM as the only trust anchor.
  */
-export const caCertCredentialField: CredentialField = {
+export const caCertCredentialField = defineCredential({
   key: "caCert",
   label: "CA Certificate (optional)",
   description:
@@ -35,7 +36,7 @@ export const caCertCredentialField: CredentialField = {
   advanced: true,
   multiline: true,
   placeholder: "-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----",
-};
+});
 
 export interface JsonRestFetchOptions {
   /** Vendor name used in the error message, e.g. `"DigitalOcean"`. */

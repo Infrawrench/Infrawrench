@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostEstimate,
   CreateResourceConfig,
@@ -60,7 +63,7 @@ export class LambdaCloudClient implements PluginClient {
   private typesCache: { at: number; value: Promise<LInstanceTypeItem[]> } | undefined;
 
   constructor(
-    credentials: Record<string, string>,
+    credentials: Credentials,
     resourceTypes: ResourceTypeDefinition[],
     services?: HostServices,
   ) {
@@ -96,72 +99,82 @@ export class LambdaCloudClient implements PluginClient {
 
   // ── Listing ──────────────────────────────────────────────────────────
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "instance":
-        return (await this.raw.instances()).map((i) => mapInstance(i, accountId));
-      case "filesystem":
-        return ((await this.raw.filesystems()) ?? []).map((fs) => mapFilesystem(fs, accountId));
-      case "firewall-ruleset":
-        return ((await this.raw.rulesets()) ?? []).map((r) => mapRuleset(r, accountId));
-      case "global-firewall": {
-        const g = await this.api.request<LFirewallRuleset>("/firewall-rulesets/global");
-        return g ? [mapRuleset(g, accountId, true)] : [];
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "instance":
+          return (await this.raw.instances()).map((i) => mapInstance(i, accountId));
+        case "filesystem":
+          return ((await this.raw.filesystems()) ?? []).map((fs) => mapFilesystem(fs, accountId));
+        case "firewall-ruleset":
+          return ((await this.raw.rulesets()) ?? []).map((r) => mapRuleset(r, accountId));
+        case "global-firewall": {
+          const g = await this.api.request<LFirewallRuleset>("/firewall-rulesets/global");
+          return g ? [mapRuleset(g, accountId, true)] : [];
+        }
+        case "ssh-key":
+          return ((await this.raw.sshKeys()) ?? []).map((k) => mapSshKey(k, accountId));
+        default:
+          throw new Error(`Lambda Cloud plugin: unknown resource type "${typeId}"`);
       }
-      case "ssh-key":
-        return ((await this.raw.sshKeys()) ?? []).map((k) => mapSshKey(k, accountId));
-      default:
-        throw new Error(`Lambda Cloud plugin: unknown resource type "${typeId}"`);
-    }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalOf(resourceId);
-    switch (typeId) {
-      case "instance":
-        return mapInstance(
-          await this.api.request<LInstance>(`/instances/${encodeURIComponent(id)}`),
-          accountId,
-        );
-      case "firewall-ruleset":
-        return mapRuleset(
-          await this.api.request<LFirewallRuleset>(`/firewall-rulesets/${encodeURIComponent(id)}`),
-          accountId,
-        );
-      default: {
-        const found = (await this.listResources(typeId, accountId)).find(
-          (r) => r.id === resourceId || r.externalId === id,
-        );
-        if (!found) throw notFound(typeId, id);
-        return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalOf(resourceId);
+      switch (typeId) {
+        case "instance":
+          return mapInstance(
+            await this.api.request<LInstance>(`/instances/${encodeURIComponent(id)}`),
+            accountId,
+          );
+        case "firewall-ruleset":
+          return mapRuleset(
+            await this.api.request<LFirewallRuleset>(
+              `/firewall-rulesets/${encodeURIComponent(id)}`,
+            ),
+            accountId,
+          );
+        default: {
+          const found = (await runPluginEffect(this.listResources(typeId, accountId))).find(
+            (r) => r.id === resourceId || r.externalId === id,
+          );
+          if (!found) throw notFound(typeId, id);
+          return found;
+        }
       }
-    }
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    if (typeId === "instance" && (outputKey === "jupyterUrl" || outputKey === "jupyterToken")) {
-      const i = await this.api.request<LInstance>(
-        `/instances/${encodeURIComponent(externalOf(resourceId))}`,
-      );
-      return (outputKey === "jupyterUrl" ? i?.jupyter_url : i?.jupyter_token) ?? "";
-    }
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    return resource.resolvedOutputs[outputKey] ?? "";
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "instance" && (outputKey === "jupyterUrl" || outputKey === "jupyterToken")) {
+        const i = await this.api.request<LInstance>(
+          `/instances/${encodeURIComponent(externalOf(resourceId))}`,
+        );
+        return (outputKey === "jupyterUrl" ? i?.jupyter_url : i?.jupyter_token) ?? "";
+      }
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      return resource.resolvedOutputs[outputKey] ?? "";
+    });
   }
 
   // ── Create / update / delete ─────────────────────────────────────────
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    return buildCreateConfig(this, typeId);
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      return buildCreateConfig(this, typeId);
+    });
   }
 
   launchBody(fields: Record<string, string>): Record<string, unknown> {
@@ -191,185 +204,198 @@ export class LambdaCloudClient implements PluginClient {
     };
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const name = str(fields["name"]);
-    switch (typeId) {
-      case "instance": {
-        const body = this.launchBody(fields);
-        const res = await this.api.request<{ instance_ids?: string[] }>(
-          "/instance-operations/launch",
-          { method: "POST", body },
-        );
-        const id = res?.instance_ids?.[0];
-        if (!id) throw new Error("Lambda Cloud plugin: launch returned no instance id");
-        try {
-          return await this.getResource("instance", id, accountId);
-        } catch {
-          const now = new Date().toISOString();
-          return {
-            id: `${accountId}:instance:${id}`,
-            pluginId: "lambda-cloud",
-            resourceTypeId: "instance",
-            accountId,
-            displayName: name || id,
-            fields: {
-              name,
-              status: "booting",
-              region: str(fields["regionName"]),
-              instanceType: str(fields["instanceTypeName"]),
-            },
-            resolvedOutputs: {},
-            secretStates: [],
-            externalId: id,
-            createdAt: now,
-            updatedAt: now,
-          };
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const name = str(fields["name"]);
+      switch (typeId) {
+        case "instance": {
+          const body = this.launchBody(fields);
+          const res = await this.api.request<{ instance_ids?: string[] }>(
+            "/instance-operations/launch",
+            { method: "POST", body },
+          );
+          const id = res?.instance_ids?.[0];
+          if (!id) throw new Error("Lambda Cloud plugin: launch returned no instance id");
+          try {
+            return await runPluginEffect(this.getResource("instance", id, accountId));
+          } catch {
+            const now = new Date().toISOString();
+            return {
+              id: `${accountId}:instance:${id}`,
+              pluginId: "lambda-cloud",
+              resourceTypeId: "instance",
+              accountId,
+              displayName: name || id,
+              fields: {
+                name,
+                status: "booting",
+                region: str(fields["regionName"]),
+                instanceType: str(fields["instanceTypeName"]),
+              },
+              resolvedOutputs: {},
+              secretStates: [],
+              externalId: id,
+              createdAt: now,
+              updatedAt: now,
+            };
+          }
         }
+        case "filesystem": {
+          const fs = await this.api.request<LFilesystem>("/filesystems", {
+            method: "POST",
+            body: { name, region: str(fields["region"]) },
+          });
+          return mapFilesystem(fs, accountId);
+        }
+        case "firewall-ruleset": {
+          const r = await this.api.request<LFirewallRuleset>("/firewall-rulesets", {
+            method: "POST",
+            body: { name, region: str(fields["region"]), rules: parseRules(fields["rules"] ?? "") },
+          });
+          return mapRuleset(r, accountId);
+        }
+        case "ssh-key": {
+          const publicKey = str(fields["publicKey"]);
+          if (!publicKey) throw new Error("Lambda Cloud plugin: paste or pick a public key");
+          const k = await this.api.request<LSshKey>("/ssh-keys", {
+            method: "POST",
+            body: { name, public_key: publicKey },
+          });
+          return mapSshKey(k, accountId);
+        }
+        default:
+          throw new Error(`Lambda Cloud plugin: cannot create "${typeId}"`);
       }
-      case "filesystem": {
-        const fs = await this.api.request<LFilesystem>("/filesystems", {
-          method: "POST",
-          body: { name, region: str(fields["region"]) },
-        });
-        return mapFilesystem(fs, accountId);
-      }
-      case "firewall-ruleset": {
-        const r = await this.api.request<LFirewallRuleset>("/firewall-rulesets", {
-          method: "POST",
-          body: { name, region: str(fields["region"]), rules: parseRules(fields["rules"] ?? "") },
-        });
-        return mapRuleset(r, accountId);
-      }
-      case "ssh-key": {
-        const publicKey = str(fields["publicKey"]);
-        if (!publicKey) throw new Error("Lambda Cloud plugin: paste or pick a public key");
-        const k = await this.api.request<LSshKey>("/ssh-keys", {
-          method: "POST",
-          body: { name, public_key: publicKey },
-        });
-        return mapSshKey(k, accountId);
-      }
-      default:
-        throw new Error(`Lambda Cloud plugin: cannot create "${typeId}"`);
-    }
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = encodeURIComponent(externalOf(resourceId));
-    switch (typeId) {
-      case "instance": {
-        const body: Record<string, unknown> = {};
-        if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
-        if (fields["tags"] !== undefined) body["tags"] = parseTags(fields["tags"]);
-        if (Object.keys(body).length === 0) return this.getResource(typeId, resourceId, accountId);
-        return mapInstance(
-          await this.api.request<LInstance>(`/instances/${id}`, { method: "POST", body }),
-          accountId,
-        );
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = encodeURIComponent(externalOf(resourceId));
+      switch (typeId) {
+        case "instance": {
+          const body: Record<string, unknown> = {};
+          if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
+          if (fields["tags"] !== undefined) body["tags"] = parseTags(fields["tags"]);
+          if (Object.keys(body).length === 0)
+            return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          return mapInstance(
+            await this.api.request<LInstance>(`/instances/${id}`, { method: "POST", body }),
+            accountId,
+          );
+        }
+        case "firewall-ruleset": {
+          const body: Record<string, unknown> = {};
+          if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
+          if (fields["rules"] !== undefined) body["rules"] = parseRules(fields["rules"]);
+          if (Object.keys(body).length === 0)
+            return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          return mapRuleset(
+            await this.api.request<LFirewallRuleset>(`/firewall-rulesets/${id}`, {
+              method: "PATCH",
+              body,
+            }),
+            accountId,
+          );
+        }
+        case "global-firewall": {
+          if (fields["rules"] === undefined)
+            return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          return mapRuleset(
+            await this.api.request<LFirewallRuleset>(`/firewall-rulesets/${GLOBAL_FIREWALL_ID}`, {
+              method: "PATCH",
+              body: { rules: parseRules(fields["rules"]) },
+            }),
+            accountId,
+            true,
+          );
+        }
+        default:
+          throw new Error(`Lambda Cloud plugin: cannot update "${typeId}"`);
       }
-      case "firewall-ruleset": {
-        const body: Record<string, unknown> = {};
-        if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
-        if (fields["rules"] !== undefined) body["rules"] = parseRules(fields["rules"]);
-        if (Object.keys(body).length === 0) return this.getResource(typeId, resourceId, accountId);
-        return mapRuleset(
-          await this.api.request<LFirewallRuleset>(`/firewall-rulesets/${id}`, {
-            method: "PATCH",
-            body,
-          }),
-          accountId,
-        );
-      }
-      case "global-firewall": {
-        if (fields["rules"] === undefined) return this.getResource(typeId, resourceId, accountId);
-        return mapRuleset(
-          await this.api.request<LFirewallRuleset>(`/firewall-rulesets/${GLOBAL_FIREWALL_ID}`, {
-            method: "PATCH",
-            body: { rules: parseRules(fields["rules"]) },
-          }),
-          accountId,
-          true,
-        );
-      }
-      default:
-        throw new Error(`Lambda Cloud plugin: cannot update "${typeId}"`);
-    }
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const raw = externalOf(resourceId);
-    const id = encodeURIComponent(raw);
-    switch (typeId) {
-      case "instance":
-        await this.api.request("/instance-operations/terminate", {
-          method: "POST",
-          body: { instance_ids: [raw] },
-        });
-        return;
-      case "filesystem":
-        await this.api.request(`/filesystems/${id}`, { method: "DELETE" });
-        return;
-      case "firewall-ruleset":
-        await this.api.request(`/firewall-rulesets/${id}`, { method: "DELETE" });
-        return;
-      case "ssh-key":
-        await this.api.request(`/ssh-keys/${id}`, { method: "DELETE" });
-        return;
-      default:
-        throw new Error(`Lambda Cloud plugin: cannot delete "${typeId}"`);
-    }
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const raw = externalOf(resourceId);
+      const id = encodeURIComponent(raw);
+      switch (typeId) {
+        case "instance":
+          await this.api.request("/instance-operations/terminate", {
+            method: "POST",
+            body: { instance_ids: [raw] },
+          });
+          return;
+        case "filesystem":
+          await this.api.request(`/filesystems/${id}`, { method: "DELETE" });
+          return;
+        case "firewall-ruleset":
+          await this.api.request(`/firewall-rulesets/${id}`, { method: "DELETE" });
+          return;
+        case "ssh-key":
+          await this.api.request(`/ssh-keys/${id}`, { method: "DELETE" });
+          return;
+        default:
+          throw new Error(`Lambda Cloud plugin: cannot delete "${typeId}"`);
+      }
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    if (typeId === "instance" && actionId === "restart") {
-      await this.api.request("/instance-operations/restart", {
-        method: "POST",
-        body: { instance_ids: [externalOf(resourceId)] },
-      });
-      return;
-    }
-    throw new Error(`Lambda Cloud plugin: action "${actionId}" is not supported for "${typeId}"`);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "instance" && actionId === "restart") {
+        await this.api.request("/instance-operations/restart", {
+          method: "POST",
+          body: { instance_ids: [externalOf(resourceId)] },
+        });
+        return;
+      }
+      throw new Error(`Lambda Cloud plugin: action "${actionId}" is not supported for "${typeId}"`);
+    });
   }
 
-  async estimateCost(typeId: string, fields: Record<string, string>): Promise<CostEstimate | null> {
-    if (typeId !== "instance") return null;
-    const name = str(fields["instanceTypeName"] ?? fields["instanceType"]);
-    if (!name) return null;
-    const item = (await this.instanceTypes().catch(() => [])).find(
-      (t) => t.instance_type.name === name,
-    );
-    const cents = item?.instance_type.price_cents_per_hour;
-    if (!cents) return null;
-    const rate = cents / 100;
-    return buildCostEstimate(
-      [
+  estimateCost(typeId: string, fields: Record<string, string>): PluginEffect<CostEstimate | null> {
+    return attempt(async () => {
+      if (typeId !== "instance") return null;
+      const name = str(fields["instanceTypeName"] ?? fields["instanceType"]);
+      if (!name) return null;
+      const item = (await this.instanceTypes().catch(() => [])).find(
+        (t) => t.instance_type.name === name,
+      );
+      const cents = item?.instance_type.price_cents_per_hour;
+      if (!cents) return null;
+      const rate = cents / 100;
+      return buildCostEstimate(
+        [
+          {
+            label: `${name}${item.instance_type.gpu_description ? ` (${item.instance_type.gpu_description})` : ""}`,
+            monthlyAmount: rate * HOURS_PER_MONTH,
+            detail: `${HOURS_PER_MONTH} h × $${rate.toFixed(2)}/h`,
+            quantity: 1,
+            unit: "instance",
+          },
+        ],
         {
-          label: `${name}${item.instance_type.gpu_description ? ` (${item.instance_type.gpu_description})` : ""}`,
-          monthlyAmount: rate * HOURS_PER_MONTH,
-          detail: `${HOURS_PER_MONTH} h × $${rate.toFixed(2)}/h`,
-          quantity: 1,
-          unit: "instance",
+          partial: true,
+          notes: ["On-demand list price. Filesystem storage is billed separately."],
         },
-      ],
-      {
-        partial: true,
-        notes: ["On-demand list price. Filesystem storage is billed separately."],
-      },
-    );
+      );
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

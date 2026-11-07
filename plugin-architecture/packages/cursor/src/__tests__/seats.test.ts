@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { CursorClient } from "../client.js";
 import { MAX_SEAT_WINDOW_DAYS, seatWindowDays } from "../seats.js";
@@ -76,9 +77,11 @@ function client(
         return { status: 404, body: { error: "not found" } };
     }
   });
-  const c = new CursorClient(
-    { apiKey: "crsr_test", premiumSeatEmails: "pro@acme.com", ...opts.credentials },
-    { http } as never,
+  const c = hostClient(
+    new CursorClient(
+      { apiKey: "crsr_test", premiumSeatEmails: "pro@acme.com", ...opts.credentials },
+      { http } as never,
+    ),
   );
   c.setRetryDelayMs(0);
   return { c, calls };

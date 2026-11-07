@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
   CreateResourceConfig,
@@ -394,7 +397,7 @@ export class UploadThingClient implements PluginClient {
   /** Memoised full file listing: see {@link fetchFiles}. */
   private filesPromise: Promise<UtFile[]> | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const raw = credentials["apiKey"];
     if (!raw) throw new Error("UploadThing plugin: missing apiKey credential");
     const decoded = decodeApiKey(raw);
@@ -448,15 +451,17 @@ export class UploadThingClient implements PluginClient {
   // Listing
   // -------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "ut-app":
-        return [await this.loadApp(accountId)];
-      case "ut-file":
-        return this.listFiles(accountId);
-      default:
-        throw new Error(`UploadThing plugin: unknown resource type "${typeId}"`);
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "ut-app":
+          return [await this.loadApp(accountId)];
+        case "ut-file":
+          return this.listFiles(accountId);
+        default:
+          throw new Error(`UploadThing plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   private async loadApp(accountId: string): Promise<ResourceInstance> {
@@ -570,205 +575,213 @@ export class UploadThingClient implements PluginClient {
     };
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    if (typeId === "ut-app") return this.loadApp(accountId);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId === "ut-app") return this.loadApp(accountId);
 
-    if (typeId === "ut-file") {
-      const key = externalIdOf(resourceId);
-      if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
-      const [info, files] = await Promise.all([this.appInfo(), this.fetchFiles()]);
-      const found = files.find((f) => f.key === key || f.customId === key);
-      if (!found) throw new Error(`UploadThing plugin: file "${key}" not found`);
-      const resource = this.mapFile(found, info, accountId);
+      if (typeId === "ut-file") {
+        const key = externalIdOf(resourceId);
+        if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
+        const [info, files] = await Promise.all([this.appInfo(), this.fetchFiles()]);
+        const found = files.find((f) => f.key === key || f.customId === key);
+        if (!found) throw new Error(`UploadThing plugin: file "${key}" not found`);
+        const resource = this.mapFile(found, info, accountId);
 
-      // `pollUpload` is the only read that returns the MIME type: `listFiles`
-      // never does. It is best-effort: it is really an upload-progress endpoint
-      // and is not guaranteed to still know about an older file.
-      try {
-        const poll = await this.get<UtPollUpload>(
-          `/v6/pollUpload/${encodeURIComponent(found.key)}`,
-        );
-        const type = poll.fileData?.fileType;
-        if (type) resource.fields["contentType"] = type;
-      } catch {
-        // No MIME type available: the rest of the resource is unaffected.
+        // `pollUpload` is the only read that returns the MIME type: `listFiles`
+        // never does. It is best-effort: it is really an upload-progress endpoint
+        // and is not guaranteed to still know about an older file.
+        try {
+          const poll = await this.get<UtPollUpload>(
+            `/v6/pollUpload/${encodeURIComponent(found.key)}`,
+          );
+          const type = poll.fileData?.fileType;
+          if (type) resource.fields["contentType"] = type;
+        } catch {
+          // No MIME type available: the rest of the resource is unaffected.
+        }
+        return resource;
       }
-      return resource;
-    }
 
-    throw new Error(`UploadThing plugin: unknown resource type "${typeId}"`);
+      throw new Error(`UploadThing plugin: unknown resource type "${typeId}"`);
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     _accountId: string,
-  ): Promise<string> {
-    if (typeId === "ut-app") {
-      const info = await this.appInfo();
-      if (outputKey === "appId") return info.appId;
-      if (outputKey === "appUrl") return appUrl(info.appId);
-      if (outputKey === "fileUrlPrefix") return `${appUrl(info.appId)}/f/`;
-    }
-
-    if (typeId === "ut-file") {
-      const key = externalIdOf(resourceId);
-      if (outputKey === "fileKey") return key;
-      if (outputKey === "ufsUrl") {
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      if (typeId === "ut-app") {
         const info = await this.appInfo();
-        return fileUrl(info.appId, key);
+        if (outputKey === "appId") return info.appId;
+        if (outputKey === "appUrl") return appUrl(info.appId);
+        if (outputKey === "fileUrlPrefix") return `${appUrl(info.appId)}/f/`;
       }
-      if (outputKey === "signedUrl") {
-        // Defaults to the app's configured expiry when `expiresIn` is omitted.
-        const access = await this.post<UtFileAccess>("/v6/requestFileAccess", { fileKey: key });
-        return access.ufsUrl || access.url || "";
-      }
-    }
 
-    throw new Error(
-      `UploadThing plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+      if (typeId === "ut-file") {
+        const key = externalIdOf(resourceId);
+        if (outputKey === "fileKey") return key;
+        if (outputKey === "ufsUrl") {
+          const info = await this.appInfo();
+          return fileUrl(info.appId, key);
+        }
+        if (outputKey === "signedUrl") {
+          // Defaults to the app's configured expiry when `expiresIn` is omitted.
+          const access = await this.post<UtFileAccess>("/v6/requestFileAccess", { fileKey: key });
+          return access.ufsUrl || access.url || "";
+        }
+      }
+
+      throw new Error(
+        `UploadThing plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+      );
+    });
   }
 
   // -------------------------------------------------------------------------
   // Mutations
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "ut-file") {
-      throw new Error(`UploadThing plugin: no create config for type "${typeId}"`);
-    }
-    const info = await this.appInfo();
-    return {
-      fields: [
-        {
-          key: "sourceUrl",
-          label: "File URL",
-          kind: "text",
-          required: true,
-          placeholder: "https://example.com/logo.png",
-          description:
-            "Infrawrench downloads this URL and uploads the bytes to UploadThing. The URL has to be reachable without authentication.",
-        },
-        {
-          key: "fileName",
-          label: "File Name",
-          kind: "text",
-          required: false,
-          description: "Defaults to the last path segment of the URL.",
-        },
-        {
-          key: "customId",
-          label: "Custom ID",
-          kind: "text",
-          required: false,
-          description:
-            "Optional stable identifier. UploadThing serves the file at this id as well as at its generated key.",
-        },
-        {
-          key: "contentDisposition",
-          label: "Content Disposition",
-          kind: "select",
-          required: false,
-          defaultValue: "inline",
-          options: [
-            { id: "inline", label: "Inline: display in the browser" },
-            { id: "attachment", label: "Attachment: download as a file" },
-          ],
-          description:
-            "How browsers treat the file when its URL is opened. Attachment forces a download, which suits archives and documents.",
-        },
-        ...(info.allowACLOverride
-          ? [
-              {
-                key: "acl",
-                label: "Access",
-                kind: "select" as const,
-                required: false,
-                defaultValue: info.defaultACL,
-                options: [
-                  { id: "public-read", label: "Public: served at its URL" },
-                  { id: "private", label: "Private: needs a signed URL" },
-                ],
-                description: `The app default is ${info.defaultACL}.`,
-              },
-            ]
-          : []),
-      ],
-    };
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      if (typeId !== "ut-file") {
+        throw new Error(`UploadThing plugin: no create config for type "${typeId}"`);
+      }
+      const info = await this.appInfo();
+      return {
+        fields: [
+          {
+            key: "sourceUrl",
+            label: "File URL",
+            kind: "text",
+            required: true,
+            placeholder: "https://example.com/logo.png",
+            description:
+              "Infrawrench downloads this URL and uploads the bytes to UploadThing. The URL has to be reachable without authentication.",
+          },
+          {
+            key: "fileName",
+            label: "File Name",
+            kind: "text",
+            required: false,
+            description: "Defaults to the last path segment of the URL.",
+          },
+          {
+            key: "customId",
+            label: "Custom ID",
+            kind: "text",
+            required: false,
+            description:
+              "Optional stable identifier. UploadThing serves the file at this id as well as at its generated key.",
+          },
+          {
+            key: "contentDisposition",
+            label: "Content Disposition",
+            kind: "select",
+            required: false,
+            defaultValue: "inline",
+            options: [
+              { id: "inline", label: "Inline: display in the browser" },
+              { id: "attachment", label: "Attachment: download as a file" },
+            ],
+            description:
+              "How browsers treat the file when its URL is opened. Attachment forces a download, which suits archives and documents.",
+          },
+          ...(info.allowACLOverride
+            ? [
+                {
+                  key: "acl",
+                  label: "Access",
+                  kind: "select" as const,
+                  required: false,
+                  defaultValue: info.defaultACL,
+                  options: [
+                    { id: "public-read", label: "Public: served at its URL" },
+                    { id: "private", label: "Private: needs a signed URL" },
+                  ],
+                  description: `The app default is ${info.defaultACL}.`,
+                },
+              ]
+            : []),
+        ],
+      };
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "ut-file") {
-      throw new Error(`UploadThing plugin: createResource not supported for type "${typeId}"`);
-    }
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "ut-file") {
+        throw new Error(`UploadThing plugin: createResource not supported for type "${typeId}"`);
+      }
 
-    const sourceUrl = (fields["sourceUrl"] ?? "").trim();
-    if (!sourceUrl) throw new Error("A file URL is required");
+      const sourceUrl = (fields["sourceUrl"] ?? "").trim();
+      if (!sourceUrl) throw new Error("A file URL is required");
 
-    const download = await downloadFromUrl(sourceUrl);
-    if (!download.ok) {
-      throw new Error(`Could not download ${sourceUrl}: HTTP ${download.status}`);
-    }
-    // On the cloud this runs inside the API server, so an unbounded read is
-    // the pod's heap. Check the advertised length first, then count bytes as
-    // they arrive: `content-length` is the server's claim, not a guarantee.
-    const declared = Number(download.headers.get("content-length") ?? "");
-    if (Number.isFinite(declared) && declared > MAX_URL_UPLOAD_BYTES) {
-      throw new Error(
-        `That file is ${formatBytes(declared)}; uploads from a URL are capped at ${formatBytes(MAX_URL_UPLOAD_BYTES)}.`,
-      );
-    }
-    const blob = await readCappedBlob(download, MAX_URL_UPLOAD_BYTES);
-    const name = (fields["fileName"] ?? "").trim() || fileNameFromUrl(sourceUrl);
-    const contentType = blob.type || download.headers.get("content-type") || "";
+      const download = await downloadFromUrl(sourceUrl);
+      if (!download.ok) {
+        throw new Error(`Could not download ${sourceUrl}: HTTP ${download.status}`);
+      }
+      // On the cloud this runs inside the API server, so an unbounded read is
+      // the pod's heap. Check the advertised length first, then count bytes as
+      // they arrive: `content-length` is the server's claim, not a guarantee.
+      const declared = Number(download.headers.get("content-length") ?? "");
+      if (Number.isFinite(declared) && declared > MAX_URL_UPLOAD_BYTES) {
+        throw new Error(
+          `That file is ${formatBytes(declared)}; uploads from a URL are capped at ${formatBytes(MAX_URL_UPLOAD_BYTES)}.`,
+        );
+      }
+      const blob = await readCappedBlob(download, MAX_URL_UPLOAD_BYTES);
+      const name = (fields["fileName"] ?? "").trim() || fileNameFromUrl(sourceUrl);
+      const contentType = blob.type || download.headers.get("content-type") || "";
 
-    const disposition = fields["contentDisposition"];
-    const key = await this.uploadBlob(blob, name, contentType, {
-      ...(fields["customId"] ? { customId: fields["customId"] } : {}),
-      ...(fields["acl"] ? { acl: fields["acl"] } : {}),
-      ...(disposition === "inline" || disposition === "attachment"
-        ? { contentDisposition: disposition }
-        : {}),
-    });
-
-    const info = await this.appInfo();
-    const now = new Date().toISOString();
-    return {
-      id: `${accountId}:ut-file:${key}`,
-      pluginId: "uploadthing",
-      resourceTypeId: "ut-file",
-      accountId,
-      displayName: name,
-      fields: {
-        key,
-        name,
-        size: blob.size,
-        sizeLabel: formatBytes(blob.size),
-        status: "Uploaded",
+      const disposition = fields["contentDisposition"];
+      const key = await this.uploadBlob(blob, name, contentType, {
         ...(fields["customId"] ? { customId: fields["customId"] } : {}),
-        ...(contentType ? { contentType } : {}),
-        uploadedAt: now,
-        ufsUrl: fileUrl(info.appId, key),
-        aclOverrideAllowed: info.allowACLOverride,
-        appDefaultAcl: info.defaultACL,
-      },
-      resolvedOutputs: { fileKey: key, ufsUrl: fileUrl(info.appId, key) },
-      secretStates: [],
-      externalId: key,
-      parentResourceId: `${accountId}:ut-app:${info.appId}`,
-      createdAt: now,
-      updatedAt: now,
-    };
+        ...(fields["acl"] ? { acl: fields["acl"] } : {}),
+        ...(disposition === "inline" || disposition === "attachment"
+          ? { contentDisposition: disposition }
+          : {}),
+      });
+
+      const info = await this.appInfo();
+      const now = new Date().toISOString();
+      return {
+        id: `${accountId}:ut-file:${key}`,
+        pluginId: "uploadthing",
+        resourceTypeId: "ut-file",
+        accountId,
+        displayName: name,
+        fields: {
+          key,
+          name,
+          size: blob.size,
+          sizeLabel: formatBytes(blob.size),
+          status: "Uploaded",
+          ...(fields["customId"] ? { customId: fields["customId"] } : {}),
+          ...(contentType ? { contentType } : {}),
+          uploadedAt: now,
+          ufsUrl: fileUrl(info.appId, key),
+          aclOverrideAllowed: info.allowACLOverride,
+          appDefaultAcl: info.defaultACL,
+        },
+        resolvedOutputs: { fileKey: key, ufsUrl: fileUrl(info.appId, key) },
+        secretStates: [],
+        externalId: key,
+        parentResourceId: `${accountId}:ut-app:${info.appId}`,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
   }
 
   /**
@@ -839,39 +852,43 @@ export class UploadThingClient implements PluginClient {
     return prepared.key;
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    if (typeId !== "ut-file") {
-      throw new Error(`UploadThing plugin: updateResource not supported for type "${typeId}"`);
-    }
-    const key = externalIdOf(resourceId);
-    if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
-    const newName = (fields["name"] ?? "").trim();
-    if (!newName) throw new Error("A file name is required");
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      if (typeId !== "ut-file") {
+        throw new Error(`UploadThing plugin: updateResource not supported for type "${typeId}"`);
+      }
+      const key = externalIdOf(resourceId);
+      if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
+      const newName = (fields["name"] ?? "").trim();
+      if (!newName) throw new Error("A file name is required");
 
-    await this.post<{ success: boolean; renamedCount: number }>("/v6/renameFiles", {
-      updates: [{ fileKey: key, newName }],
+      await this.post<{ success: boolean; renamedCount: number }>("/v6/renameFiles", {
+        updates: [{ fileKey: key, newName }],
+      });
+      // Before the re-read below, which walks the listing.
+      this.invalidateFiles();
+
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
     });
-    // Before the re-read below, which walks the listing.
-    this.invalidateFiles();
-
-    return this.getResource(typeId, resourceId, accountId);
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId !== "ut-file") {
-      throw new Error(`UploadThing plugin: deleteResource not supported for type "${typeId}"`);
-    }
-    const key = externalIdOf(resourceId);
-    if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
-    await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
-      fileKeys: [key],
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId !== "ut-file") {
+        throw new Error(`UploadThing plugin: deleteResource not supported for type "${typeId}"`);
+      }
+      const key = externalIdOf(resourceId);
+      if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
+      await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
+        fileKeys: [key],
+      });
+      this.invalidateFiles();
     });
-    this.invalidateFiles();
   }
 
   /**
@@ -883,33 +900,35 @@ export class UploadThingClient implements PluginClient {
    * a file cannot be served, still shows in the listing, and is otherwise only
    * removable one row at a time.
    */
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    if (typeId === "ut-file" && (actionId === "make-public" || actionId === "make-private")) {
-      const key = externalIdOf(resourceId);
-      if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
-      const acl = actionId === "make-public" ? "public-read" : "private";
-      await this.post<{ success: boolean; updatedCount: number }>("/v6/updateACL", {
-        updates: [{ fileKey: key, acl }],
-      });
-      return;
-    }
-    if (typeId === "ut-app" && actionId === "delete-failed") {
-      const files = await this.fetchFiles();
-      const fileKeys = files.filter((f) => f.status === "Failed").map((f) => f.key);
-      for (let i = 0; i < fileKeys.length; i += DELETE_BATCH_SIZE) {
-        await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
-          fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE),
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      if (typeId === "ut-file" && (actionId === "make-public" || actionId === "make-private")) {
+        const key = externalIdOf(resourceId);
+        if (!key) throw new Error("UploadThing plugin: cannot parse file key from resource id");
+        const acl = actionId === "make-public" ? "public-read" : "private";
+        await this.post<{ success: boolean; updatedCount: number }>("/v6/updateACL", {
+          updates: [{ fileKey: key, acl }],
         });
+        return;
       }
-      this.invalidateFiles();
-      return;
-    }
-    throw new Error(`UploadThing plugin: unknown action "${actionId}" for type "${typeId}"`);
+      if (typeId === "ut-app" && actionId === "delete-failed") {
+        const files = await this.fetchFiles();
+        const fileKeys = files.filter((f) => f.status === "Failed").map((f) => f.key);
+        for (let i = 0; i < fileKeys.length; i += DELETE_BATCH_SIZE) {
+          await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
+            fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE),
+          });
+        }
+        this.invalidateFiles();
+        return;
+      }
+      throw new Error(`UploadThing plugin: unknown action "${actionId}" for type "${typeId}"`);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -936,72 +955,76 @@ export class UploadThingClient implements PluginClient {
    *    which a real file key never does. That is what lets `deleteStorageObject`
    *    tell a folder from a file without a host-side signature change.
    */
-  async listStorageObjects(_bucket: string, prefix: string): Promise<StorageObject[]> {
-    const files = await this.fetchFiles();
-    const scope = prefix.replace(/^\/+/, "");
+  listStorageObjects(_bucket: string, prefix: string): PluginEffect<StorageObject[]> {
+    return attempt(async () => {
+      const files = await this.fetchFiles();
+      const scope = prefix.replace(/^\/+/, "");
 
-    const dirs = new Map<string, { size: number; latest: number }>();
-    const entries: StorageObject[] = [];
+      const dirs = new Map<string, { size: number; latest: number }>();
+      const entries: StorageObject[] = [];
 
-    for (const file of files) {
-      const name = file.name || file.key;
-      if (scope && !name.startsWith(scope)) continue;
-      const rest = name.slice(scope.length);
-      if (!rest) continue;
+      for (const file of files) {
+        const name = file.name || file.key;
+        if (scope && !name.startsWith(scope)) continue;
+        const rest = name.slice(scope.length);
+        if (!rest) continue;
 
-      const slash = rest.indexOf("/");
-      if (slash === -1) {
-        entries.push({
-          key: file.key,
-          name: rest,
-          size: file.size ?? 0,
-          lastModified: isoFromEpochMs(file.uploadedAt),
-          isDirectory: false,
+        const slash = rest.indexOf("/");
+        if (slash === -1) {
+          entries.push({
+            key: file.key,
+            name: rest,
+            size: file.size ?? 0,
+            lastModified: isoFromEpochMs(file.uploadedAt),
+            isDirectory: false,
+          });
+          continue;
+        }
+
+        // Roll the whole subtree up into its top segment: the browser asks for
+        // deeper levels by listing this directory's key.
+        const dirName = rest.slice(0, slash);
+        const agg = dirs.get(dirName);
+        dirs.set(dirName, {
+          size: (agg?.size ?? 0) + (file.size ?? 0),
+          latest: Math.max(agg?.latest ?? 0, file.uploadedAt ?? 0),
         });
-        continue;
       }
 
-      // Roll the whole subtree up into its top segment: the browser asks for
-      // deeper levels by listing this directory's key.
-      const dirName = rest.slice(0, slash);
-      const agg = dirs.get(dirName);
-      dirs.set(dirName, {
-        size: (agg?.size ?? 0) + (file.size ?? 0),
-        latest: Math.max(agg?.latest ?? 0, file.uploadedAt ?? 0),
-      });
-    }
+      const dirEntries: StorageObject[] = [...dirs].map(([name, agg]) => ({
+        key: `${scope}${name}/`,
+        name,
+        size: agg.size,
+        lastModified: isoFromEpochMs(agg.latest),
+        isDirectory: true,
+      }));
 
-    const dirEntries: StorageObject[] = [...dirs].map(([name, agg]) => ({
-      key: `${scope}${name}/`,
-      name,
-      size: agg.size,
-      lastModified: isoFromEpochMs(agg.latest),
-      isDirectory: true,
-    }));
-
-    return [...dirEntries, ...entries];
+      return [...dirEntries, ...entries];
+    });
   }
 
-  async uploadStorageObject(
+  uploadStorageObject(
     _bucket: string,
     key: string,
     file: File,
     onProgress?: (pct: number) => void,
-  ): Promise<void> {
-    // The browser passes a target path, for a folder upload that is the
-    // picked folder's relative path (`photos/sub/a.png`), for a plain file
-    // just the name.
-    //
-    // Keep the whole thing as the file *name*. UploadThing creates no folder
-    // either way (it has none) and assigns its own opaque key, so the slash is
-    // just a character in a string here, but keeping it is what stops two
-    // files called `a.png` in different subfolders from arriving as two
-    // identical-looking rows. `pathMode: "absolute"` browsers prefix a slash;
-    // strip it so names don't start with one.
-    const name = key.replace(/^\/+/, "") || file.name || "upload";
-    onProgress?.(0);
-    await this.uploadBlob(file, name, file.type, {});
-    onProgress?.(100);
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      // The browser passes a target path, for a folder upload that is the
+      // picked folder's relative path (`photos/sub/a.png`), for a plain file
+      // just the name.
+      //
+      // Keep the whole thing as the file *name*. UploadThing creates no folder
+      // either way (it has none) and assigns its own opaque key, so the slash is
+      // just a character in a string here, but keeping it is what stops two
+      // files called `a.png` in different subfolders from arriving as two
+      // identical-looking rows. `pathMode: "absolute"` browsers prefix a slash;
+      // strip it so names don't start with one.
+      const name = key.replace(/^\/+/, "") || file.name || "upload";
+      onProgress?.(0);
+      await this.uploadBlob(file, name, file.type, {});
+      onProgress?.(100);
+    });
   }
 
   /**
@@ -1013,28 +1036,30 @@ export class UploadThingClient implements PluginClient {
    * branch, deleting a folder would post its path as a file key and come back
    * `deletedCount: 0`: a silent no-op on a destructive action.
    */
-  async deleteStorageObject(_bucket: string, key: string): Promise<void> {
-    if (!key.endsWith("/")) {
-      await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
-        fileKeys: [key],
-      });
+  deleteStorageObject(_bucket: string, key: string): PluginEffect<void> {
+    return attempt(async () => {
+      if (!key.endsWith("/")) {
+        await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
+          fileKeys: [key],
+        });
+        this.invalidateFiles();
+        return;
+      }
+
+      const files = await this.fetchFiles();
+      const fileKeys = files.filter((f) => (f.name || f.key).startsWith(key)).map((f) => f.key);
+      if (fileKeys.length === 0) return;
+
+      // Chunked: a folder from an archive upload can hold thousands of files and
+      // the API documents no ceiling on the array, which is not the same as
+      // there being none.
+      for (let i = 0; i < fileKeys.length; i += DELETE_BATCH_SIZE) {
+        await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
+          fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE),
+        });
+      }
       this.invalidateFiles();
-      return;
-    }
-
-    const files = await this.fetchFiles();
-    const fileKeys = files.filter((f) => (f.name || f.key).startsWith(key)).map((f) => f.key);
-    if (fileKeys.length === 0) return;
-
-    // Chunked: a folder from an archive upload can hold thousands of files and
-    // the API documents no ceiling on the array, which is not the same as
-    // there being none.
-    for (let i = 0; i < fileKeys.length; i += DELETE_BATCH_SIZE) {
-      await this.post<{ success: boolean; deletedCount: number }>("/v6/deleteFiles", {
-        fileKeys: fileKeys.slice(i, i + DELETE_BATCH_SIZE),
-      });
-    }
-    this.invalidateFiles();
+    });
   }
 
   /**
@@ -1050,8 +1075,10 @@ export class UploadThingClient implements PluginClient {
    * No new exposure: on web the token never leaves the server, and on desktop
    * the renderer already holds these credentials to construct this client.
    */
-  async getStorageAccessToken(): Promise<string> {
-    return this.apiKey;
+  getStorageAccessToken(): PluginEffect<string> {
+    return attempt(async () => {
+      return this.apiKey;
+    });
   }
 
   /**
@@ -1059,11 +1086,13 @@ export class UploadThingClient implements PluginClient {
    * cannot work here instead of failing on an undefined method. Folders are
    * derived from names, so one with nothing in it has nothing to derive from.
    */
-  async makeStorageFolder(_bucket: string, _key: string): Promise<void> {
-    throw new Error(
-      "UploadThing has no folders; the ones shown are derived from file names, " +
-        "so an empty one cannot exist. Upload a folder, or a file named `folder/file.ext`.",
-    );
+  makeStorageFolder(_bucket: string, _key: string): PluginEffect<void> {
+    return attempt(async () => {
+      throw new Error(
+        "UploadThing has no folders; the ones shown are derived from file names, " +
+          "so an empty one cannot exist. Upload a folder, or a file named `folder/file.ext`.",
+      );
+    });
   }
 
   /**
@@ -1071,22 +1100,24 @@ export class UploadThingClient implements PluginClient {
    * `limitBytes`: on the free tier that spans every free app on the account,
    * which is exactly why it, and not `appTotalBytes`, is the used figure.
    */
-  async fetchQuotas(_accountId: string): Promise<QuotaUsage[]> {
-    const [info, usage] = await Promise.all([
-      this.appInfo(),
-      this.post<UtUsageInfo>("/v6/getUsageInfo"),
-    ]);
-    return normalizeQuotaUsage([
-      {
-        id: `storage/${info.appId}`,
-        service: "storage",
-        name: "Storage",
-        used: usage.totalBytes / (1024 * 1024 * 1024),
-        limit: usage.limitBytes / (1024 * 1024 * 1024),
-        unit: "GB",
-        adjustable: true,
-      },
-    ]);
+  fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
+    return attempt(async () => {
+      const [info, usage] = await Promise.all([
+        this.appInfo(),
+        this.post<UtUsageInfo>("/v6/getUsageInfo"),
+      ]);
+      return normalizeQuotaUsage([
+        {
+          id: `storage/${info.appId}`,
+          service: "storage",
+          name: "Storage",
+          used: usage.totalBytes / (1024 * 1024 * 1024),
+          limit: usage.limitBytes / (1024 * 1024 * 1024),
+          unit: "GB",
+          adjustable: true,
+        },
+      ]);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1099,135 +1130,143 @@ export class UploadThingClient implements PluginClient {
    * in the `Uploaded` state by upload time, so it shows how the current
    * contents accumulated rather than a historical storage reading.
    */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     _resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "ut-app") return [];
-    const endMs = timeRange?.endMs ?? Date.now();
-    const startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
-    const files = await this.fetchFiles();
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (resourceTypeId !== "ut-app") return [];
+      const endMs = timeRange?.endMs ?? Date.now();
+      const startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
+      const files = await this.fetchFiles();
 
-    const bucketMs = Math.max(60 * 60 * 1000, Math.ceil((endMs - startMs) / METRICS_BUCKETS));
-    const firstBucket = Math.floor(startMs / bucketMs) * bucketMs;
-    const uploads: number[] = [];
-    const bytes: number[] = [];
-    const failed: number[] = [];
-    const storedDelta: number[] = [];
-    for (let t = firstBucket; t < endMs; t += bucketMs) {
-      uploads.push(0);
-      bytes.push(0);
-      failed.push(0);
-      storedDelta.push(0);
-    }
-    let storedBefore = 0;
-    for (const file of files) {
-      const at = Number(file.uploadedAt);
-      if (!Number.isFinite(at) || at >= endMs) continue;
-      const size = Number(file.size) || 0;
-      const stored = file.status === "Uploaded";
-      if (at < firstBucket) {
-        if (stored) storedBefore += size;
-        continue;
+      const bucketMs = Math.max(60 * 60 * 1000, Math.ceil((endMs - startMs) / METRICS_BUCKETS));
+      const firstBucket = Math.floor(startMs / bucketMs) * bucketMs;
+      const uploads: number[] = [];
+      const bytes: number[] = [];
+      const failed: number[] = [];
+      const storedDelta: number[] = [];
+      for (let t = firstBucket; t < endMs; t += bucketMs) {
+        uploads.push(0);
+        bytes.push(0);
+        failed.push(0);
+        storedDelta.push(0);
       }
-      const index = Math.floor((at - firstBucket) / bucketMs);
-      if (index >= uploads.length) continue;
-      if (file.status === "Failed") {
-        failed[index] = (failed[index] ?? 0) + 1;
-        continue;
+      let storedBefore = 0;
+      for (const file of files) {
+        const at = Number(file.uploadedAt);
+        if (!Number.isFinite(at) || at >= endMs) continue;
+        const size = Number(file.size) || 0;
+        const stored = file.status === "Uploaded";
+        if (at < firstBucket) {
+          if (stored) storedBefore += size;
+          continue;
+        }
+        const index = Math.floor((at - firstBucket) / bucketMs);
+        if (index >= uploads.length) continue;
+        if (file.status === "Failed") {
+          failed[index] = (failed[index] ?? 0) + 1;
+          continue;
+        }
+        uploads[index] = (uploads[index] ?? 0) + 1;
+        bytes[index] = (bytes[index] ?? 0) + size;
+        if (stored) storedDelta[index] = (storedDelta[index] ?? 0) + size;
       }
-      uploads[index] = (uploads[index] ?? 0) + 1;
-      bytes[index] = (bytes[index] ?? 0) + size;
-      if (stored) storedDelta[index] = (storedDelta[index] ?? 0) + size;
-    }
 
-    const at = (i: number) => firstBucket + i * bucketMs;
-    let running = storedBefore;
-    return [
-      {
-        label: "Uploads",
-        unit: "count",
-        points: uploads.map((value, i) => ({ timestamp: at(i), value })),
-      },
-      {
-        label: "Bytes uploaded",
-        unit: "bytes",
-        points: bytes.map((value, i) => ({ timestamp: at(i), value })),
-      },
-      {
-        label: "Failed uploads",
-        unit: "count",
-        points: failed.map((value, i) => ({ timestamp: at(i), value })),
-      },
-      {
-        label: "Stored bytes",
-        unit: "bytes",
-        points: storedDelta.map((delta, i) => {
-          running += delta;
-          return { timestamp: at(i), value: running };
-        }),
-      },
-    ];
+      const at = (i: number) => firstBucket + i * bucketMs;
+      let running = storedBefore;
+      return [
+        {
+          label: "Uploads",
+          unit: "count",
+          points: uploads.map((value, i) => ({ timestamp: at(i), value })),
+        },
+        {
+          label: "Bytes uploaded",
+          unit: "bytes",
+          points: bytes.map((value, i) => ({ timestamp: at(i), value })),
+        },
+        {
+          label: "Failed uploads",
+          unit: "count",
+          points: failed.map((value, i) => ({ timestamp: at(i), value })),
+        },
+        {
+          label: "Stored bytes",
+          unit: "bytes",
+          points: storedDelta.map((delta, i) => {
+            running += delta;
+            return { timestamp: at(i), value: running };
+          }),
+        },
+      ];
+    });
   }
 
   // -------------------------------------------------------------------------
   // Rendering
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const fields = resource.fields;
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(
+        this.getResource(resourceTypeId, resourceId, accountId),
+      );
+      const fields = resource.fields;
 
-    if (resourceTypeId === "ut-app") {
-      const used = Number(fields["appTotalBytes"] ?? 0);
-      const limit = Number(fields["limitBytes"] ?? 0);
-      const pct = quotaPercent(Number(fields["totalBytes"] ?? used), limit);
-      return [
-        { label: "Files", value: String(fields["filesUploaded"] ?? 0) },
-        { label: "Used", value: formatBytes(used) },
-        ...(limit > 0 ? [{ label: "Quota", value: formatBytes(limit) }] : []),
-        ...(pct != null
-          ? [
-              {
-                label: "Quota used",
-                value: `${pct}%`,
-                variant:
-                  pct >= 90
-                    ? ("status-error" as const)
-                    : pct >= 75
-                      ? ("status-degraded" as const)
-                      : ("default" as const),
-              },
-            ]
-          : []),
-      ];
-    }
+      if (resourceTypeId === "ut-app") {
+        const used = Number(fields["appTotalBytes"] ?? 0);
+        const limit = Number(fields["limitBytes"] ?? 0);
+        const pct = quotaPercent(Number(fields["totalBytes"] ?? used), limit);
+        return [
+          { label: "Files", value: String(fields["filesUploaded"] ?? 0) },
+          { label: "Used", value: formatBytes(used) },
+          ...(limit > 0 ? [{ label: "Quota", value: formatBytes(limit) }] : []),
+          ...(pct != null
+            ? [
+                {
+                  label: "Quota used",
+                  value: `${pct}%`,
+                  variant:
+                    pct >= 90
+                      ? ("status-error" as const)
+                      : pct >= 75
+                        ? ("status-degraded" as const)
+                        : ("default" as const),
+                },
+              ]
+            : []),
+        ];
+      }
 
-    if (resourceTypeId === "ut-file") {
-      const state = fileStatus(String(fields["status"] ?? ""));
-      return [
-        { label: "Size", value: String(fields["sizeLabel"] ?? formatBytes(0)) },
-        {
-          label: "Status",
-          value: state.label,
-          variant:
-            state.status === "healthy"
-              ? ("status-healthy" as const)
-              : state.status === "error"
-                ? ("status-error" as const)
-                : ("status-degraded" as const),
-        },
-        ...(fields["contentType"] ? [{ label: "Type", value: String(fields["contentType"]) }] : []),
-      ];
-    }
+      if (resourceTypeId === "ut-file") {
+        const state = fileStatus(String(fields["status"] ?? ""));
+        return [
+          { label: "Size", value: String(fields["sizeLabel"] ?? formatBytes(0)) },
+          {
+            label: "Status",
+            value: state.label,
+            variant:
+              state.status === "healthy"
+                ? ("status-healthy" as const)
+                : state.status === "error"
+                  ? ("status-error" as const)
+                  : ("status-degraded" as const),
+          },
+          ...(fields["contentType"]
+            ? [{ label: "Type", value: String(fields["contentType"]) }]
+            : []),
+        ];
+      }
 
-    return [];
+      return [];
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

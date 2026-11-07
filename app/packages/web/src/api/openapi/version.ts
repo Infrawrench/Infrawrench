@@ -407,4 +407,6 @@
 // pricing descriptions say so. Additive.
 // 1.94.0: resource type summaries, child type refs and dashboard pin details gain an
 // optional `iconKey`, the word a plugin declares for what a type is. Additive.
-export const API_VERSION = "1.94.0";
+// 1.95.0: plugin summaries gain optional `sshTunnel`, `jumpHost` and `kvBrowser`, which
+// plugins now declare instead of hosts hard-coding them. Additive.
+export const API_VERSION = "1.95.0";

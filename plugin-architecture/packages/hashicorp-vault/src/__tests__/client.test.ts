@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { normaliseAddress, VaultApiError } from "../api.js";
 import { parseKvValue, VaultClient } from "../client.js";
@@ -14,9 +15,11 @@ const ACCOUNT = "acct";
 function client(route: (call: Call) => unknown, creds: Record<string, string> = {}) {
   const { http, calls } = makeHttp(route);
   return {
-    c: new VaultClient(
-      { address: "vault.example.com:8200/ui/", token: "hvs.t", namespace: "admin", ...creds },
-      { http } as never,
+    c: hostClient(
+      new VaultClient(
+        { address: "vault.example.com:8200/ui/", token: "hvs.t", namespace: "admin", ...creds },
+        { http } as never,
+      ),
     ),
     calls,
   };

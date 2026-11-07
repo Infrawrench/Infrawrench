@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
-  Plugin,
-  PluginClient,
+  HostPlugin,
+  HostPluginClient,
   PriceCatalogDeclaration,
   PriceCatalogProduct,
 } from "@infrawrench/plugin-base";
@@ -49,22 +49,27 @@ function fakePlugin(
   id: string,
   catalog: PriceCatalogDeclaration,
   products: PriceCatalogProduct[] | (() => Promise<PriceCatalogProduct[]>),
-): Plugin {
+): HostPlugin {
   const fetchProducts = async () => (typeof products === "function" ? await products() : products);
   return {
-    manifest: { id, displayName: id.toUpperCase(), priceCatalog: catalog } as Plugin["manifest"],
+    manifest: {
+      id,
+      displayName: id.toUpperCase(),
+      priceCatalog: catalog,
+    } as HostPlugin["manifest"],
     resourceTypes: [],
+    testCredentials: {},
     createClient: () =>
       ({
         fetchPriceCatalog: async () => ({ products: await fetchProducts() }),
-      }) as unknown as PluginClient,
+      }) as unknown as HostPluginClient,
     ...(catalog.requiresCredentials
       ? {}
       : { fetchPriceCatalog: async () => ({ products: await fetchProducts() }) }),
   };
 }
 
-function deps(plugins: Plugin[], overrides: Partial<PriceCatalogDeps> = {}): PriceCatalogDeps {
+function deps(plugins: HostPlugin[], overrides: Partial<PriceCatalogDeps> = {}): PriceCatalogDeps {
   let now = 1_000_000;
   return {
     listPlugins: async () => plugins,

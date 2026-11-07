@@ -1,20 +1,19 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ClerkClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resources.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "clerk",
-  version: "0.1.0",
+  egressHosts: ["api.clerk.com"],
   displayName: "Clerk",
   description:
     "Authentication and user management. Manage users and sessions, organizations and memberships, domains and their DNS records, JWT templates, OAuth applications, enterprise SSO connections, machines, allow and block lists, invitations, redirect URLs, sign-up restrictions and webhooks.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "secretKey",
       label: "Secret Key",
@@ -28,7 +27,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: {
     capabilities: [
       {
@@ -42,11 +41,14 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 5 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new ClerkClient(credentials, services),
+  testCredentials: { secretKey: "sk_test_clerkcontract" },
   parseStatusFeed,
-};
+});

@@ -26,7 +26,7 @@ import {
 } from "@infrawrench/client-core";
 import {
   evaluateOrphanRule,
-  type PluginClient,
+  type HostPluginClient,
   type ResourceInstance,
   type ResourceTypeDefinition,
   type SizeOption,
@@ -49,7 +49,7 @@ export const DELETION_COST_WINDOW_DAYS = 30;
 type Fields = Record<string, string | number | boolean>;
 
 interface AccountCtx {
-  client: PluginClient;
+  client: HostPluginClient;
   plugin: { resourceTypes: ResourceTypeDefinition[] };
 }
 

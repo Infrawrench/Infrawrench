@@ -1,9 +1,11 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
 import type {
   CredentialField,
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import type { SentryContext } from "./api.js";
@@ -38,15 +40,13 @@ function rateField(
   };
 }
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "sentry",
-  version: "0.1.0",
+  egressHosts: ["sentry.io", "us.sentry.io", "de.sentry.io"],
   displayName: "Sentry",
   description:
     "Error and performance monitoring. Track estimated Sentry spend by data category and project, and manage projects, teams, releases, issues, client keys, alerts and monitors with their metrics.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -64,7 +64,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://sentry.io/settings/account/api/auth-tokens/",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "region",
       label: "Region",
@@ -200,7 +200,7 @@ const manifest: PluginManifest = {
       "Uptime monitors your plan includes (1).",
     ),
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Accepted usage from stats_v2 priced at the rates above: data category
     // -> service, the region -> region, the project as a tag. The plan fee
@@ -219,7 +219,9 @@ const manifest: PluginManifest = {
   // endpoints, 20 on stats_v2); stay well under it.
   rateLimit: { capacity: 10, refillPerSecond: 5 },
   oauth: SENTRY_OAUTH,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 /**
  * Options for the organization picker: every organization the token can see
@@ -262,14 +264,15 @@ async function listCredentialOptions(
   }
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new SentryClient(credentials, services),
+  testCredentials: { region: "us", authToken: "sntryu_test", organization: "acme" },
   parseStatusFeed,
   policyTemplate: sentryPolicyTemplate,
   terraformExport: sentryTerraformExport,
-  listCredentialOptions,
-  completeOAuthConnection: completeSentryOAuth,
+  listCredentialOptions: attemptFn(listCredentialOptions),
+  completeOAuthConnection: attemptFn(completeSentryOAuth),
   validateServerCredentials: validateOAuthInstance,
-};
+});

@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -9,8 +11,8 @@ runPluginRenderingTests(plugin);
 
 const ACCOUNT = "acct-1";
 
-function client(): OpenAIClient {
-  return new OpenAIClient({ apiKey: "sk-proj-test", adminApiKey: "sk-admin-test" });
+function client(): HostedMethods<OpenAIClient> {
+  return hostClient(new OpenAIClient({ apiKey: "sk-proj-test", adminApiKey: "sk-admin-test" }));
 }
 
 function resource(

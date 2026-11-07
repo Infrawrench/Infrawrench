@@ -15,8 +15,8 @@
 import { eq, and, isNull } from "drizzle-orm";
 import type {
   PeerPluginIntegration,
-  Plugin,
-  PluginClient,
+  HostPlugin,
+  HostPluginClient,
   ResourceInstance,
 } from "@infrawrench/plugin-base";
 
@@ -63,7 +63,7 @@ export function filterVisiblePeerIntegrations(
  * (eager rendering) and `getClientForResource` (HTTP route dispatch).
  */
 export async function buildPeerPluginClient(input: {
-  parentClient: PluginClient;
+  parentClient: HostPluginClient;
   parentPluginId: string;
   parentResourceTypeId: string;
   parentResourceId: string;
@@ -71,7 +71,11 @@ export async function buildPeerPluginClient(input: {
   integration: PeerPluginIntegration;
   accountId: string;
   organizationId?: string;
-}): Promise<{ client: PluginClient; plugin: Plugin; credentials: Record<string, string> } | null> {
+}): Promise<{
+  client: HostPluginClient;
+  plugin: HostPlugin;
+  credentials: Record<string, string>;
+} | null> {
   const peerCredentials: Record<string, string> = {};
   for (const mapping of input.integration.credentialMappings) {
     const value = await input.parentClient.resolveOutput(

@@ -90,7 +90,7 @@ export const DEFAULT_RATES: Partial<Record<keyof typeof RATE_KEYS, string>> = {
 };
 
 function parseRate(
-  credentials: Record<string, string>,
+  credentials: Readonly<Record<string, string | undefined>>,
   key: keyof typeof RATE_KEYS,
   label: string,
 ): number | undefined {
@@ -108,7 +108,7 @@ function rate(price: number | undefined, included: number | undefined): Category
   return { ...(price !== undefined ? { price } : {}), included: included ?? 0 };
 }
 
-export function parseRates(credentials: Record<string, string>): SentryRates {
+export function parseRates(credentials: Readonly<Record<string, string | undefined>>): SentryRates {
   const p = (key: keyof typeof RATE_KEYS, label: string) => parseRate(credentials, key, label);
   return {
     planFee: p("planFee", "Plan fee") ?? 0,

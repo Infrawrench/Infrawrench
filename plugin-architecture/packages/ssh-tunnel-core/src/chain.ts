@@ -1,6 +1,10 @@
 /**
  * Shared SSH connection-chain primitives for "Connect through jumpbox" routing.
  *
+ * Published as the `@infrawrench/ssh-tunnel-core/chain` subpath and not from the
+ * package root, whose agents and tunnels need `ssh2` and `node:net`: the desktop
+ * renderer resolves chains too, and this module must stay free of Node imports.
+ *
  * Two pieces:
  *
  *   - {@link resolveSshChain}: walk an account's `connectThroughAccountId`

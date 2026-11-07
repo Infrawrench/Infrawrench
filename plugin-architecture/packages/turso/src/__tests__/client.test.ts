@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const api = {
@@ -31,7 +32,7 @@ const ACCOUNT = "acct1";
 const creds = { apiToken: "tok", organizationName: "myorg" };
 
 function makeClient() {
-  return new TursoClient(creds);
+  return hostClient(new TursoClient(creds));
 }
 
 beforeEach(() => {
@@ -71,11 +72,15 @@ function response(json: unknown, status = 200): Response {
 
 describe("constructor", () => {
   it("throws without apiToken", () => {
-    expect(() => new TursoClient({ organizationName: "o" })).toThrow(/missing apiToken/);
+    expect(() => hostClient(new TursoClient({ organizationName: "o" }))).toThrow(
+      /missing apiToken/,
+    );
   });
 
   it("throws without organizationName", () => {
-    expect(() => new TursoClient({ apiToken: "t" })).toThrow(/missing organizationName/);
+    expect(() => hostClient(new TursoClient({ apiToken: "t" }))).toThrow(
+      /missing organizationName/,
+    );
   });
 
   it("constructs api client with org+token", () => {
@@ -344,7 +349,7 @@ describe("lifecycle operations", () => {
       headers: {},
       body: JSON.stringify({ invites: [{ email: "new@example.com", role: "member" }] }),
     });
-    const client = new TursoClient(creds, { http: { request } });
+    const client = hostClient(new TursoClient(creds, { http: { request } }));
 
     const invites = await client.listResources("turso-organization-invite", ACCOUNT);
 

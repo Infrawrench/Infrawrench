@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { CoreWeaveClient } from "../client.js";
@@ -83,7 +84,7 @@ const routes = {
 describe("CoreWeaveClient", () => {
   it("lists clusters with Node Pool roll-ups, authenticating with the token", async () => {
     const calls = mockFetch(routes);
-    const client = new CoreWeaveClient({ apiToken: "CW-SECRET-x" });
+    const client = hostClient(new CoreWeaveClient({ apiToken: "CW-SECRET-x" }));
     const [cluster] = await client.listResources("cks-cluster", "acc");
     expect(cluster).toMatchObject({
       id: "acc:cks-cluster:c-1",
@@ -94,7 +95,7 @@ describe("CoreWeaveClient", () => {
 
   it("lists Node Pools as children of their cluster", async () => {
     mockFetch(routes);
-    const client = new CoreWeaveClient({ apiToken: "t" });
+    const client = hostClient(new CoreWeaveClient({ apiToken: "t" }));
     const [pool] = await client.listResources("node-pool", "acc");
     expect(pool).toMatchObject({
       id: "acc:node-pool:c-1/h100",
@@ -105,7 +106,7 @@ describe("CoreWeaveClient", () => {
 
   it("builds a kubeconfig that carries the token inline", async () => {
     mockFetch(routes);
-    const client = new CoreWeaveClient({ apiToken: "CW-SECRET-x" });
+    const client = hostClient(new CoreWeaveClient({ apiToken: "CW-SECRET-x" }));
     const kubeconfig = await client.resolveOutput(
       "cks-cluster",
       "acc:cks-cluster:c-1",
@@ -119,7 +120,7 @@ describe("CoreWeaveClient", () => {
 
   it("scales a Node Pool with a merge patch after validating it", async () => {
     const calls = mockFetch(routes);
-    const client = new CoreWeaveClient({ apiToken: "t" });
+    const client = hostClient(new CoreWeaveClient({ apiToken: "t" }));
     await client.updateResource("node-pool", "acc:node-pool:c-1/h100", "acc", { targetNodes: "4" });
     const patch = calls.find((c) => c.method === "PATCH");
     expect(patch?.headers["Content-Type"]).toBe("application/merge-patch+json");
@@ -131,7 +132,7 @@ describe("CoreWeaveClient", () => {
 
   it("refuses a cluster whose prefixes are not in the chosen VPC", async () => {
     mockFetch(routes);
-    const client = new CoreWeaveClient({ apiToken: "t" });
+    const client = hostClient(new CoreWeaveClient({ apiToken: "t" }));
     await expect(
       client.createResource("cks-cluster", "acc", {
         name: "new",
@@ -147,7 +148,7 @@ describe("CoreWeaveClient", () => {
 
   it("renders every type with a metrics tab where it declares metrics", async () => {
     mockFetch(routes);
-    const client = new CoreWeaveClient({ apiToken: "t" });
+    const client = hostClient(new CoreWeaveClient({ apiToken: "t" }));
     const [cluster] = await client.listResources("cks-cluster", "acc");
     const detail = client.renderDetail(cluster!);
     expect(detail.metricsCapability).toBeDefined();
@@ -158,7 +159,7 @@ describe("CoreWeaveClient", () => {
 describe("Terraform export", () => {
   it("maps clusters, VPCs and buckets to the coreweave provider", async () => {
     mockFetch(routes);
-    const client = new CoreWeaveClient({ apiToken: "t" });
+    const client = hostClient(new CoreWeaveClient({ apiToken: "t" }));
     const [cluster] = await client.listResources("cks-cluster", "acc");
     const [vpc] = await client.listResources("vpc", "acc");
     const result = exportResourcesToTerraform([cluster!, vpc!], () => plugin.terraformExport);

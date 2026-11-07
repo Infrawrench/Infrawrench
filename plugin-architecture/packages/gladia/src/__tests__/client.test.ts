@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GladiaClient } from "../client.js";
 
@@ -29,8 +31,8 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
   }) as typeof fetch);
 }
 
-function client(): GladiaClient {
-  return new GladiaClient({ apiKey: "test-gladia-key" });
+function client(): HostedMethods<GladiaClient> {
+  return hostClient(new GladiaClient({ apiKey: "test-gladia-key" }));
 }
 
 function headerOf(init: RequestInit | undefined, name: string): string {

@@ -1,4 +1,10 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attemptFn } from "@infrawrench/plugin-base/effect";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { PlanetScaleClient } from "./client.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -12,9 +18,9 @@ import { PsWebhookResourceType } from "./resources/ps-webhook.js";
 import { planetscaleTerraformExport } from "./terraform.js";
 import { PLANETSCALE_OAUTH, completePlanetScaleOAuth } from "./oauth.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "planetscale",
-  version: "0.1.0",
+  egressHosts: ["api.planetscale.com"],
   displayName: "PlanetScale",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#000000"/>
@@ -22,8 +28,6 @@ const manifest: PluginManifest = {
       <path d="M0 12C0 5.373 5.373 0 12 0c4.873 0 9.067 2.904 10.947 7.077l-15.87 15.87a11.981 11.981 0 0 1-1.935-1.099L14.99 12H12l-8.485 8.485A11.962 11.962 0 0 1 0 12Zm12.004 12L24 12.004C23.998 18.628 18.628 23.998 12.004 24Z"/>
     </g>
   </svg>`,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -36,7 +40,7 @@ const manifest: PluginManifest = {
       credentialFields: ["serviceTokenSecret"],
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "serviceTokenId",
       label: "Service Token ID",
@@ -62,7 +66,7 @@ const manifest: PluginManifest = {
       placeholder: "my-org",
     },
     caCertCredentialField,
-  ],
+  ]),
   // Invoices API (GET /organizations/{org}/invoices + .../line-items):
   // monthly invoices with line items keyed by metric + database. In-progress
   // invoice line items refresh hourly; finalized invoices can still gain
@@ -77,7 +81,9 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   oauth: PLANETSCALE_OAUTH,
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 const resourceTypes: ResourceTypeDefinition[] = [
   PsDatabaseResourceType,
@@ -89,11 +95,16 @@ const resourceTypes: ResourceTypeDefinition[] = [
   PsWebhookResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new PlanetScaleClient(credentials, services),
+  testCredentials: {
+    serviceTokenId: "test-id",
+    serviceTokenSecret: "test-secret",
+    organizationName: "test-org",
+  },
   parseStatusFeed,
   terraformExport: planetscaleTerraformExport,
-  completeOAuthConnection: completePlanetScaleOAuth,
-};
+  completeOAuthConnection: attemptFn(completePlanetScaleOAuth),
+});

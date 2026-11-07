@@ -16,7 +16,9 @@
  * account's client: `resolveOutput` is the whole contract, and both
  * implement it.
  */
-import type { PluginClient } from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
+import type { HostPluginClient } from "@infrawrench/plugin-base" with {
+  "resolution-mode": "import",
+};
 import type { SidecarRef } from "@infrawrench/workflow-runtime" with {
   "resolution-mode": "import",
 };
@@ -30,7 +32,7 @@ import { CliError } from "./context";
  * build is evicted so a retry (say, after the cluster finishes provisioning)
  * resolves fresh rather than replaying the cached rejection.
  */
-const peerClients = new Map<string, Promise<PluginClient>>();
+const peerClients = new Map<string, Promise<HostPluginClient>>();
 
 /**
  * The parent resource's type id, parsed from its canonical
@@ -65,11 +67,11 @@ function resolveParentTypeId(
 }
 
 async function buildCliPeerClient(
-  parentClient: PluginClient,
+  parentClient: HostPluginClient,
   parentAccountId: string,
   parentPluginId: string,
   sidecar: SidecarRef,
-): Promise<PluginClient> {
+): Promise<HostPluginClient> {
   const { getPlugin } = await import("../infrafile/plugins.js");
   const parentLoaded = await getPlugin(parentPluginId);
   if (!parentLoaded) {
@@ -135,11 +137,11 @@ async function buildCliPeerClient(
  * credential) from those credentials.
  */
 export function createCliPeerClient(
-  parentClient: PluginClient,
+  parentClient: HostPluginClient,
   parentAccountId: string,
   parentPluginId: string,
   sidecar: SidecarRef,
-): Promise<PluginClient> {
+): Promise<HostPluginClient> {
   const key = `${sidecar.parentResourceId}:${sidecar.pluginId}`;
   let client = peerClients.get(key);
   if (!client) {

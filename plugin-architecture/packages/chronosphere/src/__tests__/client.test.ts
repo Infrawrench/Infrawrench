@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { normalizeOrg, statusOf } from "../api.js";
@@ -30,7 +31,10 @@ describe("ChronosphereClient", () => {
       }
       return undefined;
     });
-    const list = await new ChronosphereClient(CREDS, { http }).listResources("monitor", "acct");
+    const list = await hostClient(new ChronosphereClient(CREDS, { http })).listResources(
+      "monitor",
+      "acct",
+    );
     expect(list.map((m) => m.externalId)).toEqual(["a", "b"]);
     expect(calls[0]?.url.origin).toBe("https://acme.chronosphere.io");
     expect(calls[0]?.headers["API-Token"]).toBe("chrono-token");
@@ -43,7 +47,7 @@ describe("ChronosphereClient", () => {
         ? { status: 403, body: { code: 7, message: "denied" } }
         : { status: 500, body: { code: 13, message: "boom" } },
     );
-    const client = new ChronosphereClient(CREDS, { http });
+    const client = hostClient(new ChronosphereClient(CREDS, { http }));
     expect(await client.listResources("service-account", "acct")).toEqual([]);
     const err = await client.listResources("team", "acct").catch((e: unknown) => e);
     expect(statusOf(err)).toBe(500);
@@ -56,17 +60,21 @@ describe("ChronosphereClient", () => {
         ? { body: { monitor: { ...(body as { monitor: object }).monitor, slug: "m1" } } }
         : undefined,
     );
-    const r = await new ChronosphereClient(CREDS, { http }).createResource("monitor", "acct", {
-      name: "Errors",
-      collectionSlug: "payments",
-      query: "sum(rate(errors[5m]))",
-      op: "GT",
-      warnValue: "5",
-      criticalValue: "",
-      sustainSecs: "300",
-      intervalSecs: "60",
-      notificationPolicySlug: "",
-    });
+    const r = await hostClient(new ChronosphereClient(CREDS, { http })).createResource(
+      "monitor",
+      "acct",
+      {
+        name: "Errors",
+        collectionSlug: "payments",
+        query: "sum(rate(errors[5m]))",
+        op: "GT",
+        warnValue: "5",
+        criticalValue: "",
+        sustainSecs: "300",
+        intervalSecs: "60",
+        notificationPolicySlug: "",
+      },
+    );
     expect(r.externalId).toBe("m1");
     expect(calls[0]?.body).toEqual({
       monitor: {
@@ -93,7 +101,7 @@ describe("ChronosphereClient", () => {
       if (method === "PUT") return { body: { drop_rule: { slug: "d1" } } };
       return undefined;
     });
-    await new ChronosphereClient(CREDS, { http }).invokeAction(
+    await hostClient(new ChronosphereClient(CREDS, { http })).invokeAction(
       "drop-rule",
       "acct:drop-rule:d1",
       "mode-disabled",
@@ -136,7 +144,7 @@ describe("ChronosphereClient", () => {
         return { body: { monitor: { slug: "m", prometheus_query: "up" } } };
       return undefined;
     });
-    const client = new ChronosphereClient(CREDS, { http });
+    const client = hostClient(new ChronosphereClient(CREDS, { http }));
     const series = await client.fetchMetricSeries("monitor", "acct:monitor:m", "acct", {
       startMs: 0,
       endMs: 3600_000,
@@ -186,7 +194,9 @@ describe("preflight", () => {
     const { http } = makeHttp((url) =>
       url.pathname.includes("service-accounts") ? { status: 403, body: {} } : { body: {} },
     );
-    const res = await verifyChronoCredentials(new ChronosphereClient(CREDS, { http }).context);
+    const res = await verifyChronoCredentials(
+      hostClient(new ChronosphereClient(CREDS, { http })).context,
+    );
     expect(res.checks.find((c) => c.capabilityId === "monitors")?.status).toBe("ok");
     expect(res.checks.find((c) => c.capabilityId === "service-accounts")?.status).toBe("missing");
   });

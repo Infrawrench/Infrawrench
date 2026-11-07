@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -63,8 +65,8 @@ function account(fields: Record<string, string | number | boolean> = {}): Resour
   };
 }
 
-function client(): AssemblyAIClient {
-  return new AssemblyAIClient({ apiKey: "k" });
+function client(): HostedMethods<AssemblyAIClient> {
+  return hostClient(new AssemblyAIClient({ apiKey: "k" }));
 }
 
 describe("renderDetail — account", () => {

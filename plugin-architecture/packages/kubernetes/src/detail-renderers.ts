@@ -1074,6 +1074,7 @@ export function renderPodDetail(resource: ResourceInstance, costs?: CostIndex): 
     : [];
 
   return {
+    execConsole: true,
     title: resource.displayName,
     subtitle,
     status: { kind: "status-dot", status: mapPeerStatus(status), label: status },

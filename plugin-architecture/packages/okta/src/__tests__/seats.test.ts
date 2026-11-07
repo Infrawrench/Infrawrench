@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { HostServices, SeatRemediationFinding } from "@infrawrench/plugin-base";
 import { normalizeSeatRecords } from "@infrawrench/plugin-base";
@@ -32,7 +33,9 @@ function client(handler: (call: Call) => Reply, extra: Record<string, string> = 
       },
     },
   };
-  return new OktaClient({ orgUrl: "acme.okta.com", apiToken: "tok", ...extra }, services);
+  return hostClient(
+    new OktaClient({ orgUrl: "acme.okta.com", apiToken: "tok", ...extra }, services),
+  );
 }
 
 const user = (id: string, status: string, extra: Record<string, unknown> = {}) => ({

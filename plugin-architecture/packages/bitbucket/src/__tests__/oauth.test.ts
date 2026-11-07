@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { buildOAuthAuthorizeUrl } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { BitbucketClient } from "../client.js";
@@ -40,7 +41,7 @@ describe("completeOAuthConnection", () => {
         body: { values: [{ workspace: { slug: "acme", name: "Acme" } }] },
       },
     });
-    const result = await plugin.completeOAuthConnection!(tokens, {
+    const result = await hostPlugin(plugin).completeOAuthConnection!(tokens, {
       client: "server",
       fetch: doFetch,
     });
@@ -59,7 +60,7 @@ describe("completeOAuthConnection", () => {
         body: { values: [{ workspace: { slug: "a" } }, { workspace: { slug: "b" } }] },
       },
     });
-    const result = await plugin.completeOAuthConnection!(tokens, {
+    const result = await hostPlugin(plugin).completeOAuthConnection!(tokens, {
       client: "server",
       fetch: doFetch,
     });
@@ -70,9 +71,11 @@ describe("completeOAuthConnection", () => {
 describe("OAuth-connected accounts", () => {
   it("send the token as Bearer even when an email is left in the form", async () => {
     const { http, calls } = makeHttp(() => ({ values: [] }));
-    const client = new BitbucketClient(
-      { token: "bb-oauth", workspace: "acme", email: "old@example.com", __oauth: "{}" },
-      { http } as never,
+    const client = hostClient(
+      new BitbucketClient(
+        { token: "bb-oauth", workspace: "acme", email: "old@example.com", __oauth: "{}" },
+        { http } as never,
+      ),
     );
     await client.listResources("project", "acc").catch(() => undefined);
     expect(calls.length).toBeGreaterThan(0);
@@ -83,7 +86,7 @@ describe("OAuth-connected accounts", () => {
     const { http, calls } = makeHttp(() => ({
       values: [{ administrator: true, workspace: { slug: "acme", name: "Acme" } }],
     }));
-    const options = await plugin.listCredentialOptions!(
+    const options = await hostPlugin(plugin).listCredentialOptions!(
       "workspace",
       { token: "bb-oauth", email: "old@example.com", __oauth: "{}" },
       { http } as never,

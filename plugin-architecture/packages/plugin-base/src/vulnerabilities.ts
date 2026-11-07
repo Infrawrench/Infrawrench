@@ -158,6 +158,7 @@ export interface VulnerabilityCapabilityDeclaration {
  * `QuotaAccessError` is.
  */
 export class VulnerabilityAccessError extends Error {
+  readonly _tag = "VulnerabilityAccessError";
   readonly helpLabel: string | undefined;
   readonly helpUrl: string | undefined;
 

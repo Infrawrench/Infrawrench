@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -129,7 +132,7 @@ export class TailscaleClient implements PluginClient {
   private readonly tailnet: string;
   private readonly tailnetId: string;
   constructor(
-    private readonly credentials: Record<string, string>,
+    private readonly credentials: Credentials,
     private readonly services?: HostServices,
   ) {
     this.tailnetId = credentials.tailnet?.trim() || "-";
@@ -295,73 +298,79 @@ export class TailscaleClient implements PluginClient {
   // Reads
   // ---------------------------------------------------------------------------
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "tailnet":
-        return [await this.tailnetSnapshot(accountId)];
-      case "device":
-        return (await this.devices()).map((d) => mapDevice(d, accountId));
-      case "user":
-        return (await this.users()).map((u) => mapUser(u, accountId));
-      case "user-invite":
-        return (await this.userInvites()).map((i) => mapUserInvite(i, accountId));
-      case "key":
-        return (await this.keys()).map((k) => mapKey(k, accountId));
-      case "webhook":
-        return (await this.webhooks()).map((w) => mapWebhook(w, accountId));
-      case "service":
-        return (await this.servicesList()).map((s) => mapService(s, accountId));
-      case "posture-integration":
-        return (await this.postureIntegrations()).map((p) => mapPostureIntegration(p, accountId));
-      default:
-        return [];
-    }
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "tailnet":
+          return [await this.tailnetSnapshot(accountId)];
+        case "device":
+          return (await this.devices()).map((d) => mapDevice(d, accountId));
+        case "user":
+          return (await this.users()).map((u) => mapUser(u, accountId));
+        case "user-invite":
+          return (await this.userInvites()).map((i) => mapUserInvite(i, accountId));
+        case "key":
+          return (await this.keys()).map((k) => mapKey(k, accountId));
+        case "webhook":
+          return (await this.webhooks()).map((w) => mapWebhook(w, accountId));
+        case "service":
+          return (await this.servicesList()).map((s) => mapService(s, accountId));
+        case "posture-integration":
+          return (await this.postureIntegrations()).map((p) => mapPostureIntegration(p, accountId));
+        default:
+          return [];
+      }
+    });
   }
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const prefix = `${accountId}:${typeId}:`;
-    if (!resourceId.startsWith(prefix))
-      throw new Error(`${this.label(typeId)} not found in this tailnet.`);
-    const id = resourceId.slice(prefix.length);
-    switch (typeId) {
-      case "tailnet":
-        return this.tailnetSnapshot(accountId);
-      case "key": {
-        // Tailnet-scoped route, so a single GET cannot reach another tailnet.
-        try {
-          const key = await this.request<Key>(this.tailnetPath(`/keys/${encodeURIComponent(id)}`));
-          return mapKey(key, accountId);
-        } catch (error) {
-          if (isNotFound(error)) throw new Error("Key not found in this tailnet.");
-          throw error;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const prefix = `${accountId}:${typeId}:`;
+      if (!resourceId.startsWith(prefix))
+        throw new Error(`${this.label(typeId)} not found in this tailnet.`);
+      const id = resourceId.slice(prefix.length);
+      switch (typeId) {
+        case "tailnet":
+          return this.tailnetSnapshot(accountId);
+        case "key": {
+          // Tailnet-scoped route, so a single GET cannot reach another tailnet.
+          try {
+            const key = await this.request<Key>(
+              this.tailnetPath(`/keys/${encodeURIComponent(id)}`),
+            );
+            return mapKey(key, accountId);
+          } catch (error) {
+            if (isNotFound(error)) throw new Error("Key not found in this tailnet.");
+            throw error;
+          }
         }
-      }
-      case "service": {
-        try {
-          const service = await this.request<Service>(
-            this.tailnetPath(`/services/${encodeURIComponent(id)}`),
+        case "service": {
+          try {
+            const service = await this.request<Service>(
+              this.tailnetPath(`/services/${encodeURIComponent(id)}`),
+            );
+            return mapService(service, accountId);
+          } catch (error) {
+            if (isNotFound(error)) throw new Error("Service not found in this tailnet.");
+            throw error;
+          }
+        }
+        default: {
+          // Device, user, invite, webhook and posture routes are not
+          // tailnet-scoped, so every read and mutation resolves through this
+          // credential's tailnet listing first.
+          const match = (await runPluginEffect(this.listResources(typeId, accountId))).find(
+            (r) => r.id === resourceId,
           );
-          return mapService(service, accountId);
-        } catch (error) {
-          if (isNotFound(error)) throw new Error("Service not found in this tailnet.");
-          throw error;
+          if (!match) throw new Error(`${this.label(typeId)} not found in this tailnet.`);
+          return match;
         }
       }
-      default: {
-        // Device, user, invite, webhook and posture routes are not
-        // tailnet-scoped, so every read and mutation resolves through this
-        // credential's tailnet listing first.
-        const match = (await this.listResources(typeId, accountId)).find(
-          (r) => r.id === resourceId,
-        );
-        if (!match) throw new Error(`${this.label(typeId)} not found in this tailnet.`);
-        return match;
-      }
-    }
+    });
   }
 
   private label(typeId: string): string {
@@ -378,452 +387,467 @@ export class TailscaleClient implements PluginClient {
     return labels[typeId] ?? "Resource";
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    return (await this.getResource(typeId, resourceId, accountId)).resolvedOutputs[outputKey] ?? "";
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      return (
+        (await runPluginEffect(this.getResource(typeId, resourceId, accountId))).resolvedOutputs[
+          outputKey
+        ] ?? ""
+      );
+    });
   }
 
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const id = encodeURIComponent(resource.externalId ?? "");
-    const extra: Record<string, string> = {};
-    if (resource.resourceTypeId === "device") {
-      const [attributes, device] = await Promise.allSettled([
-        this.request<{ attributes?: Record<string, unknown>; expiries?: Record<string, string> }>(
-          `/device/${id}/attributes`,
-        ),
-        this.request<Device>(`/device/${id}?fields=all`),
-      ]);
-      if (attributes.status === "fulfilled")
-        extra.__attributes__ = JSON.stringify(attributes.value?.attributes ?? {});
-      if (device.status === "fulfilled")
-        extra.__connectivity__ = JSON.stringify(device.value?.clientConnectivity ?? {});
-    } else if (resource.resourceTypeId === "service") {
-      const [hosts, devices] = await Promise.allSettled([
-        this.request<{ hosts?: ServiceHost[] }>(this.tailnetPath(`/services/${id}/devices`)),
-        this.devices(),
-      ]);
-      if (hosts.status === "fulfilled") {
-        const names = new Map(
-          (devices.status === "fulfilled" ? devices.value : []).map((d) => [
-            d.nodeId || d.id,
-            d.hostname || d.name,
-          ]),
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = encodeURIComponent(resource.externalId ?? "");
+      const extra: Record<string, string> = {};
+      if (resource.resourceTypeId === "device") {
+        const [attributes, device] = await Promise.allSettled([
+          this.request<{ attributes?: Record<string, unknown>; expiries?: Record<string, string> }>(
+            `/device/${id}/attributes`,
+          ),
+          this.request<Device>(`/device/${id}?fields=all`),
+        ]);
+        if (attributes.status === "fulfilled")
+          extra.__attributes__ = JSON.stringify(attributes.value?.attributes ?? {});
+        if (device.status === "fulfilled")
+          extra.__connectivity__ = JSON.stringify(device.value?.clientConnectivity ?? {});
+      } else if (resource.resourceTypeId === "service") {
+        const [hosts, devices] = await Promise.allSettled([
+          this.request<{ hosts?: ServiceHost[] }>(this.tailnetPath(`/services/${id}/devices`)),
+          this.devices(),
+        ]);
+        if (hosts.status === "fulfilled") {
+          const names = new Map(
+            (devices.status === "fulfilled" ? devices.value : []).map((d) => [
+              d.nodeId || d.id,
+              d.hostname || d.name,
+            ]),
+          );
+          extra.__hosts__ = JSON.stringify(
+            (hosts.value?.hosts ?? []).map((h) => ({
+              ...h,
+              hostname: names.get(h.stableNodeID) ?? "",
+            })),
+          );
+        }
+      } else if (resource.resourceTypeId === "tailnet") {
+        const streams = await Promise.all(
+          (["configuration", "network"] as const).map(async (logType) => {
+            const [config, status] = await Promise.allSettled([
+              this.request<LogStreamConfig>(this.tailnetPath(`/logging/${logType}/stream`)),
+              this.request<LogStreamStatus>(this.tailnetPath(`/logging/${logType}/stream/status`)),
+            ]);
+            return {
+              logType,
+              ...(config.status === "fulfilled" ? { config: config.value } : {}),
+              ...(status.status === "fulfilled" ? { status: status.value } : {}),
+            };
+          }),
         );
-        extra.__hosts__ = JSON.stringify(
-          (hosts.value?.hosts ?? []).map((h) => ({
-            ...h,
-            hostname: names.get(h.stableNodeID) ?? "",
-          })),
-        );
+        extra.__streams__ = JSON.stringify(streams);
       }
-    } else if (resource.resourceTypeId === "tailnet") {
-      const streams = await Promise.all(
-        (["configuration", "network"] as const).map(async (logType) => {
-          const [config, status] = await Promise.allSettled([
-            this.request<LogStreamConfig>(this.tailnetPath(`/logging/${logType}/stream`)),
-            this.request<LogStreamStatus>(this.tailnetPath(`/logging/${logType}/stream/status`)),
-          ]);
-          return {
-            logType,
-            ...(config.status === "fulfilled" ? { config: config.value } : {}),
-            ...(status.status === "fulfilled" ? { status: status.value } : {}),
-          };
-        }),
-      );
-      extra.__streams__ = JSON.stringify(streams);
-    }
-    return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
+      return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Create
   // ---------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    switch (typeId) {
-      case "user-invite":
-        return {
-          fields: [
-            {
-              key: "email",
-              label: "Email",
-              kind: "text",
-              required: false,
-              placeholder: "person@example.com",
-              description:
-                "Leave blank to create a shareable invite link without sending an email.",
-            },
-            {
-              key: "role",
-              label: "Role",
-              kind: "select",
-              required: true,
-              defaultValue: "member",
-              options: INVITE_ROLES.map((role) => ({ id: role, label: role })),
-            },
-          ],
-        };
-      case "key": {
-        const tags = await this.knownTags();
-        const tagField = (showFor: string, required: boolean): CreateFieldConfig => ({
-          key: showFor === "auth" ? "tags" : "clientTags",
-          label: "Tags",
-          kind: "policy-picker",
-          required,
-          policies: tags,
-          showWhen: { fieldKey: "keyType", fieldValue: showFor },
-          description:
-            showFor === "auth"
-              ? "Devices that join with this key are tagged instead of owned by you."
-              : "Tags the client may assign. Required when the client has the devices:core or auth_keys scope.",
-        });
-        return {
-          fields: [
-            {
-              key: "keyType",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "auth",
-              options: [
-                { id: "auth", label: "Auth key", description: "Joins devices to the tailnet." },
-                {
-                  id: "client",
-                  label: "OAuth client",
-                  description: "A scoped client ID and secret for automation.",
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "user-invite":
+          return {
+            fields: [
+              {
+                key: "email",
+                label: "Email",
+                kind: "text",
+                required: false,
+                placeholder: "person@example.com",
+                description:
+                  "Leave blank to create a shareable invite link without sending an email.",
+              },
+              {
+                key: "role",
+                label: "Role",
+                kind: "select",
+                required: true,
+                defaultValue: "member",
+                options: INVITE_ROLES.map((role) => ({ id: role, label: role })),
+              },
+            ],
+          };
+        case "key": {
+          const tags = await this.knownTags();
+          const tagField = (showFor: string, required: boolean): CreateFieldConfig => ({
+            key: showFor === "auth" ? "tags" : "clientTags",
+            label: "Tags",
+            kind: "policy-picker",
+            required,
+            policies: tags,
+            showWhen: { fieldKey: "keyType", fieldValue: showFor },
+            description:
+              showFor === "auth"
+                ? "Devices that join with this key are tagged instead of owned by you."
+                : "Tags the client may assign. Required when the client has the devices:core or auth_keys scope.",
+          });
+          return {
+            fields: [
+              {
+                key: "keyType",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "auth",
+                options: [
+                  { id: "auth", label: "Auth key", description: "Joins devices to the tailnet." },
+                  {
+                    id: "client",
+                    label: "OAuth client",
+                    description: "A scoped client ID and secret for automation.",
+                  },
+                ],
+              },
+              {
+                key: "description",
+                label: "Description",
+                kind: "text",
+                required: false,
+                description: "Up to 50 letters, numbers, spaces and hyphens.",
+              },
+              {
+                key: "reusable",
+                label: "Reusable",
+                kind: "select",
+                required: false,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "One-off: one device" },
+                  { id: "true", label: "Reusable: any number of devices" },
+                ],
+                showWhen: { fieldKey: "keyType", fieldValue: "auth" },
+              },
+              {
+                key: "ephemeral",
+                label: "Ephemeral",
+                kind: "select",
+                required: false,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "No" },
+                  { id: "true", label: "Yes: remove devices soon after they go offline" },
+                ],
+                showWhen: { fieldKey: "keyType", fieldValue: "auth" },
+              },
+              {
+                key: "preauthorized",
+                label: "Pre-approved",
+                kind: "select",
+                required: false,
+                defaultValue: "false",
+                options: [
+                  { id: "false", label: "No: devices wait for device approval" },
+                  { id: "true", label: "Yes: skip device approval" },
+                ],
+                showWhen: { fieldKey: "keyType", fieldValue: "auth" },
+              },
+              tagField("auth", false),
+              {
+                key: "expiryDays",
+                label: "Expires in (days)",
+                kind: "number",
+                required: false,
+                defaultValue: "90",
+                minValue: 1,
+                maxValue: 90,
+                showWhen: { fieldKey: "keyType", fieldValue: "auth" },
+              },
+              {
+                key: "scopes",
+                label: "Scopes",
+                kind: "policy-picker",
+                required: false,
+                policies: TRUST_CREDENTIAL_SCOPES.map((scope) => ({
+                  id: scope,
+                  label: scope,
+                  category: scope.endsWith(":read") ? "Read" : "Read and write",
+                })),
+                showWhen: { fieldKey: "keyType", fieldValue: "client" },
+                description: "At least one scope is required.",
+              },
+              tagField("client", false),
+            ],
+          };
+        }
+        case "webhook":
+          return {
+            fields: [
+              {
+                key: "endpointUrl",
+                label: "Endpoint URL",
+                kind: "text",
+                required: true,
+                placeholder: "https://example.com/tailscale",
+              },
+              {
+                key: "providerType",
+                label: "Format",
+                kind: "select",
+                required: false,
+                defaultValue: "",
+                options: [
+                  { id: "", label: "Generic JSON" },
+                  { id: "slack", label: "Slack" },
+                  { id: "mattermost", label: "Mattermost" },
+                  { id: "googlechat", label: "Google Chat" },
+                  { id: "discord", label: "Discord" },
+                ],
+              },
+              {
+                key: "subscriptions",
+                label: "Events",
+                kind: "policy-picker",
+                required: true,
+                policies: WEBHOOK_EVENTS.map((event) => ({
+                  id: event,
+                  label: event,
+                  category: event.startsWith("user")
+                    ? "Users"
+                    : event.startsWith("node")
+                      ? "Devices"
+                      : "Tailnet",
+                })),
+              },
+            ],
+          };
+        case "service": {
+          const tags = await this.knownTags();
+          return {
+            fields: [
+              {
+                key: "name",
+                label: "Name",
+                kind: "text",
+                required: true,
+                placeholder: "web",
+                description:
+                  "Becomes svc:<name> and the Service's MagicDNS name. Must not match a device name.",
+              },
+              { key: "displayName", label: "Display name", kind: "text", required: false },
+              {
+                key: "ports",
+                label: "Ports",
+                kind: "string-list",
+                required: true,
+                addLabel: "+ Add port",
+                placeholder: "tcp:443",
+                defaultValue: "tcp:443",
+              },
+              {
+                key: "tags",
+                label: "Tags",
+                kind: "policy-picker",
+                required: false,
+                policies: tags,
+                description: "Grants and auto-approvers can match the Service by tag.",
+              },
+              { key: "comment", label: "Comment", kind: "text", required: false },
+            ],
+          };
+        }
+        case "posture-integration":
+          return {
+            fields: [
+              {
+                key: "provider",
+                label: "Provider",
+                kind: "select",
+                required: true,
+                defaultValue: "falcon",
+                options: [
+                  { id: "falcon", label: "CrowdStrike Falcon" },
+                  { id: "intune", label: "Microsoft Intune" },
+                  { id: "jamfpro", label: "Jamf Pro" },
+                  { id: "kandji", label: "Kandji" },
+                  { id: "kolide", label: "Kolide" },
+                  { id: "sentinelone", label: "SentinelOne" },
+                ],
+              },
+              {
+                key: "falconCloud",
+                label: "Cloud",
+                kind: "select",
+                required: true,
+                defaultValue: "us-1",
+                options: ["us-1", "us-2", "eu-1", "us-gov"].map((id) => ({ id, label: id })),
+                showWhen: { fieldKey: "provider", fieldValue: "falcon" },
+              },
+              {
+                key: "intuneCloud",
+                label: "Cloud",
+                kind: "select",
+                required: true,
+                defaultValue: "global",
+                options: [
+                  { id: "global", label: "Global" },
+                  { id: "us-gov", label: "US Government" },
+                ],
+                showWhen: { fieldKey: "provider", fieldValue: "intune" },
+              },
+              {
+                key: "subdomain",
+                label: "Tenant domain",
+                kind: "text",
+                required: true,
+                placeholder: "mydomain.sentinelone.net",
+                description:
+                  "The fully qualified domain of your Jamf Pro, Kandji or SentinelOne tenant.",
+                showWhen: {
+                  fieldKey: "provider",
+                  fieldValues: ["jamfpro", "kandji", "sentinelone"],
                 },
-              ],
-            },
-            {
-              key: "description",
-              label: "Description",
-              kind: "text",
-              required: false,
-              description: "Up to 50 letters, numbers, spaces and hyphens.",
-            },
-            {
-              key: "reusable",
-              label: "Reusable",
-              kind: "select",
-              required: false,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "One-off: one device" },
-                { id: "true", label: "Reusable: any number of devices" },
-              ],
-              showWhen: { fieldKey: "keyType", fieldValue: "auth" },
-            },
-            {
-              key: "ephemeral",
-              label: "Ephemeral",
-              kind: "select",
-              required: false,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "No" },
-                { id: "true", label: "Yes: remove devices soon after they go offline" },
-              ],
-              showWhen: { fieldKey: "keyType", fieldValue: "auth" },
-            },
-            {
-              key: "preauthorized",
-              label: "Pre-approved",
-              kind: "select",
-              required: false,
-              defaultValue: "false",
-              options: [
-                { id: "false", label: "No: devices wait for device approval" },
-                { id: "true", label: "Yes: skip device approval" },
-              ],
-              showWhen: { fieldKey: "keyType", fieldValue: "auth" },
-            },
-            tagField("auth", false),
-            {
-              key: "expiryDays",
-              label: "Expires in (days)",
-              kind: "number",
-              required: false,
-              defaultValue: "90",
-              minValue: 1,
-              maxValue: 90,
-              showWhen: { fieldKey: "keyType", fieldValue: "auth" },
-            },
-            {
-              key: "scopes",
-              label: "Scopes",
-              kind: "policy-picker",
-              required: false,
-              policies: TRUST_CREDENTIAL_SCOPES.map((scope) => ({
-                id: scope,
-                label: scope,
-                category: scope.endsWith(":read") ? "Read" : "Read and write",
-              })),
-              showWhen: { fieldKey: "keyType", fieldValue: "client" },
-              description: "At least one scope is required.",
-            },
-            tagField("client", false),
-          ],
-        };
+              },
+              {
+                key: "clientId",
+                label: "Client ID",
+                kind: "text",
+                required: true,
+                description: "For Intune, the application (client) UUID.",
+                showWhen: { fieldKey: "provider", fieldValues: ["falcon", "intune", "jamfpro"] },
+              },
+              {
+                key: "tenantId",
+                label: "Directory (tenant) ID",
+                kind: "text",
+                required: true,
+                showWhen: { fieldKey: "provider", fieldValue: "intune" },
+              },
+              {
+                key: "clientSecret",
+                label: "Secret",
+                kind: "password",
+                required: true,
+                description: "The client secret, API token or auth key the provider issued.",
+              },
+            ],
+          };
+        default:
+          throw new Error(`Tailscale cannot create ${typeId} resources.`);
       }
-      case "webhook":
-        return {
-          fields: [
-            {
-              key: "endpointUrl",
-              label: "Endpoint URL",
-              kind: "text",
-              required: true,
-              placeholder: "https://example.com/tailscale",
-            },
-            {
-              key: "providerType",
-              label: "Format",
-              kind: "select",
-              required: false,
-              defaultValue: "",
-              options: [
-                { id: "", label: "Generic JSON" },
-                { id: "slack", label: "Slack" },
-                { id: "mattermost", label: "Mattermost" },
-                { id: "googlechat", label: "Google Chat" },
-                { id: "discord", label: "Discord" },
-              ],
-            },
-            {
-              key: "subscriptions",
-              label: "Events",
-              kind: "policy-picker",
-              required: true,
-              policies: WEBHOOK_EVENTS.map((event) => ({
-                id: event,
-                label: event,
-                category: event.startsWith("user")
-                  ? "Users"
-                  : event.startsWith("node")
-                    ? "Devices"
-                    : "Tailnet",
-              })),
-            },
-          ],
-        };
-      case "service": {
-        const tags = await this.knownTags();
-        return {
-          fields: [
-            {
-              key: "name",
-              label: "Name",
-              kind: "text",
-              required: true,
-              placeholder: "web",
-              description:
-                "Becomes svc:<name> and the Service's MagicDNS name. Must not match a device name.",
-            },
-            { key: "displayName", label: "Display name", kind: "text", required: false },
-            {
-              key: "ports",
-              label: "Ports",
-              kind: "string-list",
-              required: true,
-              addLabel: "+ Add port",
-              placeholder: "tcp:443",
-              defaultValue: "tcp:443",
-            },
-            {
-              key: "tags",
-              label: "Tags",
-              kind: "policy-picker",
-              required: false,
-              policies: tags,
-              description: "Grants and auto-approvers can match the Service by tag.",
-            },
-            { key: "comment", label: "Comment", kind: "text", required: false },
-          ],
-        };
-      }
-      case "posture-integration":
-        return {
-          fields: [
-            {
-              key: "provider",
-              label: "Provider",
-              kind: "select",
-              required: true,
-              defaultValue: "falcon",
-              options: [
-                { id: "falcon", label: "CrowdStrike Falcon" },
-                { id: "intune", label: "Microsoft Intune" },
-                { id: "jamfpro", label: "Jamf Pro" },
-                { id: "kandji", label: "Kandji" },
-                { id: "kolide", label: "Kolide" },
-                { id: "sentinelone", label: "SentinelOne" },
-              ],
-            },
-            {
-              key: "falconCloud",
-              label: "Cloud",
-              kind: "select",
-              required: true,
-              defaultValue: "us-1",
-              options: ["us-1", "us-2", "eu-1", "us-gov"].map((id) => ({ id, label: id })),
-              showWhen: { fieldKey: "provider", fieldValue: "falcon" },
-            },
-            {
-              key: "intuneCloud",
-              label: "Cloud",
-              kind: "select",
-              required: true,
-              defaultValue: "global",
-              options: [
-                { id: "global", label: "Global" },
-                { id: "us-gov", label: "US Government" },
-              ],
-              showWhen: { fieldKey: "provider", fieldValue: "intune" },
-            },
-            {
-              key: "subdomain",
-              label: "Tenant domain",
-              kind: "text",
-              required: true,
-              placeholder: "mydomain.sentinelone.net",
-              description:
-                "The fully qualified domain of your Jamf Pro, Kandji or SentinelOne tenant.",
-              showWhen: { fieldKey: "provider", fieldValues: ["jamfpro", "kandji", "sentinelone"] },
-            },
-            {
-              key: "clientId",
-              label: "Client ID",
-              kind: "text",
-              required: true,
-              description: "For Intune, the application (client) UUID.",
-              showWhen: { fieldKey: "provider", fieldValues: ["falcon", "intune", "jamfpro"] },
-            },
-            {
-              key: "tenantId",
-              label: "Directory (tenant) ID",
-              kind: "text",
-              required: true,
-              showWhen: { fieldKey: "provider", fieldValue: "intune" },
-            },
-            {
-              key: "clientSecret",
-              label: "Secret",
-              kind: "password",
-              required: true,
-              description: "The client secret, API token or auth key the provider issued.",
-            },
-          ],
-        };
-      default:
-        throw new Error(`Tailscale cannot create ${typeId} resources.`);
-    }
+    });
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    switch (typeId) {
-      case "user-invite": {
-        const email = fields.email?.trim();
-        const created = await this.request<UserInvite[]>(
-          this.tailnetPath("/user-invites"),
-          "POST",
-          [{ role: fields.role || "member", ...(email ? { email } : {}) }],
-        );
-        const invite = Array.isArray(created) ? created[0] : undefined;
-        if (!invite) throw new Error("Tailscale did not return the new invite.");
-        return mapUserInvite(invite, accountId);
-      }
-      case "key": {
-        const description = fields.description?.trim();
-        if (description && !/^[A-Za-z0-9 -]{1,50}$/.test(description))
-          throw new Error(
-            "Use at most 50 letters, numbers, spaces and hyphens in the description.",
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "user-invite": {
+          const email = fields.email?.trim();
+          const created = await this.request<UserInvite[]>(
+            this.tailnetPath("/user-invites"),
+            "POST",
+            [{ role: fields.role || "member", ...(email ? { email } : {}) }],
           );
-        let body: Record<string, unknown>;
-        if (fields.keyType === "client") {
-          const scopes = pickedList(fields.scopes);
-          if (scopes.length === 0)
-            throw new Error("Choose at least one scope for the OAuth client.");
-          const tags = pickedList(fields.clientTags);
-          body = { keyType: "client", scopes, ...(tags.length ? { tags } : {}) };
-        } else {
-          const days = Number(fields.expiryDays || 90);
-          if (!Number.isInteger(days) || days < 1 || days > 90)
-            throw new Error("Auth keys expire after 1 to 90 days.");
-          const tags = pickedList(fields.tags);
-          body = {
-            keyType: "auth",
-            capabilities: {
-              devices: {
-                create: {
-                  reusable: fields.reusable === "true",
-                  ephemeral: fields.ephemeral === "true",
-                  preauthorized: fields.preauthorized === "true",
-                  ...(tags.length ? { tags } : {}),
+          const invite = Array.isArray(created) ? created[0] : undefined;
+          if (!invite) throw new Error("Tailscale did not return the new invite.");
+          return mapUserInvite(invite, accountId);
+        }
+        case "key": {
+          const description = fields.description?.trim();
+          if (description && !/^[A-Za-z0-9 -]{1,50}$/.test(description))
+            throw new Error(
+              "Use at most 50 letters, numbers, spaces and hyphens in the description.",
+            );
+          let body: Record<string, unknown>;
+          if (fields.keyType === "client") {
+            const scopes = pickedList(fields.scopes);
+            if (scopes.length === 0)
+              throw new Error("Choose at least one scope for the OAuth client.");
+            const tags = pickedList(fields.clientTags);
+            body = { keyType: "client", scopes, ...(tags.length ? { tags } : {}) };
+          } else {
+            const days = Number(fields.expiryDays || 90);
+            if (!Number.isInteger(days) || days < 1 || days > 90)
+              throw new Error("Auth keys expire after 1 to 90 days.");
+            const tags = pickedList(fields.tags);
+            body = {
+              keyType: "auth",
+              capabilities: {
+                devices: {
+                  create: {
+                    reusable: fields.reusable === "true",
+                    ephemeral: fields.ephemeral === "true",
+                    preauthorized: fields.preauthorized === "true",
+                    ...(tags.length ? { tags } : {}),
+                  },
                 },
               },
-            },
-            expirySeconds: days * 86_400,
-          };
+              expirySeconds: days * 86_400,
+            };
+          }
+          const key = await this.request<Key>(this.tailnetPath("/keys"), "POST", {
+            ...body,
+            ...(description ? { description } : {}),
+          });
+          const created = mapKey(key, accountId);
+          // The secret appears on this response only.
+          if (key.key) created.resolvedOutputs = { ...created.resolvedOutputs, key: key.key };
+          return created;
         }
-        const key = await this.request<Key>(this.tailnetPath("/keys"), "POST", {
-          ...body,
-          ...(description ? { description } : {}),
-        });
-        const created = mapKey(key, accountId);
-        // The secret appears on this response only.
-        if (key.key) created.resolvedOutputs = { ...created.resolvedOutputs, key: key.key };
-        return created;
+        case "webhook": {
+          const subscriptions = pickedList(fields.subscriptions);
+          if (subscriptions.length === 0) throw new Error("Choose at least one event.");
+          const webhook = await this.request<Webhook>(this.tailnetPath("/webhooks"), "POST", {
+            endpointUrl: fields.endpointUrl?.trim(),
+            ...(fields.providerType ? { providerType: fields.providerType } : {}),
+            subscriptions,
+          });
+          const created = mapWebhook(webhook, accountId);
+          if (webhook.secret)
+            created.resolvedOutputs = { ...created.resolvedOutputs, secret: webhook.secret };
+          return created;
+        }
+        case "service": {
+          const bare = (fields.name ?? "").trim().replace(/^svc:/, "");
+          if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(bare))
+            throw new Error("Use lowercase letters, numbers and hyphens for the Service name.");
+          const name = `svc:${bare}`;
+          const service = await this.request<Service>(
+            this.tailnetPath(`/services/${encodeURIComponent(name)}`),
+            "PUT",
+            this.serviceBody(name, fields, []),
+          );
+          return mapService(service ?? { name }, accountId);
+        }
+        case "posture-integration": {
+          const provider = fields.provider ?? "";
+          if (!POSTURE_PROVIDERS.includes(provider)) throw new Error("Choose a posture provider.");
+          const integration = await this.request<PostureIntegration>(
+            this.tailnetPath("/posture/integrations"),
+            "POST",
+            {
+              provider,
+              ...this.postureBody(provider, fields),
+              clientSecret: fields.clientSecret ?? "",
+            },
+          );
+          return mapPostureIntegration(integration, accountId);
+        }
+        default:
+          throw new Error(`Tailscale cannot create ${typeId} resources.`);
       }
-      case "webhook": {
-        const subscriptions = pickedList(fields.subscriptions);
-        if (subscriptions.length === 0) throw new Error("Choose at least one event.");
-        const webhook = await this.request<Webhook>(this.tailnetPath("/webhooks"), "POST", {
-          endpointUrl: fields.endpointUrl?.trim(),
-          ...(fields.providerType ? { providerType: fields.providerType } : {}),
-          subscriptions,
-        });
-        const created = mapWebhook(webhook, accountId);
-        if (webhook.secret)
-          created.resolvedOutputs = { ...created.resolvedOutputs, secret: webhook.secret };
-        return created;
-      }
-      case "service": {
-        const bare = (fields.name ?? "").trim().replace(/^svc:/, "");
-        if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(bare))
-          throw new Error("Use lowercase letters, numbers and hyphens for the Service name.");
-        const name = `svc:${bare}`;
-        const service = await this.request<Service>(
-          this.tailnetPath(`/services/${encodeURIComponent(name)}`),
-          "PUT",
-          this.serviceBody(name, fields, []),
-        );
-        return mapService(service ?? { name }, accountId);
-      }
-      case "posture-integration": {
-        const provider = fields.provider ?? "";
-        if (!POSTURE_PROVIDERS.includes(provider)) throw new Error("Choose a posture provider.");
-        const integration = await this.request<PostureIntegration>(
-          this.tailnetPath("/posture/integrations"),
-          "POST",
-          {
-            provider,
-            ...this.postureBody(provider, fields),
-            clientSecret: fields.clientSecret ?? "",
-          },
-        );
-        return mapPostureIntegration(integration, accountId);
-      }
-      default:
-        throw new Error(`Tailscale cannot create ${typeId} resources.`);
-    }
+    });
   }
 
   private serviceBody(
@@ -869,61 +893,64 @@ export class TailscaleClient implements PluginClient {
   // Update
   // ---------------------------------------------------------------------------
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const id = encodeURIComponent(resource.externalId!);
-    const changed = (key: string) =>
-      fields[key] !== undefined && fields[key] !== String(resource.fields[key] ?? "");
-    switch (typeId) {
-      case "device":
-        await this.updateDevice(resource, fields);
-        break;
-      case "user":
-        if (changed("role")) await this.request(`/users/${id}/role`, "POST", { role: fields.role });
-        break;
-      case "webhook":
-        if (
-          fields.subscriptions !== undefined &&
-          !sameList(fields.subscriptions, String(resource.fields.subscriptions))
-        ) {
-          const subscriptions = splitList(fields.subscriptions);
-          const unknown = subscriptions.filter((event) => !WEBHOOK_EVENTS.includes(event));
-          if (unknown.length) throw new Error(`Unknown webhook events: ${unknown.join(", ")}.`);
-          if (subscriptions.length === 0) throw new Error("Keep at least one event.");
-          await this.request(`/webhooks/${id}`, "PATCH", { subscriptions });
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const id = encodeURIComponent(resource.externalId!);
+      const changed = (key: string) =>
+        fields[key] !== undefined && fields[key] !== String(resource.fields[key] ?? "");
+      switch (typeId) {
+        case "device":
+          await this.updateDevice(resource, fields);
+          break;
+        case "user":
+          if (changed("role"))
+            await this.request(`/users/${id}/role`, "POST", { role: fields.role });
+          break;
+        case "webhook":
+          if (
+            fields.subscriptions !== undefined &&
+            !sameList(fields.subscriptions, String(resource.fields.subscriptions))
+          ) {
+            const subscriptions = splitList(fields.subscriptions);
+            const unknown = subscriptions.filter((event) => !WEBHOOK_EVENTS.includes(event));
+            if (unknown.length) throw new Error(`Unknown webhook events: ${unknown.join(", ")}.`);
+            if (subscriptions.length === 0) throw new Error("Keep at least one event.");
+            await this.request(`/webhooks/${id}`, "PATCH", { subscriptions });
+          }
+          break;
+        case "service": {
+          const name = resource.externalId!;
+          await this.request(
+            this.tailnetPath(`/services/${id}`),
+            "PUT",
+            this.serviceBody(name, fields, splitList(String(resource.fields.addresses)), resource),
+          );
+          break;
         }
-        break;
-      case "service": {
-        const name = resource.externalId!;
-        await this.request(
-          this.tailnetPath(`/services/${id}`),
-          "PUT",
-          this.serviceBody(name, fields, splitList(String(resource.fields.addresses)), resource),
-        );
-        break;
+        case "posture-integration": {
+          await this.request(`/posture/integrations/${id}`, "PATCH", {
+            cloudId: fields.cloudId ?? resource.fields.cloudId,
+            clientId: fields.clientId ?? resource.fields.clientId,
+            tenantId: fields.tenantId ?? resource.fields.tenantId,
+            // Omitted keeps the stored secret.
+            ...(fields.clientSecret ? { clientSecret: fields.clientSecret } : {}),
+          });
+          break;
+        }
+        case "tailnet":
+          await this.updateTailnet(resource, fields, changed);
+          break;
+        default:
+          throw new Error(`Tailscale cannot update ${typeId} resources.`);
       }
-      case "posture-integration": {
-        await this.request(`/posture/integrations/${id}`, "PATCH", {
-          cloudId: fields.cloudId ?? resource.fields.cloudId,
-          clientId: fields.clientId ?? resource.fields.clientId,
-          tenantId: fields.tenantId ?? resource.fields.tenantId,
-          // Omitted keeps the stored secret.
-          ...(fields.clientSecret ? { clientSecret: fields.clientSecret } : {}),
-        });
-        break;
-      }
-      case "tailnet":
-        await this.updateTailnet(resource, fields, changed);
-        break;
-      default:
-        throw new Error(`Tailscale cannot update ${typeId} resources.`);
-    }
-    return this.getResource(typeId, resourceId, accountId);
+      return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+    });
   }
 
   private async updateDevice(resource: ResourceInstance, fields: Record<string, string>) {
@@ -1031,15 +1058,19 @@ export class TailscaleClient implements PluginClient {
    * (one unpaginated response; `lastSeen`, `status`, `created`, `role`, `type`).
    * https://api.tailscale.com/api/v2?outputOpenapiSchema=true, operation listUsers (scope users:read).
    */
-  async fetchSeats(_accountId: string, _options: SeatFetchOptions): Promise<SeatRecord[]> {
-    const response = await this.request<{ users?: User[] }>(this.tailnetPath("/users?type=member"));
-    if (!response || !Array.isArray(response.users))
-      throw new Error("Tailscale API returned no user list");
-    return mapTailscaleSeats(
-      response.users,
-      this.tailnetId,
-      tailscaleSeatPrice(this.credentials.seatPriceMonthly),
-    );
+  fetchSeats(_accountId: string, _options: SeatFetchOptions): PluginEffect<SeatRecord[]> {
+    return attempt(async () => {
+      const response = await this.request<{ users?: User[] }>(
+        this.tailnetPath("/users?type=member"),
+      );
+      if (!response || !Array.isArray(response.users))
+        throw new Error("Tailscale API returned no user list");
+      return mapTailscaleSeats(
+        response.users,
+        this.tailnetId,
+        tailscaleSeatPrice(this.credentials.seatPriceMonthly),
+      );
+    });
   }
 
   /**
@@ -1051,149 +1082,159 @@ export class TailscaleClient implements PluginClient {
    * The user must belong to this credential's tailnet: the route itself is
    * not tailnet-scoped.
    */
-  async removeSeat(_accountId: string, seat: SeatRef): Promise<SeatRemovalResult> {
-    const user = (await this.users()).find((u) => u.id === seat.memberId);
-    if (!user) throw new Error("That user is not a member of this tailnet.");
-    if ((user.role ?? "").toLowerCase() === "owner")
-      throw new Error(
-        "Tailscale will not suspend the tailnet owner; transfer ownership to another user first.",
-      );
-    if ((user.status ?? "").toLowerCase() === "suspended")
-      return { effective: "end-of-cycle", message: "The user was already suspended." };
-    await this.request(`/users/${encodeURIComponent(user.id)}/suspend`, "POST");
-    return {
-      effective: "end-of-cycle",
-      message:
-        "Suspended; the seat is free and Restore undoes it. Tailscale bills the seat count set at the start of each month, so reduce the seat count in billing to stop paying for it from next month.",
-    };
+  removeSeat(_accountId: string, seat: SeatRef): PluginEffect<SeatRemovalResult> {
+    return attempt(async () => {
+      const user = (await this.users()).find((u) => u.id === seat.memberId);
+      if (!user) throw new Error("That user is not a member of this tailnet.");
+      if ((user.role ?? "").toLowerCase() === "owner")
+        throw new Error(
+          "Tailscale will not suspend the tailnet owner; transfer ownership to another user first.",
+        );
+      if ((user.status ?? "").toLowerCase() === "suspended")
+        return { effective: "end-of-cycle", message: "The user was already suspended." };
+      await this.request(`/users/${encodeURIComponent(user.id)}/suspend`, "POST");
+      return {
+        effective: "end-of-cycle",
+        message:
+          "Suspended; the seat is free and Restore undoes it. Tailscale bills the seat count set at the start of each month, so reduce the seat count in billing to stop paying for it from next month.",
+      };
+    });
   }
 
   // ---------------------------------------------------------------------------
   // Delete and actions
   // ---------------------------------------------------------------------------
 
-  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const id = encodeURIComponent(resource.externalId!);
-    switch (typeId) {
-      case "device":
-        await this.request(`/device/${id}`, "DELETE");
-        return;
-      case "user":
-        // Users are deleted with a POST; it also removes their devices.
-        await this.request(`/users/${id}/delete`, "POST");
-        return;
-      case "user-invite":
-        await this.request(`/user-invites/${id}`, "DELETE");
-        return;
-      case "key":
-        await this.request(this.tailnetPath(`/keys/${id}`), "DELETE");
-        return;
-      case "webhook":
-        await this.request(`/webhooks/${id}`, "DELETE");
-        return;
-      case "service":
-        await this.request(this.tailnetPath(`/services/${id}`), "DELETE");
-        return;
-      case "posture-integration":
-        await this.request(`/posture/integrations/${id}`, "DELETE");
-        return;
-      default:
-        throw new Error(`Tailscale cannot delete ${typeId} resources.`);
-    }
+  deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const id = encodeURIComponent(resource.externalId!);
+      switch (typeId) {
+        case "device":
+          await this.request(`/device/${id}`, "DELETE");
+          return;
+        case "user":
+          // Users are deleted with a POST; it also removes their devices.
+          await this.request(`/users/${id}/delete`, "POST");
+          return;
+        case "user-invite":
+          await this.request(`/user-invites/${id}`, "DELETE");
+          return;
+        case "key":
+          await this.request(this.tailnetPath(`/keys/${id}`), "DELETE");
+          return;
+        case "webhook":
+          await this.request(`/webhooks/${id}`, "DELETE");
+          return;
+        case "service":
+          await this.request(this.tailnetPath(`/services/${id}`), "DELETE");
+          return;
+        case "posture-integration":
+          await this.request(`/posture/integrations/${id}`, "DELETE");
+          return;
+        default:
+          throw new Error(`Tailscale cannot delete ${typeId} resources.`);
+      }
+    });
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     accountId: string,
-  ): Promise<void> {
-    const actions: Record<string, Record<string, [string, unknown?]>> = {
-      device: {
-        approve: ["authorized", { authorized: true }],
-        deauthorize: ["authorized", { authorized: false }],
-        expire: ["expire", {}],
-      },
-      user: { approve: ["approve"], suspend: ["suspend"], restore: ["restore"] },
-      "user-invite": { resend: ["resend"] },
-      webhook: { test: ["test"] },
-    };
-    const action = actions[typeId]?.[actionId];
-    if (!action) throw new Error("Unknown Tailscale action.");
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const base = {
-      device: "/device",
-      user: "/users",
-      "user-invite": "/user-invites",
-      webhook: "/webhooks",
-    }[typeId as "device" | "user" | "user-invite" | "webhook"];
-    await this.request(
-      `${base}/${encodeURIComponent(resource.externalId!)}/${action[0]}`,
-      "POST",
-      action[1],
-    );
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const actions: Record<string, Record<string, [string, unknown?]>> = {
+        device: {
+          approve: ["authorized", { authorized: true }],
+          deauthorize: ["authorized", { authorized: false }],
+          expire: ["expire", {}],
+        },
+        user: { approve: ["approve"], suspend: ["suspend"], restore: ["restore"] },
+        "user-invite": { resend: ["resend"] },
+        webhook: { test: ["test"] },
+      };
+      const action = actions[typeId]?.[actionId];
+      if (!action) throw new Error("Unknown Tailscale action.");
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const base = {
+        device: "/device",
+        user: "/users",
+        "user-invite": "/user-invites",
+        webhook: "/webhooks",
+      }[typeId as "device" | "user" | "user-invite" | "webhook"];
+      await this.request(
+        `${base}/${encodeURIComponent(resource.externalId!)}/${action[0]}`,
+        "POST",
+        action[1],
+      );
+    });
   }
 
   /** Form-driven actions: approving or withdrawing a Service host. */
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    if (typeId !== "service" || (command !== "approve-host" && command !== "revoke-host"))
-      throw new Error("Unknown Tailscale command.");
-    const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const hosts =
-      (
-        await this.request<{ hosts?: ServiceHost[] }>(
-          this.tailnetPath(`/services/${encodeURIComponent(resource.externalId!)}/devices`),
-        )
-      ).hosts ?? [];
-    // Only act on a device that actually advertises this Service.
-    if (!hosts.some((h) => h.stableNodeID === values.deviceId))
-      throw new Error("That device does not host this Service.");
-    return this.request(
-      this.tailnetPath(
-        `/services/${encodeURIComponent(resource.externalId!)}/device/${encodeURIComponent(values.deviceId!)}/approved`,
-      ),
-      "POST",
-      { approved: command === "approve-host" },
-    );
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      if (typeId !== "service" || (command !== "approve-host" && command !== "revoke-host"))
+        throw new Error("Unknown Tailscale command.");
+      const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const hosts =
+        (
+          await this.request<{ hosts?: ServiceHost[] }>(
+            this.tailnetPath(`/services/${encodeURIComponent(resource.externalId!)}/devices`),
+          )
+        ).hosts ?? [];
+      // Only act on a device that actually advertises this Service.
+      if (!hosts.some((h) => h.stableNodeID === values.deviceId))
+        throw new Error("That device does not host this Service.");
+      return this.request(
+        this.tailnetPath(
+          `/services/${encodeURIComponent(resource.externalId!)}/device/${encodeURIComponent(values.deviceId!)}/approved`,
+        ),
+        "POST",
+        { approved: command === "approve-host" },
+      );
+    });
   }
 
-  async exportCredential(
+  exportCredential(
     typeId: string,
     resourceId: string,
     accountId: string,
     formatId: string,
-  ): Promise<CredentialExport> {
-    if (typeId !== "webhook" || formatId !== "rotate-secret")
-      throw new Error("Unknown Tailscale credential format.");
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const rotated = await this.request<Webhook>(
-      `/webhooks/${encodeURIComponent(resource.externalId!)}/rotate`,
-      "POST",
-    );
-    if (!rotated?.secret) throw new Error("Tailscale did not return a new secret.");
-    return {
-      content: rotated.secret,
-      filename: `tailscale-webhook-${resource.externalId}.secret`,
-      mimeType: "text/plain",
-      fields: [
-        {
-          label: "Signing secret",
-          value: rotated.secret,
-          sensitive: true,
-          hint: "Only shown once",
-        },
-      ],
-      warning:
-        "Update your receiver now: the previous secret no longer verifies, and Tailscale will not show this one again.",
-    };
+  ): PluginEffect<CredentialExport> {
+    return attempt(async () => {
+      if (typeId !== "webhook" || formatId !== "rotate-secret")
+        throw new Error("Unknown Tailscale credential format.");
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const rotated = await this.request<Webhook>(
+        `/webhooks/${encodeURIComponent(resource.externalId!)}/rotate`,
+        "POST",
+      );
+      if (!rotated?.secret) throw new Error("Tailscale did not return a new secret.");
+      return {
+        content: rotated.secret,
+        filename: `tailscale-webhook-${resource.externalId}.secret`,
+        mimeType: "text/plain",
+        fields: [
+          {
+            label: "Signing secret",
+            value: rotated.secret,
+            sensitive: true,
+            hint: "Only shown once",
+          },
+        ],
+        warning:
+          "Update your receiver now: the previous secret no longer verifies, and Tailscale will not show this one again.",
+      };
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1204,39 +1245,41 @@ export class TailscaleClient implements PluginClient {
    * The tailnet has two logs: the configuration audit log (who changed what)
    * and network flow logs; a device has its own slice of the flow logs.
    */
-  async getLogs(
+  getLogs(
     typeId: string,
     resourceId: string,
     accountId: string,
     params: LogsFetchParams,
-  ): Promise<LogsFetchResult> {
-    if (typeId === "device") {
-      const nodeId = resourceId.slice(`${accountId}:device:`.length);
-      const lines = await this.flowLogLines(nodeId);
+  ): PluginEffect<LogsFetchResult> {
+    return attempt(async () => {
+      if (typeId === "device") {
+        const nodeId = resourceId.slice(`${accountId}:device:`.length);
+        const lines = await this.flowLogLines(nodeId);
+        return {
+          text: tailText(lines, params.tailLines),
+          containers: ["network"],
+          activeContainer: "network",
+        };
+      }
+      if (typeId !== "tailnet") throw new Error("Only the tailnet and its devices have logs.");
+      const containers = ["configuration", "network"];
+      if (params.container === "network") {
+        const lines = await this.flowLogLines();
+        return { text: tailText(lines, params.tailLines), containers, activeContainer: "network" };
+      }
+      const end = new Date();
+      const start = new Date(end.getTime() - 30 * 86_400_000);
+      const query = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
+      const response = await this.request<{ logs?: ConfigurationAuditLog[] }>(
+        this.tailnetPath(`/logging/configuration?${query.toString()}`),
+      );
+      const lines = (response.logs ?? []).map(formatAuditLog);
       return {
         text: tailText(lines, params.tailLines),
-        containers: ["network"],
-        activeContainer: "network",
+        containers,
+        activeContainer: "configuration",
       };
-    }
-    if (typeId !== "tailnet") throw new Error("Only the tailnet and its devices have logs.");
-    const containers = ["configuration", "network"];
-    if (params.container === "network") {
-      const lines = await this.flowLogLines();
-      return { text: tailText(lines, params.tailLines), containers, activeContainer: "network" };
-    }
-    const end = new Date();
-    const start = new Date(end.getTime() - 30 * 86_400_000);
-    const query = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
-    const response = await this.request<{ logs?: ConfigurationAuditLog[] }>(
-      this.tailnetPath(`/logging/configuration?${query.toString()}`),
-    );
-    const lines = (response.logs ?? []).map(formatAuditLog);
-    return {
-      text: tailText(lines, params.tailLines),
-      containers,
-      activeContainer: "configuration",
-    };
+    });
   }
 
   /** Network flow logs for a window, with a hint when the tailnet cannot have them. */
@@ -1278,60 +1321,67 @@ export class TailscaleClient implements PluginClient {
   }
 
   /** Traffic from network flow logs: per device, or summed over the tailnet. */
-  async fetchMetricSeries(
+  fetchMetricSeries(
     typeId: string,
     resourceId: string,
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    if (typeId !== "device" && typeId !== "tailnet") return [];
-    const window = flowWindow(timeRange);
-    const logs = await this.networkFlowLogs(window.startMs, window.endMs);
-    const nodeId =
-      typeId === "device" ? resourceId.slice(`${accountId}:device:`.length) : undefined;
-    return flowSeries(logs, window, nodeId);
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      if (typeId !== "device" && typeId !== "tailnet") return [];
+      const window = flowWindow(timeRange);
+      const logs = await this.networkFlowLogs(window.startMs, window.endMs);
+      const nodeId =
+        typeId === "device" ? resourceId.slice(`${accountId}:device:`.length) : undefined;
+      return flowSeries(logs, window, nodeId);
+    });
   }
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    if (typeId === "tailnet") {
-      const [devices, users] = await Promise.allSettled([this.devices(), this.users()]);
-      const list = devices.status === "fulfilled" ? devices.value : [];
-      return [
-        { label: "Devices", value: String(list.length) },
-        { label: "Connected", value: String(list.filter((d) => d.connectedToControl).length) },
-        { label: "Awaiting approval", value: String(list.filter((d) => !d.authorized).length) },
-        { label: "Updates available", value: String(list.filter((d) => d.updateAvailable).length) },
-        ...(users.status === "fulfilled"
-          ? [{ label: "Users", value: String(users.value.length) }]
-          : []),
-      ];
-    }
-    const r = await this.getResource(typeId, resourceId, accountId);
-    if (typeId === "device") {
-      return [
-        { label: "Tailscale IP", value: r.resolvedOutputs.ip ?? "" },
-        { label: "Status", value: sidebarStatus(r).label ?? "" },
-        { label: "Client version", value: String(r.fields.clientVersion) },
-      ];
-    }
-    if (typeId === "user") {
-      return [
-        { label: "Role", value: String(r.fields.role) },
-        { label: "Devices", value: String(r.fields.deviceCount) },
-        { label: "Status", value: String(r.fields.status) },
-      ];
-    }
-    if (typeId === "posture-integration") {
-      return [
-        { label: "Matched devices", value: String(r.fields.matchedCount) },
-        { label: "Devices at provider", value: String(r.fields.providerHostCount) },
-      ];
-    }
-    return [];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      if (typeId === "tailnet") {
+        const [devices, users] = await Promise.allSettled([this.devices(), this.users()]);
+        const list = devices.status === "fulfilled" ? devices.value : [];
+        return [
+          { label: "Devices", value: String(list.length) },
+          { label: "Connected", value: String(list.filter((d) => d.connectedToControl).length) },
+          { label: "Awaiting approval", value: String(list.filter((d) => !d.authorized).length) },
+          {
+            label: "Updates available",
+            value: String(list.filter((d) => d.updateAvailable).length),
+          },
+          ...(users.status === "fulfilled"
+            ? [{ label: "Users", value: String(users.value.length) }]
+            : []),
+        ];
+      }
+      const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      if (typeId === "device") {
+        return [
+          { label: "Tailscale IP", value: r.resolvedOutputs.ip ?? "" },
+          { label: "Status", value: sidebarStatus(r).label ?? "" },
+          { label: "Client version", value: String(r.fields.clientVersion) },
+        ];
+      }
+      if (typeId === "user") {
+        return [
+          { label: "Role", value: String(r.fields.role) },
+          { label: "Devices", value: String(r.fields.deviceCount) },
+          { label: "Status", value: String(r.fields.status) },
+        ];
+      }
+      if (typeId === "posture-integration") {
+        return [
+          { label: "Matched devices", value: String(r.fields.matchedCount) },
+          { label: "Devices at provider", value: String(r.fields.providerHostCount) },
+        ];
+      }
+      return [];
+    });
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -1347,40 +1397,44 @@ export class TailscaleClient implements PluginClient {
   // ---------------------------------------------------------------------------
 
   installOnSsh(context: SshInstallContext) {
-    return installOnSsh(context, {
-      devices: () => this.devices(),
-      createKey: () =>
-        this.request<{ id: string; key: string }>(this.tailnetPath("/keys"), "POST", {
-          capabilities: {
-            // Pre-approved: we enroll the server on the account holder's behalf.
-            // https://tailscale.com/kb/1085/auth-keys
-            devices: { create: { reusable: false, ephemeral: false, preauthorized: true } },
-          },
-          expirySeconds: 300,
-          description: "Infrawrench server enrollment",
-        }),
-      // https://tailscale.com/kb/1099/device-approval
-      approve: async (deviceId) => {
-        await this.request(`/device/${encodeURIComponent(deviceId)}/authorized`, "POST", {
-          authorized: true,
-        });
-      },
-      revokeKey: async (id) => {
-        try {
-          await this.request<void>(this.tailnetPath(`/keys/${encodeURIComponent(id)}`), "DELETE");
-        } catch (error) {
-          // A consumed one-use key may already have disappeared.
-          if (!isNotFound(error)) throw error;
-        }
-      },
+    return attempt(async () => {
+      return installOnSsh(context, {
+        devices: () => this.devices(),
+        createKey: () =>
+          this.request<{ id: string; key: string }>(this.tailnetPath("/keys"), "POST", {
+            capabilities: {
+              // Pre-approved: we enroll the server on the account holder's behalf.
+              // https://tailscale.com/kb/1085/auth-keys
+              devices: { create: { reusable: false, ephemeral: false, preauthorized: true } },
+            },
+            expirySeconds: 300,
+            description: "Infrawrench server enrollment",
+          }),
+        // https://tailscale.com/kb/1099/device-approval
+        approve: async (deviceId) => {
+          await this.request(`/device/${encodeURIComponent(deviceId)}/authorized`, "POST", {
+            authorized: true,
+          });
+        },
+        revokeKey: async (id) => {
+          try {
+            await this.request<void>(this.tailnetPath(`/keys/${encodeURIComponent(id)}`), "DELETE");
+          } catch (error) {
+            // A consumed one-use key may already have disappeared.
+            if (!isNotFound(error)) throw error;
+          }
+        },
+      });
     });
   }
 
   /** Remove the device an enrollment created; `ref` is its node id. */
-  async releaseSshInstall(ref: string): Promise<void> {
-    const device = (await this.devices()).find((d) => d.nodeId === ref || d.id === ref);
-    if (!device) return;
-    await this.request(`/device/${encodeURIComponent(device.nodeId || device.id)}`, "DELETE");
+  releaseSshInstall(ref: string): PluginEffect<void> {
+    return attempt(async () => {
+      const device = (await this.devices()).find((d) => d.nodeId === ref || d.id === ref);
+      if (!device) return;
+      await this.request(`/device/${encodeURIComponent(device.nodeId || device.id)}`, "DELETE");
+    });
   }
 }
 

@@ -1,8 +1,11 @@
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CredentialFieldOption,
   HostServices,
-  Plugin,
   PluginManifest,
+  CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { IbmApi } from "./api.js";
@@ -22,16 +25,15 @@ import { ibmRemediationCommands } from "./remediation.js";
 
 const API_KEY_DOCS = "https://cloud.ibm.com/docs/account?topic=account-userapikey";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "ibm-cloud",
-  version: "0.1.0",
+  // IAM, VPC (*.iaas.cloud.ibm.com), Kubernetes Service, Code Engine, Cloud Databases, Resource Controller, billing, COS config and the status feed are under cloud.ibm.com; COS S3 endpoints are under cloud-object-storage.appdomain.cloud
+  egressHosts: ["iam.cloud.ibm.com", "*.cloud.ibm.com", "*.cloud-object-storage.appdomain.cloud"],
   displayName: "IBM Cloud",
   description:
     "IBM Cloud. Virtual Servers for VPC, block volumes, VPCs, subnets, security groups, floating IPs, load balancers and SSH keys across every region, Kubernetes Service and Red Hat OpenShift clusters, Code Engine projects and apps, Cloud Object Storage buckets, Cloud Databases, every other service instance and resource groups, with monthly billed spend and promotional credit.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -59,7 +61,7 @@ const manifest: PluginManifest = {
       providerOptions: { dependsOn: ["apiKey", "region"], multiple: true },
     },
     caCertCredentialField,
-  ],
+  ]),
   // Usage Reports v4: billed cost per resource instance, plan and metric,
   // monthly only, so rows are dated to the 1st.
   costs: {
@@ -74,7 +76,9 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   rateLimit: { capacity: 20, refillPerSecond: 8 },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 async function listRegionOptions(
   credentials: Record<string, string>,
@@ -95,15 +99,18 @@ async function listRegionOptions(
   }));
 }
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new IbmCloudClient(credentials, services),
+  testCredentials: { apiKey: "test-api-key", region: "us-south" },
   parseStatusFeed,
   terraformExport: ibmTerraformExport,
   remediationCommands: ibmRemediationCommands,
-  async listCredentialOptions(fieldKey, credentials, services) {
-    if (fieldKey !== "regions") return [];
-    return listRegionOptions(credentials, services);
+  listCredentialOptions(fieldKey, credentials, services) {
+    return attempt(async () => {
+      if (fieldKey !== "regions") return [];
+      return listRegionOptions(credentials, services);
+    });
   },
-};
+});

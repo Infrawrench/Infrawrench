@@ -2,10 +2,12 @@ import { MongoDocumentBrowser as SharedMongoDocumentBrowser } from "@infrawrench
 import { kvCommand } from "../lib/sql-drivers";
 
 export function MongoDocumentBrowser({
+  driverId,
   connectionString,
   databaseName,
   connected,
 }: {
+  driverId: string;
   connectionString: string;
   databaseName: string;
   connected: boolean;
@@ -15,7 +17,7 @@ export function MongoDocumentBrowser({
       databaseName={databaseName}
       connected={connected}
       onCommand={async (command, args) => {
-        return kvCommand("mongodb", connectionString, command, ...args.map(String));
+        return kvCommand(driverId, connectionString, command, ...args.map(String));
       }}
     />
   );

@@ -12,7 +12,7 @@
  * app, and the message should say where to go.
  */
 import type {
-  PluginClient,
+  HostPluginClient,
   ResourceCreateReturn,
   ResourceInstance,
 } from "@infrawrench/plugin-base" with { "resolution-mode": "import" };
@@ -37,13 +37,13 @@ import { c, printErr } from "./output";
  * offline) falls back to the HTTP-backed client below with a dim note, so a
  * viewer-role operator still gets the cached-rows experience.
  */
-const credentialedClients = new Map<string, Promise<PluginClient>>();
+const credentialedClients = new Map<string, Promise<HostPluginClient>>();
 
 export function createOrgClient(
   orgId: string,
   accountId: string,
   pluginId: string,
-): Promise<PluginClient> {
+): Promise<HostPluginClient> {
   let client = credentialedClients.get(accountId);
   if (!client) {
     client = (async () => {
@@ -173,7 +173,11 @@ function notAvailable(what: string): CliError {
   );
 }
 
-function createOrgPluginClient(orgId: string, accountId: string, pluginId: string): PluginClient {
+function createOrgPluginClient(
+  orgId: string,
+  accountId: string,
+  pluginId: string,
+): HostPluginClient {
   const rowsForType = async (typeId: string): Promise<ResourceRow[]> => {
     await ensureSynced(orgId, accountId);
     const rows = await listCloudResources(orgId, accountId);

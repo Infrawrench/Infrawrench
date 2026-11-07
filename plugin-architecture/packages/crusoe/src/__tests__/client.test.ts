@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CrusoeClient } from "../client.js";
 import { RESOURCE_TYPES } from "../resource-types.js";
@@ -63,7 +64,12 @@ afterEach(() => {
 });
 
 const client = () =>
-  new CrusoeClient({ accessKeyId: "AK", secretKey: "c2VjcmV0LWtleS1mb3ItdGVzdHM" }, RESOURCE_TYPES);
+  hostClient(
+    new CrusoeClient(
+      { accessKeyId: "AK", secretKey: "c2VjcmV0LWtleS1mb3ItdGVzdHM" },
+      RESOURCE_TYPES,
+    ),
+  );
 
 const done = { operation: { operation_id: "op-1", state: "SUCCEEDED", result: { id: "new-1" } } };
 

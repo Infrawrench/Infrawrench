@@ -1,19 +1,20 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import { attempt } from "@infrawrench/plugin-base/effect";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { S3CompatibleClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "s3-compatible",
-  version: "0.1.0",
+  // user-supplied endpoint; v1 doesn't bastion-route self-hosted S3
+  egressHosts: [],
   displayName: "S3-Compatible Storage",
   description:
     "Any S3-compatible object store (MinIO, Ceph RGW, Garage, SeaweedFS and others). Browse and upload objects, manage buckets, policies, versioning, Object Lock, tags, lifecycle and CORS rules, and on MinIO see cluster health, servers, drives and usage.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "endpoint",
       label: "Endpoint URL",
@@ -66,7 +67,7 @@ const manifest: PluginManifest = {
       advanced: true,
     },
     caCertCredentialField,
-  ],
+  ]),
   preflight: {
     capabilities: [
       {
@@ -84,17 +85,26 @@ const manifest: PluginManifest = {
     ],
   },
   rateLimit: { capacity: 20, refillPerSecond: 10 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new S3CompatibleClient(credentials, services),
-  listCredentialOptions: async (fieldKey) => {
-    if (fieldKey !== "addressing") return [];
-    return [
-      { id: "path", label: "Path-style", description: "https://host/bucket" },
-      { id: "virtual", label: "Virtual-hosted", description: "https://bucket.host" },
-    ];
+  testCredentials: {
+    endpoint: "https://minio.example.com:9000",
+    accessKey: "minioadmin",
+    secretKey: "minioadmin-secret",
   },
-};
+  listCredentialOptions: (fieldKey) => {
+    return attempt(async () => {
+      if (fieldKey !== "addressing") return [];
+      return [
+        { id: "path", label: "Path-style", description: "https://host/bucket" },
+        { id: "virtual", label: "Virtual-hosted", description: "https://bucket.host" },
+      ];
+    });
+  },
+});

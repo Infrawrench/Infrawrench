@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { bytesToBase64, hmacSha256 } from "@infrawrench/plugin-base";
@@ -33,7 +34,7 @@ function client(handler: (call: Call) => { status: number; body?: unknown }) {
       };
     },
   };
-  return { c: new IncidentIoClient({ apiKey: "key-1" }, { http }), calls };
+  return { c: hostClient(new IncidentIoClient({ apiKey: "key-1" }, { http })), calls };
 }
 
 describe("transport", () => {

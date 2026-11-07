@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { normaliseUrl, RabbitApiError } from "../api.js";
 import { RabbitClient } from "../client.js";
@@ -12,9 +13,11 @@ const ACCOUNT = "acct";
 function client(route: (call: Call) => unknown, creds: Record<string, string> = {}) {
   const { http, calls } = makeHttp(route);
   return {
-    c: new RabbitClient(
-      { url: "mq.example.com:15672/api/", username: "admin", password: "pw", ...creds },
-      { http } as never,
+    c: hostClient(
+      new RabbitClient(
+        { url: "mq.example.com:15672/api/", username: "admin", password: "pw", ...creds },
+        { http } as never,
+      ),
     ),
     calls,
   };

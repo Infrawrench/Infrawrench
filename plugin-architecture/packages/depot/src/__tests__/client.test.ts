@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DepotClient } from "../client.js";
 import { buildSeries, dayBuckets } from "../metrics.js";
@@ -37,7 +38,7 @@ function installApi(routes: Record<string, (body: Record<string, unknown>) => un
 
 afterEach(() => vi.restoreAllMocks());
 
-const client = () => new DepotClient({ token: "org-token", plan: "startup" });
+const client = () => hostClient(new DepotClient({ token: "org-token", plan: "startup" }));
 
 const PROJECTS = {
   "depot.core.v1.ProjectService/ListProjects": () => ({
@@ -60,7 +61,7 @@ const PROJECTS = {
 
 describe("DepotClient", () => {
   it("requires a token", () => {
-    expect(() => new DepotClient({})).toThrow(/token/);
+    expect(() => hostClient(new DepotClient({}))).toThrow(/token/);
   });
 
   it("lists projects with their settings and 30-day usage", async () => {

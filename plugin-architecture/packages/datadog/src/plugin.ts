@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DATADOG_BUSINESS_METRIC_SOURCE } from "./business-metric-source.js";
 import { DatadogClient } from "./client.js";
@@ -11,15 +12,23 @@ import { datadogTerraformExport } from "./terraform.js";
 import { DATADOG_IDLE_FINDINGS } from "./idle-findings.js";
 import { datadogRemediationCommands } from "./remediation.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "datadog",
-  version: "0.1.0",
+  egressHosts: [
+    "api.datadoghq.com",
+    "api.us3.datadoghq.com",
+    "api.us5.datadoghq.com",
+    "api.datadoghq.eu",
+    "api.ap1.datadoghq.com",
+    "api.ap2.datadoghq.com",
+    "api.uk1.datadoghq.com",
+    "api.ddog-gov.com",
+    "api.us2.ddog-gov.com",
+  ],
   displayName: "Datadog",
   description:
     "Monitoring and observability. Track Datadog spend by product and organization with month-end projections, chart hourly usage, and manage monitors, downtimes, dashboards, SLOs, synthetic tests, hosts, users and keys.",
   logoSvg: LOGO_SVG,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
   // The tokens this plugin issues, so a leak a secret scanner reports can be
   // matched to an account here. Identifiers from GitHub's supported secret
   // scanning patterns and GitLab's secret detection rules (verified 2026-10).
@@ -32,7 +41,7 @@ const manifest: PluginManifest = {
       manageUrl: "https://app.datadoghq.com/organization-settings/api-keys",
     },
   ],
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "site",
       label: "Datadog Site",
@@ -72,7 +81,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   costs: {
     // Usage Metering cost endpoints: product → service, the Datadog region →
     // region, and the sub-organization and pricing model (committed vs
@@ -99,14 +108,17 @@ const manifest: PluginManifest = {
   // `idle-findings.ts`.
   idleFindings: DATADOG_IDLE_FINDINGS,
   rateLimit: { capacity: 20, refillPerSecond: 1 },
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes: RESOURCE_TYPES,
   createClient: (credentials, services) => new DatadogClient(credentials, services),
+  testCredentials: { site: "us1", apiKey: "test-datadog-api-key", appKey: "test-datadog-app-key" },
   parseStatusFeed,
   policyTemplate: datadogPolicyTemplate,
   terraformExport: datadogTerraformExport,
   remediationCommands: datadogRemediationCommands,
-};
+});

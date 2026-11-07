@@ -1,3 +1,4 @@
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { evaluateOrphanRule } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { buildBudgetBody, GitHubClient } from "../client.js";
@@ -12,7 +13,7 @@ const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
 
 function client(route: Parameters<typeof makeHttp>[0], owner = "org:octo-org") {
   const { http, calls } = makeHttp(route);
-  return { c: new GitHubClient(credentials(owner), { http }), calls };
+  return { c: hostClient(new GitHubClient(credentials(owner), { http })), calls };
 }
 
 describe("Copilot seats", () => {
@@ -630,7 +631,9 @@ describe("owner picker", () => {
   });
 
   it("is reachable through the plugin for the owner field only", async () => {
-    await expect(plugin.listCredentialOptions!("token", {}, undefined)).rejects.toThrow();
+    await expect(
+      hostPlugin(plugin).listCredentialOptions!("token", {}, undefined),
+    ).rejects.toThrow();
   });
 });
 

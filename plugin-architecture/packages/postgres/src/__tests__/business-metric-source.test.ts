@@ -1,3 +1,5 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
+import type { HostedMethods } from "@infrawrench/plugin-base";
 import { describe, it, expect, vi } from "vitest";
 import type {
   BusinessMetricSourceRange,
@@ -25,8 +27,8 @@ function makeSql(rows: Record<string, unknown>[] = []) {
   };
 }
 
-function client(sql?: SqlHostServices): PostgresClient {
-  return new PostgresClient({ connectionString: CS }, { sql } as HostServices);
+function client(sql?: SqlHostServices): HostedMethods<PostgresClient> {
+  return hostClient(new PostgresClient({ connectionString: CS }, { sql } as HostServices));
 }
 
 describe("Postgres business-metric source", () => {

@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // --- Mock the Neon SDK ----------------------------------------------------
@@ -69,7 +70,7 @@ import { NeonClient } from "../client.js";
 const ACCOUNT = "acct1";
 
 function makeClient() {
-  return new NeonClient({ apiKey: "neon_test" });
+  return hostClient(new NeonClient({ apiKey: "neon_test" }));
 }
 
 // resp.data helpers
@@ -81,7 +82,7 @@ beforeEach(() => {
 
 describe("constructor", () => {
   it("throws without apiKey", () => {
-    expect(() => new NeonClient({})).toThrow(/missing apiKey/);
+    expect(() => hostClient(new NeonClient({}))).toThrow(/missing apiKey/);
   });
 
   it("creates api client with apiKey", () => {

@@ -39,6 +39,7 @@ const add = (value: string | undefined) => {
 for (const plugin of BUNDLED_PLUGINS) {
   const manifest = plugin.manifest;
   add(manifest.displayName);
+  add(manifest.sshTunnel?.label);
   add(manifest.description);
   add(manifest.sshInstall?.description);
   for (const message of manifest.sshInstall?.messages ?? []) add(message);

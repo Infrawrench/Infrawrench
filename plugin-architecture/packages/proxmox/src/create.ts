@@ -3,6 +3,7 @@
  * know (node, template, ISO, storage, bridge, pool, VMID) comes from a picker
  * filled by a live listing.
  */
+import { runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -686,11 +687,9 @@ export async function proxmoxCreateResource(
   const warnings: ResourceWarning[] = [];
   const done = async (externalId: string): Promise<ResourceCreateResult> => {
     client.invalidate();
-    const resource = await client
-      .getResource(typeId, `${accountId}:${typeId}:${externalId}`, accountId)
-      .catch(() =>
-        client.instance(accountId, typeId, externalId, fields["name"] || externalId, {}),
-      );
+    const resource = await runPluginEffect(
+      client.getResource(typeId, `${accountId}:${typeId}:${externalId}`, accountId),
+    ).catch(() => client.instance(accountId, typeId, externalId, fields["name"] || externalId, {}));
     return { resource, warnings };
   };
 
@@ -834,7 +833,7 @@ export async function proxmoxCreateResource(
       void res;
       // The create call returns nothing; find the job we just made by its comment/schedule.
       client.invalidate();
-      const jobs = await client.listResources(BACKUP_JOB, accountId);
+      const jobs = await runPluginEffect(client.listResources(BACKUP_JOB, accountId));
       const match = [...jobs]
         .reverse()
         .find(

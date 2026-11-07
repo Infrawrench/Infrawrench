@@ -1,4 +1,9 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type {
+  PluginManifest,
+  ResourceTypeDefinition,
+  CredentialsOf,
+} from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { SpeechmaticsClient } from "./client.js";
 import { AccountResourceType } from "./resources/account.js";
@@ -22,14 +27,12 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   </g>
 </svg>`;
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "speechmatics",
-  version: "0.1.0",
+  egressHosts: ["*.asr.api.speechmatics.com", "mp.api.speechmatics.com", "portal.speechmatics.com"],
   displayName: "Speechmatics",
   logoSvg,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -69,7 +72,7 @@ const manifest: PluginManifest = {
       },
     },
     caCertCredentialField,
-  ],
+  ]),
   /**
    * Estimated spend, priced from `GET /v2/usage` (see `cost-data.ts`).
    *
@@ -111,7 +114,9 @@ const manifest: PluginManifest = {
     restatementDays: 2,
     estimated: true,
   },
-};
+} satisfies PluginManifest;
+
+export type Credentials = CredentialsOf<typeof manifest>;
 
 // Account first: it is the only type guaranteed to exist. Jobs expire after 7
 // days, and projects and API keys need the optional management token, so the
@@ -123,8 +128,13 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ApiKeyResourceType,
 ];
 
-export const plugin: Plugin = {
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new SpeechmaticsClient(credentials, services),
-};
+  testCredentials: {
+    apiKey: "test-speechmatics-key",
+    region: "eu1",
+    managementToken: "test-speechmatics-management-token",
+  },
+});

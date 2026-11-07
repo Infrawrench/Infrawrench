@@ -1,3 +1,4 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { AlgoliaApiError, keyFingerprint } from "../api.js";
 import { AlgoliaClient, parseAcl, settingsPatch, usageSeries } from "../client.js";
@@ -14,10 +15,12 @@ const ACCOUNT = "acct";
 
 function client(extra: Record<string, string> = {}) {
   const http = fakeHttp();
-  const c = new AlgoliaClient(
-    { appId: "TESTAPP", apiKey: "admin", ...extra },
-    RESOURCE_TYPES,
-    http.services,
+  const c = hostClient(
+    new AlgoliaClient(
+      { appId: "TESTAPP", apiKey: "admin", ...extra },
+      RESOURCE_TYPES,
+      http.services,
+    ),
   );
   return { http, c };
 }

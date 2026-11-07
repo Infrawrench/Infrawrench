@@ -346,6 +346,7 @@ export interface AiRequestLogFetchResult {
  * rather than retried on a tight loop.
  */
 export class AiRequestLogSetupError extends Error {
+  readonly _tag = "AiRequestLogSetupError";
   readonly helpUrl: string | undefined;
 
   constructor(message: string, helpUrl?: string) {

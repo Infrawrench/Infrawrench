@@ -1,3 +1,6 @@
+import type { Credentials } from "./plugin.js";
+import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CostFetchRange,
   CostRow,
@@ -128,7 +131,7 @@ export class FastlyClient implements PluginClient {
   private readonly ctx: FastlyContext;
   private servicesCache: { at: number; value: Promise<FastlyServiceDetail[]> } | undefined;
 
-  constructor(credentials: Record<string, string>, services?: HostServices) {
+  constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["apiToken"] ?? "").trim();
     if (!token) throw new Error("Fastly plugin: missing apiToken credential");
     const caCert = credentials["caCert"] ?? "";
@@ -204,90 +207,92 @@ export class FastlyClient implements PluginClient {
     this.servicesCache = undefined;
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    switch (typeId) {
-      case "account":
-        return [await this.loadAccount(accountId)];
-      case "service":
-        return this.scoped(async () => {
-          const [services, products] = await Promise.all([
-            this.services(),
-            enabledProductsByService(this.ctx).catch(() => new Map<string, string[]>()),
-          ]);
-          return services.map((s) => mapService(accountId, s, products.get(s.id ?? "") ?? []));
-        });
-      case "service-version":
-        return this.scoped(async () =>
-          (await this.services()).flatMap((s) =>
-            (s.versions ?? []).map((v) => mapVersion(accountId, s, v)),
-          ),
-        );
-      case "domain":
-        return this.scoped(async () =>
-          (await this.services()).flatMap((s) =>
-            (this.liveDetail(s)?.domains ?? []).map((d) => mapDomain(accountId, s, d)),
-          ),
-        );
-      case "backend":
-        return this.scoped(async () =>
-          (await this.services()).flatMap((s) =>
-            (this.liveDetail(s)?.backends ?? []).map((b) => mapBackend(accountId, s, b)),
-          ),
-        );
-      case "logging-endpoint":
-        return this.scoped(() => this.listLogging(accountId));
-      case "dictionary":
-        return this.scoped(() => this.listDictionaries(accountId));
-      case "kv-store":
-        return this.scoped(async () =>
-          (await fastlyCursorPaged<FastlyStore>(this.ctx, "/resources/stores/kv", {}, 1000)).map(
-            (st) => mapStore(accountId, "kv-store", st),
-          ),
-        );
-      case "config-store":
-        return this.scoped(async () => {
-          const stores =
-            (await fastlyFetch<FastlyStore[]>(this.ctx, "/resources/stores/config")) ?? [];
-          return mapLimit(stores, FAN_OUT, async (st) => {
-            const info = await fastlyFetch<{ item_count?: number }>(
-              this.ctx,
-              `/resources/stores/config/${encodeURIComponent(st.id ?? "")}/info`,
-            ).catch(() => undefined);
-            return mapStore(accountId, "config-store", st, {
-              ...(info?.item_count !== undefined ? { itemCount: info.item_count } : {}),
+  listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
+    return attempt(async () => {
+      switch (typeId) {
+        case "account":
+          return [await this.loadAccount(accountId)];
+        case "service":
+          return this.scoped(async () => {
+            const [services, products] = await Promise.all([
+              this.services(),
+              enabledProductsByService(this.ctx).catch(() => new Map<string, string[]>()),
+            ]);
+            return services.map((s) => mapService(accountId, s, products.get(s.id ?? "") ?? []));
+          });
+        case "service-version":
+          return this.scoped(async () =>
+            (await this.services()).flatMap((s) =>
+              (s.versions ?? []).map((v) => mapVersion(accountId, s, v)),
+            ),
+          );
+        case "domain":
+          return this.scoped(async () =>
+            (await this.services()).flatMap((s) =>
+              (this.liveDetail(s)?.domains ?? []).map((d) => mapDomain(accountId, s, d)),
+            ),
+          );
+        case "backend":
+          return this.scoped(async () =>
+            (await this.services()).flatMap((s) =>
+              (this.liveDetail(s)?.backends ?? []).map((b) => mapBackend(accountId, s, b)),
+            ),
+          );
+        case "logging-endpoint":
+          return this.scoped(() => this.listLogging(accountId));
+        case "dictionary":
+          return this.scoped(() => this.listDictionaries(accountId));
+        case "kv-store":
+          return this.scoped(async () =>
+            (await fastlyCursorPaged<FastlyStore>(this.ctx, "/resources/stores/kv", {}, 1000)).map(
+              (st) => mapStore(accountId, "kv-store", st),
+            ),
+          );
+        case "config-store":
+          return this.scoped(async () => {
+            const stores =
+              (await fastlyFetch<FastlyStore[]>(this.ctx, "/resources/stores/config")) ?? [];
+            return mapLimit(stores, FAN_OUT, async (st) => {
+              const info = await fastlyFetch<{ item_count?: number }>(
+                this.ctx,
+                `/resources/stores/config/${encodeURIComponent(st.id ?? "")}/info`,
+              ).catch(() => undefined);
+              return mapStore(accountId, "config-store", st, {
+                ...(info?.item_count !== undefined ? { itemCount: info.item_count } : {}),
+              });
             });
           });
-        });
-      case "secret-store":
-        return this.scoped(async () =>
-          (await fastlyCursorPaged<FastlyStore>(this.ctx, "/resources/stores/secret", {}, 200)).map(
-            (st) => mapStore(accountId, "secret-store", st),
-          ),
-        );
-      case "tls-certificate":
-        return this.scoped(async () => {
-          const { data } = await fastlyJsonApiPaged<JsonApiResource<TlsCertificateAttrs>>(
-            this.ctx,
-            "/tls/certificates",
+        case "secret-store":
+          return this.scoped(async () =>
+            (
+              await fastlyCursorPaged<FastlyStore>(this.ctx, "/resources/stores/secret", {}, 200)
+            ).map((st) => mapStore(accountId, "secret-store", st)),
           );
-          return data.map((c) => mapTlsCertificate(accountId, c));
-        });
-      case "tls-subscription":
-        return this.scoped(async () => {
-          const { data, included } = await fastlyJsonApiPaged<
-            JsonApiResource<TlsSubscriptionAttrs>
-          >(this.ctx, "/tls/subscriptions", { include: "tls_certificates" });
-          const certs = new Map<string, TlsCertificateAttrs>();
-          for (const inc of included as Array<JsonApiResource<TlsCertificateAttrs>>) {
-            if (inc.type === "tls_certificate" && inc.id) certs.set(inc.id, inc.attributes ?? {});
-          }
-          return data.map((sub) => mapTlsSubscription(accountId, sub, certs));
-        });
-      case "api-token":
-        return this.scoped(() => this.listTokens(accountId));
-      default:
-        throw new Error(`Fastly plugin: unknown resource type "${typeId}"`);
-    }
+        case "tls-certificate":
+          return this.scoped(async () => {
+            const { data } = await fastlyJsonApiPaged<JsonApiResource<TlsCertificateAttrs>>(
+              this.ctx,
+              "/tls/certificates",
+            );
+            return data.map((c) => mapTlsCertificate(accountId, c));
+          });
+        case "tls-subscription":
+          return this.scoped(async () => {
+            const { data, included } = await fastlyJsonApiPaged<
+              JsonApiResource<TlsSubscriptionAttrs>
+            >(this.ctx, "/tls/subscriptions", { include: "tls_certificates" });
+            const certs = new Map<string, TlsCertificateAttrs>();
+            for (const inc of included as Array<JsonApiResource<TlsCertificateAttrs>>) {
+              if (inc.type === "tls_certificate" && inc.id) certs.set(inc.id, inc.attributes ?? {});
+            }
+            return data.map((sub) => mapTlsSubscription(accountId, sub, certs));
+          });
+        case "api-token":
+          return this.scoped(() => this.listTokens(accountId));
+        default:
+          throw new Error(`Fastly plugin: unknown resource type "${typeId}"`);
+      }
+    });
   }
 
   /** The configuration actually serving traffic: the active version, else the newest. */
@@ -396,359 +401,381 @@ export class FastlyClient implements PluginClient {
   // Single reads
   // -------------------------------------------------------------------------
 
-  async getResource(
+  getResource(
     typeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "account") return this.loadAccount(accountId);
-    if (typeId === "service") {
-      const [detail, products] = await Promise.all([
-        this.serviceDetail(id),
-        enabledProductsByService(this.ctx).catch(() => new Map<string, string[]>()),
-      ]);
-      return mapService(accountId, detail, products.get(id) ?? []);
-    }
-    const all = await this.listResources(typeId, accountId);
-    const found = all.find((r) => r.id === resourceId || r.externalId === id);
-    if (!found) throw new Error(`Fastly plugin: resource ${typeId}/${resourceId} not found`);
-    return found;
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "account") return this.loadAccount(accountId);
+      if (typeId === "service") {
+        const [detail, products] = await Promise.all([
+          this.serviceDetail(id),
+          enabledProductsByService(this.ctx).catch(() => new Map<string, string[]>()),
+        ]);
+        return mapService(accountId, detail, products.get(id) ?? []);
+      }
+      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const found = all.find((r) => r.id === resourceId || r.externalId === id);
+      if (!found) throw new Error(`Fastly plugin: resource ${typeId}/${resourceId} not found`);
+      return found;
+    });
   }
 
-  async resolveOutput(
+  resolveOutput(
     typeId: string,
     resourceId: string,
     outputKey: string,
     accountId: string,
-  ): Promise<string> {
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const resolved = resource.resolvedOutputs[outputKey];
-    if (resolved !== undefined) return resolved;
-    const field = resource.fields[outputKey];
-    if (field !== undefined) return String(field);
-    throw new Error(`Fastly plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      const resolved = resource.resolvedOutputs[outputKey];
+      if (resolved !== undefined) return resolved;
+      const field = resource.fields[outputKey];
+      if (field !== undefined) return String(field);
+      throw new Error(`Fastly plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    });
   }
 
   /** Billing, live traffic and 24-hour totals for the detail views. */
-  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
-    const extra: Record<string, string> = {};
-    const day = rangeOrDefault(undefined, DEFAULT_METRICS_WINDOW_MS);
-    const id = resource.externalId ?? externalIdOf(resource.id);
-    if (resource.resourceTypeId === "account") {
-      const [billing, totals] = await Promise.all([
-        fetchFastlyBillingSummary(this.ctx).catch(() => undefined),
-        aggregateStats(this.ctx, day)
-          .then(totalsOf)
-          .catch(() => undefined),
-      ]);
-      if (billing) extra[BILLING_KEY] = JSON.stringify(billing);
-      if (totals) extra[TOTALS_KEY] = JSON.stringify(totals);
-      return {
-        ...resource,
-        fields: {
-          ...resource.fields,
-          ...(billing ? { monthToDate: billing.monthToDate, currency: billing.currency } : {}),
-        },
-        resolvedOutputs: { ...resource.resolvedOutputs, ...extra },
-      };
-    }
-    if (resource.resourceTypeId === "service") {
-      const [detail, totals, live] = await Promise.all([
-        this.serviceDetail(id).catch(() => undefined),
-        serviceStats(this.ctx, id, day)
-          .then(totalsOf)
-          .catch(() => undefined),
-        realtimeSnapshot(this.ctx, id).catch(() => undefined),
-      ]);
-      const versions = (detail?.versions ?? [])
-        .map((v) => v.number ?? 0)
-        .filter((n) => n > 0)
-        .sort((a, b) => b - a);
-      extra[VERSIONS_KEY] = JSON.stringify(versions);
-      if (totals) extra[TOTALS_KEY] = JSON.stringify(totals);
-      if (live) extra[REALTIME_KEY] = JSON.stringify(live);
-      return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
-    }
-    if (resource.resourceTypeId === "config-store") {
-      const services = await fastlyFetch<Array<{ name?: string; id?: string }>>(
-        this.ctx,
-        `/resources/stores/config/${encodeURIComponent(id)}/services`,
-      ).catch(() => undefined);
-      if (services) {
-        extra[STORE_SERVICES_KEY] = JSON.stringify(services.map((s) => s.name ?? s.id ?? ""));
+  enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const extra: Record<string, string> = {};
+      const day = rangeOrDefault(undefined, DEFAULT_METRICS_WINDOW_MS);
+      const id = resource.externalId ?? externalIdOf(resource.id);
+      if (resource.resourceTypeId === "account") {
+        const [billing, totals] = await Promise.all([
+          fetchFastlyBillingSummary(this.ctx).catch(() => undefined),
+          aggregateStats(this.ctx, day)
+            .then(totalsOf)
+            .catch(() => undefined),
+        ]);
+        if (billing) extra[BILLING_KEY] = JSON.stringify(billing);
+        if (totals) extra[TOTALS_KEY] = JSON.stringify(totals);
+        return {
+          ...resource,
+          fields: {
+            ...resource.fields,
+            ...(billing ? { monthToDate: billing.monthToDate, currency: billing.currency } : {}),
+          },
+          resolvedOutputs: { ...resource.resolvedOutputs, ...extra },
+        };
       }
-      return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
-    }
-    return resource;
+      if (resource.resourceTypeId === "service") {
+        const [detail, totals, live] = await Promise.all([
+          this.serviceDetail(id).catch(() => undefined),
+          serviceStats(this.ctx, id, day)
+            .then(totalsOf)
+            .catch(() => undefined),
+          realtimeSnapshot(this.ctx, id).catch(() => undefined),
+        ]);
+        const versions = (detail?.versions ?? [])
+          .map((v) => v.number ?? 0)
+          .filter((n) => n > 0)
+          .sort((a, b) => b - a);
+        extra[VERSIONS_KEY] = JSON.stringify(versions);
+        if (totals) extra[TOTALS_KEY] = JSON.stringify(totals);
+        if (live) extra[REALTIME_KEY] = JSON.stringify(live);
+        return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
+      }
+      if (resource.resourceTypeId === "config-store") {
+        const services = await fastlyFetch<Array<{ name?: string; id?: string }>>(
+          this.ctx,
+          `/resources/stores/config/${encodeURIComponent(id)}/services`,
+        ).catch(() => undefined);
+        if (services) {
+          extra[STORE_SERVICES_KEY] = JSON.stringify(services.map((s) => s.name ?? s.id ?? ""));
+        }
+        return { ...resource, resolvedOutputs: { ...resource.resolvedOutputs, ...extra } };
+      }
+      return resource;
+    });
   }
 
   // -------------------------------------------------------------------------
   // Stats, metrics and costs
   // -------------------------------------------------------------------------
 
-  async fetchDashboardStats(
+  fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,
     accountId: string,
-  ): Promise<DashboardStat[]> {
-    const id = externalIdOf(resourceId);
-    if (resourceTypeId === "service") {
-      const t = totalsOf(await serviceStats(this.ctx, id, rangeOrDefault(undefined)));
-      return [
-        { label: "Requests (24h)", value: Math.round(t.requests).toLocaleString("en-US") },
-        {
-          label: "Hit ratio",
-          value: t.hitRatio === undefined ? "—" : `${t.hitRatio.toFixed(1)}%`,
-        },
-        {
-          label: "5xx (24h)",
-          value: Math.round(t.status5xx).toLocaleString("en-US"),
-          variant: t.status5xx > 0 ? "status-degraded" : "status-healthy",
-        },
-      ];
-    }
-    if (resourceTypeId === "account") {
-      const billing = await fetchFastlyBillingSummary(this.ctx).catch(() => undefined);
-      return billing
-        ? [
-            {
-              label: "Month to date",
-              value: billing.monthToDate.toLocaleString("en-US", {
-                style: "currency",
-                currency: billing.currency,
-              }),
-            },
-          ]
-        : [];
-    }
-    const r = await this.getResource(resourceTypeId, resourceId, accountId);
-    if (resourceTypeId === "tls-certificate" || resourceTypeId === "tls-subscription") {
-      const t = Date.parse(String(r.fields["notAfter"] ?? ""));
-      if (Number.isNaN(t)) return [];
-      const days = Math.floor((t - Date.now()) / 86_400_000);
-      return [
-        {
-          label: "Expires in",
-          value: `${days} days`,
-          variant: days < 0 ? "status-error" : days <= 14 ? "status-degraded" : "status-healthy",
-        },
-      ];
-    }
-    return [];
+  ): PluginEffect<DashboardStat[]> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (resourceTypeId === "service") {
+        const t = totalsOf(await serviceStats(this.ctx, id, rangeOrDefault(undefined)));
+        return [
+          { label: "Requests (24h)", value: Math.round(t.requests).toLocaleString("en-US") },
+          {
+            label: "Hit ratio",
+            value: t.hitRatio === undefined ? "—" : `${t.hitRatio.toFixed(1)}%`,
+          },
+          {
+            label: "5xx (24h)",
+            value: Math.round(t.status5xx).toLocaleString("en-US"),
+            variant: t.status5xx > 0 ? "status-degraded" : "status-healthy",
+          },
+        ];
+      }
+      if (resourceTypeId === "account") {
+        const billing = await fetchFastlyBillingSummary(this.ctx).catch(() => undefined);
+        return billing
+          ? [
+              {
+                label: "Month to date",
+                value: billing.monthToDate.toLocaleString("en-US", {
+                  style: "currency",
+                  currency: billing.currency,
+                }),
+              },
+            ]
+          : [];
+      }
+      const r = await runPluginEffect(this.getResource(resourceTypeId, resourceId, accountId));
+      if (resourceTypeId === "tls-certificate" || resourceTypeId === "tls-subscription") {
+        const t = Date.parse(String(r.fields["notAfter"] ?? ""));
+        if (Number.isNaN(t)) return [];
+        const days = Math.floor((t - Date.now()) / 86_400_000);
+        return [
+          {
+            label: "Expires in",
+            value: `${days} days`,
+            variant: days < 0 ? "status-error" : days <= 14 ? "status-degraded" : "status-healthy",
+          },
+        ];
+      }
+      return [];
+    });
   }
 
-  async fetchMetricSeries(
+  fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const range = rangeOrDefault(timeRange);
-    if (resourceTypeId === "service") {
-      return serviceSeriesFrom(await serviceStats(this.ctx, externalIdOf(resourceId), range));
-    }
-    if (resourceTypeId === "account") {
-      return serviceSeriesFrom(await aggregateStats(this.ctx, range));
-    }
-    return [];
+  ): PluginEffect<MetricSeries[]> {
+    return attempt(async () => {
+      const range = rangeOrDefault(timeRange);
+      if (resourceTypeId === "service") {
+        return serviceSeriesFrom(await serviceStats(this.ctx, externalIdOf(resourceId), range));
+      }
+      if (resourceTypeId === "account") {
+        return serviceSeriesFrom(await aggregateStats(this.ctx, range));
+      }
+      return [];
+    });
   }
 
-  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
-    return fetchFastlyCostData(this.ctx, range);
+  fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
+    return attempt(async () => {
+      return fetchFastlyCostData(this.ctx, range);
+    });
   }
 
-  async verifyCredentials(): Promise<PreflightResult> {
-    return verifyFastlyCredentials(this.ctx);
+  verifyCredentials(): PluginEffect<PreflightResult> {
+    return attempt(async () => {
+      return verifyFastlyCredentials(this.ctx);
+    });
   }
 
   // -------------------------------------------------------------------------
   // Create / update / delete
   // -------------------------------------------------------------------------
 
-  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    const name = (description: string) => ({
-      key: "name",
-      label: "Name",
-      kind: "text" as const,
-      required: true,
-      description,
+  getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
+    return attempt(async () => {
+      const name = (description: string) => ({
+        key: "name",
+        label: "Name",
+        kind: "text" as const,
+        required: true,
+        description,
+      });
+      switch (typeId) {
+        case "service":
+          return {
+            fields: [
+              name("Shown in the Fastly console and in Infrawrench."),
+              {
+                key: "type",
+                label: "Type",
+                kind: "select",
+                required: true,
+                defaultValue: "vcl",
+                options: [
+                  {
+                    id: "vcl",
+                    label: "Delivery (VCL)",
+                    description: "Caching CDN configured with VCL.",
+                  },
+                  { id: "wasm", label: "Compute", description: "WebAssembly at the edge." },
+                ],
+              },
+              { key: "comment", label: "Comment", kind: "text", required: false },
+            ],
+          };
+        case "kv-store":
+          return {
+            fields: [
+              name("Letters, digits, dashes and underscores."),
+              {
+                key: "location",
+                label: "Primary location",
+                kind: "select",
+                required: false,
+                defaultValue: "",
+                description: "Where writes land first; reads are served from every POP.",
+                options: [
+                  { id: "", label: "Fastly default" },
+                  { id: "US", label: "United States" },
+                  { id: "EU", label: "Europe" },
+                  { id: "ASIA", label: "Asia" },
+                  { id: "AUS", label: "Australia" },
+                ],
+              },
+            ],
+          };
+        case "config-store":
+        case "secret-store":
+          return { fields: [name("Letters, digits, dashes and underscores.")] };
+        default:
+          throw new Error(`Fastly plugin: cannot create "${typeId}" from Infrawrench`);
+      }
     });
-    switch (typeId) {
-      case "service":
-        return {
-          fields: [
-            name("Shown in the Fastly console and in Infrawrench."),
-            {
-              key: "type",
-              label: "Type",
-              kind: "select",
-              required: true,
-              defaultValue: "vcl",
-              options: [
-                {
-                  id: "vcl",
-                  label: "Delivery (VCL)",
-                  description: "Caching CDN configured with VCL.",
-                },
-                { id: "wasm", label: "Compute", description: "WebAssembly at the edge." },
-              ],
-            },
-            { key: "comment", label: "Comment", kind: "text", required: false },
-          ],
-        };
-      case "kv-store":
-        return {
-          fields: [
-            name("Letters, digits, dashes and underscores."),
-            {
-              key: "location",
-              label: "Primary location",
-              kind: "select",
-              required: false,
-              defaultValue: "",
-              description: "Where writes land first; reads are served from every POP.",
-              options: [
-                { id: "", label: "Fastly default" },
-                { id: "US", label: "United States" },
-                { id: "EU", label: "Europe" },
-                { id: "ASIA", label: "Asia" },
-                { id: "AUS", label: "Australia" },
-              ],
-            },
-          ],
-        };
-      case "config-store":
-      case "secret-store":
-        return { fields: [name("Letters, digits, dashes and underscores.")] };
-      default:
-        throw new Error(`Fastly plugin: cannot create "${typeId}" from Infrawrench`);
-    }
   }
 
-  async createResource(
+  createResource(
     typeId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const name = (fields["name"] ?? "").trim();
-    if (!name) throw new Error("Enter a name.");
-    switch (typeId) {
-      case "service": {
-        const svc = await fastlyFetch<FastlyServiceSummary>(this.ctx, "/service", {
-          method: "POST",
-          form: {
-            name,
-            type: fields["type"] === "wasm" ? "wasm" : "vcl",
-            ...(fields["comment"] ? { comment: fields["comment"] } : {}),
-          },
-        });
-        this.invalidate();
-        return mapService(accountId, svc);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const name = (fields["name"] ?? "").trim();
+      if (!name) throw new Error("Enter a name.");
+      switch (typeId) {
+        case "service": {
+          const svc = await fastlyFetch<FastlyServiceSummary>(this.ctx, "/service", {
+            method: "POST",
+            form: {
+              name,
+              type: fields["type"] === "wasm" ? "wasm" : "vcl",
+              ...(fields["comment"] ? { comment: fields["comment"] } : {}),
+            },
+          });
+          this.invalidate();
+          return mapService(accountId, svc);
+        }
+        case "kv-store": {
+          const st = await fastlyFetch<FastlyStore>(this.ctx, "/resources/stores/kv", {
+            method: "POST",
+            json: { name },
+            ...(fields["location"] ? { query: { location: fields["location"] } } : {}),
+          });
+          return mapStore(accountId, "kv-store", st);
+        }
+        case "config-store": {
+          const st = await fastlyFetch<FastlyStore>(this.ctx, "/resources/stores/config", {
+            method: "POST",
+            form: { name },
+          });
+          return mapStore(accountId, "config-store", st, { itemCount: 0 });
+        }
+        case "secret-store": {
+          const st = await fastlyFetch<FastlyStore>(this.ctx, "/resources/stores/secret", {
+            method: "POST",
+            json: { name },
+          });
+          return mapStore(accountId, "secret-store", st);
+        }
+        default:
+          throw new Error(`Fastly plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      case "kv-store": {
-        const st = await fastlyFetch<FastlyStore>(this.ctx, "/resources/stores/kv", {
-          method: "POST",
-          json: { name },
-          ...(fields["location"] ? { query: { location: fields["location"] } } : {}),
-        });
-        return mapStore(accountId, "kv-store", st);
-      }
-      case "config-store": {
-        const st = await fastlyFetch<FastlyStore>(this.ctx, "/resources/stores/config", {
-          method: "POST",
-          form: { name },
-        });
-        return mapStore(accountId, "config-store", st, { itemCount: 0 });
-      }
-      case "secret-store": {
-        const st = await fastlyFetch<FastlyStore>(this.ctx, "/resources/stores/secret", {
-          method: "POST",
-          json: { name },
-        });
-        return mapStore(accountId, "secret-store", st);
-      }
-      default:
-        throw new Error(`Fastly plugin: cannot create "${typeId}" from Infrawrench`);
-    }
+    });
   }
 
-  async updateResource(
+  updateResource(
     typeId: string,
     resourceId: string,
     accountId: string,
     fields: Record<string, string>,
-  ): Promise<ResourceInstance> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "service") {
-      await fastlyFetch<unknown>(this.ctx, `/service/${encodeURIComponent(id)}`, {
-        method: "PUT",
-        form: {
-          ...("name" in fields ? { name: fields["name"] } : {}),
-          ...("comment" in fields ? { comment: fields["comment"] ?? "" } : {}),
-        },
-      });
-      this.invalidate();
-      return this.getResource(typeId, resourceId, accountId);
-    }
-    if (typeId === "service-version") {
-      const [sid, num] = splitChild(id);
-      await fastlyFetch<unknown>(this.ctx, `/service/${encodeURIComponent(sid)}/version/${num}`, {
-        method: "PUT",
-        form: { comment: fields["comment"] ?? "" },
-      });
-      this.invalidate();
-      return this.getResource(typeId, resourceId, accountId);
-    }
-    if (typeId === "config-store") {
-      const st = await fastlyFetch<FastlyStore>(
-        this.ctx,
-        `/resources/stores/config/${encodeURIComponent(id)}`,
-        { method: "PUT", form: { name: (fields["name"] ?? "").trim() } },
-      );
-      return mapStore(accountId, "config-store", st);
-    }
-    throw new Error(`Fastly plugin: "${typeId}" cannot be edited from Infrawrench`);
+  ): PluginEffect<ResourceInstance> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "service") {
+        await fastlyFetch<unknown>(this.ctx, `/service/${encodeURIComponent(id)}`, {
+          method: "PUT",
+          form: {
+            ...("name" in fields ? { name: fields["name"] } : {}),
+            ...("comment" in fields ? { comment: fields["comment"] ?? "" } : {}),
+          },
+        });
+        this.invalidate();
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      }
+      if (typeId === "service-version") {
+        const [sid, num] = splitChild(id);
+        await fastlyFetch<unknown>(this.ctx, `/service/${encodeURIComponent(sid)}/version/${num}`, {
+          method: "PUT",
+          form: { comment: fields["comment"] ?? "" },
+        });
+        this.invalidate();
+        return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+      }
+      if (typeId === "config-store") {
+        const st = await fastlyFetch<FastlyStore>(
+          this.ctx,
+          `/resources/stores/config/${encodeURIComponent(id)}`,
+          { method: "PUT", form: { name: (fields["name"] ?? "").trim() } },
+        );
+        return mapStore(accountId, "config-store", st);
+      }
+      throw new Error(`Fastly plugin: "${typeId}" cannot be edited from Infrawrench`);
+    });
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    const id = encodeURIComponent(externalIdOf(resourceId));
-    switch (typeId) {
-      case "service":
-        try {
-          await fastlyFetch<unknown>(this.ctx, `/service/${id}`, { method: "DELETE" });
-        } catch (err) {
-          if (statusOf(err) === 400 || statusOf(err) === 409) {
-            throw new Error(
-              "Fastly only deletes a service with no active version. Deactivate it first, then delete it.",
-            );
+  deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
+    return attempt(async () => {
+      const id = encodeURIComponent(externalIdOf(resourceId));
+      switch (typeId) {
+        case "service":
+          try {
+            await fastlyFetch<unknown>(this.ctx, `/service/${id}`, { method: "DELETE" });
+          } catch (err) {
+            if (statusOf(err) === 400 || statusOf(err) === 409) {
+              throw new Error(
+                "Fastly only deletes a service with no active version. Deactivate it first, then delete it.",
+              );
+            }
+            throw err;
           }
-          throw err;
-        }
-        this.invalidate();
-        return;
-      case "kv-store":
-        await fastlyFetch<unknown>(this.ctx, `/resources/stores/kv/${id}`, { method: "DELETE" });
-        return;
-      case "config-store":
-        await fastlyFetch<unknown>(this.ctx, `/resources/stores/config/${id}`, {
-          method: "DELETE",
-        });
-        return;
-      case "secret-store":
-        await fastlyFetch<unknown>(this.ctx, `/resources/stores/secret/${id}`, {
-          method: "DELETE",
-        });
-        return;
-      case "tls-certificate":
-        await fastlyFetch<unknown>(this.ctx, `/tls/certificates/${id}`, { method: "DELETE" });
-        return;
-      case "tls-subscription":
-        await fastlyFetch<unknown>(this.ctx, `/tls/subscriptions/${id}`, { method: "DELETE" });
-        return;
-      default:
-        throw new Error(`Fastly plugin: "${typeId}" cannot be deleted from Infrawrench`);
-    }
+          this.invalidate();
+          return;
+        case "kv-store":
+          await fastlyFetch<unknown>(this.ctx, `/resources/stores/kv/${id}`, { method: "DELETE" });
+          return;
+        case "config-store":
+          await fastlyFetch<unknown>(this.ctx, `/resources/stores/config/${id}`, {
+            method: "DELETE",
+          });
+          return;
+        case "secret-store":
+          await fastlyFetch<unknown>(this.ctx, `/resources/stores/secret/${id}`, {
+            method: "DELETE",
+          });
+          return;
+        case "tls-certificate":
+          await fastlyFetch<unknown>(this.ctx, `/tls/certificates/${id}`, { method: "DELETE" });
+          return;
+        case "tls-subscription":
+          await fastlyFetch<unknown>(this.ctx, `/tls/subscriptions/${id}`, { method: "DELETE" });
+          return;
+        default:
+          throw new Error(`Fastly plugin: "${typeId}" cannot be deleted from Infrawrench`);
+      }
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -766,186 +793,192 @@ export class FastlyClient implements PluginClient {
     return `/service/${encodeURIComponent(serviceId)}/version/${version}/${suffix}`;
   }
 
-  async invokeAction(
+  invokeAction(
     typeId: string,
     resourceId: string,
     actionId: string,
     _accountId: string,
-  ): Promise<void> {
-    const id = externalIdOf(resourceId);
-    if (typeId === "service" && SERVICE_ACTIONS.has(actionId)) {
-      if (actionId === "purge-all") {
-        await fastlyFetch<unknown>(this.ctx, `/service/${encodeURIComponent(id)}/purge_all`, {
-          method: "POST",
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      if (typeId === "service" && SERVICE_ACTIONS.has(actionId)) {
+        if (actionId === "purge-all") {
+          await fastlyFetch<unknown>(this.ctx, `/service/${encodeURIComponent(id)}/purge_all`, {
+            method: "POST",
+          });
+          return;
+        }
+        const active = await this.activeVersion(id);
+        await fastlyFetch<unknown>(
+          this.ctx,
+          this.versionPath(id, active, actionId === "clone-active" ? "clone" : "deactivate"),
+          { method: "PUT" },
+        );
+        this.invalidate();
+        return;
+      }
+      if (typeId === "service-version" && VERSION_ACTIONS.has(actionId)) {
+        const [sid, num] = splitChild(id);
+        if (actionId === "validate") {
+          const res = await fastlyFetch<{ status?: string; errors?: string[]; msg?: string }>(
+            this.ctx,
+            this.versionPath(sid, num, "validate"),
+          );
+          if (res?.status && res.status !== "ok") {
+            throw new Error(
+              `Fastly found problems in this version: ${(res.errors ?? []).join("; ") || res.msg || res.status}`,
+            );
+          }
+          return;
+        }
+        await fastlyFetch<unknown>(this.ctx, this.versionPath(sid, num, actionId), {
+          method: "PUT",
+        });
+        this.invalidate();
+        return;
+      }
+      if (typeId === "api-token" && actionId === "revoke") {
+        const self = await fastlyFetch<FastlyToken>(this.ctx, "/tokens/self").catch(
+          () => ({}) as FastlyToken,
+        );
+        if (self.id && self.id === id) {
+          throw new Error(
+            "This is the token this account uses. Revoke it in Fastly after replacing the account's credentials.",
+          );
+        }
+        await fastlyFetch<unknown>(this.ctx, `/tokens/${encodeURIComponent(id)}`, {
+          method: "DELETE",
         });
         return;
       }
-      const active = await this.activeVersion(id);
-      await fastlyFetch<unknown>(
-        this.ctx,
-        this.versionPath(id, active, actionId === "clone-active" ? "clone" : "deactivate"),
-        { method: "PUT" },
-      );
-      this.invalidate();
-      return;
-    }
-    if (typeId === "service-version" && VERSION_ACTIONS.has(actionId)) {
-      const [sid, num] = splitChild(id);
-      if (actionId === "validate") {
-        const res = await fastlyFetch<{ status?: string; errors?: string[]; msg?: string }>(
-          this.ctx,
-          this.versionPath(sid, num, "validate"),
-        );
-        if (res?.status && res.status !== "ok") {
-          throw new Error(
-            `Fastly found problems in this version: ${(res.errors ?? []).join("; ") || res.msg || res.status}`,
-          );
-        }
-        return;
-      }
-      await fastlyFetch<unknown>(this.ctx, this.versionPath(sid, num, actionId), {
-        method: "PUT",
-      });
-      this.invalidate();
-      return;
-    }
-    if (typeId === "api-token" && actionId === "revoke") {
-      const self = await fastlyFetch<FastlyToken>(this.ctx, "/tokens/self").catch(
-        () => ({}) as FastlyToken,
-      );
-      if (self.id && self.id === id) {
-        throw new Error(
-          "This is the token this account uses. Revoke it in Fastly after replacing the account's credentials.",
-        );
-      }
-      await fastlyFetch<unknown>(this.ctx, `/tokens/${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    throw new Error(`Fastly plugin: unknown action "${actionId}" for "${typeId}"`);
+      throw new Error(`Fastly plugin: unknown action "${actionId}" for "${typeId}"`);
+    });
   }
 
   /** Form-driven actions (`prompt-nosql-command`): purges, activation, products. */
-  async executeNoSqlCommand(
+  executeNoSqlCommand(
     typeId: string,
     resourceId: string,
     _accountId: string,
     command: string,
     args: (string | number)[],
-  ): Promise<unknown> {
-    const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
-    const id = externalIdOf(resourceId);
-    const soft = values["soft"] === "soft" ? { "Fastly-Soft-Purge": "1" } : undefined;
-    if (command === "purge-url" && (typeId === "service" || typeId === "account")) {
-      const path = purgePathFor(values["url"] ?? "");
-      const res = await fastlyFetch<{ status?: string; id?: string }>(
-        this.ctx,
-        `/purge/${encodeURI(path)}`,
-        { method: "POST", ...(soft ? { headers: soft } : {}) },
-      );
-      return { message: `Purge ${res?.status ?? "sent"}${res?.id ? ` (id ${res.id})` : ""}.` };
-    }
-    if (typeId !== "service") throw new Error(`Unknown Fastly command "${command}".`);
-    switch (command) {
-      case "purge-keys": {
-        const keys = parseKeys(values["keys"] ?? "");
-        if (keys.length === 0) throw new Error("Enter at least one surrogate key.");
-        if (keys.length === 1) {
-          await fastlyFetch<unknown>(
-            this.ctx,
-            `/service/${encodeURIComponent(id)}/purge/${encodeURIComponent(keys[0]!)}`,
-            { method: "POST", ...(soft ? { headers: soft } : {}) },
-          );
-        } else {
-          // The batch endpoint takes up to 256 keys per request.
-          for (let i = 0; i < keys.length; i += 256) {
-            await fastlyFetch<unknown>(this.ctx, `/service/${encodeURIComponent(id)}/purge`, {
-              method: "POST",
-              json: { surrogate_keys: keys.slice(i, i + 256) },
-              ...(soft ? { headers: soft } : {}),
-            });
+  ): PluginEffect<unknown> {
+    return attempt(async () => {
+      const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+      const id = externalIdOf(resourceId);
+      const soft = values["soft"] === "soft" ? { "Fastly-Soft-Purge": "1" } : undefined;
+      if (command === "purge-url" && (typeId === "service" || typeId === "account")) {
+        const path = purgePathFor(values["url"] ?? "");
+        const res = await fastlyFetch<{ status?: string; id?: string }>(
+          this.ctx,
+          `/purge/${encodeURI(path)}`,
+          { method: "POST", ...(soft ? { headers: soft } : {}) },
+        );
+        return { message: `Purge ${res?.status ?? "sent"}${res?.id ? ` (id ${res.id})` : ""}.` };
+      }
+      if (typeId !== "service") throw new Error(`Unknown Fastly command "${command}".`);
+      switch (command) {
+        case "purge-keys": {
+          const keys = parseKeys(values["keys"] ?? "");
+          if (keys.length === 0) throw new Error("Enter at least one surrogate key.");
+          if (keys.length === 1) {
+            await fastlyFetch<unknown>(
+              this.ctx,
+              `/service/${encodeURIComponent(id)}/purge/${encodeURIComponent(keys[0]!)}`,
+              { method: "POST", ...(soft ? { headers: soft } : {}) },
+            );
+          } else {
+            // The batch endpoint takes up to 256 keys per request.
+            for (let i = 0; i < keys.length; i += 256) {
+              await fastlyFetch<unknown>(this.ctx, `/service/${encodeURIComponent(id)}/purge`, {
+                method: "POST",
+                json: { surrogate_keys: keys.slice(i, i + 256) },
+                ...(soft ? { headers: soft } : {}),
+              });
+            }
           }
+          return { message: `Purged ${keys.length} surrogate key${keys.length === 1 ? "" : "s"}.` };
         }
-        return { message: `Purged ${keys.length} surrogate key${keys.length === 1 ? "" : "s"}.` };
+        case "activate-version": {
+          const version = Number(values["version"]);
+          if (!Number.isInteger(version) || version <= 0) throw new Error("Pick a version.");
+          await fastlyFetch<unknown>(this.ctx, this.versionPath(id, version, "activate"), {
+            method: "PUT",
+          });
+          this.invalidate();
+          return { message: `Version ${version} is now active.` };
+        }
+        case "set-product": {
+          const enable = values["state"] !== "disable";
+          await setProductEnabled(this.ctx, values["product"] ?? "", id, enable);
+          return { message: enable ? "Product enabled." : "Product disabled." };
+        }
+        default:
+          throw new Error(`Unknown Fastly command "${command}".`);
       }
-      case "activate-version": {
-        const version = Number(values["version"]);
-        if (!Number.isInteger(version) || version <= 0) throw new Error("Pick a version.");
-        await fastlyFetch<unknown>(this.ctx, this.versionPath(id, version, "activate"), {
-          method: "PUT",
-        });
-        this.invalidate();
-        return { message: `Version ${version} is now active.` };
-      }
-      case "set-product": {
-        const enable = values["state"] !== "disable";
-        await setProductEnabled(this.ctx, values["product"] ?? "", id, enable);
-        return { message: enable ? "Product enabled." : "Product disabled." };
-      }
-      default:
-        throw new Error(`Unknown Fastly command "${command}".`);
-    }
+    });
   }
 
   // -------------------------------------------------------------------------
   // Key browser: edge dictionaries, config stores and KV stores
   // -------------------------------------------------------------------------
 
-  async listKvKeys(
+  listKvKeys(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     params?: { prefix?: string; cursor?: string; limit?: number },
-  ): Promise<KvListResult> {
-    const id = externalIdOf(resourceId);
-    const limit = Math.min(Math.max(params?.limit ?? 100, 1), 1000);
-    const prefix = params?.prefix ?? "";
-    if (resourceTypeId === "kv-store") {
-      const res = await fastlyFetch<{ data?: string[]; meta?: { next_cursor?: string } }>(
-        this.ctx,
-        `/resources/stores/kv/${encodeURIComponent(id)}/keys`,
-        {
-          query: {
-            limit,
-            ...(prefix ? { prefix } : {}),
-            ...(params?.cursor ? { cursor: params.cursor } : {}),
-          },
-        },
-      );
-      return {
-        items: (res?.data ?? []).map((name) => ({ name })),
-        ...(res?.meta?.next_cursor ? { nextCursor: res.meta.next_cursor } : {}),
-      };
-    }
-    let all: Array<{ item_key?: string }> = [];
-    if (resourceTypeId === "config-store") {
-      all =
-        (await fastlyFetch<Array<{ item_key?: string }>>(
+  ): PluginEffect<KvListResult> {
+    return attempt(async () => {
+      const id = externalIdOf(resourceId);
+      const limit = Math.min(Math.max(params?.limit ?? 100, 1), 1000);
+      const prefix = params?.prefix ?? "";
+      if (resourceTypeId === "kv-store") {
+        const res = await fastlyFetch<{ data?: string[]; meta?: { next_cursor?: string } }>(
           this.ctx,
-          `/resources/stores/config/${encodeURIComponent(id)}/items`,
-        )) ?? [];
-    } else if (resourceTypeId === "dictionary") {
-      const [sid, did] = splitChild(id);
-      all = await fastlyPaged<{ item_key?: string }>(
-        this.ctx,
-        `/service/${encodeURIComponent(sid)}/dictionary/${encodeURIComponent(did)}/items`,
-        { sort: "item_key", direction: "ascend" },
-        1000,
-      );
-    } else {
-      throw new Error(`Fastly plugin: "${resourceTypeId}" has no keys`);
-    }
-    const names = all
-      .map((i) => i.item_key ?? "")
-      .filter((k) => k && k.startsWith(prefix))
-      .sort();
-    const offset = Number(params?.cursor ?? 0) || 0;
-    const page = names.slice(offset, offset + limit);
-    return {
-      items: page.map((name) => ({ name })),
-      ...(offset + limit < names.length ? { nextCursor: String(offset + limit) } : {}),
-    };
+          `/resources/stores/kv/${encodeURIComponent(id)}/keys`,
+          {
+            query: {
+              limit,
+              ...(prefix ? { prefix } : {}),
+              ...(params?.cursor ? { cursor: params.cursor } : {}),
+            },
+          },
+        );
+        return {
+          items: (res?.data ?? []).map((name) => ({ name })),
+          ...(res?.meta?.next_cursor ? { nextCursor: res.meta.next_cursor } : {}),
+        };
+      }
+      let all: Array<{ item_key?: string }> = [];
+      if (resourceTypeId === "config-store") {
+        all =
+          (await fastlyFetch<Array<{ item_key?: string }>>(
+            this.ctx,
+            `/resources/stores/config/${encodeURIComponent(id)}/items`,
+          )) ?? [];
+      } else if (resourceTypeId === "dictionary") {
+        const [sid, did] = splitChild(id);
+        all = await fastlyPaged<{ item_key?: string }>(
+          this.ctx,
+          `/service/${encodeURIComponent(sid)}/dictionary/${encodeURIComponent(did)}/items`,
+          { sort: "item_key", direction: "ascend" },
+          1000,
+        );
+      } else {
+        throw new Error(`Fastly plugin: "${resourceTypeId}" has no keys`);
+      }
+      const names = all
+        .map((i) => i.item_key ?? "")
+        .filter((k) => k && k.startsWith(prefix))
+        .sort();
+      const offset = Number(params?.cursor ?? 0) || 0;
+      const page = names.slice(offset, offset + limit);
+      return {
+        items: page.map((name) => ({ name })),
+        ...(offset + limit < names.length ? { nextCursor: String(offset + limit) } : {}),
+      };
+    });
   }
 
   private itemPath(resourceTypeId: string, id: string, key: string): string {
@@ -962,44 +995,50 @@ export class FastlyClient implements PluginClient {
     throw new Error(`Fastly plugin: "${resourceTypeId}" has no keys`);
   }
 
-  async getKvValue(
+  getKvValue(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     key: string,
-  ): Promise<string> {
-    const path = this.itemPath(resourceTypeId, externalIdOf(resourceId), key);
-    if (resourceTypeId === "kv-store") {
-      return (await fastlyRaw(this.ctx, path, { headers: { Accept: "*/*" } })).body;
-    }
-    const item = await fastlyFetch<{ item_value?: string }>(this.ctx, path);
-    return item?.item_value ?? "";
+  ): PluginEffect<string> {
+    return attempt(async () => {
+      const path = this.itemPath(resourceTypeId, externalIdOf(resourceId), key);
+      if (resourceTypeId === "kv-store") {
+        return (await fastlyRaw(this.ctx, path, { headers: { Accept: "*/*" } })).body;
+      }
+      const item = await fastlyFetch<{ item_value?: string }>(this.ctx, path);
+      return item?.item_value ?? "";
+    });
   }
 
-  async putKvValue(
+  putKvValue(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     key: string,
     value: string,
-  ): Promise<void> {
-    const path = this.itemPath(resourceTypeId, externalIdOf(resourceId), key);
-    if (resourceTypeId === "kv-store") {
-      await fastlyRaw(this.ctx, path, { method: "PUT", raw: value });
-      return;
-    }
-    // PUT on a dictionary or config-store item is an upsert.
-    await fastlyFetch<unknown>(this.ctx, path, { method: "PUT", form: { item_value: value } });
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      const path = this.itemPath(resourceTypeId, externalIdOf(resourceId), key);
+      if (resourceTypeId === "kv-store") {
+        await fastlyRaw(this.ctx, path, { method: "PUT", raw: value });
+        return;
+      }
+      // PUT on a dictionary or config-store item is an upsert.
+      await fastlyFetch<unknown>(this.ctx, path, { method: "PUT", form: { item_value: value } });
+    });
   }
 
-  async deleteKvKey(
+  deleteKvKey(
     resourceTypeId: string,
     resourceId: string,
     _accountId: string,
     key: string,
-  ): Promise<void> {
-    await fastlyRaw(this.ctx, this.itemPath(resourceTypeId, externalIdOf(resourceId), key), {
-      method: "DELETE",
+  ): PluginEffect<void> {
+    return attempt(async () => {
+      await fastlyRaw(this.ctx, this.itemPath(resourceTypeId, externalIdOf(resourceId), key), {
+        method: "DELETE",
+      });
     });
   }
 

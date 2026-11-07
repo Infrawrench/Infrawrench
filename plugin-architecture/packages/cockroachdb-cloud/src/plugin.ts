@@ -1,4 +1,5 @@
-import type { Plugin, PluginManifest } from "@infrawrench/plugin-base";
+import { defineCredentials, definePlugin } from "@infrawrench/plugin-base";
+import type { PluginManifest, CredentialsOf } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CockroachClient } from "./client.js";
 import { COCKROACH_LOGO } from "./logo.js";
@@ -7,16 +8,14 @@ import { resourceTypes } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { cockroachTerraformExport } from "./terraform.js";
 
-const manifest: PluginManifest = {
+export const manifest = {
   id: "cockroachdb-cloud",
-  version: "0.1.0",
+  egressHosts: ["cockroachlabs.cloud"],
   displayName: "CockroachDB Cloud",
   description:
     "CockroachDB Cloud clusters (Basic, Standard, Advanced): databases, SQL users, IP allowlists, backups and restores, log and metric export, folders, service accounts and invoices.",
   logoSvg: COCKROACH_LOGO,
-  author: "Infrawrench",
-  minHostVersion: "0.1.0",
-  credentialFields: [
+  credentialFields: defineCredentials([
     {
       key: "apiKey",
       label: "API Key",
@@ -27,7 +26,7 @@ const manifest: PluginManifest = {
       helpLink: { label: "Service accounts", url: "https://cockroachlabs.cloud/access" },
     },
     caCertCredentialField,
-  ],
+  ]),
   // 10 requests a second per user.
   rateLimit: { capacity: 10, refillPerSecond: 8 },
   // Monthly invoices with per-cluster Metronome line items and adjustments.
@@ -41,12 +40,15 @@ const manifest: PluginManifest = {
   },
   statusFeed,
   preflight: CRDB_PREFLIGHT,
-};
+} satisfies PluginManifest;
 
-export const plugin: Plugin = {
+export type Credentials = CredentialsOf<typeof manifest>;
+
+export const plugin = definePlugin({
   manifest,
   resourceTypes,
   createClient: (credentials, services) => new CockroachClient(credentials, services),
+  testCredentials: { apiKey: "CCDB1_test" },
   parseStatusFeed,
   terraformExport: cockroachTerraformExport,
-};
+});
