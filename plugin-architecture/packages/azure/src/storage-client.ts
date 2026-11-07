@@ -55,6 +55,18 @@ function splitKey(key: string): { container: string; rest: string } {
 }
 
 /**
+ * The account's blob endpoint. The name goes into the hostname, so anything but a
+ * storage account name (3 to 24 lowercase letters and digits) could send the
+ * storage token to another host.
+ */
+function accountBase(bucket: string): string {
+  if (!/^[a-z0-9]{3,24}$/.test(bucket)) {
+    throw new Error(`${VENDOR}: "${bucket}" is not a storage account name`);
+  }
+  return `https://${bucket}.blob.core.windows.net`;
+}
+
+/**
  * The URL of the one blob a key names, each segment percent-encoded: a `#` or
  * `?` left raw would name a different blob. A key that names no container or no
  * blob is refused rather than guessed at.
@@ -65,7 +77,7 @@ function blobUrl(bucket: string, key: string): string {
     throw new Error(`${VENDOR}: "${key}" does not name a blob inside a container`);
   }
   const path = [container, ...rest.split("/")].map(encodeURIComponent).join("/");
-  return `https://${bucket}.blob.core.windows.net/${path}`;
+  return `${accountBase(bucket)}/${path}`;
 }
 
 export async function listStorageObjects(
@@ -133,7 +145,7 @@ async function enumerate(
     params.set("maxresults", String(PAGE_SIZE));
     if (marker) params.set("marker", marker);
     const path = container ? `/${encodeURIComponent(container)}` : "/";
-    const xml = await getXml(ctx, `https://${bucket}.blob.core.windows.net${path}?${params}`);
+    const xml = await getXml(ctx, `${accountBase(bucket)}${path}?${params}`);
     const parsed = container ? parseBlobPage(xml, place) : parseContainerPage(xml, place);
     out.folders.push(...parsed.folders);
     out.blobs.push(...parsed.blobs);

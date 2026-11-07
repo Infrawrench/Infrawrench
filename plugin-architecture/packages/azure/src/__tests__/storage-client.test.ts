@@ -301,3 +301,20 @@ describe("blob names in the URL", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe("storage account names", () => {
+  it("sends the storage token only to a storage account's own host", async () => {
+    const { ctx, calls } = host(() => ({ status: 202 }));
+    const storageToken = vi.fn(async () => "stg-tok");
+    for (const bucket of ["evil.example/x?", "evil.example#", "", "ACC", "a.b"]) {
+      await expect(
+        deleteStorageObject({ ...ctx, storageToken }, bucket, "c/f.txt"),
+      ).rejects.toThrow(/storage account name/);
+      await expect(listStorageObjects({ ...ctx, storageToken }, bucket, "")).rejects.toThrow(
+        /storage account name/,
+      );
+    }
+    expect(storageToken).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(0);
+  });
+});
