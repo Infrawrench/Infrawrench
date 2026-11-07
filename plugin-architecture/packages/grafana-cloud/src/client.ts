@@ -137,9 +137,11 @@ export class GrafanaCloudClient implements PluginClient {
 
   private async secret(accountId: string, stackSlug: string, key: string): Promise<string | null> {
     if (!this.secrets) return null;
-    const value = await this.secrets
-      .getPlaintext(resourceIdFor(accountId, "stack", stackSlug), key)
-      .catch(() => null);
+    // Not caught: a stack that reads as not connected lists nothing, which prunes it.
+    const value = await this.secrets.getPlaintext(
+      resourceIdFor(accountId, "stack", stackSlug),
+      key,
+    );
     return value && value.trim() ? value.trim() : null;
   }
 

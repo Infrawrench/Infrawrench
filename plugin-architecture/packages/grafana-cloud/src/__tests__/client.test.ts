@@ -623,3 +623,31 @@ describe("access policy tokens", () => {
     expect(tokens[1]?.fields["expiresAt"]).toBe("2020-01-01T00:00:00Z");
   });
 });
+
+describe("a stack's stored tokens", () => {
+  function withSecrets(getPlaintext: () => Promise<string | null>) {
+    const { http, calls } = makeHttp((url, method) => {
+      if (url.pathname === "/api/search") return { body: [{ uid: "abc", title: "Overview" }] };
+      return baseRoute(url, method) ?? { status: 404 };
+    });
+    const secrets = { getPlaintext, setPlaintext: async () => {} };
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http, secrets }));
+    return { client, calls };
+  }
+
+  it.each(["dashboard", "alert-rule", "contact-point", "datasource", "synthetic-check", "stack"])(
+    "fails %s rather than read a failed secret read as not connected",
+    async (typeId) => {
+      const { client } = withSecrets(() => Promise.reject(new Error("secret store down")));
+      await expect(client.listResources(typeId, "acct")).rejects.toThrow("secret store down");
+    },
+  );
+
+  it("reads no stored secret as not connected", async () => {
+    const { client, calls } = withSecrets(async () => null);
+    expect(await client.listResources("dashboard", "acct")).toEqual([]);
+    const [stack] = await client.listResources("stack", "acct");
+    expect(stack?.fields["connected"]).toBe(false);
+    expect(calls.filter((c) => c.url.pathname === "/api/search")).toEqual([]);
+  });
+});
