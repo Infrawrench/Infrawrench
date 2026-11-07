@@ -3,36 +3,6 @@
   "specUrl": "https://cockroachlabs.cloud/assets/docs/api/latest/openapi.json",
   "patches": [
     {
-      "pointer": "/paths/~1api~1v1~1invoices/get/parameters/3",
-      "value": {
-        "name": "pagination.page",
-        "in": "query",
-        "schema": {
-          "type": "string"
-        }
-      },
-      "why": "The document gives this list no paging parameters, though the plugin has always sent them and walked `pagination.next_page`."
-    },
-    {
-      "pointer": "/paths/~1api~1v1~1invoices/get/parameters/4",
-      "value": {
-        "name": "pagination.limit",
-        "in": "query",
-        "schema": {
-          "type": "integer",
-          "format": "int32"
-        }
-      },
-      "why": "As for `pagination.page`."
-    },
-    {
-      "pointer": "/components/schemas/ListInvoicesResponse/properties/pagination",
-      "value": {
-        "$ref": "#/components/schemas/KeysetPaginationResponse"
-      },
-      "why": "As for the parameters: the plugin reads `pagination.next_page` here as it does on every other list."
-    },
-    {
       "pointer": "/paths/~1api~1v1~1clusters~1{cluster_id}~1metricexport~1{kind}",
       "value": {
         "post": {

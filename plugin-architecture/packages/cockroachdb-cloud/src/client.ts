@@ -15,13 +15,19 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  ListTruncatedError,
+  pathEncode,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import type { components, operations } from "./api-types.gen.js";
 import type {
   CAllowlistEntry,
   CBackupConfig,
   CCluster,
   CFolder,
+  CInvoice,
   CrdbApi,
   CRestore,
   CServiceAccount,
@@ -162,6 +168,24 @@ export class CockroachClient implements PluginClient {
 
   serviceAccounts(): Promise<CServiceAccount[]> {
     return this.api.getAll("/api/v1/service-accounts", "service_accounts");
+  }
+
+  /**
+   * The document gives this route only `status`, `start_time` and `end_time`, and no
+   * `pagination` in the answer, unlike every sibling, so there is nothing to walk. A
+   * next page would mean the document is wrong and this is not all of them.
+   */
+  private async invoices(
+    query?: operations["CockroachCloud_ListInvoices"]["parameters"]["query"],
+  ): Promise<CInvoice[]> {
+    const path = "/api/v1/invoices";
+    const page = await this.api.get(path, query ? { query } : {});
+    const vendor = "CockroachDB Cloud";
+    const invoices = requireListPage(page?.invoices, { vendor, path, key: "invoices" });
+    if (namesNextPage(page)) {
+      throw new ListTruncatedError({ vendor, path, items: invoices.length, maxPages: 1 });
+    }
+    return invoices;
   }
 
   /**
@@ -628,7 +652,7 @@ export class CockroachClient implements PluginClient {
           );
       }
       if (resource.resourceTypeId === "crdb-organization") {
-        const invoices = await settle(this.api.getAll("/api/v1/invoices", "invoices"));
+        const invoices = await settle(this.invoices());
         const latest = invoices?.sort((a, b) => b.period_start.localeCompare(a.period_start))[0];
         if (latest)
           fields["_latestInvoice"] = JSON.stringify({
@@ -1128,12 +1152,21 @@ export class CockroachClient implements PluginClient {
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
       // The list endpoint already embeds invoice items and line items.
-      const invoices = await this.api.getAll("/api/v1/invoices", "invoices", {
-        query: { start_time: `${range.fromDate.slice(0, 7)}-01T00:00:00Z` },
+      const invoices = await this.invoices({
+        start_time: `${range.fromDate.slice(0, 7)}-01T00:00:00Z`,
       });
       return invoicesToCostRows(invoices, range);
     });
   }
+}
+
+function namesNextPage(page: object): boolean {
+  const pagination: unknown = Reflect.get(page, "pagination");
+  return (
+    typeof pagination === "object" &&
+    pagination !== null &&
+    Boolean(Reflect.get(pagination, "next_page"))
+  );
 }
 
 // ---- mappers -------------------------------------------------------------------------

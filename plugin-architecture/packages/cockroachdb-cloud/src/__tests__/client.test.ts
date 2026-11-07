@@ -294,6 +294,79 @@ describe("CockroachClient", () => {
       expect(await client.listResources(typeId, ACCOUNT)).toEqual([]);
     });
   });
+
+  describe("invoices", () => {
+    const invoice: CInvoice = {
+      invoice_id: "i1",
+      period_start: "2026-09-01T00:00:00Z",
+      period_end: "2026-10-01T00:00:00Z",
+      status: "FINALIZED",
+      totals: [],
+      balances: [],
+      adjustments: [{ name: "Credit", amount: { amount: -5, currency: "USD" } }],
+      invoice_items: [],
+    };
+    const range = { fromDate: "2026-09-15", toDate: "2026-09-30" };
+
+    it("sends cost sync only the documented filters", async () => {
+      const { client, calls } = fake([on("GET", "/api/v1/invoices", { invoices: [invoice] })]);
+      const rows = await client.fetchCostData(ACCOUNT, range);
+      expect(rows.map((r) => r.amount)).toEqual([-5]);
+      expect(calls).toHaveLength(1);
+      expect([...new URL(calls[0]!.url).searchParams.keys()]).toEqual(["start_time"]);
+      expect(new URL(calls[0]!.url).searchParams.get("start_time")).toBe("2026-09-01T00:00:00Z");
+    });
+
+    it("sends the organization detail no paging either", async () => {
+      const { client, calls } = fake([on("GET", "/api/v1/invoices", { invoices: [invoice] })]);
+      const org = {
+        id: "o",
+        pluginId: "cockroachdb-cloud",
+        resourceTypeId: "crdb-organization",
+        accountId: ACCOUNT,
+        displayName: "o",
+        fields: {},
+        resolvedOutputs: {},
+        secretStates: [],
+        createdAt: "",
+        updatedAt: "",
+      };
+      const enriched = await client.enrichDetail(org);
+      expect(String(enriched.fields["_latestInvoice"])).toContain("2026-09-01");
+      expect(new URL(calls[0]!.url).search).toBe("");
+    });
+
+    it("fails rather than read one page as all of them, if the route ever pages", async () => {
+      const { client, calls } = fake([
+        on("GET", "/api/v1/invoices", {
+          invoices: [invoice],
+          pagination: { next_page: "p2" },
+        }),
+      ]);
+      await expect(client.fetchCostData(ACCOUNT, range)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(1);
+    });
+
+    it("fails a cost read whose body has no invoices", async () => {
+      const { client } = fake([on("GET", "/api/v1/invoices", { items: [] })]);
+      await expect(client.fetchCostData(ACCOUNT, range)).rejects.toThrow("is not a list");
+    });
+
+    it("tests billing access with a bounded read and no paging", async () => {
+      const { client, calls } = fake([
+        on("GET", "/api/v1/clusters", { clusters: [] }),
+        on("GET", "/api/v1/invoices", { invoices: [] }),
+        on("GET", "/api/v1/service-accounts", { service_accounts: [] }),
+      ]);
+      const { checks } = await client.verifyCredentials();
+      expect(checks.find((c) => c.capabilityId === "costs")?.status).toBe("ok");
+      const query = new URL(calls.find((c) => c.url.includes("invoices"))!.url).searchParams;
+      expect([...query.keys()]).toEqual(["start_time"]);
+      expect(query.get("start_time")).toMatch(/^\d{4}-\d{2}-01T00:00:00Z$/);
+    });
+  });
 });
 
 describe("helpers", () => {

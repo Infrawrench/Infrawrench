@@ -1127,7 +1127,6 @@ export interface components {
         };
         ListInvoicesResponse: {
             invoices: components["schemas"]["Invoice"][];
-            pagination?: components["schemas"]["KeysetPaginationResponse"];
         };
         ListMajorClusterVersionsResponse: {
             pagination?: components["schemas"]["KeysetPaginationResponse"];
@@ -2680,8 +2679,6 @@ export interface operations {
         parameters: {
             query?: {
                 end_time?: string;
-                "pagination.limit"?: number;
-                "pagination.page"?: string;
                 start_time?: string;
                 status?: "FINALIZED" | "DRAFT";
             };

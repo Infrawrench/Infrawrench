@@ -89,7 +89,10 @@ export async function verifyCockroachCredentials(
           message: "No cluster to test against.",
         }),
     probe("costs", [P.billing], () =>
-      client.api.get("/api/v1/invoices", { query: { "pagination.limit": 1 } }),
+      // This route takes no limit, so only a start date keeps it from every invoice.
+      client.api.get("/api/v1/invoices", {
+        query: { start_time: `${new Date().toISOString().slice(0, 7)}-01T00:00:00Z` },
+      }),
     ),
     probe("access", [P.org], () =>
       client.api.get("/api/v1/service-accounts", { query: { "pagination.limit": 1 } }),
