@@ -385,7 +385,17 @@ export class ResendClient implements PluginClient {
         ...resource,
         resolvedOutputs: { ...resource.resolvedOutputs, [key]: JSON.stringify(value) },
       });
+      const withFields = ({ fields }: ResourceInstance): ResourceInstance => ({
+        ...resource,
+        fields: { ...resource.fields, ...fields },
+      });
       switch (resource.resourceTypeId) {
+        // Their list rows have no sender, subject or the like, and the edit form
+        // seeds from what comes back here too.
+        case BROADCAST:
+          return withFields(mapBroadcast(resource.accountId, await api.get(`/broadcasts/${id}`)));
+        case TEMPLATE:
+          return withFields(mapTemplate(resource.accountId, await api.get(`/templates/${id}`)));
         case DOMAIN: {
           const d = await api.get(`/domains/${id}`);
           const records: RecordStash[] = (d.records ?? []).map((r) => ({

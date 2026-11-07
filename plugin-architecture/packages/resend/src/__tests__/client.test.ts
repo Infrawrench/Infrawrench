@@ -299,6 +299,59 @@ describe("broadcasts", () => {
   });
 });
 
+describe("details the list does not return", () => {
+  it("reads a broadcast's sender and content back for the detail page and edit form", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === "/broadcasts"
+        ? { data: [{ id: "b1", name: "News", status: "draft" }], has_more: false }
+        : {
+            id: "b1",
+            name: "News",
+            status: "draft",
+            subject: "Hello",
+            from: "Acme <news@acme.test>",
+            reply_to: ["help@acme.test"],
+            preview_text: "Read on",
+          },
+    );
+    const [row] = await c.listResources("resend-broadcast", ACC);
+    expect(row?.fields["subject"]).toBe("");
+    const detail = await c.enrichDetail(row!);
+    expect(calls.at(-1)?.url.pathname).toBe("/broadcasts/b1");
+    expect(detail.fields).toMatchObject({
+      subject: "Hello",
+      from: "Acme <news@acme.test>",
+      replyTo: "help@acme.test",
+      previewText: "Read on",
+    });
+    expect(JSON.stringify(c.renderDetail(detail))).toContain("Read on");
+  });
+
+  it("reads a template's sender, subject and unpublished state back", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname === "/templates"
+        ? { data: [{ id: "t1", name: "Welcome", status: "published" }], has_more: false }
+        : {
+            id: "t1",
+            name: "Welcome",
+            status: "published",
+            from: "Acme <hi@acme.test>",
+            subject: "Welcome",
+            has_unpublished_versions: true,
+          },
+    );
+    const [row] = await c.listResources("resend-template", ACC);
+    expect(row?.fields["hasUnpublishedVersions"]).toBe(false);
+    const detail = await c.enrichDetail(row!);
+    expect(calls.at(-1)?.url.pathname).toBe("/templates/t1");
+    expect(detail.fields).toMatchObject({
+      from: "Acme <hi@acme.test>",
+      subject: "Welcome",
+      hasUnpublishedVersions: true,
+    });
+  });
+});
+
 describe("metrics and quotas", () => {
   it("charts daily metrics for a domain and converts fractional rates to percent", async () => {
     const { c, calls } = client(() => ({
