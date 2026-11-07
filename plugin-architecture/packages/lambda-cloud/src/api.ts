@@ -1,4 +1,6 @@
-import type { HostServices } from "@infrawrench/plugin-base";
+import { createApiClient, type ApiClient, type HostServices } from "@infrawrench/plugin-base";
+import type { paths } from "./api-types.gen.js";
+import type { LInstance } from "./types.js";
 
 /**
  * Transport for the Lambda Cloud API (`https://cloud.lambda.ai/api/v1`,
@@ -31,9 +33,9 @@ export class LambdaApiError extends Error {
 
 export function parseError(body: string): { code: string; message: string; suggestion: string } {
   try {
-    const e = (
-      JSON.parse(body) as { error?: { code?: string; message?: string; suggestion?: string } }
-    ).error;
+    const parsed: { error?: { code?: string; message?: string; suggestion?: string } } =
+      JSON.parse(body);
+    const e = parsed.error;
     if (e && (e.message || e.code)) {
       return {
         code: e.code ?? "",
@@ -47,83 +49,57 @@ export function parseError(body: string): { code: string; message: string; sugge
   return { code: "", message: body.slice(0, 500) || "(empty response)", suggestion: "" };
 }
 
-export interface RequestOptions {
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  query?: Record<string, string | number | undefined>;
-  body?: unknown;
+export type LambdaApi = ApiClient<paths>;
+
+export function createLambdaApi(
+  apiKey: string,
+  caCert: string,
+  services: HostServices | undefined,
+): LambdaApi {
+  return createApiClient<paths>({
+    vendor: "Lambda Cloud",
+    baseUrl: API_BASE,
+    headers: { Accept: "application/json", Authorization: `Bearer ${apiKey}` },
+    http: services?.http,
+    caCert,
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    httpError: ({ status, path, body }) => new LambdaApiError(status, path, body ?? ""),
+  });
 }
 
-export class LambdaApi {
-  constructor(
-    private readonly apiKey: string,
-    private readonly caCert: string,
-    private readonly services: HostServices | undefined,
-  ) {}
+/**
+ * What a call answered inside `{data}`. A 2xx with no body arrives as `undefined`
+ * and stays that way, which the document does not allow for and callers guard with
+ * `??`. A body of JSON `null` is not that, and throws.
+ */
+export function unwrap<T>(answer: { data: T }): T {
+  return answer === undefined ? answer : answer.data;
+}
 
-  private async send(
-    path: string,
-    method: string,
-    query: Record<string, string | number | undefined> | undefined,
-    body: unknown,
-  ): Promise<string> {
-    const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(query ?? {})) {
-      if (v !== undefined && v !== "") params.append(k, String(v));
-    }
-    const qs = params.toString();
-    const url = `${API_BASE}${path}${qs ? `?${qs}` : ""}`;
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      Authorization: `Bearer ${this.apiKey}`,
-    };
-    const payload = body === undefined ? undefined : JSON.stringify(body);
-    if (payload !== undefined) headers["Content-Type"] = "application/json";
-    let status: number;
-    let text: string;
-    const http = this.services?.http;
-    if (http) {
-      const res = await http.request({
-        url,
-        method,
-        headers,
-        ...(payload !== undefined ? { body: payload } : {}),
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-      });
-      status = res.status;
-      text = res.body ?? "";
-    } else {
-      const res = await fetch(url, {
-        method,
-        headers,
-        ...(payload !== undefined ? { body: payload } : {}),
-      });
-      status = res.status;
-      text = await res.text();
-    }
-    if (status < 200 || status >= 300) throw new LambdaApiError(status, path, text);
-    return text;
+/**
+ * Every instance (only `/instances` paginates today), up to 100 pages.
+ *
+ * Not `withCursorPagination`: here an empty 200 ends the list, while JSON `null` or
+ * a `data` that is not a list fails it. `getAll` cannot tell an empty 200 from `null`
+ * and reads a bad `data` as an empty page, and the host prunes what a sync stops
+ * seeing, so a failure has to stay a failure.
+ */
+export async function listInstances(api: LambdaApi): Promise<LInstance[]> {
+  const out: LInstance[] = [];
+  let token: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const raw = await api.get("/instances", {
+      // A token goes back as text, whatever the provider sent: the client would
+      // write an object as `page_token[a]=1` and an array as a repeated key.
+      query: { page_size: 100, ...(token === undefined ? {} : { page_token: String(token) }) },
+    });
+    if (raw === undefined) break;
+    out.push(...(raw.data ?? []));
+    token = raw.page_token || undefined;
+    if (!token) break;
   }
-
-  /** Calls the API and unwraps `{data}`. */
-  async request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-    const text = await this.send(path, opts.method ?? "GET", opts.query, opts.body);
-    if (!text) return undefined as unknown as T;
-    return (JSON.parse(text) as { data?: T }).data as T;
-  }
-
-  /** Every page of a `page_token`-paginated list (only `/instances` paginates today). */
-  async listAll<T>(path: string): Promise<T[]> {
-    const out: T[] = [];
-    let token: string | undefined;
-    for (let page = 0; page < 100; page++) {
-      const text = await this.send(path, "GET", { page_size: 100, page_token: token }, undefined);
-      const raw = (text ? JSON.parse(text) : {}) as { data?: T[]; page_token?: string | null };
-      out.push(...(raw.data ?? []));
-      token = raw.page_token || undefined;
-      if (!token) break;
-    }
-    return out;
-  }
+  return out;
 }
 
 export function isStatus(err: unknown, ...statuses: number[]): boolean {

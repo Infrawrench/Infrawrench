@@ -14,7 +14,11 @@ import type { LFirewallRule } from "./types.js";
  * every port. The description is the rest of the line.
  */
 
-const PROTOCOLS = new Set(["tcp", "udp", "icmp", "all"]);
+const PROTOCOLS = ["tcp", "udp", "icmp", "all"] as const;
+
+function isProtocol(value: string): value is LFirewallRule["protocol"] {
+  return PROTOCOLS.some((protocol) => protocol === value);
+}
 
 export function formatRule(r: LFirewallRule): string {
   const range = r.port_range;
@@ -33,14 +37,14 @@ export function parseRules(text: string): LFirewallRule[] {
     if (!line || line.startsWith("#")) return;
     const [proto, ports, source, ...rest] = line.split(/\s+/);
     const protocol = (proto ?? "").toLowerCase();
-    if (!PROTOCOLS.has(protocol)) {
+    if (!isProtocol(protocol)) {
       throw new Error(`Firewall rule line ${i + 1}: protocol must be tcp, udp, icmp or all`);
     }
     if (!source || !/^[\d.]+\/\d{1,2}$/.test(source)) {
       throw new Error(`Firewall rule line ${i + 1}: source must be an IPv4 CIDR such as 0.0.0.0/0`);
     }
     const rule: LFirewallRule = {
-      protocol: protocol as LFirewallRule["protocol"],
+      protocol,
       source_network: source,
       description: rest.join(" "),
     };

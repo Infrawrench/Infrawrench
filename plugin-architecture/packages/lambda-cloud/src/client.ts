@@ -11,8 +11,9 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { buildCostEstimate } from "@infrawrench/plugin-base";
-import { LambdaApi } from "./api.js";
+import { buildCostEstimate, pathEncode, type ApiBody } from "@infrawrench/plugin-base";
+import { createLambdaApi, listInstances, unwrap, type LambdaApi } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 import { buildCreateConfig, DEFAULT_IMAGE, NONE } from "./create-config.js";
 import { parseRules } from "./firewall.js";
 import {
@@ -25,15 +26,7 @@ import {
   parseTags,
 } from "./mappers.js";
 import { renderLambdaDetail, renderLambdaSidebarItem } from "./render.js";
-import type {
-  LFilesystem,
-  LFirewallRuleset,
-  LImage,
-  LInstance,
-  LInstanceTypeItem,
-  LRegion,
-  LSshKey,
-} from "./types.js";
+import type { LInstanceTypeItem, LRegion } from "./types.js";
 
 const CACHE_TTL_MS = 60_000;
 const HOURS_PER_MONTH = 730;
@@ -48,9 +41,9 @@ function picked(v: string | undefined): string {
 }
 
 function notFound(typeId: string, id: string): Error {
-  const err = new Error(`Lambda Cloud plugin: ${typeId} ${id} not found`);
-  (err as Error & { status: number }).status = 404;
-  return err;
+  return Object.assign(new Error(`Lambda Cloud plugin: ${typeId} ${id} not found`), {
+    status: 404,
+  });
 }
 
 /**
@@ -69,24 +62,22 @@ export class LambdaCloudClient implements PluginClient {
   ) {
     const apiKey = str(credentials["apiKey"]);
     if (!apiKey) throw new Error("Lambda Cloud plugin: missing apiKey credential");
-    this.api = new LambdaApi(apiKey, credentials["caCert"] ?? "", services);
+    this.api = createLambdaApi(apiKey, credentials["caCert"] ?? "", services);
     this.resourceTypes = resourceTypes;
   }
 
   readonly raw = {
-    instances: () => this.api.listAll<LInstance>("/instances"),
-    filesystems: () => this.api.request<LFilesystem[]>("/filesystems"),
-    rulesets: () => this.api.request<LFirewallRuleset[]>("/firewall-rulesets"),
-    sshKeys: () => this.api.request<LSshKey[]>("/ssh-keys"),
-    images: () => this.api.request<LImage[]>("/images"),
+    instances: () => listInstances(this.api),
+    filesystems: async () => unwrap(await this.api.get("/filesystems")),
+    rulesets: async () => unwrap(await this.api.get("/firewall-rulesets")),
+    sshKeys: async () => unwrap(await this.api.get("/ssh-keys")),
+    images: async () => unwrap(await this.api.get("/images")),
   };
 
   /** Instance types with live capacity, cached for a minute (the API allows ~1 request/s). */
   instanceTypes(): Promise<LInstanceTypeItem[]> {
     if (!this.typesCache || Date.now() - this.typesCache.at > CACHE_TTL_MS) {
-      const value = this.api
-        .request<Record<string, LInstanceTypeItem>>("/instance-types")
-        .then((r) => Object.values(r ?? {}));
+      const value = this.api.get("/instance-types").then((r) => Object.values(unwrap(r) ?? {}));
       value.catch(() => (this.typesCache = undefined));
       this.typesCache = { at: Date.now(), value };
     }
@@ -94,7 +85,7 @@ export class LambdaCloudClient implements PluginClient {
   }
 
   async regions(): Promise<LRegion[]> {
-    return (await this.api.request<LRegion[]>("/regions")) ?? [];
+    return unwrap(await this.api.get("/regions")) ?? [];
   }
 
   // ── Listing ──────────────────────────────────────────────────────────
@@ -109,7 +100,7 @@ export class LambdaCloudClient implements PluginClient {
         case "firewall-ruleset":
           return ((await this.raw.rulesets()) ?? []).map((r) => mapRuleset(r, accountId));
         case "global-firewall": {
-          const g = await this.api.request<LFirewallRuleset>("/firewall-rulesets/global");
+          const g = unwrap(await this.api.get("/firewall-rulesets/global"));
           return g ? [mapRuleset(g, accountId, true)] : [];
         }
         case "ssh-key":
@@ -129,15 +120,10 @@ export class LambdaCloudClient implements PluginClient {
       const id = externalOf(resourceId);
       switch (typeId) {
         case "instance":
-          return mapInstance(
-            await this.api.request<LInstance>(`/instances/${encodeURIComponent(id)}`),
-            accountId,
-          );
+          return mapInstance(unwrap(await this.api.get(`/instances/${pathEncode(id)}`)), accountId);
         case "firewall-ruleset":
           return mapRuleset(
-            await this.api.request<LFirewallRuleset>(
-              `/firewall-rulesets/${encodeURIComponent(id)}`,
-            ),
+            unwrap(await this.api.get(`/firewall-rulesets/${pathEncode(id)}`)),
             accountId,
           );
         default: {
@@ -159,9 +145,7 @@ export class LambdaCloudClient implements PluginClient {
   ): PluginEffect<string> {
     return attempt(async () => {
       if (typeId === "instance" && (outputKey === "jupyterUrl" || outputKey === "jupyterToken")) {
-        const i = await this.api.request<LInstance>(
-          `/instances/${encodeURIComponent(externalOf(resourceId))}`,
-        );
+        const i = unwrap(await this.api.get(`/instances/${pathEncode(externalOf(resourceId))}`));
         return (outputKey === "jupyterUrl" ? i?.jupyter_url : i?.jupyter_token) ?? "";
       }
       const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
@@ -177,7 +161,7 @@ export class LambdaCloudClient implements PluginClient {
     });
   }
 
-  launchBody(fields: Record<string, string>): Record<string, unknown> {
+  launchBody(fields: Record<string, string>): ApiBody<operations["launchInstance"]> {
     const region = str(fields["regionName"]);
     const type = str(fields["instanceTypeName"]);
     const key = str(fields["sshKeyName"]);
@@ -214,10 +198,7 @@ export class LambdaCloudClient implements PluginClient {
       switch (typeId) {
         case "instance": {
           const body = this.launchBody(fields);
-          const res = await this.api.request<{ instance_ids?: string[] }>(
-            "/instance-operations/launch",
-            { method: "POST", body },
-          );
+          const res = unwrap(await this.api.post("/instance-operations/launch", { body }));
           const id = res?.instance_ids?.[0];
           if (!id) throw new Error("Lambda Cloud plugin: launch returned no instance id");
           try {
@@ -245,26 +226,31 @@ export class LambdaCloudClient implements PluginClient {
           }
         }
         case "filesystem": {
-          const fs = await this.api.request<LFilesystem>("/filesystems", {
-            method: "POST",
-            body: { name, region: str(fields["region"]) },
-          });
+          const fs = unwrap(
+            await this.api.post("/filesystems", {
+              body: { name, region: str(fields["region"]) },
+            }),
+          );
           return mapFilesystem(fs, accountId);
         }
         case "firewall-ruleset": {
-          const r = await this.api.request<LFirewallRuleset>("/firewall-rulesets", {
-            method: "POST",
-            body: { name, region: str(fields["region"]), rules: parseRules(fields["rules"] ?? "") },
-          });
+          const r = unwrap(
+            await this.api.post("/firewall-rulesets", {
+              body: {
+                name,
+                region: str(fields["region"]),
+                rules: parseRules(fields["rules"] ?? ""),
+              },
+            }),
+          );
           return mapRuleset(r, accountId);
         }
         case "ssh-key": {
           const publicKey = str(fields["publicKey"]);
           if (!publicKey) throw new Error("Lambda Cloud plugin: paste or pick a public key");
-          const k = await this.api.request<LSshKey>("/ssh-keys", {
-            method: "POST",
-            body: { name, public_key: publicKey },
-          });
+          const k = unwrap(
+            await this.api.post("/ssh-keys", { body: { name, public_key: publicKey } }),
+          );
           return mapSshKey(k, accountId);
         }
         default:
@@ -280,30 +266,24 @@ export class LambdaCloudClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = encodeURIComponent(externalOf(resourceId));
+      const id = pathEncode(externalOf(resourceId));
       switch (typeId) {
         case "instance": {
-          const body: Record<string, unknown> = {};
-          if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
-          if (fields["tags"] !== undefined) body["tags"] = parseTags(fields["tags"]);
+          const body: ApiBody<operations["postInstance"]> = {};
+          if (fields["name"] !== undefined) body.name = str(fields["name"]);
+          if (fields["tags"] !== undefined) body.tags = parseTags(fields["tags"]);
           if (Object.keys(body).length === 0)
             return runPluginEffect(this.getResource(typeId, resourceId, accountId));
-          return mapInstance(
-            await this.api.request<LInstance>(`/instances/${id}`, { method: "POST", body }),
-            accountId,
-          );
+          return mapInstance(unwrap(await this.api.post(`/instances/${id}`, { body })), accountId);
         }
         case "firewall-ruleset": {
-          const body: Record<string, unknown> = {};
-          if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
-          if (fields["rules"] !== undefined) body["rules"] = parseRules(fields["rules"]);
+          const body: ApiBody<operations["updateFirewallRuleset"]> = {};
+          if (fields["name"] !== undefined) body.name = str(fields["name"]);
+          if (fields["rules"] !== undefined) body.rules = parseRules(fields["rules"]);
           if (Object.keys(body).length === 0)
             return runPluginEffect(this.getResource(typeId, resourceId, accountId));
           return mapRuleset(
-            await this.api.request<LFirewallRuleset>(`/firewall-rulesets/${id}`, {
-              method: "PATCH",
-              body,
-            }),
+            unwrap(await this.api.patch(`/firewall-rulesets/${id}`, { body })),
             accountId,
           );
         }
@@ -311,10 +291,11 @@ export class LambdaCloudClient implements PluginClient {
           if (fields["rules"] === undefined)
             return runPluginEffect(this.getResource(typeId, resourceId, accountId));
           return mapRuleset(
-            await this.api.request<LFirewallRuleset>(`/firewall-rulesets/${GLOBAL_FIREWALL_ID}`, {
-              method: "PATCH",
-              body: { rules: parseRules(fields["rules"]) },
-            }),
+            unwrap(
+              await this.api.patch(`/firewall-rulesets/${GLOBAL_FIREWALL_ID}`, {
+                body: { rules: parseRules(fields["rules"]) },
+              }),
+            ),
             accountId,
             true,
           );
@@ -328,22 +309,23 @@ export class LambdaCloudClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const raw = externalOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       switch (typeId) {
         case "instance":
-          await this.api.request("/instance-operations/terminate", {
-            method: "POST",
-            body: { instance_ids: [raw] },
-          });
+          unwrap(
+            await this.api.post("/instance-operations/terminate", {
+              body: { instance_ids: [raw] },
+            }),
+          );
           return;
         case "filesystem":
-          await this.api.request(`/filesystems/${id}`, { method: "DELETE" });
+          unwrap(await this.api.delete(`/filesystems/${id}`));
           return;
         case "firewall-ruleset":
-          await this.api.request(`/firewall-rulesets/${id}`, { method: "DELETE" });
+          unwrap(await this.api.delete(`/firewall-rulesets/${id}`));
           return;
         case "ssh-key":
-          await this.api.request(`/ssh-keys/${id}`, { method: "DELETE" });
+          unwrap(await this.api.delete(`/ssh-keys/${id}`));
           return;
         default:
           throw new Error(`Lambda Cloud plugin: cannot delete "${typeId}"`);
@@ -359,10 +341,11 @@ export class LambdaCloudClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       if (typeId === "instance" && actionId === "restart") {
-        await this.api.request("/instance-operations/restart", {
-          method: "POST",
-          body: { instance_ids: [externalOf(resourceId)] },
-        });
+        unwrap(
+          await this.api.post("/instance-operations/restart", {
+            body: { instance_ids: [externalOf(resourceId)] },
+          }),
+        );
         return;
       }
       throw new Error(`Lambda Cloud plugin: action "${actionId}" is not supported for "${typeId}"`);
