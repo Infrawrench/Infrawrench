@@ -25,7 +25,13 @@ const nextLink = (url: string, results = true) => ({
 function endless(call: Call) {
   const page = Number(call.url.searchParams.get("cursor") ?? 0);
   return {
-    body: [{ id: String(page), slug: `row-${page}`, dateCreated: new Date().toISOString() }],
+    body: [
+      {
+        id: String(page),
+        slug: `row-${page}`,
+        dateCreated: new Date(Date.now() - 3_600_000).toISOString(),
+      },
+    ],
     headers: nextLink(`https://us.sentry.io${call.url.pathname}?cursor=${page + 1}`),
   };
 }
@@ -74,7 +80,12 @@ describe("page caps", () => {
       const page = Number(call.url.searchParams.get("cursor") ?? 0);
       return {
         body: [
-          { id: String(page), status: "ok", duration: 1000, dateCreated: new Date().toISOString() },
+          {
+            id: String(page),
+            status: "ok",
+            duration: 1000,
+            dateCreated: new Date(Date.now() - 3_600_000).toISOString(),
+          },
         ],
         headers: nextLink(`https://us.sentry.io${call.url.pathname}?cursor=${page + 1}`),
       };
