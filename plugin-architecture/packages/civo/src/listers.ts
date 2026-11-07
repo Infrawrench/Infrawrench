@@ -1,16 +1,16 @@
 /**
  * Listing: Civo API objects to `ResourceInstance`s. Regional listers fan out
  * across the account's regions (each region one request, at most four in
- * flight); a region that fails is skipped rather than failing the whole
- * list, because an out-of-capacity or newly launched region should not hide
- * every other region's resources.
+ * flight). A sync soft-deletes whatever a list stops returning, so only an
+ * answer that says this credential has no access reads as none. Anything else
+ * fails the whole type, and the stored rows stay.
  *
  * Fields an orphan/posture rule reads are always written (empty string, never
  * absent).
  */
 
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { type CivoApi, mapPooled } from "./api.js";
+import { type CivoApi, type CivoApiError, isAccessRefusal, isMissing, mapPooled } from "./api.js";
 import type { RegionCache, RegionFeature } from "./regions.js";
 import type {
   CivoCluster,
@@ -72,21 +72,49 @@ export function instance(
 const str = (v: unknown) => (v == null ? "" : String(v));
 const lower = (v: unknown) => str(v).toLowerCase();
 
+/**
+ * Every place's rows. One that refuses has none. Every place refusing is not an empty
+ * account, so that rejects with the refusal, which `CivoClient.listResources` takes up.
+ */
+async function readEach<P, R>(places: P[], read: (place: P) => Promise<R[]>): Promise<R[]> {
+  const refusals: CivoApiError[] = [];
+  const rows = await mapPooled(places, 4, async (place) => {
+    try {
+      return await read(place);
+    } catch (err) {
+      if (!isAccessRefusal(err) && !isMissing(err)) throw err;
+      refusals.push(err);
+      return [];
+    }
+  });
+  const first = refusals[0];
+  if (first && refusals.length === places.length) {
+    // A route missing everywhere is not a restricted key, and only regions get here
+    // with one: readChildren takes a 404 from a parent first.
+    throw refusals.find(isMissing)?.everywhere("in every region") ?? first;
+  }
+  return rows.flat();
+}
+
+/** One parent's children. A 404 is a parent gone since the list, so it has none. */
+async function readChildren<T>(read: Promise<T[]>): Promise<T[]> {
+  try {
+    return await read;
+  } catch (err) {
+    if (isMissing(err)) return [];
+    throw err;
+  }
+}
+
 /** Run a per-region list across every region with the feature. */
 export async function perRegion<T>(
   ctx: ListContext,
   feature: RegionFeature | undefined,
   fn: (region: string) => Promise<T[]>,
 ): Promise<Array<{ region: string; item: T }>> {
-  const codes = await ctx.regions.codes(feature);
-  const settled = await mapPooled(codes, 4, async (region) => {
-    try {
-      return (await fn(region)).map((item) => ({ region, item }));
-    } catch {
-      return [];
-    }
-  });
-  return settled.flat();
+  return readEach(await ctx.regions.codes(feature), async (region) =>
+    (await fn(region)).map((item) => ({ region, item })),
+  );
 }
 
 // --- Instances ---------------------------------------------------------------
@@ -232,17 +260,12 @@ export async function listInstanceSnapshots(ctx: ListContext, accountId: string)
   const instances = await perRegion(ctx, "iaas", (region) =>
     ctx.api.list<CivoInstance>("/instances", { region }),
   );
-  const rows = await mapPooled(instances, 4, async ({ region, item }) => {
-    try {
-      const snaps = await ctx.api.list<CivoInstanceSnapshot>(`/instances/${item.id}/snapshots`, {
-        region,
-      });
-      return snaps.map((s) => mapInstanceSnapshot(s, item.id, region, accountId));
-    } catch {
-      return [];
-    }
+  return readEach(instances, async ({ region, item }) => {
+    const snaps = await readChildren(
+      ctx.api.list<CivoInstanceSnapshot>(`/instances/${item.id}/snapshots`, { region }),
+    );
+    return snaps.map((s) => mapInstanceSnapshot(s, item.id, region, accountId));
   });
-  return rows.flat();
 }
 
 // --- Kubernetes ------------------------------------------------------------------
@@ -412,17 +435,12 @@ export async function listDatabaseBackups(ctx: ListContext, accountId: string) {
   const dbs = await perRegion(ctx, "dbaas", (region) =>
     ctx.api.list<CivoDatabase>("/databases", { region }),
   );
-  const rows = await mapPooled(dbs, 4, async ({ region, item }) => {
-    try {
-      const backups = await ctx.api.list<CivoDatabaseBackup>(`/databases/${item.id}/backups`, {
-        region,
-      });
-      return backups.map((b) => mapDatabaseBackup(b, item.id, region, accountId));
-    } catch {
-      return [];
-    }
+  return readEach(dbs, async ({ region, item }) => {
+    const backups = await readChildren(
+      ctx.api.list<CivoDatabaseBackup>(`/databases/${item.id}/backups`, { region }),
+    );
+    return backups.map((b) => mapDatabaseBackup(b, item.id, region, accountId));
   });
-  return rows.flat();
 }
 
 // --- Networking ----------------------------------------------------------------------
@@ -525,8 +543,10 @@ export async function listFirewalls(ctx: ListContext, accountId: string) {
         item.rules = await ctx.api.list<CivoFirewallRule>(`/firewalls/${item.id}/rules`, {
           region,
         });
-      } catch {
-        // leave rules unknown: openToWorld stays absent
+      } catch (err) {
+        // Refused: rules unknown, so openToWorld stays absent. Any other failure would
+        // clear a finding that may still hold.
+        if (!isAccessRefusal(err) && !isMissing(err)) throw err;
       }
     }
     return mapFirewall(item, region, accountId);
@@ -627,7 +647,8 @@ export async function listDomains(ctx: ListContext, accountId: string) {
     let count: number | null = null;
     try {
       count = (await ctx.api.list<CivoDnsRecord>(`/dns/${d.id}/records`)).length;
-    } catch {
+    } catch (err) {
+      if (!isAccessRefusal(err) && !isMissing(err)) throw err;
       count = null;
     }
     return mapDomain(d, accountId, count);
@@ -636,16 +657,10 @@ export async function listDomains(ctx: ListContext, accountId: string) {
 
 export async function listDnsRecords(ctx: ListContext, accountId: string) {
   const domains = await ctx.api.list<CivoDnsDomain>("/dns");
-  const rows = await mapPooled(domains, 4, async (d) => {
-    try {
-      return (await ctx.api.list<CivoDnsRecord>(`/dns/${d.id}/records`)).map((r) =>
-        mapDnsRecord(r, d, accountId),
-      );
-    } catch {
-      return [];
-    }
+  return readEach(domains, async (d) => {
+    const records = await readChildren(ctx.api.list<CivoDnsRecord>(`/dns/${d.id}/records`));
+    return records.map((r) => mapDnsRecord(r, d, accountId));
   });
-  return rows.flat();
 }
 
 // --- Object storage ------------------------------------------------------------------

@@ -2,11 +2,12 @@
  * Regions. The live list is `GET /v2/regions` (each with `features` such as
  * `kubernetes`, `dbaas`, `object_store`, `loadbalancer`); listers fan out
  * across it, because almost every Civo resource is regional. The static
- * table is the offline fallback, captured from Civo's docs and status page
- * (2026-10).
+ * table is the fallback for a form or a credentials check, captured from
+ * Civo's docs and status page (2026-10). A sync never uses it: fanning out
+ * over it would prune every region it does not name.
  */
 
-import type { RegionOption } from "@infrawrench/plugin-base";
+import { requireListPage, type RegionOption } from "@infrawrench/plugin-base";
 import type { CivoApi } from "./api.js";
 import type { CivoRegion } from "./types.js";
 
@@ -32,30 +33,51 @@ export class RegionCache {
   private pending: Promise<CivoRegion[]> | null = null;
   constructor(private readonly api: CivoApi) {}
 
+  /** The regions Civo says this account has, or a rejection when it cannot say. */
   all(): Promise<CivoRegion[]> {
     if (!this.pending) {
       this.pending = this.api
-        .get<CivoRegion[]>("/regions")
-        .then((r) => (Array.isArray(r) && r.length ? r : fallback()))
-        .catch(() => {
+        .get<CivoRegion[] | null>("/regions")
+        .then((answer) => {
+          const regions = requireListPage(answer, {
+            vendor: "Civo",
+            path: "/regions",
+            key: null,
+          });
+          if (regions.length === 0) {
+            throw new Error("Civo answered /regions with no regions, so nothing can be listed.");
+          }
+          return regions;
+        })
+        .catch((err: unknown) => {
           this.pending = null;
-          return fallback();
+          throw err;
         });
     }
     return this.pending;
   }
 
+  private orKnown(): Promise<CivoRegion[]> {
+    return this.all().catch(() => fallback());
+  }
+
+  /** The regions a list has to read. Rejects rather than guess at them. */
   async codes(feature?: RegionFeature): Promise<string[]> {
-    const regions = await this.all();
-    return regions.filter((r) => !feature || r.features?.[feature] !== false).map((r) => r.code);
+    return offering(await this.all(), feature).map((r) => r.code);
+  }
+
+  /** A region to send a credentials check to, which has to work with a bad key too. */
+  async probe(): Promise<string | undefined> {
+    return (await this.orKnown())[0]?.code;
   }
 
   async options(feature?: RegionFeature): Promise<RegionOption[]> {
-    const regions = await this.all();
-    return regions
-      .filter((r) => !feature || r.features?.[feature] !== false)
-      .map((r) => regionOption(r));
+    return offering(await this.orKnown(), feature).map((r) => regionOption(r));
   }
+}
+
+function offering(regions: CivoRegion[], feature?: RegionFeature): CivoRegion[] {
+  return regions.filter((r) => !feature || r.features?.[feature] !== false);
 }
 
 function fallback(): CivoRegion[] {

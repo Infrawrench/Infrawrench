@@ -15,9 +15,9 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { withMetricsCapability } from "@infrawrench/plugin-base";
+import { reportUnreadListPart, withMetricsCapability } from "@infrawrench/plugin-base";
 import * as actions from "./actions.js";
-import { type CivoApi, createCivoApi, regional, statusOf } from "./api.js";
+import { type CivoApi, createCivoApi, isAccessRefusal, regional, statusOf } from "./api.js";
 import { createResource, getCreateConfig } from "./create.js";
 import { enrichDetail } from "./enrich.js";
 import * as listers from "./listers.js";
@@ -111,7 +111,15 @@ export class CivoClient implements PluginClient {
     return attempt(async () => {
       const lister = LISTERS[typeId];
       if (!lister) throw new Error(`Civo plugin: unknown resource type "${typeId}"`);
-      return lister(this.ctx, accountId);
+      try {
+        return await lister(this.ctx, accountId);
+      } catch (err) {
+        // A restricted key refused a whole type is normal, and failing it on every poll
+        // would page someone. Its stored rows stay, with no error.
+        if (!isAccessRefusal(err)) throw err;
+        reportUnreadListPart({ idPrefixes: [""] });
+        return [];
+      }
     });
   }
 
@@ -317,7 +325,7 @@ export class CivoClient implements PluginClient {
 
   verifyCredentials(): PluginEffect<PreflightResult> {
     return attempt(async () => {
-      const region = (await this.ctx.regions.codes())[0];
+      const region = await this.ctx.regions.probe();
       const checks = await Promise.all(
         PROBES.map(async (p) => {
           try {

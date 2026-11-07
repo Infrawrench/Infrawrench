@@ -18,25 +18,51 @@
  * (`CivoApiError.status`) for the hosts' backoff classification.
  */
 
-import { hostFetch, type HostServices } from "@infrawrench/plugin-base";
+import {
+  hostFetch,
+  type HostServices,
+  ListTruncatedError,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 
 export const CIVO_API_BASE = "https://api.civo.com/v2";
 
 export class CivoApiError extends Error {
   readonly status: number;
   readonly code: string | undefined;
-  constructor(status: number, path: string, body: string) {
+  constructor(
+    status: number,
+    private readonly path: string,
+    private readonly body: string,
+  ) {
     const parsed = parseError(body);
     super(`Civo API error ${status} for ${path}: ${parsed.message}`);
     this.name = "CivoApiError";
     this.status = status;
     this.code = parsed.code;
   }
+
+  /** The same answer, said of every place it came from. */
+  everywhere(where: string): CivoApiError {
+    return new CivoApiError(this.status, `${this.path} ${where}`, this.body);
+  }
 }
 
 function parseError(body: string): { message: string; code?: string } {
   try {
-    const parsed = JSON.parse(body) as { code?: string; reason?: string; details?: string };
+    const parsed = JSON.parse(body) as {
+      code?: string;
+      reason?: string;
+      details?: string;
+      error?: { message?: string; status?: string; details?: Array<{ reason?: string }> };
+    };
+    // Civo's gateway wraps its errors, with the reason in the first detail that has one.
+    if (parsed.error && typeof parsed.error === "object") {
+      const { message, status, details } = parsed.error;
+      const code =
+        (Array.isArray(details) ? details.find((d) => d.reason)?.reason : undefined) ?? status;
+      return { message: message ?? code ?? body.slice(0, 500), ...(code ? { code } : {}) };
+    }
     if (parsed.reason || parsed.code) {
       return {
         message: [parsed.reason ?? parsed.code, parsed.details].filter(Boolean).join(": "),
@@ -55,6 +81,39 @@ export function statusOf(err: unknown): number | undefined {
     if (typeof s === "number") return s;
   }
   return undefined;
+}
+
+/**
+ * What civogo's errors.go names for a product a region or account does not offer: the
+ * v2 codes, then the gateway's reasons.
+ */
+const NOT_OFFERED = new Set([
+  "region_unavailable",
+  "disabled_service",
+  "REGION_UNAVAILABLE",
+  "REGION_FEATURE_UNAVAILABLE",
+]);
+
+/** A 403 for a bad key, as opposed to a good key with no access to this. */
+const KEY_REJECTED = new Set(["authentication_failed", "authentication_invalid_key"]);
+
+/**
+ * Whether an answer says this credential has no access here or the product is not
+ * enabled, which does not change on a retry. Civo's API docs warn that "All resources
+ * may not be available to your API key", and call a 403 an unauthorized request. A
+ * not-offered code on a 5xx is a region that is down, so its rows are unknown rather
+ * than absent.
+ */
+export function isAccessRefusal(err: unknown): err is CivoApiError {
+  if (!(err instanceof CivoApiError) || err.status >= 500) return false;
+  if ([401, 408, 429].includes(err.status)) return false;
+  if (err.code && NOT_OFFERED.has(err.code)) return true;
+  return err.status === 403 && !(err.code && KEY_REJECTED.has(err.code));
+}
+
+/** Whether an answer says this does not exist, as a plain page or a Civo error. */
+export function isMissing(err: unknown): err is CivoApiError {
+  return err instanceof CivoApiError && err.status === 404;
 }
 
 export type Query = Record<string, string | number | boolean | undefined>;
@@ -81,7 +140,16 @@ export interface CivoApiConfig {
   baseUrl?: string;
 }
 
+/** civogo's page size. Civo documents no maximum. */
 const PER_PAGE = 100;
+/** 100,000 rows: past this a poll would be killed before it could write them. */
+const MAX_PAGES = 1000;
+
+/** A paginated answer. A bare array, or anything else, is told apart at runtime. */
+interface ListPage<T> {
+  items?: T[] | null;
+  pages?: number | string | null;
+}
 
 function buildUrl(base: string, path: string, query?: Query): string {
   const url = `${base}${path}`;
@@ -149,20 +217,35 @@ export function createCivoApi(config: CivoApiConfig): CivoApi {
       return request<T>(method, url, path, payload);
     },
     async list<T>(path: string, query?: Query) {
-      const first = await api.get<unknown>(path, { ...(query ?? {}), page: 1, per_page: PER_PAGE });
-      if (Array.isArray(first)) return first as T[];
-      const page = first as { items?: T[]; pages?: number };
-      const out = [...(page.items ?? [])];
-      const pages = Math.min(Number(page.pages ?? 1) || 1, 100);
-      for (let p = 2; p <= pages; p++) {
-        const next = await api.get<{ items?: T[] }>(path, {
-          ...(query ?? {}),
-          page: p,
-          per_page: PER_PAGE,
-        });
-        out.push(...(next.items ?? []));
+      const where = { vendor: "Civo", path };
+      const first = await api.get<T[] | ListPage<T> | null>(path, {
+        ...query,
+        page: 1,
+        per_page: PER_PAGE,
+      });
+      if (Array.isArray(first)) {
+        if (first.length < PER_PAGE) return first;
+        // A bare array has no page count to say whether the paging was honoured. civogo
+        // calls these routes with no paging, so a full one is asked for that way.
+        const whole = await api.get<T[] | null>(path, query);
+        return requireListPage(whole, { ...where, key: null });
       }
-      return out;
+      const out: T[] = [];
+      let body: ListPage<T> | null = first;
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        if (page > 1) {
+          body = await api.get<ListPage<T> | null>(path, { ...query, page, per_page: PER_PAGE });
+        }
+        const rows = requireListPage(body?.items, { ...where, key: "items", page: body });
+        out.push(...rows);
+        const pages = Number(body?.pages);
+        if (pages > MAX_PAGES) {
+          throw new ListTruncatedError({ ...where, items: out.length, maxPages: MAX_PAGES });
+        }
+        // civogo stops on `pages`. With none, only a short page says this is the last.
+        if (pages >= 1 ? page >= pages : rows.length < PER_PAGE) return out;
+      }
+      throw new ListTruncatedError({ ...where, items: out.length, maxPages: MAX_PAGES });
     },
   };
   return api;
