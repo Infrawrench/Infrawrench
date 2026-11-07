@@ -30,6 +30,9 @@ import {
   formatBytes,
   CostSetupError,
   externalIdOf,
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
 } from "@infrawrench/plugin-base";
 import { anthropicTokenType } from "./ai-rates.js";
 import type { AnalyticsUserRow, AnthropicOrgUser } from "./seats.js";
@@ -45,14 +48,12 @@ const BASE_URL = "https://api.anthropic.com";
 const ANTHROPIC_VERSION = "2023-06-01";
 
 /** `limit` ranges 1–1000 on every cursor-paginated Anthropic list endpoint. */
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 1000;
 
-/** Hard stop so a runaway cursor can't loop forever. */
-const MAX_LIST_PAGES = 20;
+/** 100,000 rows at `PAGE_SIZE`. A list still going at this point throws rather than prune the rest. */
+const MAX_LIST_PAGES = 100;
 
-/** Seat reads page at the API maximum and fail rather than truncate past this many pages. */
-const SEAT_PAGE_SIZE = 1000;
-const MAX_SEAT_PAGES = 100;
+const COST_REPORT = { vendor: "Anthropic", path: "/v1/organizations/cost_report" };
 
 /** Where the user goes to fix a missing Admin key. */
 const ADMIN_KEY_DOCS = "https://platform.claude.com/docs/en/manage-claude/admin-api-keys";
@@ -507,6 +508,7 @@ export class AnthropicClient implements PluginClient {
   ): Promise<T[]> {
     const out: T[] = [];
     let afterId: string | undefined;
+    const place = { vendor: "Anthropic", path };
 
     for (let page = 0; page < MAX_LIST_PAGES; page++) {
       const query = new URLSearchParams(params);
@@ -517,12 +519,16 @@ export class AnthropicClient implements PluginClient {
         undefined,
         opts,
       );
-      out.push(...(body.data ?? []));
-      if (!body.has_more || !body.last_id) break;
+      const rows = requireListPage(body?.data, { ...place, key: "data" });
+      out.push(...rows);
+      if (!body.has_more) return out;
+      if (!body.last_id) {
+        throw new ListPageError({ ...place, key: "data", found: rows, saysMoreWith: "no cursor" });
+      }
       afterId = body.last_id;
     }
 
-    return out;
+    throw new ListTruncatedError({ ...place, items: out.length, maxPages: MAX_LIST_PAGES });
   }
 
   /**
@@ -532,7 +538,7 @@ export class AnthropicClient implements PluginClient {
   private async listByPage<T>(
     path: string,
     params: Record<string, string>,
-    opts: { admin?: boolean; pageSize?: number | null } = {},
+    opts: { admin?: boolean; analytics?: boolean; pageSize?: number | null } = {},
   ): Promise<T[]> {
     const out: T[] = [];
     let page: string | undefined;
@@ -547,14 +553,19 @@ export class AnthropicClient implements PluginClient {
       const body = await this.fetch<AnthropicCursorPage<T>>(
         qs ? `${path}?${qs}` : path,
         undefined,
-        opts.admin ? { admin: true } : {},
+        { ...(opts.admin ? { admin: true } : {}), ...(opts.analytics ? { analytics: true } : {}) },
       );
-      out.push(...(body.data ?? []));
-      if (!body.next_page) break;
+      out.push(...requireListPage(body?.data, { vendor: "Anthropic", path, key: "data" }));
+      if (!body.next_page) return out;
       page = body.next_page;
     }
 
-    return out;
+    throw new ListTruncatedError({
+      vendor: "Anthropic",
+      path,
+      items: out.length,
+      maxPages: MAX_LIST_PAGES,
+    });
   }
 
   // ---- Seats ---------------------------------------------------------------
@@ -570,10 +581,10 @@ export class AnthropicClient implements PluginClient {
       if (!this.hasAdminKey) return [];
       // GET /v1/organizations/users (limit up to 1000, after_id / has_more / last_id):
       // https://platform.claude.com/docs/en/api/organization/users/list
-      const users = await this.listEvery<AnthropicOrgUser>(
+      const users = await this.listPaginated<AnthropicOrgUser>(
         "/v1/organizations/users",
         {},
-        SEAT_PAGE_SIZE,
+        { admin: true },
       );
       const seats = buildClaudeSeats(users, null, this.analyticsApiKey.length > 0);
       if (seats.length === 0 || !this.analyticsApiKey) return seats;
@@ -588,54 +599,14 @@ export class AnthropicClient implements PluginClient {
    * page (`page` / `next_page`, limit up to 1000). Analytics API key only.
    * https://platform.claude.com/docs/en/api/beta/organization/analytics/users/list
    */
-  private async fetchAnalyticsUsers(
+  private fetchAnalyticsUsers(
     startingDate: string,
     endingDate: string,
   ): Promise<AnalyticsUserRow[]> {
-    const out: AnalyticsUserRow[] = [];
-    let page: string | undefined;
-    for (let i = 0; i < MAX_SEAT_PAGES; i++) {
-      const query = new URLSearchParams({
-        starting_date: startingDate,
-        ending_date: endingDate,
-        limit: String(SEAT_PAGE_SIZE),
-      });
-      if (page) query.set("page", page);
-      const body = await this.fetch<AnthropicCursorPage<AnalyticsUserRow>>(
-        `/v1/organizations/analytics/users?${query.toString()}`,
-        undefined,
-        { analytics: true },
-      );
-      out.push(...(body?.data ?? []));
-      if (!body?.next_page) return out;
-      page = body.next_page;
-    }
-    throw new Error(
-      `Anthropic plugin: Claude Enterprise analytics returned more than ${MAX_SEAT_PAGES * SEAT_PAGE_SIZE} users; refusing a partial read.`,
-    );
-  }
-
-  /** The `after_id` cursor walk, to the end or a thrown error; never a silent cap. */
-  private async listEvery<T>(
-    path: string,
-    params: Record<string, string>,
-    limit: number,
-  ): Promise<T[]> {
-    const out: T[] = [];
-    let afterId: string | undefined;
-    for (let i = 0; i < MAX_SEAT_PAGES; i++) {
-      const query = new URLSearchParams(params);
-      query.set("limit", String(limit));
-      if (afterId) query.set("after_id", afterId);
-      const body = await this.fetch<AnthropicPage<T>>(`${path}?${query.toString()}`, undefined, {
-        admin: true,
-      });
-      out.push(...(body?.data ?? []));
-      if (!body?.has_more || !body.last_id) return out;
-      afterId = body.last_id;
-    }
-    throw new Error(
-      `Anthropic plugin: ${path} returned more than ${MAX_SEAT_PAGES * limit} entries; refusing a partial read.`,
+    return this.listByPage<AnalyticsUserRow>(
+      "/v1/organizations/analytics/users",
+      { starting_date: startingDate, ending_date: endingDate },
+      { analytics: true },
     );
   }
 
@@ -1739,26 +1710,15 @@ export class AnthropicClient implements PluginClient {
       base.append("group_by[]", "description");
       base.append("group_by[]", "workspace_id");
 
-      const buckets: CostBucket[] = [];
-      let page: string | undefined;
-      for (let i = 0; i < 30; i++) {
-        const query = new URLSearchParams(base);
-        if (page) query.set("page", page);
-        const body = await this.fetch<CostReport>(
-          `/v1/organizations/cost_report?${query.toString()}`,
-          undefined,
-          { admin: true },
-        );
-        buckets.push(...(body.data ?? []));
-        if (!body.has_more || !body.next_page) break;
-        page = body.next_page;
-      }
+      const buckets = await this.fetchCostBuckets(base);
 
       const rows: CostRow[] = [];
       for (const bucket of buckets) {
         const date = str(bucket.starting_at).slice(0, 10);
         if (date.length !== 10) continue;
-        for (const result of bucket.results ?? []) {
+        // Documented as always present, and empty on a day with no costs.
+        const results = requireListPage(bucket.results, { ...COST_REPORT, key: "results" });
+        for (const result of results) {
           const cents = Number(result.amount);
           if (!Number.isFinite(cents)) continue;
           rows.push({
@@ -1782,6 +1742,38 @@ export class AnthropicClient implements PluginClient {
       }
 
       return rows;
+    });
+  }
+
+  /** Every page of the cost report, or a throw: a partial report would read as lower spend. */
+  private async fetchCostBuckets(base: URLSearchParams): Promise<CostBucket[]> {
+    const buckets: CostBucket[] = [];
+    let page: string | undefined;
+    for (let i = 0; i < MAX_LIST_PAGES; i++) {
+      const query = new URLSearchParams(base);
+      if (page) query.set("page", page);
+      const body = await this.fetch<CostReport>(
+        `${COST_REPORT.path}?${query.toString()}`,
+        undefined,
+        { admin: true },
+      );
+      const rows = requireListPage(body?.data, { ...COST_REPORT, key: "data" });
+      buckets.push(...rows);
+      if (!body.has_more) return buckets;
+      if (!body.next_page) {
+        throw new ListPageError({
+          ...COST_REPORT,
+          key: "data",
+          found: rows,
+          saysMoreWith: "no cursor",
+        });
+      }
+      page = body.next_page;
+    }
+    throw new ListTruncatedError({
+      ...COST_REPORT,
+      items: buckets.length,
+      maxPages: MAX_LIST_PAGES,
     });
   }
 

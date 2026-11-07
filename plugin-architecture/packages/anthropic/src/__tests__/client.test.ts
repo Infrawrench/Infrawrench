@@ -60,7 +60,7 @@ describe("headers", () => {
     await client().listResources("model", ACCOUNT);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.url).toBe("https://api.anthropic.com/v1/models?limit=100");
+    expect(calls[0]!.url).toBe("https://api.anthropic.com/v1/models?limit=1000");
     expect(headerOf(calls[0]!.init, "x-api-key")).toBe("sk-ant-api03-test");
     expect(headerOf(calls[0]!.init, "anthropic-version")).toBe("2023-06-01");
     expect(headerOf(calls[0]!.init, "anthropic-beta")).toBeUndefined();
@@ -71,20 +71,20 @@ describe("headers", () => {
     await client().listResources("workspace", ACCOUNT);
 
     expect(calls[0]!.url).toBe(
-      "https://api.anthropic.com/v1/organizations/workspaces?include_archived=true&limit=100",
+      "https://api.anthropic.com/v1/organizations/workspaces?include_archived=true&limit=1000",
     );
     expect(headerOf(calls[0]!.init, "x-api-key")).toBe("sk-ant-admin01-test");
   });
 
   it("calls the GA Files API without the old beta header and pages on next_page", async () => {
     installFetch((url) => {
-      if (url === "https://api.anthropic.com/v1/files?limit=100") {
+      if (url === "https://api.anthropic.com/v1/files?limit=1000") {
         return jsonResponse({
           data: [{ id: "file_1", filename: "a.pdf", expires_at: "2026-11-01T00:00:00Z" }],
           next_page: "page_2",
         });
       }
-      if (url === "https://api.anthropic.com/v1/files?limit=100&page=page_2") {
+      if (url === "https://api.anthropic.com/v1/files?limit=1000&page=page_2") {
         return jsonResponse({ data: [{ id: "file_2", filename: "b.pdf" }], next_page: null });
       }
       throw new Error(`unrouted: ${url}`);
@@ -101,14 +101,14 @@ describe("headers", () => {
 describe("pagination", () => {
   it("walks after_id / has_more / last_id until the cursor runs out", async () => {
     installFetch((url) => {
-      if (url.endsWith("/v1/models?limit=100")) {
+      if (url.endsWith("/v1/models?limit=1000")) {
         return jsonResponse({
           data: [{ id: "claude-opus-4-6", display_name: "Claude Opus 4.6" }],
           has_more: true,
           last_id: "claude-opus-4-6",
         });
       }
-      if (url.endsWith("/v1/models?limit=100&after_id=claude-opus-4-6")) {
+      if (url.endsWith("/v1/models?limit=1000&after_id=claude-opus-4-6")) {
         return jsonResponse({
           data: [{ id: "claude-haiku-4-5", display_name: "Claude Haiku 4.5" }],
           has_more: false,
@@ -120,6 +120,169 @@ describe("pagination", () => {
     const models = await client().listResources("model", ACCOUNT);
     expect(models.map((m) => m.displayName)).toEqual(["Claude Opus 4.6", "Claude Haiku 4.5"]);
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe("a list that cannot say it has every row", () => {
+  // 1,000 per page is the documented maximum, so 100 pages reach the sync's row ceiling.
+  const MAX_PAGES = 100;
+
+  it("reads an after_id list past the 20 pages it used to stop at", async () => {
+    installFetch((url) => {
+      const page = Number(new URL(url).searchParams.get("after_id") ?? 0);
+      return jsonResponse({
+        data: [{ id: `user_${page}`, email: `${page}@example.com` }],
+        has_more: page < 24,
+        last_id: String(page + 1),
+      });
+    });
+
+    expect(await client().listResources("organization-user", ACCOUNT)).toHaveLength(25);
+    expect(calls).toHaveLength(25);
+  });
+
+  it("reads a page-token list past the 20 pages it used to stop at", async () => {
+    installFetch((url) => {
+      const page = Number(new URL(url).searchParams.get("page") ?? 0);
+      return jsonResponse({
+        data: [{ id: `file_${page}`, filename: "a.pdf" }],
+        next_page: page < 24 ? String(page + 1) : null,
+      });
+    });
+
+    expect(await client().listResources("file", ACCOUNT)).toHaveLength(25);
+    expect(calls).toHaveLength(25);
+  });
+
+  it("rejects an after_id list that never ends, at the cap", async () => {
+    installFetch((url) => {
+      const page = Number(new URL(url).searchParams.get("after_id") ?? 0);
+      return jsonResponse({
+        data: [{ id: `model_${page}` }],
+        has_more: true,
+        last_id: String(page + 1),
+      });
+    });
+
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(MAX_PAGES);
+  });
+
+  it("rejects a page-token list that never ends, at the cap", async () => {
+    installFetch((url) => {
+      const page = Number(new URL(url).searchParams.get("page") ?? 0);
+      return jsonResponse({ data: [{ id: `file_${page}` }], next_page: String(page + 1) });
+    });
+
+    await expect(client().listResources("file", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(MAX_PAGES);
+  });
+
+  it("rejects a page that says there is more with no cursor to read it by", async () => {
+    installFetch(() => jsonResponse({ data: [{ id: "model_1" }], has_more: true, last_id: null }));
+
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow(
+      "says there is more, with no cursor",
+    );
+  });
+
+  it.each(["model", "file"])("rejects a %s page with its key renamed", async (typeId) => {
+    installFetch(() => jsonResponse({ items: [{ id: "x" }] }));
+
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("rejects a later after_id page with its key renamed", async () => {
+    installFetch((url) =>
+      new URL(url).searchParams.get("after_id")
+        ? jsonResponse({ items: [] })
+        : jsonResponse({ data: [{ id: "model_1" }], has_more: true, last_id: "model_1" }),
+    );
+
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("rejects a later page-token page with its key renamed", async () => {
+    installFetch((url) =>
+      new URL(url).searchParams.get("page")
+        ? jsonResponse({ items: [] })
+        : jsonResponse({ data: [{ id: "file_1" }], next_page: "page_2" }),
+    );
+
+    await expect(client().listResources("file", ACCOUNT)).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("fails the workspace members type when one workspace's member list is cut off", async () => {
+    installFetch((url) => {
+      const { pathname, searchParams } = new URL(url);
+      if (pathname.endsWith("/members")) {
+        return jsonResponse({
+          data: [{ user_id: "user_1", workspace_id: "w1", workspace_role: "workspace_user" }],
+          has_more: true,
+          last_id: String(Number(searchParams.get("after_id") ?? 0) + 1),
+        });
+      }
+      if (pathname.endsWith("/workspaces")) {
+        return jsonResponse({ data: [{ id: "w1", name: "One" }], has_more: false });
+      }
+      return jsonResponse({ data: [{ id: "user_1" }], has_more: false });
+    });
+
+    await expect(client().listResources("workspace-member", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  describe("the cost report", () => {
+    const RANGE = { fromDate: "2026-01-01", toDate: "2026-01-31" };
+
+    it("rejects a report that never ends, at the cap, rather than billing part of it", async () => {
+      installFetch((url) => {
+        const page = Number(new URL(url).searchParams.get("page") ?? 0);
+        return jsonResponse({
+          data: [{ starting_at: "2026-01-01T00:00:00Z", results: [{ amount: "100" }] }],
+          has_more: true,
+          next_page: String(page + 1),
+        });
+      });
+
+      await expect(client().fetchCostData(ACCOUNT, RANGE)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(MAX_PAGES);
+    });
+
+    it("rejects a report that says there is more with no cursor", async () => {
+      installFetch(() => jsonResponse({ data: [], has_more: true, next_page: null }));
+
+      await expect(client().fetchCostData(ACCOUNT, RANGE)).rejects.toThrow(
+        "says there is more, with no cursor",
+      );
+    });
+
+    it("rejects a bucket with its results renamed, rather than reading no cost", async () => {
+      installFetch(() =>
+        jsonResponse({
+          data: [{ starting_at: "2026-01-01T00:00:00Z", items: [{ amount: "100" }] }],
+          has_more: false,
+        }),
+      );
+
+      await expect(client().fetchCostData(ACCOUNT, RANGE)).rejects.toThrow("is not a list");
+    });
+
+    it("rejects a report with its key renamed, rather than reading no cost", async () => {
+      installFetch(() => jsonResponse({ buckets: [], has_more: false }));
+
+      await expect(client().fetchCostData(ACCOUNT, RANGE)).rejects.toThrow("is not a list");
+    });
   });
 });
 
@@ -820,7 +983,7 @@ describe("skills", () => {
     });
 
     const [skill] = await client().listResources("skill", ACCOUNT);
-    expect(calls[0]!.url).toBe("https://api.anthropic.com/v1/skills?limit=100");
+    expect(calls[0]!.url).toBe("https://api.anthropic.com/v1/skills?limit=1000");
     expect(headerOf(calls[0]!.init, "x-api-key")).toBe("sk-ant-api03-test");
     expect(headerOf(calls[0]!.init, "anthropic-beta")).toBeUndefined();
     expect(skill!.fields["source"]).toBe("custom");

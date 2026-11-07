@@ -246,6 +246,43 @@ describe("fetchSeats", () => {
     );
     await expect(client().fetchSeats("acc", { lookbackDays: 30 })).rejects.toThrow(/500/);
   });
+
+  it("rejects a member page with its key renamed, rather than reading no seats", async () => {
+    install(() => json({ members: ENTERPRISE_USERS, has_more: false }));
+    await expect(client().fetchSeats("acc", { lookbackDays: 30 })).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a member page that says there is more with no cursor", async () => {
+    install(() => json({ data: ENTERPRISE_USERS, has_more: true, last_id: null }));
+    await expect(client().fetchSeats("acc", { lookbackDays: 30 })).rejects.toThrow(
+      "says there is more, with no cursor",
+    );
+  });
+
+  it("rejects an analytics page with its key renamed, rather than reading no activity", async () => {
+    install((url) =>
+      url.pathname === "/v1/organizations/users"
+        ? json({ data: ENTERPRISE_USERS, has_more: false })
+        : json({ users: [] }),
+    );
+    await expect(
+      client({ analyticsApiKey: "analytics-test-key" }).fetchSeats("acc", { lookbackDays: 30 }),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a member list that never ends, at the cap", async () => {
+    install((url) =>
+      json({
+        data: ENTERPRISE_USERS,
+        has_more: true,
+        last_id: String(Number(url.searchParams.get("after_id") ?? 0) + 1),
+      }),
+    );
+    await expect(client().fetchSeats("acc", { lookbackDays: 30 })).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
 });
 
 describe("removeSeat", () => {
