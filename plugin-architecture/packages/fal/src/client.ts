@@ -71,6 +71,7 @@ const ANALYTICS_METRICS: Array<Exclude<keyof AnalyticsRow, "endpoint_id">> = [
 ];
 
 type FieldValue = string | number | boolean | null | undefined;
+type AppName = Pick<App, "name" | "endpoint_id">;
 
 function s(value: FieldValue): string {
   return value === undefined || value === null ? "" : String(value);
@@ -144,9 +145,32 @@ export function modelUsageRows(
   return rows;
 }
 
+/**
+ * The app a usage line was billed to. The document has `app` as the deployed name with
+ * the owner stripped and perhaps an environment or version suffix (`my-app-prod`), and
+ * `<owner>/<name>` is what the app resource is known by. The longest listed name wins,
+ * so `my-app-eu-dev` is not `my-app` when `my-app-eu` exists.
+ */
+function appOfUsageLine(
+  line: string,
+  apps: readonly AppName[],
+): { endpointId: string; suffixed: boolean } {
+  const exact = apps.find((a) => a.name === line || a.endpoint_id === line);
+  if (exact) return { endpointId: exact.endpoint_id, suffixed: false };
+  let best: AppName | undefined;
+  for (const app of apps) {
+    if (!line.startsWith(`${app.name}-`)) continue;
+    if (!best || app.name.length > best.name.length) best = app;
+  }
+  return best
+    ? { endpointId: best.endpoint_id, suffixed: true }
+    : { endpointId: line, suffixed: false };
+}
+
 export function serverlessUsageRows(
   pages: Pick<ServerlessUsagePage, "time_series">[],
   range: CostFetchRange,
+  apps: readonly AppName[],
 ): CostRow[] {
   const rows: CostRow[] = [];
   for (const page of pages) {
@@ -159,10 +183,12 @@ export function serverlessUsageRows(
         if (r.machine_type) tags["machineType"] = r.machine_type;
         if (r.environment) tags["environment"] = r.environment;
         if (r.is_surge) tags["surge"] = "true";
+        const app = r.app ? appOfUsageLine(r.app, apps) : undefined;
+        if (r.app && app?.suffixed) tags["app"] = r.app;
         rows.push({
           date,
           service: "Serverless",
-          ...(r.app ? { resourceId: r.app } : {}),
+          ...(app ? { resourceId: app.endpointId } : {}),
           tags,
           currency: (r.currency || "USD").toUpperCase(),
           amount: Number(r.cost_total ?? 0),
@@ -354,6 +380,10 @@ export class FalClient implements PluginClient {
 
   /** `GET /serverless/apps?expand=endpoints` */
   private async listApps(accountId: string): Promise<ResourceInstance[]> {
+    return (await this.readApps()).map((a) => this.mapApp(accountId, a));
+  }
+
+  private async readApps(): Promise<App[]> {
     let res: { apps?: App[] };
     try {
       res = await call(() => this.api.get("/serverless/apps", { query: { expand: "endpoints" } }));
@@ -361,9 +391,11 @@ export class FalClient implements PluginClient {
       if (statusOf(err) === 403 || statusOf(err) === 404) return [];
       throw err;
     }
-    return requireListPage(res.apps, { vendor: "fal", path: "/serverless/apps", key: "apps" })
-      .filter((a) => a.endpoint_id)
-      .map((a) => this.mapApp(accountId, a));
+    return requireListPage(res.apps, {
+      vendor: "fal",
+      path: "/serverless/apps",
+      key: "apps",
+    }).filter((a) => a.endpoint_id);
   }
 
   private mapApp(accountId: string, a: App): ResourceInstance {
@@ -694,7 +726,8 @@ export class FalClient implements PluginClient {
         .toISOString()
         .slice(0, 10);
       const span = { start: range.fromDate, end, timezone: "UTC" };
-      const [models, serverless] = await Promise.all([
+      const [apps, models, serverless] = await Promise.all([
+        this.readApps(),
         allPages(
           (cursor) =>
             this.api.get("/models/usage", {
@@ -725,7 +758,7 @@ export class FalClient implements PluginClient {
           throw err;
         }),
       ]);
-      return [...modelUsageRows(models, range), ...serverlessUsageRows(serverless, range)];
+      return [...modelUsageRows(models, range), ...serverlessUsageRows(serverless, range, apps)];
     });
   }
 

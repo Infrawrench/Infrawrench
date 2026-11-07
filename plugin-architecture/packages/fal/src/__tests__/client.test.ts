@@ -367,8 +367,105 @@ describe("mappers", () => {
         },
       ],
       range,
+      [],
     );
     expect(row?.tags).toEqual({ machineType: "GPU-H100", environment: "main", surge: "true" });
+  });
+
+  it("attaches serverless spend to the app whose name the usage line carries", () => {
+    const apps = [
+      { name: "my-app", endpoint_id: "user_1/my-app" },
+      { name: "my-app-eu", endpoint_id: "user_1/my-app-eu" },
+    ];
+    const rows = serverlessUsageRows(
+      [
+        {
+          time_series: [
+            {
+              bucket: "2026-10-05T00:00:00Z",
+              results: [
+                serverlessLine({ app: "my-app", cost_total: 1 }),
+                serverlessLine({ app: "user_1/my-app", cost_total: 2 }),
+                serverlessLine({ app: "my-app-prod", cost_total: 3 }),
+                serverlessLine({ app: "my-app-eu", cost_total: 4 }),
+                serverlessLine({ app: "my-app-eu-dev", cost_total: 5 }),
+                serverlessLine({ app: "my-application", cost_total: 6 }),
+                serverlessLine({ app: null, cost_total: 7 }),
+              ],
+            },
+          ],
+        },
+      ],
+      range,
+      apps,
+    );
+    expect(rows.map((r) => [r.resourceId, r.tags?.["app"]])).toEqual([
+      ["user_1/my-app", undefined],
+      ["user_1/my-app", undefined],
+      ["user_1/my-app", "my-app-prod"],
+      ["user_1/my-app-eu", undefined],
+      ["user_1/my-app-eu", "my-app-eu-dev"],
+      ["my-application", undefined],
+      [undefined, undefined],
+    ]);
+  });
+
+  it("gives a cost row the external id of the app the same sync lists", async () => {
+    const { http } = host((url) => {
+      if (url.includes("/serverless/apps"))
+        return { body: { apps: [{ name: "my-app", endpoint_id: "user_1/my-app" }] } };
+      if (url.includes("/serverless/usage"))
+        return {
+          body: {
+            time_series: [
+              {
+                bucket: "2026-10-05T00:00:00Z",
+                results: [serverlessLine({ app: "my-app", cost_total: 1 })],
+              },
+            ],
+            next_cursor: null,
+          },
+        };
+      return { body: { time_series: [], next_cursor: null } };
+    });
+    const client = hostClient(new FalClient({ apiKey: "k" }, { http }));
+    const [row] = await client.fetchCostData(ACCOUNT, range);
+    const [app] = await client.listResources("fal-app", ACCOUNT);
+    expect(row?.resourceId).toBe(app?.externalId);
+  });
+
+  it("keeps the usage line's name when the key cannot list apps", async () => {
+    const { http } = host((url) => {
+      if (url.includes("/serverless/apps")) return { status: 403 };
+      if (url.includes("/serverless/usage"))
+        return {
+          body: {
+            time_series: [
+              {
+                bucket: "2026-10-05T00:00:00Z",
+                results: [serverlessLine({ app: "my-app", cost_total: 1 })],
+              },
+            ],
+            next_cursor: null,
+          },
+        };
+      return { body: { time_series: [], next_cursor: null } };
+    });
+    const [row] = await hostClient(new FalClient({ apiKey: "k" }, { http })).fetchCostData(
+      ACCOUNT,
+      range,
+    );
+    expect(row?.resourceId).toBe("my-app");
+  });
+
+  it("fails the cost read rather than store unattached rows when apps cannot be read", async () => {
+    const { http } = host((url) => {
+      if (url.includes("/serverless/apps")) return { status: 500 };
+      return { body: { time_series: [], next_cursor: null } };
+    });
+    await expect(
+      hostClient(new FalClient({ apiKey: "k" }, { http })).fetchCostData(ACCOUNT, range),
+    ).rejects.toMatchObject({ status: 500 });
   });
 
   it("builds analytics series with seconds for durations", () => {
