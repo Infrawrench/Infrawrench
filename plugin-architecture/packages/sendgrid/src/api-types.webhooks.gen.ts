@@ -170,7 +170,7 @@ export interface components {
             processed?: boolean;
             spam_report?: boolean;
             unsubscribe?: boolean;
-            url?: string;
+            url: string;
         };
         EventWebhookSignedResponse: {
             account_status_change?: boolean;

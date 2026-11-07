@@ -96,6 +96,83 @@ describe("SendGrid client", () => {
     expect(reads.map((x) => x.url.searchParams.get("include_region"))).toEqual(["true", "true"]);
   });
 
+  describe("editing an event webhook", () => {
+    const hook = { id: "wh1", url: "https://example.com/events", enabled: true, bounce: true };
+    const route = (url: URL, method: string) =>
+      method === "PATCH"
+        ? { body: {} }
+        : url.pathname.endsWith("/all")
+          ? { body: {} }
+          : { body: hook };
+    const patches = (calls: Array<{ method: string; url: URL; body?: string }>) =>
+      calls
+        .filter((x) => x.method === "PATCH")
+        .map((x) => ({ path: x.url.pathname, body: JSON.parse(x.body ?? "{}") as object }));
+
+    it("keeps the current url when the edit does not change it", async () => {
+      const { c, calls } = client(route);
+      await c.updateResource("sendgrid-event-webhook", "a:sendgrid-event-webhook:wh1", "a", {
+        friendlyName: "Prod",
+        click: "true",
+      });
+      expect(patches(calls)).toEqual([
+        {
+          path: "/v3/user/webhooks/event/settings/wh1",
+          body: { click: true, friendly_name: "Prod", url: hook.url },
+        },
+      ]);
+    });
+
+    it("sends a changed url as typed, without reading the old one first", async () => {
+      const { c, calls } = client(route);
+      await c.updateResource("sendgrid-event-webhook", "a:sendgrid-event-webhook:wh1", "a", {
+        url: " https://example.com/new ",
+      });
+      expect(patches(calls)[0]!.body).toEqual({ url: "https://example.com/new" });
+      expect(calls[0]!.method).toBe("PATCH");
+    });
+
+    it("writes nothing when the current url cannot be read", async () => {
+      const { c, calls } = client((_, method) =>
+        method === "PATCH" ? { body: {} } : { status: 500, body: { errors: [] } },
+      );
+      await expect(
+        c.updateResource("sendgrid-event-webhook", "a:sendgrid-event-webhook:wh1", "a", {
+          enabled: "false",
+        }),
+      ).rejects.toThrow(/500/);
+      expect(patches(calls)).toEqual([]);
+    });
+
+    it("refuses a blank url", async () => {
+      const { c, calls } = client(route);
+      await expect(
+        c.updateResource("sendgrid-event-webhook", "a:sendgrid-event-webhook:wh1", "a", {
+          url: "  ",
+        }),
+      ).rejects.toThrow(/URL/);
+      const { c: noUrl, calls: noUrlCalls } = client((_, m) =>
+        m === "PATCH" ? { body: {} } : { body: { id: "wh1" } },
+      );
+      await expect(
+        noUrl.updateResource("sendgrid-event-webhook", "a:sendgrid-event-webhook:wh1", "a", {
+          enabled: "false",
+        }),
+      ).rejects.toThrow(/URL/);
+      expect([...patches(calls), ...patches(noUrlCalls)]).toEqual([]);
+    });
+
+    it("toggles signing alone without touching the webhook's settings", async () => {
+      const { c, calls } = client(route);
+      await c.updateResource("sendgrid-event-webhook", "a:sendgrid-event-webhook:wh1", "a", {
+        signed: "true",
+      });
+      expect(patches(calls)).toEqual([
+        { path: "/v3/user/webhooks/event/settings/signed/wh1", body: { enabled: true } },
+      ]);
+    });
+  });
+
   it("synthesises DNS records and reads the key id", () => {
     const recs = domainDnsRecords("a", {
       id: 5,

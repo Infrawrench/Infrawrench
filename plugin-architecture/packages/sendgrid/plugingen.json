@@ -245,13 +245,6 @@
     {
       "name": "webhooks",
       "specUrl": "https://raw.githubusercontent.com/twilio/sendgrid-oai/main/spec/json/tsg_webhooks_v3.json",
-      "patches": [
-        {
-          "pointer": "/components/schemas/EventWebhookRequest/required",
-          "value": [],
-          "why": "POST and PATCH share this schema, and the plugin's PATCH sends only what changed. #484 asks whether SendGrid accepts that; a create always writes `url`."
-        }
-      ],
       "paths": {
         "/v3/user/webhooks/event/settings": ["post"],
         "/v3/user/webhooks/event/settings/all": ["get"],

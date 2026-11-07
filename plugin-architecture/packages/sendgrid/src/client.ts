@@ -1177,12 +1177,21 @@ export class SendGridClient implements PluginClient {
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "sendgrid-event-webhook": {
-          const body: ApiBody<WebhookOperations["UpdateEventWebhook"]> = { ...eventBody(fields) };
-          if ("url" in fields) body.url = trimmed(fields, "url");
-          if ("friendlyName" in fields) body.friendly_name = trimmed(fields, "friendlyName");
-          if (bool(fields["enabled"]) !== undefined) body.enabled = bool(fields["enabled"]);
-          if (Object.keys(body).length > 0) {
-            await this.api.patch(`/v3/user/webhooks/event/settings/${enc}`, { body });
+          const changes: Partial<ApiBody<WebhookOperations["UpdateEventWebhook"]>> = {
+            ...eventBody(fields),
+          };
+          if ("friendlyName" in fields) changes.friendly_name = trimmed(fields, "friendlyName");
+          if (bool(fields["enabled"]) !== undefined) changes.enabled = bool(fields["enabled"]);
+          if ("url" in fields || Object.keys(changes).length > 0) {
+            // The document requires `url` on this PATCH, and leaves the rest as they are.
+            const url =
+              "url" in fields
+                ? trimmed(fields, "url")
+                : (await this.api.get(`/v3/user/webhooks/event/settings/${enc}`)).url;
+            if (!url) throw new Error("SendGrid plugin: an event webhook needs a URL");
+            await this.api.patch(`/v3/user/webhooks/event/settings/${enc}`, {
+              body: { ...changes, url },
+            });
           }
           if (bool(fields["signed"]) !== undefined) {
             await this.api.patch(`/v3/user/webhooks/event/settings/signed/${enc}`, {
