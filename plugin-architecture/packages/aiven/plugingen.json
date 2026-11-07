@@ -174,13 +174,6 @@
       "why": "Documented as an object. With format json any JSON value is a record, and the plugin sends text where the payload is not JSON."
     },
     {
-      "pointer": "/components/schemas/ServiceKafkaTopicGetResponse/properties/topic/properties/partitions",
-      "value": {
-        "type": "integer"
-      },
-      "why": "Documented as a list of partitions, which mapTopic passes straight into the numeric `partitions` field (#395). Typed as what that code assumes until that is fixed, so the migration changes nothing."
-    },
-    {
       "pointer": "/components/schemas/ProjectListResponse/properties/projects/items/properties/tags",
       "value": {
         "type": "object",

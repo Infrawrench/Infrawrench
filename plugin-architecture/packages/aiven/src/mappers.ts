@@ -262,6 +262,8 @@ export function mapTopic(
   t: Loose<AvTopic> | Loose<AvTopicDetail>,
 ): ResourceInstance {
   const name = t.topic_name ?? "";
+  // The list route documents a count here, the detail route a list of partitions.
+  const partitions = Array.isArray(t.partitions) ? t.partitions.length : t.partitions;
   return instance(
     accountId,
     T.topic,
@@ -271,7 +273,7 @@ export function mapTopic(
       name,
       project,
       serviceName: service,
-      partitions: t.partitions,
+      partitions,
       replication: t.replication,
       retentionHours: t.retention_hours,
       minInsyncReplicas: t.min_insync_replicas,

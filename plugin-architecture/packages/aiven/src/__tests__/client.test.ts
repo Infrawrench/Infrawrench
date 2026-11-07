@@ -170,6 +170,43 @@ describe("AivenClient", () => {
   });
 });
 
+describe("Kafka topic partitions", () => {
+  it("counts the partition list the detail route documents", async () => {
+    mockFetch({
+      "GET /project/acme/service/k1/topic/orders": {
+        topic: {
+          topic_name: "orders",
+          replication: 3,
+          partitions: [{ partition: 0 }, { partition: 1 }, { partition: 2 }],
+        },
+      },
+    });
+    const topic = await hostClient(new AivenClient({ apiToken: "x" })).getResource(
+      "aiven-kafka-topic",
+      `${ACC}:aiven-kafka-topic:acme/k1/orders`,
+      ACC,
+    );
+    expect(topic.fields["partitions"]).toBe(3);
+  });
+
+  it("keeps the integer the list route documents", async () => {
+    mockFetch({
+      "GET /project": { projects: [{ project_name: "acme" }] },
+      "GET /project/acme/service": {
+        services: [{ service_name: "k1", service_type: "kafka", state: "RUNNING" }],
+      },
+      "GET /project/acme/service/k1/topic": {
+        topics: [{ topic_name: "orders", partitions: 6, replication: 3 }],
+      },
+    });
+    const [topic] = await hostClient(new AivenClient({ apiToken: "x" })).listResources(
+      "aiven-kafka-topic",
+      ACC,
+    );
+    expect(topic!.fields["partitions"]).toBe(6);
+  });
+});
+
 describe("Kafka connection string", () => {
   it("uses the SASL endpoint and inlines the CA", () => {
     const uri = serviceConnectionString(

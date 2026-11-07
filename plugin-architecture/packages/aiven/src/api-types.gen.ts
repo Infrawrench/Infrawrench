@@ -1714,7 +1714,23 @@ export interface components {
                 };
                 min_insync_replicas: number;
                 owner_user_group_id: string;
-                partitions: number;
+                partitions: {
+                    consumer_groups: {
+                        group_name: string;
+                        offset: number;
+                    }[];
+                    earliest_offset: number;
+                    isr: number;
+                    latest_offset: number;
+                    partition: number;
+                    remote_size?: number;
+                    share_groups: {
+                        group_name: string;
+                        lag: number;
+                        start_offset: number;
+                    }[];
+                    size: number;
+                }[];
                 replication: number;
                 retention_bytes: number;
                 retention_hours: number;
