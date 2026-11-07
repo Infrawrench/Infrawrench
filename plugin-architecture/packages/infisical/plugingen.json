@@ -106,7 +106,7 @@
           }
         }
       },
-      "why": "Every destination documents this same row with its own destinationConfig, 52 variants of about 6 KB each. The plugin reads the shared fields and treats the configuration as generic, so the list and the routes below share one schema."
+      "why": "Every destination documents this same row with its own destinationConfig, 52 variants of about 4 KB each. The plugin reads the shared fields and treats the configuration as generic, so the list and the routes below share one schema."
     },
     {
       "pointer": "/paths/~1api~1v1~1secret-syncs/get/responses/200/content/application~1json/schema/properties/secretSyncs/items",
