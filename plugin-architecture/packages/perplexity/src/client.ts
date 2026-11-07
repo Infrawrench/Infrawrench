@@ -67,6 +67,22 @@ const ANTHROPIC_MAX_OUTPUT_TOKENS = 8192;
  */
 const ASYNC_MAX_PAGES = 500;
 
+/**
+ * Perplexity's docs say asynchronous Sonar requests are no longer supported since
+ * September 27, 2026, with no reformulation, yet its document still lists the routes. A
+ * route that is gone answers one of these.
+ */
+const RETIRED_ROUTE = new Set([404, 405, 410]);
+
+function retiredRoute(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    "status" in err &&
+    typeof err.status === "number" &&
+    RETIRED_ROUTE.has(err.status)
+  );
+}
+
 function s(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
 }
@@ -285,7 +301,14 @@ export class PerplexityClient implements PluginClient {
     for (let page = 0; page < ASYNC_MAX_PAGES; page++) {
       const res = await statusErrors(
         this.api.get(path, token ? { query: { next_token: token } } : {}),
-      );
+      ).catch((err: unknown) => {
+        // A retired list route has nothing to read, and a request only lived for 7 days,
+        // so every one made before the retirement is gone too. A later page's 404 is a
+        // list cut short, not a retired route.
+        if (page === 0 && retiredRoute(err)) return null;
+        throw err;
+      });
+      if (res === null) return out;
       const rows = requireListPage(res.requests, {
         vendor: "Perplexity",
         path,
@@ -525,7 +548,13 @@ export class PerplexityClient implements PluginClient {
             },
           },
         }),
-      );
+      ).catch((err: unknown) => {
+        if (!retiredRoute(err)) throw err;
+        throw new Error(
+          "Perplexity no longer accepts asynchronous Sonar requests: it retired them on September 27, 2026. Ask the question from an Agent API model's Playground instead.",
+          { cause: err },
+        );
+      });
       return this.mapAsync(accountId, created);
     });
   }

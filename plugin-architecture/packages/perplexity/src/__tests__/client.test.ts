@@ -468,7 +468,46 @@ describe("Perplexity", () => {
       );
       expect(calls).toHaveLength(500);
     });
+
+    it.each([404, 405, 410])(
+      "reads a retired async list route (%i) as no requests",
+      async (status) => {
+        const { http, calls } = host(() => ({ status, body: { error: "Not Found" } }));
+        await expect(list(http, "perplexity-async-request")).resolves.toEqual([]);
+        expect(calls).toHaveLength(1);
+      },
+    );
+
+    it.each([401, 429, 500])("still fails the async list on a %i", async (status) => {
+      const { http } = host(() => ({ status, body: { error: "no" } }));
+      await expect(list(http, "perplexity-async-request")).rejects.toMatchObject({ status });
+    });
+
+    it("throws when a later async page answers 404, rather than reading it as the end", async () => {
+      const { http } = host((url) =>
+        url.includes("next_token")
+          ? { status: 404, body: { error: "gone" } }
+          : { body: { requests: [{ id: "a" }], next_token: "t2" } },
+      );
+      await expect(list(http, "perplexity-async-request")).rejects.toMatchObject({
+        status: 404,
+      });
+    });
   });
+
+  it.each([404, 410])(
+    "says Perplexity retired async requests when the create route answers %i",
+    async (status) => {
+      const { http } = host(() => ({ status, body: { error: "Not Found" } }));
+      await expect(
+        hostClient(new PerplexityClient({ apiKey: "k" }, { http })).createResource(
+          "perplexity-async-request",
+          ACCOUNT,
+          { model: "sonar-deep-research", prompt: "Why?" },
+        ),
+      ).rejects.toThrow("no longer accepts asynchronous Sonar requests");
+    },
+  );
 
   it("attaches the HTTP status to errors", async () => {
     const { http } = host(() => ({ status: 401, body: { error: "bad key" } }));
