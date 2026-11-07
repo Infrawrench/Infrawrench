@@ -231,6 +231,84 @@ describe("listResources", () => {
     ]);
   });
 
+  describe("a failed read never reads as an empty list", () => {
+    const hero = {
+      asset_id: "a1",
+      public_id: "hero",
+      resource_type: "image",
+      type: "upload",
+    };
+
+    it("rejects when one asset type is rate limited on its first page", async () => {
+      installFetch((url) => {
+        if (url.includes("/resources/raw")) {
+          return jsonResponse({ error: { message: "Rate limit exceeded" } }, 420);
+        }
+        return jsonResponse({ resources: url.includes("/resources/image") ? [hero] : [] });
+      });
+      await expect(client().listResources("media-asset", ACCOUNT)).rejects.toThrow(/420/);
+    });
+
+    it("rejects when a later page fails, rather than keep the pages before it", async () => {
+      installFetch((url) => {
+        if (url.includes("next_cursor=two")) return jsonResponse("Service Unavailable", 503);
+        if (url.includes("/resources/image")) {
+          return jsonResponse({ resources: [hero], next_cursor: "two" });
+        }
+        return jsonResponse({ resources: [] });
+      });
+      await expect(client().listResources("media-asset", ACCOUNT)).rejects.toThrow(/503/);
+    });
+
+    it("reads a 404 on an asset type's first page as no assets of that type", async () => {
+      installFetch((url) => {
+        if (url.includes("/resources/raw")) return jsonResponse({ error: {} }, 404);
+        return jsonResponse({ resources: url.includes("/resources/image") ? [hero] : [] });
+      });
+      const assets = await client().listResources("media-asset", ACCOUNT);
+      expect(assets.map((a) => a.displayName)).toEqual(["hero"]);
+    });
+
+    it("rejects a 404 on a later page of an asset type", async () => {
+      installFetch((url) => {
+        if (url.includes("next_cursor=two")) return jsonResponse({ error: {} }, 404);
+        if (url.includes("/resources/image")) {
+          return jsonResponse({ resources: [hero], next_cursor: "two" });
+        }
+        return jsonResponse({ resources: [] });
+      });
+      await expect(client().listResources("media-asset", ACCOUNT)).rejects.toThrow(/404/);
+    });
+
+    it("rejects an asset page whose list is not an array", async () => {
+      installFetch(() => jsonResponse({ error: { message: "nope" } }));
+      await expect(client().listResources("media-asset", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("rejects an asset list that never ends, after exactly its page cap", async () => {
+      installFetch(() => jsonResponse({ resources: [hero], next_cursor: "again" }));
+      await expect(client().listResources("media-asset", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(100);
+    });
+
+    it("rejects when a folder's subfolders fail, and allows a 404", async () => {
+      const root = { folders: [{ name: "a", path: "a" }] };
+      installFetch((url) =>
+        url.endsWith("/folders") ? jsonResponse(root) : jsonResponse("Server Error", 500),
+      );
+      await expect(client().listResources("folder", ACCOUNT)).rejects.toThrow(/500/);
+
+      vi.restoreAllMocks();
+      installFetch((url) =>
+        url.endsWith("/folders") ? jsonResponse(root) : jsonResponse({ error: {} }, 404),
+      );
+      const folders = await client().listResources("folder", ACCOUNT);
+      expect(folders.map((f) => f.displayName)).toEqual(["a"]);
+    });
+  });
+
   it("paginates upload presets and accepts Cloudinary response envelopes", async () => {
     installFetch((url) => {
       if (url.endsWith("/upload_presets?max_results=500")) {

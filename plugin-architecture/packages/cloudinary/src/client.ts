@@ -21,11 +21,14 @@ import {
   readOAuthGrantState,
   normalizeQuotaUsage,
   unencodedSegment,
+  withinListCap,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import {
+  CloudinaryApiError,
   createCloudinaryApis,
   cursorQuery,
+  readEveryPage,
   type CloudinaryConfig,
   type CloudinaryFolder,
   type CloudinaryResource,
@@ -61,6 +64,13 @@ const CORE_USAGE_KEYS = new Set([
 ]);
 
 const GIB = 1024 * 1024 * 1024;
+
+/**
+ * 100 pages of 500 for one asset type, and the same 50,000 across all three, which
+ * is as far as the host can prune. Past that a sync fails rather than come back short.
+ */
+const MAX_ASSETS = 50_000;
+const ASSET_PAGES = 100;
 
 /** The two types with a Metrics tab, for `withMetricsCapability`. */
 const METRIC_RESOURCE_TYPES = [MediaAssetResourceType, ProductEnvironmentResourceType];
@@ -1568,30 +1578,33 @@ export class CloudinaryClient implements PluginClient {
       });
 
       // Fetch subfolders one level deep
+      let subData;
       try {
-        const subData = await this.api.get(`/folders/${pathEncode(folder.path)}`);
-        for (const sub of subData.folders ?? []) {
-          results.push({
-            id: `${accountId}:folder:${sub.path}`,
-            pluginId: "cloudinary",
-            resourceTypeId: "folder",
-            accountId,
-            displayName: sub.name,
-            fields: {
-              name: sub.name,
-              path: sub.path,
-              ...(sub.external_id ? { externalId: sub.external_id } : {}),
-            },
-            resolvedOutputs: { path: sub.path, name: sub.name },
-            secretStates: [],
-            externalId: sub.path,
-            parentResourceId: `${accountId}:folder:${folder.path}`,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-        }
-      } catch {
-        // Subfolder listing may fail for empty folders
+        subData = await this.api.get(`/folders/${pathEncode(folder.path)}`);
+      } catch (err) {
+        // The folder went away after the root listing, so it has no subfolders.
+        if (err instanceof CloudinaryApiError && err.status === 404) continue;
+        throw err;
+      }
+      for (const sub of subData.folders ?? []) {
+        results.push({
+          id: `${accountId}:folder:${sub.path}`,
+          pluginId: "cloudinary",
+          resourceTypeId: "folder",
+          accountId,
+          displayName: sub.name,
+          fields: {
+            name: sub.name,
+            path: sub.path,
+            ...(sub.external_id ? { externalId: sub.external_id } : {}),
+          },
+          resolvedOutputs: { path: sub.path, name: sub.name },
+          secretStates: [],
+          externalId: sub.path,
+          parentResourceId: `${accountId}:folder:${folder.path}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
       }
     }
 
@@ -1599,28 +1612,25 @@ export class CloudinaryClient implements PluginClient {
   }
 
   private async listMediaAssets(accountId: string): Promise<ResourceInstance[]> {
-    // Fetch images, videos, and raw files.
-    const resourceTypes = ["image", "video", "raw"] as const;
-    const results: ResourceInstance[] = [];
-
-    for (const rType of resourceTypes) {
-      try {
-        let nextCursor: string | undefined;
-        do {
-          const data = await this.api.get(`/resources/${rType}`, {
-            query: { max_results: 500, tags: true, ...cursorQuery(nextCursor) },
+    const assets: CloudinaryResource[] = [];
+    for (const rType of ["image", "video", "raw"] as const) {
+      const path = `/resources/${rType}` as const;
+      // The document answers an empty type with an empty list, and has no 404 for
+      // these routes. Allowing one costs nothing if a real account does differently.
+      const rows = await readEveryPage<CloudinaryResource>(
+        { path, key: "resources", maxPages: ASSET_PAGES, notFoundIsEmpty: true },
+        async (cursor) => {
+          const data = await this.api.get(path, {
+            query: { max_results: 500, tags: true, ...cursorQuery(cursor) },
           });
-          for (const asset of data.resources ?? []) {
-            results.push(this.mapMediaAsset(asset, accountId));
-          }
-          nextCursor = data.next_cursor ?? undefined;
-        } while (nextCursor);
-      } catch {
-        // Skip resource types that fail (e.g. no raw files)
-      }
+          return { rows: data.resources, next: data.next_cursor };
+        },
+      );
+      assets.push(...rows);
     }
-
-    return results;
+    return withinListCap(assets, MAX_ASSETS, { vendor: "Cloudinary", path: "/resources" }).map(
+      (asset) => this.mapMediaAsset(asset, accountId),
+    );
   }
 
   private mapMediaAsset(asset: CloudinaryResource, accountId: string): ResourceInstance {

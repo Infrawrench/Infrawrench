@@ -1,5 +1,8 @@
 import {
   createApiClient,
+  ListTruncatedError,
+  requireListPage,
+  type ApiFailure,
   type ApiListItem,
   type ApiResponse,
   type HttpHostServices,
@@ -41,6 +44,56 @@ export type CloudinaryUsage = CloudinaryResponse<"getUsage"> & {
   rate_limit_remaining?: number;
 };
 
+/** Any non-2xx answer, carrying the status a list read has to tell apart. */
+export class CloudinaryApiError extends Error {
+  readonly status: number;
+  constructor(failure: ApiFailure) {
+    super(`Cloudinary API error ${failure.status} for ${failure.target}: ${failure.body}`);
+    this.name = "CloudinaryApiError";
+    this.status = failure.status;
+  }
+}
+
+/** One page of a list: its rows, unchecked, and the cursor that follows it. */
+export interface CloudinaryPage<T> {
+  rows: readonly T[] | null | undefined;
+  next: string | null | undefined;
+}
+
+/**
+ * Every row of a cursor-paged list, or an error: a sync prunes what a list stops
+ * returning, so a failed, malformed or too long list must never come back short.
+ * Only a 404 on the first page can mean there are no rows, and only where asked.
+ */
+export async function readEveryPage<T>(
+  where: { path: string; key: string; maxPages: number; notFoundIsEmpty?: boolean },
+  readPage: (cursor: string | undefined) => Promise<CloudinaryPage<T>>,
+): Promise<T[]> {
+  const { path, key, maxPages, notFoundIsEmpty } = where;
+  const rows: T[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    let answer: CloudinaryPage<T>;
+    try {
+      answer = await readPage(cursor);
+    } catch (err) {
+      if (
+        notFoundIsEmpty &&
+        page === 0 &&
+        err instanceof CloudinaryApiError &&
+        err.status === 404
+      ) {
+        return [];
+      }
+      throw err;
+    }
+    rows.push(...requireListPage(answer.rows, { vendor: "Cloudinary", path, key }));
+    if (!answer.next) return rows;
+    cursor = answer.next;
+  }
+  throw new ListTruncatedError({ vendor: "Cloudinary", path, items: rows.length, maxPages });
+}
+
 /**
  * Cursors go back as `next_cursor`, only once there is one. `String` because they
  * are not validated: whatever the provider sent goes back as its text, and would
@@ -63,6 +116,7 @@ export function createCloudinaryApis(options: {
     headers: async () => ({ Authorization: await authorization() }),
     http,
     caCert,
+    httpError: (failure: ApiFailure) => new CloudinaryApiError(failure),
   };
   return {
     api: createApiClient<paths>({ ...shared, encodeQuery: encodeURIComponent }),
