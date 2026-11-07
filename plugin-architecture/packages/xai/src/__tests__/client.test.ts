@@ -1118,3 +1118,35 @@ describe("billing: invoices, spending limit and prepaid credit", () => {
     await expect(client().fetchCreditBalance()).rejects.toBeInstanceOf(CreditAccessError);
   });
 });
+
+describe("deleting a file", () => {
+  it("fails when the API answers deleted: false", async () => {
+    installFetch(() => jsonResponse({ id: "f1", deleted: false, object: "file" }));
+    await expect(client().deleteResource("file", `${ACCOUNT}:file:f1`, ACCOUNT)).rejects.toThrow(
+      "file f1 was not deleted",
+    );
+  });
+
+  it("succeeds when the API answers deleted: true", async () => {
+    installFetch(() => jsonResponse({ id: "f1", deleted: true, object: "file" }));
+    await client().deleteResource("file", `${ACCOUNT}:file:f1`, ACCOUNT);
+    expect(calls[0]?.url).toBe("https://api.x.ai/v1/files/f1");
+  });
+
+  it("refuses a blank id before anything is sent", async () => {
+    const spy = installFetch(() => jsonResponse({ deleted: true }));
+    const c = client("xai-mgmt");
+    for (const typeId of ["file", "api-key", "collection"]) {
+      await expect(c.deleteResource(typeId, `${ACCOUNT}:${typeId}:`, ACCOUNT)).rejects.toThrow(
+        "no id",
+      );
+    }
+    await expect(
+      c.updateResource("api-key", `${ACCOUNT}:api-key:`, ACCOUNT, { name: "n" }),
+    ).rejects.toThrow("no id");
+    await expect(
+      c.invokeAction("api-key", `${ACCOUNT}:api-key:`, "rotate", ACCOUNT),
+    ).rejects.toThrow("no id");
+    expect(spy).not.toHaveBeenCalled();
+  });
+});

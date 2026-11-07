@@ -1711,6 +1711,7 @@ export class XaiClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const externalId = resourceId.split(":").slice(2).join(":");
+      if (!externalId) throw new Error(`xAI plugin: ${typeId} ${resourceId} has no id to update`);
 
       if (typeId === "api-key") {
         // PUT /auth/api-keys/{api_key_id} takes { apiKey: {...}, fieldMask }.
@@ -1813,6 +1814,7 @@ export class XaiClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const externalId = resourceId.split(":").slice(2).join(":");
+      if (!externalId) throw new Error(`xAI plugin: ${typeId} ${resourceId} has no id to delete`);
       if (typeId === "api-key") {
         await this.mgmtFetch(`/auth/api-keys/${encodeURIComponent(externalId)}`, {
           method: "DELETE",
@@ -1820,7 +1822,9 @@ export class XaiClient implements PluginClient {
         return;
       }
       if (typeId === "file") {
-        await this.inference.delete(`/v1/files/${pathEncode(externalId)}`);
+        const result = await this.inference.delete(`/v1/files/${pathEncode(externalId)}`);
+        if (result.deleted === false)
+          throw new Error(`xAI plugin: file ${externalId} was not deleted`);
         return;
       }
       if (typeId === "custom-voice") {
@@ -1872,6 +1876,7 @@ export class XaiClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const externalId = resourceId.split(":").slice(2).join(":");
+      if (!externalId) throw new Error(`xAI plugin: ${typeId} ${resourceId} has no id to act on`);
       if (typeId === "api-key" && actionId === "rotate") {
         await this.mgmtFetch(`/auth/api-keys/${encodeURIComponent(externalId)}/rotate`, {
           method: "POST",
