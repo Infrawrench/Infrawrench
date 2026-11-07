@@ -1,0 +1,229 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "developer",
+      "specUrl": "https://raw.githubusercontent.com/upstash/docs/main/devops/developer-api/openapi.yaml",
+      "patches": [
+        {
+          "pointer": "/components/schemas/CreateDatabaseRequest/properties/primary_region",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/CreateDatabaseRequest/properties/plan",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/CreateDatabaseRequest/properties/read_regions/items",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/ChangePlanRequest/properties/plan_name",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/CreateIndexRequest/properties/region",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/CreateIndexRequest/properties/similarity_function",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/CreateIndexRequest/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/CreateIndexRequest/properties/index_type",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/CreateIndexRequest/properties/embedding_model",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/CreateIndexRequest/properties/sparse_embedding_model",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/AddTeamMemberRequest/properties/member_role",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/paths/~1search/post/requestBody/content/application~1json/schema/properties/region",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/paths/~1search/post/requestBody/content/application~1json/schema/properties/type",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/paths/~1redis~1update-regions~1{id}/post/requestBody/content/application~1json/schema/properties/read_regions/items",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/paths/~1vector~1index~1{id}~1setplan/post/requestBody/content/application~1json/schema/properties/target_plan",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/paths/~1qstash~1set-plan~1{id}/post/requestBody/content/application~1json/schema/properties/plan_name",
+          "value": {
+            "type": "string"
+          },
+          "why": "Passed through from a form field; our picker offers the valid values and Upstash validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+        }
+      ],
+      "paths": {
+        "/redis/databases": ["get"],
+        "/redis/database": ["post"],
+        "/redis/database/{id}": ["get", "delete"],
+        "/redis/rename/{id}": ["post"],
+        "/redis/reset-password/{id}": ["post"],
+        "/redis/enable-tls/{id}": ["post"],
+        "/redis/enable-eviction/{id}": ["post"],
+        "/redis/disable-eviction/{id}": ["post"],
+        "/redis/enable-autoupgrade/{id}": ["post"],
+        "/redis/disable-autoupgrade/{id}": ["post"],
+        "/redis/{id}/change-plan": ["post"],
+        "/redis/update-budget/{id}": ["patch"],
+        "/redis/update-regions/{id}": ["post"],
+        "/redis/move-to-team": ["post"],
+        "/redis/stats/{id}": ["get"],
+        "/redis/list-backup/{id}": ["get"],
+        "/redis/create-backup/{id}": ["post"],
+        "/redis/delete-backup/{id}/{backup_id}": ["delete"],
+        "/redis/restore-backup/{id}": ["post"],
+        "/redis/enable-dailybackup/{id}": ["patch"],
+        "/redis/disable-dailybackup/{id}": ["patch"],
+        "/teams": ["get"],
+        "/auditlogs": ["get"],
+        "/team": ["post"],
+        "/team/{id}": ["delete"],
+        "/teams/{team_id}": ["get"],
+        "/teams/member": ["post", "delete"],
+        "/vector/index": ["get", "post"],
+        "/vector/index/{id}": ["get", "delete"],
+        "/vector/index/{id}/rename": ["post"],
+        "/vector/index/{id}/reset-password": ["post"],
+        "/vector/index/{id}/setplan": ["post"],
+        "/vector/index/{id}/transfer": ["post"],
+        "/vector/index/{id}/stats": ["get"],
+        "/search": ["get", "post"],
+        "/search/{id}": ["get", "delete"],
+        "/search/{id}/stats": ["get"],
+        "/search/{id}/reset-password": ["post"],
+        "/search/{id}/transfer": ["post"],
+        "/search/{id}/rename": ["post"],
+        "/qstash/users": ["get"],
+        "/qstash/rotate-token/{id}": ["post"],
+        "/qstash/set-plan/{id}": ["post"],
+        "/qstash/stats/{id}": ["get"],
+        "/qstash/move-to-team": ["post"],
+        "/qstash/update-budget/{id}": ["patch"],
+        "/qstash/enable-prodpack/{id}": ["post"],
+        "/qstash/disable-prodpack/{id}": ["post"]
+      }
+    },
+    {
+      "name": "qstash",
+      "specUrl": "https://raw.githubusercontent.com/upstash/docs/main/qstash/openapi.yaml",
+      "patches": [
+        {
+          "pointer": "/paths/~1v2~1publish~1{destination}/post/responses/200/content/application~1json/schema/oneOf/1",
+          "value": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublishToUrlGroupResponse"
+            }
+          },
+          "why": "A URL group answers with an array of messages, not an object holding one: Upstash's own SDK (PublishToUrlGroupsResponse) and its docs snippet (qstash-publish-response.mdx) both say so, and the plugin reads the array."
+        },
+        {
+          "pointer": "/paths/~1v2~1enqueue~1{queueName}~1{destination}/post/responses/200/content/application~1json/schema/oneOf/1",
+          "value": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublishToUrlGroupResponse"
+            }
+          },
+          "why": "A URL group answers with an array of messages, not an object holding one: Upstash's own SDK (PublishToUrlGroupsResponse) and its docs snippet (qstash-publish-response.mdx) both say so, and the plugin reads the array."
+        },
+        {
+          "pointer": "/components/schemas/DLQMessage/properties/dlqId",
+          "value": {
+            "type": "string"
+          },
+          "why": "The document leaves out the id its own /v2/dlq/{dlqId} routes take. Upstash's SDK (DlqMessage in dlq.ts) has it, and the plugin needs it for retry and delete."
+        }
+      ],
+      "paths": {
+        "/v2/publish/{destination}": ["post"],
+        "/v2/enqueue/{queueName}/{destination}": ["post"],
+        "/v2/queues": ["get", "post"],
+        "/v2/queues/{queueName}": ["get", "delete"],
+        "/v2/queues/{queueName}/pause": ["post"],
+        "/v2/queues/{queueName}/resume": ["post"],
+        "/v2/schedules": ["get"],
+        "/v2/schedules/{destination}": ["post"],
+        "/v2/schedules/{scheduleId}": ["get", "delete"],
+        "/v2/schedules/{scheduleId}/pause": ["post"],
+        "/v2/schedules/{scheduleId}/resume": ["post"],
+        "/v2/topics": ["get"],
+        "/v2/topics/{urlGroupName}": ["get", "delete"],
+        "/v2/topics/{urlGroupName}/endpoints": ["post", "delete"],
+        "/v2/dlq": ["get", "delete"],
+        "/v2/dlq/{dlqId}": ["delete"],
+        "/v2/dlq/retry": ["post"],
+        "/v2/dlq/retry/{dlqId}": ["post"],
+        "/v2/keys": ["get"],
+        "/v2/keys/rotate": ["post"],
+        "/v2/logs": ["get"]
+      }
+    }
+  ]
+}

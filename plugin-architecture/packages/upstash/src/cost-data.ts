@@ -1,8 +1,9 @@
 import type { CostFetchRange, CostFetchResult, CostRow } from "@infrawrench/plugin-base";
 import type { UpstashContext } from "./api.js";
-import { devFetch } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import { dev } from "./api.js";
 import { parseUpstashTime } from "./mappers.js";
-import type { Point, UpQStashStats, UpQStashUser, UpRedis, UpRedisStats } from "./types.js";
+import type { Point, UpQStashUser, UpRedis } from "./types.js";
 
 /**
  * Daily spend, verified 2026-10 against the Developer API spec:
@@ -48,23 +49,20 @@ export async function fetchUpstashCostData(
   const rows: CostRow[] = [];
   let degraded = false;
   const [dbs, qstash] = await Promise.all([
-    devFetch<UpRedis[]>(ctx, "GET", "/redis/databases").catch(() => {
+    dev(ctx, (api) => api.get("/redis/databases")).catch((): UpRedis[] => {
       degraded = true;
-      return [] as UpRedis[];
+      return [];
     }),
-    devFetch<UpQStashUser[]>(ctx, "GET", "/qstash/users").catch(() => {
+    dev(ctx, (api) => api.get("/qstash/users")).catch((): UpQStashUser[] => {
       degraded = true;
-      return [] as UpQStashUser[];
+      return [];
     }),
   ]);
   for (const db of dbs ?? []) {
     if (!db.database_id || db.type === "free") continue;
     try {
-      const stats = await devFetch<UpRedisStats>(
-        ctx,
-        "GET",
-        `/redis/stats/${encodeURIComponent(db.database_id)}`,
-      );
+      const id = pathEncode(db.database_id);
+      const stats = await dev(ctx, (api) => api.get(`/redis/stats/${id}`));
       rows.push(
         ...rowsFrom(stats?.dailybilling, range, {
           service: "Redis",
@@ -80,13 +78,9 @@ export async function fetchUpstashCostData(
   for (const q of qstash ?? []) {
     if (!q.id || q.type === "free") continue;
     try {
-      const stats = await devFetch<UpQStashStats>(
-        ctx,
-        "GET",
-        `/qstash/stats/${encodeURIComponent(q.id)}`,
-        {
-          query: { period: "7d" },
-        },
+      const id = pathEncode(q.id);
+      const stats = await dev(ctx, (api) =>
+        api.get(`/qstash/stats/${id}`, { query: { period: "7d" } }),
       );
       rows.push(
         ...rowsFrom(stats?.daily_billings, range, {

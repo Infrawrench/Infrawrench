@@ -1,5 +1,7 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch, utf8ToBase64 } from "@infrawrench/plugin-base";
+import type { ApiClient, ApiResponse, HttpHostServices } from "@infrawrench/plugin-base";
+import { createApiClient, jsonRestFetch, utf8ToBase64 } from "@infrawrench/plugin-base";
+import type { paths as DeveloperPaths } from "./api-types.developer.gen.js";
+import type { paths as QStashPaths } from "./api-types.qstash.gen.js";
 
 /**
  * Two Upstash APIs, verified 2026-10 against the published OpenAPI documents
@@ -46,17 +48,13 @@ export function statusOf(err: unknown): number {
   return err instanceof UpstashApiError ? err.status : 0;
 }
 
-export type Query = Record<string, string | number | boolean | string[] | undefined>;
+export type DeveloperClient = ApiClient<DeveloperPaths>;
+export type QStashClient = ApiClient<QStashPaths>;
 
-export function buildQuery(query?: Query): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) {
-    if (v === undefined || v === "") continue;
-    if (Array.isArray(v)) for (const item of v) params.append(k, item);
-    else params.set(k, String(v));
-  }
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
+/** The regional QStash account a call acts as. */
+export interface QStashAccount {
+  token: string;
+  region?: string | undefined;
 }
 
 const STATUS_IN_MESSAGE = /API error (\d{3})/;
@@ -69,7 +67,7 @@ function rethrow(err: unknown, vendor: string): never {
   const jsonStart = detail.indexOf("{");
   if (jsonStart >= 0) {
     try {
-      const parsed = JSON.parse(detail.slice(jsonStart)) as { error?: string; message?: string };
+      const parsed: { error?: string; message?: string } = JSON.parse(detail.slice(jsonStart));
       detail = parsed.error ?? parsed.message ?? detail;
     } catch {
       /* keep text */
@@ -89,67 +87,85 @@ function rethrow(err: unknown, vendor: string): never {
   );
 }
 
-/** Developer API request (Basic auth). */
-export async function devFetch<T>(
-  ctx: UpstashContext,
-  method: string,
-  path: string,
-  options: { body?: unknown; query?: Query } = {},
-): Promise<T> {
+/**
+ * Run a call, with the provider's errors explained. `undefined` is an answer that
+ * was not JSON: a few writes answer 200 with a bare "OK".
+ */
+async function answered<T>(vendor: string, call: () => Promise<T>): Promise<T | undefined> {
   try {
-    return await jsonRestFetch<T>({
-      vendor: "Upstash",
-      url: `${ctx.baseUrl ?? DEVELOPER_API}${path}${buildQuery(options.query)}`,
-      errorPath: path,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Basic ${utf8ToBase64(`${ctx.email}:${ctx.apiKey}`)}`,
-      },
-      init: {
-        method,
-        ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
-      },
-      ...(ctx.http ? { http: ctx.http } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
+    return await call();
   } catch (err) {
-    // A few writes answer 200 with a bare "OK" rather than JSON.
-    if (err instanceof SyntaxError) return undefined as T;
-    rethrow(err, "Upstash");
+    if (err instanceof SyntaxError) return undefined;
+    rethrow(err, vendor);
   }
 }
 
-/** QStash API request (Bearer QStash token of one regional account). */
-export async function qstashFetch<T>(
+/** A Developer API call (Basic auth). */
+export function dev<T>(
   ctx: UpstashContext,
-  account: { token: string; region?: string | undefined },
-  method: string,
+  call: (api: DeveloperClient) => Promise<T>,
+): Promise<T | undefined> {
+  return answered("Upstash", () =>
+    call(
+      createApiClient<DeveloperPaths>({
+        vendor: "Upstash",
+        baseUrl: ctx.baseUrl ?? DEVELOPER_API,
+        headers: {
+          Accept: "application/json",
+          Authorization: `Basic ${utf8ToBase64(`${ctx.email}:${ctx.apiKey}`)}`,
+        },
+        http: ctx.http,
+        caCert: ctx.caCert,
+      }),
+    ),
+  );
+}
+
+const qstashHeaders = (account: QStashAccount) => ({
+  Accept: "application/json",
+  Authorization: `Bearer ${account.token}`,
+});
+
+/** A QStash API call (Bearer QStash token of one regional account). */
+export function qstash<T>(
+  ctx: UpstashContext,
+  account: QStashAccount,
+  call: (api: QStashClient) => Promise<T>,
+): Promise<T | undefined> {
+  return answered("QStash", () =>
+    call(
+      createApiClient<QStashPaths>({
+        vendor: "QStash",
+        baseUrl: (ctx.qstashBaseUrl ?? qstashBase)(account.region),
+        headers: qstashHeaders(account),
+        http: ctx.http,
+        caCert: ctx.caCert,
+      }),
+    ),
+  );
+}
+
+/**
+ * A QStash POST whose body goes as it stands, because it is the user's message, and
+ * whose path may hold a destination URL verbatim. `Op` is what the document says it
+ * answers; the client only writes JSON bodies and checked paths.
+ */
+export function qstashPost<Op>(
+  ctx: UpstashContext,
+  account: QStashAccount,
   path: string,
-  options: { body?: string; json?: unknown; query?: Query; headers?: Record<string, string> } = {},
-): Promise<T> {
-  const base = (ctx.qstashBaseUrl ?? qstashBase)(account.region);
-  const body =
-    options.json !== undefined
-      ? JSON.stringify(options.json)
-      : options.body !== undefined
-        ? options.body
-        : undefined;
-  try {
-    return await jsonRestFetch<T>({
+  body: string,
+  headers: Record<string, string>,
+): Promise<ApiResponse<Op> | undefined> {
+  return answered("QStash", () =>
+    jsonRestFetch<ApiResponse<Op>>({
       vendor: "QStash",
-      url: `${base}${path}${buildQuery(options.query)}`,
+      url: `${(ctx.qstashBaseUrl ?? qstashBase)(account.region)}${path}`,
       errorPath: path,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${account.token}`,
-        ...(options.headers ?? {}),
-      },
-      init: { method, ...(body !== undefined ? { body } : {}) },
+      headers: { ...qstashHeaders(account), ...headers },
+      init: { method: "POST", body },
       ...(ctx.http ? { http: ctx.http } : {}),
       ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-  } catch (err) {
-    if (err instanceof SyntaxError) return undefined as T;
-    rethrow(err, "QStash");
-  }
+    }),
+  );
 }
