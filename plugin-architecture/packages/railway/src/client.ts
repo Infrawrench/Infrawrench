@@ -23,7 +23,7 @@ import {
   QuotaAccessError,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
-import { RailwayApi, nodes } from "./api.js";
+import { RailwayApi, allNodes, asConn, nodes } from "./api.js";
 import { fetchEstimatedBill, fetchRailwayCostData, type NameMaps } from "./cost-data.js";
 import { cached, externalOf, isStatus, mapLimit, parseFormArg, str, type Cached } from "./kit.js";
 import { fetchRailwayLogs } from "./logs.js";
@@ -46,7 +46,11 @@ import {
   Q_DEPLOYMENT,
   Q_DEPLOYMENTS,
   Q_LIMITS,
+  Q_ENVIRONMENT_SERVICE_INSTANCES,
+  Q_ENVIRONMENT_VOLUME_INSTANCES,
   Q_PROJECTS,
+  Q_PROJECT_ENVIRONMENTS,
+  Q_PROJECT_SERVICES,
   Q_PROJECT_TREE,
   Q_REGIONS,
   Q_TCP_PROXIES,
@@ -73,7 +77,17 @@ import type {
 
 const TREE_TTL_MS = 60_000;
 const FAN_OUT = 4;
+/**
+ * Rolling window: the newest N. Older rows falling off is what this type means.
+ * Railway's own "latest deployment" example reads `deployments(first: 1)`.
+ */
 const DEPLOYMENTS_PER_SERVICE = 10;
+/** 100 projects a page: 10,000 projects. */
+const MAX_PROJECT_PAGES = 100;
+/** 200 a page, for a project's services and an environment's instances: 10,000 each. */
+const MAX_CHILD_PAGES = 50;
+/** 50 environments a page (preview environments add up): 10,000. */
+const MAX_ENVIRONMENT_PAGES = 200;
 
 interface Located {
   project: RwProject;
@@ -134,18 +148,96 @@ export class RailwayClient implements PluginClient {
   }
 
   private async projectIds(workspaceId: string): Promise<string[]> {
-    const ids: string[] = [];
-    let after: string | null | undefined;
-    for (let page = 0; page < 20; page++) {
-      const res = await this.api.gql<{ projects: Conn<{ id: string }> }>(Q_PROJECTS, {
-        workspaceId,
-        after: after ?? null,
-      });
-      ids.push(...nodes(res.projects).map((p) => p.id));
-      if (!res.projects.pageInfo?.hasNextPage || !res.projects.pageInfo.endCursor) break;
-      after = res.projects.pageInfo.endCursor;
+    const page = async (after: string | null) =>
+      (
+        await this.api.gql<{ projects: Conn<{ id: string }> }>(Q_PROJECTS, {
+          workspaceId,
+          after,
+        })
+      ).projects;
+    const projects = await allNodes("projects", MAX_PROJECT_PAGES, await page(null), page);
+    return projects.map((p) => p.id);
+  }
+
+  /**
+   * One project with every page of its services, environments and each environment's
+   * instances, or null when the token cannot see it or it has gone. A follow-up page
+   * that is refused fails the walk: the project was readable a moment ago.
+   */
+  private async projectTree(id: string): Promise<RwProject | null> {
+    let project: RwProject;
+    try {
+      project = (await this.api.gql<{ project: RwProject }>(Q_PROJECT_TREE, { id })).project;
+    } catch (e) {
+      if (isStatus(e, 403, 404)) return null;
+      throw e;
     }
-    return ids;
+    try {
+      const services = await allNodes(
+        `project(${id}).services`,
+        MAX_CHILD_PAGES,
+        project.services,
+        async (after) =>
+          (await this.api.gql<{ project: RwProject }>(Q_PROJECT_SERVICES, { id, after })).project
+            ?.services,
+      );
+      const environments = await allNodes(
+        `project(${id}).environments`,
+        MAX_ENVIRONMENT_PAGES,
+        project.environments,
+        async (after) =>
+          (await this.api.gql<{ project: RwProject }>(Q_PROJECT_ENVIRONMENTS, { id, after }))
+            .project?.environments,
+      );
+      const full: RwEnvironment[] = [];
+      for (const env of environments) {
+        const whole = await this.environmentInstances(env);
+        if (whole) full.push(whole);
+      }
+      return { ...project, services: asConn(services), environments: asConn(full) };
+    } catch (e) {
+      if (isStatus(e, 404)) return null;
+      throw e;
+    }
+  }
+
+  /** An environment with every page of its instances, or null when it has gone. */
+  private async environmentInstances(env: RwEnvironment): Promise<RwEnvironment | null> {
+    const id = env.id;
+    try {
+      const serviceInstances = await allNodes(
+        `environment(${id}).serviceInstances`,
+        MAX_CHILD_PAGES,
+        env.serviceInstances,
+        async (after) =>
+          (
+            await this.api.gql<{ environment: RwEnvironment }>(Q_ENVIRONMENT_SERVICE_INSTANCES, {
+              id,
+              after,
+            })
+          ).environment?.serviceInstances,
+      );
+      const volumeInstances = await allNodes(
+        `environment(${id}).volumeInstances`,
+        MAX_CHILD_PAGES,
+        env.volumeInstances,
+        async (after) =>
+          (
+            await this.api.gql<{ environment: RwEnvironment }>(Q_ENVIRONMENT_VOLUME_INSTANCES, {
+              id,
+              after,
+            })
+          ).environment?.volumeInstances,
+      );
+      return {
+        ...env,
+        serviceInstances: asConn(serviceInstances),
+        volumeInstances: asConn(volumeInstances),
+      };
+    } catch (e) {
+      if (isStatus(e, 404)) return null;
+      throw e;
+    }
   }
 
   tree(): Promise<Tree> {
@@ -154,14 +246,7 @@ export class RailwayClient implements PluginClient {
       const out: Tree = { workspaces, projects: [] };
       for (const w of workspaces) {
         const ids = await this.projectIds(w.id);
-        const projects = await mapLimit(ids, FAN_OUT, async (id) => {
-          try {
-            return (await this.api.gql<{ project: RwProject }>(Q_PROJECT_TREE, { id })).project;
-          } catch (e) {
-            if (isStatus(e, 403, 404)) return null;
-            throw e;
-          }
-        });
+        const projects = await mapLimit(ids, FAN_OUT, (id) => this.projectTree(id));
         for (const p of projects) if (p) out.projects.push({ project: p, workspace: w });
       }
       return out;

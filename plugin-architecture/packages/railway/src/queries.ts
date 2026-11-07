@@ -38,9 +38,11 @@ export const Q_ESTIMATED_USAGE = `query Estimated($workspaceId: String!, $measur
   }
 }`;
 
+const PAGE_INFO = `pageInfo { hasNextPage endCursor }`;
+
 export const Q_PROJECTS = `query Projects($workspaceId: String, $after: String) {
   projects(workspaceId: $workspaceId, first: 100, after: $after) {
-    pageInfo { hasNextPage endCursor }
+    ${PAGE_INFO}
     edges { node { id name } }
   }
 }`;
@@ -65,20 +67,53 @@ const SERVICE_INSTANCE_FIELDS = `
   latestDeployment { id status createdAt url staticUrl canRedeploy canRollback deploymentStopped meta }
 `;
 
+const SERVICE_FIELDS = `id name icon createdAt`;
+
+const VOLUME_INSTANCE_FIELDS = `
+  id volumeId serviceId environmentId mountPath sizeMB currentSizeMB state region
+  createdAt isPendingDeletion volume { id name }
+`;
+
+/** The first page of each nested list; the rest come from the page queries below. */
+const ENVIRONMENT_FIELDS = `
+  id name isEphemeral createdAt updatedAt
+  serviceInstances(first: 200) { ${PAGE_INFO} edges { node { ${SERVICE_INSTANCE_FIELDS} } } }
+  volumeInstances(first: 200) { ${PAGE_INFO} edges { node { ${VOLUME_INSTANCE_FIELDS} } } }
+`;
+
 /** One project with every environment's service and volume instances. */
 export const Q_PROJECT_TREE = `query ProjectTree($id: String!) {
   project(id: $id) {
     id name description isPublic prDeploys workspaceId createdAt updatedAt
-    services(first: 200) { edges { node { id name icon createdAt } } }
-    environments(first: 50) {
-      edges { node {
-        id name isEphemeral createdAt updatedAt
-        serviceInstances(first: 200) { edges { node { ${SERVICE_INSTANCE_FIELDS} } } }
-        volumeInstances(first: 200) { edges { node {
-          id volumeId serviceId environmentId mountPath sizeMB currentSizeMB state region
-          createdAt isPendingDeletion volume { id name }
-        } } }
-      } }
+    services(first: 200) { ${PAGE_INFO} edges { node { ${SERVICE_FIELDS} } } }
+    environments(first: 50) { ${PAGE_INFO} edges { node { ${ENVIRONMENT_FIELDS} } } }
+  }
+}`;
+
+export const Q_PROJECT_SERVICES = `query ProjectServices($id: String!, $after: String!) {
+  project(id: $id) {
+    services(first: 200, after: $after) { ${PAGE_INFO} edges { node { ${SERVICE_FIELDS} } } }
+  }
+}`;
+
+export const Q_PROJECT_ENVIRONMENTS = `query ProjectEnvironments($id: String!, $after: String!) {
+  project(id: $id) {
+    environments(first: 50, after: $after) { ${PAGE_INFO} edges { node { ${ENVIRONMENT_FIELDS} } } }
+  }
+}`;
+
+export const Q_ENVIRONMENT_SERVICE_INSTANCES = `query EnvironmentServiceInstances($id: String!, $after: String!) {
+  environment(id: $id) {
+    serviceInstances(first: 200, after: $after) {
+      ${PAGE_INFO} edges { node { ${SERVICE_INSTANCE_FIELDS} } }
+    }
+  }
+}`;
+
+export const Q_ENVIRONMENT_VOLUME_INSTANCES = `query EnvironmentVolumeInstances($id: String!, $after: String!) {
+  environment(id: $id) {
+    volumeInstances(first: 200, after: $after) {
+      ${PAGE_INFO} edges { node { ${VOLUME_INSTANCE_FIELDS} } }
     }
   }
 }`;

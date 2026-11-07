@@ -1,5 +1,7 @@
 import type { HostServices } from "@infrawrench/plugin-base";
+import { ListPageError, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import { RailwayApiError } from "./kit.js";
+import type { Conn } from "./types.js";
 
 /**
  * Transport for Railway's public GraphQL API
@@ -126,4 +128,46 @@ export function nodes<T>(
   return (conn?.edges ?? [])
     .map((e) => e?.node)
     .filter((n): n is T => n !== null && n !== undefined);
+}
+
+/** A whole connection as one page, for code that reads the tree with {@link nodes}. */
+export function asConn<T>(rows: T[]): Conn<T> {
+  return { edges: rows.map((node) => ({ node })), pageInfo: { hasNextPage: false } };
+}
+
+/**
+ * Every node of a Relay connection: `first` is the page already in hand, and `next`
+ * asks for the page after a cursor. A page with no `edges` or no `pageInfo` throws
+ * rather than reading as the end, since a sync deletes what a list stops returning.
+ */
+export async function allNodes<T>(
+  path: string,
+  maxPages: number,
+  first: Conn<T> | null | undefined,
+  next: (after: string) => Promise<Conn<T> | null | undefined>,
+): Promise<T[]> {
+  const out: T[] = [];
+  let page = first;
+  for (let read = 1; ; read++) {
+    const edges = requireListPage(page?.edges, { vendor: "Railway", path, key: "edges", page });
+    for (const e of edges) if (e?.node) out.push(e.node);
+    const info = page?.pageInfo;
+    if (!info) {
+      throw new ListPageError({ vendor: "Railway", path, key: "pageInfo", found: undefined, page });
+    }
+    if (!info.hasNextPage) return out;
+    if (!info.endCursor) {
+      throw new ListPageError({
+        vendor: "Railway",
+        path,
+        key: "edges",
+        found: edges,
+        saysMoreWith: "no cursor",
+      });
+    }
+    if (read >= maxPages) {
+      throw new ListTruncatedError({ vendor: "Railway", path, items: out.length, maxPages });
+    }
+    page = await next(info.endCursor);
+  }
 }

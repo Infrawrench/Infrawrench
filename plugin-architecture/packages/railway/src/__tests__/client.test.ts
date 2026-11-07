@@ -39,14 +39,16 @@ const PROJECT = {
   id: "p1",
   name: "shop",
   workspaceId: "w1",
-  services: { edges: [{ node: { id: "s1", name: "api" } }] },
+  services: { pageInfo: { hasNextPage: false }, edges: [{ node: { id: "s1", name: "api" } }] },
   environments: {
+    pageInfo: { hasNextPage: false },
     edges: [
       {
         node: {
           id: "e1",
           name: "production",
           serviceInstances: {
+            pageInfo: { hasNextPage: false },
             edges: [
               {
                 node: {
@@ -89,6 +91,7 @@ const PROJECT = {
             ],
           },
           volumeInstances: {
+            pageInfo: { hasNextPage: false },
             edges: [
               {
                 node: {
