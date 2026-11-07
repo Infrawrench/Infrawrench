@@ -227,13 +227,16 @@ export class KoyebClient implements PluginClient {
           );
         }
         case "deployment": {
-          const { now, later } = deploymentWindow(await this.services());
-          if (later.length > 0) {
+          const services = await this.services();
+          const { now, later } = deploymentWindow(services);
+          // A host that keeps no track answers false, and has no poll to outlast: it reads
+          // every service.
+          const tracked =
+            later.length === 0 ||
             reportUnreadListPart({
               parentResourceIds: later.map((s) => `${accountId}:service:${s.id}`),
             });
-          }
-          const lists = await mapLimit(now, FAN_OUT, async (s) => {
+          const lists = await mapLimit(tracked ? now : services, FAN_OUT, async (s) => {
             // Rolling window: the newest N. Older rows falling off is what this type means.
             // The spec gives no order; Koyeb's own CLI takes `limit=1` as the latest.
             const path = "/v1/deployments";

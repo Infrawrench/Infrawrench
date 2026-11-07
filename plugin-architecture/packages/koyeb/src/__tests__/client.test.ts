@@ -479,6 +479,17 @@ describe("deployments", () => {
     expect(new Set([...read, ...named]).size).toBe(1100);
   });
 
+  it("reads every service where the host keeps no track of the rest", async () => {
+    const services = Array.from({ length: 1100 }, (_, i) => ({ ...SERVICE, id: `s${i}` }));
+    routes["GET /v1/services"] = (c: Call) => {
+      const offset = Number(c.query.get("offset"));
+      return { services: services.slice(offset, offset + 100), count: "1100" };
+    };
+    routes["GET /v1/deployments"] = { deployments: [] };
+    await client().listResources("deployment", ACCOUNT);
+    expect(calls.filter((c) => c.path === "/v1/deployments")).toHaveLength(1100);
+  });
+
   it("moves the run of services from one poll to the next", async () => {
     const services = Array.from({ length: 1100 }, (_, i) => ({ ...SERVICE, id: `s${i}` }));
     routes["GET /v1/services"] = (c: Call) => {
