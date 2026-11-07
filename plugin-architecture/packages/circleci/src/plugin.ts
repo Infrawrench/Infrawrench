@@ -7,11 +7,10 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import type { CircleContext } from "./api.js";
-import { circleFetch, isPermissionError } from "./api.js";
+import { circleApi, isPermissionError } from "./api.js";
 import { CircleCIClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { CIRCLECI_OAUTH, completeCircleCIOAuth, registerCircleCIClient } from "./oauth.js";
-import type { CircleCollaboration } from "./mappers.js";
 import { DEFAULT_PRICE_PER_CREDIT, RATE_KEYS } from "./rates.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
@@ -107,7 +106,7 @@ async function listCredentialOptions(
   if (!token) throw new Error("Enter a personal API token first.");
   const ctx: CircleContext = { token, ...(services?.http ? { http: services.http } : {}) };
   try {
-    const orgs = await circleFetch<CircleCollaboration[]>(ctx, "/me/collaborations");
+    const orgs = await circleApi(ctx).v2.get("/me/collaborations");
     if (!orgs || orgs.length === 0) {
       throw new Error("The token's user belongs to no CircleCI organizations.");
     }

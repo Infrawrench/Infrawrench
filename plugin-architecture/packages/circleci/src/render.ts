@@ -538,8 +538,7 @@ function renderPipeline(r: ResourceInstance): DetailViewSchema {
             rows: w.jobs.map<TableRow>((j) => {
               const start = j.started_at ? Date.parse(j.started_at) : NaN;
               const stop = j.stopped_at ? Date.parse(j.stopped_at) : NaN;
-              const approvalId = (j as CircleJob & { approval_request_id?: string })
-                .approval_request_id;
+              const approvalId = j.approval_request_id;
               return {
                 cells: {
                   name: j.name,

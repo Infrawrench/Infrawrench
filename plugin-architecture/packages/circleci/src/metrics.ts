@@ -14,9 +14,11 @@
  */
 
 import type { MetricSeries } from "@infrawrench/plugin-base";
+import { pathEncode, type ApiListItem } from "@infrawrench/plugin-base";
 import type { CircleContext } from "./api.js";
-import { circleFetch, circlePaged } from "./api.js";
-import type { WorkflowMetrics, WorkflowRun } from "./mappers.js";
+import { circleApi, slugSegment } from "./api.js";
+import type { operations } from "./api-types.v2.gen.js";
+import type { WorkflowRun } from "./mappers.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -62,9 +64,12 @@ export function percentile(values: number[], p: number): number | undefined {
 
 const bucketOf = (ms: number, bucketMs: number) => Math.floor(ms / bucketMs) * bucketMs;
 
+/** What the series read of a run. */
+type RunSample = Pick<WorkflowRun, "created_at" | "status"> & Partial<WorkflowRun>;
+
 /** Series out of a workflow's individual runs. */
-export function workflowRunSeries(runs: WorkflowRun[], bucketMs: number): MetricSeries[] {
-  const buckets = new Map<number, WorkflowRun[]>();
+export function workflowRunSeries(runs: RunSample[], bucketMs: number): MetricSeries[] {
+  const buckets = new Map<number, RunSample[]>();
   for (const run of runs) {
     if (run.is_approval) continue;
     const t = Date.parse(run.created_at);
@@ -101,8 +106,6 @@ export function workflowRunSeries(runs: WorkflowRun[], bucketMs: number): Metric
   return [p50, p95, success, credits, count].filter((s) => s.points.length > 0);
 }
 
-const enc = encodeURIComponent;
-
 export async function workflowSeries(
   ctx: CircleContext,
   projectSlug: string,
@@ -110,24 +113,20 @@ export async function workflowSeries(
   range: TimeRange,
 ): Promise<MetricSeries[]> {
   const w = insightsWindow(range);
-  const runs = await circlePaged<WorkflowRun>(
-    ctx,
-    `/insights/${projectSlug}/workflows/${enc(workflow)}`,
-    { "all-branches": true, "start-date": w.start, "end-date": w.end },
-    20,
+  const runs = await circleApi(ctx).v2Paged.getAll(
+    `/insights/${slugSegment(projectSlug)}/workflows/${pathEncode(workflow)}`,
+    "items",
+    { query: { "all-branches": true, "start-date": w.start, "end-date": w.end }, maxPages: 20 },
   );
   return workflowRunSeries(runs, w.bucketMs);
 }
 
-interface JobTimeSeriesItem {
-  name: string;
-  timestamp: string;
-  metrics?: {
-    total_runs?: number;
-    failed_runs?: number;
-    total_credits_used?: number;
-  };
-}
+type JobTimeSeries = ApiListItem<operations["getJobTimeseries"], "items">;
+
+/** What the series read of a job's time series. */
+type JobTimeSeriesItem = Pick<JobTimeSeries, "name" | "timestamp"> & {
+  metrics?: Partial<JobTimeSeries["metrics"]>;
+};
 
 /** Credits, job runs and failed job runs per bucket, summed over job time series. */
 export function projectSeriesFrom(items: JobTimeSeriesItem[]): MetricSeries[] {
@@ -164,22 +163,22 @@ export async function projectSeries(
 ): Promise<MetricSeries[]> {
   const w = insightsWindow(range);
   const granularity = w.bucketMs === HOUR_MS ? "hourly" : "daily";
-  const workflows = await circlePaged<WorkflowMetrics>(
-    ctx,
-    `/insights/${projectSlug}/workflows`,
-    { "all-branches": true, "reporting-window": "last-90-days" },
-    3,
-  );
+  const { v2, v2Paged } = circleApi(ctx);
+  const slug = slugSegment(projectSlug);
+  const workflows = await v2Paged.getAll(`/insights/${slug}/workflows`, "items", {
+    query: { "all-branches": true, "reporting-window": "last-90-days" },
+    maxPages: 3,
+  });
   const busiest = workflows
     .sort((a, b) => (b.metrics?.total_credits_used ?? 0) - (a.metrics?.total_credits_used ?? 0))
     .slice(0, PROJECT_WORKFLOW_LIMIT);
   const items: JobTimeSeriesItem[] = [];
   for (const wf of busiest) {
-    const res = await circleFetch<{ items?: JobTimeSeriesItem[] }>(
-      ctx,
-      `/insights/time-series/${projectSlug}/workflows/${enc(wf.name)}/jobs`,
-      { query: { granularity, "start-date": w.start, "end-date": w.end } },
-    ).catch(() => undefined);
+    const res = await v2
+      .get(`/insights/time-series/${slug}/workflows/${pathEncode(wf.name)}/jobs`, {
+        query: { granularity, "start-date": w.start, "end-date": w.end },
+      })
+      .catch(() => undefined);
     items.push(...(res?.items ?? []));
   }
   return projectSeriesFrom(items);
