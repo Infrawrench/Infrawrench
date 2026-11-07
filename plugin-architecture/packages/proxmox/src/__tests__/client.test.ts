@@ -438,6 +438,55 @@ describe("client", () => {
     });
   });
 
+  describe("pool members", () => {
+    const POOL_LIST = [{ poolid: "prod", comment: "Production" }];
+    const MEMBERS = [
+      { id: "qemu/100", type: "qemu", vmid: 100, node: "pve1" },
+      { id: "storage/pve1/nfs", type: "storage", storage: "nfs", node: "pve1" },
+    ];
+
+    it("falls back to the older pool route when the poolid parameter is refused", async () => {
+      const { http } = mockHttp({
+        "GET /pools": (c: Call) =>
+          new URL(c.url).searchParams.has("poolid")
+            ? { status: 400, body: { data: null, errors: { poolid: "property is not defined" } } }
+            : { status: 200, body: { data: POOL_LIST } },
+        "GET /pools/prod": { comment: "Production", members: MEMBERS },
+      });
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      const [pool] = await client.listResources("pve-pool", "acct");
+      expect(pool!.fields).toMatchObject({ memberCount: 2, members: "100, storage:nfs" });
+    });
+
+    it("reports no member count, rather than an empty pool, when no member read works", async () => {
+      const { http } = mockHttp({
+        "GET /pools": (c: Call) =>
+          new URL(c.url).searchParams.has("poolid")
+            ? { status: 500, body: { data: null } }
+            : { status: 200, body: { data: POOL_LIST } },
+        "GET /pools/prod": () => ({ status: 500, body: { data: null } }),
+      });
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      const [pool] = await client.listResources("pve-pool", "acct");
+      expect(pool!.fields["memberCount"]).toBeUndefined();
+      expect(pool!.fields["members"]).toBeUndefined();
+      expect(pool!.fields["poolid"]).toBe("prod");
+    });
+
+    it("counts members from the documented route", async () => {
+      const { http, calls } = mockHttp({
+        "GET /pools": (c: Call) =>
+          new URL(c.url).searchParams.has("poolid")
+            ? { status: 200, body: { data: [{ poolid: "prod", members: [] }] } }
+            : { status: 200, body: { data: POOL_LIST } },
+      });
+      const client = hostClient(new ProxmoxClient(CREDS, { http }));
+      const [pool] = await client.listResources("pve-pool", "acct");
+      expect(pool!.fields["memberCount"]).toBe(0);
+      expect(calls.some((c) => c.url.includes("/pools/prod"))).toBe(false);
+    });
+  });
+
   it("resolves a VM's IPv4 from the guest agent", async () => {
     const { http } = mockHttp(routes);
     const client = hostClient(new ProxmoxClient(CREDS, { http }));

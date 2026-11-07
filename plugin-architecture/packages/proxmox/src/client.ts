@@ -608,29 +608,43 @@ export class ProxmoxClient implements PluginClient {
           members?: Array<{ id?: string; vmid?: number; storage?: string; type?: string }>;
         }>
       >("/pools")) ?? [];
+    type Members = typeof pools extends Array<{ members?: infer M }> ? M : never;
+    const membersOf = (detail: unknown): Members | undefined => {
+      const row = Array.isArray(detail) ? detail[0] : detail;
+      if (typeof row !== "object" || row === null || !("members" in row)) return undefined;
+      return Array.isArray(row.members) ? row.members : undefined;
+    };
     return mapLimit(pools, 6, async (p) => {
       let members = p.members;
       if (!members) {
-        const detail = await this.api
-          .get<Array<{ members?: typeof members }> | { members?: typeof members }>("/pools", {
-            poolid: p.poolid,
-          })
-          .catch(() => undefined);
-        members = Array.isArray(detail) ? detail[0]?.members : detail?.members;
+        members = membersOf(
+          await this.api.get<unknown>("/pools", { poolid: p.poolid }).catch(() => undefined),
+        );
       }
-      const list = (members ?? []).map((m) =>
-        m.vmid !== undefined
-          ? String(m.vmid)
-          : m.storage
-            ? `storage:${m.storage}`
-            : String(m.id ?? ""),
-      );
-      return this.instance(accountId, POOL, p.poolid, p.poolid, {
+      if (!members) {
+        // GET /pools/{poolid}, deprecated since the poolid parameter arrived, for clusters
+        // that refuse that parameter.
+        members = membersOf(
+          await this.api.get<unknown>(`/pools/${seg(p.poolid)}`).catch(() => undefined),
+        );
+      }
+      const fields: Record<string, string | number | boolean> = {
         poolid: p.poolid,
         comment: p.comment ?? "",
-        members: list.join(", "),
-        memberCount: list.length,
-      });
+      };
+      // No member read worked: no count, so the pool is not flagged as empty on a guess.
+      if (members) {
+        const list = members.map((m) =>
+          m.vmid !== undefined
+            ? String(m.vmid)
+            : m.storage
+              ? `storage:${m.storage}`
+              : String(m.id ?? ""),
+        );
+        fields["members"] = list.join(", ");
+        fields["memberCount"] = list.length;
+      }
+      return this.instance(accountId, POOL, p.poolid, p.poolid, fields);
     });
   }
 
