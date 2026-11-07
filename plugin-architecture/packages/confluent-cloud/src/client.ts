@@ -30,7 +30,7 @@ import {
 } from "./api.js";
 import type { CostContext, ResourceLocation } from "./cost-data.js";
 import { ckuHourlyRates, fetchConfluentCostData } from "./cost-data.js";
-import type { ClusterUsage, ConnectionKind } from "./mappers.js";
+import type { ConnectionKind } from "./mappers.js";
 import {
   CONNECTION_KINDS,
   PLUGIN_ID,
@@ -62,6 +62,7 @@ import {
   fetchConnectorUsage,
   rangeOrDefault,
   seriesFor,
+  usageOfCluster,
 } from "./metrics.js";
 import { verifyConfluentCredentials } from "./preflight.js";
 import { renderConfluentDetail, renderConfluentSidebar } from "./render.js";
@@ -389,21 +390,7 @@ export class ConfluentCloudClient implements PluginClient {
     const ids = clusters.map((c) => c.id ?? "").filter(Boolean);
     const usage = await fetchClusterUsage(this.ctx, ids).catch(() => undefined);
     return clusters.map((c) => {
-      const id = c.id ?? "";
-      const u: ClusterUsage = {};
-      if (usage) {
-        if (usage.topics.has(id)) u.topics = usage.topics.get(id)!;
-        if (usage.partitions.size > 0 || usage.topics.size > 0) {
-          u.partitions = usage.partitions.get(id) ?? 0;
-        }
-        if (usage.retainedBytes.size > 0 || usage.topics.size > 0) {
-          u.retainedBytes = usage.retainedBytes.get(id) ?? 0;
-        }
-        if (usage.throughputKnown) {
-          u.bytesIn7d = usage.bytesIn.get(id) ?? 0;
-          u.bytesOut7d = usage.bytesOut.get(id) ?? 0;
-        }
-      }
+      const u = usageOfCluster(usage, c.id ?? "");
       return mapKafkaCluster(accountId, c, names.get(c.spec?.environment?.id ?? ""), u);
     });
   }
@@ -516,17 +503,7 @@ export class ConfluentCloudClient implements PluginClient {
           });
           const names = await this.envNames();
           const usage = await fetchClusterUsage(this.ctx, [id]).catch(() => undefined);
-          const u: ClusterUsage = {};
-          if (usage) {
-            if (usage.topics.has(id)) u.topics = usage.topics.get(id)!;
-            u.partitions = usage.partitions.get(id) ?? 0;
-            u.retainedBytes = usage.retainedBytes.get(id) ?? 0;
-            if (usage.throughputKnown) {
-              u.bytesIn7d = usage.bytesIn.get(id) ?? 0;
-              u.bytesOut7d = usage.bytesOut.get(id) ?? 0;
-            }
-          }
-          return mapKafkaCluster(accountId, c, names.get(env), u);
+          return mapKafkaCluster(accountId, c, names.get(env), usageOfCluster(usage, id));
         }
         case "connector": {
           const r = connectorRoute(resourceId);

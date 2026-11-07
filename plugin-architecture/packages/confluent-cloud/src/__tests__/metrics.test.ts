@@ -1,5 +1,7 @@
+import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { createConfluentContext } from "../api.js";
+import { ConfluentCloudClient } from "../client.js";
 import { fetchClusterUsage, fetchConnectorUsage } from "../metrics.js";
 import { makeHttp } from "./helpers.js";
 import type { Reply } from "./helpers.js";
@@ -214,5 +216,79 @@ describe("totals per resource (#480)", () => {
     });
     const out = await fetchConnectorUsage(ctx, ids("lcc", 1500));
     expect(out.known).toBe(false);
+  });
+});
+
+describe("usage that is not known (#668)", () => {
+  const CLUSTER = {
+    id: "lkc-1",
+    spec: { display_name: "c", config: { kind: "Basic" }, environment: { id: "env-1" } },
+  };
+
+  function client(telemetry: (q: QueryBody) => Reply) {
+    const { http } = makeHttp((url, _method, body) => {
+      if (url.hostname === "api.telemetry.confluent.cloud" && isQuery(body)) return telemetry(body);
+      if (url.pathname === "/org/v2/environments") {
+        return { body: { data: [{ id: "env-1" }], metadata: {} } };
+      }
+      if (url.pathname === "/cmk/v2/clusters") return { body: { data: [CLUSTER], metadata: {} } };
+      if (url.pathname === "/cmk/v2/clusters/lkc-1") return { body: CLUSTER };
+      throw new Error(`unexpected request: ${url.href}`);
+    });
+    return hostClient(new ConfluentCloudClient({ apiKey: "k", apiSecret: "s" }, { http }));
+  }
+
+  const failing = (suffix: string) => (q: QueryBody) =>
+    !topicQuery(q) && q.aggregations[0]!.metric.endsWith(suffix)
+      ? { status: 500, body: {} }
+      : { body: { data: [] } };
+
+  it.each([
+    ["partition_count", "partitions"],
+    ["retained_bytes", "retainedBytes"],
+  ])("leaves a field unknown when its query, %s, failed", async (suffix, field) => {
+    const c = client(failing(suffix));
+    const [listed] = await c.listResources("kafka-cluster", "acc");
+    expect(listed!.fields[field]).toBeUndefined();
+    const read = await c.getResource("kafka-cluster", "acc:kafka-cluster:env-1/lkc-1", "acc");
+    expect(read.fields[field]).toBeUndefined();
+    expect(read.fields["topics"]).toBe(0);
+  });
+
+  it("still reads zero when a query succeeded with no rows", async () => {
+    const c = client(() => ({ body: { data: [] } }));
+    const [listed] = await c.listResources("kafka-cluster", "acc");
+    expect(listed!.fields).toMatchObject({
+      partitions: 0,
+      retainedBytes: 0,
+      bytesIn7d: 0,
+      idle: "true",
+    });
+  });
+
+  it("does not call a cluster idle on a 2xx with no data", async () => {
+    const c = client((q) =>
+      q.aggregations[0]!.metric.endsWith("received_bytes") ? { body: {} } : { body: { data: [] } },
+    );
+    const [listed] = await c.listResources("kafka-cluster", "acc");
+    expect(listed!.fields["bytesIn7d"]).toBeUndefined();
+    expect(listed!.fields["idle"]).toBeUndefined();
+  });
+
+  it("does not count zero topics on a 2xx with no data", async () => {
+    const { ctx } = usage((_url, q) => (topicQuery(q) ? {} : { body: { data: [] } }));
+    const out = await fetchClusterUsage(ctx, ["lkc-1"]);
+    expect(out.topics.has("lkc-1")).toBe(false);
+  });
+
+  it("does not report connector records on a 2xx that is not a list", async () => {
+    const { ctx } = usage(() => ({ body: { data: { errors: [] } } }));
+    const out = await fetchConnectorUsage(ctx, ["lcc-1"]);
+    expect(out.known).toBe(false);
+  });
+
+  it("does not fail the inventory over it, which an incomplete-list error would", async () => {
+    const c = client(() => ({ body: {} }));
+    await expect(c.listResources("kafka-cluster", "acc")).resolves.toHaveLength(1);
   });
 });

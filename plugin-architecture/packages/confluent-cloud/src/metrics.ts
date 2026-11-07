@@ -19,6 +19,7 @@
 import { pathEncode, type MetricSeries, type MetricSeriesPoint } from "@infrawrench/plugin-base";
 import type { ConfluentContext } from "./api.js";
 import type { components } from "./api-types.telemetry.gen.js";
+import type { ClusterUsage } from "./mappers.js";
 
 export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -112,6 +113,11 @@ async function queryPage(
     body,
     ...(pageToken ? { query: { page_token: pageToken } } : {}),
   });
+  // A plain error, not a ListPageError: these rows only ever add detail to a listing,
+  // and that one would fail the sync. No rows means zero, so this cannot read as none.
+  if (res?.data !== null && !Array.isArray(res?.data)) {
+    throw new Error(`${req.metric}: the Metrics API answered with no data.`);
+  }
   const out: FlatPoint[] = [];
   for (const row of res?.data ?? []) {
     const { points, ...labels } = row;
@@ -468,8 +474,26 @@ export interface ClusterUsageMap {
   retainedBytes: Map<string, number>;
   bytesIn: Map<string, number>;
   bytesOut: Map<string, number>;
+  /** True when the partition query succeeded. */
+  partitionsKnown: boolean;
+  /** True when the retained bytes query succeeded. */
+  retainedKnown: boolean;
   /** True when the 7-day throughput queries succeeded. */
   throughputKnown: boolean;
+}
+
+/** One cluster's share of a {@link ClusterUsageMap}, with what is unknown left out. */
+export function usageOfCluster(usage: ClusterUsageMap | undefined, id: string): ClusterUsage {
+  if (!usage) return {};
+  const topics = usage.topics.get(id);
+  return {
+    ...(topics !== undefined ? { topics } : {}),
+    ...(usage.partitionsKnown ? { partitions: usage.partitions.get(id) ?? 0 } : {}),
+    ...(usage.retainedKnown ? { retainedBytes: usage.retainedBytes.get(id) ?? 0 } : {}),
+    ...(usage.throughputKnown
+      ? { bytesIn7d: usage.bytesIn.get(id) ?? 0, bytesOut7d: usage.bytesOut.get(id) ?? 0 }
+      : {}),
+  };
 }
 
 /**
@@ -496,6 +520,8 @@ export async function fetchClusterUsage(
     retainedBytes: new Map(),
     bytesIn: new Map(),
     bytesOut: new Map(),
+    partitionsKnown: false,
+    retainedKnown: false,
     throughputKnown: false,
   };
   if (clusterIds.length === 0) return empty;
@@ -531,8 +557,14 @@ export async function fetchClusterUsage(
   if (topics) {
     for (const id of clusterIds) out.topics.set(id, topics.get(id)?.size ?? 0);
   }
-  if (partitionRows) out.partitions = sumByLabel(partitionRows, label);
-  if (retainedRows) out.retainedBytes = sumByLabel(retainedRows, label);
+  if (partitionRows) {
+    out.partitions = sumByLabel(partitionRows, label);
+    out.partitionsKnown = true;
+  }
+  if (retainedRows) {
+    out.retainedBytes = sumByLabel(retainedRows, label);
+    out.retainedKnown = true;
+  }
   if (inRows && outRows) {
     out.bytesIn = sumByLabel(inRows, label);
     out.bytesOut = sumByLabel(outRows, label);
