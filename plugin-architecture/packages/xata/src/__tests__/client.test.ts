@@ -628,7 +628,7 @@ describe("a 2xx that holds no list", () => {
       [orgs, projects, on("GET", `${O}/projects/p1/branches`, { message: "wrapped error" })],
     ],
     ["backups", "xata-backup", [orgs, projects, on("GET", `${O}/projects/p1/backups`, {})]],
-    ["api keys", "xata-api-key", [orgs, on("GET", `${O}/api-keys`, { keys: null })]],
+    ["api keys", "xata-api-key", [orgs, on("GET", `${O}/api-keys`, { key: [] })]],
     ["members", "xata-member", [orgs, on("GET", `${O}/members`, { members: "none" })]],
     ["invitations", "xata-invitation", [orgs, on("GET", `${O}/invitations`, {})]],
   ];
