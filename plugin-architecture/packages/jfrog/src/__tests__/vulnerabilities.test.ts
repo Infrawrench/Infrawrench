@@ -6,11 +6,18 @@
  * - Repository configurations: GET /artifactory/api/repositories/configurations
  */
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { VulnerabilityAccessError } from "@infrawrench/plugin-base";
+import { ListTruncatedError, VulnerabilityAccessError } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import { JfrogClient } from "../client.js";
 import { plugin } from "../plugin.js";
-import { aqlFor, parseComponentId, parseCvss, targetFor } from "../vulnerabilities.js";
+import {
+  aqlFor,
+  MAX_ARTIFACTS,
+  MAX_REPOS,
+  parseComponentId,
+  parseCvss,
+  targetFor,
+} from "../vulnerabilities.js";
 import type { Call } from "./helpers.js";
 import { makeHttp } from "./helpers.js";
 
@@ -174,7 +181,8 @@ function baseRoute(call: Call): unknown {
 
 describe("JFrog Xray vulnerability findings", () => {
   it("declares the capability", () => {
-    expect(plugin.manifest.vulnerabilities).toMatchObject({ label: "JFrog Xray", partial: true });
+    expect(plugin.manifest.vulnerabilities).toMatchObject({ label: "JFrog Xray" });
+    expect(plugin.manifest.vulnerabilities?.partial).toBeUndefined();
   });
 
   it("parses CVSS and component ids", () => {
@@ -266,6 +274,82 @@ describe("JFrog Xray vulnerability findings", () => {
     });
     expect(findings.every((f) => f.advisoryId !== "XRAY-1")).toBe(true);
     expect(new Set(findings.map((f) => f.id)).size).toBe(3);
+  });
+
+  /** `count` indexed npm repositories, each answering with one package. */
+  function manyRepos(count: number) {
+    const keys = Array.from({ length: count }, (_, i) => `npm-${i}`);
+    return (call: Call): unknown => {
+      const p = call.url.pathname;
+      if (p === "/artifactory/api/repositories") {
+        return keys.map((key) => ({ key, type: "LOCAL", packageType: "Npm" }));
+      }
+      if (p === "/artifactory/api/repositories/configurations") {
+        return { LOCAL: keys.map((key) => ({ key, packageType: "npm", xrayIndex: true })) };
+      }
+      if (p === "/artifactory/api/search/aql") {
+        const repo = /"repo":"([^"]+)"/.exec(String(call.body))?.[1];
+        return { results: [{ repo, path: ".", name: "a-1.0.0.tgz", sha256: NPM_SHA }] };
+      }
+      if (p === "/xray/api/v2/summary/artifact") return { artifacts: [] };
+      return undefined;
+    };
+  }
+
+  it("reads every indexed repository, not just the first few", async () => {
+    const { c, calls } = client(manyRepos(30));
+    await c.listVulnerabilityFindings("acct");
+    const searches = calls.filter((x) => x.url.pathname === "/artifactory/api/search/aql");
+    expect(searches).toHaveLength(30);
+  });
+
+  it("refuses more indexed repositories than it can read", async () => {
+    const { c, calls } = client(manyRepos(MAX_REPOS + 1));
+    await expect(c.listVulnerabilityFindings("acct")).rejects.toBeInstanceOf(ListTruncatedError);
+    expect(calls.some((x) => x.url.pathname.startsWith("/xray/"))).toBe(false);
+  });
+
+  it("refuses more artifacts than it can read, before asking Xray about any", async () => {
+    const { c, calls } = client((call) => {
+      if (call.url.pathname === "/artifactory/api/search/aql") {
+        const limit = Number(/\.limit\((\d+)\)/.exec(String(call.body))?.[1]);
+        expect(limit).toBe(MAX_ARTIFACTS + 1);
+        return {
+          results: Array.from({ length: limit }, (_, i) => ({
+            repo: "npm-local",
+            path: ".",
+            name: `a-${i}.tgz`,
+            sha256: NPM_SHA,
+          })),
+        };
+      }
+      return baseRoute(call);
+    });
+    await expect(c.listVulnerabilityFindings("acct")).rejects.toBeInstanceOf(ListTruncatedError);
+    expect(calls.some((x) => x.url.pathname.startsWith("/xray/"))).toBe(false);
+  });
+
+  it("asks Xray about every artifact when there are many", async () => {
+    const { c, calls } = client((call) => {
+      if (call.url.pathname === "/artifactory/api/search/aql") {
+        return {
+          results: Array.from({ length: 105 }, (_, i) => ({
+            repo: "npm-local",
+            path: ".",
+            name: `a-${i}.tgz`,
+            sha256: NPM_SHA,
+          })),
+        };
+      }
+      if (call.url.pathname === "/xray/api/v2/summary/artifact") return { artifacts: [] };
+      return baseRoute(call);
+    });
+    await c.listVulnerabilityFindings("acct");
+    const asked = calls
+      .filter((x) => x.url.pathname === "/xray/api/v2/summary/artifact")
+      .flatMap((x) => (x.body as { paths: string[] }).paths);
+    expect(new Set(asked).size).toBe(asked.length);
+    expect(asked.length).toBeGreaterThan(100);
   });
 
   it("falls back to the v1 summary on an older Xray", async () => {

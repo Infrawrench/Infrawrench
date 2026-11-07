@@ -30,13 +30,14 @@
  *   A platform set up with the subdomain method pulls as
  *   `<repo>.<host>/<image>`, which this module does not produce.
  *
- * **Bounds.** Repositories with `xrayIndex` on, at most {@link MAX_REPOS}; per
- * repository the {@link MAX_ARTIFACTS_PER_REPO} most recently modified
- * scannable artifacts; at most {@link MAX_ARTIFACTS} overall. The manifest
- * declares `partial: true` because all three can bite.
+ * **Bounds.** Every scannable artifact of every repository with `xrayIndex` on.
+ * Past {@link MAX_REPOS} repositories or {@link MAX_ARTIFACTS} artifacts the read
+ * refuses, because the host replaces its stored findings with what this returns
+ * and a finding on an artifact not read would count as fixed.
  */
 
 import {
+  ListTruncatedError,
   normalizeVulnerabilityFindings,
   normalizeVulnerabilitySeverity,
   VulnerabilityAccessError,
@@ -44,11 +45,13 @@ import {
 } from "@infrawrench/plugin-base";
 import { encodePath, jfrogFetch, statusOf, type JfrogContext } from "./api.js";
 
-export const MAX_REPOS = 25;
-export const MAX_ARTIFACTS_PER_REPO = 50;
-export const MAX_ARTIFACTS = 500;
+export const MAX_REPOS = 1000;
+/** One summary request per {@link SUMMARY_BATCH}, so this bounds the requests in a pass. */
+export const MAX_ARTIFACTS = 10_000;
 /** Paths per summary request; small so one slow artifact does not time the batch out. */
 const SUMMARY_BATCH = 10;
+/** Summary requests at a time, so a large read finishes inside the pass's lease. */
+const SUMMARY_CONCURRENCY = 5;
 
 const XRAY_HELP = {
   label: "Index Xray resources",
@@ -338,24 +341,56 @@ export function findingsFromSummary(
   return out;
 }
 
+/** One summary request. A 404 on v1 means there is no Xray to ask. */
+async function readSummary(
+  ctx: JfrogContext,
+  version: "v2" | "v1",
+  paths: string[],
+): Promise<SummaryResponse> {
+  try {
+    return await jfrogFetch<SummaryResponse>(ctx, `/xray/api/${version}/summary/artifact`, {
+      method: "POST",
+      body: { paths },
+    });
+  } catch (err) {
+    if (statusOf(err) === 404 && version === "v1") {
+      throw new VulnerabilityAccessError(
+        "Xray is not available on this JFrog Platform (the summary API answered 404). Vulnerability findings need an Xray subscription.",
+        XRAY_HELP,
+      );
+    }
+    if (statusOf(err) === 404) throw err;
+    accessError(err, "Xray artifact summary");
+  }
+}
+
 /**
  * Read the open Xray findings for the account. Throws
  * {@link VulnerabilityAccessError} when Xray is absent or refuses the token,
- * and rethrows any other failure rather than return a short list.
+ * and {@link ListTruncatedError} past the bounds, and rethrows any other failure
+ * rather than return a short list.
  */
 export async function fetchJfrogVulnerabilityFindings(
   ctx: JfrogContext,
   repos: XrayRepo[],
 ): Promise<VulnerabilityFinding[]> {
-  const indexed = repos
-    .filter((r) => r.xrayIndex && r.rclass !== "virtual" && SCANNABLE[r.packageType.toLowerCase()])
-    .slice(0, MAX_REPOS);
+  const indexed = repos.filter(
+    (r) => r.xrayIndex && r.rclass !== "virtual" && SCANNABLE[r.packageType.toLowerCase()],
+  );
+  if (indexed.length > MAX_REPOS) {
+    throw new ListTruncatedError({
+      vendor: "JFrog Xray",
+      path: "repositories with Xray indexing on",
+      items: indexed.length,
+      maxItems: MAX_REPOS,
+    });
+  }
 
   const targets = new Map<string, Target>();
   for (const repo of indexed) {
-    if (targets.size >= MAX_ARTIFACTS) break;
     const storageRepo = repo.rclass === "remote" ? `${repo.key}-cache` : repo.key;
-    const limit = Math.min(MAX_ARTIFACTS_PER_REPO, MAX_ARTIFACTS - targets.size);
+    // One past what is left, so a read that would go over is seen rather than cut.
+    const limit = MAX_ARTIFACTS - targets.size + 1;
     let res: { results?: AqlItem[] } | undefined;
     try {
       res = await jfrogFetch<{ results?: AqlItem[] }>(ctx, "/artifactory/api/search/aql", {
@@ -370,38 +405,40 @@ export async function fetchJfrogVulnerabilityFindings(
       const t = targetFor(ctx.baseUrl, repo, item);
       if (t) targets.set(t.xrayPath, t);
     }
+    if (targets.size > MAX_ARTIFACTS) {
+      throw new ListTruncatedError({
+        vendor: "JFrog Xray",
+        path: "scannable artifacts",
+        items: targets.size,
+        maxItems: MAX_ARTIFACTS,
+      });
+    }
   }
   if (targets.size === 0) return [];
 
   const paths = [...targets.keys()];
+  const batches: string[][] = [];
+  for (let i = 0; i < paths.length; i += SUMMARY_BATCH) {
+    batches.push(paths.slice(i, i + SUMMARY_BATCH));
+  }
+
+  // The first request settles which summary API this Xray has, so the rest can
+  // run together. Xray older than the v2 summary: v1 has the same shape minus components.
   let version: "v2" | "v1" = "v2";
   const findings: VulnerabilityFinding[] = [];
-  for (let i = 0; i < paths.length; i += SUMMARY_BATCH) {
-    const batch = paths.slice(i, i + SUMMARY_BATCH);
-    let res: SummaryResponse | undefined;
-    try {
-      res = await jfrogFetch<SummaryResponse>(ctx, `/xray/api/${version}/summary/artifact`, {
-        method: "POST",
-        body: { paths: batch },
-      });
-    } catch (err) {
-      if (statusOf(err) === 404 && version === "v2") {
-        // Xray older than the v2 summary: v1 has the same shape minus components.
-        version = "v1";
-        i -= SUMMARY_BATCH;
-        continue;
-      }
-      if (statusOf(err) === 404) {
-        throw new VulnerabilityAccessError(
-          "Xray is not available on this JFrog Platform (the summary API answered 404). Vulnerability findings need an Xray subscription.",
-          XRAY_HELP,
-        );
-      }
-      accessError(err, "Xray artifact summary");
-    }
-    // Per-path `errors` mean Xray holds no scan for that file (not indexed yet,
-    // or a file type it does not scan); there is nothing to report for it.
-    findings.push(...findingsFromSummary(res, targets));
+  const first = await readSummary(ctx, version, batches[0]!).catch(async (err: unknown) => {
+    if (statusOf(err) !== 404) throw err;
+    version = "v1";
+    return readSummary(ctx, version, batches[0]!);
+  });
+  // Per-path `errors` mean Xray holds no scan for that file (not indexed yet, or
+  // a file type it does not scan); there is nothing to report for it.
+  findings.push(...findingsFromSummary(first, targets));
+  for (let i = 1; i < batches.length; i += SUMMARY_CONCURRENCY) {
+    const answers = await Promise.all(
+      batches.slice(i, i + SUMMARY_CONCURRENCY).map((batch) => readSummary(ctx, version, batch)),
+    );
+    for (const answer of answers) findings.push(...findingsFromSummary(answer, targets));
   }
   return normalizeVulnerabilityFindings(findings);
 }
