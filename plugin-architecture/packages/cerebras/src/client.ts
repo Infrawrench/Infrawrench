@@ -1,5 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import { hostFetch } from "@infrawrench/plugin-base";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   ActionNode,
@@ -823,7 +824,7 @@ export class CerebrasClient implements PluginClient {
     const model = externalIdOf(resourceId, accountId, typeId);
     let res: Response;
     try {
-      res = await fetch(`${V1}/chat/completions`, {
+      res = await hostFetch({ ...this.ctx, stream: true }, `${V1}/chat/completions`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
