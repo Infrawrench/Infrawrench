@@ -2,7 +2,7 @@ import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { createMockResource } from "@infrawrench/plugin-base/test-harness";
-import { CapellaClient, monthChunks } from "../client.js";
+import { billingChunks, CapellaClient } from "../client.js";
 import { CapellaApiError, joinId, splitId } from "../api.js";
 import { plugin } from "../plugin.js";
 import { mapComponent } from "../status-feed.js";
@@ -210,12 +210,88 @@ describe("CapellaClient", () => {
     ]);
   });
 
-  it("splits ranges into calendar months", () => {
-    expect(monthChunks("2026-08-30", "2026-10-02")).toEqual([
+  it("never asks for a whole month, whose answer the document disagrees with itself about", () => {
+    expect(billingChunks("2026-08-30", "2026-10-02")).toEqual([
       { start: "2026-08-30", end: "2026-08-31" },
-      { start: "2026-09-01", end: "2026-09-30" },
+      { start: "2026-09-01", end: "2026-09-15" },
+      { start: "2026-09-16", end: "2026-09-30" },
       { start: "2026-10-01", end: "2026-10-02" },
     ]);
+    expect(billingChunks("2026-02-10", "2026-02-20")).toEqual([
+      { start: "2026-02-10", end: "2026-02-15" },
+      { start: "2026-02-16", end: "2026-02-20" },
+    ]);
+    expect(billingChunks("2026-09-16", "2026-09-16")).toEqual([
+      { start: "2026-09-16", end: "2026-09-16" },
+    ]);
+  });
+
+  describe("billing periods", () => {
+    /** Spends 10 on each day asked for, or, for a whole month, what the document's examples show. */
+    const billing =
+      (wholeMonthIsOnePeriod: boolean) =>
+      (_url: URL, init: RequestInit): unknown => {
+        const asked: { startDate: string; endDate: string } = JSON.parse(String(init.body));
+        const { startDate, endDate } = asked;
+        const start = Number(startDate.slice(8));
+        const end = Number(endDate.slice(8));
+        const categories = (amount: number) => [
+          { category: "operationalComputeAndStorage", currencySpend: amount },
+        ];
+        const periods =
+          wholeMonthIsOnePeriod && start === 1 && end === 30
+            ? [{ startDate, endDate, categories: categories(10 * end) }]
+            : Array.from({ length: end - start + 1 }, (_, i) => {
+                const date = `${startDate.slice(0, 8)}${String(start + i).padStart(2, "0")}`;
+                return { startDate: date, endDate: date, categories: categories(10) };
+              });
+        return { data: { billingCurrency: "USD", periods } };
+      };
+
+    it.each([
+      ["answers a whole month with one period", true],
+      ["answers a whole month day by day", false],
+    ])("costs a complete month when the API %s", async (_name, wholeMonthIsOnePeriod) => {
+      mockFetch({
+        [`GET ${O}/projects`]: page([{ id: "p1" }]),
+        [`GET ${P}/clusters`]: page([CLUSTER]),
+        [`POST ${P}/clusters/c1/billing`]: billing(wholeMonthIsOnePeriod),
+        [`POST ${O}/billing`]: billing(wholeMonthIsOnePeriod),
+      });
+      const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
+      const rows = await client.fetchCostData("acc", {
+        fromDate: "2026-09-01",
+        toDate: "2026-09-30",
+      });
+      expect(new Set(rows.map((r) => r.date)).size).toBe(30);
+      expect(rows.reduce((sum, r) => sum + r.amount, 0)).toBe(300);
+      // Everything is the cluster's, so nothing is left over as unattributed.
+      expect(rows.every((r) => r.resourceId === "c1")).toBe(true);
+    });
+
+    it("refuses a period that is not a single day rather than read it as no spend", async () => {
+      const span = {
+        data: {
+          billingCurrency: "USD",
+          periods: [
+            {
+              startDate: "2026-09-01",
+              endDate: "2026-09-02",
+              categories: [{ category: "operationalComputeAndStorage", currencySpend: 20 }],
+            },
+          ],
+        },
+      };
+      mockFetch({
+        [`GET ${O}/projects`]: page([{ id: "p1" }]),
+        [`GET ${P}/clusters`]: page([]),
+        [`POST ${O}/billing`]: span,
+      });
+      const client = hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
+      await expect(
+        client.fetchCostData("acc", { fromDate: "2026-09-01", toDate: "2026-09-02" }),
+      ).rejects.toThrow(/2026-09-01 to 2026-09-02/);
+    });
   });
 
   it("reads prepaid credits and surfaces a 403 as an access error", async () => {

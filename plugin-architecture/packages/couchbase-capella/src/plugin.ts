@@ -46,7 +46,7 @@ export const manifest = {
   ]),
   costs: {
     // Categorized billing per cluster (resource) with the organization total's
-    // remainder unattributed; daily within a month, so chunks are monthly.
+    // remainder unattributed; daily within a month, so chunks stay inside one.
     dimensions: ["service", "region", "resource", "tag"],
     maxHistoryDays: 365,
     restatementDays: 3,

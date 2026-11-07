@@ -122,18 +122,36 @@ function notFound(what: string): Error {
   return Object.assign(new Error(`Capella plugin: ${what} not found`), { status: 404 });
 }
 
-/** Month-aligned chunks: the billing API answers daily periods only within one month. */
-export function monthChunks(from: string, to: string): Array<{ start: string; end: string }> {
+/**
+ * The ranges to ask the billing API for: split at each month's middle and end. Its
+ * document says a range within a month answers one period a day, but its examples
+ * answer April 1 to 30 with one period for the month. A shorter range is daily on
+ * either reading, and a range across months is documented to answer by the month.
+ */
+export function billingChunks(from: string, to: string): Array<{ start: string; end: string }> {
   const out: Array<{ start: string; end: string }> = [];
   let cur = new Date(`${from}T00:00:00Z`);
   const last = new Date(`${to}T00:00:00Z`);
   while (cur <= last) {
-    const monthEnd = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, 0));
-    const end = monthEnd < last ? monthEnd : last;
+    const year = cur.getUTCFullYear();
+    const month = cur.getUTCMonth();
+    const stop = new Date(Date.UTC(year, month, 15));
+    const boundary = cur <= stop ? stop : new Date(Date.UTC(year, month + 1, 0));
+    const end = boundary < last ? boundary : last;
     out.push({ start: cur.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) });
     cur = new Date(end.getTime() + 86_400_000);
   }
   return out;
+}
+
+/** The day a billing period covers. Anything longer would lose its spend, so it refuses. */
+function billingDay(period: { startDate?: string; endDate?: string }): string {
+  if (!period.startDate || period.endDate !== period.startDate) {
+    throw new Error(
+      `Capella answered with a billing period from ${period.startDate} to ${period.endDate} where it should give one day at a time, and leaving it out would read as no spend.`,
+    );
+  }
+  return period.startDate;
 }
 
 /** Recent loads by key, kept for {@link CACHE_MS}. A load that fails is forgotten. */
@@ -2018,7 +2036,7 @@ export class CapellaClient implements PluginClient {
           : typeof cat.creditSpend === "number"
             ? cat.creditSpend
             : 0;
-      for (const chunk of monthChunks(range.fromDate, range.toDate)) {
+      for (const chunk of billingChunks(range.fromDate, range.toDate)) {
         const body = { startDate: chunk.start, endDate: chunk.end };
         const clusterTotals = new Map<string, number>();
         for (const ref of refs) {
@@ -2032,8 +2050,7 @@ export class CapellaClient implements PluginClient {
             });
           const currency = res?.data?.billingCurrency ?? "USD";
           for (const period of res?.data?.periods ?? []) {
-            const date = period.startDate;
-            if (!date || period.endDate !== date) continue;
+            const date = billingDay(period);
             for (const cat of period.categories ?? []) {
               const amount = amountOf(cat);
               if (!amount || !cat.category) continue;
@@ -2063,8 +2080,7 @@ export class CapellaClient implements PluginClient {
         }
         const currency = org?.data?.billingCurrency ?? "USD";
         for (const period of org?.data?.periods ?? []) {
-          const date = period.startDate;
-          if (!date || period.endDate !== date) continue;
+          const date = billingDay(period);
           for (const cat of period.categories ?? []) {
             if (!cat.category) continue;
             const rest = amountOf(cat) - (clusterTotals.get(`${date}|${cat.category}`) ?? 0);
