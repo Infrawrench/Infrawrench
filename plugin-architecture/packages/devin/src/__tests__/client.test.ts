@@ -314,6 +314,25 @@ describe("lists that cannot say they are complete", () => {
     expect(await client(http).listResources("session", "acct")).toHaveLength(1);
   });
 
+  it("rejects a key Devin stops accepting, rather than reading every list as empty", async () => {
+    let revoked = false;
+    const { http } = makeHttp((c) => {
+      if (c.path === "/v3/self") return SELF;
+      return revoked ? reply(401, { detail: "invalid key" }) : page([]);
+    });
+    const c = client(http);
+    await c.listResources("organization", "acct");
+    revoked = true;
+    await expect(c.listResources("secret", "acct")).rejects.toThrow("401");
+  });
+
+  it("lists nothing for an org whose role cannot read that list", async () => {
+    const { http } = makeHttp((c) =>
+      c.path === "/v3/self" ? SELF : reply(403, { detail: "forbidden" }),
+    );
+    expect(await client(http).listResources("secret", "acct")).toEqual([]);
+  });
+
   it("goes through the host's transport, with no CA and no fetch", async () => {
     const fetchStub = vi.fn(() => {
       throw new Error("unexpected fetch");

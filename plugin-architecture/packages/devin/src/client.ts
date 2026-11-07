@@ -25,7 +25,6 @@ import {
   billingDay,
   createDevinApi,
   fetchConsumption,
-  isPermissionError,
   listAutomations,
   listNotes,
   listPlaybooks,
@@ -35,6 +34,7 @@ import {
   orgConsumption,
   resolveOrgs,
   sessionConsumption,
+  statusOf,
   userConsumption,
 } from "./api.js";
 import { fetchDevinCostData, splitDay } from "./cost-data.js";
@@ -145,14 +145,17 @@ export class DevinClient implements PluginClient {
     return found ?? { org_id: orgId, name: orgId };
   }
 
-  /** Load `fn` for every org; an org the key cannot read lists empty. */
+  /**
+   * Load `fn` for every org; an org the key's role cannot read lists empty. A 401 is a
+   * key Devin no longer accepts, which says nothing about what the org holds.
+   */
   private async perOrg<T>(fn: (org: DevinOrg) => Promise<T[]>): Promise<T[]> {
     const out: T[] = [];
     for (const org of await this.orgs()) {
       try {
         out.push(...(await fn(org)));
       } catch (err) {
-        if (!isPermissionError(err)) throw err;
+        if (statusOf(err) !== 403) throw err;
       }
     }
     return out;
