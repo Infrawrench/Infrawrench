@@ -326,8 +326,6 @@ export class MailgunClient implements PluginClient {
     const unread: DomainSummary[] = [];
     let started = 0;
     let throttled = false;
-    let refusedUntracked = 0;
-    let refusal: unknown;
     const lists = await mapLimit(order, CONCURRENCY, async (summary): Promise<R[]> => {
       const turn = started++;
       if ((throttled || turn >= DOMAIN_READS_PER_POLL) && reportUnreadListPart(part(summary))) {
@@ -341,8 +339,8 @@ export class MailgunClient implements PluginClient {
         if (status === 404) return [];
         // A 400 is the only refusal the credentials route documents.
         if (status === 400 || status === 403) {
-          if (!reportUnreadListPart(part(summary))) refusedUntracked++;
-          refusal = err;
+          // A host that keeps no track answers false, and there the refusal shows.
+          if (!reportUnreadListPart(part(summary))) throw err;
           unread.push(summary);
           return [];
         }
@@ -354,7 +352,6 @@ export class MailgunClient implements PluginClient {
         throw err;
       }
     });
-    if (order.length > 0 && refusedUntracked === order.length) throw refusal;
     return { rows: lists.flat(), unread };
   }
 

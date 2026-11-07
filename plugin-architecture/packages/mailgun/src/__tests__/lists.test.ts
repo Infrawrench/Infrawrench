@@ -517,10 +517,12 @@ describe("what fans out over domains", () => {
     );
   });
 
-  it("one domain refused does not fail a host that keeps no track", async () => {
+  it("one domain refused shows on a host that keeps no track", async () => {
     Reflect.deleteProperty(globalThis, UNREAD_HOOK);
     const { c } = fanOut(types[0]![1], types[0]![2], "b.test", 403);
-    expect(await c.listResources("mailgun-smtp-credential", "a")).toHaveLength(1);
+    await expect(c.listResources("mailgun-smtp-credential", "a")).rejects.toThrow(
+      "Mailgun API error 403",
+    );
   });
 
   describe("past the request budget", () => {
