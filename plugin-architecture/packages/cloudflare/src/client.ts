@@ -348,7 +348,7 @@ export class CloudflareClient implements PluginClient {
         }
         if (outputKey === "s3Endpoint") {
           const cfAccountId = await this.api.getAccountId();
-          return `https://${cfAccountId}.r2.cloudflarestorage.com`;
+          return r2Api.r2S3Endpoint(cfAccountId, String(resource.fields["jurisdiction"] ?? ""));
         }
       }
       if (typeId === "kv-namespace") {
@@ -1213,11 +1213,12 @@ export class CloudflareClient implements PluginClient {
       if (typeId === "r2-bucket" && (actionId === "r2dev-enable" || actionId === "r2dev-disable")) {
         return withCloudflareErrors(async () => {
           const bucket = await runPluginEffect(this.getResource(typeId, resourceId, _accountId));
+          const ref = r2Api.parseR2BucketRef(externalId);
           await r2Api.setR2DevDomain(
             this.api,
-            externalId,
+            ref.name,
             actionId === "r2dev-enable",
-            String(bucket.fields["jurisdiction"] ?? ""),
+            String(bucket.fields["jurisdiction"] ?? ref.jurisdiction ?? ""),
           );
         });
       }

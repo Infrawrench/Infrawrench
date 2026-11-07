@@ -105,7 +105,8 @@ export function renderR2BucketDetail(resource: ResourceInstance): DetailViewSche
     subtitle: "R2 Object Storage",
     status: { kind: "status-dot", status: "healthy", label: "Active" },
     sections,
-    storageBrowser: { bucketName: String(fields["name"] ?? "") },
+    // The externalId names the jurisdiction too, which the object plane has to address.
+    storageBrowser: { bucketName: resource.externalId ?? String(fields["name"] ?? "") },
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 }

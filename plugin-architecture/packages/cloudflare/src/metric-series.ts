@@ -2,6 +2,7 @@ import { cfFetch } from "./clients/shared.js";
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { asRecord, type CloudflareApi } from "./clients/shared.js";
 import { rangeLimitFromError } from "./graphql-range.js";
+import { parseR2BucketRef } from "./clients/r2-client.js";
 import { fetchWorkerMetricSeries } from "./worker-metrics.js";
 
 /**
@@ -247,7 +248,7 @@ async function fetchR2MetricSeries(
   resourceId: string,
   timeRange?: { startMs: number; endMs: number },
 ): Promise<MetricSeries[]> {
-  const bucketName = resourceId.split(":").pop();
+  const bucketName = parseR2BucketRef(resourceId.split(":").pop() ?? "").name;
   if (!bucketName) return [];
 
   let cfAccountId: string;

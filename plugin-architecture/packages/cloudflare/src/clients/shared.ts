@@ -303,6 +303,16 @@ function refusalOf(err: unknown): "denied" | "unavailable" | "unclear" | null {
 }
 
 /**
+ * Whether a parent's failed read reads as none when another parent of the same list already
+ * answered with this token: any refusal of this one parent (a missing scope, a feature or
+ * jurisdiction the account does not have, a 4xx with no reason given). A throttle, an outage or a
+ * token Cloudflare will not take still fails the list.
+ */
+export function refusedBesideAnswer(err: unknown): boolean {
+  return !isCredentialRejected(err) && refusalOf(err) !== null;
+}
+
+/**
  * One list read per parent, for a list that fans out over zones, Access applications or
  * namespaces. A sync soft-deletes what a list stops returning, so only an answer that means this
  * parent has nothing here reads as none. Anything else fails the whole list and the stored rows
@@ -470,12 +480,14 @@ export class CloudflareApi {
    * call sites: use `this.cf` instead.
    */
   async fetch<T>(path: string, options?: RequestInit): Promise<T> {
+    // A caller's headers add to these: replacing them would send the request without the token.
     const res = await cfFetch(this, `${this.baseUrl}${path}`, {
+      ...options,
       headers: {
         Authorization: `Bearer ${this.apiToken}`,
         "Content-Type": "application/json",
+        ...Object.fromEntries(new Headers(options?.headers).entries()),
       },
-      ...options,
     });
     if (!res.ok) {
       throw new Error(`Cloudflare API error ${res.status} for ${path}: ${await res.text()}`);

@@ -1,5 +1,9 @@
-import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
-import { cfFetch } from "./shared.js";
+import {
+  ListTruncatedError,
+  rethrowIncompleteList,
+  requireListPage,
+} from "@infrawrench/plugin-base";
+import { cfFetch, refusedBesideAnswer } from "./shared.js";
 import type { ResourceInstance, StorageObject } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord } from "./shared.js";
@@ -50,14 +54,67 @@ function isR2LocationHint(value: string): value is R2LocationHint {
   return (R2_LOCATION_HINTS as readonly string[]).includes(value);
 }
 
+/** The data-location jurisdictions a bucket can live in besides the default. */
+const OTHER_JURISDICTIONS = ["eu", "fedramp"] as const;
+type R2Jurisdiction = (typeof OTHER_JURISDICTIONS)[number];
+
+function isOtherJurisdiction(value: unknown): value is R2Jurisdiction {
+  return OTHER_JURISDICTIONS.some((j) => j === value);
+}
+
+/**
+ * How a bucket is named to the rest of the plugin: its name in the default jurisdiction, and
+ * `<jurisdiction>/<name>` in another. Bucket names cannot hold a `/`, and a name is only unique
+ * within its jurisdiction, so the default buckets keep the ids they always had.
+ */
+export function r2BucketRef(name: string, jurisdiction?: string): string {
+  return isOtherJurisdiction(jurisdiction) ? `${jurisdiction}/${name}` : name;
+}
+
+/** The bucket name and jurisdiction a {@link r2BucketRef} names. */
+export function parseR2BucketRef(ref: string): { name: string; jurisdiction?: R2Jurisdiction } {
+  const slash = ref.indexOf("/");
+  const prefix = slash < 0 ? "" : ref.slice(0, slash);
+  return isOtherJurisdiction(prefix)
+    ? { name: ref.slice(slash + 1), jurisdiction: prefix }
+    : { name: ref };
+}
+
+/** A bucket ref to act on, refusing a blank name rather than sending a request without one. */
+function requireBucket(ref: string): { name: string; jurisdiction?: R2Jurisdiction } {
+  const parsed = parseR2BucketRef(ref);
+  if (!parsed.name) throw new Error("Cloudflare plugin: no R2 bucket named.");
+  return parsed;
+}
+
+/** The SDK's `jurisdiction` param (it sets `cf-r2-jurisdiction`), only outside the default. */
+function sdkJurisdiction(jurisdiction?: R2Jurisdiction): { jurisdiction?: R2Jurisdiction } {
+  return jurisdiction ? { jurisdiction } : {};
+}
+
+function jurisdictionHeader(jurisdiction?: R2Jurisdiction): Record<string, string> {
+  return jurisdiction ? { "cf-r2-jurisdiction": jurisdiction } : {};
+}
+
+/** The S3 endpoint, which names a jurisdiction outside the default (`<account>.eu.r2...`). */
+export function r2S3Endpoint(cfAccountId: string, jurisdiction?: string): string {
+  return isOtherJurisdiction(jurisdiction)
+    ? `https://${cfAccountId}.${jurisdiction}.r2.cloudflarestorage.com`
+    : `https://${cfAccountId}.r2.cloudflarestorage.com`;
+}
+
 function mapR2Bucket(
   b: Record<string, unknown>,
   accountId: string,
   cfAccountId: string,
+  requested?: R2Jurisdiction,
 ): ResourceInstance {
   const name = String(b["name"] ?? "");
+  const own = b["jurisdiction"];
+  const jurisdiction = isOtherJurisdiction(own) ? own : own === "default" ? undefined : requested;
+  const ref = r2BucketRef(name, jurisdiction);
   return {
-    id: `${accountId}:r2-bucket:${name}`,
+    id: `${accountId}:r2-bucket:${ref}`,
     pluginId: "cloudflare",
     resourceTypeId: "r2-bucket",
     accountId,
@@ -66,15 +123,15 @@ function mapR2Bucket(
       name,
       location: String(b["location"] ?? ""),
       storageClass: String(b["storage_class"] ?? "Standard"),
-      jurisdiction: String(b["jurisdiction"] ?? "default"),
+      jurisdiction: jurisdiction ?? "default",
       createdOn: String(b["creation_date"] ?? b["created"] ?? ""),
     },
     resolvedOutputs: {
       bucketName: name,
-      s3Endpoint: `https://${cfAccountId}.r2.cloudflarestorage.com`,
+      s3Endpoint: r2S3Endpoint(cfAccountId, jurisdiction),
     },
     secretStates: [],
-    externalId: name,
+    externalId: ref,
     createdAt: String(b["creation_date"] ?? b["created"] ?? new Date().toISOString()),
     updatedAt: new Date().toISOString(),
   };
@@ -91,17 +148,24 @@ interface BucketPage {
 }
 
 /**
- * Every R2 bucket on the account. `cf.r2.buckets.list` unwraps `result`, which drops the
- * `result_info.cursor` that names the next page, so this reads the envelope itself.
+ * Every R2 bucket in one jurisdiction, the default unless named. `cf.r2.buckets.list` unwraps
+ * `result`, which drops the `result_info.cursor` that names the next page, so this reads the
+ * envelope itself.
  */
-export async function listAllR2Buckets(api: CloudflareApi): Promise<Bucket[]> {
+export async function listAllR2Buckets(
+  api: CloudflareApi,
+  jurisdiction?: R2Jurisdiction,
+): Promise<Bucket[]> {
   const account_id = await api.getAccountId();
   const path = `/accounts/${account_id}/r2/buckets`;
   const out: Bucket[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < BUCKETS_MAX_PAGES; page++) {
     const query = { per_page: BUCKETS_PER_PAGE, ...(cursor ? { cursor } : {}) };
-    const body = await api.cf.get<typeof query, BucketPage>(path, { query });
+    const body = await api.cf.get<typeof query, BucketPage>(path, {
+      query,
+      ...(jurisdiction ? { headers: jurisdictionHeader(jurisdiction) } : {}),
+    });
     // The document marks `buckets` optional within `result`, so only a missing `result` is wrong.
     const list = body.result ? (body.result.buckets ?? []) : undefined;
     const buckets = requireListPage(list, { vendor: "Cloudflare", path, key: "buckets" });
@@ -117,13 +181,38 @@ export async function listAllR2Buckets(api: CloudflareApi): Promise<Bucket[]> {
   });
 }
 
+/**
+ * Buckets in every documented jurisdiction. A list answers only for the jurisdiction its
+ * `cf-r2-jurisdiction` header names (the default without one), so EU and FedRAMP buckets each take
+ * their own read. The default read fails the list as it always has; with that answered, a refusal
+ * of another jurisdiction means the account does not have it (FedRAMP is granted on request), so
+ * it reads as none, while a throttle, an outage or a rejected token still fails the list.
+ */
 export async function listR2Buckets(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const account_id = await api.getAccountId();
-  const buckets = await listAllR2Buckets(api);
-  return buckets.map((b) => mapR2Bucket(asRecord(b), accountId, account_id));
+  const out = new Map<string, ResourceInstance>();
+  const add = (buckets: Bucket[], jurisdiction?: R2Jurisdiction) => {
+    for (const b of buckets) {
+      const mapped = mapR2Bucket(asRecord(b), accountId, account_id, jurisdiction);
+      if (!out.has(mapped.id)) out.set(mapped.id, mapped);
+    }
+  };
+  add(await listAllR2Buckets(api));
+  for (const jurisdiction of OTHER_JURISDICTIONS) {
+    let buckets: Bucket[];
+    try {
+      buckets = await listAllR2Buckets(api, jurisdiction);
+    } catch (err) {
+      rethrowIncompleteList(err);
+      if (!refusedBesideAnswer(err)) throw err;
+      continue;
+    }
+    add(buckets, jurisdiction);
+  }
+  return [...out.values()];
 }
 
 export async function getR2Bucket(
@@ -132,8 +221,12 @@ export async function getR2Bucket(
   accountId: string,
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
-  const bucket = await api.cf.r2.buckets.get(externalId, { account_id });
-  return mapR2Bucket(asRecord(bucket), accountId, account_id);
+  const { name, jurisdiction } = requireBucket(externalId);
+  const bucket = await api.cf.r2.buckets.get(name, {
+    account_id,
+    ...sdkJurisdiction(jurisdiction),
+  });
+  return mapR2Bucket(asRecord(bucket), accountId, account_id, jurisdiction);
 }
 
 export async function createR2Bucket(
@@ -170,11 +263,13 @@ export async function editR2Bucket(
   if (!isR2StorageClass(storageClass)) {
     throw new Error(`Unknown R2 storage class "${storageClass}".`);
   }
-  const bucket = await api.cf.r2.buckets.edit(externalId, {
+  const { name, jurisdiction } = requireBucket(externalId);
+  const bucket = await api.cf.r2.buckets.edit(name, {
     account_id,
     storage_class: storageClass,
+    ...sdkJurisdiction(jurisdiction),
   });
-  return mapR2Bucket(asRecord(bucket), accountId, account_id);
+  return mapR2Bucket(asRecord(bucket), accountId, account_id, jurisdiction);
 }
 
 /**
@@ -221,8 +316,9 @@ function jurisdictionParam(jurisdiction: string): { jurisdiction?: "eu" | "fedra
 }
 
 export async function deleteR2Bucket(api: CloudflareApi, externalId: string): Promise<void> {
+  const { name, jurisdiction } = requireBucket(externalId);
   const account_id = await api.getAccountId();
-  await api.cf.r2.buckets.delete(externalId, { account_id });
+  await api.cf.r2.buckets.delete(name, { account_id, ...sdkJurisdiction(jurisdiction) });
 }
 
 // --- R2 object plane (intentionally left on raw fetch: SDK has no coverage) ---
@@ -233,16 +329,18 @@ export async function listR2StorageObjects(
   prefix: string,
 ): Promise<StorageObject[]> {
   const cfAccountId = await api.getAccountId();
+  const { name, jurisdiction } = requireBucket(bucket);
   const params = new URLSearchParams({ prefix, delimiter: "/" });
   // The list-objects endpoint puts objects in the envelope's `result` array
   // (not a nested `objects` field) and common prefixes in
   // `result_info.delimited`. `api.fetch` only returns `result`, so go through
   // raw fetch to access `result_info`.
-  const path = `/accounts/${cfAccountId}/r2/buckets/${bucket}/objects?${params.toString()}`;
+  const path = `/accounts/${cfAccountId}/r2/buckets/${name}/objects?${params.toString()}`;
   const res = await cfFetch(api, `${api.baseUrl}${path}`, {
     headers: {
       Authorization: `Bearer ${api.apiToken}`,
       "Content-Type": "application/json",
+      ...jurisdictionHeader(jurisdiction),
     },
   });
   if (!res.ok) {
@@ -299,6 +397,7 @@ export async function deleteR2StorageObject(
   key: string,
 ): Promise<void> {
   const cfAccountId = await api.getAccountId();
+  const { name, jurisdiction } = requireBucket(bucket);
   if (key.endsWith("/")) {
     // Delete all objects under this prefix
     const objects = await listR2StorageObjects(api, bucket, key);
@@ -307,9 +406,10 @@ export async function deleteR2StorageObject(
     }
   }
   await api.fetch(
-    `/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(key)}`,
+    `/accounts/${cfAccountId}/r2/buckets/${name}/objects/${encodeURIComponent(key)}`,
     {
       method: "DELETE",
+      ...(jurisdiction ? { headers: jurisdictionHeader(jurisdiction) } : {}),
     },
   );
 }
@@ -321,15 +421,17 @@ export async function uploadR2StorageObject(
   file: File,
 ): Promise<void> {
   const cfAccountId = await api.getAccountId();
+  const { name, jurisdiction } = requireBucket(bucket);
   const arrayBuffer = await file.arrayBuffer();
   const res = await cfFetch(
     api,
-    `${api.baseUrl}/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(key)}`,
+    `${api.baseUrl}/accounts/${cfAccountId}/r2/buckets/${name}/objects/${encodeURIComponent(key)}`,
     {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
         "Content-Type": file.type || "application/octet-stream",
+        ...jurisdictionHeader(jurisdiction),
       },
       body: arrayBuffer,
     },
@@ -345,16 +447,18 @@ export async function makeR2StorageFolder(
   key: string,
 ): Promise<void> {
   const cfAccountId = await api.getAccountId();
+  const { name, jurisdiction } = requireBucket(bucket);
   const folderKey = key.endsWith("/") ? key : `${key}/`;
   const res = await cfFetch(
     api,
-    `${api.baseUrl}/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(folderKey)}`,
+    `${api.baseUrl}/accounts/${cfAccountId}/r2/buckets/${name}/objects/${encodeURIComponent(folderKey)}`,
     {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
         "Content-Type": "application/x-directory",
         "Content-Length": "0",
+        ...jurisdictionHeader(jurisdiction),
       },
       body: null,
     },

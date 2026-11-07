@@ -23,10 +23,14 @@ function r2Api(over: Record<string, unknown> = {}) {
     create: vi.fn(async () => ({ name: "b2" })),
     delete: vi.fn(async () => undefined),
   };
-  const get = vi.fn(async () => ({
-    result: { buckets: [{ name: "b1", location: "wnam", creation_date: "2020" }] },
-    result_info: { per_page: 1000, total_count: 1 },
-  }));
+  const get = vi.fn(async (_path: string, opts: { headers?: object }) =>
+    opts.headers
+      ? { result: { buckets: [] }, result_info: {} }
+      : {
+          result: { buckets: [{ name: "b1", location: "wnam", creation_date: "2020" }] },
+          result_info: { per_page: 1000, total_count: 1 },
+        },
+  );
   return makeApi({ cf: { get, r2: { buckets } }, ...over });
 }
 
@@ -45,10 +49,13 @@ describe("r2-client buckets", () => {
   });
 
   it("listR2Buckets follows the cursor at the largest page size", async () => {
-    const get = vi.fn(async (_path: string, opts: { query: { cursor?: string } }) =>
-      opts.query.cursor
-        ? { result: { buckets: [{ name: "b2" }] }, result_info: {} }
-        : { result: { buckets: [{ name: "b1" }] }, result_info: { cursor: "next" } },
+    const get = vi.fn(
+      async (_path: string, opts: { query: { cursor?: string }; headers?: object }) =>
+        opts.headers
+          ? { result: { buckets: [] }, result_info: {} }
+          : opts.query.cursor
+            ? { result: { buckets: [{ name: "b2" }] }, result_info: {} }
+            : { result: { buckets: [{ name: "b1" }] }, result_info: { cursor: "next" } },
     );
     const out = await listR2Buckets(makeApi({ cf: { get } }), "acct");
     expect(out.map((b) => b.externalId)).toEqual(["b1", "b2"]);
@@ -282,5 +289,205 @@ describe("r2-client storage class and r2.dev access", () => {
       enabled: true,
       jurisdiction: "eu",
     });
+  });
+});
+
+describe("r2-client jurisdictions", () => {
+  function refusal(status: number, message = "refused") {
+    return Object.assign(new Error(`${status} ${message}`), {
+      status,
+      errors: [{ code: 10001, message }],
+    });
+  }
+
+  type ListOpts = { query: { cursor?: string }; headers?: Record<string, string> };
+
+  function listing(by: Record<string, () => unknown>) {
+    return vi.fn(async (_path: string, opts: ListOpts) => {
+      const answer = by[opts.headers?.["cf-r2-jurisdiction"] ?? "default"];
+      if (!answer) throw new Error("unexpected jurisdiction");
+      return answer();
+    });
+  }
+
+  it("lists each documented jurisdiction and qualifies the ids outside the default", async () => {
+    const get = listing({
+      default: () => ({ result: { buckets: [{ name: "b1" }] }, result_info: {} }),
+      eu: () => ({ result: { buckets: [{ name: "b1", jurisdiction: "eu" }] }, result_info: {} }),
+      fedramp: () => ({ result: { buckets: [{ name: "gov" }] }, result_info: {} }),
+    });
+    const out = await listR2Buckets(makeApi({ cf: { get } }), "acct");
+    expect(out.map((b) => b.id)).toEqual([
+      "acct:r2-bucket:b1",
+      "acct:r2-bucket:eu/b1",
+      "acct:r2-bucket:fedramp/gov",
+    ]);
+    expect(out.map((b) => b.fields.jurisdiction)).toEqual(["default", "eu", "fedramp"]);
+    expect(out.map((b) => b.fields.name)).toEqual(["b1", "b1", "gov"]);
+    expect(out[1]!.resolvedOutputs.s3Endpoint).toBe("https://acct-cf.eu.r2.cloudflarestorage.com");
+    expect(get).toHaveBeenCalledWith("/accounts/acct-cf/r2/buckets", {
+      query: { per_page: 1000 },
+      headers: { "cf-r2-jurisdiction": "eu" },
+    });
+  });
+
+  it("reads a jurisdiction the account may not use as none", async () => {
+    const get = listing({
+      default: () => ({ result: { buckets: [{ name: "b1" }] }, result_info: {} }),
+      eu: () => ({ result: { buckets: [] }, result_info: {} }),
+      fedramp: () => {
+        throw refusal(403, "Access to the FedRAMP jurisdiction is not enabled");
+      },
+    });
+    const out = await listR2Buckets(makeApi({ cf: { get } }), "acct");
+    expect(out.map((b) => b.externalId)).toEqual(["b1"]);
+  });
+
+  it("reads a 400 refusal of a jurisdiction as none while the default answers", async () => {
+    const get = listing({
+      default: () => ({ result: { buckets: [{ name: "b1" }] }, result_info: {} }),
+      eu: () => {
+        throw refusal(400, "Invalid jurisdiction");
+      },
+      fedramp: () => {
+        throw refusal(400, "Invalid jurisdiction");
+      },
+    });
+    const out = await listR2Buckets(makeApi({ cf: { get } }), "acct");
+    expect(out.map((b) => b.externalId)).toEqual(["b1"]);
+  });
+
+  it("fails the whole list on a throttle, an outage or a rejected token in another jurisdiction", async () => {
+    for (const status of [429, 503, 401]) {
+      const get = listing({
+        default: () => ({ result: { buckets: [{ name: "b1" }] }, result_info: {} }),
+        eu: () => {
+          throw refusal(status);
+        },
+        fedramp: () => ({ result: { buckets: [] }, result_info: {} }),
+      });
+      await expect(listR2Buckets(makeApi({ cf: { get } }), "acct")).rejects.toThrow(String(status));
+    }
+  });
+
+  it("still fails when the default jurisdiction is refused", async () => {
+    const get = listing({
+      default: () => {
+        throw refusal(403);
+      },
+      eu: () => ({ result: { buckets: [{ name: "b1" }] }, result_info: {} }),
+      fedramp: () => ({ result: { buckets: [] }, result_info: {} }),
+    });
+    await expect(listR2Buckets(makeApi({ cf: { get } }), "acct")).rejects.toThrow("403");
+  });
+
+  it("a page past the cap in another jurisdiction still fails the list", async () => {
+    const get = listing({
+      default: () => ({ result: { buckets: [] }, result_info: {} }),
+      eu: () => ({ result: { buckets: [{ name: "b" }] }, result_info: { cursor: "more" } }),
+      fedramp: () => ({ result: { buckets: [] }, result_info: {} }),
+    });
+    await expect(listR2Buckets(makeApi({ cf: { get } }), "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("addresses a qualified bucket in its jurisdiction on get, edit and delete", async () => {
+    const buckets = {
+      get: vi.fn(async () => ({ name: "b1" })),
+      edit: vi.fn(async () => ({ name: "b1", storage_class: "Standard" })),
+      delete: vi.fn(async () => undefined),
+    };
+    const api = makeApi({ cf: { r2: { buckets } } });
+    const got = await getR2Bucket(api, "eu/b1", "acct");
+    expect(buckets.get).toHaveBeenCalledWith("b1", { account_id: "acct-cf", jurisdiction: "eu" });
+    expect(got.externalId).toBe("eu/b1");
+    expect(got.fields.jurisdiction).toBe("eu");
+    await editR2Bucket(api, "acct", "eu/b1", { storageClass: "Standard" });
+    expect(buckets.edit).toHaveBeenCalledWith("b1", {
+      account_id: "acct-cf",
+      storage_class: "Standard",
+      jurisdiction: "eu",
+    });
+    await deleteR2Bucket(api, "fedramp/b1");
+    expect(buckets.delete).toHaveBeenCalledWith("b1", {
+      account_id: "acct-cf",
+      jurisdiction: "fedramp",
+    });
+  });
+
+  it("refuses to act on a blank bucket name", async () => {
+    const buckets = { delete: vi.fn(async () => undefined) };
+    const api = makeApi({ cf: { r2: { buckets } } });
+    await expect(deleteR2Bucket(api, "eu/")).rejects.toThrow(/bucket/i);
+    await expect(deleteR2Bucket(api, "")).rejects.toThrow(/bucket/i);
+    expect(buckets.delete).not.toHaveBeenCalled();
+  });
+
+  describe("object plane", () => {
+    let fetchMock: Mock;
+    beforeEach(() => {
+      fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ success: true, result: [], result_info: {} }),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("sends the jurisdiction header and the bare name for a qualified bucket", async () => {
+      const api = makeApi();
+      await listR2StorageObjects(api, "eu/b1", "");
+      const [url, init] = fetchMock.mock.calls[0]! as unknown as [string, RequestInit];
+      expect(url).toContain("/r2/buckets/b1/objects?");
+      expect(init.headers).toMatchObject({ "cf-r2-jurisdiction": "eu" });
+
+      await deleteR2StorageObject(api, "eu/b1", "a.txt");
+      expect(api.fetch).toHaveBeenCalledWith(
+        "/accounts/acct-cf/r2/buckets/b1/objects/a.txt",
+        expect.objectContaining({
+          method: "DELETE",
+          headers: { "cf-r2-jurisdiction": "eu" },
+        }),
+      );
+
+      const file = { type: "", arrayBuffer: async () => new ArrayBuffer(0) } as unknown as File;
+      await uploadR2StorageObject(api, "eu/b1", "k", file);
+      await makeR2StorageFolder(api, "eu/b1", "f");
+      for (const call of fetchMock.mock.calls.slice(1)) {
+        const [u, i] = call as unknown as [string, RequestInit];
+        expect(u).toContain("/r2/buckets/b1/objects/");
+        expect(i.headers).toMatchObject({ "cf-r2-jurisdiction": "eu" });
+      }
+    });
+
+    it("sends no jurisdiction header for a default bucket", async () => {
+      await listR2StorageObjects(makeApi(), "b1", "");
+      const [, init] = fetchMock.mock.calls[0]! as unknown as [string, RequestInit];
+      expect(init.headers).not.toHaveProperty("cf-r2-jurisdiction");
+    });
+  });
+
+  it("the client browses and toggles a qualified bucket by its bare name", async () => {
+    const managed = { domain: "pub-eu.r2.dev", enabled: false };
+    const buckets = {
+      get: vi.fn(async () => ({ name: "b1" })),
+      domains: {
+        managed: { list: vi.fn(async () => managed), update: vi.fn(async () => managed) },
+      },
+    };
+    const c = hostClient(new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes));
+    (c as unknown as { api: unknown }).api = makeApi({ cf: { r2: { buckets } } });
+    const bucket = await c.getResource("r2-bucket", "acct:r2-bucket:eu/b1", "acct");
+    expect(JSON.stringify(c.renderDetail(bucket))).toContain('"bucketName":"eu/b1"');
+    await c.invokeAction("r2-bucket", "acct:r2-bucket:eu/b1", "r2dev-enable", "acct");
+    expect(buckets.domains.managed.update).toHaveBeenCalledWith("b1", {
+      account_id: "acct-cf",
+      enabled: true,
+      jurisdiction: "eu",
+    });
+    expect(await c.resolveOutput("r2-bucket", "acct:r2-bucket:eu/b1", "s3Endpoint", "acct")).toBe(
+      "https://acct-cf.eu.r2.cloudflarestorage.com",
+    );
   });
 });
