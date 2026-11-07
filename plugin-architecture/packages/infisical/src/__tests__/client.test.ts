@@ -423,7 +423,10 @@ describe("incomplete lists", () => {
         return { status: 403, body: { message: "denied" } };
       return { body: { dynamicSecrets: [{ id: "ds1", name: "root" }] } };
     });
+    // A sync keeps the denied path's rows; elsewhere the refusal fails the list.
+    vi.stubGlobal(Symbol.for("infrawrench.unreadListPart"), () => true);
     const list = await c.listResources("dynamic-secret", ACCOUNT);
+    vi.unstubAllGlobals();
     expect(list.map((d) => d.fields["path"])).toEqual(["/", "/"]);
   });
 });
@@ -976,6 +979,11 @@ describe("what a list could not read", () => {
       expect(parts).toEqual([]);
     });
 
+    it("reads every environment where the host keeps no track of the rest", async () => {
+      await wide(60, 0).listResources("secret", ACCOUNT);
+      expect(reads("/api/v4/secrets")).toHaveLength(60);
+    });
+
     it("reads 50 environments a poll and names the rest as parents", async () => {
       vi.spyOn(Math, "random").mockReturnValue(0.25);
       const parts = trackUnread();
@@ -1019,12 +1027,20 @@ describe("what a list could not read", () => {
       await expect(c.listResources("secret", ACCOUNT)).rejects.toThrow(/403/);
     });
 
-    it("reads as none on one refused parent where the host keeps no track", async () => {
+    it("shows one refused parent where the host keeps no track", async () => {
       const c = client((call) => {
         if (new URL(call.url).searchParams.get("environment") === "prod") return REFUSED;
         return { body: { secrets: [] } };
       });
-      await expect(c.listResources("secret", ACCOUNT)).resolves.toEqual([]);
+      await expect(c.listResources("secret", ACCOUNT)).rejects.toThrow(/403/);
+    });
+
+    it("shows a refused folder list where the host keeps no track", async () => {
+      const c = client((call) => {
+        if (call.url.includes("/api/v2/folders")) return REFUSED;
+        return { body: { dynamicSecrets: [{ id: "ds1", name: "pg" }] } };
+      });
+      await expect(c.listResources("dynamic-secret", ACCOUNT)).rejects.toThrow(/403/);
     });
 
     it("keeps the dynamic secrets of a refused folder, and only that folder's", async () => {

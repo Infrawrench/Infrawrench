@@ -304,15 +304,17 @@ export class InfisicalClient implements PluginClient {
     maxReads = MAX_PARENT_READS,
   ) {
     const { now, later } = rotatingRun(items, maxReads);
-    if (later.length > 0) reportUnreadListPart(unread(later));
-    const settled = await Promise.allSettled(now.map((item) => load(item)));
+    // A host that keeps no track answers false, and has no poll to outlast: it reads them all.
+    const tracked = later.length === 0 || reportUnreadListPart(unread(later));
+    const reading = tracked ? now : items;
+    const settled = await Promise.allSettled(reading.map((item) => load(item)));
     const out: T[] = [];
     const refused: I[] = [];
     let refusal: unknown;
     settled.forEach((result, index) => {
       if (result.status === "fulfilled") out.push(...result.value);
       else if (meansNone(result.reason)) {
-        const item = now[index]!;
+        const item = reading[index]!;
         console.warn(`Infisical plugin: skipping ${label(item)}: ${String(result.reason)}`);
         if (statusOf(result.reason) === 403) {
           refused.push(item);
@@ -320,14 +322,8 @@ export class InfisicalClient implements PluginClient {
         }
       } else throw result.reason;
     });
-    // A host that keeps no track keeps nothing, so a refusal of everything shows there.
-    if (
-      refused.length > 0 &&
-      !reportUnreadListPart(unread(refused)) &&
-      refused.length === now.length
-    ) {
-      throw refusal;
-    }
+    // A host that keeps no track keeps nothing, so a refusal shows there.
+    if (refused.length > 0 && !reportUnreadListPart(unread(refused))) throw refusal;
     return out;
   }
 
@@ -544,11 +540,15 @@ export class InfisicalClient implements PluginClient {
             async ({ project, env }) => {
               const folders = await this.foldersIn(str(project.id), str(env.slug)).catch(
                 (error: unknown): InfFolder[] => {
-                  // Which folders there are is unknown, so the environment's rows stay.
-                  if (statusOf(error) === 403) {
-                    reportUnreadListPart({
+                  // Which folders there are is unknown, so the environment's rows stay. A
+                  // host that keeps no track answers false, and there the refusal shows.
+                  if (
+                    statusOf(error) === 403 &&
+                    !reportUnreadListPart({
                       idPrefixes: [dynamicSecretRowPrefix(accountId, project, env)],
-                    });
+                    })
+                  ) {
+                    throw error;
                   }
                   if (meansNone(error)) return [];
                   throw error;
