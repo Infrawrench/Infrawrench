@@ -1,0 +1,23 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.gladia.io/openapi.json",
+  "paths": {
+    "/v2/upload": ["post"],
+    "/v2/pre-recorded": ["get", "post"],
+    "/v2/pre-recorded/{id}": ["get", "delete"],
+    "/v2/live": ["get"],
+    "/v2/live/{id}": ["get", "delete"]
+  },
+  "patches": [
+    {
+      "pointer": "/components/schemas/InitTranscriptionRequest/properties/model",
+      "value": { "type": "string" },
+      "why": "The plugin passes the model the Speech panel picked through as given, so Gladia's own validation answers a bad value and a new model needs no release here."
+    },
+    {
+      "pointer": "/components/schemas/LanguageConfig/properties/languages/items",
+      "value": { "type": "string" },
+      "why": "The plugin passes the language the Speech panel picked through as given, so Gladia's own validation answers a bad value."
+    }
+  ]
+}
