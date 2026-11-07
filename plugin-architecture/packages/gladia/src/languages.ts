@@ -123,7 +123,8 @@ export const GLADIA_LANGUAGE_OPTIONS: SpeechPanelOption[] = [
   {
     id: GLADIA_AUTO_LANGUAGE,
     label: "Auto-detect",
-    description: "Let Gladia pick the language from the audio",
+    description:
+      "Let Gladia pick the language from the audio. Solaria-3 is documented to need one named language",
   },
   ...GLADIA_LANGUAGES.map((language) => ({
     id: language.code,
@@ -148,7 +149,7 @@ export const GLADIA_MODEL_OPTIONS: SpeechPanelOption[] = [
     id: "solaria-3",
     label: "Solaria-3",
     description:
-      "Latest generation, pre-recorded only. English, French, German, Spanish or Italian",
+      "Latest generation, pre-recorded only. One language at a time: English, French, German, Spanish or Italian",
   },
   {
     id: "solaria-fusion",
@@ -158,3 +159,21 @@ export const GLADIA_MODEL_OPTIONS: SpeechPanelOption[] = [
 ];
 
 export const GLADIA_DEFAULT_MODEL = "solaria-1";
+
+/**
+ * https://docs.gladia.io/chapters/language/supported-languages marks these five for Solaria-3,
+ * and https://docs.gladia.io/api-reference/v2/pre-recorded/init says "pass exactly one".
+ */
+const SOLARIA_3_LANGUAGES = new Set(["en", "fr", "de", "it", "es"]);
+
+/**
+ * What to tell the user when a model and language pair falls outside what Gladia documents.
+ *
+ * The request still goes out: no live call has shown Gladia refuses these, so refusing here could
+ * break a pair that works today. This only explains the answer that comes back.
+ */
+export function undocumentedLanguageNote(model: string, language: string | undefined) {
+  if (model !== "solaria-3") return undefined;
+  if (language && SOLARIA_3_LANGUAGES.has(language)) return undefined;
+  return "Gladia documents Solaria-3 for one named language out of English, French, German, Italian and Spanish. Pick one of those, or use Solaria-1.";
+}

@@ -27,6 +27,7 @@ import {
   BASE_URL,
   createGladiaApi,
   deleteJobRequest,
+  GladiaHttpError,
   postAudioUpload,
   VENDOR,
   type GladiaApi,
@@ -40,6 +41,7 @@ import {
   GLADIA_DEFAULT_MODEL,
   GLADIA_LANGUAGE_OPTIONS,
   GLADIA_MODEL_OPTIONS,
+  undocumentedLanguageNote,
 } from "./languages.js";
 
 /** The single workspace pseudo-resource's external id. */
@@ -112,6 +114,11 @@ const ACCEPTED_AUDIO_TYPES = [
   ".mkv",
   ".avi",
 ];
+
+/** The two statuses https://docs.gladia.io/api-reference/v2/pre-recorded/init gives a bad request. */
+function isRefusal(status: number): boolean {
+  return status === 400 || status === 422;
+}
 
 function num(value: number | null | undefined): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -360,11 +367,17 @@ export class GladiaClient implements PluginClient {
           : {}),
       };
 
-      const init = await this.initTranscription(body);
+      const languageNote = undocumentedLanguageNote(model, payload.language);
+      const init = await this.initTranscription(body).catch((err: unknown) => {
+        if (languageNote && err instanceof GladiaHttpError && isRefusal(err.status)) {
+          throw new Error(`${err.message} ${languageNote}`, { cause: err });
+        }
+        throw err;
+      });
       const jobId = str(init.id);
       if (!jobId) throw new Error("Gladia plugin: /v2/pre-recorded returned no job id");
 
-      const job = await this.pollJob(jobId);
+      const job = await this.pollJob(jobId, languageNote);
       const elapsedMs = Date.now() - started;
 
       const transcription = job.result?.transcription;
@@ -403,6 +416,7 @@ export class GladiaClient implements PluginClient {
       if (duration !== undefined) summaryParts.push(`${round(duration, 1)} s of audio`);
       if (billing !== undefined) summaryParts.push(`${round(billing, 1)} s billed`);
       summaryParts.push(`${round(elapsedMs / 1000, 1)} s round-trip`);
+      if (languageNote) summaryParts.push(languageNote);
 
       return {
         text: str(transcription?.full_transcript),
@@ -456,7 +470,7 @@ export class GladiaClient implements PluginClient {
    * A *failed* job comes back as HTTP 200 with `status: "error"`, so the body
    * is what decides success, never the status code.
    */
-  private async pollJob(jobId: string): Promise<GladiaJob> {
+  private async pollJob(jobId: string, languageNote: string | undefined): Promise<GladiaJob> {
     const deadline = Date.now() + MAX_POLL_WAIT_MS;
 
     for (;;) {
@@ -468,7 +482,8 @@ export class GladiaClient implements PluginClient {
         const code = num(job.error_code);
         throw new Error(
           `Gladia transcription ${jobId} failed${code !== undefined ? ` (error_code ${code})` : ""}. ` +
-            'Gladia reports failures as HTTP 200 with status "error"; check the job in the Gladia dashboard for detail.',
+            'Gladia reports failures as HTTP 200 with status "error"; check the job in the Gladia dashboard for detail.' +
+            (languageNote && (code === undefined || isRefusal(code)) ? ` ${languageNote}` : ""),
         );
       }
 

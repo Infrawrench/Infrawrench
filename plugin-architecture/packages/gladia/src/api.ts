@@ -4,6 +4,7 @@ import {
   restRequest,
   type ApiBody,
   type ApiClient,
+  type ApiFailure,
   type ApiResponse,
   type HttpHostServices,
 } from "@infrawrench/plugin-base";
@@ -52,6 +53,17 @@ function gladiaHeaders(apiKey: string): Record<string, string> {
   return { "x-gladia-key": apiKey, Accept: "application/json" };
 }
 
+/** A non-2xx answer, so a caller can tell Gladia refusing a request from an outage. */
+export class GladiaHttpError extends Error {
+  readonly status: number;
+
+  constructor({ status, target, body }: ApiFailure) {
+    super(`${VENDOR} API error ${status} for ${target}: ${body}`);
+    this.name = "GladiaHttpError";
+    this.status = status;
+  }
+}
+
 export function createGladiaApi({ apiKey, caCert, http }: GladiaConnection): GladiaApi {
   return createApiClient<paths>({
     vendor: VENDOR,
@@ -59,6 +71,7 @@ export function createGladiaApi({ apiKey, caCert, http }: GladiaConnection): Gla
     headers: gladiaHeaders(apiKey),
     http,
     caCert,
+    httpError: (failure) => new GladiaHttpError(failure),
   });
 }
 

@@ -2,7 +2,7 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostedMethods } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GladiaClient } from "../client.js";
-import { GLADIA_MODEL_OPTIONS } from "../languages.js";
+import { GLADIA_LANGUAGE_OPTIONS, GLADIA_MODEL_OPTIONS } from "../languages.js";
 
 const ACCOUNT = "acct-1";
 
@@ -592,5 +592,91 @@ describe("Speech panel options", () => {
     for (const language of ["English", "French", "German", "Spanish", "Italian"]) {
       expect(solaria3?.description).toContain(language);
     }
+    expect(solaria3?.description).toMatch(/one language/i);
+  });
+
+  it("says auto-detect is not documented for Solaria-3", () => {
+    const auto = GLADIA_LANGUAGE_OPTIONS.find((option) => option.id === "auto");
+    expect(auto?.description).toContain("Solaria-3");
+  });
+});
+
+describe("Solaria-3 outside its documented languages", () => {
+  const NOTE = /documents Solaria-3 for one named language.*Solaria-1/;
+
+  function transcribe(modelId: string, language: string) {
+    return client().transcribeAudio("workspace", `${ACCOUNT}:workspace:default`, ACCOUNT, {
+      audioBase64: Buffer.from([1]).toString("base64"),
+      mimeType: "audio/wav",
+      modelId,
+      language,
+    });
+  }
+
+  /** Answers the submit with `submit`, and any job read with `job`. */
+  function installGladia(submit: Response, job: unknown = doneJob("job-1")) {
+    installFetch((url, init) => {
+      if (url.endsWith("/v2/upload")) return jsonResponse({ audio_url: "u" });
+      if (url.endsWith("/v2/pre-recorded") && init?.method === "POST") return submit;
+      if (url.endsWith("/v2/pre-recorded/job-1")) return jsonResponse(job);
+      throw new Error(`unrouted: ${url}`);
+    });
+  }
+
+  function submittedBody() {
+    const submit = calls.find(
+      (c) => c.url.endsWith("/v2/pre-recorded") && c.init?.method === "POST",
+    )!;
+    return JSON.parse(submit.init!.body as string);
+  }
+
+  it.each(["ja", "auto"])("explains a %s submit that Gladia refuses", async (language) => {
+    installGladia(jsonResponse({ message: "bad language" }, 422));
+    const failure = transcribe("solaria-3", language);
+    await expect(failure).rejects.toThrow(NOTE);
+    await expect(failure).rejects.toThrow(/Gladia API error 422/);
+  });
+
+  it("still sends a combination Gladia may accept, and flags the result", async () => {
+    installGladia(jsonResponse({ id: "job-1" }, 201));
+    const result = await transcribe("solaria-3", "ja");
+    expect(submittedBody().language_config).toEqual({
+      languages: ["ja"],
+      code_switching: false,
+    });
+    expect(result.summary).toMatch(NOTE);
+  });
+
+  it("explains a job that fails with a refusal code", async () => {
+    installGladia(jsonResponse({ id: "job-1" }, 201), {
+      id: "job-1",
+      status: "error",
+      error_code: 422,
+      result: null,
+    });
+    await expect(transcribe("solaria-3", "auto")).rejects.toThrow(NOTE);
+  });
+
+  it("does not blame the language for an outage", async () => {
+    installGladia(jsonResponse({ message: "down" }, 503));
+    await expect(transcribe("solaria-3", "ja")).rejects.not.toThrow(NOTE);
+    vi.restoreAllMocks();
+    installGladia(jsonResponse({ id: "job-1" }, 201), {
+      id: "job-1",
+      status: "error",
+      error_code: 503,
+      result: null,
+    });
+    await expect(transcribe("solaria-3", "ja")).rejects.not.toThrow(NOTE);
+  });
+
+  it("does not blame a documented language or another model", async () => {
+    installGladia(jsonResponse({ message: "bad" }, 422));
+    await expect(transcribe("solaria-3", "fr")).rejects.not.toThrow(NOTE);
+    await expect(transcribe("solaria-1", "ja")).rejects.not.toThrow(NOTE);
+    vi.restoreAllMocks();
+    installGladia(jsonResponse({ id: "job-1" }, 201));
+    expect((await transcribe("solaria-3", "fr")).summary).not.toMatch(NOTE);
+    expect((await transcribe("solaria-1", "auto")).summary).not.toMatch(NOTE);
   });
 });
