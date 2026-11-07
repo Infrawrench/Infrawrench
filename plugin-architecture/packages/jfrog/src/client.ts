@@ -412,87 +412,100 @@ export class JfrogClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      switch (typeId) {
-        case "jfrog-platform":
-          return [await this.platform(accountId, true)];
-        case "jfrog-repository": {
-          this.storageCache = undefined;
-          const summaries = await this.repoSummaries();
-          const [configs, storage] = await Promise.all([
-            this.repoConfigs(summaries),
-            this.repoStorage(),
-          ]);
-          return summaries.map((s) =>
-            mapRepository(accountId, this.ctx.baseUrl, s, configs.get(s.key), storage.get(s.key)),
-          );
-        }
-        case "jfrog-build":
-          return (await this.buildNames()).map((b) => mapBuild(accountId, b.name, b.lastStarted));
-        case "jfrog-build-run": {
-          const runs = await readWithinBudget(
-            await this.buildNames(),
-            (rest) => ({
-              parentResourceIds: rest.map((b) => `${accountId}:jfrog-build:${b.name}`),
-            }),
-            async (b) =>
-              (await this.buildRuns(b.name))
-                .slice(0, RUNS_PER_BUILD)
-                .map((r) => mapBuildRun(accountId, b.name, r.number, r.started)),
-          );
-          return runs.flat();
-        }
-        case "jfrog-xray-watch":
-          return (await this.xrayList<XrayWatch>("/xray/api/v2/watches"))
-            .filter((w) => w.general_data?.name)
-            .map((w) => mapWatch(accountId, w));
-        case "jfrog-xray-policy":
-          return (await this.xrayList<XrayPolicy>("/xray/api/v1/policies")).map((p) =>
-            this.withRules(mapPolicy(accountId, p), p),
-          );
-        case "jfrog-xray-violation":
-          return (await this.violations()).map((v) => mapViolation(accountId, v));
-        case "jfrog-access-token": {
-          const path = "/access/api/v1/tokens";
-          const res = await jfrogFetch<{ tokens?: AccessToken[] }>(this.ctx, path);
-          return requireListPage(res?.tokens, { vendor: "JFrog", path, key: "tokens" })
-            .filter((t) => t.token_id)
-            .map((t) => mapToken(accountId, t));
-        }
-        case "jfrog-user": {
-          const users = await accessPaged<AccessUser>(this.ctx, "/access/api/v2/users", "users");
-          return mapLimit(users, 8, async (u, i) => {
-            if (i >= MAX_DETAIL_LOOKUPS) return mapUser(accountId, u);
-            return mapUser(accountId, await this.user(u.username).catch(() => u));
-          });
-        }
-        case "jfrog-group": {
-          return readWithinBudget(
-            await this.groupNames(),
-            (rest) => ({ idPrefixes: rest.map((name) => `${accountId}:jfrog-group:${name}`) }),
-            async (name) => mapGroup(accountId, await this.group(name).catch(() => ({ name }))),
-          );
-        }
-        case "jfrog-permission": {
-          const perms = await accessPaged<{ name: string }>(
-            this.ctx,
-            "/access/api/v2/permissions",
-            "permissions",
-          );
-          return readWithinBudget(
-            perms,
-            (rest) => ({ idPrefixes: rest.map((p) => `${accountId}:jfrog-permission:${p.name}`) }),
-            async (p) => {
-              const full = await this.permission(p.name).catch(
-                () => ({ name: p.name }) as AccessPermission,
-              );
-              return this.withGrants(mapPermission(accountId, full), full);
-            },
-          );
-        }
-        default:
-          throw new Error(`JFrog plugin: unknown resource type "${typeId}"`);
+      try {
+        return await this.readResources(typeId, accountId);
+      } catch (err) {
+        // A token that is not an admin is refused users, groups, permissions and tokens. This
+        // type's stored rows stay. A host that keeps no track (the desktop) answers false, and
+        // there the refusal should still show. The platform is what says a token is no good.
+        if (statusOf(err) !== 403 || typeId === "jfrog-platform") throw err;
+        if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+        return [];
       }
     });
+  }
+
+  private async readResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "jfrog-platform":
+        return [await this.platform(accountId, true)];
+      case "jfrog-repository": {
+        this.storageCache = undefined;
+        const summaries = await this.repoSummaries();
+        const [configs, storage] = await Promise.all([
+          this.repoConfigs(summaries),
+          this.repoStorage(),
+        ]);
+        return summaries.map((s) =>
+          mapRepository(accountId, this.ctx.baseUrl, s, configs.get(s.key), storage.get(s.key)),
+        );
+      }
+      case "jfrog-build":
+        return (await this.buildNames()).map((b) => mapBuild(accountId, b.name, b.lastStarted));
+      case "jfrog-build-run": {
+        const runs = await readWithinBudget(
+          await this.buildNames(),
+          (rest) => ({
+            parentResourceIds: rest.map((b) => `${accountId}:jfrog-build:${b.name}`),
+          }),
+          async (b) =>
+            (await this.buildRuns(b.name))
+              .slice(0, RUNS_PER_BUILD)
+              .map((r) => mapBuildRun(accountId, b.name, r.number, r.started)),
+        );
+        return runs.flat();
+      }
+      case "jfrog-xray-watch":
+        return (await this.xrayList<XrayWatch>("/xray/api/v2/watches"))
+          .filter((w) => w.general_data?.name)
+          .map((w) => mapWatch(accountId, w));
+      case "jfrog-xray-policy":
+        return (await this.xrayList<XrayPolicy>("/xray/api/v1/policies")).map((p) =>
+          this.withRules(mapPolicy(accountId, p), p),
+        );
+      case "jfrog-xray-violation":
+        return (await this.violations()).map((v) => mapViolation(accountId, v));
+      case "jfrog-access-token": {
+        const path = "/access/api/v1/tokens";
+        const res = await jfrogFetch<{ tokens?: AccessToken[] }>(this.ctx, path);
+        return requireListPage(res?.tokens, { vendor: "JFrog", path, key: "tokens" })
+          .filter((t) => t.token_id)
+          .map((t) => mapToken(accountId, t));
+      }
+      case "jfrog-user": {
+        const users = await accessPaged<AccessUser>(this.ctx, "/access/api/v2/users", "users");
+        return mapLimit(users, 8, async (u, i) => {
+          if (i >= MAX_DETAIL_LOOKUPS) return mapUser(accountId, u);
+          return mapUser(accountId, await this.user(u.username).catch(() => u));
+        });
+      }
+      case "jfrog-group": {
+        return readWithinBudget(
+          await this.groupNames(),
+          (rest) => ({ idPrefixes: rest.map((name) => `${accountId}:jfrog-group:${name}`) }),
+          async (name) => mapGroup(accountId, await this.group(name).catch(() => ({ name }))),
+        );
+      }
+      case "jfrog-permission": {
+        const perms = await accessPaged<{ name: string }>(
+          this.ctx,
+          "/access/api/v2/permissions",
+          "permissions",
+        );
+        return readWithinBudget(
+          perms,
+          (rest) => ({ idPrefixes: rest.map((p) => `${accountId}:jfrog-permission:${p.name}`) }),
+          async (p) => {
+            const full = await this.permission(p.name).catch(
+              () => ({ name: p.name }) as AccessPermission,
+            );
+            return this.withGrants(mapPermission(accountId, full), full);
+          },
+        );
+      }
+      default:
+        throw new Error(`JFrog plugin: unknown resource type "${typeId}"`);
+    }
   }
 
   private async platform(accountId: string, fresh: boolean): Promise<ResourceInstance> {

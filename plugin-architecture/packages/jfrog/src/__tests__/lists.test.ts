@@ -230,3 +230,34 @@ describe("one detail request per row", () => {
     for (const r of rows) expect(r.fields["members"]).toBe("alice");
   });
 });
+
+describe("a token refused a whole type", () => {
+  const refused = () =>
+    client(() => ({ status: 403, body: { errors: [{ message: "Forbidden" }] } }));
+
+  it.each(["jfrog-user", "jfrog-group", "jfrog-permission", "jfrog-access-token"])(
+    "%s keeps its rows without an error",
+    async (type) => {
+      const parts = trackUnread();
+      expect(await refused().c.listResources(type, ACCOUNT)).toEqual([]);
+      expect(parts).toEqual([{ idPrefixes: [""] }]);
+    },
+  );
+
+  it("still shows a token refused even the platform, which says what is wrong with it", async () => {
+    const parts = trackUnread();
+    await expect(refused().c.listResources("jfrog-platform", ACCOUNT)).rejects.toThrow("Forbidden");
+    expect(parts).toEqual([]);
+  });
+
+  it("still shows the refusal where the host keeps no track", async () => {
+    await expect(refused().c.listResources("jfrog-user", ACCOUNT)).rejects.toThrow("Forbidden");
+  });
+
+  it.each([401, 429, 500])("still fails the type on a %i", async (status) => {
+    const parts = trackUnread();
+    const { c } = client(() => ({ status, body: { errors: [{ message: "nope" }] } }));
+    await expect(c.listResources("jfrog-user", ACCOUNT)).rejects.toThrow("nope");
+    expect(parts).toEqual([]);
+  });
+});
