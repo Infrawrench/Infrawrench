@@ -243,6 +243,12 @@ describe("functions of deployed apps", () => {
     expect(new Set([...read, ...named]).size).toBe(1100);
   });
 
+  it("reads every app where the host keeps no track of the rest", async () => {
+    const { c, calls } = deployedApps(1100);
+    await expect(c.listResources("function", ACCOUNT)).resolves.toHaveLength(1100);
+    expect(calls.filter((x) => x.method === "AppGetInfo")).toHaveLength(1100);
+  });
+
   it("names the unread apps for each type sharing the read", async () => {
     const { c, calls } = deployedApps(1100);
     const named = recordUnread();
@@ -326,9 +332,17 @@ describe("a token refused environments", () => {
     await expect(c.listResources("volume", ACCOUNT)).rejects.toThrow("PERMISSION_DENIED");
   });
 
-  it("returns the default environment on a host that keeps no track", async () => {
+  it("shows the refusal on a host that keeps no track, rather than the default environment alone", async () => {
     const { c } = client((method) => (method === "EnvironmentList" ? DENIED : oneVolume));
-    expect(await c.listResources("volume", ACCOUNT)).toHaveLength(1);
+    await expect(c.listResources("volume", ACCOUNT)).rejects.toThrow("PERMISSION_DENIED");
+  });
+
+  it("shows one environment's refusal on a host that keeps no track", async () => {
+    const { c } = client((method, request) => {
+      if (method === "EnvironmentList") return TWO_ENVIRONMENTS;
+      return request.string(1) === "locked" ? DENIED : oneVolume;
+    });
+    await expect(c.listResources("volume", ACCOUNT)).rejects.toThrow("PERMISSION_DENIED");
   });
 
   it("keeps the environment rows quietly when the list is refused", async () => {

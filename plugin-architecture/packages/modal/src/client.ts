@@ -129,7 +129,6 @@ interface FunctionRow {
 interface EnvironmentRead<T> {
   rows: T[];
   refusal: unknown;
-  nothingRead: boolean;
 }
 
 /**
@@ -209,18 +208,16 @@ export class ModalClient implements PluginClient {
     return this.cached(key, async () => {
       const { names, refusal: listRefusal } = await this.environmentNames();
       let refusal = listRefusal;
-      let refused = 0;
       const lists = await Promise.all(
         names.map((name) =>
           load(name).catch((err: unknown) => {
             if (grpcCodeOf(err) !== GrpcCode.PERMISSION_DENIED) throw err;
             refusal = err;
-            refused++;
             return [];
           }),
         ),
       );
-      return { rows: lists.flat(), refusal, nothingRead: refused === names.length };
+      return { rows: lists.flat(), refusal };
     });
   }
 
@@ -228,11 +225,11 @@ export class ModalClient implements PluginClient {
    * The rows of a read across environments, for `listResources`: the report belongs to
    * each type, and these reads are shared. The stored rows of an environment this token
    * was refused stay. A host that keeps no track (the desktop) answers false, and there
-   * a refusal with nothing to show should still show.
+   * the refusal shows rather than a list short of that environment.
    */
   private readable<T>(read: EnvironmentRead<T>): T[] {
     if (read.refusal === undefined) return read.rows;
-    if (!reportUnreadListPart({ idPrefixes: [""] }) && read.nothingRead) throw read.refusal;
+    if (!reportUnreadListPart({ idPrefixes: [""] })) throw read.refusal;
     return read.rows;
   }
 
@@ -245,28 +242,37 @@ export class ModalClient implements PluginClient {
     return this.cached("functions", async () => {
       const apps = await this.apps();
       const { now, later } = appInfoWindow(apps.rows.filter((a) => a.state === "deployed"));
-      const rows = await mapLimited(now, APP_INFO_CONCURRENCY, async (app) => {
-        try {
-          return { app, info: await getAppInfo(this.ctx, app.appId) };
-        } catch (err) {
-          // An app stopped between the two calls simply has no functions now.
-          if (grpcCodeOf(err) === GrpcCode.NOT_FOUND) return undefined;
-          throw err;
-        }
-      });
-      return { ...apps, rows: rows.filter((r): r is FunctionRow => !!r), later };
+      return { ...apps, rows: await this.appInfos(now), later };
     });
+  }
+
+  private async appInfos(apps: ModalApp[]): Promise<FunctionRow[]> {
+    const rows = await mapLimited(apps, APP_INFO_CONCURRENCY, async (app) => {
+      try {
+        return { app, info: await getAppInfo(this.ctx, app.appId) };
+      } catch (err) {
+        // An app stopped between the two calls simply has no functions now.
+        if (grpcCodeOf(err) === GrpcCode.NOT_FOUND) return undefined;
+        throw err;
+      }
+    });
+    return rows.filter((r): r is FunctionRow => !!r);
   }
 
   /** For `listResources`: the report belongs to each type, and the read above is shared. */
   private async functionRows(accountId: string): Promise<FunctionRow[]> {
     const read = await this.deployedFunctions();
-    if (read.later.length > 0) {
-      reportUnreadListPart({
+    const rows = this.readable(read);
+    // A host that keeps no track answers false, and has no poll to outlast: it reads the rest.
+    if (
+      read.later.length > 0 &&
+      !reportUnreadListPart({
         parentResourceIds: read.later.map((app) => `${accountId}:app:${app.appId}`),
-      });
+      })
+    ) {
+      return [...rows, ...(await this.appInfos(read.later))];
     }
-    return this.readable(read);
+    return rows;
   }
 
   private async workspace(): Promise<string> {
