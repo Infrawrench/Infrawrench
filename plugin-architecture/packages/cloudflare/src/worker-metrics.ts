@@ -1,3 +1,4 @@
+import { cfFetch } from "./clients/shared.js";
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./clients/shared.js";
 import { fetchWorkerTelemetrySeries } from "./clients/worker-observability.js";
@@ -122,7 +123,7 @@ async function fetchInvocationSeries(
   let totals: TotalsGroup[] = [];
   let byStatus: StatusGroup[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,

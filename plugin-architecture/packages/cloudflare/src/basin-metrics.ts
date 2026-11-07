@@ -21,6 +21,7 @@
  * every window is bucketed hourly; the catalog datasets also offer
  * `datetimeFifteenMinutes`, used for windows under six hours.
  */
+import { cfFetch } from "./clients/shared.js";
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./clients/shared.js";
 import { parseTableExternalId } from "./clients/basin-catalog-client.js";
@@ -65,7 +66,7 @@ async function queryAccountDatasets(
     return empty;
   }
   try {
-    const res = await fetch(GRAPHQL, {
+    const res = await cfFetch(api, GRAPHQL, {
       method: "POST",
       headers: { Authorization: `Bearer ${api.apiToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({ query, variables: { account, ...variables } }),

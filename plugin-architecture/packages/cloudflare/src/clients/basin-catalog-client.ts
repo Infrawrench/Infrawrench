@@ -20,6 +20,7 @@
  * Workers R2 Data Catalog Read and Workers R2 Storage Read. Read-only; each
  * query is billed on bytes scanned (10 MB minimum).
  */
+import { cfFetch } from "./shared.js";
 import type { ResourceInstance, SqlTableMeta } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord, withAuthErrorHint } from "./shared.js";
@@ -534,7 +535,8 @@ export async function runBasinSql(
 ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
   const account_id = await api.getAccountId();
   const start = Date.now();
-  const res = await fetch(
+  const res = await cfFetch(
+    api,
     `${BASIN_SQL_HOST}/api/v1/accounts/${account_id}/basin-sql/query/${encodeURIComponent(bucket)}`,
     {
       method: "POST",

@@ -1,3 +1,4 @@
+import { cfFetch } from "./clients/shared.js";
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import { asRecord, type CloudflareApi } from "./clients/shared.js";
 import { rangeLimitFromError } from "./graphql-range.js";
@@ -169,7 +170,7 @@ export async function fetchMetricSeries(
   }
 
   const run = async (from: string, to: string): Promise<GraphResp | undefined> => {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -309,7 +310,7 @@ async function fetchR2MetricSeries(
   let ops: OpsGroup[] = [];
   let storage: StorageGroup[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -454,7 +455,7 @@ async function fetchDurableObjectMetricSeries(
   let inv: InvGroup[] = [];
   let periodic: PeriodicGroup[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -547,7 +548,7 @@ async function fetchTurnstileMetricSeries(
 
   let groups: Group[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -725,7 +726,7 @@ async function fetchD1MetricSeries(
 
   let groups: Group[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -857,7 +858,7 @@ async function fetchKVMetricSeries(
   let ops: OpsGroup[] = [];
   let storage: StorageGroup[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -1005,7 +1006,7 @@ async function fetchQueueMetricSeries(
   let ops: OpsGroup[] = [];
   let backlog: BacklogGroup[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -1150,7 +1151,7 @@ async function fetchHyperdriveMetricSeries(
 
   let groups: Group[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -1293,7 +1294,7 @@ async function fetchAiGatewayMetricSeries(
 
   let groups: Group[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -1420,7 +1421,7 @@ async function fetchLoadBalancerMetricSeries(
 
   let groups: Group[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -1519,7 +1520,7 @@ async function fetchWaitingRoomMetricSeries(
 
   let groups: Group[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,
@@ -1649,7 +1650,7 @@ async function fetchWorkflowMetricSeries(
 
   let groups: Group[] = [];
   try {
-    const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+    const res = await cfFetch(api, "https://api.cloudflare.com/client/v4/graphql", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${api.apiToken}`,

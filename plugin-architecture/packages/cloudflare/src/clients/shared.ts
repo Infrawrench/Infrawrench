@@ -6,6 +6,7 @@
  * object plane: see `r2-client.ts`. New code should prefer the SDK
  * namespaces exposed via `api.cf`.
  */
+import { hostFetch, type HttpHostServices } from "@infrawrench/plugin-base";
 import Cloudflare from "cloudflare";
 import type { Zone } from "cloudflare/resources/zones/zones";
 
@@ -285,21 +286,61 @@ export async function resolveZoneName(api: CloudflareApi, zoneId: string): Promi
   }
 }
 
+type SdkFetch = NonNullable<NonNullable<ConstructorParameters<typeof Cloudflare>[0]>["fetch"]>;
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<Uint8Array<ArrayBuffer>> {
+  return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
+}
+
+/**
+ * The SDK's requests, through the host's HTTP service. Under Node a multipart upload,
+ * such as a Worker's script, arrives as a stream, and the host's service takes bytes.
+ */
+function sdkFetch(http: HttpHostServices): SdkFetch {
+  return async (url, init) => {
+    const { body } = init ?? {};
+    const chunks: Uint8Array<ArrayBuffer>[] = [];
+    if (isAsyncIterable(body)) for await (const chunk of body) chunks.push(chunk);
+    const sent = isAsyncIterable(body) ? new Blob(chunks) : body;
+    return hostFetch({ http }, String(url), {
+      method: init?.method ?? "GET",
+      headers: init?.headers ?? {},
+      ...(init?.signal ? { signal: init.signal } : {}),
+      ...(sent != null ? { body: sent } : {}),
+    });
+  };
+}
+
+/** `fetch` for a call the SDK does not cover, through the host's HTTP service when it has one. */
+export function cfFetch(
+  api: Pick<CloudflareApi, "http">,
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  return hostFetch({ http: api.http }, url, init);
+}
+
 export class CloudflareApi {
   readonly apiToken: string;
   readonly baseUrl = "https://api.cloudflare.com/client/v4";
   readonly cf: Cloudflare;
+  readonly http: HttpHostServices | undefined;
   cfAccountId: string | null = null;
   private zonesPromise: Promise<Zone[]> | null = null;
   private accountIdPromise: Promise<string> | null = null;
 
-  constructor(apiToken: string) {
+  constructor(apiToken: string, http?: HttpHostServices) {
     this.apiToken = apiToken;
+    this.http = http;
     // Loading an account fans out into per-zone list calls across many resource
     // types, so brief 429 bursts are expected. The SDK retries 429s with
     // exponential backoff and honors the Retry-After header; raise the budget
     // above the default of 2 to ride out those bursts.
-    this.cf = new Cloudflare({ apiToken, maxRetries: 5 });
+    this.cf = new Cloudflare({
+      apiToken,
+      maxRetries: 5,
+      ...(http ? { fetch: sdkFetch(http) } : {}),
+    });
   }
 
   /**
@@ -308,7 +349,7 @@ export class CloudflareApi {
    * call sites: use `this.cf` instead.
    */
   async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await cfFetch(this, `${this.baseUrl}${path}`, {
       headers: {
         Authorization: `Bearer ${this.apiToken}`,
         "Content-Type": "application/json",

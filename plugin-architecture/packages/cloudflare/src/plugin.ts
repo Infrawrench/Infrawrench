@@ -61,7 +61,8 @@ import { AnalyticsEngineDatasetResourceType } from "./resources/analytics-engine
 
 export const manifest = {
   id: "cloudflare",
-  egressHosts: ["api.cloudflare.com"],
+  // R2 SQL has its own host, api.sql.cloudflarestorage.com.
+  egressHosts: ["api.cloudflare.com", "api.sql.cloudflarestorage.com"],
   displayName: "Cloudflare",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#F6821F"/>
@@ -163,7 +164,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin = definePlugin({
   manifest,
   resourceTypes,
-  createClient: (credentials) => new CloudflareClient(credentials, resourceTypes),
+  createClient: (credentials, services) =>
+    new CloudflareClient(credentials, resourceTypes, services),
   testCredentials: { apiToken: "test-cf-token" },
   terraformExport: cloudflareTerraformExport,
   parseStatusFeed,

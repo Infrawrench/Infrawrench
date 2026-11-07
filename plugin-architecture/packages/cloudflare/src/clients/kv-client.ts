@@ -1,3 +1,4 @@
+import { cfFetch } from "./shared.js";
 import type { KvKeyEntry, KvListResult, ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord } from "./shared.js";
@@ -86,7 +87,7 @@ export async function listKVKeys(
   const url = `${api.baseUrl}/accounts/${cfAccountId}/storage/kv/namespaces/${encodeURIComponent(
     namespaceId,
   )}/keys${qs.toString() ? `?${qs.toString()}` : ""}`;
-  const res = await fetch(url, {
+  const res = await cfFetch(api, url, {
     headers: { Authorization: `Bearer ${api.apiToken}` },
   });
   if (!res.ok) {
@@ -119,7 +120,8 @@ export async function getKVValue(
   const cfAccountId = await api.getAccountId();
   // Use raw fetch: the SDK's values.get() returns a streaming Response that
   // we'd just immediately consume as text, so direct fetch is simpler.
-  const res = await fetch(
+  const res = await cfFetch(
+    api,
     `${api.baseUrl}/accounts/${cfAccountId}/storage/kv/namespaces/${encodeURIComponent(
       namespaceId,
     )}/values/${encodeURIComponent(key)}`,
@@ -138,7 +140,8 @@ export async function putKVValue(
   value: string,
 ): Promise<void> {
   const cfAccountId = await api.getAccountId();
-  const res = await fetch(
+  const res = await cfFetch(
+    api,
     `${api.baseUrl}/accounts/${cfAccountId}/storage/kv/namespaces/${encodeURIComponent(
       namespaceId,
     )}/values/${encodeURIComponent(key)}`,

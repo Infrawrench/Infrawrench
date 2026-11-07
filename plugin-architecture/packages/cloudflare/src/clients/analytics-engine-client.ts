@@ -10,6 +10,7 @@
  * API to create or delete one (that happens through the binding). Data is
  * kept for three months.
  */
+import { cfFetch } from "./shared.js";
 import type { MetricSeries, ResourceInstance, SqlTableMeta } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { withAuthErrorHint } from "./shared.js";
@@ -50,7 +51,7 @@ export async function runAnalyticsEngineSql(
   sql: string,
 ): Promise<{ json: AeJson | null; text: string }> {
   const account_id = await api.getAccountId();
-  const res = await fetch(`${api.baseUrl}/accounts/${account_id}/analytics_engine/sql`, {
+  const res = await cfFetch(api, `${api.baseUrl}/accounts/${account_id}/analytics_engine/sql`, {
     method: "POST",
     headers: { Authorization: `Bearer ${api.apiToken}`, "Content-Type": "text/plain" },
     body: sql,

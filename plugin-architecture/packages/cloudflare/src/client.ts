@@ -1,6 +1,7 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import { hostFetch } from "@infrawrench/plugin-base";
+import type { HostServices, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   AiRequestLogFetchRange,
   AiRequestLogFetchResult,
@@ -139,10 +140,14 @@ export class CloudflareClient implements PluginClient {
   private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly oauth: boolean;
 
-  constructor(credentials: Credentials, resourceTypes: ResourceTypeDefinition[] = []) {
+  constructor(
+    credentials: Credentials,
+    resourceTypes: ResourceTypeDefinition[] = [],
+    services?: HostServices,
+  ) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Cloudflare plugin: missing apiToken credential");
-    this.api = new CloudflareApi(token);
+    this.api = new CloudflareApi(token, services?.http);
     this.resourceTypes = resourceTypes;
     // OAuth access tokens authenticate exactly like API tokens (Bearer); only
     // the preflight treats them differently.
@@ -151,7 +156,7 @@ export class CloudflareClient implements PluginClient {
 
   verifyCredentials(): PluginEffect<PreflightResult> {
     return attempt(async () => {
-      return runCloudflarePreflight(this.api.apiToken, { oauth: this.oauth });
+      return runCloudflarePreflight(this.api.apiToken, { oauth: this.oauth, http: this.api.http });
     });
   }
 
@@ -1603,7 +1608,7 @@ export class CloudflareClient implements PluginClient {
 
     let res: Response;
     try {
-      res = await fetch(endpoint, {
+      res = await hostFetch({ http: this.api.http, stream: true }, endpoint, {
         method: "POST",
         headers,
         body,

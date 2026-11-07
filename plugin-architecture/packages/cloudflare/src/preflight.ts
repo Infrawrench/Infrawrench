@@ -19,7 +19,9 @@
  * `permissionGroupKeys` JSON array of `{ key, type }`, plus the
  * human-readable permission-group list for anyone building the token by hand.
  */
+import { hostFetch } from "@infrawrench/plugin-base";
 import type {
+  HttpHostServices,
   PolicyTemplate,
   PreflightCapabilityCheck,
   PreflightDeclaration,
@@ -213,13 +215,14 @@ function isAuthFailure(status: number, body: CfEnvelope<unknown> | null): boolea
 }
 
 async function cfGet<T>(
+  http: HttpHostServices | undefined,
   token: string,
   path: string,
 ): Promise<{
   status: number;
   body: CfEnvelope<T> | null;
 }> {
-  const res = await fetch(`${API}${path}`, {
+  const res = await hostFetch({ http }, `${API}${path}`, {
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
   });
   let body: CfEnvelope<T> | null = null;
@@ -255,8 +258,9 @@ function unknownChecks(message: string): PreflightCapabilityCheck[] {
 
 export async function runCloudflarePreflight(
   token: string,
-  options: { oauth?: boolean } = {},
+  options: { oauth?: boolean; http?: HttpHostServices | undefined } = {},
 ): Promise<PreflightResult> {
+  const { http } = options;
   let identity: string | undefined = options.oauth ? "OAuth connection" : undefined;
 
   // 1. Token validity. Account-owned tokens are rejected here (code 1000)
@@ -266,6 +270,7 @@ export async function runCloudflarePreflight(
   if (!options.oauth) {
     try {
       const verify = await cfGet<{ id?: string; status?: string; expires_on?: string }>(
+        http,
         token,
         "/user/tokens/verify",
       );
@@ -299,7 +304,7 @@ export async function runCloudflarePreflight(
   try {
     const missing: PreflightPermission[] = [];
     const probeFailures: string[] = [];
-    const zones = await cfGet<unknown[]>(token, "/zones?per_page=1");
+    const zones = await cfGet<unknown[]>(http, token, "/zones?per_page=1");
     if (!zones.body?.success) {
       if (isAuthFailure(zones.status, zones.body)) {
         missing.push(RESOURCES_PERMISSIONS[0]!);
@@ -307,7 +312,7 @@ export async function runCloudflarePreflight(
         probeFailures.push(probeFailureMessage("Zone list", zones.status, zones.body));
       }
     }
-    const accounts = await cfGet<Array<{ id?: string }>>(token, "/accounts?per_page=1");
+    const accounts = await cfGet<Array<{ id?: string }>>(http, token, "/accounts?per_page=1");
     if (accounts.body?.success) {
       accountId = accounts.body.result?.[0]?.id ?? null;
     } else if (isAuthFailure(accounts.status, accounts.body)) {
@@ -339,7 +344,7 @@ export async function runCloudflarePreflight(
   //    authorization failure; a 5xx, a non-JSON body or GraphQL-level errors
   //    without an auth status are `unknown`, not evidence of a missing scope.
   try {
-    const res = await fetch(`${API}/graphql`, {
+    const res = await hostFetch({ http }, `${API}/graphql`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ query: "query { viewer { budget } }" }),
@@ -399,7 +404,7 @@ export async function runCloudflarePreflight(
     });
   } else {
     try {
-      const info = await cfGet<unknown>(token, `/accounts/${accountId}/billable-usage/info`);
+      const info = await cfGet<unknown>(http, token, `/accounts/${accountId}/billable-usage/info`);
       if (info.body?.success) {
         checks.push({ capabilityId: "costs", status: "ok" });
       } else if (isAuthFailure(info.status, info.body)) {

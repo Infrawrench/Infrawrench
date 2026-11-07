@@ -1,3 +1,4 @@
+import { cfFetch } from "./shared.js";
 import type { ResourceInstance, StorageObject } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { asRecord } from "./shared.js";
@@ -196,7 +197,7 @@ export async function listR2StorageObjects(
   // `result_info.delimited`. `api.fetch` only returns `result`, so go through
   // raw fetch to access `result_info`.
   const path = `/accounts/${cfAccountId}/r2/buckets/${bucket}/objects?${params.toString()}`;
-  const res = await fetch(`${api.baseUrl}${path}`, {
+  const res = await cfFetch(api, `${api.baseUrl}${path}`, {
     headers: {
       Authorization: `Bearer ${api.apiToken}`,
       "Content-Type": "application/json",
@@ -279,7 +280,8 @@ export async function uploadR2StorageObject(
 ): Promise<void> {
   const cfAccountId = await api.getAccountId();
   const arrayBuffer = await file.arrayBuffer();
-  const res = await fetch(
+  const res = await cfFetch(
+    api,
     `${api.baseUrl}/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(key)}`,
     {
       method: "PUT",
@@ -302,7 +304,8 @@ export async function makeR2StorageFolder(
 ): Promise<void> {
   const cfAccountId = await api.getAccountId();
   const folderKey = key.endsWith("/") ? key : `${key}/`;
-  const res = await fetch(
+  const res = await cfFetch(
+    api,
     `${api.baseUrl}/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(folderKey)}`,
     {
       method: "PUT",
