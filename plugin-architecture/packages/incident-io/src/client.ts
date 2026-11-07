@@ -119,6 +119,13 @@ function shiftRow(s: IoShift): ShiftRow {
   };
 }
 
+/** The provider's id out of a resource id, refusing to act on one with nothing in it. */
+function requiredId(typeId: string, resourceId: string): string {
+  const id = externalIdOf(resourceId);
+  if (!id.trim()) throw new Error(`incident.io plugin: ${typeId} "${resourceId}" has no id`);
+  return id;
+}
+
 export class IncidentIoClient implements PluginClient {
   private readonly api: IoApi;
   private readonly paging: PagingContext;
@@ -561,7 +568,7 @@ export class IncidentIoClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = pathEncode(externalIdOf(resourceId));
+      const id = pathEncode(requiredId(typeId, resourceId));
       if (typeId === "incident-io-incident") {
         await this.api.post(`/v2/incidents/${id}/actions/edit`, {
           body: {
@@ -593,7 +600,7 @@ export class IncidentIoClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = pathEncode(externalIdOf(resourceId));
+      const id = pathEncode(requiredId(typeId, resourceId));
       switch (typeId) {
         case "incident-io-alert-source":
           await this.api.delete(`/v2/alert_sources/${id}`);
@@ -627,7 +634,7 @@ export class IncidentIoClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = pathEncode(externalIdOf(resourceId));
+      const id = pathEncode(requiredId(typeId, resourceId));
       if (typeId === "incident-io-escalation" && actionId === ACTIONS.acknowledge) {
         await this.api.post(`/v2/escalations/${id}/actions/respond`, {
           body: { response: "ack" },
@@ -645,6 +652,7 @@ export class IncidentIoClient implements PluginClient {
       }
       if (typeId === "incident-io-schedule" && actionId.startsWith(ACTIONS.deleteOverridePrefix)) {
         const overrideId = actionId.slice(ACTIONS.deleteOverridePrefix.length);
+        if (!overrideId.trim()) throw new Error("incident.io plugin: that override has no id");
         await this.api.delete(`/v2/schedule_overrides/${pathEncode(overrideId)}`);
         return;
       }
@@ -661,7 +669,7 @@ export class IncidentIoClient implements PluginClient {
   ): PluginEffect<unknown> {
     return attempt(async () => {
       const values = parsePromptValues(args);
-      const ext = externalIdOf(resourceId);
+      const ext = requiredId(typeId, resourceId);
       if (typeId === "incident-io-incident" && command === COMMANDS.postUpdate) {
         const message = (values["message"] ?? "").trim();
         if (!message) throw new Error("Write the update.");

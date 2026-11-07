@@ -327,6 +327,7 @@ export async function updateIncident(
   incidentId: string,
   update: PagingIncidentUpdate,
 ): Promise<PagingIncident> {
+  if (!incidentId.trim()) throw new Error("incident.io plugin: that incident has no id");
   const statuses = await incidentStatuses(ctx.api);
   const candidates =
     update.action === "acknowledge"

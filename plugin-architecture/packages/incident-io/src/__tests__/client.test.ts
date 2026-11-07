@@ -6,7 +6,7 @@ import { IncidentIoClient } from "../client.js";
 import { queryString } from "../api.js";
 import { pagingStatusOf, toPagingIncident } from "../mappers.js";
 import { buildAlertEvent, verifyWebhook } from "../paging.js";
-import { ALERTS_KEY, OVERRIDES_KEY, SHIFTS_KEY, USERS_KEY } from "../render.js";
+import { ACTIONS, ALERTS_KEY, COMMANDS, OVERRIDES_KEY, SHIFTS_KEY, USERS_KEY } from "../render.js";
 import { parseStatusFeed } from "../status-feed.js";
 
 interface Call {
@@ -15,6 +15,8 @@ interface Call {
   headers: Record<string, string>;
   body?: unknown;
 }
+
+type Hosted = ReturnType<typeof client>["c"];
 
 function client(handler: (call: Call) => { status: number; body?: unknown }) {
   const calls: Call[] = [];
@@ -314,6 +316,63 @@ describe("detail views", () => {
     );
     expect(JSON.parse(String(r.fields[ALERTS_KEY]))).toHaveLength(1);
     expect(calls.filter((x) => x.url.includes("/v2/alerts"))).toHaveLength(1);
+  });
+});
+
+describe("edits", () => {
+  const blank = (type: string) => `acc:${type}:`;
+
+  it.each([
+    [
+      "delete",
+      (c: Hosted) => c.deleteResource("incident-io-schedule", blank("incident-io-schedule"), "acc"),
+    ],
+    [
+      "edit",
+      (c: Hosted) =>
+        c.updateResource("incident-io-severity", blank("incident-io-severity"), "acc", {
+          name: "x",
+        }),
+    ],
+    [
+      "action",
+      (c: Hosted) =>
+        c.invokeAction(
+          "incident-io-escalation",
+          blank("incident-io-escalation"),
+          ACTIONS.acknowledge,
+          "acc",
+        ),
+    ],
+    [
+      "command",
+      (c: Hosted) =>
+        c.executeNoSqlCommand(
+          "incident-io-incident",
+          blank("incident-io-incident"),
+          "acc",
+          COMMANDS.postUpdate,
+          [JSON.stringify({ message: "hi" })],
+        ),
+    ],
+    ["paging update", (c: Hosted) => c.updatePagingIncident(" ", { action: "resolve" })],
+  ])("refuses a %s on a blank id, and sends nothing", async (_name, run) => {
+    const { c, calls } = client(() => ({ status: 200, body: {} }));
+    await expect(run(c)).rejects.toThrow("has no id");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses to delete an override with no id", async () => {
+    const { c, calls } = client(() => ({ status: 200, body: {} }));
+    await expect(
+      c.invokeAction(
+        "incident-io-schedule",
+        "acc:incident-io-schedule:S1",
+        `${ACTIONS.deleteOverridePrefix}`,
+        "acc",
+      ),
+    ).rejects.toThrow("has no id");
+    expect(calls).toHaveLength(0);
   });
 });
 
