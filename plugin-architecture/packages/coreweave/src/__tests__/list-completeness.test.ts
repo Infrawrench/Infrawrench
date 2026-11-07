@@ -240,3 +240,70 @@ describe("a token its provider refuses for a whole type", () => {
     expect(parts).toEqual([]);
   });
 });
+
+describe("Node Pools across clusters", () => {
+  const cluster = (id: string, apiServerEndpoint?: string) => ({
+    id,
+    name: id,
+    zone: "US-EAST-04A",
+    ...(apiServerEndpoint ? { apiServerEndpoint } : {}),
+  });
+  const POOL = { metadata: { name: "p" }, spec: { instanceType: "gd-8xh100ib-i128" } };
+
+  /** Cluster `good` answers with one pool; `bad` answers with whatever the test says. */
+  const twoClusters = (bad: () => Answer) =>
+    stubFetch((url) => {
+      if (url.host === "api.coreweave.com" && url.pathname === "/v1beta1/cks/clusters") {
+        return { body: { items: [cluster("good", "good.k8s"), cluster("bad", "bad.k8s")] } };
+      }
+      if (url.pathname !== "/apis/compute.coreweave.com/v1alpha1/nodepools") return undefined;
+      return url.host === "good.k8s" ? { body: { items: [POOL] } } : bad();
+    });
+  const listPools = () =>
+    hostClient(new CoreWeaveClient({ apiToken: "t" })).listResources("node-pool", "acc");
+
+  it.each([
+    ["a 5xx", 503],
+    ["a refusal", 403],
+  ])("keeps a cluster's stored pools through %s, and lists the others", async (_name, status) => {
+    twoClusters(() => ({ status, body: "no" }));
+    const parts = trackUnread();
+    const rows = await listPools();
+    expect(rows.map((r) => r.id)).toEqual(["acc:node-pool:good/p"]);
+    expect(parts).toEqual([{ parentResourceIds: ["acc:cks-cluster:bad"] }]);
+  });
+
+  it("keeps the stored pools of a cluster it cannot connect to", async () => {
+    twoClusters(() => {
+      throw new TypeError("fetch failed");
+    });
+    const parts = trackUnread();
+    const rows = await listPools();
+    expect(rows.map((r) => r.id)).toEqual(["acc:node-pool:good/p"]);
+    expect(parts).toEqual([{ parentResourceIds: ["acc:cks-cluster:bad"] }]);
+  });
+
+  it("keeps the stored pools of a cluster with no API server endpoint yet", async () => {
+    stubFetch((url) =>
+      url.pathname === "/v1beta1/cks/clusters" ? { body: { items: [cluster("new")] } } : undefined,
+    );
+    const parts = trackUnread();
+    await expect(listPools()).resolves.toEqual([]);
+    expect(parts).toEqual([{ parentResourceIds: ["acc:cks-cluster:new"] }]);
+  });
+
+  it("reports nothing when every cluster answered", async () => {
+    twoClusters(() => ({ body: { items: [] } }));
+    const parts = trackUnread();
+    await expect(listPools()).resolves.toHaveLength(1);
+    expect(parts).toEqual([]);
+  });
+
+  it("fails the type on a 2xx with no list, on every list path", async () => {
+    twoClusters(() => ({ body: { error: "wrapped" } }));
+    await expect(listPools()).rejects.toThrow("is not a list");
+    const client = hostClient(new CoreWeaveClient({ apiToken: "t" }));
+    await expect(client.listResources("cks-cluster", "acc")).rejects.toThrow("is not a list");
+    await expect(client.listResources("instance-type", "acc")).rejects.toThrow("is not a list");
+  });
+});

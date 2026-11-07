@@ -22,6 +22,7 @@ import {
   listS3Objects,
   makeS3Folder,
   reportUnreadListPart,
+  rethrowIncompleteList,
   uploadS3Object,
 } from "@infrawrench/plugin-base";
 import type { CoreWeaveContext } from "./api.js";
@@ -132,6 +133,12 @@ async function mapPooled<T, R>(
   return out;
 }
 
+interface PoolsByCluster {
+  pools: Map<string, CwNodePool[]>;
+  /** Clusters whose pools could not be read, so nothing can be said about them. */
+  unread: string[];
+}
+
 function bool(raw: string | undefined): boolean {
   return raw === "true" || raw === "yes" || raw === "1";
 }
@@ -172,7 +179,7 @@ export class CoreWeaveClient implements PluginClient {
   private readonly s3: TemporaryS3Credentials;
   private clustersCache: Cached<CwCluster[]> | undefined;
   private vpcsCache: Cached<CwVpc[]> | undefined;
-  private poolsCache: Cached<Map<string, CwNodePool[]>> | undefined;
+  private poolsCache: Cached<PoolsByCluster> | undefined;
   private readonly bucketZones = new Map<string, string>();
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -218,22 +225,43 @@ export class CoreWeaveClient implements PluginClient {
   }
 
   /**
-   * Node Pools of every reachable cluster, keyed by cluster id. A private
-   * cluster, one still provisioning, or one the token has no RBAC on lists no
-   * pools rather than failing the sync.
+   * Node Pools of every reachable cluster, keyed by cluster id. A private cluster, one
+   * still provisioning, or one the token has no RBAC on must not fail the sync, and any
+   * cluster can be briefly down, so a cluster that does not answer goes in `unread`: its
+   * stored pools stay until it does.
    */
-  private allPools(): Promise<Map<string, CwNodePool[]>> {
+  private allPools(): Promise<PoolsByCluster> {
     this.poolsCache = this.cached(this.poolsCache, async () => {
       const clusters = await this.clusters();
-      const out = new Map<string, CwNodePool[]>();
+      const pools = new Map<string, CwNodePool[]>();
+      const unread: string[] = [];
       await mapPooled(clusters, KUBE_CONCURRENCY, async (c) => {
-        if (!c.id || !c.apiServerEndpoint) return;
-        const pools = await listNodePools(this.ctx, c.apiServerEndpoint).catch(() => undefined);
-        if (pools) out.set(c.id, pools);
+        if (!c.id) return;
+        if (!c.apiServerEndpoint) {
+          unread.push(c.id);
+          return;
+        }
+        try {
+          pools.set(c.id, await listNodePools(this.ctx, c.apiServerEndpoint));
+        } catch (err) {
+          rethrowIncompleteList(err);
+          unread.push(c.id);
+        }
       });
-      return out;
+      return { pools, unread };
     });
     return this.poolsCache.value;
+  }
+
+  /** The pools for a roll-up on another type, where a missing number is only a blank. */
+  private poolsForRollup(): Promise<Map<string, CwNodePool[]>> {
+    return this.allPools().then(
+      (all) => all.pools,
+      (err: unknown) => {
+        rethrowIncompleteList(err);
+        return new Map<string, CwNodePool[]>();
+      },
+    );
   }
 
   private invalidate(): void {
@@ -286,8 +314,11 @@ export class CoreWeaveClient implements PluginClient {
 
   private async mapClusters(accountId: string, clusters: CwCluster[]): Promise<ResourceInstance[]> {
     const [vpcs, pools] = await Promise.all([
-      this.vpcs().catch(() => [] as CwVpc[]),
-      this.allPools().catch(() => new Map<string, CwNodePool[]>()),
+      this.vpcs().catch((err: unknown) => {
+        rethrowIncompleteList(err);
+        return [] as CwVpc[];
+      }),
+      this.poolsForRollup(),
     ]);
     const vpcNames = new Map(vpcs.map((v) => [v.id ?? "", v.name ?? ""]));
     return clusters.map((c) =>
@@ -321,7 +352,15 @@ export class CoreWeaveClient implements PluginClient {
           return this.scoped(async () => this.mapClusters(accountId, await this.clusters()));
         case "node-pool":
           return this.scoped(async () => {
-            const [clusters, pools] = await Promise.all([this.clusters(), this.allPools()]);
+            const [clusters, { pools, unread }] = await Promise.all([
+              this.clusters(),
+              this.allPools(),
+            ]);
+            if (unread.length > 0) {
+              reportUnreadListPart({
+                parentResourceIds: unread.map((id) => `${accountId}:cks-cluster:${id}`),
+              });
+            }
             return clusters.flatMap((c) =>
               (pools.get(c.id ?? "") ?? []).map((p) =>
                 mapNodePool(accountId, { id: c.id ?? "", name: c.name ?? "" }, p, this.rates),
@@ -330,7 +369,7 @@ export class CoreWeaveClient implements PluginClient {
           });
         case "instance-type": {
           const inUse = new Map<string, number>();
-          const pools = await this.allPools().catch(() => new Map<string, CwNodePool[]>());
+          const pools = await this.poolsForRollup();
           for (const list of pools.values()) {
             for (const p of list) {
               const t = p.spec?.instanceType ?? "";

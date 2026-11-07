@@ -1,3 +1,4 @@
+import { requireListPage } from "@infrawrench/plugin-base";
 import type { CoreWeaveContext } from "./api.js";
 import { kubeFetch, statusOf } from "./api.js";
 import { NODES_PER_RACK, instanceSpec, isRackScale } from "./catalog.js";
@@ -28,8 +29,13 @@ export async function listNodePools(
   ctx: CoreWeaveContext,
   endpoint: string,
 ): Promise<CwNodePool[]> {
-  const res = await kubeFetch<{ items?: CwNodePool[] }>(ctx, endpoint, NODEPOOLS);
-  return res?.items ?? [];
+  const res = await kubeFetch<{ items?: CwNodePool[] | null }>(ctx, endpoint, NODEPOOLS);
+  return requireListPage(res?.items, {
+    vendor: "CoreWeave",
+    path: NODEPOOLS,
+    key: "items",
+    page: res,
+  });
 }
 
 export async function getNodePool(
