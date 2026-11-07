@@ -4,6 +4,7 @@ import type { HostServices } from "@infrawrench/plugin-base";
 import { statusOf, XataApiError } from "../api.js";
 import { hostOf, pgDescriptor, projectPatch, withSsl, XataClient } from "../client.js";
 import { coveredMonthStart, fetchXataCostData } from "../cost-data.js";
+import { renderDetail } from "../render.js";
 import { mapComponent } from "../status-feed.js";
 import type { XProject } from "../api.js";
 
@@ -272,5 +273,57 @@ describe("helpers", () => {
       regions: ["us-east-1", "aws-us-east-1"],
     });
     expect(mapComponent("Management APIs")).toMatchObject({ providerWide: true });
+  });
+});
+
+describe("verifyCredentials", () => {
+  it("encodes every id it writes into a path", async () => {
+    const O = `${API}/organizations/o%2F1`;
+    const P = `${O}/projects/p%3F1`;
+    const credentials = `${P}/branches/b%231/credentials`;
+    const { client, calls } = fake([
+      on("GET", `${API}/organizations`, { organizations: [{ ...org, id: "o/1" }] }),
+      on("GET", `${O}/projects`, { projects: [{ ...project, id: "p?1" }] }),
+      on("GET", `${P}/branches`, { branches: [{ ...branch, id: "b#1" }] }),
+      on("GET", credentials, {}),
+      on("POST", `${P}/branches/b%231/metrics`, {}),
+      on("GET", `${O}/api-keys`, { keys: [] }),
+    ]);
+    const { checks } = await client.verifyCredentials();
+    expect(checks.map((c) => c.status)).toEqual(["ok", "ok", "ok", "ok"]);
+    expect(calls.map((c) => new URL(c.url).pathname + new URL(c.url).search)).toEqual(
+      expect.arrayContaining([
+        "/organizations/o%2F1/api-keys",
+        "/organizations/o%2F1/projects/p%3F1/branches/b%231/credentials",
+        "/organizations/o%2F1/projects/p%3F1/branches/b%231/metrics",
+      ]),
+    );
+  });
+});
+
+describe("renderDetail", () => {
+  it("encodes the ids in the console link", () => {
+    const schema = renderDetail({
+      id: `${ACCOUNT}:xata-branch:o 1/p?1/b#1`,
+      pluginId: "xata",
+      resourceTypeId: "xata-branch",
+      accountId: ACCOUNT,
+      displayName: "main",
+      fields: {},
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: "o 1/p?1/b#1",
+      createdAt: "",
+      updatedAt: "",
+    });
+    const open = schema.headerActions?.find(
+      (a) => a.kind === "action" && a.label === "Open in Xata",
+    );
+    expect(open).toMatchObject({
+      action: {
+        type: "open-url",
+        url: "https://console.xata.io/organizations/o%201/projects/p%3F1/branches/b%231",
+      },
+    });
   });
 });

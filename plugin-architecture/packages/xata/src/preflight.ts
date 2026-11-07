@@ -5,14 +5,13 @@
  * role. Nothing reports a key's scopes, so each capability is one cheap read
  * and a 401/403 reads as missing.
  */
-import { unencodedSegment } from "@infrawrench/plugin-base";
 import type {
   PreflightCapabilityCheck,
   PreflightDeclaration,
   PreflightPermission,
   PreflightResult,
 } from "@infrawrench/plugin-base";
-import { statusOf, type BranchPath } from "./api.js";
+import { enc, statusOf, type BranchPath } from "./api.js";
 import type { XataClient } from "./client.js";
 
 const KEYS_URL = "https://console.xata.io";
@@ -103,9 +102,8 @@ export async function verifyXataCredentials(client: XataClient): Promise<Preflig
     message: "No branch to test against.",
   });
   const t = target;
-  // Ids from Xata's own listings, which this has always sent as they came.
   const path: BranchPath | undefined = t
-    ? `/organizations/${unencodedSegment(t.org)}/projects/${unencodedSegment(t.project)}/branches/${unencodedSegment(t.branch)}`
+    ? `/organizations/${enc(t.org)}/projects/${enc(t.project)}/branches/${enc(t.branch)}`
     : undefined;
   const now = Date.now();
   const checks = await Promise.all([
@@ -125,7 +123,7 @@ export async function verifyXataCredentials(client: XataClient): Promise<Preflig
         )
       : unknown("observability"),
     orgId
-      ? probe("keys", [P.keys], () => api.get(`/organizations/${unencodedSegment(orgId)}/api-keys`))
+      ? probe("keys", [P.keys], () => api.get(`/organizations/${enc(orgId)}/api-keys`))
       : unknown("keys"),
   ]);
   return { checks: [inventory, ...checks] };

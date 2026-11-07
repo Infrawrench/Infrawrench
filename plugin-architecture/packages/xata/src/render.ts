@@ -80,7 +80,9 @@ export function renderDetail(r: ResourceInstance): DetailViewSchema {
   if (r.resourceTypeId === "xata-branch") {
     const st = str(r, "statusType");
     const hibernated = st === "STATUS_TYPE_HIBERNATED";
-    const [org, project, branch] = String(r.externalId ?? "").split("/");
+    const [org, project, branch] = String(r.externalId ?? "")
+      .split("/")
+      .map(encodeURIComponent);
     schema.subtitle = joinSubtitle("Branch", str(r, "region"), str(r, "instanceType"));
     schema.status = { kind: "status-dot", status: branchHealth(st), label: statusLabel(st) };
     const types = json<XInstanceType[]>(r, "_instanceTypes") ?? [];
