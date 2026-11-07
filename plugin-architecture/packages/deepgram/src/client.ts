@@ -24,12 +24,21 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
+import { base64ToBytes, bytesToBase64, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import {
-  base64ToBytes,
-  bytesToBase64,
-  jsonRestFetch,
-  externalIdOf,
-} from "@infrawrench/plugin-base";
+  createDeepgramApis,
+  type CreateKeyBody,
+  type DeepgramApi,
+  type DgApiKeyEntry,
+  type DgBalance,
+  type DgInvite,
+  type DgMember,
+  type DgModel,
+  type DgModelList,
+  type DgProject,
+  type DgUsageBucket,
+  type UsageFilters,
+} from "./api.js";
 import { fetchDeepgramCostData } from "./cost-data.js";
 import { DeepgramExtras, EXTRA_TYPES } from "./extras.js";
 
@@ -59,146 +68,8 @@ const FALLBACK_TTS_VOICE = "aura-2-thalia-en";
 const FALLBACK_STT_MODEL = "nova-3";
 
 // ---------------------------------------------------------------------------
-// API response shapes
+// Speech response shape: `/v1/listen` stays a hand-written call, see `speechFetch`
 // ---------------------------------------------------------------------------
-
-interface DgProject {
-  project_id: string;
-  name?: string;
-  /** Only returned by `GET /v1/projects/{id}`, never by the list. */
-  mip_opt_out?: boolean;
-}
-
-interface DgProjectList {
-  projects?: DgProject[];
-}
-
-interface DgApiKey {
-  api_key_id: string;
-  key?: string;
-  comment?: string;
-  scopes?: string[];
-  tags?: string[];
-  created?: string;
-  expiration_date?: string;
-}
-
-interface DgApiKeyEntry {
-  member?: DgMember;
-  api_key: DgApiKey;
-}
-
-interface DgApiKeyList {
-  api_keys?: DgApiKeyEntry[];
-}
-
-/**
- * `GET /keys/{key_id}` nests differently from the list: the key hangs off the
- * *member*, one level deeper, inside an `item` envelope. It is also the only
- * read that returns `tags` and `expiration_date`.
- */
-interface DgApiKeyItem {
-  item?: {
-    member?: DgMember & { api_key?: DgApiKey };
-  };
-}
-
-interface DgMember {
-  member_id: string;
-  email?: string;
-  first_name?: string;
-  last_name?: string;
-  scopes?: string[];
-}
-
-interface DgMemberList {
-  members?: DgMember[];
-}
-
-interface DgInvite {
-  email: string;
-  scope?: string;
-}
-
-interface DgInviteList {
-  invites?: DgInvite[];
-}
-
-interface DgBalance {
-  balance_id: string;
-  amount?: number;
-  units?: string;
-  purchase_order_id?: string;
-}
-
-interface DgBalanceList {
-  balances?: DgBalance[];
-}
-
-interface DgModelMetadata {
-  accent?: string;
-  age?: string;
-  /** Per-voice hex swatch Deepgram uses in their own picker. */
-  color?: string;
-  image?: string;
-  sample?: string;
-  tags?: string[];
-  use_cases?: string[];
-}
-
-interface DgModel {
-  name?: string;
-  canonical_name: string;
-  architecture?: string;
-  languages?: string[];
-  version?: string;
-  uuid?: string;
-  batch?: boolean;
-  streaming?: boolean;
-  formatted_output?: boolean;
-  metadata?: DgModelMetadata;
-}
-
-interface DgModelList {
-  stt?: DgModel[];
-  tts?: DgModel[];
-}
-
-/**
- * One bucket from `GET /v1/projects/{id}/usage/breakdown`.
- *
- * The per-bucket timestamps live on the nested `grouping` object, **not** at
- * the top level of the result: `results[].grouping.start`, not
- * `results[].start`. The top-level `start`/`end` on the envelope describe the
- * whole window.
- */
-interface DgUsageBucket {
-  hours?: number;
-  total_hours?: number;
-  agent_hours?: number;
-  tokens_in?: number;
-  tokens_out?: number;
-  tts_characters?: number;
-  requests?: number;
-  grouping?: {
-    start?: string;
-    end?: string;
-    accessor?: string | null;
-    endpoint?: string | null;
-    feature_set?: string | null;
-    models?: string[];
-    method?: string | null;
-    tags?: string[] | null;
-    deployment?: string | null;
-  };
-}
-
-interface DgUsageBreakdown {
-  start?: string;
-  end?: string;
-  resolution?: { units?: string; amount?: number };
-  results?: DgUsageBucket[];
-}
 
 /** Shape of `/v1/listen` responses (pre-recorded, JSON). */
 interface DgListenWord {
@@ -269,7 +140,7 @@ function splitChildId(resourceId: string): { projectId: string; childId: string 
   return { projectId: external.slice(0, slash), childId: external.slice(slash + 1) };
 }
 
-function num(value: unknown): number {
+function num(value: number | string | null | undefined): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value !== "" && Number.isFinite(Number(value))) {
     return Number(value);
@@ -334,6 +205,7 @@ export class DeepgramClient implements PluginClient {
   private readonly services: HostServices | undefined;
   /** Voice Agent configurations and variables, purchases, self-hosted credentials, request log. */
   private readonly extras: DeepgramExtras;
+  private readonly api: DeepgramApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
@@ -341,28 +213,13 @@ export class DeepgramClient implements PluginClient {
     this.apiKey = apiKey;
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
-    this.extras = new DeepgramExtras({ apiKey, caCert: this.caCert, services });
+    const apis = createDeepgramApis({ apiKey, caCert: this.caCert, http: services?.http });
+    this.api = apis.api;
+    this.extras = new DeepgramExtras(apis);
   }
 
   private get authHeaders(): Record<string, string> {
     return { Authorization: `Token ${this.apiKey}` };
-  }
-
-  /**
-   * JSON control-plane call. Always routed through the host's HTTP service
-   * when one is present: that is the only path that picks up bastion egress
-   * routing and a custom CA.
-   */
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Deepgram",
-      url: `${BASE_URL}${path}`,
-      errorPath: path,
-      headers: { ...this.authHeaders, Accept: "application/json" },
-      ...(options ? { init: options } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
-    });
   }
 
   // -------------------------------------------------------------------------
@@ -429,8 +286,8 @@ export class DeepgramClient implements PluginClient {
       const projects = await this.fetchProjects();
       const settled = await Promise.allSettled(
         projects.map(async (project) => {
-          const data = await this.fetch<DgBalanceList>(
-            `/v1/projects/${encodeURIComponent(project.project_id)}/balances`,
+          const data = await this.api.get(
+            `/v1/projects/${pathEncode(project.project_id)}/balances`,
           );
           return (data.balances ?? []).map((b): CreditBalance => ({
             key: `${project.project_id}:${b.balance_id}`,
@@ -446,7 +303,7 @@ export class DeepgramClient implements PluginClient {
 
   /** https://developers.deepgram.com/reference/management-api/projects/list */
   private async fetchProjects(): Promise<DgProject[]> {
-    const data = await this.fetch<DgProjectList>("/v1/projects");
+    const data = await this.api.get("/v1/projects");
     return data.projects ?? [];
   }
 
@@ -457,33 +314,25 @@ export class DeepgramClient implements PluginClient {
 
   /** https://developers.deepgram.com/reference/management-api/keys/list */
   private async listApiKeys(accountId: string, projectId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<DgApiKeyList>(
-      `/v1/projects/${encodeURIComponent(projectId)}/keys`,
-    );
+    const data = await this.api.get(`/v1/projects/${pathEncode(projectId)}/keys`);
     return (data.api_keys ?? []).map((entry) => this.mapApiKey(accountId, projectId, entry));
   }
 
   /** https://developers.deepgram.com/reference/management-api/members/list */
   private async listMembers(accountId: string, projectId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<DgMemberList>(
-      `/v1/projects/${encodeURIComponent(projectId)}/members`,
-    );
+    const data = await this.api.get(`/v1/projects/${pathEncode(projectId)}/members`);
     return (data.members ?? []).map((m) => this.mapMember(accountId, projectId, m));
   }
 
   /** https://developers.deepgram.com/reference/management-api/invitations/list */
   private async listInvites(accountId: string, projectId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<DgInviteList>(
-      `/v1/projects/${encodeURIComponent(projectId)}/invites`,
-    );
+    const data = await this.api.get(`/v1/projects/${pathEncode(projectId)}/invites`);
     return (data.invites ?? []).map((i) => this.mapInvite(accountId, projectId, i));
   }
 
   /** https://developers.deepgram.com/reference/management-api/balances/list */
   private async listBalances(accountId: string, projectId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<DgBalanceList>(
-      `/v1/projects/${encodeURIComponent(projectId)}/balances`,
-    );
+    const data = await this.api.get(`/v1/projects/${pathEncode(projectId)}/balances`);
     return (data.balances ?? []).map((b) => this.mapBalance(accountId, projectId, b));
   }
 
@@ -495,14 +344,12 @@ export class DeepgramClient implements PluginClient {
   private async fetchModels(projectId?: string): Promise<DgModelList> {
     if (projectId) {
       try {
-        return await this.fetch<DgModelList>(
-          `/v1/projects/${encodeURIComponent(projectId)}/models`,
-        );
+        return await this.api.get(`/v1/projects/${pathEncode(projectId)}/models`);
       } catch {
         // Fall through to the account-wide catalogue below.
       }
     }
-    return this.fetch<DgModelList>("/v1/models");
+    return this.api.get("/v1/models");
   }
 
   private async listModels(accountId: string, projectId: string): Promise<ResourceInstance[]> {
@@ -696,9 +543,7 @@ export class DeepgramClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "project") {
         const projectId = externalIdOf(resourceId);
-        const project = await this.fetch<DgProject>(
-          `/v1/projects/${encodeURIComponent(projectId)}`,
-        );
+        const project = await this.api.get(`/v1/projects/${pathEncode(projectId)}`);
         const instance = this.mapProject(accountId, project);
         // `renderDetail` is synchronous, so the Speech tab's voice and model
         // pickers can't do their own round trip. Pre-bake the catalogue here and
@@ -719,8 +564,8 @@ export class DeepgramClient implements PluginClient {
         // https://developers.deepgram.com/reference/manage/keys/get
         // Worth the extra call: this is the only read that carries `tags` and
         // `expiration_date`, both of which the list endpoint omits.
-        const data = await this.fetch<DgApiKeyItem>(
-          `/v1/projects/${encodeURIComponent(projectId)}/keys/${encodeURIComponent(childId)}`,
+        const data = await this.api.get(
+          `/v1/projects/${pathEncode(projectId)}/keys/${pathEncode(childId)}`,
         );
         const member = data.item?.member;
         const key = member?.api_key;
@@ -733,8 +578,8 @@ export class DeepgramClient implements PluginClient {
       if (typeId === "balance") {
         // https://developers.deepgram.com/reference/manage/billing/get
         // Unlike the list, this returns the bare balance object, unwrapped.
-        const balance = await this.fetch<DgBalance>(
-          `/v1/projects/${encodeURIComponent(projectId)}/balances/${encodeURIComponent(childId)}`,
+        const balance = await this.api.get(
+          `/v1/projects/${pathEncode(projectId)}/balances/${pathEncode(childId)}`,
         );
         return this.mapBalance(accountId, projectId, balance);
       }
@@ -817,7 +662,7 @@ export class DeepgramClient implements PluginClient {
     const raw = resource.resolvedOutputs["__models__"];
     if (typeof raw !== "string" || raw.length === 0) return { stt: [], tts: [] };
     try {
-      const parsed = JSON.parse(raw) as Partial<StashedModels>;
+      const parsed: Partial<StashedModels> = JSON.parse(raw);
       return { stt: parsed.stt ?? [], tts: parsed.tts ?? [] };
     } catch {
       return { stt: [], tts: [] };
@@ -837,8 +682,8 @@ export class DeepgramClient implements PluginClient {
       if (resourceTypeId === "project") {
         const projectId = externalIdOf(resourceId);
         const [usage, balances] = await Promise.all([
-          this.fetchUsageBuckets(projectId).catch(() => [] as DgUsageBucket[]),
-          this.listBalances(accountId, projectId).catch(() => [] as ResourceInstance[]),
+          this.fetchUsageBuckets(projectId).catch((): DgUsageBucket[] => []),
+          this.listBalances(accountId, projectId).catch((): ResourceInstance[] => []),
         ]);
         const totals = summariseUsage(usage);
         const credit = balances.reduce((sum, b) => sum + Number(b.fields["amount"] ?? 0), 0);
@@ -923,18 +768,17 @@ export class DeepgramClient implements PluginClient {
   private async fetchUsageBuckets(
     projectId: string,
     range?: { startMs: number; endMs: number },
-    filters: Record<string, string> = {},
+    filters: UsageFilters = {},
   ): Promise<DgUsageBucket[]> {
     const endMs = range?.endMs ?? Date.now();
     const startMs = range?.startMs ?? endMs - 30 * 24 * 60 * 60 * 1000;
-    const params = new URLSearchParams({
-      start: new Date(startMs).toISOString().slice(0, 10),
-      end: new Date(endMs).toISOString().slice(0, 10),
-      ...filters,
+    const data = await this.api.get(`/v1/projects/${pathEncode(projectId)}/usage/breakdown`, {
+      query: {
+        start: new Date(startMs).toISOString().slice(0, 10),
+        end: new Date(endMs).toISOString().slice(0, 10),
+        ...filters,
+      },
     });
-    const data = await this.fetch<DgUsageBreakdown>(
-      `/v1/projects/${encodeURIComponent(projectId)}/usage/breakdown?${params.toString()}`,
-    );
     return data.results ?? [];
   }
 
@@ -958,10 +802,10 @@ export class DeepgramClient implements PluginClient {
           this.fetchUsageBuckets(projectId, timeRange),
           // The splits are extras: a failure there must not blank the totals.
           this.fetchUsageBuckets(projectId, timeRange, { grouping: "endpoint" }).catch(
-            () => [] as DgUsageBucket[],
+            (): DgUsageBucket[] => [],
           ),
           this.fetchUsageBuckets(projectId, timeRange, { grouping: "method" }).catch(
-            () => [] as DgUsageBucket[],
+            (): DgUsageBucket[] => [],
           ),
         ]);
         if (buckets.length === 0) return [];
@@ -1091,7 +935,7 @@ export class DeepgramClient implements PluginClient {
         // entitlements: the parent's when launched from one, else the first.
         const projectId = parentResourceId
           ? externalIdOf(parentResourceId)
-          : (await this.fetchProjects().catch(() => [] as DgProject[]))[0]?.project_id;
+          : (await this.fetchProjects().catch((): DgProject[] => []))[0]?.project_id;
         const catalogue = await this.loadSpeechOptions(projectId);
         const config = await this.extras.createConfig(typeId, {
           stt: catalogue.stt.map((m) => ({ id: m.id, label: m.label })),
@@ -1115,7 +959,7 @@ export class DeepgramClient implements PluginClient {
     parentResourceId?: string,
   ): Promise<CreateResourceConfig["fields"]> {
     if (parentResourceId) return [];
-    const projects = await this.fetchProjects().catch(() => [] as DgProject[]);
+    const projects = await this.fetchProjects().catch((): DgProject[] => []);
     const options = projects.map((p) => ({
       id: p.project_id,
       label: p.name ?? p.project_id,
@@ -1151,23 +995,21 @@ export class DeepgramClient implements PluginClient {
 
       if (typeId === "api-key") {
         // https://developers.deepgram.com/reference/management-api/keys/create
-        const body: Record<string, unknown> = {
-          comment: fields["comment"] ?? "",
-          scopes: [fields["scopes"] ?? "member"],
-        };
         const tags = (fields["tags"] ?? "")
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean);
-        if (tags.length > 0) body["tags"] = tags;
-        // `expiration_date` is the only expiry field Deepgram documents on this
-        // endpoint (their spec types the body as an untyped two-branch `oneOf`).
-        if (fields["expirationDate"]) body["expiration_date"] = fields["expirationDate"];
+        const expirationDate = fields["expirationDate"];
+        const body: CreateKeyBody = {
+          comment: fields["comment"] ?? "",
+          scopes: [fields["scopes"] ?? "member"],
+          ...(tags.length > 0 ? { tags } : {}),
+          // `expiration_date` is the only expiry field Deepgram documents on this
+          // endpoint (their spec types the body as an untyped two-branch `oneOf`).
+          ...(expirationDate ? { expiration_date: expirationDate } : {}),
+        };
 
-        const created = await this.fetch<DgApiKey>(
-          `/v1/projects/${encodeURIComponent(projectId)}/keys`,
-          { method: "POST", body: JSON.stringify(body) },
-        );
+        const created = await this.api.post(`/v1/projects/${pathEncode(projectId)}/keys`, { body });
         const instance = this.mapApiKey(accountId, projectId, { api_key: created });
         // The plaintext key is returned exactly once, on this response.
         if (created.key) {
@@ -1181,10 +1023,9 @@ export class DeepgramClient implements PluginClient {
         const email = fields["email"];
         if (!email) throw new Error("Deepgram plugin: an email address is required");
         const scope = fields["scope"] ?? "member";
-        await this.fetch<{ message?: string }>(
-          `/v1/projects/${encodeURIComponent(projectId)}/invites`,
-          { method: "POST", body: JSON.stringify({ email, scope }) },
-        );
+        await this.api.post(`/v1/projects/${pathEncode(projectId)}/invites`, {
+          body: { email, scope },
+        });
         return this.mapInvite(accountId, projectId, { email, scope });
       }
 
@@ -1208,10 +1049,7 @@ export class DeepgramClient implements PluginClient {
         const name = fields["name"];
         if (name === undefined)
           return runPluginEffect(this.getResource("project", resourceId, accountId));
-        await this.fetch<{ message?: string }>(`/v1/projects/${encodeURIComponent(projectId)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ name }),
-        });
+        await this.api.patch(`/v1/projects/${pathEncode(projectId)}`, { body: { name } });
         return runPluginEffect(this.getResource("project", resourceId, accountId));
       }
 
@@ -1221,9 +1059,9 @@ export class DeepgramClient implements PluginClient {
         const { projectId, childId } = splitChildId(resourceId);
         const scope = fields["scopes"];
         if (!scope) return runPluginEffect(this.getResource("member", resourceId, accountId));
-        await this.fetch<{ message?: string }>(
-          `/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(childId)}/scopes`,
-          { method: "PUT", body: JSON.stringify({ scope }) },
+        await this.api.put(
+          `/v1/projects/${pathEncode(projectId)}/members/${pathEncode(childId)}/scopes`,
+          { body: { scope } },
         );
         return runPluginEffect(this.getResource("member", resourceId, accountId));
       }
@@ -1239,10 +1077,7 @@ export class DeepgramClient implements PluginClient {
       if (typeId === "project") {
         // https://developers.deepgram.com/reference/manage/projects/delete
         // Permanent: the project and everything in it.
-        await this.fetch<{ message?: string }>(
-          `/v1/projects/${encodeURIComponent(externalIdOf(resourceId))}`,
-          { method: "DELETE" },
-        );
+        await this.api.delete(`/v1/projects/${pathEncode(externalIdOf(resourceId))}`);
         return;
       }
 
@@ -1250,28 +1085,23 @@ export class DeepgramClient implements PluginClient {
 
       if (typeId === "api-key") {
         // https://developers.deepgram.com/reference/management-api/keys/delete
-        await this.fetch<void>(
-          `/v1/projects/${encodeURIComponent(projectId)}/keys/${encodeURIComponent(childId)}`,
-          { method: "DELETE" },
-        );
+        await this.api.delete(`/v1/projects/${pathEncode(projectId)}/keys/${pathEncode(childId)}`);
         return;
       }
 
       if (typeId === "invite") {
         // https://developers.deepgram.com/reference/management-api/invitations/delete
         // Invites are addressed by email, not by an id.
-        await this.fetch<void>(
-          `/v1/projects/${encodeURIComponent(projectId)}/invites/${encodeURIComponent(childId)}`,
-          { method: "DELETE" },
+        await this.api.delete(
+          `/v1/projects/${pathEncode(projectId)}/invites/${pathEncode(childId)}`,
         );
         return;
       }
 
       if (typeId === "member") {
         // https://developers.deepgram.com/reference/management-api/members/delete
-        await this.fetch<void>(
-          `/v1/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(childId)}`,
-          { method: "DELETE" },
+        await this.api.delete(
+          `/v1/projects/${pathEncode(projectId)}/members/${pathEncode(childId)}`,
         );
         return;
       }
@@ -1433,7 +1263,7 @@ export class DeepgramClient implements PluginClient {
       );
       const elapsedMs = Date.now() - started;
 
-      const parsed = JSON.parse(new TextDecoder().decode(bytes)) as DgListenResponse;
+      const parsed: DgListenResponse = JSON.parse(new TextDecoder().decode(bytes));
       const channel = parsed.results?.channels?.[0];
       const alternative = channel?.alternatives?.[0];
       const utterances = parsed.results?.utterances ?? [];

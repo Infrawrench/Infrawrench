@@ -47,9 +47,8 @@
  */
 
 import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
-import { CostSetupError, jsonRestFetch } from "@infrawrench/plugin-base";
-
-const BASE_URL = "https://api.deepgram.com";
+import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
+import { createDeepgramApis, type DeepgramApi } from "./api.js";
 
 const CONSOLE_HELP = {
   label: "Open the Deepgram Console",
@@ -70,44 +69,7 @@ export interface DeepgramCostContext {
   http?: HttpHostServices;
 }
 
-interface DgProjectList {
-  projects?: Array<{ project_id?: string }>;
-}
-
-interface DgBillingResult {
-  /** USD billed for this grouping. Required per spec; absent in practice on some contracts. */
-  dollars?: number;
-  grouping?: {
-    /** Bucket start, `YYYY-MM-DD`. */
-    start?: string;
-    end?: string;
-    /** Null unless grouped by line item. e.g. "streaming::nova-3". */
-    line_item?: string | null;
-    /** Null unless grouped by tags. */
-    tags?: string[] | null;
-  };
-}
-
-interface DgBillingBreakdown {
-  start?: string;
-  end?: string;
-  /** Bucket size Deepgram chose; `{ units: "day", amount: 1 }` for month-sized windows. */
-  resolution?: { units?: string; amount?: number };
-  results?: DgBillingResult[];
-}
-
-function dgFetch<T>(ctx: DeepgramCostContext, path: string): Promise<T> {
-  return jsonRestFetch<T>({
-    vendor: "Deepgram",
-    url: `${BASE_URL}${path}`,
-    errorPath: path,
-    headers: { Authorization: `Token ${ctx.apiKey}`, Accept: "application/json" },
-    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    ...(ctx.http ? { http: ctx.http } : {}),
-  });
-}
-
-/** HTTP status recovered from the message `jsonRestFetch` throws. */
+/** HTTP status recovered from the message the API client throws. */
 function httpStatusOf(err: unknown): number | undefined {
   const message = err instanceof Error ? err.message : String(err);
   const match = /^Deepgram API error (\d{3}) /.exec(message);
@@ -147,9 +109,9 @@ function isoDay(value: string | undefined): string {
 }
 
 /** Every project this key can see. One account is one key, so all of them bill. */
-async function listProjectIds(ctx: DeepgramCostContext): Promise<string[]> {
+async function listProjectIds(api: DeepgramApi): Promise<string[]> {
   try {
-    const list = await dgFetch<DgProjectList>(ctx, "/v1/projects");
+    const list = await api.get("/v1/projects");
     return (list.projects ?? [])
       .map((p) => p.project_id)
       .filter((id): id is string => typeof id === "string" && id.length > 0);
@@ -162,13 +124,11 @@ export async function fetchDeepgramCostData(
   ctx: DeepgramCostContext,
   range: CostFetchRange,
 ): Promise<CostRow[]> {
-  const projectIds = await listProjectIds(ctx);
+  const { api } = createDeepgramApis(ctx);
+  const projectIds = await listProjectIds(api);
   if (projectIds.length === 0) return [];
 
-  const params = new URLSearchParams({ start: range.fromDate, end: nextDay(range.toDate) });
-  params.append("grouping", "line_item");
-  params.append("grouping", "tags");
-  const query = params.toString();
+  const end = nextDay(range.toDate);
 
   // Keyed by the full dimension tuple (date + service + project + tags) so a
   // re-fetched day reproduces byte-identical keys and the host replaces its
@@ -182,15 +142,16 @@ export async function fetchDeepgramCostData(
   let firstFailure: unknown;
 
   for (const projectId of projectIds) {
-    const data = await dgFetch<DgBillingBreakdown>(
-      ctx,
-      `/v1/projects/${encodeURIComponent(projectId)}/billing/breakdown?${query}`,
-    ).catch((err: unknown) => {
-      // One project the key can list but not bill for shouldn't empty the
-      // account; only a clean sweep of failures is worth surfacing.
-      firstFailure ??= err;
-      return undefined;
-    });
+    const data = await api
+      .get(`/v1/projects/${pathEncode(projectId)}/billing/breakdown`, {
+        query: { start: range.fromDate, end, grouping: ["line_item", "tags"] },
+      })
+      .catch((err: unknown) => {
+        // One project the key can list but not bill for shouldn't empty the
+        // account; only a clean sweep of failures is worth surfacing.
+        firstFailure ??= err;
+        return undefined;
+      });
     if (!data) continue;
     succeeded++;
 
