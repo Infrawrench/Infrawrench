@@ -58,11 +58,11 @@ function impact(value: string): StatusIncidentImpact {
 }
 
 export function parseStatusFeed(body: string): StatusIncident[] {
-  const doc = JSON.parse(body) as {
-    page?: unknown;
+  const doc: {
+    page?: object;
     activeIncidents?: InstatusEntry[];
     activeMaintenances?: InstatusEntry[];
-  };
+  } = JSON.parse(body);
   if (!doc || typeof doc !== "object" || !("page" in doc)) {
     throw new Error("fal status feed: not an Instatus summary");
   }

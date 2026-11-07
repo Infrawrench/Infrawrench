@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.fal.ai/v1/openapi.json",
+  "paths": {
+    "/account/billing": ["get"],
+    "/compute/instances": ["get"],
+    "/compute/instances/{id}": ["get", "delete"],
+    "/keys": ["get", "post"],
+    "/keys/{key_id}": ["delete"],
+    "/models": ["get"],
+    "/models/analytics": ["get"],
+    "/models/pricing": ["get"],
+    "/models/requests/by-endpoint": ["get"],
+    "/models/usage": ["get"],
+    "/serverless/analytics": ["get"],
+    "/serverless/apps": ["get"],
+    "/serverless/apps/{owner}/{name}/queue": ["get", "delete"],
+    "/serverless/apps/{owner}/{name}/revisions": ["get"],
+    "/serverless/logs/history": ["post"],
+    "/serverless/requests/by-endpoint": ["get"],
+    "/serverless/usage": ["get"],
+    "/workflows": ["get"]
+  }
+}
