@@ -83,8 +83,20 @@ import {
 const SERVICE_PAGE = 100;
 /** Concurrent requests per fan-out; Fastly allows 6,000 reads a minute. */
 const FAN_OUT = 6;
-/** One sync pass lists several child types from the same service details. */
-const CACHE_TTL_MS = 60_000;
+/**
+ * One sync pass lists several child types from the same service details. Longer than
+ * the read itself on an account at MAX_DETAIL_SERVICES, or every type would redo it.
+ */
+const CACHE_TTL_MS = 120_000;
+/**
+ * What one poll reads per service. A poll has 300 seconds for every type, and Fastly
+ * allows 6,000 reads a minute. At 200 ms a request and the concurrency used for each:
+ * details take 67 seconds, logging (one request per kind, 28 kinds) 47, dictionaries 17
+ * plus their item counts. Past these, the rest wait for a later poll.
+ */
+const MAX_DETAIL_SERVICES = 2000;
+const MAX_LOGGING_SERVICES = 100;
+const MAX_DICTIONARY_SERVICES = 500;
 
 const SERVICE_ACTIONS = new Set(["purge-all", "clone-active", "deactivate"]);
 const VERSION_ACTIONS = new Set(["activate", "deactivate", "clone", "lock", "validate"]);
@@ -98,6 +110,38 @@ interface CurrentUser {
   login?: string;
   role?: string;
   customer_id?: string;
+}
+
+/** What a child type's rows can be read from, for one service at a time. */
+const SERVICE_CHILD_TYPES = new Set([
+  "service-version",
+  "domain",
+  "backend",
+  "logging-endpoint",
+  "dictionary",
+]);
+
+/** Every service read at once, with the ids whose details wait for a later poll. */
+interface ServiceRead {
+  services: FastlyServiceDetail[];
+  later: ReadonlySet<string>;
+}
+
+/**
+ * The parents to read this poll and the ones left for later. Polls share nothing, so past
+ * the budget the start moves with the clock by the golden ratio, which spreads evenly over
+ * the list however long it is.
+ */
+function fanOutWindow<P extends { id?: string }>(
+  parents: P[],
+  max: number,
+): { now: P[]; later: P[] } {
+  if (parents.length <= max) return { now: parents, later: [] };
+  const sorted = [...parents].sort((a, b) => ((a.id ?? "") < (b.id ?? "") ? -1 : 1));
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  return { now: rotated.slice(0, max), later: rotated.slice(max) };
 }
 
 /** `{serviceId}/{rest}` external ids of service children. */
@@ -136,7 +180,7 @@ export function parseKeys(raw: string): string[] {
 
 export class FastlyClient implements PluginClient {
   private readonly ctx: FastlyContext;
-  private servicesCache: { at: number; value: Promise<FastlyServiceDetail[]> } | undefined;
+  private servicesCache: { at: number; value: Promise<ServiceRead> } | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["apiToken"] ?? "").trim();
@@ -177,7 +221,12 @@ export class FastlyClient implements PluginClient {
   }
 
   /** Every service with its details (versions, active version's domains and backends). */
-  private services(): Promise<FastlyServiceDetail[]> {
+  private async services(): Promise<FastlyServiceDetail[]> {
+    return (await this.serviceRead()).services;
+  }
+
+  /** The same, saying which services have only their summary because of the budget. */
+  private serviceRead(): Promise<ServiceRead> {
     const now = Date.now();
     if (this.servicesCache && now - this.servicesCache.at < CACHE_TTL_MS) {
       return this.servicesCache.value;
@@ -189,8 +238,11 @@ export class FastlyClient implements PluginClient {
         { sort: "name", direction: "ascend" },
         SERVICE_PAGE,
       );
-      return mapLimit(list, FAN_OUT, async (svc) => {
-        if (!svc.id) return svc as FastlyServiceDetail;
+      const later = new Set(
+        fanOutWindow(list, MAX_DETAIL_SERVICES).later.map((svc) => svc.id ?? ""),
+      );
+      const services = await mapLimit(list, FAN_OUT, async (svc) => {
+        if (!svc.id || later.has(svc.id)) return svc as FastlyServiceDetail;
         try {
           return await this.serviceDetail(svc.id);
         } catch (err) {
@@ -199,11 +251,18 @@ export class FastlyClient implements PluginClient {
           throw err;
         }
       });
+      return { services, later };
     })();
-    this.servicesCache = { at: now, value };
-    value.catch(() => {
-      if (this.servicesCache?.value === value) this.servicesCache = undefined;
-    });
+    const entry = { at: now, value };
+    this.servicesCache = entry;
+    value.then(
+      () => {
+        entry.at = Date.now();
+      },
+      () => {
+        if (this.servicesCache === entry) this.servicesCache = undefined;
+      },
+    );
     return value;
   }
 
@@ -225,28 +284,43 @@ export class FastlyClient implements PluginClient {
           return [await this.loadAccount(accountId)];
         case "service":
           return this.scoped(async () => {
-            const [services, products] = await Promise.all([
-              this.services(),
+            const [{ services, later }, products] = await Promise.all([
+              this.serviceRead(),
               enabledProductsByService(this.ctx).catch(() => new Map<string, string[]>()),
             ]);
-            return services.map((s) => mapService(accountId, s, products.get(s.id ?? "") ?? []));
+            // A summary has no domains or backends, so writing one would blank them until
+            // this service's turn comes round. Its stored row stays as it is instead.
+            if (later.size > 0) {
+              reportUnreadListPart({
+                idPrefixes: [...later].map((id) => serviceResourceId(accountId, id)),
+              });
+            }
+            return services
+              .filter((s) => !later.has(s.id ?? ""))
+              .map((s) => mapService(accountId, s, products.get(s.id ?? "") ?? []));
           });
         case "service-version":
-          return this.scoped(async () =>
-            (await this.services()).flatMap((s) =>
-              (s.versions ?? []).map((v) => mapVersion(accountId, s, v)),
+          return this.scoped(() =>
+            this.fromDetails(
+              accountId,
+              (s) => !s.versions,
+              (s) => this.versionsOf(accountId, s),
             ),
           );
         case "domain":
           return this.scoped(() =>
-            this.fromDetails(accountId, (s) =>
-              (this.liveDetail(s)?.domains ?? []).map((d) => mapDomain(accountId, s, d)),
+            this.fromDetails(
+              accountId,
+              (s) => !this.liveDetail(s),
+              (s) => this.domainsOf(accountId, s),
             ),
           );
         case "backend":
           return this.scoped(() =>
-            this.fromDetails(accountId, (s) =>
-              (this.liveDetail(s)?.backends ?? []).map((b) => mapBackend(accountId, s, b)),
+            this.fromDetails(
+              accountId,
+              (s) => !this.liveDetail(s),
+              (s) => this.backendsOf(accountId, s),
             ),
           );
         case "logging-endpoint":
@@ -311,26 +385,65 @@ export class FastlyClient implements PluginClient {
     return typeof s.version === "object" && s.version !== null ? s.version : undefined;
   }
 
+  private versionsOf(accountId: string, s: FastlyServiceDetail): ResourceInstance[] {
+    return (s.versions ?? []).map((v) => mapVersion(accountId, s, v));
+  }
+
+  private domainsOf(accountId: string, s: FastlyServiceDetail): ResourceInstance[] {
+    return (this.liveDetail(s)?.domains ?? []).map((d) => mapDomain(accountId, s, d));
+  }
+
+  private backendsOf(accountId: string, s: FastlyServiceDetail): ResourceInstance[] {
+    return (this.liveDetail(s)?.backends ?? []).map((b) => mapBackend(accountId, s, b));
+  }
+
+  /** The rows of a child type for one service, without reading the whole account's. */
+  private childrenOf(
+    typeId: string,
+    accountId: string,
+    s: FastlyServiceDetail,
+  ): ResourceInstance[] | Promise<ResourceInstance[]> {
+    if (typeId === "service-version") return this.versionsOf(accountId, s);
+    if (typeId === "domain") return this.domainsOf(accountId, s);
+    if (typeId === "backend") return this.backendsOf(accountId, s);
+    if (typeId === "logging-endpoint") return this.readLogging(accountId, [s]);
+    return this.readDictionaries(accountId, [s]);
+  }
+
+  private reportUnreadChildren(accountId: string, services: FastlyServiceDetail[]): void {
+    const ids = services.flatMap((s) => (s.id ? [s.id] : []));
+    if (ids.length === 0) return;
+    reportUnreadListPart({
+      parentResourceIds: ids.map((id) => serviceResourceId(accountId, id)),
+    });
+  }
+
   /**
    * A child type read from each service's details. A service answered with only its
-   * summary (its details were refused) says nothing about its children, so they stay.
+   * summary (its details were refused, or wait for a later poll) says nothing about
+   * these children, so they stay.
    */
   private async fromDetails(
     accountId: string,
+    unread: (s: FastlyServiceDetail) => boolean,
     children: (s: FastlyServiceDetail) => ResourceInstance[],
   ): Promise<ResourceInstance[]> {
     const services = await this.services();
-    const unread = services.flatMap((s) => (s.id && !this.liveDetail(s) ? [s.id] : []));
-    if (unread.length > 0) {
-      reportUnreadListPart({
-        parentResourceIds: unread.map((id) => serviceResourceId(accountId, id)),
-      });
-    }
+    this.reportUnreadChildren(accountId, services.filter(unread));
     return services.flatMap(children);
   }
 
   private async listLogging(accountId: string): Promise<ResourceInstance[]> {
-    const services = await this.services();
+    const parents = (await this.services()).filter((svc) => svc.id && liveVersionOf(svc));
+    const { now, later } = fanOutWindow(parents, MAX_LOGGING_SERVICES);
+    this.reportUnreadChildren(accountId, later);
+    return this.readLogging(accountId, now);
+  }
+
+  private async readLogging(
+    accountId: string,
+    services: FastlyServiceDetail[],
+  ): Promise<ResourceInstance[]> {
     const jobs: Array<{ svc: FastlyServiceDetail; version: number; type: string }> = [];
     for (const svc of services) {
       const version = liveVersionOf(svc);
@@ -365,19 +478,29 @@ export class FastlyClient implements PluginClient {
   }
 
   private async listDictionaries(accountId: string): Promise<ResourceInstance[]> {
-    const services = (await this.services()).filter((s) => s.type !== "wasm");
-    const refused: Array<{ serviceId: string; err: unknown }> = [];
+    const parents = (await this.services()).filter(
+      (svc) => svc.type !== "wasm" && svc.id && liveVersionOf(svc),
+    );
+    const { now, later } = fanOutWindow(parents, MAX_DICTIONARY_SERVICES);
+    this.reportUnreadChildren(accountId, later);
+    return this.readDictionaries(accountId, now);
+  }
+
+  private async readDictionaries(
+    accountId: string,
+    services: FastlyServiceDetail[],
+  ): Promise<ResourceInstance[]> {
+    const refused: Array<{ svc: FastlyServiceDetail; err: unknown }> = [];
     let asked = 0;
     const perService = await mapLimit(services, FAN_OUT, async (svc) => {
       const version = liveVersionOf(svc);
       if (!svc.id || !version) return [];
-      const serviceId = svc.id;
       asked++;
       const dicts = await fastlyList<FastlyDictionary>(
         this.ctx,
-        `/service/${encodeURIComponent(serviceId)}/version/${version}/dictionary`,
+        `/service/${encodeURIComponent(svc.id)}/version/${version}/dictionary`,
       ).catch((err) => {
-        if (statusOf(err) === 403) refused.push({ serviceId, err });
+        if (statusOf(err) === 403) refused.push({ svc, err });
         if (statusOf(err) === 403 || statusOf(err) === 404) return [] as FastlyDictionary[];
         throw err;
       });
@@ -391,11 +514,10 @@ export class FastlyClient implements PluginClient {
     });
     // Nothing read at all is a token that cannot read this type, which `scoped` handles.
     if (refused[0] && refused.length === asked) throw refused[0].err;
-    if (refused.length > 0) {
-      reportUnreadListPart({
-        parentResourceIds: refused.map((r) => serviceResourceId(accountId, r.serviceId)),
-      });
-    }
+    this.reportUnreadChildren(
+      accountId,
+      refused.map((r) => r.svc),
+    );
     return perService.flat();
   }
 
@@ -471,7 +593,9 @@ export class FastlyClient implements PluginClient {
         ]);
         return mapService(accountId, detail, products.get(id) ?? []);
       }
-      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const all = SERVICE_CHILD_TYPES.has(typeId)
+        ? await this.childrenOf(typeId, accountId, await this.serviceDetail(splitChild(id)[0]))
+        : await runPluginEffect(this.listResources(typeId, accountId));
       const found = all.find((r) => r.id === resourceId || r.externalId === id);
       if (!found) throw new Error(`Fastly plugin: resource ${typeId}/${resourceId} not found`);
       return found;

@@ -1,7 +1,8 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fastlyCursorPaged, fastlyJsonApiPaged, fastlyPaged } from "../api.js";
 import { FastlyClient } from "../client.js";
+import { LOGGING_TYPES } from "../logging.js";
 import { ctxWith, makeHttp } from "./helpers.js";
 import type { Reply } from "./helpers.js";
 
@@ -386,5 +387,153 @@ describe("a refused list keeps its stored rows", () => {
     });
     await expect(c.listResources("dictionary", ACCOUNT)).resolves.toEqual([]);
     expect(parts).toEqual([{ idPrefixes: [""] }]);
+  });
+});
+
+describe("a fan-out past one poll's budget", () => {
+  const HOOK = Symbol.for("infrawrench.unreadListPart");
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, HOOK);
+    vi.useRealTimers();
+  });
+
+  function trackUnread() {
+    const parents = new Set<string>();
+    const prefixes = new Set<string>();
+    Reflect.set(
+      globalThis,
+      HOOK,
+      (part: { parentResourceIds?: readonly string[]; idPrefixes?: readonly string[] }) => {
+        for (const id of part.parentResourceIds ?? []) parents.add(id);
+        for (const id of part.idPrefixes ?? []) prefixes.add(id);
+      },
+    );
+    return { parents, prefixes };
+  }
+
+  const pad = (i: number) => `s${String(i).padStart(5, "0")}`;
+
+  function account(count: number) {
+    const all = Array.from({ length: count }, (_, i) => ({
+      id: pad(i),
+      name: pad(i),
+      type: "vcl",
+      version: 1,
+      versions: [{ number: 1, active: true }],
+    }));
+    return clientWith((url) => {
+      const p = url.pathname;
+      if (p === "/service") {
+        const page = pageOf(url);
+        return { body: all.slice((page - 1) * 100, page * 100) };
+      }
+      const details = /^\/service\/([^/]+)\/details$/.exec(p);
+      if (details) {
+        return {
+          body: {
+            id: details[1],
+            name: details[1],
+            type: "vcl",
+            versions: [{ number: 1, active: true }],
+            active_version: {
+              number: 1,
+              domains: [{ name: `${details[1]}.example.com` }],
+              backends: [{ name: "origin", address: "origin.example.com" }],
+            },
+          },
+        };
+      }
+      if (p.endsWith("/logging/s3")) return { body: [{ name: "archive", bucket_name: "logs" }] };
+      if (p.includes("/logging/") || p.endsWith("/dictionary")) return { body: [] };
+      if (p.endsWith("/dictionary/d1/info")) return { body: { item_count: 2 } };
+      return { status: 404, body: {} };
+    });
+  }
+
+  const requestsTo = (calls: Array<{ url: URL }>, match: (p: string) => boolean) =>
+    calls.filter((call) => match(call.url.pathname)).length;
+
+  it("reads every service's logging and names nothing under the budget", async () => {
+    const unread = trackUnread();
+    const { c, calls } = account(3);
+    await expect(c.listResources("logging-endpoint", ACCOUNT)).resolves.toHaveLength(3);
+    expect(requestsTo(calls, (p) => p.includes("/logging/"))).toBe(3 * LOGGING_TYPES.length);
+    expect(unread.parents.size).toBe(0);
+  });
+
+  it("reads logging for 100 services a poll and names the rest", async () => {
+    const unread = trackUnread();
+    const { c, calls } = account(130);
+    await expect(c.listResources("logging-endpoint", ACCOUNT)).resolves.toHaveLength(100);
+    expect(requestsTo(calls, (p) => p.includes("/logging/"))).toBe(100 * LOGGING_TYPES.length);
+    expect(unread.parents.size).toBe(30);
+  });
+
+  it("reaches every service's logging over successive polls", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const seen = new Set<string>();
+    for (let minute = 0; minute < 15; minute++) {
+      vi.setSystemTime(minute * 5 * 60_000);
+      trackUnread();
+      const { c } = account(130);
+      for (const row of await c.listResources("logging-endpoint", ACCOUNT)) {
+        seen.add(row.externalId ?? "");
+      }
+    }
+    expect(seen.size).toBe(130);
+  });
+
+  it("reads dictionaries for 500 services a poll and names the rest", async () => {
+    const unread = trackUnread();
+    const { c, calls } = account(510);
+    await c.listResources("dictionary", ACCOUNT);
+    expect(requestsTo(calls, (p) => p.endsWith("/dictionary"))).toBe(500);
+    expect(unread.parents.size).toBe(10);
+  });
+
+  it("reads details for 2,000 services a poll and leaves the rest's rows alone", async () => {
+    const unread = trackUnread();
+    const { c, calls } = account(2003);
+    const services = await c.listResources("service", ACCOUNT);
+    expect(services).toHaveLength(2000);
+    expect(requestsTo(calls, (p) => p.endsWith("/details"))).toBe(2000);
+    expect(unread.prefixes.size).toBe(3);
+    const later = [...unread.prefixes];
+    expect(services.some((s) => later.includes(s.id))).toBe(false);
+
+    // The types that share the read agree with it, with no second read.
+    const domains = await c.listResources("domain", ACCOUNT);
+    expect(domains).toHaveLength(2000);
+    expect([...unread.parents].sort()).toEqual([...later].sort());
+    await expect(c.listResources("service-version", ACCOUNT)).resolves.toHaveLength(2003);
+    expect(requestsTo(calls, (p) => p.endsWith("/details"))).toBe(2000);
+  });
+
+  it("keeps one read of the services for the length of a large account's poll", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(0);
+    const { c, calls } = account(2);
+    await c.listResources("service", ACCOUNT);
+    vi.setSystemTime(119_000);
+    await c.listResources("domain", ACCOUNT);
+    expect(requestsTo(calls, (p) => p === "/service")).toBe(1);
+  });
+
+  it("finds one row of a large account without reading the account", async () => {
+    const { c, calls } = account(130);
+    const found = await c.getResource(
+      "logging-endpoint",
+      `${ACCOUNT}:logging-endpoint:s00129/s3/archive`,
+      ACCOUNT,
+    );
+    expect(found.externalId).toBe("s00129/s3/archive");
+    expect(requestsTo(calls, (p) => p === "/service")).toBe(0);
+    expect(calls).toHaveLength(1 + LOGGING_TYPES.length);
+    const domain = await c.getResource(
+      "domain",
+      `${ACCOUNT}:domain:s00129/s00129.example.com`,
+      ACCOUNT,
+    );
+    expect(domain.displayName).toBe("s00129.example.com");
   });
 });
