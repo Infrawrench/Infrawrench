@@ -58,7 +58,7 @@ export async function listKinesisStreams(
       // Skip streams we can't describe
     }
   }
-  unreadable.throwIfEveryRowRefused(streamNames.length);
+  unreadable.reportIfEveryRowRefused(streamNames.length);
   return results;
 }
 

@@ -10,7 +10,7 @@
  * `fetch` says only "fetch failed" and the reason sits in `cause`.
  */
 
-import { isIncompleteListError } from "@infrawrench/plugin-base";
+import { isIncompleteListError, reportUnreadListPart } from "@infrawrench/plugin-base";
 
 /** A non-2xx answer to a hand-signed request. Its message stays the one callers already match. */
 export class AwsRequestError extends Error {
@@ -139,41 +139,32 @@ export function rethrowUnlessRowUnreadable(err: unknown): void {
 }
 
 /**
+ * What a list reports when this credential was refused all of it. A least-privilege
+ * key is normal, so that is neither an error, which would fail the type on every poll,
+ * nor an empty list, which would prune what it could once read. An empty prefix is every
+ * stored row of this type: the host filters by type before it matches a prefix.
+ */
+export function reportTypeUnread(): void {
+  reportUnreadListPart({ idPrefixes: [""] });
+}
+
+/**
  * Per-row describes where a row that cannot be read is left out. Being refused
  * every one of them is a policy that allows the list and not the describe, not
- * an account with nothing in it, so that throws rather than pruning them all.
+ * an account with nothing in it, so the rows are reported unread rather than pruned.
  */
 export class UnreadableRows {
   private refusals = 0;
-  private firstRefusal: unknown;
 
   /** Call from the catch. Rethrows anything that does not mean "no row". */
   note(err: unknown): void {
     rethrowUnlessRowUnreadable(err);
-    if (classifyAwsFailure(err) !== "refused") return;
-    if (this.refusals === 0) this.firstRefusal = err;
-    this.refusals++;
+    if (classifyAwsFailure(err) === "refused") this.refusals++;
   }
 
   /** Call after the loop, with how many rows were listed. */
-  throwIfEveryRowRefused(listed: number): void {
-    if (listed > 0 && this.refusals === listed) throw this.firstRefusal;
-  }
-}
-
-/** Every region a fan-out asked refused: not the same as an account with nothing there. */
-export class AwsRegionsRefusedError extends Error {
-  readonly status: number | undefined;
-
-  constructor(what: string, regions: number, refusal: unknown) {
-    const detail = refusal instanceof Error ? refusal.message : String(refusal);
-    super(
-      `AWS refused to list ${what} in all ${regions} ${regions === 1 ? "region" : "regions"} it was asked, ` +
-        `so nothing could be read. Check that this credential is allowed to read it. Last answer: ${detail}`,
-      { cause: refusal },
-    );
-    this.name = "AwsRegionsRefusedError";
-    this.status = statusOf(refusal);
+  reportIfEveryRowRefused(listed: number): void {
+    if (listed > 0 && this.refusals === listed) reportTypeUnread();
   }
 }
 

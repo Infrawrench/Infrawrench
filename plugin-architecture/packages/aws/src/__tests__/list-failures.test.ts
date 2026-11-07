@@ -4,6 +4,7 @@
  * transport, with AWS's own error bodies, and check that only an answer meaning
  * "not available to this credential" reads as no rows.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import net from "node:net";
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -123,6 +124,28 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
+const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+
+/**
+ * The host's list scope: its hook is a global that finds the running list through an
+ * AsyncLocalStorage, so a report only counts if that context survives the plugin's
+ * Effect wrapper and its fan-out. Same shape as `runListChecked` in server-core.
+ */
+async function inListScope<T>(fn: () => Promise<T>): Promise<{ value: T; unread: unknown[] }> {
+  const storage = new AsyncLocalStorage<unknown[]>();
+  Reflect.set(globalThis, UNREAD_HOOK, (part: unknown) => storage.getStore()?.push(part));
+  try {
+    const unread: unknown[] = [];
+    const value = await storage.run(unread, fn);
+    return { value, unread };
+  } finally {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  }
+}
+
+/** Every stored row of the type stays: the host filters by type before it matches a prefix. */
+const WHOLE_TYPE_UNREAD = [{ idPrefixes: [""] }];
+
 describe("a regional fan-out", () => {
   it("returns the rows when every region answers", async () => {
     const { c } = lambdaClient(lambdaPage("a"), lambdaPage("b"));
@@ -193,13 +216,37 @@ describe("a regional fan-out", () => {
     ).rejects.toThrow(/fetch failed/);
   });
 
-  it("says so when every region refuses, rather than returning an empty list", async () => {
+  it("keeps stored rows without an error when every region refuses", async () => {
     const { c } = lambdaClient(accessDenied(), accessDenied());
-    const failure = await c.listResources("lambda-function", "acct").catch((err: unknown) => err);
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toMatch(/refused to list lambda-function in all 2 regions/);
-    // The poller reads this as permanent, not as a reason to back the account off.
-    expect((failure as { status?: number }).status).toBe(403);
+    const { value, unread } = await inListScope(() => c.listResources("lambda-function", "acct"));
+    expect(value).toEqual([]);
+    expect(unread).toEqual(WHOLE_TYPE_UNREAD);
+  });
+
+  it("keeps stored rows when every region has no endpoint, which may be a DNS outage", async () => {
+    const { c } = lambdaClient(noSuchHost("a"), accessDenied());
+    const { value, unread } = await inListScope(() => c.listResources("lambda-function", "acct"));
+    expect(value).toEqual([]);
+    expect(unread).toEqual(WHOLE_TYPE_UNREAD);
+  });
+
+  it("names nothing unread when some region answered, so the refused one still prunes", async () => {
+    const { c } = lambdaClient(lambdaPage("a"), accessDenied());
+    const { value, unread } = await inListScope(() => c.listResources("lambda-function", "acct"));
+    expect(value.map((r) => r.externalId)).toEqual(["a"]);
+    expect(unread).toEqual([]);
+  });
+
+  it("reports nothing and fails when a key is bad, even if another region refuses", async () => {
+    const { c } = lambdaClient(accessDenied(), expiredRest());
+    const unread: unknown[] = [];
+    Reflect.set(globalThis, UNREAD_HOOK, (part: unknown) => unread.push(part));
+    try {
+      await expect(c.listResources("lambda-function", "acct")).rejects.toThrow(/expired/);
+    } finally {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    }
+    expect(unread).toEqual([]);
   });
 
   it("fails on a credential that is plainly expired, in any region, not as a closed region", async () => {
@@ -211,7 +258,6 @@ describe("a regional fan-out", () => {
       const failure = await c.listResources("lambda-function", "acct").catch((e: Error) => e);
       expect(failure).toBeInstanceOf(Error);
       expect((failure as Error).message).toMatch(/expired/);
-      expect((failure as Error).message).not.toMatch(/refused to list/);
     }
   });
 
@@ -307,6 +353,11 @@ describe("getResource", () => {
   it("reports the failure when the row may be what it hid", async () => {
     const { c } = lambdaClient(lambdaPage("z"), serverError());
     await expect(c.getResource("lambda-function", id, "acct")).rejects.toThrow(/failed: 500/);
+  });
+
+  it("reports the refusal, not a missing row, when every region refused", async () => {
+    const { c } = lambdaClient(accessDenied(), accessDenied());
+    await expect(c.getResource("lambda-function", id, "acct")).rejects.toThrow(/not authorized/);
   });
 
   it("says not found when every region answered", async () => {
@@ -445,19 +496,34 @@ describe.each(rowCases)("a failed describe in $name", ({ lister, list, keepsRow 
   });
 
   it(
-    keepsRow ? "keeps the row when refused" : "throws when every row is refused, keeping them all",
+    keepsRow
+      ? "keeps the row when refused"
+      : "keeps stored rows without an error when every row is refused",
     async () => {
-      const failure = new Error("AWS x failed: 403: AccessDenied");
       const ctx = rowCtx(list, () => {
-        throw failure;
+        throw new Error("AWS x failed: 403: AccessDenied");
       });
-      if (keepsRow) {
-        expect(await lister(ctx, "acct")).toHaveLength(1);
-      } else {
-        await expect(lister(ctx, "acct")).rejects.toBe(failure);
-      }
+      const { value, unread } = await inListScope(() => lister(ctx, "acct"));
+      expect(value).toHaveLength(keepsRow ? 1 : 0);
+      expect(unread).toEqual(keepsRow ? [] : WHOLE_TYPE_UNREAD);
     },
   );
+});
+
+describe("a describe refused for only some rows", () => {
+  it("leaves those out and names nothing unread", async () => {
+    let calls = 0;
+    const ctx = rowCtx(
+      (a) => (String(a[1]).endsWith("ListTables") ? { TableNames: ["t1", "t2"] } : undefined),
+      () => {
+        if (++calls === 1) throw new Error("AWS x failed: 403: AccessDenied");
+        return { Table: {} };
+      },
+    );
+    const { value, unread } = await inListScope(() => listDynamoDBTables(ctx, "acct"));
+    expect(value).toHaveLength(1);
+    expect(unread).toEqual([]);
+  });
 });
 
 describe("a row deleted between the list and its describe", () => {

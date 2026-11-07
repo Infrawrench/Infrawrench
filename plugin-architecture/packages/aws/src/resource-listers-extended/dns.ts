@@ -139,7 +139,7 @@ export async function listRoute53RecordSets(
       // Skip zones we can't list records for
     }
   }
-  unreadable.throwIfEveryRowRefused(zones.length);
+  unreadable.reportIfEveryRowRefused(zones.length);
   return results;
 }
 

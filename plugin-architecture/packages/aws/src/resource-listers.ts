@@ -560,7 +560,7 @@ export async function listEKSClusters(
       console.error(`[eks] failed to describe cluster ${name}:`, err);
     }
   }
-  unreadable.throwIfEveryRowRefused(clusterNames.length);
+  unreadable.reportIfEveryRowRefused(clusterNames.length);
   return results;
 }
 
@@ -854,7 +854,7 @@ export async function listECSServices(
       // Skip clusters we can't access
     }
   }
-  unreadable.throwIfEveryRowRefused(clusterArns.length);
+  unreadable.reportIfEveryRowRefused(clusterArns.length);
   return results;
 }
 
@@ -937,7 +937,7 @@ export async function listDynamoDBTables(
       // Skip tables we can't describe
     }
   }
-  unreadable.throwIfEveryRowRefused(tableNames.length);
+  unreadable.reportIfEveryRowRefused(tableNames.length);
   return results;
 }
 
@@ -1070,7 +1070,7 @@ export async function listSQSQueues(
       // Skip queues we can't describe
     }
   }
-  unreadable.throwIfEveryRowRefused(queueUrls.length);
+  unreadable.reportIfEveryRowRefused(queueUrls.length);
   return results;
 }
 

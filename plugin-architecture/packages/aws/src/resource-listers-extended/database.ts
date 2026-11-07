@@ -216,7 +216,7 @@ export async function listOpenSearchDomains(
       // Skip domains we can't describe
     }
   }
-  unreadable.throwIfEveryRowRefused(domainNames.length);
+  unreadable.reportIfEveryRowRefused(domainNames.length);
   return results;
 }
 

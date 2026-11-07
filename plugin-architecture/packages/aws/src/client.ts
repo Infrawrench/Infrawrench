@@ -205,7 +205,7 @@ import {
   type AwsJitContext,
 } from "./jit-access.js";
 import { AWS_LOG_TYPES, getAwsLogs } from "./logs.js";
-import { AwsRegionsRefusedError, classifyAwsFailure, isRegionUnavailable } from "./aws-errors.js";
+import { classifyAwsFailure, isRegionUnavailable, reportTypeUnread } from "./aws-errors.js";
 
 export class AWSClient implements PluginClient {
   private readonly creds: AwsCredentials;
@@ -483,10 +483,11 @@ export class AWSClient implements PluginClient {
         return lister(this.ctxFor(opts.regionHint), accountId);
       }
 
-      const { rows, failure } = await this.listAcrossRegions(lister, typeId, accountId, {
+      const { rows, failure, refusal } = await this.listAcrossRegions(lister, accountId, {
         stopAtFailure: true,
       });
       if (failure !== undefined) throw failure;
+      if (refusal !== undefined) reportTypeUnread();
       return rows;
     });
   }
@@ -498,16 +499,14 @@ export class AWSClient implements PluginClient {
    *
    * A region this credential cannot use (an SCP deny, no endpoint for the service
    * there) holds no rows it may see, so it reads as none. Any other failure is the
-   * `failure`, because the rows it did not return are not gone; and so is every
-   * region refusing, which is a credential that may not read this at all rather
-   * than an empty account.
+   * `failure`, because the rows it did not return are not gone. `refusal` is set when
+   * no region answered at all, which says nothing about whether rows exist.
    */
   private async listAcrossRegions(
     lister: (ctx: ListerContext, accountId: string) => Promise<ResourceInstance[]>,
-    typeId: string,
     accountId: string,
     options: { stopAtFailure: boolean },
-  ): Promise<{ rows: ResourceInstance[]; failure?: unknown }> {
+  ): Promise<{ rows: ResourceInstance[]; failure?: unknown; refusal?: unknown }> {
     const regions = await this.getEnabledRegions();
     const rows: ResourceInstance[] = [];
     const concurrency = AWSClient.REGION_FANOUT_CONCURRENCY;
@@ -531,10 +530,8 @@ export class AWSClient implements PluginClient {
       }
       if (failure !== undefined && options.stopAtFailure) return { rows, failure };
     }
-    if (failure === undefined && answered === 0) {
-      failure = new AwsRegionsRefusedError(typeId, regions.length, refusal);
-    }
-    return failure === undefined ? { rows } : { rows, failure };
+    if (failure !== undefined) return { rows, failure };
+    return answered === 0 ? { rows, refusal } : { rows };
   }
 
   getResource(
@@ -556,12 +553,13 @@ export class AWSClient implements PluginClient {
       }
       // One row is wanted, so a throttle in some other region does not matter
       // unless the row was not found: then it may be what hid it.
-      const { rows, failure } = await this.listAcrossRegions(lister, typeId, accountId, {
+      const { rows, failure, refusal } = await this.listAcrossRegions(lister, accountId, {
         stopAtFailure: false,
       });
       const found = rows.find((r) => r.id === resourceId);
       if (found) return found;
       if (failure !== undefined) throw failure;
+      if (refusal !== undefined) throw refusal;
       throw new Error(`AWS plugin: resource ${typeId}/${resourceId} not found`);
     });
   }
