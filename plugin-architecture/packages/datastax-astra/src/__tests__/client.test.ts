@@ -650,6 +650,148 @@ describe("collections of a database that is not running", () => {
   });
 });
 
+describe("an answer that is not a list", () => {
+  const renamed = { items: [] };
+  const emptyBody = () => null;
+  const notAList = "is not a list";
+
+  it("throws on a databases page with its shape changed, first or later", async () => {
+    mockFetch({ "GET /v2/databases": renamed });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.keyspace, "acc"),
+    ).rejects.toThrow(notAList);
+
+    const full = Array.from({ length: 100 }, (_, i) => ({ ...DB, id: `db-${i}` }));
+    mockFetch({
+      "GET /v2/databases": (url: URL) => (url.searchParams.get("starting_after") ? renamed : full),
+    });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.keyspace, "acc"),
+    ).rejects.toThrow(notAList);
+  });
+
+  it.each([
+    ["databases", T.keyspace, "GET /v2/databases"],
+    ["access lists", T.accessEntry, "GET /v2/access-lists"],
+    ["PCU groups", T.pcuGroup, "POST /v2/pcus/actions/get"],
+    ["tenants", T.tenant, "GET /v2/streaming/tenants"],
+    ["roles", T.role, "GET /v2/organizations/roles"],
+    ["users", T.user, "GET /v2/organizations/users"],
+    ["tokens", T.token, "GET /v2/clientIdSecrets"],
+    ["private links", T.privateEndpoint, "GET /v2/organizations/private-link"],
+  ])("throws on %s with no answer or a renamed one", async (_name, type, route) => {
+    const dbs = route === "GET /v2/databases" ? {} : { "GET /v2/databases": [] };
+    for (const answer of [renamed, emptyBody]) {
+      mockFetch({ ...dbs, [route]: answer });
+      await expect(
+        hostClient(new AstraPluginClient({ token: "t" })).listResources(type, "acc"),
+      ).rejects.toThrow(notAList);
+    }
+  });
+
+  // The streaming document names its Go package, and Go writes a nil slice as null.
+  it.each([
+    ["databases", T.keyspace, "GET /v2/databases"],
+    ["access lists", T.accessEntry, "GET /v2/access-lists"],
+    ["PCU groups", T.pcuGroup, "POST /v2/pcus/actions/get"],
+    ["tenants", T.tenant, "GET /v2/streaming/tenants"],
+  ])("reads %s answered with a literal null as none", async (_name, type, route) => {
+    const dbs = route === "GET /v2/databases" ? {} : { "GET /v2/databases": [] };
+    mockFetch({ ...dbs, [route]: "null" });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(type, "acc"),
+    ).resolves.toEqual([]);
+  });
+
+  it.each([
+    ["users", T.user, "GET /v2/organizations/users", { users: null }],
+    ["tokens", T.token, "GET /v2/clientIdSecrets", { clients: null }],
+    ["tokens", T.token, "GET /v2/clientIdSecrets", {}],
+    ["private links", T.privateEndpoint, "GET /v2/organizations/private-link", { clusters: null }],
+    ["private links", T.privateEndpoint, "GET /v2/organizations/private-link", {}],
+    ["tenants", T.tenant, "GET /v2/streaming/tenants", { Body: null }],
+  ])(
+    "reads %s with an empty list the document allows as none",
+    async (_name, type, route, body) => {
+      mockFetch({ "GET /v2/databases": [], "GET /v2/organizations/roles": [], [route]: body });
+      await expect(
+        hostClient(new AstraPluginClient({ token: "t" })).listResources(type, "acc"),
+      ).resolves.toEqual([]);
+    },
+  );
+
+  it("requires the users key, which the document marks required", async () => {
+    mockFetch({ "GET /v2/organizations/users": {} });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.user, "acc"),
+    ).rejects.toThrow(notAList);
+  });
+
+  it("reads tenants wrapped in Body, and bare", async () => {
+    const tenant = { tenantName: "t1", clusterName: "c1" };
+    for (const answer of [{ Body: [tenant] }, [tenant]]) {
+      mockFetch({ "GET /v2/streaming/tenants": answer });
+      await expect(
+        hostClient(new AstraPluginClient({ token: "t" })).listResources(T.tenant, "acc"),
+      ).resolves.toHaveLength(1);
+    }
+  });
+
+  it("throws on snapshots under another key, and reads an empty object as none", async () => {
+    const snapshots = `GET /v2/databases/${DB.id}/snapshots`;
+    mockFetch({ "GET /v2/databases": [DB], [snapshots]: renamed });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.snapshot, "acc"),
+    ).rejects.toThrow(notAList);
+    mockFetch({ "GET /v2/databases": [DB], [snapshots]: {} });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.snapshot, "acc"),
+    ).resolves.toEqual([]);
+  });
+
+  it("still reads no snapshots from a 404", async () => {
+    mockFetch({
+      "GET /v2/databases": [DB],
+      [`GET /v2/databases/${DB.id}/snapshots`]: () => new Response("{}", { status: 404 }),
+    });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.snapshot, "acc"),
+    ).resolves.toEqual([]);
+  });
+
+  it("throws on CDC with no tables, and reads a 404 and an empty list as none", async () => {
+    const cdc = `GET /v3/databases/${DB.id}/cdc`;
+    mockFetch({ "GET /v2/databases": [DB], [cdc]: { orgID: "o", regions: [] } });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.cdc, "acc"),
+    ).rejects.toThrow(notAList);
+    mockFetch({ "GET /v2/databases": [DB], [cdc]: emptyBody });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.cdc, "acc"),
+    ).rejects.toThrow(notAList);
+    mockFetch({ "GET /v2/databases": [DB], [cdc]: { tables: [], regions: [] } });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.cdc, "acc"),
+    ).resolves.toEqual([]);
+    mockFetch({ "GET /v2/databases": [DB], [cdc]: () => new Response("{}", { status: 404 }) });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.cdc, "acc"),
+    ).resolves.toEqual([]);
+  });
+
+  it("throws on a findCollections answer with no list and no errors", async () => {
+    const endpoint = `${DB.id}-us-east-2.apps.astra.datastax.com/api/json/v1`;
+    mockFetch({
+      "GET /v2/databases": [DB],
+      [`POST ${endpoint}/default_keyspace`]: { status: {} },
+      [`POST ${endpoint}/analytics`]: { status: { collections: [] } },
+    });
+    await expect(
+      hostClient(new AstraPluginClient({ token: "t" })).listResources(T.collection, "acc"),
+    ).rejects.toThrow(notAList);
+  });
+});
+
 describe("status feed", () => {
   it("maps AWS and Azure components onto regions and Astra products onto types", () => {
     expect(mapComponent("AWS us-east-1")).toMatchObject({ regions: ["us-east-1"] });

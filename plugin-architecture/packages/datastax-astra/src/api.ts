@@ -1,5 +1,5 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { jsonRestFetch, requireListPage } from "@infrawrench/plugin-base";
 
 /**
  * Astra DevOps API (`https://api.astra.datastax.com`), verified 2026-10
@@ -175,6 +175,28 @@ export function unwrapBody<T>(value: unknown): T | undefined {
     return (value as { Body: T }).Body;
   }
   return value as T | undefined;
+}
+
+/**
+ * The answer of a route documented as a bare array. These services are written in Go (the
+ * streaming document names its Go package), which writes a nil slice as a literal `null`.
+ * No answer at all, or anything else, is not a list.
+ */
+export function arrayAnswer<T>(body: T[] | null | undefined, path: string): T[] {
+  return body === null ? [] : requireListPage(body, { vendor: "Astra", path, key: null });
+}
+
+/**
+ * A list under the only property of an object, which the document does not mark required,
+ * so `{}` is how an empty one may be left out. Any other object has lost the list.
+ */
+export function optionalKeyList<K extends string, T>(
+  body: Partial<Record<K, T[] | null>> | null | undefined,
+  key: K,
+  path: string,
+): T[] {
+  if (body && Object.keys(body).length === 0) return [];
+  return requireListPage(body?.[key], { vendor: "Astra", path, key });
 }
 
 /**

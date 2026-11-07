@@ -19,12 +19,14 @@ import {
   decodePromptArgs,
   externalIdOf,
   reportUnreadListPart,
+  requireListPage,
   withMetricsCapability,
   withinListCap,
 } from "@infrawrench/plugin-base";
 import type { AstraContext } from "./api.js";
 import {
   METRICS_API,
+  arrayAnswer,
   astraRequest,
   dataApiError,
   devops,
@@ -32,6 +34,7 @@ import {
   isFeatureOff,
   isKeyspaceNotServed,
   isUnavailable,
+  optionalKeyList,
   statusOf,
   unwrapBody,
 } from "./api.js";
@@ -229,14 +232,16 @@ export class AstraPluginClient implements PluginClient {
       const out: AstraDatabase[] = [];
       let after: string | undefined;
       for (let page = 0; page < MAX_DB_PAGES; page++) {
-        const batch =
-          (await this.api<AstraDatabase[]>("GET", "/v2/databases", {
+        const batch = arrayAnswer(
+          await this.api<AstraDatabase[] | null>("GET", "/v2/databases", {
             query: [
               ["include", "nonterminated"],
               ["limit", DB_PAGE],
               ["starting_after", after],
             ],
-          })) ?? [];
+          }),
+          "/v2/databases",
+        );
         out.push(...batch);
         if (batch.length < DB_PAGE) return out;
         after = batch[batch.length - 1]!.id;
@@ -291,18 +296,23 @@ export class AstraPluginClient implements PluginClient {
   private accessLists(): Promise<AstraAccessList[]> {
     return this.cached("access-lists", () =>
       this.ifOffered(
-        async () => (await this.api<AstraAccessList[]>("GET", "/v2/access-lists")) ?? [],
+        async () =>
+          arrayAnswer(
+            await this.api<AstraAccessList[] | null>("GET", "/v2/access-lists"),
+            "/v2/access-lists",
+          ),
         [],
       ),
     );
   }
 
-  private privateLinks(): Promise<AstraPrivateLinkOrg> {
+  private privateLinks(): Promise<NonNullable<AstraPrivateLinkOrg["clusters"]>> {
+    const path = "/v2/organizations/private-link";
     return this.cached("private-links", () =>
       this.ifOffered(
         async () =>
-          (await this.api<AstraPrivateLinkOrg>("GET", "/v2/organizations/private-link")) ?? {},
-        {},
+          optionalKeyList(await this.api<AstraPrivateLinkOrg>("GET", path), "clusters", path),
+        [],
       ),
     );
   }
@@ -311,7 +321,10 @@ export class AstraPluginClient implements PluginClient {
     return this.cached("pcu-groups", () =>
       this.ifOffered(
         async () =>
-          (await this.api<AstraPcuGroup[]>("POST", "/v2/pcus/actions/get", { body: {} })) ?? [],
+          arrayAnswer(
+            await this.api<AstraPcuGroup[] | null>("POST", "/v2/pcus/actions/get", { body: {} }),
+            "/v2/pcus/actions/get",
+          ),
         [],
       ),
     );
@@ -333,7 +346,11 @@ export class AstraPluginClient implements PluginClient {
   tenants(): Promise<AstraTenant[]> {
     return this.cached("tenants", () =>
       this.ifOffered(
-        async () => unwrapBody<AstraTenant[]>(await this.api("GET", "/v2/streaming/tenants")) ?? [],
+        async () =>
+          arrayAnswer(
+            unwrapBody<AstraTenant[] | null>(await this.api("GET", "/v2/streaming/tenants")),
+            "/v2/streaming/tenants",
+          ),
         [],
       ),
     );
@@ -342,7 +359,11 @@ export class AstraPluginClient implements PluginClient {
   private roles(): Promise<AstraRole[]> {
     return this.cached("roles", () =>
       this.ifOffered(
-        async () => (await this.api<AstraRole[]>("GET", "/v2/organizations/roles")) ?? [],
+        async () =>
+          arrayAnswer(
+            await this.api<AstraRole[] | null>("GET", "/v2/organizations/roles"),
+            "/v2/organizations/roles",
+          ),
         [],
       ),
     );
@@ -352,18 +373,26 @@ export class AstraPluginClient implements PluginClient {
     return this.cached("users", () =>
       this.ifOffered(
         async () =>
-          (await this.api<{ users?: AstraUser[] }>("GET", "/v2/organizations/users"))?.users ?? [],
+          requireListPage(
+            (await this.api<{ users?: AstraUser[] } | undefined>("GET", "/v2/organizations/users"))
+              ?.users,
+            { vendor: "Astra", path: "/v2/organizations/users", key: "users" },
+          ),
         [],
       ),
     );
   }
 
   private clients(): Promise<AstraClient[]> {
+    const path = "/v2/clientIdSecrets";
     return this.cached("clients", () =>
       this.ifOffered(
         async () =>
-          (await this.api<{ clients?: AstraClient[] }>("GET", "/v2/clientIdSecrets"))?.clients ??
-          [],
+          optionalKeyList(
+            await this.api<{ clients?: AstraClient[] }>("GET", path),
+            "clients",
+            path,
+          ),
         [],
       ),
     );
@@ -375,7 +404,11 @@ export class AstraPluginClient implements PluginClient {
       encodeURIComponent(keyspace),
       { findCollections: { options: { explain: true } } },
     );
-    return (res?.status?.collections ?? []).map((c) => (typeof c === "string" ? { name: c } : c));
+    return requireListPage(res?.status?.collections, {
+      vendor: "Astra",
+      path: `/api/json/v1/${keyspace}`,
+      key: "status.collections",
+    }).map((c) => (typeof c === "string" ? { name: c } : c));
   }
 
   // -------------------------------------------------------------------------
@@ -403,15 +436,15 @@ export class AstraPluginClient implements PluginClient {
           });
         }
         case T.region: {
-          const [dbs, links] = await Promise.all([
+          const [dbs, clusters] = await Promise.all([
             this.databases(),
-            this.optional(() => this.privateLinks(), {} as AstraPrivateLinkOrg),
+            this.optional(() => this.privateLinks(), []),
           ]);
           const linkByDc = new Map<
             string,
             { serviceName?: string; allowedPrincipals?: string[] }
           >();
-          for (const c of links.clusters ?? []) {
+          for (const c of clusters) {
             for (const d of c.datacenters ?? [])
               if (d.datacenterID) linkByDc.set(d.datacenterID, d);
           }
@@ -491,11 +524,17 @@ export class AstraPluginClient implements PluginClient {
             (await this.databases()).map((db) => ({
               parentId: `${accountId}:${T.database}:${db.id}`,
               read: async () => {
+                const path = `/v3/databases/${encodeURIComponent(db.id)}/cdc`;
                 const cdc = await this.ifOffered(
-                  () => this.api<AstraCdc>("GET", `/v3/databases/${encodeURIComponent(db.id)}/cdc`),
-                  undefined as AstraCdc | undefined,
+                  () => this.api<AstraCdc | undefined>("GET", path),
+                  { tables: [] },
                 );
-                for (const t of cdc?.tables ?? []) {
+                const tables = requireListPage(cdc?.tables, {
+                  vendor: "Astra",
+                  path,
+                  key: "tables",
+                });
+                for (const t of tables) {
                   if (!t.keyspaceName || !t.tableName) continue;
                   out.push(
                     instance(
@@ -522,9 +561,9 @@ export class AstraPluginClient implements PluginClient {
           return out;
         }
         case T.privateEndpoint: {
-          const links = await this.ownList(() => this.privateLinks(), {} as AstraPrivateLinkOrg);
+          const clusters = await this.ownList(() => this.privateLinks(), []);
           const out: ResourceInstance[] = [];
-          for (const c of links.clusters ?? []) {
+          for (const c of clusters) {
             for (const d of c.datacenters ?? []) {
               for (const e of d.endpoints ?? []) {
                 if (!c.clusterID || !d.datacenterID || !e.endpointID) continue;
@@ -565,10 +604,11 @@ export class AstraPluginClient implements PluginClient {
                     this.api<{ snapshots?: Array<{ id?: string; time?: string }> }>("GET", path),
                   {},
                 );
-                const snaps = withinListCap(res.snapshots ?? [], MAX_SNAPSHOTS_PER_DB, {
-                  vendor: "Astra",
-                  path,
-                })
+                const snaps = withinListCap(
+                  optionalKeyList(res, "snapshots", path),
+                  MAX_SNAPSHOTS_PER_DB,
+                  { vendor: "Astra", path },
+                )
                   .filter((s) => s.id)
                   .sort((a, b) => String(b.time ?? "").localeCompare(String(a.time ?? "")));
                 for (const s of snaps) {
