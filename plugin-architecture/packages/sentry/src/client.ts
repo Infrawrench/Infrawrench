@@ -122,6 +122,9 @@ const ISSUE_ACTIONS: Record<string, ApiBody<operations["updateOrganizationIssues
 
 const UPTIME_INTERVALS = new Set([60, 300, 600, 1200, 1800, 3600]);
 
+/** `max_runtime`'s maximum in the document: 7 days. 40320 is `checkin_margin`'s. */
+const MAX_RUNTIME_MINUTES = 10_080;
+
 function num(raw: string | undefined, label: string): number | undefined {
   const value = (raw ?? "").trim();
   if (!value) return undefined;
@@ -855,8 +858,10 @@ export class SentryClient implements PluginClient {
           let maxRuntime: number | null | undefined;
           if (has("maxRuntime")) {
             const v = num(fields["maxRuntime"], "Max runtime");
-            if (v !== undefined && (v < 1 || v > 40320)) {
-              throw new Error("Sentry plugin: max runtime must be between 1 and 40320 minutes");
+            if (v !== undefined && (v < 1 || v > MAX_RUNTIME_MINUTES)) {
+              throw new Error(
+                `Sentry plugin: max runtime must be between 1 and ${MAX_RUNTIME_MINUTES} minutes`,
+              );
             }
             maxRuntime = v ?? null;
           }
