@@ -274,13 +274,19 @@ export class HoneycombClient implements PluginClient {
 
   private accountAuth(): Promise<HnyAuth> {
     if (!this.configurationKey) return Promise.reject(new Error("no configuration key"));
-    this.authCache ??= v1(this.ctx, this.configurationKey).get("/1/auth");
-    return this.authCache;
+    if (this.authCache) return this.authCache;
+    const read = v1(this.ctx, this.configurationKey).get("/1/auth");
+    this.authCache = read;
+    read.catch(() => {
+      if (this.authCache === read) this.authCache = undefined;
+    });
+    return read;
   }
 
   /** The team slug every `/2/teams/{team}` route needs. */
   private teamSlug(): Promise<string> {
-    this.teamCache ??= (async () => {
+    if (this.teamCache) return this.teamCache;
+    const read = (async () => {
       if (this.ctx.managementToken) {
         const auth = await v2(this.ctx).get("/2/auth");
         const teamId = auth.data?.relationships?.team?.data?.id;
@@ -293,12 +299,17 @@ export class HoneycombClient implements PluginClient {
       if (auth.team?.slug) return auth.team.slug;
       throw new Error("Honeycomb plugin: could not determine the team");
     })();
-    return this.teamCache;
+    this.teamCache = read;
+    read.catch(() => {
+      if (this.teamCache === read) this.teamCache = undefined;
+    });
+    return read;
   }
 
   private async storedSecret(resourceId: string, field: string): Promise<string | null> {
     if (!this.secrets) return null;
-    const value = await this.secrets.getPlaintext(resourceId, field).catch(() => null);
+    // Not caught: reading a broken store as "no key" would list the environment as empty.
+    const value = await this.secrets.getPlaintext(resourceId, field);
     return value && value.trim() ? value.trim() : null;
   }
 
@@ -323,11 +334,20 @@ export class HoneycombClient implements PluginClient {
   }
 
   private async loadEnvironments(accountId: string): Promise<EnvAccess[]> {
+    // A sync prunes what this stops returning, so a failure throws unless it cannot change
+    // the list: a refused configuration key next to a management key, which reads them all.
     const accountAuth = this.configurationKey
-      ? await this.accountAuth().catch(() => undefined)
+      ? await this.accountAuth().catch((err: unknown) => {
+          const status = statusOf(err);
+          if (this.ctx.managementToken && (status === 401 || status === 403)) return undefined;
+          throw err;
+        })
       : undefined;
     const accountEnvSlug = accountAuth ? accountAuth.environment?.slug || "classic" : undefined;
-    const team = await this.teamSlug().catch(() => undefined);
+    const team = await this.teamSlug().catch((err: unknown) => {
+      if (this.ctx.managementToken) throw err;
+      return undefined;
+    });
     const base = {
       region: this.ctx.region.id,
       uiUrl: this.ctx.region.uiUrl,
@@ -1945,7 +1965,8 @@ export class HoneycombClient implements PluginClient {
       const usable = keyType === "ingest" ? `${res.data.id}${secret}` : secret;
       await this.storeSecret(resourceId, API_KEY_SECRET_FIELD, usable).catch(() => undefined);
     }
-    const envs = await this.environments(accountId);
+    // The key exists by now, and the environments only name which one it belongs to.
+    const envs = await this.environments(accountId).catch((): EnvAccess[] => []);
     return mapApiKey(accountId, this.keyRef(res.data), slugsById(envs));
   }
 

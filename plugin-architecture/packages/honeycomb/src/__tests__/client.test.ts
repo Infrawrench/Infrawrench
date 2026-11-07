@@ -705,3 +705,119 @@ describe("paged lists", () => {
     });
   }
 });
+
+describe("a failed read of what the environments hang off", () => {
+  const BOTH = { configurationKey: "cfg", managementKeyId: "hcxmk_1", managementKeySecret: "s" };
+  const ENV_LIST = {
+    data: [{ id: "hcaen_1", attributes: { name: "Production", slug: "production" } }],
+    links: { next: null },
+  };
+  const boom = { status: 500, body: { error: "boom" } };
+
+  it("fails the list rather than read a broken /1/auth as no environments", async () => {
+    const { c } = client((): Reply => boom);
+    await expect(c.listResources("environment", ACCOUNT)).rejects.toThrow(/boom/);
+    await expect(c.listResources("trigger", ACCOUNT)).rejects.toThrow(/boom/);
+  });
+
+  it("fails the list when the account's only key is refused", async () => {
+    const { c } = client((): Reply => ({ status: 401, body: { error: "unknown key" } }));
+    await expect(c.listResources("environment", ACCOUNT)).rejects.toThrow(/unknown key/);
+  });
+
+  it("fails the list rather than drop to one environment on a broken /2/auth", async () => {
+    const { c } = client((url): Reply => {
+      if (url.pathname === "/1/auth") return { body: AUTH_V1 };
+      return boom;
+    }, BOTH);
+    await expect(c.listResources("environment", ACCOUNT)).rejects.toThrow(/boom/);
+  });
+
+  it("fails the list rather than read a broken /1/auth as not connected", async () => {
+    const { c } = client((url): Reply => {
+      if (url.pathname === "/2/auth") return { body: AUTH_V2 };
+      if (url.pathname === "/2/teams/acme/environments") return { body: ENV_LIST };
+      return boom;
+    }, BOTH);
+    await expect(c.listResources("environment", ACCOUNT)).rejects.toThrow(/boom/);
+  });
+
+  it("still lists through the management key when only the configuration key is refused", async () => {
+    const { c } = client((url): Reply => {
+      if (url.pathname === "/1/auth") return { status: 401, body: { error: "unknown key" } };
+      if (url.pathname === "/2/auth") return { body: AUTH_V2 };
+      if (url.pathname === "/2/teams/acme/environments") return { body: ENV_LIST };
+      return { status: 404 };
+    }, BOTH);
+    const envs = await c.listResources("environment", ACCOUNT);
+    expect(envs.map((e) => [e.externalId, e.fields["connected"]])).toEqual([["production", false]]);
+  });
+
+  it("does not keep a failure for the life of the client", async () => {
+    let up = false;
+    const { c } = client((url): Reply => {
+      if (!up) return boom;
+      if (url.pathname === "/1/auth") return { body: AUTH_V1 };
+      return { status: 404 };
+    });
+    await expect(c.listResources("environment", ACCOUNT)).rejects.toThrow(/boom/);
+    up = true;
+    expect(await c.listResources("environment", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("does not keep a failed team read either", async () => {
+    let up = false;
+    const { c } = client(
+      (url): Reply => {
+        if (url.pathname === "/2/auth") return up ? { body: AUTH_V2 } : boom;
+        if (url.pathname === "/2/teams/acme/environments") return { body: ENV_LIST };
+        return { status: 404 };
+      },
+      { managementKeyId: "hcxmk_1", managementKeySecret: "s" },
+    );
+    await expect(c.listResources("environment", ACCOUNT)).rejects.toThrow(/boom/);
+    up = true;
+    expect(await c.listResources("environment", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("fails the list rather than read a broken secret store as no stored key", async () => {
+    const secrets = memorySecrets();
+    secrets.getPlaintext = async () => {
+      throw new Error("secret store down");
+    };
+    const { c } = client(
+      (url): Reply => {
+        if (url.pathname === "/1/auth") return { body: AUTH_V1 };
+        return { status: 404 };
+      },
+      { configurationKey: "cfg" },
+      secrets,
+    );
+    await expect(c.listResources("environment", ACCOUNT)).rejects.toThrow(/secret store down/);
+  });
+
+  it("does not fail a key it has already created over naming its environment", async () => {
+    const { c } = client((url, method): Reply => {
+      if (url.pathname === "/2/auth") return { body: AUTH_V2 };
+      if (url.pathname === "/2/teams/acme/api-keys" && method === "POST") {
+        return {
+          status: 201,
+          body: {
+            data: {
+              id: "hcxik_new",
+              attributes: { name: "k", key_type: "ingest", secret: "minted" },
+              relationships: { environment: { data: { id: "hcaen_1" } } },
+            },
+          },
+        };
+      }
+      return boom;
+    }, BOTH);
+    const created = await c.createResource!("api-key", ACCOUNT, {
+      name: "k",
+      keyType: "ingest",
+      environment: "hcaen_1",
+    });
+    expect(JSON.stringify(created)).toContain("hcxik_new");
+  });
+});
