@@ -1,6 +1,6 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
-import { isStatus, type VastApi } from "./api.js";
+import { collectPages, isStatus, type VastApi } from "./api.js";
 import type { VChargeEntry } from "./types.js";
 
 /**
@@ -104,13 +104,20 @@ export function mapCharges(entries: VChargeEntry[], range: CostFetchRange): Cost
 export async function fetchVastCostData(api: VastApi, range: CostFetchRange): Promise<CostRow[]> {
   let entries: VChargeEntry[];
   try {
-    entries = await api.paginate<VChargeEntry>("/api/v0/charges/", "results", {
-      select_filters: {
-        day: { gte: dayStart(range.fromDate), lte: dayStart(range.toDate) + DAY - 1 },
-      },
-      format: "table",
-      limit: 100,
-    });
+    entries = await collectPages(
+      (after) =>
+        api.get("/api/v0/charges/", {
+          query: {
+            select_filters: JSON.stringify({
+              day: { gte: dayStart(range.fromDate), lte: dayStart(range.toDate) + DAY - 1 },
+            }),
+            format: "table",
+            limit: 100,
+            ...after,
+          },
+        }),
+      (page) => page?.results,
+    );
   } catch (e) {
     if (isStatus(e, 401, 403)) {
       throw new CostSetupError(

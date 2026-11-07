@@ -182,7 +182,7 @@ export function mapVolume(v: VVolume, accountId: string): ResourceInstance {
 }
 
 /** First token of a key plus its comment, which is how people recognise their keys. */
-export function sshKeyName(key: string, id: number): string {
+export function sshKeyName(key: string, id: number | undefined): string {
   const parts = key.trim().split(/\s+/);
   const comment = parts.slice(2).join(" ");
   return comment || `${parts[0] ?? "key"} #${id}`;
@@ -223,10 +223,10 @@ export function formatSearchQuery(q: unknown): string {
   if (!q) return "";
   if (typeof q === "string") return q;
   if (typeof q !== "object") return String(q);
-  return Object.entries(q as Record<string, unknown>)
-    .map(([k, v]) => {
+  return Object.entries(q)
+    .map(([k, v]: [string, unknown]) => {
       if (v && typeof v === "object") {
-        const [op, val] = Object.entries(v as Record<string, unknown>)[0] ?? ["eq", ""];
+        const [op, val]: [string, unknown] = Object.entries(v)[0] ?? ["eq", ""];
         const sym: Record<string, string> = {
           eq: "=",
           neq: "!=",

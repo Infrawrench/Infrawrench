@@ -141,8 +141,8 @@ export async function buildCreateConfig(
   switch (typeId) {
     case "instance": {
       const [offers, templates, volumes] = await Promise.all([
-        client.searchOffers().catch(() => [] as VOffer[]),
-        client.templatesForPicker().catch(() => [] as VTemplate[]),
+        client.searchOffers().catch((): VOffer[] => []),
+        client.templatesForPicker().catch((): VTemplate[] => []),
         client.raw.volumes().catch(() => []),
       ]);
       return {
@@ -232,7 +232,7 @@ export async function buildCreateConfig(
         ],
       };
     case "volume": {
-      const offers = await client.searchVolumeOffers().catch(() => [] as VVolumeOffer[]);
+      const offers = await client.searchVolumeOffers().catch((): VVolumeOffer[] => []);
       return {
         fields: [
           text("name", "Name", { required: false }),
@@ -265,7 +265,7 @@ export async function buildCreateConfig(
       const underEndpoint = parentResourceId?.includes(":serverless-endpoint:") === true;
       const [endpoints, templates] = await Promise.all([
         underEndpoint ? Promise.resolve([]) : client.raw.endpoints().catch(() => []),
-        client.templatesForPicker().catch(() => [] as VTemplate[]),
+        client.templatesForPicker().catch((): VTemplate[] => []),
       ]);
       const fields: CreateFieldConfig[] = [];
       if (!underEndpoint) {

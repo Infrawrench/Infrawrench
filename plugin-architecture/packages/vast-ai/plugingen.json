@@ -1,0 +1,239 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs.vast.ai/api-reference/openapi.yaml",
+  "paths": {
+    "/api/v0/asks/{id}": ["put"],
+    "/api/v0/bundles": ["post"],
+    "/api/v0/charges": ["get"],
+    "/api/v0/deployment/{id}/start": ["post"],
+    "/api/v0/deployment/{id}/stop": ["post"],
+    "/api/v0/deployments": ["get"],
+    "/api/v0/endptjobs": ["get", "post"],
+    "/api/v0/endptjobs/{id}": ["put", "delete"],
+    "/api/v0/instances/bid_price/{id}": ["put"],
+    "/api/v0/instances/reboot/{id}": ["put"],
+    "/api/v0/instances/recycle/{id}": ["put"],
+    "/api/v0/instances/{id}": ["get", "put", "delete"],
+    "/api/v0/secrets": ["get", "post", "put", "delete"],
+    "/api/v0/ssh": ["get", "post"],
+    "/api/v0/ssh/{id}": ["put", "delete"],
+    "/api/v0/template": ["get", "post", "put", "delete"],
+    "/api/v0/users/current": ["get"],
+    "/api/v0/volumes": ["get", "put", "delete"],
+    "/api/v0/volumes/search": ["post"],
+    "/api/v0/workergroups": ["get", "post"],
+    "/api/v0/workergroups/{id}": ["put", "delete"],
+    "/api/v1/instances": ["get"]
+  },
+  "patches": [
+    {
+      "pointer": "/paths/~1api~1v0~1asks~1{id}/put/requestBody/content/application~1json/schema/required",
+      "value": [],
+      "why": "Its own description of template_hash_id says the image is optional with a template, and the plugin sends none then."
+    },
+    {
+      "pointer": "/paths/~1api~1v0~1asks~1{id}/put/requestBody/content/application~1json/schema/properties/client_id",
+      "value": {
+        "type": "string"
+      },
+      "why": "Missing here; vast-cli's create instance sends client_id: me, as the document's own bid_price body does."
+    },
+    {
+      "pointer": "/paths/~1api~1v0~1asks~1{id}/put/requestBody/content/application~1json/schema/properties/env",
+      "value": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "why": "The document only allows Docker flags as a string. vast-cli sends parse_env's object, and so does the plugin."
+    },
+    {
+      "pointer": "/paths/~1api~1v0~1asks~1{id}/put/requestBody/content/application~1json/schema/properties/runtype",
+      "value": {
+        "type": "string"
+      },
+      "why": "The launch mode is sent as the create form gave it."
+    },
+    {
+      "pointer": "/paths/~1api~1v0~1bundles/post/requestBody/content/application~1json/schema/properties/external",
+      "value": {
+        "type": "object",
+        "properties": {
+          "eq": {
+            "type": "boolean"
+          }
+        }
+      },
+      "why": "Typed as an object with no properties, which generates as never accepting a filter."
+    },
+    {
+      "pointer": "/paths/~1api~1v0~1bundles/post/requestBody/content/application~1json/schema/properties/id",
+      "value": {
+        "type": "object",
+        "properties": {
+          "eq": {
+            "type": "integer"
+          }
+        }
+      },
+      "why": "Typed as an object with no properties, which generates as never accepting a filter."
+    },
+    {
+      "pointer": "/paths/~1api~1v0~1volumes~1search/post/requestBody/content/application~1json/schema/properties",
+      "value": {
+        "limit": {
+          "type": "integer"
+        },
+        "verified": {
+          "type": "object",
+          "properties": {
+            "eq": {
+              "type": "boolean"
+            }
+          }
+        },
+        "external": {
+          "type": "object",
+          "properties": {
+            "eq": {
+              "type": "boolean"
+            }
+          }
+        },
+        "disk_space": {
+          "type": "object",
+          "properties": {
+            "gte": {
+              "type": "number"
+            }
+          }
+        },
+        "order": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "why": "The document only lists limit. This search takes the same filters as /bundles, as vast-cli's search volumes does."
+    },
+    {
+      "pointer": "/paths/~1api~1v0~1volumes/get/parameters",
+      "value": [
+        {
+          "name": "owner",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "type",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "why": "The document lists no parameters; vast-cli's show volumes sends owner and type."
+    },
+    {
+      "pointer": "/paths/~1api~1v0~1volumes/put/requestBody/content/application~1json/schema/properties/name",
+      "value": {
+        "type": "string"
+      },
+      "why": "Missing here; vast-cli's create volume sends it."
+    },
+    {
+      "pointer": "/paths/~1api~1v0~1volumes/delete/parameters",
+      "value": [
+        {
+          "name": "id",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "why": "The document only has the body; vast-cli's delete volume sends the query parameter, and the plugin sends both."
+    },
+    {
+      "pointer": "/paths/~1api~1v0~1template/put",
+      "value": {
+        "operationId": "updateTemplate",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["hash_id"],
+                "properties": {
+                  "hash_id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string"
+                  },
+                  "desc": {
+                    "type": "string"
+                  },
+                  "recommended_disk_space": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document only has PUT /api/v1/template. This is the route the plugin calls today."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1instances/get/responses/200/content/application~1json/schema/properties/instances/items/properties/volume_info/items",
+      "value": {
+        "type": "object",
+        "properties": {
+          "volume_id": {
+            "type": "integer"
+          },
+          "mount_path": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "An object with no properties generates as having none, and the instance's volume list reads volume_id."
+    }
+  ]
+}

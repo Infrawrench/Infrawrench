@@ -14,8 +14,15 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { buildCostEstimate, CreditAccessError } from "@infrawrench/plugin-base";
-import { isStatus, VastApi } from "./api.js";
+import {
+  buildCostEstimate,
+  CreditAccessError,
+  pathEncode,
+  unencodedSegment,
+} from "@infrawrench/plugin-base";
+import type { ApiBody } from "@infrawrench/plugin-base";
+import { collectPages, createVastApi, isStatus, type VastApi } from "./api.js";
+import type { operations } from "./api-types.gen.js";
 import { fetchVastCostData } from "./cost-data.js";
 import { buildCreateConfig, NONE } from "./create-config.js";
 import { buildDockerFlags, buildEnvObject } from "./docker-env.js";
@@ -45,7 +52,7 @@ import type {
 const HOURS_PER_MONTH = 730;
 const CACHE_TTL_MS = 60_000;
 
-function str(v: unknown): string {
+function str(v: string | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
 }
 
@@ -61,13 +68,16 @@ function num(v: string | undefined, fallback?: number): number | undefined {
 }
 
 function notFound(typeId: string, id: string): Error {
-  const err = new Error(`Vast.ai plugin: ${typeId} ${id} not found`);
-  (err as Error & { status: number }).status = 404;
-  return err;
+  return Object.assign(new Error(`Vast.ai plugin: ${typeId} ${id} not found`), { status: 404 });
+}
+
+/** The document says a list; this has always taken a wrapped one as well. */
+function sshKeysOf(res: VSshKey[] | { ssh_keys?: VSshKey[] }): VSshKey[] {
+  return Array.isArray(res) ? res : (res?.ssh_keys ?? []);
 }
 
 /** Default offer search: verified, rentable hosts, best-scored first. */
-export const OFFER_QUERY = {
+export const OFFER_QUERY: ApiBody<operations["searchOffers"]> = {
   verified: { eq: true },
   rentable: { eq: true },
   rented: { eq: false },
@@ -93,13 +103,13 @@ export class VastClient implements PluginClient {
   ) {
     const apiKey = str(credentials["apiKey"]);
     if (!apiKey) throw new Error("Vast.ai plugin: missing apiKey credential");
-    this.api = new VastApi(apiKey, credentials["caCert"] ?? "", services);
+    this.api = createVastApi(apiKey, credentials["caCert"] ?? "", services);
     this.resourceTypes = resourceTypes;
   }
 
   user(): Promise<VUser> {
     if (!this.userCache || Date.now() - this.userCache.at > CACHE_TTL_MS) {
-      const value = this.api.request<VUser>("/api/v0/users/current/");
+      const value: Promise<VUser> = this.api.get("/api/v0/users/current/");
       value.catch(() => (this.userCache = undefined));
       this.userCache = { at: Date.now(), value };
     }
@@ -107,31 +117,31 @@ export class VastClient implements PluginClient {
   }
 
   readonly raw = {
-    instances: () => this.api.paginate<VInstance>("/api/v1/instances/", "instances", { limit: 25 }),
-    volumes: async () =>
-      (
-        await this.api.request<{ volumes?: VVolume[] }>("/api/v0/volumes/", {
-          query: { owner: "me", type: "all_volume" },
-        })
-      )?.volumes ?? [],
+    instances: () =>
+      collectPages(
+        (after) => this.api.get("/api/v1/instances/", { query: { limit: 25, ...after } }),
+        (page) => page?.instances,
+      ),
+    volumes: async (): Promise<VVolume[]> =>
+      (await this.api.get("/api/v0/volumes/", { query: { owner: "me", type: "all_volume" } }))
+        ?.volumes ?? [],
     sshKeys: async () => {
-      const res = await this.api.request<VSshKey[] | { ssh_keys?: VSshKey[] }>("/api/v0/ssh/");
-      const list = Array.isArray(res) ? res : (res?.ssh_keys ?? []);
+      const list = sshKeysOf(await this.api.get("/api/v0/ssh/"));
       return list.filter((k) => !k.deleted_at);
     },
-    endpoints: async () =>
-      (await this.api.request<{ results?: VEndpoint[] }>("/api/v0/endptjobs/"))?.results ?? [],
-    workergroups: async () =>
-      (await this.api.request<{ results?: VWorkergroup[] }>("/api/v0/workergroups/"))?.results ??
-      [],
+    endpoints: async () => (await this.api.get("/api/v0/endptjobs/"))?.results ?? [],
+    workergroups: async () => (await this.api.get("/api/v0/workergroups/"))?.results ?? [],
   };
 
   /** Templates you created. */
   async ownTemplates(): Promise<VTemplate[]> {
     const me = await this.user();
     if (!me?.id) return [];
-    const res = await this.api.request<{ templates?: VTemplate[] }>("/api/v0/template/", {
-      query: { select_filters: { creator_id: { eq: me.id } }, select_cols: ["*"] },
+    const res = await this.api.get("/api/v0/template/", {
+      query: {
+        select_filters: JSON.stringify({ creator_id: { eq: me.id } }),
+        select_cols: JSON.stringify(["*"]),
+      },
     });
     return res?.templates ?? [];
   }
@@ -139,21 +149,23 @@ export class VastClient implements PluginClient {
   /** Your templates first, then Vast's recommended ones. */
   async templatesForPicker(): Promise<VTemplate[]> {
     const [own, recommended] = await Promise.all([
-      this.ownTemplates().catch(() => [] as VTemplate[]),
+      this.ownTemplates().catch((): VTemplate[] => []),
       this.api
-        .request<{ templates?: VTemplate[] }>("/api/v0/template/", {
-          query: { select_filters: { recommended: { eq: true } }, select_cols: ["*"] },
+        .get("/api/v0/template/", {
+          query: {
+            select_filters: JSON.stringify({ recommended: { eq: true } }),
+            select_cols: JSON.stringify(["*"]),
+          },
         })
         .then((r) => (r?.templates ?? []).map((t) => ({ ...t, recommended: true })))
-        .catch(() => [] as VTemplate[]),
+        .catch((): VTemplate[] => []),
     ]);
     const seen = new Set(own.map((t) => t.id));
     return [...own, ...recommended.filter((t) => !seen.has(t.id))];
   }
 
-  async searchOffers(extra: Record<string, unknown> = {}): Promise<VOffer[]> {
-    const res = await this.api.request<{ offers?: VOffer[] | VOffer }>("/api/v0/bundles/", {
-      method: "POST",
+  async searchOffers(extra: ApiBody<operations["searchOffers"]> = {}): Promise<VOffer[]> {
+    const res: { offers?: VOffer[] | VOffer } = await this.api.post("/api/v0/bundles/", {
       body: { ...OFFER_QUERY, ...extra },
     });
     const offers = res?.offers;
@@ -161,8 +173,7 @@ export class VastClient implements PluginClient {
   }
 
   async searchVolumeOffers(): Promise<VVolumeOffer[]> {
-    const res = await this.api.request<{ offers?: VVolumeOffer[] }>("/api/v0/volumes/search/", {
-      method: "POST",
+    const res = await this.api.post("/api/v0/volumes/search/", {
       body: {
         verified: { eq: true },
         external: { eq: false },
@@ -192,9 +203,7 @@ export class VastClient implements PluginClient {
         case "workergroup":
           return (await this.raw.workergroups()).map((w) => mapWorkergroup(w, accountId));
         case "env-var": {
-          const res = await this.api.request<{ secrets?: Record<string, unknown> }>(
-            "/api/v0/secrets/",
-          );
+          const res = await this.api.get("/api/v0/secrets/");
           // Only the names: values are secrets and never enter inventory.
           return Object.keys(res?.secrets ?? {})
             .sort()
@@ -214,9 +223,7 @@ export class VastClient implements PluginClient {
     return attempt(async () => {
       const id = externalOf(resourceId);
       if (typeId === "instance") {
-        const res = await this.api.request<{ instances?: VInstance | null }>(
-          `/api/v0/instances/${encodeURIComponent(id)}/`,
-        );
+        const res = await this.api.get(`/api/v0/instances/${pathEncode(id)}/`);
         if (!res?.instances) throw notFound(typeId, id);
         return mapInstance(res.instances, accountId);
       }
@@ -248,7 +255,10 @@ export class VastClient implements PluginClient {
     });
   }
 
-  instanceBody(fields: Record<string, string>, minBid?: number): Record<string, unknown> {
+  instanceBody(
+    fields: Record<string, string>,
+    minBid?: number,
+  ): ApiBody<operations["createInstance"]> {
     const template = picked(fields["templateHash"]);
     const image = str(fields["image"]);
     if (!template && !image) {
@@ -259,7 +269,7 @@ export class VastClient implements PluginClient {
     const onstart = fields["onstart"] ?? "";
     // Mirrors `vastai create instance`: with a template the image and launch
     // mode come from the template unless overridden.
-    const body: Record<string, unknown> = {
+    const body: ApiBody<operations["createInstance"]> = {
       client_id: "me",
       disk: num(fields["disk"], 32),
       ...(image ? { image } : {}),
@@ -284,7 +294,7 @@ export class VastClient implements PluginClient {
       const price = bid > 0 ? bid : minBid;
       if (!price)
         throw new Error("Vast.ai plugin: enter a bid price for an interruptible instance");
-      body["price"] = price;
+      body.price = price;
     }
     return body;
   }
@@ -309,13 +319,9 @@ export class VastClient implements PluginClient {
             });
             minBid = offer?.min_bid;
           }
-          const res = await this.api.request<{ new_contract?: number }>(
-            `/api/v0/asks/${offerId}/`,
-            {
-              method: "PUT",
-              body: this.instanceBody(fields, minBid),
-            },
-          );
+          const res = await this.api.put(`/api/v0/asks/${pathEncode(offerId)}/`, {
+            body: this.instanceBody(fields, minBid),
+          });
           const id = res?.new_contract;
           if (!id)
             throw new Error("Vast.ai plugin: the offer was accepted but no instance id came back");
@@ -331,8 +337,7 @@ export class VastClient implements PluginClient {
         case "template": {
           const runtype = str(fields["runtype"]) || "ssh_direct";
           const env = buildDockerFlags(fields["env"], fields["ports"]);
-          const res = await this.api.request<{ template?: VTemplate }>("/api/v0/template/", {
-            method: "POST",
+          const res = await this.api.post("/api/v0/template/", {
             body: {
               name: str(fields["name"]),
               image: str(fields["image"]),
@@ -371,15 +376,14 @@ export class VastClient implements PluginClient {
           const offerId = Number(str(fields["offerId"]));
           if (!offerId) throw new Error("Vast.ai plugin: choose a host for the volume");
           const name = str(fields["name"]);
-          await this.api.request("/api/v0/volumes/", {
-            method: "PUT",
+          await this.api.put("/api/v0/volumes/", {
             body: {
               id: offerId,
               size: Math.round(num(fields["size"], 15) ?? 15),
               ...(name ? { name } : {}),
             },
           });
-          const all = await this.raw.volumes().catch(() => [] as VVolume[]);
+          const all = await this.raw.volumes().catch((): VVolume[] => []);
           const created =
             (name && all.find((v) => v.label === name)) ||
             [...all].sort((a, b) => (b.start_date ?? 0) - (a.start_date ?? 0))[0];
@@ -390,15 +394,11 @@ export class VastClient implements PluginClient {
         case "ssh-key": {
           const key = str(fields["publicKey"]);
           if (!key) throw new Error("Vast.ai plugin: paste or pick a public key");
-          const res = await this.api.request<{ key?: VSshKey }>("/api/v0/ssh/", {
-            method: "POST",
-            body: { ssh_key: key },
-          });
+          const res = await this.api.post("/api/v0/ssh/", { body: { ssh_key: key } });
           return mapSshKey(res?.key ?? { id: 0, key }, accountId);
         }
         case "serverless-endpoint": {
-          const res = await this.api.request<{ result?: number }>("/api/v0/endptjobs/", {
-            method: "POST",
+          const res = await this.api.post("/api/v0/endptjobs/", {
             body: this.endpointBody(fields, true),
           });
           return mapEndpoint(
@@ -411,8 +411,7 @@ export class VastClient implements PluginClient {
             ? externalOf(parentResourceId)
             : str(fields["endpointId"]);
           const search = str(fields["searchQuery"]);
-          const res = await this.api.request<{ id?: number }>("/api/v0/workergroups/", {
-            method: "POST",
+          const res = await this.api.post("/api/v0/workergroups/", {
             body: {
               endpoint_id: Number(endpointId),
               template_hash: str(fields["templateHash"]),
@@ -432,8 +431,7 @@ export class VastClient implements PluginClient {
         }
         case "env-var": {
           const key = str(fields["key"]).toUpperCase();
-          await this.api.request("/api/v0/secrets/", {
-            method: "POST",
+          await this.api.post("/api/v0/secrets/", {
             body: { key, value: fields["value"] ?? "" },
           });
           return mapEnvVar(key, accountId);
@@ -444,13 +442,20 @@ export class VastClient implements PluginClient {
     });
   }
 
-  private endpointBody(fields: Record<string, string>, create: boolean): Record<string, unknown> {
-    const body: Record<string, unknown> = {};
-    const set = (wire: string, key: string, fallback?: number) => {
+  private endpointBody(
+    fields: Record<string, string>,
+    create: boolean,
+  ): ApiBody<operations["createEndpoint"]> {
+    const body: ApiBody<operations["createEndpoint"]> = {};
+    const set = (
+      wire: "max_workers" | "cold_workers" | "min_load" | "target_util" | "cold_mult",
+      key: string,
+      fallback?: number,
+    ) => {
       const v = num(fields[key], create ? fallback : undefined);
       if (v !== undefined) body[wire] = v;
     };
-    if (fields["name"] !== undefined) body["endpoint_name"] = str(fields["name"]);
+    if (fields["name"] !== undefined) body.endpoint_name = str(fields["name"]);
     set("max_workers", "maxWorkers", 20);
     set("cold_workers", "coldWorkers", 5);
     set("min_load", "minLoad", 10);
@@ -467,19 +472,17 @@ export class VastClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       const raw = externalOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       switch (typeId) {
         case "instance": {
           if (fields["label"] !== undefined) {
-            await this.api.request(`/api/v0/instances/${id}/`, {
-              method: "PUT",
+            await this.api.put(`/api/v0/instances/${id}/`, {
               body: { label: str(fields["label"]) },
             });
           }
           const bid = num(fields["bidPrice"]);
           if (bid !== undefined && bid > 0) {
-            await this.api.request(`/api/v0/instances/bid_price/${id}/`, {
-              method: "PUT",
+            await this.api.put(`/api/v0/instances/bid_price/${id}/`, {
               body: { client_id: "me", price: bid },
             });
           }
@@ -487,19 +490,19 @@ export class VastClient implements PluginClient {
         }
         case "template": {
           const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-          const body: Record<string, unknown> = { hash_id: String(current.fields["hashId"] ?? "") };
-          if (fields["name"] !== undefined) body["name"] = str(fields["name"]);
-          if (fields["image"] !== undefined) body["image"] = str(fields["image"]);
-          if (fields["description"] !== undefined) body["desc"] = str(fields["description"]);
-          if (fields["diskGb"] !== undefined)
-            body["recommended_disk_space"] = num(fields["diskGb"]);
-          await this.api.request("/api/v0/template/", { method: "PUT", body });
+          const body: ApiBody<operations["updateTemplate"]> = {
+            hash_id: String(current.fields["hashId"] ?? ""),
+          };
+          if (fields["name"] !== undefined) body.name = str(fields["name"]);
+          if (fields["image"] !== undefined) body.image = str(fields["image"]);
+          if (fields["description"] !== undefined) body.desc = str(fields["description"]);
+          if (fields["diskGb"] !== undefined) body.recommended_disk_space = num(fields["diskGb"]);
+          await this.api.put("/api/v0/template/", { body });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "ssh-key": {
           if (fields["publicKey"] !== undefined) {
-            await this.api.request(`/api/v0/ssh/${id}/`, {
-              method: "PUT",
+            await this.api.put(`/api/v0/ssh/${id}/`, {
               body: { ssh_key: str(fields["publicKey"]) },
             });
           }
@@ -508,30 +511,25 @@ export class VastClient implements PluginClient {
         case "serverless-endpoint": {
           const body = this.endpointBody(fields, false);
           if (Object.keys(body).length) {
-            await this.api.request(`/api/v0/endptjobs/${id}/`, { method: "PUT", body });
+            await this.api.put(`/api/v0/endptjobs/${id}/`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "workergroup": {
-          const body: Record<string, unknown> = {};
-          if (fields["searchQuery"] !== undefined)
-            body["search_params"] = str(fields["searchQuery"]);
-          if (fields["gpuRamGb"] !== undefined) body["gpu_ram"] = num(fields["gpuRamGb"]);
-          if (fields["testWorkers"] !== undefined)
-            body["test_workers"] = num(fields["testWorkers"]);
-          if (fields["launchArgs"] !== undefined) body["launch_args"] = str(fields["launchArgs"]);
+          const body: ApiBody<operations["updateWorkergroup"]> = {};
+          if (fields["searchQuery"] !== undefined) body.search_params = str(fields["searchQuery"]);
+          if (fields["gpuRamGb"] !== undefined) body.gpu_ram = num(fields["gpuRamGb"]);
+          if (fields["testWorkers"] !== undefined) body.test_workers = num(fields["testWorkers"]);
+          if (fields["launchArgs"] !== undefined) body.launch_args = str(fields["launchArgs"]);
           if (Object.keys(body).length) {
-            await this.api.request(`/api/v0/workergroups/${id}/`, { method: "PUT", body });
+            await this.api.put(`/api/v0/workergroups/${id}/`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "env-var": {
           const value = fields["value"];
           if (value) {
-            await this.api.request("/api/v0/secrets/", {
-              method: "PUT",
-              body: { key: raw, value },
-            });
+            await this.api.put("/api/v0/secrets/", { body: { key: raw, value } });
           }
           return mapEnvVar(raw, accountId);
         }
@@ -544,37 +542,33 @@ export class VastClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const raw = externalOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       switch (typeId) {
         case "instance":
-          await this.api.request(`/api/v0/instances/${id}/`, { method: "DELETE" });
+          await this.api.delete(`/api/v0/instances/${id}/`);
           return;
         case "template": {
-          await this.api.request("/api/v0/template/", {
-            method: "DELETE",
-            body: { template_id: Number(raw) },
-          });
+          await this.api.delete("/api/v0/template/", { body: { template_id: Number(raw) } });
           return;
         }
         case "volume":
           // The CLI sends the id as a query parameter, the spec as a body; send both.
-          await this.api.request("/api/v0/volumes/", {
-            method: "DELETE",
+          await this.api.delete("/api/v0/volumes/", {
             query: { id: raw },
             body: { id: Number(raw) },
           });
           return;
         case "ssh-key":
-          await this.api.request(`/api/v0/ssh/${id}/`, { method: "DELETE" });
+          await this.api.delete(`/api/v0/ssh/${id}/`);
           return;
         case "serverless-endpoint":
-          await this.api.request(`/api/v0/endptjobs/${id}/`, { method: "DELETE" });
+          await this.api.delete(`/api/v0/endptjobs/${id}/`);
           return;
         case "workergroup":
-          await this.api.request(`/api/v0/workergroups/${id}/`, { method: "DELETE" });
+          await this.api.delete(`/api/v0/workergroups/${id}/`);
           return;
         case "env-var":
-          await this.api.request("/api/v0/secrets/", { method: "DELETE", body: { key: raw } });
+          await this.api.delete("/api/v0/secrets/", { body: { key: raw } });
           return;
         default:
           void accountId;
@@ -591,36 +585,36 @@ export class VastClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const raw = externalOf(resourceId);
-      const id = encodeURIComponent(raw);
+      const id = pathEncode(raw);
       if (typeId === "instance") {
         switch (actionId) {
           case "start":
           case "stop":
-            await this.api.request(`/api/v0/instances/${id}/`, {
-              method: "PUT",
+            await this.api.put(`/api/v0/instances/${id}/`, {
               body: { state: actionId === "start" ? "running" : "stopped" },
             });
             return;
           case "reboot":
+            await this.api.put(`/api/v0/instances/reboot/${id}/`);
+            return;
           case "recycle":
-            await this.api.request(`/api/v0/instances/${actionId}/${id}/`, { method: "PUT" });
+            await this.api.put(`/api/v0/instances/recycle/${id}/`);
             return;
         }
       }
       if (typeId === "serverless-endpoint" && (actionId === "start" || actionId === "stop")) {
         // Start/stop is addressed by deployment, which points at its endpoint.
-        const res = await this.api.request<{
-          deployments?: Array<{ id: number; endpoint_id?: number | null }>;
-        }>("/api/v0/deployments/");
+        const res = await this.api.get("/api/v0/deployments/");
         const deployment = (res?.deployments ?? []).find((d) => String(d.endpoint_id) === raw);
         if (!deployment) {
           throw new Error(
             "Vast.ai plugin: this endpoint has no deployment, so Vast cannot start or stop it as a whole. Scale it with Max Workers instead.",
           );
         }
-        await this.api.request(`/api/v0/deployment/${deployment.id}/${actionId}/`, {
-          method: "POST",
-        });
+        const deploymentId = unencodedSegment(String(deployment.id));
+        await (actionId === "start"
+          ? this.api.post(`/api/v0/deployment/${deploymentId}/start/`)
+          : this.api.post(`/api/v0/deployment/${deploymentId}/stop/`));
         return;
       }
       throw new Error(`Vast.ai plugin: action "${actionId}" is not supported for "${typeId}"`);
