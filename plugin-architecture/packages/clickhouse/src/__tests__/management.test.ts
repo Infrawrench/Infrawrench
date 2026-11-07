@@ -295,7 +295,13 @@ describe("backups and ClickPipes", () => {
       if (path === `${ORG}/services`) return respond({ result: [SERVICE] });
       return respond("forbidden", 403);
     }) as typeof fetch);
-    expect(await client().listResources("ch-clickpipe", ACCOUNT)).toEqual([]);
+    const hook = Symbol.for("infrawrench.unreadListPart");
+    Reflect.set(globalThis, hook, () => true);
+    try {
+      expect(await client().listResources("ch-clickpipe", ACCOUNT)).toEqual([]);
+    } finally {
+      Reflect.deleteProperty(globalThis, hook);
+    }
   });
 
   it("lists ClickPipes, derives the source kind, and drives state and scaling", async () => {

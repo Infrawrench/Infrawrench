@@ -318,7 +318,11 @@ export class ClickHouseClient implements PluginClient {
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
       const read = await this.readType(typeId, accountId);
-      if (read.unread) reportUnreadListPart(read.unread);
+      // A host that keeps no track (the desktop) answers false, and there a refusal shows.
+      // A service that is not up is left unread there too: a query would wake and bill it.
+      if (read.unread && !reportUnreadListPart(read.unread) && read.refusal !== undefined) {
+        throw read.refusal;
+      }
       return read.rows;
     });
   }

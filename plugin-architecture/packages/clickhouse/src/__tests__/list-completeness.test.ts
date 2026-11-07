@@ -253,6 +253,15 @@ describe("backups and ClickPipes, per service", () => {
     expect(unread).toEqual([{ parentResourceIds: [svc("a"), svc("b")] }]);
   });
 
+  it("shows one service's refusal where the host keeps no track", async () => {
+    serve({
+      ...services,
+      [pipes("a")]: { body: { result: [{ id: "p" }] } },
+      [pipes("b")]: { status: 403, body: "no" },
+    });
+    await expect(client().listResources("ch-clickpipe", ACCOUNT)).rejects.toThrow("failed: 403");
+  });
+
   it("reads a service that has gone, mid-deletion, as having none", async () => {
     serve({
       ...services,
@@ -290,6 +299,11 @@ describe("a credential refused a whole type", () => {
     const { value, unread } = await inListScope(() => client().listResources(typeId, ACCOUNT));
     expect(value).toEqual([]);
     expect(unread).toEqual([{ idPrefixes: [""] }]);
+  });
+
+  it("shows a refused type where the host keeps no track", async () => {
+    serve({ [`${ORG}/keys`]: { status: 403, body: "no" } });
+    await expect(client().listResources("ch-api-key", ACCOUNT)).rejects.toThrow("failed: 403");
   });
 
   it("fails on a key the provider rejects outright", async () => {
