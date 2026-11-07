@@ -17,7 +17,7 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, requireListPage } from "@infrawrench/plugin-base";
+import { externalIdOf, reportUnreadListPart, requireListPage } from "@infrawrench/plugin-base";
 import type { DynatraceContext } from "./api.js";
 import { DynatraceApiError, envFetch, pagedList, resolveUrls, statusOf } from "./api.js";
 import type { DpsCredentials } from "./cost-data.js";
@@ -141,13 +141,16 @@ export class DynatraceClient implements PluginClient {
     return Boolean(this.ctx.platformUrl && this.ctx.platformToken);
   }
 
-  /** A 403 on one lister means the token lacks that one scope: that type lists empty. */
+  /** A 403 on one lister means the token lacks that one scope, which says nothing of its rows. */
   private async scoped(load: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
     try {
       return await load();
     } catch (err) {
-      if (statusOf(err) === 403) return [];
-      throw err;
+      if (statusOf(err) !== 403) throw err;
+      // This type's stored rows stay. A host that keeps no track (the desktop) answers false,
+      // and there the refusal should still show.
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      return [];
     }
   }
 

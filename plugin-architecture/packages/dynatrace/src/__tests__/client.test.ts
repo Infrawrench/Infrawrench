@@ -82,17 +82,12 @@ describe("DynatraceClient", () => {
     expect([...(calls[1]?.url.searchParams.keys() ?? [])]).toEqual(["nextPageKey"]);
   });
 
-  it("maps errors to a status and lists a 403'd type empty", async () => {
-    const { http } = makeHttp((url) =>
-      url.pathname === "/api/v2/slo"
-        ? {
-            status: 403,
-            body: { error: { code: 403, message: "Token is missing required scope" } },
-          }
-        : { status: 500, body: { error: { code: 500, message: "boom" } } },
-    );
+  it("maps errors to a status", async () => {
+    const { http } = makeHttp(() => ({
+      status: 500,
+      body: { error: { code: 500, message: "boom" } },
+    }));
     const client = hostClient(new DynatraceClient(CREDS, { http }));
-    expect(await client.listResources("slo", "acct")).toEqual([]);
     const err = await client.listResources("problem", "acct").catch((e: unknown) => e);
     expect(statusOf(err)).toBe(500);
     expect(String(err)).toContain("boom");

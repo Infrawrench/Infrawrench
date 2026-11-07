@@ -63,6 +63,40 @@ describe.each(LISTS)("listing %s", (type, path, key, maxPages) => {
   });
 });
 
+describe("a type the token is refused", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  const refused = { status: 403, body: { error: { code: 403, message: "Missing scope" } } };
+  const TYPES = [
+    ...LISTS.map(([type, path]) => [type, path] as const),
+    ["synthetic-monitor", "/api/v1/synthetic/monitors"] as const,
+  ];
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
+  it.each(TYPES)("keeps stored %s rows on a 403", async (type, path) => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    const { c } = client((url) => (url.pathname === path ? refused : undefined));
+    await expect(c.listResources(type, "acct")).resolves.toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+  });
+
+  it.each(TYPES)("shows the %s refusal where the host keeps no track", async (type, path) => {
+    const { c } = client((url) => (url.pathname === path ? refused : undefined));
+    await expect(c.listResources(type, "acct")).rejects.toThrow("Missing scope");
+  });
+
+  it.each([401, 429, 500])("still fails the type on a %i", async (status) => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    const { c } = client(() => ({ status, body: { error: { code: status, message: "no" } } }));
+    await expect(c.listResources("slo", "acct")).rejects.toThrow(String(status));
+    expect(unread).not.toHaveBeenCalled();
+  });
+});
+
 describe("page sizes", () => {
   it("asks for the largest page the access token list documents", async () => {
     const { c, calls } = client((url) =>
