@@ -31,6 +31,7 @@ import {
   byOwner,
   dotcomApi,
   ghPaged,
+  isRateLimited,
   ownerSegment,
   parseOwner,
   repoApi,
@@ -200,14 +201,15 @@ export class GitHubClient implements PluginClient {
    * A 403 or 404 on one list means the token lacks that one permission (GitHub
    * answers 404 for things a token may not see) or the product is not enabled
    * (no Copilot subscription, no larger runners); the rest of the account
-   * still works, so that type lists empty. A 401 (bad token) still throws.
+   * still works, so that type lists empty. A 401 (bad token) and a rate limit
+   * still throw, since neither says anything about what the account holds.
    */
   private async scoped(load: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
     try {
       return await load();
     } catch (err) {
       const status = statusOf(err);
-      if (status === 403 || status === 404 || status === 422) return [];
+      if (!isRateLimited(err) && (status === 403 || status === 404 || status === 422)) return [];
       throw err;
     }
   }

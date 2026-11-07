@@ -403,6 +403,28 @@ describe("org-only and enterprise-only types", () => {
     const { c } = client(() => ({ status: 403, body: { message: "nope" } }));
     expect(await c.listResources("codespace", "acc")).toEqual([]);
   });
+
+  it.each([
+    "API rate limit exceeded for user ID 1.",
+    "You have exceeded a secondary rate limit. Please wait a few minutes before you try again.",
+  ])("throws on a rate limited list, rather than read it as empty: %s", async (message) => {
+    const { c } = client(() => ({ status: 403, body: { message } }));
+    await expect(c.listResources("runner", "acc")).rejects.toThrow(/rate limit/);
+  });
+
+  it.each([403, 404, 422])("throws when page 2 of a list answers %i", async (status) => {
+    const { c } = client((url) =>
+      url.searchParams.get("page") === "1"
+        ? {
+            body: {
+              total_count: 150,
+              runners: Array.from({ length: 100 }, (_, i) => ({ id: i, name: `r${i}` })),
+            },
+          }
+        : { status, body: { message: "Forbidden" } },
+    );
+    await expect(c.listResources("runner", "acc")).rejects.toThrow(String(status));
+  });
 });
 
 describe("codespaces", () => {

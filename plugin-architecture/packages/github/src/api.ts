@@ -298,7 +298,15 @@ export async function ghPaged<T, R>(
 ): Promise<T[]> {
   const out: T[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    const res = await fetchPage({ per_page: 100, page });
+    let res: R;
+    try {
+      res = await fetchPage({ per_page: 100, page });
+    } catch (err) {
+      // A refused first page can mean no access, which a caller may read as none. A
+      // refused later page cannot, so it loses the status callers branch on.
+      if (page > 1 && err instanceof GitHubApiError) throw new Error(err.message, { cause: err });
+      throw err;
+    }
     const batch = pick(res) ?? [];
     out.push(...batch);
     if (batch.length < 100) break;
@@ -309,6 +317,11 @@ export async function ghPaged<T, R>(
 /** HTTP status of a failed call, or 0 for a transport error. */
 export function statusOf(err: unknown): number {
   return err instanceof GitHubApiError ? err.status : 0;
+}
+
+/** GitHub answers a primary or a secondary rate limit with a 403 or a 429. */
+export function isRateLimited(err: unknown): boolean {
+  return statusOf(err) === 403 && err instanceof Error && /rate limit/i.test(err.message);
 }
 
 /** URL path segment for the owner: `/orgs/acme` style roots differ per API family. */
