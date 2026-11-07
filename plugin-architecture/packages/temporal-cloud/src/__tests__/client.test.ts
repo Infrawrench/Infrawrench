@@ -630,3 +630,38 @@ describe("editing an export sink", () => {
     expect(updates).toEqual([]);
   });
 });
+
+describe("writes with a blank id", () => {
+  it.each([
+    "namespace",
+    "user",
+    "service-account",
+    "api-key",
+    "nexus-endpoint",
+    "connectivity-rule",
+  ])("refuses to delete a %s with none", async (type) => {
+    const { c, calls } = client(() => ({ body: {} }));
+    await expect(c.deleteResource(type ?? "", `acc:${type}:`, "acc")).rejects.toThrow(/no id/);
+    expect(calls).toEqual([]);
+  });
+
+  it.each(["namespace", "user", "service-account", "api-key", "nexus-endpoint"])(
+    "refuses to edit a %s with none",
+    async (type) => {
+      const { c, calls } = client(() => ({ body: {} }));
+      await expect(c.updateResource(type ?? "", `acc:${type}:`, "acc", {})).rejects.toThrow(
+        /no id/,
+      );
+      expect(calls).toEqual([]);
+    },
+  );
+
+  it("saves to the id it was asked for when the provider's answer has none", async () => {
+    const { c, calls } = client((_url, method) => {
+      if (method === "POST") return { body: fulfilled };
+      return { body: { user: { spec: { access: { accountAccess: { role: "ROLE_READ" } } } } } };
+    });
+    await c.updateResource("user", "acc:user:u1", "acc", { accountRole: "developer" });
+    expect(calls.find((x) => x.method === "POST")?.url.pathname).toBe("/cloud/users/u1");
+  });
+});

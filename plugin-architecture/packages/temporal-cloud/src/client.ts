@@ -1052,7 +1052,7 @@ export class TemporalCloudClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writableId(resourceId);
       switch (typeId) {
         case "namespace":
           await this.updateNamespace(id, fields);
@@ -1075,7 +1075,7 @@ export class TemporalCloudClient implements PluginClient {
         case "user": {
           const user = await this.fetchUser(id);
           if ("accountRole" in fields) {
-            await this.saveUser(user, {
+            await this.saveUser(id, user, {
               ...user.spec?.access,
               accountAccess: {
                 ...user.spec?.access?.accountAccess,
@@ -1103,7 +1103,7 @@ export class TemporalCloudClient implements PluginClient {
               },
             };
           }
-          await this.saveServiceAccount(sa, spec);
+          await this.saveServiceAccount(id, sa, spec);
           return mapServiceAccount(accountId, await this.fetchServiceAccount(id));
         }
         case "api-key": {
@@ -1111,7 +1111,7 @@ export class TemporalCloudClient implements PluginClient {
           const spec = { ...key.spec };
           if ("displayName" in fields) spec.displayName = (fields["displayName"] ?? "").trim();
           if ("description" in fields) spec.description = fields["description"] ?? "";
-          await this.saveApiKey(key, spec);
+          await this.saveApiKey(id, key, spec);
           return mapApiKey(accountId, await this.fetchApiKey(id), await this.ownerNames());
         }
         case "nexus-endpoint": {
@@ -1204,32 +1204,41 @@ export class TemporalCloudClient implements PluginClient {
     }
   }
 
-  private async saveNamespaceSpec(ns: TcNamespace, spec: TcNamespaceSpec): Promise<void> {
-    const res = await this.ctx.api.post(`/cloud/namespaces/${q(ns.namespace ?? "")}`, {
+  private async saveNamespaceSpec(
+    id: string,
+    ns: TcNamespace,
+    spec: TcNamespaceSpec,
+  ): Promise<void> {
+    const res = await this.ctx.api.post(`/cloud/namespaces/${q(id)}`, {
       body: { spec, resourceVersion: ns.resourceVersion },
     });
     await waitForOperation(this.ctx, res.asyncOperation);
   }
 
-  private async saveUser(user: TcUser, access: TcAccess): Promise<void> {
-    const res = await this.ctx.api.post(`/cloud/users/${q(user.id ?? "")}`, {
+  private async saveUser(id: string, user: TcUser, access: TcAccess): Promise<void> {
+    const res = await this.ctx.api.post(`/cloud/users/${q(id)}`, {
       body: { spec: { ...user.spec, access }, resourceVersion: user.resourceVersion },
     });
     await waitForOperation(this.ctx, res.asyncOperation, 10_000);
   }
 
   private async saveServiceAccount(
+    id: string,
     sa: TcServiceAccount,
     spec: NonNullable<TcServiceAccount["spec"]>,
   ): Promise<void> {
-    const res = await this.ctx.api.post(`/cloud/service-accounts/${q(sa.id ?? "")}`, {
+    const res = await this.ctx.api.post(`/cloud/service-accounts/${q(id)}`, {
       body: { spec, resourceVersion: sa.resourceVersion },
     });
     await waitForOperation(this.ctx, res.asyncOperation, 10_000);
   }
 
-  private async saveApiKey(key: TcApiKey, spec: NonNullable<TcApiKey["spec"]>): Promise<void> {
-    const res = await this.ctx.api.post(`/cloud/api-keys/${q(key.id ?? "")}`, {
+  private async saveApiKey(
+    id: string,
+    key: TcApiKey,
+    spec: NonNullable<TcApiKey["spec"]>,
+  ): Promise<void> {
+    const res = await this.ctx.api.post(`/cloud/api-keys/${q(id)}`, {
       body: { spec, resourceVersion: key.resourceVersion },
     });
     await waitForOperation(this.ctx, res.asyncOperation, 10_000);
@@ -1241,7 +1250,7 @@ export class TemporalCloudClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writableId(resourceId);
       const res = await this.sendDelete(typeId, id);
       await waitForOperation(this.ctx, res?.asyncOperation, 10_000);
     });
@@ -1314,10 +1323,10 @@ export class TemporalCloudClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writableId(resourceId);
       if (typeId === "api-key" && (actionId === "disable" || actionId === "enable")) {
         const key = await this.fetchApiKey(id);
-        await this.saveApiKey(key, { ...key.spec, disabled: actionId === "disable" });
+        await this.saveApiKey(id, key, { ...key.spec, disabled: actionId === "disable" });
         return;
       }
       if (typeId === "export-sink" && (actionId === "enable" || actionId === "disable")) {
@@ -1349,7 +1358,7 @@ export class TemporalCloudClient implements PluginClient {
     args: (string | number)[],
   ): PluginEffect<unknown> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writableId(resourceId);
       const form = decodePromptArgs(args);
       if (typeId === "namespace") return this.namespaceCommand(id, command, form);
       if (
@@ -1384,7 +1393,7 @@ export class TemporalCloudClient implements PluginClient {
           );
         }
         spec.searchAttributes = { ...existing, [name]: type };
-        await this.saveNamespaceSpec(ns, spec);
+        await this.saveNamespaceSpec(id, ns, spec);
         return { ok: true };
       }
       case "rename-search-attribute": {
@@ -1450,7 +1459,7 @@ export class TemporalCloudClient implements PluginClient {
       }
       case "set-connectivity-rules": {
         spec.connectivityRuleIds = splitList(form["rules"]);
-        await this.saveNamespaceSpec(ns, spec);
+        await this.saveNamespaceSpec(id, ns, spec);
         return { ok: true };
       }
       default:
@@ -1478,7 +1487,7 @@ export class TemporalCloudClient implements PluginClient {
       if (role === "ROLE_OWNER" || role === "ROLE_ADMIN") {
         throw new Error("Owners and admins already have access to every namespace");
       }
-      await this.saveUser(user, {
+      await this.saveUser(id, user, {
         ...user.spec?.access,
         namespaceAccesses: apply(user.spec?.access?.namespaceAccesses),
       });
@@ -1502,7 +1511,7 @@ export class TemporalCloudClient implements PluginClient {
       }
       spec.access = { ...spec.access, namespaceAccesses: apply(spec.access?.namespaceAccesses) };
     }
-    await this.saveServiceAccount(sa, spec);
+    await this.saveServiceAccount(id, sa, spec);
     return { ok: true };
   }
 
@@ -1517,6 +1526,13 @@ export class TemporalCloudClient implements PluginClient {
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     return renderTemporalSidebar(resource);
   }
+}
+
+/** The id an edit, delete or action acts on. A blank one must not reach a URL. */
+function writableId(resourceId: string): string {
+  const id = externalIdOf(resourceId);
+  if (!id) throw new Error(`Temporal Cloud plugin: "${resourceId}" has no id to act on`);
+  return id;
 }
 
 /** For a list that only fills in a detail view or a picker, where none is a usable answer. */
