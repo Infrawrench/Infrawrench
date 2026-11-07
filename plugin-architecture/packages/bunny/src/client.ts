@@ -1433,6 +1433,7 @@ export class BunnyClient implements PluginClient {
             query: {
               fromDate: new Date(start).toISOString(),
               toDate: new Date(end).toISOString(),
+              granularity: hourly ? "Hourly" : "Daily",
             },
           });
           return [

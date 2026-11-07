@@ -527,7 +527,7 @@ export interface operations {
         parameters: {
             query: {
                 fromDate: string;
-                granularity?: components["schemas"]["DataGranularity"];
+                granularity: components["schemas"]["DataGranularity"];
                 toDate?: string;
             };
             header?: never;

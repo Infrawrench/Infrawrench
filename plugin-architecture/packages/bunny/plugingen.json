@@ -241,11 +241,6 @@
       "specUrl": "https://api-mc.opsbunny.net/docs/public/swagger.json",
       "patches": [
         {
-          "pointer": "/paths/~1apps~1{appId}~1statistics/get/parameters/3/required",
-          "value": false,
-          "why": "The document requires `granularity` and the plugin does not send it (#495). Remove this with the fix."
-        },
-        {
           "pointer": "/components/schemas/AppListItem/required",
           "value": ["id"],
           "why": "The document marks nothing required. A listed app always has its id, and the plugin fetches each app by it."

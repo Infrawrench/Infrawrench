@@ -430,6 +430,30 @@ describe("storage region pickers", () => {
   });
 });
 
+describe("container app metrics", () => {
+  const DAY = 86_400_000;
+
+  it.each([
+    [DAY, "Hourly"],
+    [3 * DAY, "Hourly"],
+    [7 * DAY, "Daily"],
+  ])("asks for a %i ms window with granularity %s", async (span, granularity) => {
+    const { c, calls } = client(() => ({
+      body: { cpuUsageChart: { "2026-10-01T00:00:00Z": 1 } },
+    }));
+    const endMs = Date.parse("2026-10-10T00:00:00Z");
+    const out = await c.fetchMetricSeries("container-app", "a1:container-app:app", "a1", {
+      startMs: endMs - span,
+      endMs,
+    });
+    const u = new URL(calls[0]!.url);
+    expect(u.pathname).toBe("/mc/apps/app/statistics");
+    expect(u.searchParams.get("granularity")).toBe(granularity);
+    expect(u.searchParams.get("fromDate")).toBe(new Date(endMs - span).toISOString());
+    expect(out.map((x) => x.label)).toEqual(["CPU"]);
+  });
+});
+
 describe("storage browser", () => {
   it("lists with the zone password on the zone's storage host", async () => {
     const { c, calls } = client((u) => {
