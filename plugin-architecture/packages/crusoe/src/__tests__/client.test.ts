@@ -5,6 +5,7 @@ import { RESOURCE_TYPES } from "../resource-types.js";
 import { parseStatusFeed, mapComponent } from "../status-feed.js";
 import { crusoeTerraformExport } from "../terraform.js";
 import { normalizeVmState, parseScopedId, parseSizeGib } from "../mappers.js";
+import { signRequest } from "../signing.js";
 
 interface Call {
   method: string;
@@ -308,6 +309,113 @@ describe("create, update, delete", () => {
     );
     expect(kc).toBe("apiVersion: v1");
     expect(calls.at(-1)!.query.get("auth_type")).toBe("admin_cert");
+  });
+});
+
+describe("ids in paths", () => {
+  it("encodes an id holding URL syntax, so it cannot change the route", async () => {
+    route("DELETE", "/projects/p%201/storage/disks/d%3Fx%3D1%23f", done);
+    await client().deleteResource("disk", "acct:disk:p 1/d?x=1#f", "acct");
+    const call = calls.at(-1)!;
+    expect(call.path).toBe("/projects/p%201/storage/disks/d%3Fx%3D1%23f");
+    expect([...call.query.keys()]).toEqual([]);
+  });
+
+  it("keeps a slash inside one segment", async () => {
+    route("DELETE", "/projects/p-1/storage/disks/a%2Fb", done);
+    await client().deleteResource("disk", "acct:disk:p-1/a/b", "acct");
+    expect(calls.at(-1)!.path).toBe("/projects/p-1/storage/disks/a%2Fb");
+  });
+
+  it("signs the decoded path, as Crusoe's reference client signs req.URL.Path", async () => {
+    route("DELETE", "/projects/p-1/storage/disks/d%3Fx", done);
+    await client().deleteResource("disk", "acct:disk:p-1/d?x", "acct");
+    const { headers } = calls.at(-1)!;
+    const expected = await signRequest({
+      accessKeyId: "AK",
+      secretKey: "c2VjcmV0LWtleS1mb3ItdGVzdHM",
+      method: "DELETE",
+      path: "/v1/projects/p-1/storage/disks/d?x",
+      query: "",
+      now: new Date(headers["X-Crusoe-Timestamp"]!),
+    });
+    expect(headers["Authorization"]).toBe(expected["Authorization"]);
+  });
+
+  it("signs a query apart from the path, in the form it is sent", async () => {
+    route("POST", "/projects/p-1/kubernetes/clusters/c%3F1/get-credentials", { kube_config: "k" });
+    await client().resolveOutput(
+      "kubernetes-cluster",
+      "acct:kubernetes-cluster:p-1/c?1",
+      "kubeconfig",
+      "acct",
+    );
+    const { headers, query } = calls.at(-1)!;
+    expect(query.get("auth_type")).toBe("admin_cert");
+    const expected = await signRequest({
+      accessKeyId: "AK",
+      secretKey: "c2VjcmV0LWtleS1mb3ItdGVzdHM",
+      method: "POST",
+      path: "/v1/projects/p-1/kubernetes/clusters/c?1/get-credentials",
+      query: "auth_type=admin_cert",
+      now: new Date(headers["X-Crusoe-Timestamp"]!),
+    });
+    expect(headers["Authorization"]).toBe(expected["Authorization"]);
+  });
+
+  it("leaves a plain id's path and signature as they were", async () => {
+    route("DELETE", "/projects/p-1/storage/disks/d-1", done);
+    await client().deleteResource("disk", "acct:disk:p-1/d-1", "acct");
+    const { headers, path } = calls.at(-1)!;
+    expect(path).toBe("/projects/p-1/storage/disks/d-1");
+    const expected = await signRequest({
+      accessKeyId: "AK",
+      secretKey: "c2VjcmV0LWtleS1mb3ItdGVzdHM",
+      method: "DELETE",
+      path: "/v1/projects/p-1/storage/disks/d-1",
+      query: "",
+      now: new Date(headers["X-Crusoe-Timestamp"]!),
+    });
+    expect(headers["Authorization"]).toBe(expected["Authorization"]);
+  });
+
+  it("sends the encoded URL through the host's transport", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify(done),
+    }));
+    const hosted = hostClient(
+      new CrusoeClient(
+        { accessKeyId: "AK", secretKey: "c2VjcmV0LWtleS1mb3ItdGVzdHM" },
+        RESOURCE_TYPES,
+        { http: { request } },
+      ),
+    );
+    await hosted.deleteResource("disk", "acct:disk:p-1/a/b", "acct");
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.cloud.crusoe.ai/v1/projects/p-1/storage/disks/a%2Fb",
+      }),
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it.each([
+    ["a dot segment, which the URL parser would walk up", "disk", "acct:disk:p-1/.."],
+    ["a current-directory segment", "disk", "acct:disk:p-1/."],
+    ["a blank project", "project", "acct:project:"],
+    ["a blank SSH key", "ssh-key", "acct:ssh-key:"],
+  ])("refuses to delete %s", async (_what, typeId, resourceId) => {
+    await expect(client().deleteResource(typeId, resourceId, "acct")).rejects.toThrow(/usable id/);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to rename a project with a blank id", async () => {
+    await expect(
+      client().updateResource("project", "acct:project:", "acct", { name: "x" }),
+    ).rejects.toThrow(/usable id/);
+    expect(calls).toEqual([]);
   });
 });
 

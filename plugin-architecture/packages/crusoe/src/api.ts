@@ -4,8 +4,7 @@ import {
   type HostServices,
   type HttpHostServices,
   type NoSlashString,
-  type ParamValue,
-  unencodedSegment,
+  pathEncode,
 } from "@infrawrench/plugin-base";
 import type { paths } from "./api-types.gen.js";
 import { canonicalQuery, signRequest } from "./signing.js";
@@ -57,22 +56,17 @@ export interface CrusoeCredentials {
 }
 
 /**
- * A path segment as Crusoe's id came. These have never been encoded, and the
- * signature covers the path as sent.
+ * An id fit to name one object. A URL parser walks up `.` and `..` even when written
+ * as `%2E`, so no encoding keeps those from changing which route gets called.
  */
-export const seg = (id: string): NoSlashString => unencodedSegment(id);
-
-/**
- * Written in front of the query so the transport can find where it starts: an id
- * can hold a `?`, and what gets signed is the path and query apart. Nothing the
- * query holds can be mistaken for it, because `canonicalQuery` escapes it.
- */
-const QUERY_START = "\0";
-
-function serializeQuery(query: Record<string, ParamValue>): string {
-  const canonical = canonicalQuery(query);
-  return canonical && `${QUERY_START}${canonical}`;
+export function requireId(id: string): string {
+  if (!id.trim() || id === "." || id === "..") {
+    throw new Error(`Crusoe plugin: "${id}" is not a usable id`);
+  }
+  return id;
 }
+
+export const seg = (id: string): NoSlashString => pathEncode(requireId(id));
 
 type Authenticate = (
   method: string,
@@ -85,15 +79,17 @@ function crusoeTransport(auth: Authenticate, services: HostServices | undefined)
   const http = services?.http;
   return {
     request: async ({ url, method, headers: extra, body, caCert }) => {
-      const start = url.indexOf(QUERY_START);
-      // One character before the marker is the separator the client chose.
-      const path = url.slice(API_HOST.length, start < 0 ? undefined : start - 1);
-      const query = start < 0 ? "" : url.slice(start + QUERY_START.length);
-      const target = `${API_HOST}${path}${query ? `?${query}` : ""}`;
-      const headers = { Accept: ACCEPT, ...(await auth(method, path, query)), ...extra };
+      const start = url.indexOf("?");
+      const path = url.slice(API_HOST.length, start < 0 ? undefined : start);
+      const query = start < 0 ? "" : url.slice(start + 1);
+      const headers = {
+        Accept: ACCEPT,
+        ...(await auth(method, decodeURIComponent(path), query)),
+        ...extra,
+      };
       if (http) {
         return http.request({
-          url: target,
+          url,
           method,
           headers,
           ...(body !== undefined ? { body } : {}),
@@ -101,7 +97,7 @@ function crusoeTransport(auth: Authenticate, services: HostServices | undefined)
         });
       }
       // The typed client only ever writes text.
-      const res = await fetch(target, {
+      const res = await fetch(url, {
         method,
         headers,
         ...(typeof body === "string" ? { body } : {}),
@@ -132,7 +128,7 @@ export function createCrusoeApi(
       caCert: creds.caCert,
       contentType: "with-body",
       emptyBodyIsUndefined: true,
-      serializeQuery,
+      serializeQuery: canonicalQuery,
       httpError: ({ status, path, body }) => new CrusoeApiError(status, path, body),
     });
   const signed = client((method, path, query) =>

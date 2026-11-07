@@ -11,7 +11,9 @@
  *   headers   X-Crusoe-Timestamp: <RFC 3339, second precision>
  *             Authorization: Bearer 1.0:<access key id>:<signature>
  *
- * `http_path` includes the `/v1` API prefix. The canonical query is Go's
+ * `http_path` includes the `/v1` API prefix and is Go's `req.URL.Path`, so it is
+ * the decoded path even though the request goes out escaped. The two only differ
+ * for an id holding URL syntax. The canonical query is Go's
  * `url.Values.Encode()` over the parsed query: keys sorted, each value
  * `QueryEscape`d (space as `+`), repeated keys kept in their original order.
  * The request is sent with exactly the query string this module builds, so
@@ -89,7 +91,7 @@ export function base64UrlEncode(bytes: Uint8Array): string {
 
 /**
  * Produce the two auth headers for one request. `path` must already carry the
- * `/v1` prefix; `query` must be the exact string that goes on the URL.
+ * `/v1` prefix and be decoded; `query` must be the exact string that goes on the URL.
  */
 export async function signRequest(opts: {
   accessKeyId: string;

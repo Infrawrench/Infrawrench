@@ -22,7 +22,7 @@ import {
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { ApiBody } from "@infrawrench/plugin-base";
-import { createCrusoeApi, isStatus, listAll, seg, type CrusoeApi } from "./api.js";
+import { createCrusoeApi, isStatus, listAll, requireId, seg, type CrusoeApi } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import { fetchCrusoeCostData } from "./cost-data.js";
 import { buildCreateConfig } from "./create-config.js";
@@ -602,7 +602,7 @@ export class CrusoeClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (typeId === "project") {
-        const id = externalOf(resourceId);
+        const id = requireId(externalOf(resourceId));
         await this.api.put("/organizations/projects", {
           query: { project_id: id },
           body: { name: str(fields["name"]) },
@@ -713,7 +713,9 @@ export class CrusoeClient implements PluginClient {
         return;
       }
       if (typeId === "ssh-key") {
-        await this.api.delete("/users/ssh-keys", { query: { id: externalOf(resourceId) } });
+        await this.api.delete("/users/ssh-keys", {
+          query: { id: requireId(externalOf(resourceId)) },
+        });
         return;
       }
       const collection = COLLECTIONS[typeId];
