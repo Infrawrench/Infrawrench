@@ -226,17 +226,16 @@ export class NomadClient implements PluginClient {
     });
   }
 
-  /** A list that is empty rather than failing when ACL support is off or the feature is absent. */
+  /**
+   * A list that is empty rather than failing when ACL support is off. Not on a 404:
+   * Nomad registers these routes unconditionally, so that is something else answering.
+   */
   private async optional<T>(path: string, p: Promise<T[] | null | undefined>): Promise<T[]> {
     try {
       return rows(path, await p);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      if (
-        statusOf(err) === 404 ||
-        (statusOf(err) === 400 && /ACL support disabled|unknown volume type/i.test(msg))
-      )
-        return [];
+      if (statusOf(err) === 400 && /ACL support disabled|unknown volume type/i.test(msg)) return [];
       throw err;
     }
   }

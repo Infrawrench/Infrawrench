@@ -312,9 +312,7 @@ describe("list caps", () => {
     ["nomad-deployment", "/v1/deployments", (i: number) => ({ ID: `d${i}` })],
   ])("refuses a %s list past the new cap rather than cut it", async (type, path, row) => {
     const { c } = client((call) => (call.url.pathname === path ? many(50_001, row) : []));
-    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow(
-      "has more than Infrawrench reads",
-    );
+    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("has more than Infrawrench reads");
   });
 
   it("reads the rules of every ACL policy past the old cap, a few at a time", async () => {
@@ -405,6 +403,21 @@ describe("an answer that is not a list", () => {
     );
     const volumes = await c.listResources("nomad-volume", ACCOUNT);
     expect(volumes.map((v) => v.fields["id"])).toEqual(["v1"]);
+  });
+});
+
+describe("a 404 from a list", () => {
+  it.each([
+    ["nomad-acl-policy", "/v1/acl/policies"],
+    ["nomad-acl-token", "/v1/acl/tokens"],
+    ["nomad-volume", "/v1/volumes"],
+    ["nomad-csi-plugin", "/v1/plugins"],
+  ])("fails %s rather than read it as none", async (type, path) => {
+    const { c } = client((call) =>
+      call.url.pathname === path ? { status: 404, text: "Not Found" } : [],
+    );
+    const err = await c.listResources(type, ACCOUNT).catch((e: unknown) => e);
+    expect((err as NomadApiError).status).toBe(404);
   });
 });
 
