@@ -90,7 +90,7 @@ export interface ProjectRef {
 
 const projectParent = (accountId: string, groupId: string) =>
   resourceId(accountId, "project", groupId);
-const clusterParent = (accountId: string, groupId: string, cluster: string) =>
+export const clusterParent = (accountId: string, groupId: string, cluster: string) =>
   resourceId(accountId, "cluster", `${groupId}/${cluster}`);
 
 /** Split a path-shaped external id into its fixed leading parts and the rest. */

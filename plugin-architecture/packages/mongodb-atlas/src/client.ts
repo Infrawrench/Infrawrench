@@ -19,6 +19,7 @@ import {
   CostSetupError,
   externalIdOf,
   pathEncode,
+  reportUnreadListPart,
   requireListPage,
   rethrowIncompleteList,
 } from "@infrawrench/plugin-base";
@@ -45,6 +46,7 @@ import type {
 import {
   isListedElsewhere,
   isShardedCluster,
+  clusterParent,
   mapAccessEntry,
   mapAlert,
   mapAlertConfig,
@@ -269,14 +271,30 @@ export class MongoDBAtlasClient implements PluginClient {
     return this.clustersCache;
   }
 
-  /** Dedicated, running clusters: the ones with backups, archives and process metrics. */
+  /**
+   * Reads the children of each running cluster that `filter` picks. A paused cluster is
+   * not read but named, so its stored rows stay: Atlas keeps its snapshots until they
+   * expire and rebuilds its search indexes on resume, and the document does not say what
+   * these routes answer meanwhile. Every paused cluster is named, whatever its tier, since
+   * a cluster with no rows of this type costs nothing to name.
+   */
   private async perCluster<T>(
+    accountId: string,
     filter: (c: AtlasCluster) => boolean,
     load: (project: ProjectRef, clusterName: string, cluster: AtlasCluster) => Promise<T[]>,
   ): Promise<T[]> {
-    const all = (await this.clusters()).filter(({ cluster }) => cluster.name && filter(cluster));
+    const named = (await this.clusters()).filter(({ cluster }) => cluster.name);
+    const asleep = named.filter(({ cluster }) => cluster.paused);
+    if (asleep.length > 0) {
+      reportUnreadListPart({
+        parentResourceIds: asleep.map(({ project, cluster }) =>
+          clusterParent(accountId, project.groupId, cluster.name!),
+        ),
+      });
+    }
+    const awake = named.filter(({ cluster }) => !cluster.paused && filter(cluster));
     return (
-      await mapLimit(all, CONCURRENCY, ({ project, cluster }) =>
+      await mapLimit(awake, CONCURRENCY, ({ project, cluster }) =>
         tolerant(() => load(project, cluster.name!, cluster)),
       )
     ).flat();
@@ -288,7 +306,7 @@ export class MongoDBAtlasClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      const dedicated = (c: AtlasCluster) => !c.paused && isDedicatedTier(this.tierOf(c));
+      const dedicated = (c: AtlasCluster) => isDedicatedTier(this.tierOf(c));
       switch (typeId) {
         case "organization": {
           const org = await this.org();
@@ -359,19 +377,31 @@ export class MongoDBAtlasClient implements PluginClient {
             return per.flat().map((e) => mapEndpointService(accountId, e, p));
           });
         case "backup-snapshot":
-          return this.perCluster(
-            (c) => dedicated(c) && c.backupEnabled === true,
-            async (p, name, cluster) =>
+          return this.perCluster(accountId, dedicated, async (p, name, cluster) => {
+            const snapshots = async () =>
               (isShardedCluster(cluster)
                 ? await listShardedSnapshots(this.ctx, p.groupId, name)
                 : await this.api.getAll(
                     `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/backup/snapshots`,
                     "results",
                   )
-              ).map((s) => mapSnapshot(accountId, s, p, name)),
-          );
+              ).map((s) => mapSnapshot(accountId, s, p, name));
+            if (cluster.backupEnabled === true) return snapshots();
+            // Turning backups off offers to keep the snapshots, so an answer here is the
+            // truth. The document does not say what this route answers with backups off,
+            // so a refusal says nothing about them.
+            return snapshots().catch((err: unknown) => {
+              const status = statusOf(err);
+              if (status < 400 || status >= 500 || status === 429) throw err;
+              reportUnreadListPart({
+                parentResourceIds: [clusterParent(accountId, p.groupId, name)],
+              });
+              return [];
+            });
+          });
         case "backup-policy":
           return this.perCluster(
+            accountId,
             (c) => dedicated(c) && c.backupEnabled === true,
             async (p, name) => {
               const schedule = await this.api.get(
@@ -384,7 +414,8 @@ export class MongoDBAtlasClient implements PluginClient {
           );
         case "search-index":
           return this.perCluster(
-            (c) => !c.paused,
+            accountId,
+            () => true,
             async (p, name) => {
               const res = await this.api.get(
                 `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/search/indexes`,
@@ -398,7 +429,7 @@ export class MongoDBAtlasClient implements PluginClient {
             },
           );
         case "online-archive":
-          return this.perCluster(dedicated, async (p, name) =>
+          return this.perCluster(accountId, dedicated, async (p, name) =>
             (
               await this.api.getAll(
                 `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/onlineArchives`,

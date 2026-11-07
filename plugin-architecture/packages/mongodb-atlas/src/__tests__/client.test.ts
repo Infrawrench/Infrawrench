@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resetAuthCaches } from "../api.js";
 import { MongoDBAtlasClient, withCredentials } from "../client.js";
 import { parseRoles, rolesToString } from "../mappers.js";
@@ -140,7 +140,7 @@ describe("listing", () => {
     expect(users).toEqual([]);
   });
 
-  it("fetches backup snapshots only for running dedicated clusters with backup on", async () => {
+  it("fetches backup snapshots for running dedicated clusters and skips flex entries", async () => {
     const { http, calls } = atlas((call) =>
       call.path.startsWith("/api/atlas/v2/groups/g1/clusters/main/backup/snapshots")
         ? {
@@ -162,6 +162,144 @@ describe("listing", () => {
     expect(snaps.map((s) => s.id)).toEqual(["acct:backup-snapshot:g1/main/s1"]);
     expect(snaps[0]!.parentResourceId).toBe("acct:cluster:g1/main");
     expect(calls.some((c) => c.path.includes("/clusters/flexy/"))).toBe(false);
+  });
+});
+
+describe("a cluster whose children cannot be read", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  const CHILD_TYPES = ["backup-snapshot", "backup-policy", "search-index", "online-archive"];
+  const SNAPSHOTS = "/api/atlas/v2/groups/g1/clusters/main/backup/snapshots";
+  const paused = { ...cluster, name: "asleep", paused: true };
+  const running = { ...cluster, name: "main" };
+  let unread: Array<{ parentResourceIds?: readonly string[] }>;
+
+  beforeEach(() => {
+    unread = [];
+    Reflect.set(globalThis, UNREAD_HOOK, (part: { parentResourceIds?: readonly string[] }) =>
+      unread.push(part),
+    );
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
+  const namedParents = () => unread.flatMap((part) => part.parentResourceIds ?? []);
+  const withClusters = (rows: unknown[], extra: (call: Call) => unknown = () => undefined) =>
+    atlas((call) =>
+      call.path.split("?")[0] === "/api/atlas/v2/groups/g1/clusters"
+        ? { results: rows }
+        : extra(call),
+    );
+  const listing = (http: ReturnType<typeof atlas>["http"], type: string) =>
+    hostClient(new MongoDBAtlasClient(CREDS, { http })).listResources(type, ACCOUNT);
+
+  it.each(CHILD_TYPES)(
+    "keeps the %s rows of a paused cluster and still reads the running one",
+    async (type) => {
+      const { http, calls } = withClusters([paused, running], (call) =>
+        call.path.endsWith("/search/indexes") || call.path.endsWith("/backup/schedule")
+          ? type === "backup-policy"
+            ? { restoreWindowDays: 7 }
+            : []
+          : undefined,
+      );
+      await listing(http, type);
+      expect(namedParents()).toEqual(["acct:cluster:g1/asleep"]);
+      expect(calls.some((c) => c.path.includes("/clusters/asleep/"))).toBe(false);
+      expect(calls.some((c) => c.path.includes("/clusters/main/"))).toBe(true);
+    },
+  );
+
+  it.each(CHILD_TYPES)("names no cluster for %s when none is paused", async (type) => {
+    const { http } = withClusters([running], (call) =>
+      call.path.endsWith("/search/indexes")
+        ? []
+        : call.path.endsWith("/backup/schedule")
+          ? { restoreWindowDays: 7 }
+          : undefined,
+    );
+    await listing(http, type);
+    expect(unread).toEqual([]);
+  });
+
+  it("names a paused free-tier cluster, whose search indexes are read when it runs", async () => {
+    const free = {
+      ...paused,
+      replicationSpecs: [
+        {
+          regionConfigs: [
+            {
+              providerName: "TENANT",
+              regionName: "US_EAST_1",
+              electableSpecs: { instanceSize: "M0" },
+            },
+          ],
+        },
+      ],
+    };
+    const { http } = withClusters([free]);
+    expect(await listing(http, "search-index")).toEqual([]);
+    expect(namedParents()).toEqual(["acct:cluster:g1/asleep"]);
+  });
+
+  it("names a paused cluster whose answer gives no tier", async () => {
+    const { http } = withClusters([{ ...paused, replicationSpecs: [] }]);
+    await listing(http, "backup-snapshot");
+    expect(namedParents()).toEqual(["acct:cluster:g1/asleep"]);
+  });
+
+  it("lists a paused cluster's children as none where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const { http } = withClusters([paused]);
+    expect(await listing(http, "backup-snapshot")).toEqual([]);
+  });
+
+  describe("with backups turned off", () => {
+    const off = { ...cluster, backupEnabled: false };
+
+    it("lists the snapshots Atlas kept", async () => {
+      const { http } = withClusters([off], (call) =>
+        call.path.startsWith(SNAPSHOTS)
+          ? { results: [{ id: "s1", status: "completed" }] }
+          : undefined,
+      );
+      const snaps = await listing(http, "backup-snapshot");
+      expect(snaps.map((s) => s.id)).toEqual(["acct:backup-snapshot:g1/main/s1"]);
+      expect(unread).toEqual([]);
+    });
+
+    it("reads an empty answer as Atlas having deleted them", async () => {
+      const { http } = withClusters([off], (call) =>
+        call.path.startsWith(SNAPSHOTS) ? { results: [] } : undefined,
+      );
+      expect(await listing(http, "backup-snapshot")).toEqual([]);
+      expect(unread).toEqual([]);
+    });
+
+    it.each([400, 404, 409])("keeps the rows when the route answers %i", async (status) => {
+      const { http } = withClusters([off], (call) =>
+        call.path.startsWith(SNAPSHOTS)
+          ? reply({ status, body: { detail: "no backups", errorCode: "X" } })
+          : undefined,
+      );
+      expect(await listing(http, "backup-snapshot")).toEqual([]);
+      expect(namedParents()).toEqual(["acct:cluster:g1/main"]);
+    });
+
+    it("still fails the type on a server error", async () => {
+      const { http } = withClusters([off], (call) =>
+        call.path.startsWith(SNAPSHOTS) ? reply({ status: 500, body: {} }) : undefined,
+      );
+      await expect(listing(http, "backup-snapshot")).rejects.toThrow("500");
+      expect(unread).toEqual([]);
+    });
+
+    it("has no backup policy to read or keep", async () => {
+      const { http, calls } = withClusters([off]);
+      expect(await listing(http, "backup-policy")).toEqual([]);
+      expect(unread).toEqual([]);
+      expect(calls.some((c) => c.path.endsWith("/backup/schedule"))).toBe(false);
+    });
   });
 });
 
