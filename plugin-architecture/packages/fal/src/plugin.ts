@@ -25,9 +25,9 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "apiKey",
-      label: "Admin API Key",
+      label: "API Key",
       description:
-        "A key from fal.ai/dashboard/keys, pasted whole as key_id:key_secret. Create it with the ADMIN scope: usage, cost, credits, API keys and Compute instances are admin-only. An API-scope key still shows Serverless apps, workflows and analytics.",
+        "A key from fal.ai/dashboard/keys, pasted whole as key_id:key_secret. Create it with the FULL preset, the only one that covers everything here; a legacy ADMIN key works the same. READONLY shows Serverless apps, Compute instances, workflows and credits, but not models, costs or API keys, and changes nothing. Whatever a narrower preset cannot read stays empty.",
       sensitive: true,
       placeholder: "0123abcd-...:abcdef0123...",
       helpLink: { label: "Create an API key", url: "https://fal.ai/dashboard/keys" },

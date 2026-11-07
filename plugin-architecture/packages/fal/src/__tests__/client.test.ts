@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { FalClient, analyticsSeries, modelUsageRows, serverlessUsageRows } from "../client.js";
 import type { ModelUsagePage, ServerlessUsagePage } from "../api.js";
+import { manifest } from "../plugin.js";
 import { parseStatusFeed } from "../status-feed.js";
 
 const ACCOUNT = "acct";
@@ -141,6 +142,66 @@ describe("fal client", () => {
     );
     expect(new URL(calls[0]?.url ?? "").searchParams.get("expand")).toBe("creator_info");
     expect(key?.fields["creator"]).toBe("ada");
+  });
+
+  it("names presets, not the ADMIN scope, when a key is refused", async () => {
+    const { http } = host(() => ({ status: 403, body: {} }));
+    const refused = hostClient(new FalClient({ apiKey: "k" }, { http })).fetchCreditBalance(
+      ACCOUNT,
+    );
+    await expect(refused).rejects.toThrow(/FULL preset/);
+    await expect(refused).rejects.not.toThrow(/ADMIN-scope/);
+  });
+
+  it.each([
+    [{ mode: "preset", preset: "BILLING" }, "BILLING preset"],
+    [{ mode: "custom", permissions: ["a:b:read", "c:d:read"] }, "Custom permissions"],
+    [{ mode: "legacy", scope: "ADMIN" }, "Legacy ADMIN scope"],
+    [{ scope: "API" }, "Legacy API scope"],
+    [{ mode: "legacy" }, "Legacy scope"],
+    [{}, ""],
+  ])("describes the access of %j", async (access, shown) => {
+    const { http } = host(() => ({
+      body: { keys: [{ key_id: "a", ...access }], next_cursor: null },
+    }));
+    const client = new FalClient({ apiKey: "k" }, { http });
+    const [key] = await hostClient(client).listResources("fal-api-key", ACCOUNT);
+    expect(key?.fields["access"]).toBe(shown);
+    if (!key) throw new Error("the key was not listed");
+    expect(JSON.stringify(client.renderDetail(key))).toContain(shown);
+  });
+
+  it("carries a key's permissions, description and expiry onto the resource", async () => {
+    const { http } = host(() => ({
+      body: {
+        keys: [
+          {
+            key_id: "a",
+            mode: "custom",
+            description: "CI",
+            permissions: ["a:b:read", "c:d:read"],
+            expires_at: "2027-01-01T00:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      },
+    }));
+    const [key] = await hostClient(new FalClient({ apiKey: "k" }, { http })).listResources(
+      "fal-api-key",
+      ACCOUNT,
+    );
+    expect(key?.fields).toMatchObject({
+      permissions: "a:b:read, c:d:read",
+      description: "CI",
+      expiresAt: "2027-01-01T00:00:00Z",
+    });
+  });
+
+  it("tells the user which preset to create, and no longer asks for ADMIN", () => {
+    const field = manifest.credentialFields.find((c) => c.key === "apiKey");
+    expect(field?.label).toBe("API Key");
+    expect(field?.description).toContain("FULL preset");
+    expect(field?.description).not.toContain("with the ADMIN scope");
   });
 
   it("reads the credit balance", async () => {

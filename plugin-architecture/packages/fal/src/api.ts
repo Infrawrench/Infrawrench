@@ -20,6 +20,7 @@ export type AnalyticsRow = NonNullable<AnalyticsPage["time_series"]>[number]["re
 export type ModelInfo = ApiListItem<operations["getModels"], "models">;
 export type ModelMetadata = NonNullable<ModelInfo["metadata"]>;
 export type ModelPrice = ApiListItem<operations["getPricing"], "prices">;
+export type ApiKey = ApiListItem<operations["listApiKeys"], "keys">;
 export type App = ApiListItem<operations["serverlessListApps"], "apps">;
 export type Instance = ApiResponse<operations["getComputeInstance"]>;
 export type RequestItem = ApiListItem<operations["listRequestsByEndpoint"], "items">;
@@ -78,7 +79,7 @@ function withStatus(err: unknown): unknown {
     status === 401
       ? " Check the key in the fal dashboard under API Keys."
       : status === 403
-        ? " This call needs an ADMIN-scope key."
+        ? " This key's permissions do not cover this call. The FULL preset covers everything Infrawrench does."
         : "";
   return Object.assign(new Error(`${err.message}${hint}`), { status });
 }

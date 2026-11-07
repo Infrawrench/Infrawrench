@@ -34,6 +34,7 @@ import {
   statusOf,
   type AnalyticsPage,
   type AnalyticsRow,
+  type ApiKey,
   type App,
   type FalApi,
   type Instance,
@@ -201,6 +202,14 @@ export function serverlessUsageRows(
   return rows;
 }
 
+/** How a key is permissioned. `scope` is deprecated, and fal omits it for any newer key. */
+function keyAccess(key: Pick<ApiKey, "mode" | "preset" | "scope">): string {
+  if (key.preset) return `${key.preset} preset`;
+  if (key.mode === "custom") return "Custom permissions";
+  if (key.scope) return `Legacy ${key.scope} scope`;
+  return key.mode === "legacy" ? "Legacy scope" : "";
+}
+
 /** Analytics pages → one series per metric. Durations are seconds. */
 export function analyticsSeries(pages: Pick<AnalyticsPage, "time_series">[]): MetricSeries[] {
   const byMetric = new Map<string, Array<{ timestamp: number; value: number }>>();
@@ -237,7 +246,7 @@ export function analyticsSeries(pages: Pick<AnalyticsPage, "time_series">[]): Me
  * fal: Model API endpoints the workspace uses (price, cost, analytics,
  * recent requests), Serverless apps (queue, revisions, logs, analytics),
  * Compute instances, API keys and workflows, plus billed usage and the
- * credit balance. Usage, billing, keys and compute need an ADMIN key.
+ * credit balance. Only a FULL key, or a legacy ADMIN one, can reach all of it.
  */
 export class FalClient implements PluginClient {
   private readonly api: FalApi;
@@ -282,9 +291,9 @@ export class FalClient implements PluginClient {
         case "fal-app":
           return this.listApps(accountId);
         case "fal-compute-instance":
-          return this.adminOnly(() => this.listInstances(accountId));
+          return this.ifPermitted(() => this.listInstances(accountId));
         case "fal-api-key":
-          return this.adminOnly(() => this.listKeys(accountId));
+          return this.ifPermitted(() => this.listKeys(accountId));
         case "fal-workflow":
           return this.listWorkflows(accountId);
         default:
@@ -293,7 +302,7 @@ export class FalClient implements PluginClient {
     });
   }
 
-  private async adminOnly(run: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
+  private async ifPermitted(run: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
     try {
       return await run();
     } catch (err) {
@@ -304,7 +313,7 @@ export class FalClient implements PluginClient {
 
   /**
    * Endpoints with usage in the last 30 days (`GET /models/usage?expand=summary`,
-   * admin key), joined with `GET /models` metadata and `GET /models/pricing`.
+   * BILLING or FULL), joined with `GET /models` metadata and `GET /models/pricing`.
    * fal's public catalogue has thousands of endpoints, so listing it all would
    * bury the ones this workspace runs.
    */
@@ -467,7 +476,10 @@ export class FalClient implements PluginClient {
           {
             keyId: s(k.key_id),
             alias: s(k.alias),
-            scope: s(k.scope),
+            access: keyAccess(k),
+            permissions: (k.permissions ?? []).join(", "),
+            description: s(k.description),
+            expiresAt: s(k.expires_at),
             createdAt: s(k.created_at),
             creator: s(k.creator_nickname),
           },
@@ -718,7 +730,7 @@ export class FalClient implements PluginClient {
 
   /**
    * Billed usage: `GET /models/usage` and `GET /serverless/usage`, daily
-   * buckets in UTC, `cost_total` (after discounts). Both need an ADMIN key.
+   * buckets in UTC, `cost_total` (after discounts). BILLING or FULL.
    */
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
@@ -1014,7 +1026,7 @@ export class FalClient implements PluginClient {
       case "fal-api-key":
         return {
           title: r.displayName,
-          subtitle: joinSubtitle("API Key", s(f["scope"])),
+          subtitle: joinSubtitle("API Key", s(f["access"])),
           status,
           sections: [
             section("Key", [
@@ -1022,8 +1034,11 @@ export class FalClient implements PluginClient {
                 [
                   ["Key ID", f["keyId"]],
                   ["Alias", f["alias"]],
-                  ["Scope", f["scope"]],
+                  ["Access", f["access"]],
+                  ["Permissions", f["permissions"]],
+                  ["Description", f["description"]],
                   ["Created", f["createdAt"]],
+                  ["Expires", s(f["expiresAt"]) || "Never"],
                   ["Created By", f["creator"]],
                 ],
                 ["Key ID"],

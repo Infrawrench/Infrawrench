@@ -4,7 +4,7 @@ import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
 /**
  * A model endpoint this workspace has called in the last 30 days, with its
  * catalogue metadata and unit price. Built from `GET /v1/models/usage`
- * (admin key), `GET /v1/models` and `GET /v1/models/pricing`.
+ * (BILLING or FULL), `GET /v1/models` and `GET /v1/models/pricing`.
  */
 export const FalModelType = rt({
   name: "Model",
@@ -55,7 +55,7 @@ export const FalAppType = rt({
   iconKey: "app",
 });
 
-/** A dedicated GPU compute instance. `GET /v1/compute/instances` (admin key) */
+/** A dedicated GPU compute instance. `GET /v1/compute/instances` (COMPUTE, READONLY or FULL) */
 export const FalComputeInstanceType = rt({
   name: "Compute Instance",
   id: "fal-compute-instance",
@@ -74,7 +74,7 @@ export const FalComputeInstanceType = rt({
   iconKey: "server",
 });
 
-/** A workspace API key. `GET /v1/keys` (admin key) */
+/** A workspace API key. `GET /v1/keys` (BILLING or FULL) */
 export const FalApiKeyType = rt({
   name: "API Key",
   id: "fal-api-key",
@@ -82,20 +82,24 @@ export const FalApiKeyType = rt({
   fields: [
     f("keyId", "Key ID"),
     f("alias", "Alias", { required: false }),
-    f("scope", "Scope", { required: false }),
+    f("access", "Access", { showcase: true, required: false }),
+    f("permissions", "Permissions", { required: false }),
+    f("description", "Description", { required: false }),
     f("createdAt", "Created", { showcase: true, required: false }),
+    f("expiresAt", "Expires", { required: false }),
     f("creator", "Created By", { required: false }),
   ],
   outputs: [o("keyId", "Key ID")],
   expiryFields: [
     { fieldKey: "createdAt", from: "created", kind: "api-token", label: "Key due for rotation" },
+    { fieldKey: "expiresAt", from: "expiry", kind: "api-token", label: "API key expires" },
   ],
   credentialFormats: [
     {
       id: "replacement-key",
       label: "Create a replacement key",
       description:
-        "Creates a new API-scope key with the same alias. Switch your apps over, then delete this one.",
+        "Creates a new key on the API preset with the same alias. Switch your apps over, then delete this one.",
       mediaType: "text",
       filenameTemplate: "fal-{resource}-replacement.txt",
     },
