@@ -171,6 +171,7 @@ type Image = ApiListItem<operations["list_images"], "images">;
 
 async function publicImages(ctx: ListContext, region: string): Promise<Image[]> {
   return vpcList(
+    { path: "/images", key: "images" },
     (paging) =>
       ctx.api.vpc(region).get("/images", {
         query: { ...VPC_LIST_QUERY, visibility: "public", status: ["available"], ...paging },

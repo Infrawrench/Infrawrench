@@ -1,14 +1,16 @@
 import {
   CostSetupError,
   CreditAccessError,
+  ListTruncatedError,
   type CostFetchRange,
   type CostRow,
   type CreditBalance,
   pathEncode,
+  requireListPage,
 } from "@infrawrench/plugin-base";
 import { isPermissionGap, type IbmApi } from "./api.js";
 import type { components } from "./api-types.usage.gen.js";
-import { crnService } from "./regions.js";
+import { BILLING, crnService } from "./regions.js";
 
 /**
  * Usage Reports API v4 (`billing.cloud.ibm.com`). Costs come from
@@ -22,6 +24,9 @@ import { crnService } from "./regions.js";
  */
 
 const ACCESS_DOCS = "https://cloud.ibm.com/iam/users";
+
+/** 50,000 usage records a month at 200 a page, the most the document allows. */
+const MAX_USAGE_PAGES = 250;
 
 type Schemas = components["schemas"];
 
@@ -102,39 +107,65 @@ export function usageToRows(month: string, records: InstanceUsage[]): CostRow[] 
   return rows;
 }
 
+const USAGE_PLACE = {
+  vendor: "IBM Cloud",
+  path: "/v4/accounts/{account_id}/resource_instances/usage/{billingmonth}",
+};
+
+async function usagePage(api: IbmApi, accountId: string, month: string, start: string | undefined) {
+  try {
+    return await api.usage.get(
+      `/v4/accounts/${pathEncode(accountId)}/resource_instances/usage/${pathEncode(month)}`,
+      {
+        query: {
+          _names: true,
+          _limit: 200,
+          ...(start ? { _start: start } : {}),
+        },
+      },
+    );
+  } catch (err) {
+    if (isPermissionGap(err)) {
+      throw new CostSetupError(
+        "This API key cannot read usage reports. Give its user or service ID the Viewer role on the Billing account management service.",
+        { label: "Open access settings", url: ACCESS_DOCS },
+      );
+    }
+    throw err;
+  }
+}
+
+async function usageOfMonth(api: IbmApi, accountId: string, month: string): Promise<CostRow[]> {
+  const rows: CostRow[] = [];
+  let start: string | undefined;
+  for (let page = 0; page < MAX_USAGE_PAGES; page++) {
+    const res = await usagePage(api, accountId, month, start);
+    // The document does not require `resources`, so a month that counts no records
+    // may leave it out. Anything else without it cannot say it has none.
+    const records = requireListPage(res.resources ?? (res.count === 0 ? [] : undefined), {
+      ...USAGE_PLACE,
+      key: "resources",
+      page: res,
+    });
+    rows.push(...usageToRows(month, records));
+    start = nextUsageStart(res.next);
+    if (!start) return rows;
+  }
+  throw new ListTruncatedError({ ...USAGE_PLACE, items: rows.length, maxPages: MAX_USAGE_PAGES });
+}
+
 export async function fetchCostData(api: IbmApi, range: CostFetchRange): Promise<CostRow[]> {
   const accountId = await api.accountId();
   const rows: CostRow[] = [];
-  for (const month of monthsIn(range)) {
-    let start: string | undefined;
-    for (let page = 0; page < 500; page++) {
-      let res;
-      try {
-        res = await api.usage.get(
-          `/v4/accounts/${pathEncode(accountId)}/resource_instances/usage/${pathEncode(month)}`,
-          {
-            query: {
-              _names: true,
-              _limit: 200,
-              ...(start ? { _start: start } : {}),
-            },
-          },
-        );
-      } catch (err) {
-        if (isPermissionGap(err)) {
-          throw new CostSetupError(
-            "This API key cannot read usage reports. Give its user or service ID the Viewer role on the Billing account management service.",
-            { label: "Open access settings", url: ACCESS_DOCS },
-          );
-        }
-        throw err;
-      }
-      rows.push(...usageToRows(month, res.resources ?? []));
-      start = res.next?.offset;
-      if (!start) break;
-    }
-  }
+  for (const month of monthsIn(range)) rows.push(...(await usageOfMonth(api, accountId, month)));
   return rows;
+}
+
+/** The next page's `_start`: `offset` as documented, or the same value in the link. */
+function nextUsageStart(next: { href?: string; offset?: string } | undefined): string | undefined {
+  if (next?.offset) return next.offset;
+  if (!next?.href) return undefined;
+  return new URL(next.href, BILLING).searchParams.get("_start") ?? undefined;
 }
 
 async function summary(api: IbmApi, month: string) {

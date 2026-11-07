@@ -1,5 +1,10 @@
 import {
+  ListPageError,
+  ListTruncatedError,
+  followableLink,
   pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
   type ApiListItem,
   type ApiResponse,
   type ResourceInstance,
@@ -35,6 +40,11 @@ import {
 
 export const PLUGIN_ID = "ibm-cloud";
 
+const VENDOR = "IBM Cloud";
+
+/** 50,000 rows at 100 a page, the most the VPC, Code Engine and Resource Controller documents allow. */
+const MAX_LIST_PAGES = 500;
+
 /** Accounts plus the regions to scan, shared by every lister. */
 export class Inventory {
   private regionsPromise: Promise<string[]> | null = null;
@@ -52,10 +62,16 @@ export class Inventory {
         .vpc(this.homeRegion)
         .get("/regions", { query: VPC_QUERY })
         .then((r) => {
-          const names = (r.regions ?? [])
+          const names = requireListPage(r.regions, {
+            vendor: VENDOR,
+            path: "/regions",
+            key: "regions",
+            page: r,
+          })
             .filter((x) => x.status !== "unavailable")
             .map((x) => x.name);
-          return names.length ? names : [this.homeRegion];
+          // Scanning the home region alone would read every other region as emptied.
+          return names.length ? names : IBM_REGIONS.map((x) => x.id);
         })
         .catch((err: unknown) => {
           this.regionsPromise = null;
@@ -175,22 +191,25 @@ export const VPC_LIST_QUERY = { ...VPC_QUERY, limit: 100 };
 /**
  * Page a VPC collection by following `next.href`'s `start` token. `page` asks for
  * one page and `items` reads the list out of it, so both stay typed by the route.
+ * Only the token is read from the link, so its host never matters.
  */
 export async function vpcList<Page extends { next?: { href?: string } }, Item>(
+  where: { path: string; key: string },
   page: (paging: { start?: string }) => Promise<Page>,
   items: (page: Page) => readonly Item[] | undefined,
 ): Promise<Item[]> {
+  const place = { vendor: VENDOR, ...where };
   const out: Item[] = [];
   let start: string | undefined;
-  for (let n = 0; n < 100; n++) {
+  for (let n = 0; n < MAX_LIST_PAGES; n++) {
     const res = await page(start ? { start } : {});
-    out.push(...(items(res) ?? []));
+    out.push(...requireListPage(items(res), { ...place, page: res }));
     const href = res.next?.href;
-    if (!href) break;
+    if (!href) return out;
     start = new URL(href).searchParams.get("start") ?? undefined;
-    if (!start) break;
+    if (!start) throw new ListPageError({ ...place, key: "next.href", found: href });
   }
-  return out;
+  throw new ListTruncatedError({ ...place, items: out.length, maxPages: MAX_LIST_PAGES });
 }
 
 const ref = (v: { id?: string; name?: string } | undefined | null) => v?.id ?? "";
@@ -200,7 +219,10 @@ const ref = (v: { id?: string; name?: string } | undefined | null) => v?.id ?? "
 
 export async function listAccount(ctx: ListContext): Promise<ResourceInstance[]> {
   const token = await ctx.api.getToken();
-  const regions = await ctx.inventory.regions().catch(() => [ctx.inventory.homeRegion]);
+  const regions = await ctx.inventory.regions().catch((err: unknown) => {
+    rethrowIncompleteList(err);
+    return [ctx.inventory.homeRegion];
+  });
   return [
     makeResource(
       ctx.accountId,
@@ -225,7 +247,12 @@ export async function resourceGroups(
   const res = await api.resourceManager.get("/v2/resource_groups", {
     query: { account_id: accountId },
   });
-  return res.resources ?? [];
+  return requireListPage(res.resources, {
+    vendor: VENDOR,
+    path: "/v2/resource_groups",
+    key: "resources",
+    page: res,
+  });
 }
 
 export async function listResourceGroups(ctx: ListContext): Promise<ResourceInstance[]> {
@@ -301,13 +328,17 @@ export function mapInstance(
 
 function listFloatingIpsIn(api: IbmApi, region: string): Promise<FloatingIp[]> {
   return vpcList(
+    { path: "/floating_ips", key: "floating_ips" },
     (paging) => api.vpc(region).get("/floating_ips", { query: { ...VPC_LIST_QUERY, ...paging } }),
     (p) => p.floating_ips,
   );
 }
 
 async function floatingByNic(api: IbmApi, region: string): Promise<Map<string, string>> {
-  const ips = await listFloatingIpsIn(api, region).catch((): FloatingIp[] => []);
+  const ips = await listFloatingIpsIn(api, region).catch((err: unknown): FloatingIp[] => {
+    if (isPermissionGap(err)) return [];
+    throw err;
+  });
   const byNic = new Map<string, string>();
   for (const f of ips) if (f.target?.id && f.address) byNic.set(f.target.id, f.address);
   return byNic;
@@ -317,6 +348,7 @@ export async function listInstances(ctx: ListContext): Promise<ResourceInstance[
   return perRegion(ctx, await vpcRegions(ctx), async (region) => {
     const [instances, floating] = await Promise.all([
       vpcList(
+        { path: "/instances", key: "instances" },
         (paging) =>
           ctx.api.vpc(region).get("/instances", { query: { ...VPC_LIST_QUERY, ...paging } }),
         (p) => p.instances,
@@ -343,6 +375,7 @@ export async function listVolumes(ctx: ListContext): Promise<ResourceInstance[]>
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
     (
       await vpcList(
+        { path: "/volumes", key: "volumes" },
         (paging) =>
           ctx.api.vpc(region).get("/volumes", { query: { ...VPC_LIST_QUERY, ...paging } }),
         (p) => p.volumes,
@@ -380,6 +413,7 @@ export async function listVpcs(ctx: ListContext): Promise<ResourceInstance[]> {
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
     (
       await vpcList(
+        { path: "/vpcs", key: "vpcs" },
         (paging) => ctx.api.vpc(region).get("/vpcs", { query: { ...VPC_LIST_QUERY, ...paging } }),
         (p) => p.vpcs,
       )
@@ -409,6 +443,7 @@ export async function listSubnets(ctx: ListContext): Promise<ResourceInstance[]>
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
     (
       await vpcList(
+        { path: "/subnets", key: "subnets" },
         (paging) =>
           ctx.api.vpc(region).get("/subnets", { query: { ...VPC_LIST_QUERY, ...paging } }),
         (p) => p.subnets,
@@ -489,6 +524,7 @@ export async function listSecurityGroups(ctx: ListContext): Promise<ResourceInst
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
     (
       await vpcList(
+        { path: "/security_groups", key: "security_groups" },
         (paging) =>
           ctx.api.vpc(region).get("/security_groups", { query: { ...VPC_LIST_QUERY, ...paging } }),
         (p) => p.security_groups,
@@ -549,6 +585,7 @@ export async function listLoadBalancers(ctx: ListContext): Promise<ResourceInsta
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
     (
       await vpcList(
+        { path: "/load_balancers", key: "load_balancers" },
         (paging) =>
           ctx.api.vpc(region).get("/load_balancers", { query: { ...VPC_LIST_QUERY, ...paging } }),
         (p) => p.load_balancers,
@@ -586,6 +623,7 @@ export async function listLoadBalancers(ctx: ListContext): Promise<ResourceInsta
 /** Every key of a region, which a create also looks through. */
 export function listKeysIn(api: IbmApi, region: string) {
   return vpcList(
+    { path: "/keys", key: "keys" },
     (paging) => api.vpc(region).get("/keys", { query: { ...VPC_LIST_QUERY, ...paging } }),
     (p) => p.keys,
   );
@@ -645,6 +683,14 @@ export function mapCluster(accountId: string, c: Cluster): ResourceInstance {
   );
 }
 
+/**
+ * The document promises an array. A `null` from an account with nothing has not been
+ * ruled out and has always read as none, so only a real answer of another shape fails.
+ */
+function clusterPage<T>(answer: readonly T[] | null | undefined, path: string): T[] {
+  return requireListPage(answer ?? [], { vendor: VENDOR, path, key: null });
+}
+
 export async function listClusters(ctx: ListContext): Promise<ResourceInstance[]> {
   const [vpc, classic] = await Promise.all([
     ctx.api.containers.get("/v2/vpc/getClusters", { query: { provider: "vpc-gen2" } }),
@@ -654,7 +700,10 @@ export async function listClusters(ctx: ListContext): Promise<ResourceInstance[]
     }),
   ]);
   const seen = new Set<string>();
-  return [...(vpc ?? []), ...(classic ?? [])]
+  return [
+    ...clusterPage(vpc, "/v2/vpc/getClusters"),
+    ...clusterPage(classic, "/v2/classic/getClusters"),
+  ]
     .filter((c) => c.id && !seen.has(c.id) && seen.add(c.id))
     .filter((c) => !ctx.regionHint || c.region === ctx.regionHint)
     .map((c) => mapCluster(ctx.accountId, c));
@@ -669,7 +718,7 @@ export async function poolsOf(ctx: ListContext, clusterId: string): Promise<Reso
   const pools = await ctx.api.containers.get("/v2/getWorkerPools", {
     query: { cluster: clusterId },
   });
-  return (pools ?? []).map((p) => {
+  return clusterPage(pools, "/v2/getWorkerPools").map((p) => {
     const zones = p.zones ?? [];
     const total = zones.reduce((s, z) => s + (z.workerCount ?? 0), 0);
     return makeResource(
@@ -718,20 +767,24 @@ type CeSchemas = CodeEngineComponents["schemas"];
 type CeProject = Pick<CeSchemas["Project"], "id" | "name"> &
   Partial<Pick<CeSchemas["Project"], "status" | "resource_group_id" | "created_at">>;
 
-/** Page a Code Engine list, by the `start` in each page's `next`. */
-async function ceList<Page extends { next?: { start?: string } }, Item>(
+/** Page a Code Engine list, by the `start` in each page's `next`, or in its link. */
+async function ceList<Page extends { next?: { href?: string; start?: string } }, Item>(
+  where: { path: string; key: string },
   page: (query: { limit: number; start?: string }) => Promise<Page>,
   items: (page: Page) => readonly Item[] | undefined,
 ): Promise<Item[]> {
+  const place = { vendor: VENDOR, ...where };
   const out: Item[] = [];
   let start: string | undefined;
-  for (let n = 0; n < 50; n++) {
+  for (let n = 0; n < MAX_LIST_PAGES; n++) {
     const res = await page({ limit: 100, ...(start ? { start } : {}) });
-    out.push(...(items(res) ?? []));
-    start = res.next?.start;
-    if (!start) break;
+    out.push(...requireListPage(items(res), { ...place, page: res }));
+    const next = res.next;
+    start =
+      next?.start ?? (next?.href && new URL(next.href).searchParams.get("start")) ?? undefined;
+    if (!start) return out;
   }
-  return out;
+  throw new ListTruncatedError({ ...place, items: out.length, maxPages: MAX_LIST_PAGES });
 }
 
 export function mapProject(accountId: string, region: string, p: CeProject): ResourceInstance {
@@ -758,6 +811,7 @@ async function ceRegions(ctx: ListContext): Promise<string[]> {
 
 function ceProjects(api: IbmApi, region: string) {
   return ceList(
+    { path: "/projects", key: "projects" },
     (query) => api.codeEngine(region).get("/projects", { query }),
     (p) => p.projects,
   );
@@ -809,6 +863,7 @@ export async function listApps(ctx: ListContext): Promise<ResourceInstance[]> {
     const apps = await mapLimit(projects, 4, async (p) =>
       (
         await ceList(
+          { path: "/projects/{project_id}/apps", key: "apps" },
           (query) =>
             ctx.api.codeEngine(region).get(`/projects/${pathEncode(p.id)}/apps`, { query }),
           (page) => page.apps,
@@ -827,13 +882,19 @@ export type ResourceInstanceRc = ResourceControllerComponents["schemas"]["Resour
 type ResourceInstanceList = ApiResponse<ResourceControllerOperations["list_resource_instances"]>;
 
 export async function resourceInstances(api: IbmApi): Promise<ResourceInstanceRc[]> {
+  const path = "/v2/resource_instances";
+  const place = { vendor: VENDOR, path };
   const out: ResourceInstanceRc[] = [];
-  let res = await api.resourceController.get("/v2/resource_instances", { query: { limit: 100 } });
+  let pageUrl = `${RESOURCE_CONTROLLER}${path}`;
+  let res = await api.resourceController.get(path, { query: { limit: 100 } });
   for (let page = 1; ; page++) {
-    out.push(...(res.resources ?? []));
-    if (!res.next_url || page === 100) return out;
-    // The next link is a path on this host, which an old loop concatenated.
-    res = await api.followLink<ResourceInstanceList>(`${RESOURCE_CONTROLLER}${res.next_url}`);
+    out.push(...requireListPage(res.resources, { ...place, key: "resources", page: res }));
+    if (!res.next_url) return out;
+    if (page === MAX_LIST_PAGES) {
+      throw new ListTruncatedError({ ...place, items: out.length, maxPages: MAX_LIST_PAGES });
+    }
+    pageUrl = followableLink(res.next_url, pageUrl, place);
+    res = await api.followLink<ResourceInstanceList>(pageUrl);
   }
 }
 
@@ -962,7 +1023,21 @@ export async function listBuckets(ctx: ListContext): Promise<ResourceInstance[]>
       url: `https://${cosEndpoint("us")}/?extended`,
       headers: { "ibm-service-instance-id": inst.guid!, accept: "application/xml" },
     });
-    return parseBucketList(xml).map((b) => ({ ...b, instance: inst.guid! }));
+    const buckets = parseBucketList(xml);
+    const place = { vendor: VENDOR, path: "/?extended" };
+    if (!xml.includes("<ListAllMyBucketsResult")) {
+      throw new ListPageError({
+        ...place,
+        key: "ListAllMyBucketsResult",
+        found: undefined,
+        page: xml,
+      });
+    }
+    // The document shows this flag on the listing and gives no way to ask for more.
+    if (xmlValue(xml, "IsTruncated") === "true") {
+      throw new ListTruncatedError({ ...place, items: buckets.length });
+    }
+    return buckets.map((b) => ({ ...b, instance: inst.guid! }));
   });
   const buckets = perInstance.flat();
   return mapLimit(buckets, 6, async (b) => {

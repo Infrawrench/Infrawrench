@@ -13,7 +13,13 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, type ApiResponse } from "@infrawrench/plugin-base";
+import {
+  ListPageError,
+  ListTruncatedError,
+  externalIdOf,
+  pathEncode,
+  type ApiResponse,
+} from "@infrawrench/plugin-base";
 import { IbmApi, isPermissionGap } from "./api.js";
 import type { operations as DatabaseOperations } from "./api-types.databases.gen.js";
 import { fetchCostData, fetchCredits, monthToDate } from "./billing.js";
@@ -114,6 +120,29 @@ function decodeXml(s: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&");
+}
+
+const COS_PLACE = { vendor: "IBM Cloud", path: "/{bucket}?list-type=2" };
+
+/** 50,000 objects at 1,000 a page, the most S3 allows, for what one folder shows. */
+const MAX_BROWSE_PAGES = 50;
+
+/** 100,000 objects. A folder delete reads all of them before it deletes any. */
+const MAX_FOLDER_DELETE_PAGES = 100;
+
+/** The token for the next page of an object listing, or nothing at the end of it. */
+function nextObjectToken(xml: string): string {
+  if (xmlValue(xml, "IsTruncated") !== "true") return "";
+  const token = xmlValue(xml, "NextContinuationToken");
+  if (!token) {
+    throw new ListPageError({
+      ...COS_PLACE,
+      key: "NextContinuationToken",
+      found: undefined,
+      page: xml,
+    });
+  }
+  return decodeXml(token);
 }
 
 /**
@@ -652,7 +681,7 @@ export class IbmCloudClient implements PluginClient {
     token: string,
     delimiter: boolean,
   ): Promise<string> {
-    return this.api.requestXml({
+    const xml = await this.api.requestXml({
       url: this.bucketUrl(bucket),
       query: {
         "list-type": 2,
@@ -663,13 +692,22 @@ export class IbmCloudClient implements PluginClient {
       },
       headers: { accept: "application/xml" },
     });
+    if (!xml.includes("<ListBucketResult")) {
+      throw new ListPageError({
+        ...COS_PLACE,
+        key: "ListBucketResult",
+        found: undefined,
+        page: xml,
+      });
+    }
+    return xml;
   }
 
   listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
     return attempt(async () => {
       const out: StorageObject[] = [];
       let token = "";
-      for (let page = 0; page < 20; page++) {
+      for (let page = 0; page < MAX_BROWSE_PAGES; page++) {
         const xml = await this.listPage(bucket, prefix, token, true);
         for (const m of xml.matchAll(/<CommonPrefixes>\s*<Prefix>([^<]*)<\/Prefix>/g)) {
           const key = decodeXml(m[1]!);
@@ -692,10 +730,14 @@ export class IbmCloudClient implements PluginClient {
             isDirectory: false,
           });
         }
-        token = xmlValue(xml, "NextContinuationToken");
-        if (xmlValue(xml, "IsTruncated") !== "true" || !token) break;
+        token = nextObjectToken(xml);
+        if (!token) return out;
       }
-      return out;
+      throw new ListTruncatedError({
+        ...COS_PLACE,
+        items: out.length,
+        maxPages: MAX_BROWSE_PAGES,
+      });
     });
   }
 
@@ -726,11 +768,19 @@ export class IbmCloudClient implements PluginClient {
       const keys = [key];
       if (key.endsWith("/")) {
         let token = "";
-        for (let page = 0; page < 100; page++) {
+        let complete = false;
+        for (let page = 0; page < MAX_FOLDER_DELETE_PAGES && !complete; page++) {
           const xml = await this.listPage(bucket, key, token, false);
           for (const m of xml.matchAll(/<Key>([^<]*)<\/Key>/g)) keys.push(decodeXml(m[1]!));
-          token = xmlValue(xml, "NextContinuationToken");
-          if (xmlValue(xml, "IsTruncated") !== "true" || !token) break;
+          token = nextObjectToken(xml);
+          complete = !token;
+        }
+        if (!complete) {
+          throw new ListTruncatedError({
+            ...COS_PLACE,
+            items: keys.length,
+            maxPages: MAX_FOLDER_DELETE_PAGES,
+          });
         }
       }
       for (const k of [...new Set(keys)]) {
