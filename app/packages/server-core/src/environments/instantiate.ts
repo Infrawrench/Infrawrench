@@ -158,7 +158,7 @@ import {
 } from "../db/schema";
 import { upsertCreatedResource } from "../created-resource";
 import { getOrgAccountClient } from "../org-accounts";
-import { setLiteralSecretState } from "../secret-states";
+import { holdSecretWrites, setLiteralSecretState } from "../secret-states";
 import { createLeaseRecord, getLeaseRecordByResource } from "../leases/store";
 import {
   EnvironmentInputError,
@@ -488,8 +488,11 @@ export async function instantiateEnvironment(
         fields[key] = ref ? ref.value : value;
       }
 
+      // What the plugin stores from inside the create has no row until the upsert below.
+      const heldSecrets = holdSecretWrites();
+      const create = ctxClient.client.createResource.bind(ctxClient.client);
       const outcome = normalizeResourceCreateResult(
-        await ctxClient.client.createResource(member.resourceTypeId, accountId, fields),
+        await heldSecrets.run(() => create(member.resourceTypeId, accountId, fields)),
       );
       const resource = outcome.resource;
 
@@ -518,6 +521,8 @@ export async function instantiateEnvironment(
           resource,
         }),
       );
+      // A member whose one-time secret is gone cannot be used, so this fails it too.
+      await withRetry(() => heldSecrets.flush());
 
       // The TTL, attached before anything optional runs. A member without a
       // lease is the "forever" branch this feature exists to not have, so a

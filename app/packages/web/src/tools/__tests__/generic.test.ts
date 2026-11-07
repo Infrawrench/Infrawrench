@@ -604,6 +604,33 @@ describe("genericTools", () => {
     expect(values).toHaveBeenCalled();
   });
 
+  it("create_resource says so when it could not store what it created", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockInsert.mockImplementation(() => {
+      throw new Error('Failed query: insert into "resources" params: secret');
+    });
+    mockGetClientForResource.mockResolvedValue({
+      client: {
+        createResource: vi.fn().mockResolvedValue({
+          id: "new-r",
+          displayName: "new",
+          fields: {},
+          resolvedOutputs: {},
+          secretStates: [],
+        }),
+      },
+      account: { pluginId: "aws" },
+    });
+    const r = await tool("create_resource").handler(
+      { pluginId: "aws", accountId: "a1", resourceTypeId: "rt", fields: { name: "x" } },
+      auth,
+    );
+    const out = JSON.parse(r.content[0]!.text);
+    expect(out.warnings).toEqual([expect.objectContaining({ code: "secret-persist-failed" })]);
+    expect(r.content[0]!.text).not.toContain("params: secret");
+    quiet.mockRestore();
+  });
+
   it("delete_resource errors when unsupported", async () => {
     mockGetClientForResource.mockResolvedValue({ client: {} });
     const r = await tool("delete_resource").handler(

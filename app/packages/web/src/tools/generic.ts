@@ -9,7 +9,7 @@ import {
   filterVisiblePeerIntegrations,
 } from "../services/plugin-clients";
 import { captureDeletionSaving } from "@infrawrench/server-core/savings/capture";
-import { setLiteralSecretState } from "@infrawrench/server-core/secret-states";
+import { holdSecretWrites, setLiteralSecretState } from "@infrawrench/server-core/secret-states";
 import { getOrgStatusIncidents } from "@infrawrench/server-core/status/match";
 import { listExpiring } from "@infrawrench/server-core/expiry/feed";
 import { listPosture } from "@infrawrench/server-core/posture/feed";
@@ -1182,13 +1182,12 @@ export function genericTools(): ToolDefinition[] {
           fields = { ...fields, [sshKeyFieldKey]: publicKey };
         }
 
+        const heldSecrets = holdSecretWrites();
         let createReturn;
         try {
-          createReturn = await ctx.client.createResource(
-            resourceTypeId,
-            accountId,
-            fields,
-            parentResourceId,
+          const create = ctx.client.createResource.bind(ctx.client);
+          createReturn = await heldSecrets.run(() =>
+            create(resourceTypeId, accountId, fields, parentResourceId),
           );
         } catch (e) {
           return err(e instanceof Error ? e.message : "Resource creation failed");
@@ -1196,8 +1195,8 @@ export function genericTools(): ToolDefinition[] {
 
         const { resource: created, warnings } = normalizeResourceCreateResult(createReturn);
 
-        if (ctx.account.pluginId === pluginId) {
-          try {
+        try {
+          if (ctx.account.pluginId === pluginId) {
             await upsertCreatedResource({
               organizationId: orgId,
               pluginId,
@@ -1209,9 +1208,14 @@ export function genericTools(): ToolDefinition[] {
               if (state.resolution.kind !== "plaintext") continue;
               await setLiteralSecretState(created.id, state.fieldKey, state.resolution.value);
             }
-          } catch (persistErr) {
-            console.error("[tools/generic] Failed to persist resource:", persistErr);
           }
+          await heldSecrets.flush();
+        } catch (persistErr) {
+          console.error("[tools/generic] Failed to persist resource:", persistErr);
+          warnings.push({
+            code: "secret-persist-failed",
+            message: `${created.displayName} was created, but Infrawrench could not store it and any credentials it returned.`,
+          });
         }
 
         void logAudit({

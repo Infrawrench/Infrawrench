@@ -15,9 +15,11 @@
  * table means updating the clear-list in exactly one place now.
  */
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { db } from "./db/client";
-import { secretFieldStates } from "./db/schema";
+import { accounts, resources, secretFieldStates } from "./db/schema";
 import { encrypt, buildAad } from "./encryption";
+import { runHoldingSecretWrites, type HeldSecretWrites } from "./runtime/request-scope";
 
 /** Identifies the resource output a secret field points at. */
 export interface SecretOutputRefSource {
@@ -126,4 +128,106 @@ export async function setOutputRefSecretState(
         updatedAt: now,
       },
     });
+}
+
+/**
+ * A soft-deleted row for a resource a plugin stores a secret against before any sync
+ * has seen it, for the foreign key: rotating a credential on a resource with no row
+ * has already killed the old one, on a route that never writes a row of its own. Soft
+ * deleted, so it lists nowhere until a sync or a create fills it in and revives it.
+ */
+async function anchorSecretRow(accountId: string, resourceId: string): Promise<void> {
+  const [existing] = await db
+    .select({ id: resources.id })
+    .from(resources)
+    .where(eq(resources.id, resourceId))
+    .limit(1);
+  if (existing) return;
+  const [account] = await db
+    .select({ organizationId: accounts.organizationId, pluginId: accounts.pluginId })
+    .from(accounts)
+    .where(eq(accounts.id, accountId))
+    .limit(1);
+  if (!account) throw new Error(`Account ${accountId} not found`);
+  // `resourceId` is `${accountId}:${typeId}:${externalId}`, checked by the caller.
+  const rest = resourceId.slice(accountId.length + 1);
+  const colon = rest.indexOf(":");
+  const externalId = colon < 0 ? rest : rest.slice(colon + 1);
+  await db
+    .insert(resources)
+    .values({
+      id: resourceId,
+      organizationId: account.organizationId,
+      pluginId: account.pluginId,
+      resourceTypeId: colon < 0 ? "" : rest.slice(0, colon),
+      accountId,
+      displayName: externalId,
+      externalId,
+      deletedAt: new Date(),
+    })
+    .onConflictDoNothing();
+}
+
+/**
+ * What a plugin's `setPlaintext` does for a resource of `accountId`. A database error
+ * names the statement and its parameters, ciphertext included, and routes hand a
+ * plugin's error to the browser, so it is logged here and replaced.
+ */
+export async function storeAccountSecret(
+  accountId: string,
+  resourceId: string,
+  fieldKey: string,
+  plaintext: string,
+): Promise<void> {
+  try {
+    await anchorSecretRow(accountId, resourceId);
+    await setLiteralSecretState(resourceId, fieldKey, plaintext);
+  } catch (err) {
+    console.error(`[secret-states] Failed to store secret ${resourceId}:${fieldKey}:`, err);
+    throw new Error(`Infrawrench could not store the secret "${fieldKey}".`, { cause: err });
+  }
+}
+
+export interface SecretWriteHold {
+  /** Run a create, holding what it passes to `setPlaintext`. A throw from it still flushes. */
+  run<T>(create: () => Promise<T>): Promise<T>;
+  /** Write what was held. Call it after the resource's upsert; a failure must reach someone. */
+  flush(): Promise<void>;
+}
+
+/**
+ * For a flow that creates a resource and then upserts its row. A plugin knows the new
+ * resource's id only once the provider has answered, so it stores a one-time secret
+ * from inside `createResource`, before that row exists. Holding the write keeps a
+ * failed store from turning a create the provider already did into a failed one, with
+ * the secret lost and nobody told what happened. The plugin reads back what it held.
+ */
+export function holdSecretWrites(): SecretWriteHold {
+  const held: HeldSecretWrites = new Map();
+  const flush = async () => {
+    const failed: unknown[] = [];
+    for (const [key, { write }] of held) {
+      try {
+        await write();
+        held.delete(key);
+      } catch (err) {
+        failed.push(err);
+      }
+    }
+    if (failed.length > 0) throw failed[0];
+  };
+  return {
+    async run(create) {
+      try {
+        return await runHoldingSecretWrites(held, create);
+      } catch (err) {
+        // The provider may have made it before this threw, and a sync will bring it in.
+        await flush().catch((flushErr: unknown) => {
+          console.error("[secret-states] Failed to store a failed create's secrets:", flushErr);
+        });
+        throw err;
+      }
+    },
+    flush,
+  };
 }

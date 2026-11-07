@@ -1,5 +1,5 @@
 import { z, type ZodTypeAny } from "zod";
-import { setLiteralSecretState } from "@infrawrench/server-core/secret-states";
+import { holdSecretWrites, setLiteralSecretState } from "@infrawrench/server-core/secret-states";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { logAudit } from "../services/audit";
 import { loadPlugins } from "../plugins/loader";
@@ -125,13 +125,12 @@ export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
           if (!ctx) return err("Account or peer resource not found");
           if (!ctx.client.createResource) return err("Plugin does not support creation");
 
+          const heldSecrets = holdSecretWrites();
           let createReturn;
           try {
-            createReturn = await ctx.client.createResource(
-              typeId,
-              accountId,
-              fields,
-              parentResourceId,
+            const create = ctx.client.createResource.bind(ctx.client);
+            createReturn = await heldSecrets.run(() =>
+              create(typeId, accountId, fields, parentResourceId),
             );
           } catch (e) {
             return err(e instanceof Error ? e.message : "Resource creation failed");
@@ -139,8 +138,8 @@ export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
 
           const { resource: created, warnings } = normalizeResourceCreateResult(createReturn);
 
-          if (ctx.account.pluginId === pluginId) {
-            try {
+          try {
+            if (ctx.account.pluginId === pluginId) {
               await upsertCreatedResource({
                 organizationId: orgId,
                 pluginId,
@@ -152,9 +151,14 @@ export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
                 if (state.resolution.kind !== "plaintext") continue;
                 await setLiteralSecretState(created.id, state.fieldKey, state.resolution.value);
               }
-            } catch (persistErr) {
-              console.error("[tools/per-plugin-create] Failed to persist resource:", persistErr);
             }
+            await heldSecrets.flush();
+          } catch (persistErr) {
+            console.error("[tools/per-plugin-create] Failed to persist resource:", persistErr);
+            warnings.push({
+              code: "secret-persist-failed",
+              message: `${created.displayName} was created, but Infrawrench could not store it and any credentials it returned.`,
+            });
           }
 
           void logAudit({

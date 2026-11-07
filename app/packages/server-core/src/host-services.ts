@@ -21,7 +21,7 @@ import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
 import { db } from "./db/client";
 import { accounts, secretFieldStates } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
-import { setLiteralSecretState } from "./secret-states";
+import { setLiteralSecretState, storeAccountSecret } from "./secret-states";
 import { freshAccountCredentials } from "./provider-oauth/refresh";
 import { resourceIdBelongsToAccount } from "./resource-ids";
 import { resolveDispatcher } from "./bastion/registry";
@@ -29,7 +29,7 @@ import { realtimeEnabled } from "./realtime/client";
 import { BastionDisconnectedError } from "./bastion/errors";
 import { GatewayOnlyError, isEdgeRuntime } from "./runtime/gateway-only";
 import { queryWarehouse } from "./aws-pricing-warehouse/query";
-import { sessionHandoffInScope } from "./runtime/request-scope";
+import { heldSecretWritesInScope, sessionHandoffInScope } from "./runtime/request-scope";
 import {
   guardDriverConnection,
   pinnedLookup,
@@ -169,13 +169,18 @@ function accountSecretHostServices(accountId: string): SecretHostServices {
   return {
     async getPlaintext(resourceId, fieldKey) {
       if (!resourceIdBelongsToAccount(resourceId, accountId)) return null;
+      const held = heldSecretWritesInScope()?.get(`${resourceId}\0${fieldKey}`);
+      if (held) return held.value;
       return secretHostServices.getPlaintext(resourceId, fieldKey);
     },
     async setPlaintext(resourceId, fieldKey, value) {
       if (!resourceIdBelongsToAccount(resourceId, accountId)) {
         throw new Error(`Resource ${resourceId} does not belong to account ${accountId}`);
       }
-      await setLiteralSecretState(resourceId, fieldKey, value);
+      const write = () => storeAccountSecret(accountId, resourceId, fieldKey, value);
+      const held = heldSecretWritesInScope();
+      if (held) held.set(`${resourceId}\0${fieldKey}`, { value, write });
+      else await write();
     },
   };
 }

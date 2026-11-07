@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { DbClient } from "../client";
 import { MIGRATIONS } from "../schema";
 import { upsertResourceRow } from "../rows";
+import { secretAnchorStatement } from "../secret-anchor";
 
 /** The real schema on the real engine, foreign keys on as `electron/db.ts` has them. */
 let sqlite: Database;
@@ -89,6 +90,72 @@ describe("upsertResourceRow", () => {
       "SELECT deleted_at FROM resources",
     );
     expect(revived?.deleted_at).toBeNull();
+  });
+});
+
+describe("a secret stored before anything wrote the resource's row", () => {
+  const ID = "a1:thing:t:with:colons";
+  const writeSecret = () =>
+    db.execute(
+      `INSERT INTO secret_field_states (id, resource_id, field_key, resolution_kind, encrypted_value, value_iv)
+       VALUES ('s1', $1, 'token', 'literal', 'ct', 'iv')`,
+      [ID],
+    );
+  const anchor = async () => {
+    const statement = secretAnchorStatement(ID)!;
+    await db.execute(statement.sql, statement.params);
+  };
+
+  it("is what the foreign key refuses", async () => {
+    await expect(writeSecret()).rejects.toThrow(/FOREIGN KEY/);
+  });
+
+  it("gets a row it can hang off, listed nowhere", async () => {
+    await anchor();
+    await writeSecret();
+    const [row] = await db.select<
+      Array<{
+        plugin_id: string;
+        resource_type_id: string;
+        external_id: string;
+        deleted_at: string;
+      }>
+    >("SELECT plugin_id, resource_type_id, external_id, deleted_at FROM resources");
+    expect(row).toMatchObject({
+      plugin_id: "fake",
+      resource_type_id: "thing",
+      external_id: "t:with:colons",
+    });
+    expect(row?.deleted_at).toBeTruthy();
+  });
+
+  it("survives the create's upsert, which revives the row", async () => {
+    await anchor();
+    await writeSecret();
+    await upsertResourceRow(db, row({ id: ID }));
+    const [revived] = await db.select<Array<{ deleted_at: string | null; display_name: string }>>(
+      "SELECT deleted_at, display_name FROM resources",
+    );
+    expect(revived).toEqual({ deleted_at: null, display_name: "Thing" });
+    await expect(db.select<unknown[]>("SELECT id FROM secret_field_states")).resolves.toHaveLength(
+      1,
+    );
+  });
+
+  it("leaves a row that is already there alone", async () => {
+    await upsertResourceRow(db, row({ id: ID, displayName: "Named" }));
+    await anchor();
+    const [kept] = await db.select<Array<{ display_name: string; deleted_at: string | null }>>(
+      "SELECT display_name, deleted_at FROM resources",
+    );
+    expect(kept).toEqual({ display_name: "Named", deleted_at: null });
+  });
+
+  it("does nothing for an account that is not here, or an id that names none", async () => {
+    const elsewhere = secretAnchorStatement("nope:thing:t")!;
+    await db.execute(elsewhere.sql, elsewhere.params);
+    await expect(db.select<unknown[]>("SELECT id FROM resources")).resolves.toEqual([]);
+    expect(secretAnchorStatement("just-an-id")).toBeNull();
   });
 });
 

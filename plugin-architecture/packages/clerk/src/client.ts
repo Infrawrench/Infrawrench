@@ -1249,8 +1249,7 @@ export class ClerkClient implements PluginClient {
             },
           });
           const created = this.mapOAuthApp(accountId, app);
-          // Not in the outputs, which the host stores in the clear. Not through the secret
-          // service either: the host's row for this resource does not exist until this returns.
+          // Not in the outputs, which the host stores in the clear.
           return app.client_secret
             ? {
                 ...created,

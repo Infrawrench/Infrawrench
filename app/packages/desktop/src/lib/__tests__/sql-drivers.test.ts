@@ -228,6 +228,15 @@ describe("secretHostServices.getPlaintext", () => {
 });
 
 describe("secretHostServices.setPlaintext / persistPlaintextSecret", () => {
+  it("gives a resource with no row one first, for the foreign key", async () => {
+    invoke.mockResolvedValue({ ciphertext: "CT", iv: "IV" });
+    await secretHostServices.setPlaintext!("acc:thing:ext", "field", "plain");
+    const statements = execute.mock.calls.map(([sql]) => String(sql));
+    expect(statements[0]).toContain("INSERT INTO resources");
+    expect(statements[0]).toContain("ON CONFLICT(id) DO NOTHING");
+    expect(statements[1]).toContain("INTO secret_field_states");
+  });
+
   it("encrypts then upserts the secret_field_states row", async () => {
     invoke.mockResolvedValue({ ciphertext: "CT", iv: "IV" });
     await secretHostServices.setPlaintext!("res", "field", "plain");

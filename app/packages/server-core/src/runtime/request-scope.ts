@@ -37,6 +37,8 @@ export interface RequestScope {
    * poller leaves it unset and behaves exactly like the Node poller.
    */
   sessionHandoff?: boolean;
+  /** Secret writes a create holds until its resource's row exists; see `holdSecretWrites`. */
+  heldSecretWrites?: HeldSecretWrites;
   /** Where a list a plugin refused to complete inside this scope is recorded. */
   incompleteList?: IncompleteListTracker;
 }
@@ -63,6 +65,9 @@ interface IncompleteListTracker {
   error?: Error;
   parent?: IncompleteListTracker | undefined;
 }
+
+/** Writes `setPlaintext` was asked for during a create, by resource and field. */
+export type HeldSecretWrites = Map<string, { value: string; write: () => Promise<void> }>;
 
 const storage = new AsyncLocalStorage<RequestScope>();
 
@@ -134,6 +139,19 @@ export async function runListChecked<T>(fn: () => Promise<T>): Promise<T> {
   const value = await storage.run({ ...parent, incompleteList: tracker }, fn);
   if (tracker.error) throw tracker.error;
   return value;
+}
+
+/** Run `fn` with the secret writes it asks for going into `held`, not the database. */
+export function runHoldingSecretWrites<T>(
+  held: HeldSecretWrites,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return storage.run({ ...storage.getStore(), heldSecretWrites: held }, fn);
+}
+
+/** Where a secret write goes instead of the database, while a create holds them. */
+export function heldSecretWritesInScope(): HeldSecretWrites | undefined {
+  return storage.getStore()?.heldSecretWrites;
 }
 
 /** Whether this scope hands work that needs process-local state to the session gateway. */

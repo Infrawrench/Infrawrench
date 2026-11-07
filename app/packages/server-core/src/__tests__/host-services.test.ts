@@ -723,3 +723,55 @@ describe("http.request — node https with caCert", () => {
     ).rejects.toThrow(/socket error/);
   });
 });
+
+describe("secret writes held during a create", () => {
+  const account = () =>
+    hs
+      .buildPluginHostServices({} as never, {}, { accountId: "acc-1", bastionId: null })
+      .then((out) => out!.secrets!);
+
+  it("writes nothing until flushed, and a read sees what it held", async () => {
+    const { holdSecretWrites } = await import("../secret-states");
+    const svc = await account();
+    const held = holdSecretWrites();
+    const read = await held.run(async () => {
+      await svc.setPlaintext!("acc-1:t:x", "f", "v");
+      return svc.getPlaintext("acc-1:t:x", "f");
+    });
+    expect(read).toBe("v");
+    expect(pg.queries.some((q) => q.sql.includes('"secret_field_states"'))).toBe(false);
+    pg.setRows([{ id: "acc-1:t:x" }]);
+    await held.flush();
+    expect(pg.queries.some((q) => q.sql.includes('insert into "secret_field_states"'))).toBe(true);
+  });
+
+  it("still refuses another account's resource, at the write", async () => {
+    const { holdSecretWrites } = await import("../secret-states");
+    const svc = await account();
+    await expect(
+      holdSecretWrites().run(() => svc.setPlaintext!("acc-2:t:x", "f", "v")),
+    ).rejects.toThrow(/does not belong/);
+  });
+
+  it("does not hold a write once the create is over", async () => {
+    const { holdSecretWrites } = await import("../secret-states");
+    const svc = await account();
+    await holdSecretWrites().run(async () => {});
+    pg.setRows([{ id: "acc-1:t:x" }]);
+    await svc.setPlaintext!("acc-1:t:x", "f", "v");
+    expect(pg.queries.some((q) => q.sql.includes('insert into "secret_field_states"'))).toBe(true);
+  });
+
+  it("stores what it held when the create throws, as the provider may have made it", async () => {
+    const { holdSecretWrites } = await import("../secret-states");
+    const svc = await account();
+    pg.setRows([{ id: "acc-1:t:x" }]);
+    await expect(
+      holdSecretWrites().run(async () => {
+        await svc.setPlaintext!("acc-1:t:x", "f", "v");
+        throw new Error("provider refused the next step");
+      }),
+    ).rejects.toThrow("provider refused the next step");
+    expect(pg.queries.some((q) => q.sql.includes('insert into "secret_field_states"'))).toBe(true);
+  });
+});

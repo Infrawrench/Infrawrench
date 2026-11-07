@@ -29,6 +29,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { readOAuthGrantState, SecretReadError } from "@infrawrench/plugin-base";
 import { getPlugin } from "../src/plugins/loader";
+import { secretAnchorStatement } from "../src/db/secret-anchor";
 import { mainInstancePricing } from "./instance-pricing-client";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
 import { getSqlite, normalizeSql, persist } from "./db";
@@ -222,6 +223,8 @@ const secretHostServices: SecretHostServices = {
     const aad = buildAad("secretField", `${resourceId}:${fieldKey}`, "value");
     const { ciphertext, iv } = encryptValue(value, getEncryptionKey(), aad);
     const db = await getSqlite();
+    const anchor = secretAnchorStatement(resourceId);
+    if (anchor) db.run(normalizeSql(anchor.sql), anchor.params);
     db.run(
       normalizeSql(
         `INSERT INTO secret_field_states (id, resource_id, field_key, resolution_kind, encrypted_value, value_iv)

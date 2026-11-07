@@ -497,6 +497,11 @@ export interface SecretHostServices {
    * instead of minting a fresh one per session. The value never leaves the
    * host process; web/desktop clients only ever trigger the server-side read.
    * Optional so older host builds without a write path still satisfy the type.
+   *
+   * Works for a resource whose row the host does not have yet, including from inside
+   * `createResource`, where the host holds the write until it has written the row and
+   * says so itself if that fails. Returning `secretStates` from `createResource` is
+   * the same thing, for a plugin that has no reason to read it back during the create.
    */
   setPlaintext?(resourceId: string, fieldKey: string, value: string): Promise<void>;
 }

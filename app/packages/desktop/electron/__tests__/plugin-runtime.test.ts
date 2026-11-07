@@ -17,8 +17,9 @@ vi.mock("../../src/plugins/loader", () => ({
 }));
 
 const prepare = vi.fn();
+const run = vi.fn();
 vi.mock("../db", () => ({
-  getSqlite: () => Promise.resolve({ prepare, run: vi.fn() }),
+  getSqlite: () => Promise.resolve({ prepare, run }),
   normalizeSql: (sql: string) => sql,
   persist: vi.fn(),
 }));
@@ -88,6 +89,13 @@ beforeEach(() => {
 
 describe("the secret store", () => {
   const secrets = () => buildPluginHostServices(manifest(), {}).secrets!;
+
+  it("gives a resource with no row one first, for the foreign key", async () => {
+    await secrets().setPlaintext!("acc:thing:ext", "f", "v");
+    const statements = run.mock.calls.map(([sql]) => String(sql));
+    expect(statements[0]).toContain("INSERT INTO resources");
+    expect(statements[1]).toContain("INTO secret_field_states");
+  });
 
   it("reads a row that is not there as no secret", async () => {
     stubRow(null);

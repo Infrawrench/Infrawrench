@@ -44,6 +44,7 @@ import { requirePermission } from "../../auth/permissions";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { buildAad, decrypt, encrypt } from "../../services/encryption";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
+import { holdSecretWrites } from "@infrawrench/server-core/secret-states";
 import {
   createT3CodeSetupPlan,
   resolveT3CodeAccess,
@@ -505,6 +506,8 @@ app.post("/sessions", async (c) => {
     "Provisioning VM with selected provider defaults.",
   ];
 
+  // What the plugin stores from inside the create has no row to attach to until the upsert.
+  const heldSecrets = holdSecretWrites();
   let resource;
   let warnings;
   let plugin: HostPlugin | null = null;
@@ -523,13 +526,12 @@ app.post("/sessions", async (c) => {
       userId,
     );
 
-    const createReturn = await ctx.client.createResource(
-      body.settings.resourceTypeId,
-      body.settings.accountId,
-      {
+    const create = ctx.client.createResource.bind(ctx.client);
+    const createReturn = await heldSecrets.run(() =>
+      create(body.settings.resourceTypeId, body.settings.accountId, {
         name: cloudResourceName(projectName),
         ...fields,
-      },
+      }),
     );
     ({ resource, warnings } = normalizeResourceCreateResult(createReturn));
     plugin = ctx.plugin;
@@ -544,6 +546,13 @@ app.post("/sessions", async (c) => {
     resourceTypeId: resource.resourceTypeId,
     accountId: resource.accountId,
     resource,
+  });
+  await heldSecrets.flush().catch((err: unknown) => {
+    console.error("[agents] Failed to persist a new VM's secret:", err);
+    warnings.push({
+      code: "secret-persist-failed",
+      message: `${resource.displayName} was created but its credentials could not be stored.`,
+    });
   });
   const updatedLogs = [
     ...logs,

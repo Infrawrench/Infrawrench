@@ -1,6 +1,7 @@
 import { invoke } from "../lib/invoke";
 import { desktopInstancePricingQuery } from "./instance-pricing";
 import { getDb } from "../db/client";
+import { secretAnchorStatement } from "../db/secret-anchor";
 import type { HostServices, PluginManifest, SecretHostServices } from "@infrawrench/plugin-base";
 import { SecretReadError } from "@infrawrench/plugin-base";
 
@@ -134,6 +135,8 @@ const httpHostServices = { http: { request: httpRequest } };
  */
 export const secretHostServices: SecretHostServices = {
   async setPlaintext(resourceId: string, fieldKey: string, value: string): Promise<void> {
+    const anchor = secretAnchorStatement(resourceId);
+    if (anchor) await (await getDb()).execute(anchor.sql, anchor.params);
     await persistPlaintextSecret(resourceId, fieldKey, value);
   },
   async getPlaintext(resourceId: string, fieldKey: string): Promise<string | null> {

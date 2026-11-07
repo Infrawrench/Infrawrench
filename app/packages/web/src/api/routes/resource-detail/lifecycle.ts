@@ -5,6 +5,7 @@ import { db } from "../../../db/client";
 import { accounts, associations, resources } from "../../../db/schema";
 import { getClientForAccount, getClientForResource } from "../../../services/plugin-clients";
 import {
+  holdSecretWrites,
   setLiteralSecretState,
   setOutputRefSecretState,
 } from "@infrawrench/server-core/secret-states";
@@ -138,13 +139,13 @@ export function registerLifecycleRoutes(app: Hono): void {
     });
     if (policyBlock) return policyBlock;
 
+    // What the plugin stores from inside this has no row to attach to until the upsert.
+    const heldSecrets = holdSecretWrites();
     let createReturn;
     try {
-      createReturn = await ctx.client.createResource(
-        input.resourceTypeId,
-        input.accountId,
-        resolvedFields,
-        input.parentResourceId,
+      const create = ctx.client.createResource.bind(ctx.client);
+      createReturn = await heldSecrets.run(() =>
+        create(input.resourceTypeId, input.accountId, resolvedFields, input.parentResourceId),
       );
     } catch (e) {
       const message = e instanceof Error ? e.message : "Resource creation failed";
@@ -206,6 +207,7 @@ export function registerLifecycleRoutes(app: Hono): void {
       // If any write fails, surface the error so the caller knows the
       // resource was created upstream but its credentials weren't stored.
       try {
+        await heldSecrets.flush();
         for (const state of created.secretStates ?? []) {
           if (state.resolution.kind !== "plaintext") continue;
           await setLiteralSecretState(created.id, state.fieldKey, state.resolution.value);
@@ -215,11 +217,11 @@ export function registerLifecycleRoutes(app: Hono): void {
           "[resource-detail] Failed to persist secret state for created resource:",
           err,
         );
-        const detail = err instanceof Error ? err.message : "unknown error";
+        // Not the error's text: a failed query's names its parameters, ciphertext included.
         return c.json(
           {
             error:
-              `Resource ${created.displayName} was created but its credentials could not be stored (${detail}). ` +
+              `Resource ${created.displayName} was created but its credentials could not be stored. ` +
               `Delete the resource and retry, or set the missing fields manually.`,
           },
           500,
@@ -274,6 +276,17 @@ export function registerLifecycleRoutes(app: Hono): void {
         } catch (err) {
           console.error("[resource-detail] Failed to persist output reference:", err);
         }
+      }
+    } else {
+      // A peer resource gets no row here, and its secrets go on a row of their own.
+      try {
+        await heldSecrets.flush();
+      } catch (err) {
+        console.error("[resource-detail] Failed to persist a peer resource's secret:", err);
+        warnings.push({
+          code: "secret-persist-failed",
+          message: `${created.displayName} was created but its credentials could not be stored.`,
+        });
       }
     }
 
