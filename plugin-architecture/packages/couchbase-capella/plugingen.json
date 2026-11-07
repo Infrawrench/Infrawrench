@@ -1,0 +1,346 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs.couchbase.com/cloud/management-api-reference/_attachments/openapi.external.generated.yaml",
+  "patches": [
+    {
+      "pointer": "/components/schemas/CloudProvider/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The cluster form's cloud. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/Availability/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The cluster form's availability. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/SupportPlan",
+      "value": {
+        "type": "string"
+      },
+      "why": "The cluster form's support plan. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/SupportTimezone",
+      "value": {
+        "type": "string"
+      },
+      "why": "The cluster form's support timezone. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/Service",
+      "value": {
+        "type": "string"
+      },
+      "why": "The cluster form's services. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/Services/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "The restore form's services. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/Type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The bucket form's type. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/StorageBackend",
+      "value": {
+        "type": "string"
+      },
+      "why": "The bucket form's storage backend. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/DurabilityLevel",
+      "value": {
+        "type": "string"
+      },
+      "why": "The bucket form's durability. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/Replicas",
+      "value": {
+        "type": "integer"
+      },
+      "why": "The bucket form's replicas, as a number. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/OrganizationRoles",
+      "value": {
+        "type": "string"
+      },
+      "why": "The user form's organization roles. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/ProjectRoles",
+      "value": {
+        "type": "string"
+      },
+      "why": "The user form's project roles. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/APIKeyOrganizationRoles",
+      "value": {
+        "type": "string"
+      },
+      "why": "The API key form's organization roles. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/APIKeyResourcesItems/properties/roles/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "The API key form's project roles. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/onOffTimezone",
+      "value": {
+        "type": "string"
+      },
+      "why": "The schedule form's timezone. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/PostSampleBucket/properties/name",
+      "value": {
+        "type": "string"
+      },
+      "why": "The sample bucket form's name. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/CreateScheduledBackupRequest/properties/weeklySchedule/properties/dayOfWeek",
+      "value": {
+        "type": "string"
+      },
+      "why": "The backup schedule form's dayOfWeek. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/CreateScheduledBackupRequest/properties/weeklySchedule/properties/startAt",
+      "value": {
+        "type": "integer"
+      },
+      "why": "The backup schedule form's startAt. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/CreateScheduledBackupRequest/properties/weeklySchedule/properties/incrementalEvery",
+      "value": {
+        "type": "integer"
+      },
+      "why": "The backup schedule form's incrementalEvery. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/CreateScheduledBackupRequest/properties/weeklySchedule/properties/retentionTime",
+      "value": {
+        "type": "string"
+      },
+      "why": "The backup schedule form's retentionTime. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/UpdateProjectRequest/properties/name",
+      "value": {
+        "type": ["string", "number", "boolean"]
+      },
+      "why": "What the form left alone is sent back as the project's field held it, and a resource field can be any of these."
+    },
+    {
+      "pointer": "/components/schemas/UpdateProjectRequest/properties/description",
+      "value": {
+        "type": ["string", "number", "boolean"]
+      },
+      "why": "What the form left alone is sent back as the project's field held it, and a resource field can be any of these."
+    },
+    {
+      "pointer": "/components/schemas/Node/required",
+      "value": ["compute"],
+      "why": "A service group read back with no node is sent back with only the compute the form set."
+    },
+    {
+      "pointer": "/components/schemas/Support/required",
+      "value": [],
+      "why": "The plan a cluster read back without one is left out rather than made up."
+    },
+    {
+      "pointer": "/components/schemas/UpdateAppServiceRequest/properties/compute",
+      "value": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/AppServiceCompute"
+          }
+        ],
+        "nullable": true
+      },
+      "why": "A node size that does not parse goes through as null, and the provider's validation error is the message."
+    },
+    {
+      "pointer": "/components/schemas/UpdateBucketRequest/properties/durabilityLevel",
+      "value": {
+        "type": "string"
+      },
+      "why": "The bucket form's durability. The form value goes through as typed, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/UpdateBucketRequest/properties/replicas",
+      "value": {
+        "type": "integer"
+      },
+      "why": "The bucket form's replicas, as a number. The form value goes through as typed, and the provider's own validation error is the better message."
+    }
+  ],
+  "paths": {
+    "/v4/organizations": ["get"],
+    "/v4/organizations/{organizationId}/apikeys": ["get", "post"],
+    "/v4/organizations/{organizationId}/apikeys/{ApiKeyId}": ["delete"],
+    "/v4/organizations/{organizationId}/apikeys/{ApiKeyId}/rotate": ["post"],
+    "/v4/organizations/{organizationId}/appservices": ["get"],
+    "/v4/organizations/{organizationId}/billing": ["post"],
+    "/v4/organizations/{organizationId}/billing/prePaidCredits": ["get"],
+    "/v4/organizations/{organizationId}/events": ["get"],
+    "/v4/organizations/{organizationId}/projects": ["get", "post"],
+    "/v4/organizations/{organizationId}/projects/{projectId}": ["put", "delete"],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters": ["get", "post"],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/freeTier": ["post"],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/freeTier/{clusterId}": [
+      "get",
+      "put",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/freeTier/{clusterId}/activationState": [
+      "post",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}": [
+      "get",
+      "put",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/activationState": [
+      "post",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/allowedcidrs": [
+      "get",
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/allowedcidrs/{allowedCidrId}": [
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/appservices": [
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/appservices/{appServiceId}": [
+      "put",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/appservices/{appServiceId}/activationState": [
+      "post",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/auditLog": [
+      "get",
+      "put"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/backups": ["get"],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/backups/{backupId}": [
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/backups/{backupId}/restore": [
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/billing": [
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets": [
+      "get",
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets/freeTier": [
+      "get",
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets/freeTier/{bucketId}": [
+      "put",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets/{bucketId}": [
+      "put",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets/{bucketId}/backup/schedules": [
+      "get",
+      "put",
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets/{bucketId}/backups": [
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets/{bucketId}/flush": [
+      "put"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets/{bucketId}/scopes": [
+      "get",
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets/{bucketId}/scopes/{scopeName}": [
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets/{bucketId}/scopes/{scopeName}/collections": [
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/buckets/{bucketId}/scopes/{scopeName}/collections/{collectionName}": [
+      "put",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/certificates": [
+      "get"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/deletionProtection": [
+      "put"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/networkPeers": [
+      "get"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/networkPeers/{peerId}": [
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/onOffSchedule": [
+      "get",
+      "put",
+      "post",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/privateEndpointService/endpoints": [
+      "get"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/replications": [
+      "get"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/replications/{replicationId}": [
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/replications/{replicationId}/activationStatus": [
+      "post",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/sampleBuckets": [
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/stats": ["get"],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/users": [
+      "get",
+      "post"
+    ],
+    "/v4/organizations/{organizationId}/projects/{projectId}/clusters/{clusterId}/users/{userId}": [
+      "put",
+      "delete"
+    ],
+    "/v4/organizations/{organizationId}/users": ["get", "post"],
+    "/v4/organizations/{organizationId}/users/{userId}": ["delete", "patch"]
+  }
+}

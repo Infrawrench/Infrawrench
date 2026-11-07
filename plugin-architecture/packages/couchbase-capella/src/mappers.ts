@@ -9,6 +9,7 @@ import type {
   CpBucket,
   CpCidr,
   CpCluster,
+  CpClusterStats,
   CpCredential,
   CpProject,
   CpUser,
@@ -74,7 +75,7 @@ export function mapCluster(
   accountId: string,
   projectId: string,
   c: CpCluster,
-  stats?: { freeMemoryInMb?: number; totalMemoryInMb?: number },
+  stats?: CpClusterStats,
 ): ResourceInstance {
   const groups = c.serviceGroups ?? [];
   const first = groups.find((g) => g.services?.includes("data")) ?? groups[0];
@@ -286,7 +287,10 @@ export function mapBackup(
   );
 }
 
-function projectRoles(resources: CpUser["resources"], projectNames: Map<string, string>): string {
+function projectRoles(
+  resources: CpUser["resources"] | CpApiKey["resources"],
+  projectNames: Map<string, string>,
+): string {
   return (resources ?? [])
     .map((r) => `${projectNames.get(r.id ?? "") ?? r.id}: ${(r.roles ?? []).join(", ")}`)
     .join("; ");

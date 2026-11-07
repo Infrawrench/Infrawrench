@@ -139,7 +139,7 @@ function request(
   method: "POST" | "DELETE",
   url: string,
   description: string,
-  body?: Record<string, unknown>,
+  body?: { turnOnLinkedAppService: boolean },
 ): RemediationCommand {
   return {
     tool: "curl",
