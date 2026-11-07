@@ -901,6 +901,100 @@ describe("what a list could not read", () => {
     Reflect.deleteProperty(globalThis, UNREAD_HOOK);
   });
 
+  describe("a fan-out past one poll's budget", () => {
+    /** One project with `envs` environments, each with `folders` folders under the root. */
+    function wide(envs: number, folders: number) {
+      const project = {
+        ...PROJECT,
+        environments: Array.from({ length: envs }, (_, i) => ({
+          id: `env-${i}`,
+          name: `Env ${i}`,
+          slug: `e${i}`,
+        })),
+      };
+      return hostClient(
+        new InfisicalClient(
+          { siteUrl: "eu.infisical.com", clientId: "cid", clientSecret: "csecret" },
+          services((call) => {
+            const url = new URL(call.url);
+            if (url.pathname.endsWith("/universal-auth/login")) return { body: LOGIN };
+            if (url.pathname === "/api/v1/projects") return { body: { projects: [project] } };
+            if (url.pathname === "/api/v2/folders")
+              return {
+                body: {
+                  folders: Array.from({ length: folders }, (_, i) => ({
+                    id: `f${i}`,
+                    name: `f${i}`,
+                    relativePath: "/",
+                  })),
+                },
+              };
+            if (url.pathname === "/api/v1/dynamic-secrets") {
+              const name = `ds-${url.searchParams.get("environmentSlug")}`;
+              return { body: { dynamicSecrets: [{ id: name, name }] } };
+            }
+            if (url.pathname === "/api/v4/secrets") return { body: { secrets: [] } };
+            throw new Error(`unexpected request ${call.url}`);
+          }),
+        ),
+      );
+    }
+
+    const reads = (path: string) => calls.filter((c) => new URL(c.url).pathname === path);
+
+    it("reads 40 dynamic secret paths a poll, from a rotating start, and names the rest", async () => {
+      const seen = new Set<string>();
+      for (const start of [0, 0.5]) {
+        calls = [];
+        vi.spyOn(Math, "random").mockReturnValue(start);
+        const parts = trackUnread();
+        const list = await wide(2, 100).listResources("dynamic-secret", ACCOUNT);
+        const probes = reads("/api/v1/dynamic-secrets");
+        expect(probes).toHaveLength(40);
+        expect(list).toHaveLength(40);
+        const prefixes = parts.flatMap((p) => p.idPrefixes ?? []);
+        expect(prefixes).toHaveLength(202 - 40);
+        for (const row of list) {
+          expect(prefixes.some((prefix) => row.id.startsWith(prefix))).toBe(false);
+          seen.add(row.id);
+        }
+        // Every path is either read or named, so nothing unread is pruned.
+        expect(new Set([...list.map((r) => r.id.replace(/[^/]+$/, "")), ...prefixes]).size).toBe(
+          202,
+        );
+        vi.restoreAllMocks();
+        Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      }
+      // A later poll reaches other folders.
+      expect(seen.size).toBe(80);
+    });
+
+    it("reads every path when they fit, and names nothing", async () => {
+      const parts = trackUnread();
+      const list = await wide(2, 19).listResources("dynamic-secret", ACCOUNT);
+      expect(list).toHaveLength(40);
+      expect(parts).toEqual([]);
+    });
+
+    it("reads 50 environments a poll and names the rest as parents", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0.25);
+      const parts = trackUnread();
+      await wide(60, 0).listResources("secret", ACCOUNT);
+      const read = reads("/api/v4/secrets").map((c) =>
+        new URL(c.url).searchParams.get("environment"),
+      );
+      expect(read).toHaveLength(50);
+      const named = parts.flatMap((p) => p.parentResourceIds ?? []);
+      expect(named).toHaveLength(10);
+      expect(
+        new Set([
+          ...read.map((slug) => `${ACCOUNT}:environment:proj-1/env-${slug!.slice(1)}`),
+          ...named,
+        ]).size,
+      ).toBe(60);
+    });
+  });
+
   describe("a refused parent", () => {
     it("keeps the rows of a refused environment and reads the others", async () => {
       const parts = trackUnread();

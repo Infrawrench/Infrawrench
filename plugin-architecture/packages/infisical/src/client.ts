@@ -71,10 +71,12 @@ const HIDDEN_VALUE_MASK = "<hidden-by-infisical>";
 const MAX_AUDIT_PAGES = 5;
 const AUDIT_PAGE_SIZE = 1000;
 /**
- * Cap on folder paths probed for dynamic secrets per environment. Each path is its own
- * request on every sync, and Infisical Cloud allows 200 reads a minute on its free plan,
- * so this stays well under what raising it to the usual 1,000 would need.
+ * Infisical Cloud allows 200 reads and 120 secret reads a minute on its Free plan and 350 and
+ * 300 on Pro, and a sync runs every 15 seconds. So one poll reads a type's children for at most
+ * this many projects or environments, a request each, and a rotating run of them past that.
  */
+const MAX_PARENT_READS = 50;
+/** Folder paths one poll probes for dynamic secrets, across every environment, at a request each. */
 const MAX_DYNAMIC_SECRET_PATHS = 40;
 const IDENTITY_SEARCH_PAGE_SIZE = 100;
 const MAX_IDENTITY_SEARCH_PAGES = 100;
@@ -195,6 +197,17 @@ function dynamicSecretRowPrefix(
   return path === undefined ? at : `${at}${encodeURIComponent(path)}/`;
 }
 
+/**
+ * Up to `size` of `items` from a random start, wrapping, and the rest. A random start needs no
+ * state between polls and still reaches every item over a few of them.
+ */
+function rotatingRun<I>(items: I[], size: number): { now: I[]; later: I[] } {
+  if (items.length <= size) return { now: items, later: [] };
+  const start = Math.floor(Math.random() * items.length);
+  const turn = [...items.slice(start), ...items.slice(0, start)];
+  return { now: turn.slice(0, size), later: turn.slice(size) };
+}
+
 function notFound(what: string, id: string): Error {
   return Object.assign(new Error(`Infisical plugin: ${what} "${id}" not found`), { status: 404 });
 }
@@ -279,21 +292,27 @@ export class InfisicalClient implements PluginClient {
    * Run `load` per item. An item the identity may not read must not fail a listing, and its
    * stored rows stay, since a refusal says nothing about what is there. Any other failure fails
    * the listing: its rows would be read as deleted. `unread` names what some items hold.
+   *
+   * Past `maxReads` items it reads a rotating run of them and names the rest, whose rows go
+   * stale until a later poll reaches them rather than being pruned.
    */
   private async each<I, T>(
     items: I[],
     label: (item: I) => string,
     unread: (items: I[]) => UnreadListPart,
     load: (item: I) => Promise<T[]>,
+    maxReads = MAX_PARENT_READS,
   ) {
-    const settled = await Promise.allSettled(items.map((item) => load(item)));
+    const { now, later } = rotatingRun(items, maxReads);
+    if (later.length > 0) reportUnreadListPart(unread(later));
+    const settled = await Promise.allSettled(now.map((item) => load(item)));
     const out: T[] = [];
     const refused: I[] = [];
     let refusal: unknown;
     settled.forEach((result, index) => {
       if (result.status === "fulfilled") out.push(...result.value);
       else if (meansNone(result.reason)) {
-        const item = items[index]!;
+        const item = now[index]!;
         console.warn(`Infisical plugin: skipping ${label(item)}: ${String(result.reason)}`);
         if (statusOf(result.reason) === 403) {
           refused.push(item);
@@ -305,7 +324,7 @@ export class InfisicalClient implements PluginClient {
     if (
       refused.length > 0 &&
       !reportUnreadListPart(unread(refused)) &&
-      refused.length === items.length
+      refused.length === now.length
     ) {
       throw refusal;
     }
@@ -525,7 +544,7 @@ export class InfisicalClient implements PluginClient {
             async ({ project, env }) => {
               const folders = await this.foldersIn(str(project.id), str(env.slug)).catch(
                 (error: unknown): InfFolder[] => {
-                  // The root is still read below. Every other path is unknown, so its rows stay.
+                  // Which folders there are is unknown, so the environment's rows stay.
                   if (statusOf(error) === 403) {
                     reportUnreadListPart({
                       idPrefixes: [dynamicSecretRowPrefix(accountId, project, env)],
@@ -535,9 +554,7 @@ export class InfisicalClient implements PluginClient {
                   throw error;
                 },
               );
-              return ["/", ...folders.map(folderPath)]
-                .slice(0, MAX_DYNAMIC_SECRET_PATHS)
-                .map((path) => ({ project, env, path }));
+              return ["/", ...folders.map(folderPath)].map((path) => ({ project, env, path }));
             },
           );
           return this.each(
@@ -552,6 +569,7 @@ export class InfisicalClient implements PluginClient {
               (await this.dynamicSecretsAt(str(project.slug), str(env.slug), path)).map((ds) =>
                 this.mapDynamicSecret(accountId, project, env, path, ds),
               ),
+            MAX_DYNAMIC_SECRET_PATHS,
           );
         }
         case "secret-sync": {
