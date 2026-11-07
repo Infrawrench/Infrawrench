@@ -1124,7 +1124,7 @@ export class WasabiClient implements PluginClient {
 
   listStorageObjects(bucket: string, prefix: string): PluginEffect<StorageObject[]> {
     return attempt(async () => {
-      const page = await (await this.s3For(bucket)).listObjects(bucket, prefix);
+      const page = await (await this.s3For(bucket)).listObjects(bucket, prefix, "/", 50, true);
       return [
         ...page.folders.map((key) => ({
           key,

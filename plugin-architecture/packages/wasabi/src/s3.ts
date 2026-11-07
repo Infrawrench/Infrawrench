@@ -1,5 +1,5 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { bytesToBase64 } from "@infrawrench/plugin-base";
+import { ListTruncatedError, bytesToBase64 } from "@infrawrench/plugin-base";
 import { signV4 } from "./sigv4.js";
 
 /**
@@ -630,12 +630,16 @@ export class S3Client {
     );
   }
 
-  /** One ListObjectsV2 page set (all pages) under `prefix`. */
+  /**
+   * ListObjectsV2 under `prefix`, every page up to `maxPages`. Past it this throws,
+   * unless `partial` (the storage browser, which shows a folder's first pages).
+   */
   async listObjects(
     bucket: string,
     prefix: string,
     delimiter = "/",
     maxPages = 50,
+    partial = false,
   ): Promise<S3ListPage> {
     const out: S3ListPage = { folders: [], objects: [] };
     let token: string | undefined;
@@ -657,9 +661,15 @@ export class S3Client {
         xmlFirst(res.body, "IsTruncated") === "true"
           ? xmlFirst(res.body, "NextContinuationToken")
           : undefined;
-      if (!token) break;
+      if (!token) return out;
     }
-    return out;
+    if (partial) return out;
+    throw new ListTruncatedError({
+      vendor: "Wasabi",
+      path: `/${bucket}`,
+      items: out.folders.length + out.objects.length,
+      maxPages,
+    });
   }
 
   async putObject(

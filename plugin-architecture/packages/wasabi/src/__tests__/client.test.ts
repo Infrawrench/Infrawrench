@@ -288,4 +288,19 @@ describe("lists that must be whole", () => {
     const series = await c.fetchMetricSeries("account", "wasabi:account:a1", "a1");
     expect(series.length).toBeGreaterThan(0);
   });
+  it("refuses to delete a folder it could not list whole", async () => {
+    const { c, calls } = client((u, r) => {
+      if (u.searchParams.has("location"))
+        return { body: "<LocationConstraint></LocationConstraint>" };
+      if (r.method === "POST") return { body: "<DeleteResult></DeleteResult>" };
+      const n = calls.length;
+      return {
+        body: `<ListBucketResult><Contents><Key>dir/${n}</Key><Size>1</Size></Contents><IsTruncated>true</IsTruncated><NextContinuationToken>t${n}</NextContinuationToken></ListBucketResult>`,
+      };
+    });
+    await expect(c.deleteStorageObject("photos", "dir/")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.some((x) => x.method === "POST")).toBe(false);
+  });
 });
