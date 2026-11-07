@@ -78,7 +78,23 @@ const ANALYTICS_METRICS: Array<Exclude<keyof AnalyticsRow, "endpoint_id">> = [
 ];
 
 type FieldValue = string | number | boolean | null | undefined;
-type AppName = Pick<App, "name" | "endpoint_id"> & Partial<Pick<App, "environment">>;
+/**
+ * An app with the id its row goes by: fal's endpoint id for main, and `@<environment>/`
+ * before it elsewhere, so a sync can be told about one environment's rows by id prefix.
+ */
+type ListedApp = App & { key: string };
+type AppName = Pick<App, "name" | "endpoint_id"> & Partial<Pick<ListedApp, "environment" | "key">>;
+
+interface AppsRead {
+  apps: ListedApp[];
+  /** The environments other than main read whole. */
+  read: string[];
+  /** Why an environment went unread, when one did. */
+  refused?: unknown;
+}
+
+/** The characters `encodeURIComponent` writes, and never `/`. */
+const ENCODED_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()%";
 
 function s(value: FieldValue): string {
   return value === undefined || value === null ? "" : String(value);
@@ -153,19 +169,20 @@ export function modelUsageRows(
 }
 
 interface UsageLineApp {
-  endpointId: string;
+  /** The app row's external id. */
+  key: string;
   suffixed: boolean;
 }
 
 function matchUsageLine(line: string, apps: readonly AppName[]): UsageLineApp | undefined {
   const exact = apps.find((a) => a.name === line || a.endpoint_id === line);
-  if (exact) return { endpointId: exact.endpoint_id, suffixed: false };
+  if (exact) return { key: exact.key ?? exact.endpoint_id, suffixed: false };
   let best: AppName | undefined;
   for (const app of apps) {
     if (!line.startsWith(`${app.name}-`)) continue;
     if (!best || app.name.length > best.name.length) best = app;
   }
-  return best && { endpointId: best.endpoint_id, suffixed: true };
+  return best && { key: best.key ?? best.endpoint_id, suffixed: true };
 }
 
 /**
@@ -183,7 +200,7 @@ function appOfUsageLine(
   const deployedThere = environment ? apps.filter((a) => a.environment === environment) : [];
   return (
     matchUsageLine(line, deployedThere) ??
-    matchUsageLine(line, apps) ?? { endpointId: line, suffixed: false }
+    matchUsageLine(line, apps) ?? { key: line, suffixed: false }
   );
 }
 
@@ -205,13 +222,47 @@ function environmentsOfUsage(pages: Pick<ServerlessUsagePage, "time_series">[]):
  * ends in `--staging`, and the app's name repeats in each environment. Sharing main's id
  * would merge the two rows, and Flush queue on the staging one would empty main's.
  */
-function appInEnvironment(app: App, environment: string): App {
+function appInEnvironment(app: App, environment: string): ListedApp {
   const suffix = `--${environment}`;
+  const endpointId = app.endpoint_id.endsWith(suffix)
+    ? app.endpoint_id
+    : `${app.endpoint_id}${suffix}`;
   return {
     ...app,
     environment,
-    endpoint_id: app.endpoint_id.endsWith(suffix) ? app.endpoint_id : `${app.endpoint_id}${suffix}`,
+    endpoint_id: endpointId,
+    key: `@${encodeURIComponent(environment)}/${endpointId}`,
   };
+}
+
+/** fal's endpoint id for an app row's external id. */
+function endpointOfApp(externalId: string): string {
+  const slash = externalId.indexOf("/");
+  return externalId.startsWith("@") && slash > 0 ? externalId.slice(slash + 1) : externalId;
+}
+
+/**
+ * Id prefixes naming every environment's app rows except those of `read`, which were
+ * read whole. fal has no route that lists environments, so an idle one is only missing
+ * from usage, and its rows go stale rather than being pruned. Each prefix is a branch off
+ * the read environments' encoded names, so none names a row this list returned.
+ */
+export function unreadEnvironmentPrefixes(base: string, read: readonly string[]): string[] {
+  const out: string[] = [];
+  const walk = (at: string, rest: readonly string[]): void => {
+    if (rest.length === 0) {
+      out.push(`${base}@${at}`);
+      return;
+    }
+    if (rest.includes("")) return;
+    for (const c of `${ENCODED_CHARS}/`) {
+      const under = rest.filter((word) => word[0] === c).map((word) => word.slice(1));
+      if (under.length > 0) walk(at + c, under);
+      else out.push(`${base}@${at}${c}`);
+    }
+  };
+  walk("", [...new Set(read.map((environment) => `${encodeURIComponent(environment)}/`))]);
+  return out;
 }
 
 export function serverlessUsageRows(
@@ -235,7 +286,7 @@ export function serverlessUsageRows(
         rows.push({
           date,
           service: "Serverless",
-          ...(app ? { resourceId: app.endpointId } : {}),
+          ...(app ? { resourceId: app.key } : {}),
           tags,
           currency: (r.currency || "USD").toUpperCase(),
           amount: Number(r.cost_total ?? 0),
@@ -481,20 +532,38 @@ export class FalClient implements PluginClient {
    * usage names, since fal's document has no route that lists environments.
    */
   private async listApps(accountId: string): Promise<ResourceInstance[]> {
-    const apps = await this.readApps(await this.recentEnvironments(), keepRowsWhenRefused);
-    return apps.map((a) => this.mapApp(accountId, a));
+    const discovered = await this.recentEnvironments();
+    let read: AppsRead;
+    try {
+      read = await this.readApps(discovered.environments, (err) => {
+        throw err;
+      });
+    } catch (err) {
+      // Only main's refusal gets here: the whole type is refused.
+      if (statusOf(err) === 403) return keepRowsWhenRefused(err);
+      throw err;
+    }
+    const refused = discovered.refused ?? read.refused;
+    const named = reportUnreadListPart({
+      idPrefixes: unreadEnvironmentPrefixes(`${accountId}:fal-app:`, read.read),
+    });
+    // Where nobody keeps the rows, a refusal shows. An idle environment cannot be found
+    // at all, so the rest is everything there is to read.
+    if (!named && refused !== undefined) throw refused;
+    return read.apps.map((a) => this.mapApp(accountId, a));
   }
 
   /**
-   * Whatever cannot name an environment leaves that environment's rows unread rather than
-   * gone, so they stay. An outage or a throttle fails the type.
+   * The environments recent usage names. A key refused usage, or a query fal does not
+   * take, names none, and leaves every environment's rows unread. An outage or a
+   * throttle fails the type.
    */
-  private async recentEnvironments(): Promise<string[]> {
+  private async recentEnvironments(): Promise<{ environments: string[]; refused?: unknown }> {
     const start = new Date(Date.now() - ENVIRONMENT_LOOKBACK_DAYS * 86_400_000)
       .toISOString()
       .slice(0, 10);
     try {
-      return environmentsOfUsage(
+      const environments = environmentsOfUsage(
         await allPages(
           (cursor) =>
             this.api.get("/serverless/usage", {
@@ -510,30 +579,42 @@ export class FalClient implements PluginClient {
           { path: "/serverless/usage", key: "time_series", maxPages: COST_MAX_PAGES },
         ),
       );
+      return { environments };
     } catch (err) {
       const status = statusOf(err);
       if (status !== 403 && !(status !== undefined && REFUSED_QUERY.has(status))) throw err;
-      return keepRowsWhenRefused(err);
+      return { environments: [], refused: err };
     }
   }
 
   /**
-   * Main first, so that an id seen twice keeps main's row. `onRefused` says what a key
-   * refused the apps of main or an environment gets: none, for a cost read that only
-   * names its rows with them.
+   * Main, then each environment. `onMainRefused` says what a key refused main's apps
+   * gets: none, for a cost read that only names its rows with them. An environment that
+   * refuses the key is left out of `read`, with the refusal.
    */
   private async readApps(
     environments: readonly string[] = [],
-    onRefused: (err: unknown) => App[] = () => [],
-  ): Promise<App[]> {
-    const byId = new Map<string, App>();
-    for (const app of await this.readMainApps(onRefused)) byId.set(app.endpoint_id, app);
-    for (const environment of environments) {
-      for (const app of await this.readEnvironmentApps(environment, onRefused)) {
-        if (!byId.has(app.endpoint_id)) byId.set(app.endpoint_id, app);
-      }
+    onMainRefused: (err: unknown) => App[] = () => [],
+  ): Promise<AppsRead> {
+    const byKey = new Map<string, ListedApp>();
+    for (const app of await this.readMainApps(onMainRefused)) {
+      byKey.set(app.endpoint_id, { ...app, key: app.endpoint_id });
     }
-    return [...byId.values()];
+    const read: string[] = [];
+    let refused: unknown;
+    for (const environment of environments) {
+      let apps: ListedApp[];
+      try {
+        apps = await this.readEnvironmentApps(environment);
+      } catch (err) {
+        if (statusOf(err) !== 403) throw err;
+        refused ??= err;
+        continue;
+      }
+      read.push(environment);
+      for (const app of apps) if (!byKey.has(app.key)) byKey.set(app.key, app);
+    }
+    return { apps: [...byKey.values()], read, ...(refused !== undefined ? { refused } : {}) };
   }
 
   private async readMainApps(onRefused: (err: unknown) => App[]): Promise<App[]> {
@@ -557,10 +638,7 @@ export class FalClient implements PluginClient {
    * and fal's own guides call the default `main`. So a refused name is no apps, and so is
    * a row from an environment other than the one asked for.
    */
-  private async readEnvironmentApps(
-    environment: string,
-    onRefused: (err: unknown) => App[],
-  ): Promise<App[]> {
+  private async readEnvironmentApps(environment: string): Promise<ListedApp[]> {
     let res: { apps?: App[] };
     try {
       res = await call(() =>
@@ -568,7 +646,6 @@ export class FalClient implements PluginClient {
       );
     } catch (err) {
       const status = statusOf(err);
-      if (status === 403) return onRefused(err);
       if (status !== undefined && REFUSED_QUERY.has(status)) return [];
       throw err;
     }
@@ -577,12 +654,12 @@ export class FalClient implements PluginClient {
       .map((a) => appInEnvironment(a, environment));
   }
 
-  private mapApp(accountId: string, a: App): ResourceInstance {
+  private mapApp(accountId: string, a: ListedApp): ResourceInstance {
     const id = s(a.endpoint_id);
     return this.instance(
       accountId,
       "fal-app",
-      id,
+      a.key,
       id,
       {
         endpointId: id,
@@ -724,7 +801,10 @@ export class FalClient implements PluginClient {
   /** Recent requests for models; queue size and revisions for apps. */
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = resource.externalId ?? "";
+      const id =
+        resource.resourceTypeId === "fal-app"
+          ? endpointOfApp(resource.externalId ?? "")
+          : (resource.externalId ?? "");
       const out = { ...resource, resolvedOutputs: { ...resource.resolvedOutputs } };
       if (resource.resourceTypeId === "fal-model" || resource.resourceTypeId === "fal-app") {
         const reqs = await call(() =>
@@ -784,7 +864,9 @@ export class FalClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       if (typeId === "fal-app" && actionId === "flush-queue") {
-        const [first, ...rest] = externalIdOf(resourceId, accountId, typeId).split("/");
+        const [first, ...rest] = endpointOfApp(externalIdOf(resourceId, accountId, typeId)).split(
+          "/",
+        );
         const owner = pathEncode(first ?? "");
         const name = pathEncode(rest.join("/"));
         await call(() => this.api.delete(`/serverless/apps/${owner}/${name}/queue`));
@@ -853,7 +935,8 @@ export class FalClient implements PluginClient {
   ): PluginEffect<MetricSeries[]> {
     return attempt(async () => {
       if (resourceTypeId !== "fal-model" && resourceTypeId !== "fal-app") return [];
-      const id = externalIdOf(resourceId, accountId, resourceTypeId);
+      const externalId = externalIdOf(resourceId, accountId, resourceTypeId);
+      const id = resourceTypeId === "fal-app" ? endpointOfApp(externalId) : externalId;
       const endMs = timeRange?.endMs ?? Date.now();
       const startMs = timeRange?.startMs ?? endMs - METRICS_WINDOW_MS;
       try {
@@ -895,7 +978,7 @@ export class FalClient implements PluginClient {
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
       if (typeId !== "fal-app") return { text: "", containers: [], activeContainer: "" };
-      const id = externalIdOf(resourceId, accountId, typeId);
+      const id = endpointOfApp(externalIdOf(resourceId, accountId, typeId));
       const res = await call(() =>
         this.api.post("/serverless/logs/history", {
           query: { app_id: id, limit: Math.min(params.tailLines ?? 500, 1000) },
@@ -954,7 +1037,7 @@ export class FalClient implements PluginClient {
           throw err;
         }),
       ]);
-      const apps = await this.readApps(environmentsOfUsage(serverless));
+      const { apps } = await this.readApps(environmentsOfUsage(serverless));
       return [...modelUsageRows(models, range), ...serverlessUsageRows(serverless, range, apps)];
     });
   }
@@ -1089,7 +1172,7 @@ export class FalClient implements PluginClient {
         };
       }
       case "fal-app": {
-        const id = s(f["endpointId"]) || (r.externalId ?? "");
+        const id = s(f["endpointId"]) || endpointOfApp(r.externalId ?? "");
         const queue = r.resolvedOutputs["__queue__"];
         let revisions: Partial<Revision>[] = [];
         try {
