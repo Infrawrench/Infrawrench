@@ -357,8 +357,11 @@ export class CockroachClient implements PluginClient {
         return this.perCluster(
           async (c) => {
             if (c.plan && c.plan !== "ADVANCED") return [];
-            const res = await this.api.get(`/api/v1/clusters/${id(c)}/blackout-windows`);
-            return (res?.blackout_windows ?? []).map((w) =>
+            const windows = await this.api.getAllOptionalKey(
+              `/api/v1/clusters/${id(c)}/blackout-windows`,
+              "blackout_windows",
+            );
+            return windows.map((w) =>
               instance(
                 accountId,
                 typeId,
@@ -375,8 +378,11 @@ export class CockroachClient implements PluginClient {
       case "crdb-egress-rule":
         return this.perCluster(
           async (c) => {
-            const res = await this.api.get(`/api/v1/clusters/${id(c)}/networking/egress-rules`);
-            return (res?.rules ?? []).map((r) =>
+            const rules = await this.api.getAllOptionalKey(
+              `/api/v1/clusters/${id(c)}/networking/egress-rules`,
+              "rules",
+            );
+            return rules.map((r) =>
               instance(
                 accountId,
                 typeId,

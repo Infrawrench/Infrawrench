@@ -1,6 +1,7 @@
 import {
   createApiClient,
   withCursorPagination,
+  type CursorApiClient,
   type HttpHostServices,
 } from "@infrawrench/plugin-base";
 import type { components, paths } from "./api-types.gen.js";
@@ -101,7 +102,19 @@ function crdbTransport(http: HttpHostServices | undefined): HttpHostServices {
   };
 }
 
-export function createCrdbApi(ctx: CrdbContext) {
+type Paged = CursorApiClient<
+  paths,
+  {
+    cursorParam: "pagination.page";
+    sizeParam: "pagination.limit";
+    next: "pagination.next_page";
+    hasMore: never;
+  }
+>;
+
+export type CrdbApi = Paged & { getAllOptionalKey: Paged["getAll"] };
+
+export function createCrdbApi(ctx: CrdbContext): CrdbApi {
   const client = createApiClient<paths>({
     vendor: "CockroachDB Cloud",
     baseUrl: CRDB_API,
@@ -116,7 +129,7 @@ export function createCrdbApi(ctx: CrdbContext) {
     emptyBodyIsUndefined: true,
     httpError: ({ status, path, body }) => toError(status, path, body),
   });
-  return withCursorPagination(client, {
+  const paging = {
     cursorParam: "pagination.page",
     sizeParam: "pagination.limit",
     pageSize: 200,
@@ -124,10 +137,13 @@ export function createCrdbApi(ctx: CrdbContext) {
     next: "pagination.next_page",
     continueOnEmptyPage: true,
     emptyBodyEndsList: true,
-  });
+  } as const;
+  const api = withCursorPagination(client, paging);
+  // The document requires the list key on every list response but blackout windows
+  // and egress rules, where proto3 JSON may leave out an empty one.
+  const optionalKey = withCursorPagination(client, { ...paging, missingListIsEmpty: true });
+  return { ...api, getAllOptionalKey: optionalKey.getAll };
 }
-
-export type CrdbApi = ReturnType<typeof createCrdbApi>;
 
 export type CCluster = components["schemas"]["Cluster"];
 export type CBackupConfig = components["schemas"]["BackupConfiguration"];

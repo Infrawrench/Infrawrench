@@ -245,6 +245,55 @@ describe("CockroachClient", () => {
       },
     });
   });
+
+  describe("the lists whose key the document does not require", () => {
+    const blackout = (id: string) => ({
+      id,
+      start_time: "2026-12-01T00:00:00Z",
+      end_time: "2026-12-05T00:00:00Z",
+    });
+    const rule = (id: string) => ({
+      id,
+      name: id,
+      type: "FQDN",
+      destination: "example.com",
+      state: "ACTIVE",
+    });
+    const paged =
+      (path: string, key: string, row: (id: string) => object): Route =>
+      (call) => {
+        const u = new URL(call.url);
+        if (u.pathname !== path) return undefined;
+        return u.searchParams.get("pagination.page") === "p2"
+          ? { status: 200, body: { [key]: [row("second")] } }
+          : { status: 200, body: { [key]: [row("first")], pagination: { next_page: "p2" } } };
+      };
+
+    it.each([
+      ["crdb-blackout-window", "blackout-windows", "blackout_windows", blackout],
+      ["crdb-egress-rule", "networking/egress-rules", "rules", rule],
+    ] as const)("%s walks every page", async (typeId, route, key, row) => {
+      const { client, calls } = fake([
+        on("GET", "/api/v1/clusters", { clusters: [cluster] }),
+        paged(`/api/v1/clusters/c1/${route}`, key, row),
+      ]);
+      const rows = await client.listResources(typeId, ACCOUNT);
+      expect(rows.map((r) => r.externalId)).toEqual(["c1/first", "c1/second"]);
+      const first = calls.find((c) => c.url.includes(route))!;
+      expect(new URL(first.url).searchParams.get("pagination.limit")).toBe("200");
+    });
+
+    it.each([
+      ["crdb-blackout-window", "blackout-windows"],
+      ["crdb-egress-rule", "networking/egress-rules"],
+    ] as const)("%s reads a left out key as none", async (typeId, route) => {
+      const { client } = fake([
+        on("GET", "/api/v1/clusters", { clusters: [cluster] }),
+        on("GET", `/api/v1/clusters/c1/${route}`, {}),
+      ]);
+      expect(await client.listResources(typeId, ACCOUNT)).toEqual([]);
+    });
+  });
 });
 
 describe("helpers", () => {
