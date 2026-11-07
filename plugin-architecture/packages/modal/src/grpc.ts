@@ -11,11 +11,18 @@
  *   length-prefixed (one flag byte, a big-endian uint32 length, the bytes).
  * - A response body is the same framing, once for a unary call and once per
  *   item for a server-streaming call.
- * - Errors arrive "trailers-only": `grpc-status` and `grpc-message` are plain
- *   response headers with an empty body, so they survive HTTP/1.1 and any
- *   fetch implementation. On success the closing `grpc-status: 0` is a real
- *   trailer, which most hosts cannot read; a complete, well-framed body under
- *   `content-type: application/grpc` is treated as success instead.
+ * - Errors before the first message arrive "trailers-only": `grpc-status` and
+ *   `grpc-message` are plain response headers with an empty body, so they
+ *   survive HTTP/1.1 and any fetch implementation.
+ * - Otherwise the closing `grpc-status` is a real trailer: `0` on success, or
+ *   the failure of a stream that broke after its first messages. The call asks
+ *   the host for trailers (`readTrailers`), which both hosts read over
+ *   `node:https`. A server-streaming answer is only taken as complete when that
+ *   status says so: a stream cut off at a frame boundary is well framed, and
+ *   the billing report it carries would zero the days it never returned. With
+ *   no status in the headers or trailers, or a host that cannot read trailers,
+ *   the stream throws rather than guess. A unary answer needs no trailer to be
+ *   trusted, since its one message cannot be cut short and still unframe.
  *
  * `te` is a forbidden header for browser fetch, which is why every call goes
  * through the host's HTTP service (Node on the server, the main process on
@@ -143,7 +150,13 @@ async function post(
   ctx: ModalContext,
   method: string,
   request: Uint8Array,
-): Promise<{ status: number; headers: Record<string, string>; body: Uint8Array }> {
+): Promise<{
+  status: number;
+  headers: Record<string, string>;
+  body: Uint8Array;
+  /** Absent when the transport cannot read trailers. */
+  trailers?: Record<string, string>;
+}> {
   const url = `${ctx.serverUrl.replace(/\/+$/, "")}/${SERVICE}/${method}`;
   const headers: Record<string, string> = {
     "content-type": "application/grpc",
@@ -164,14 +177,17 @@ async function post(
       headers,
       body,
       responseEncoding: "binary",
+      readTrailers: true,
       ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
     });
     return {
       status: res.status,
       headers: res.headers,
       body: res.rawBody ?? new TextEncoder().encode(res.body),
+      ...(res.trailers ? { trailers: res.trailers } : {}),
     };
   }
+  // `fetch` has no way to read trailers, so a stream read here always fails safe.
   const res = await fetch(url, {
     method: "POST",
     headers,
@@ -184,19 +200,29 @@ async function post(
   return { status: res.status, headers: out, body: new Uint8Array(await res.arrayBuffer()) };
 }
 
+/**
+ * How the call ended: `"ok"` when a `grpc-status: 0` was seen in the headers
+ * or trailers, `"missing"` when the trailers were readable and carried none
+ * (the stream was cut off), `"unknown"` when the transport cannot read them.
+ */
+type CallEnd = "ok" | "missing" | "unknown";
+
 /** Perform one call and return every message in the response body. */
 async function call(
   ctx: ModalContext,
   method: string,
   request: Uint8Array,
-): Promise<{ messages: Uint8Array[]; statusSeen: boolean }> {
+): Promise<{ messages: Uint8Array[]; end: CallEnd }> {
   const res = await post(ctx, method, request);
-  const status = header(res.headers, "grpc-status");
+  // Trailers-only errors put the status in the headers; everything else in a trailer.
+  const source =
+    header(res.headers, "grpc-status") !== undefined ? res.headers : (res.trailers ?? {});
+  const status = header(source, "grpc-status");
   if (status !== undefined && status !== "0") {
     throw new ModalApiError(
       method,
       Number(status),
-      decodeGrpcMessage(header(res.headers, "grpc-message")),
+      decodeGrpcMessage(header(source, "grpc-message")),
       res.status,
     );
   }
@@ -217,7 +243,9 @@ async function call(
       res.status,
     );
   }
-  return { messages: unframe(res.body, method), statusSeen: status !== undefined };
+  const messages = unframe(res.body, method);
+  const end: CallEnd = status === "0" ? "ok" : res.trailers ? "missing" : "unknown";
+  return { messages, end };
 }
 
 /** A unary RPC. A missing message is the empty message, as protobuf defines it. */
@@ -232,25 +260,38 @@ export async function unary(
 
 /**
  * A unary RPC whose answer a sync prunes against. A server that succeeds frames its
- * message even when it is empty, so no frame and no status in the headers means the
- * status went in a trailer this transport cannot read, which may well be a failure.
+ * message even when it is empty, so no frame and no `grpc-status: 0` means the
+ * answer is unconfirmed (no status at all, or a trailer this transport cannot
+ * read), which may well be a failure.
  */
 export async function unaryList(
   ctx: ModalContext,
   method: string,
   request: Uint8Array,
 ): Promise<Uint8Array> {
-  const { messages, statusSeen } = await call(ctx, method, request);
+  const { messages, end } = await call(ctx, method, request);
   if (messages[0]) return messages[0];
-  if (statusSeen) return new Uint8Array();
+  if (end === "ok") return new Uint8Array();
   throw new ListPageError({ vendor: "Modal", path: method, key: null, found: undefined });
 }
 
-/** A server-streaming RPC, collected. */
+/**
+ * A server-streaming RPC, collected. Only a stream that closed with
+ * `grpc-status: 0` is complete: one that broke at a frame boundary is well
+ * framed too, so with no status to say otherwise this throws.
+ */
 export async function serverStream(
   ctx: ModalContext,
   method: string,
   request: Uint8Array,
 ): Promise<Uint8Array[]> {
-  return (await call(ctx, method, request)).messages;
+  const { messages, end } = await call(ctx, method, request);
+  if (end === "ok") return messages;
+  throw new ModalApiError(
+    method,
+    GrpcCode.UNKNOWN,
+    end === "missing"
+      ? "the stream ended without a gRPC status, so it may have been cut off"
+      : "this host cannot read response trailers, so whether the stream finished is unknown",
+  );
 }

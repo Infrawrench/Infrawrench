@@ -33,8 +33,10 @@ vi.mock("../main-utils", () => ({
   UserFacingError: class UserFacingError extends Error {},
 }));
 
+import { createServer, type Server } from "node:http";
 import {
   buildPluginHostServices,
+  getDesktopHttpHostServices,
   getAccountCredentials,
   listAccountResourcesLive,
   resolveResourceOutputs,
@@ -307,5 +309,59 @@ describe("resolveResourceOutputs", () => {
     await expect(resolveResourceOutputs(account, "droplet", "id")).resolves.toEqual({
       ipv4: "1.2.3.4",
     });
+  });
+});
+
+describe("the main-process HTTP service's trailers", () => {
+  /** A loopback server that answers like a gRPC stream over HTTP/1.1: chunked, status in a trailer. */
+  async function grpcLikeServer(trailers: Record<string, string>): Promise<Server> {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/grpc", trailer: "grpc-status" });
+      res.write(Buffer.from([0, 0, 0, 0, 1, 7]));
+      res.addTrailers(trailers);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    return server;
+  }
+  const urlOf = (server: Server) => {
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("not listening");
+    return `http://127.0.0.1:${address.port}/x`;
+  };
+
+  it("returns the trailers a request asked for", async () => {
+    const server = await grpcLikeServer({ "grpc-status": "13", "grpc-message": "boom" });
+    try {
+      const resp = await getDesktopHttpHostServices().request({
+        url: urlOf(server),
+        method: "POST",
+        headers: { te: "trailers" },
+        body: new Uint8Array([0, 0, 0, 0, 0]),
+        responseEncoding: "binary",
+        readTrailers: true,
+      });
+      expect(resp.status).toBe(200);
+      expect(resp.rawBody).toEqual(new Uint8Array([0, 0, 0, 0, 1, 7]));
+      expect(resp.trailers).toEqual({ "grpc-status": "13", "grpc-message": "boom" });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("reports an empty trailer section as empty, not as unreadable", async () => {
+    const server = await grpcLikeServer({});
+    try {
+      const resp = await getDesktopHttpHostServices().request({
+        url: urlOf(server),
+        method: "POST",
+        headers: {},
+        responseEncoding: "binary",
+        readTrailers: true,
+      });
+      expect(resp.trailers).toEqual({});
+    } finally {
+      server.close();
+    }
   });
 });

@@ -7,7 +7,11 @@ import * as https from "node:https";
 import * as http from "node:http";
 import { URL } from "node:url";
 import { eq, and } from "drizzle-orm";
-import { fetch as undiciFetch, type RequestInit as UndiciRequestInit } from "undici";
+import {
+  fetch as undiciFetch,
+  request as undiciRequest,
+  type RequestInit as UndiciRequestInit,
+} from "undici";
 import {
   readOAuthGrantState,
   SecretReadError,
@@ -262,6 +266,26 @@ function buildHttpHostServices(
       refuseWhatThisRuntimeCannotDo(req.caCert);
       if (bastionId) {
         const dispatcher = await accountDispatcher(bastionId);
+        // `fetch` cannot see trailers; undici's `request` on the same
+        // dispatcher can, and only follows no redirects, which a call that
+        // reads trailers (gRPC) never takes.
+        if (req.readTrailers) {
+          const resp = await undiciRequest(req.url, {
+            method: req.method,
+            headers: req.headers,
+            dispatcher,
+            ...(req.body != null ? { body: req.body } : {}),
+          });
+          const bytes = new Uint8Array(await resp.body.arrayBuffer());
+          const headers = flattenHeaders(resp.headers);
+          return {
+            status: resp.statusCode,
+            headers,
+            ...(binary ? { body: "", rawBody: bytes } : { body: new TextDecoder().decode(bytes) }),
+            // Filled as the body ends, so only once it has been read.
+            trailers: { ...resp.trailers },
+          };
+        }
         // caCert is rarely combined with a bastion (the agent terminates the
         // TCP, but TLS is still client-side). undici uses the OS trust store
         // by default; if a custom CA was supplied, layer it on per-request.
@@ -289,7 +313,9 @@ function buildHttpHostServices(
           body: await resp.text(),
         };
       }
-      if (req.caCert) {
+      // `node:https` is the vetted path that reads trailers; a Worker has no
+      // `node:https`, so there the call goes out on fetch without them.
+      if (req.caCert || (req.readTrailers && !isEdgeRuntime())) {
         return nodeHttpsRequest(req, scope);
       }
       // Inside the egress scope, the global dispatcher vets and pins every
@@ -334,6 +360,7 @@ async function nodeHttpsRequest(
   headers: Record<string, string>;
   body: string;
   rawBody?: Uint8Array;
+  trailers: Record<string, string>;
 }> {
   const parsed = new URL(req.url);
   const isHttps = parsed.protocol === "https:";
@@ -368,11 +395,9 @@ async function nodeHttpsRequest(
       const chunks: Buffer[] = [];
       res.on("data", (chunk: Buffer) => chunks.push(chunk));
       res.on("end", () => {
-        const flatHeaders: Record<string, string> = {};
-        for (const [k, v] of Object.entries(res.headers)) {
-          if (v == null) continue;
-          flatHeaders[k] = Array.isArray(v) ? v.join(", ") : String(v);
-        }
+        const flatHeaders = flattenHeaders(res.headers);
+        // Node parses a chunked response's trailer section by "end".
+        const trailers = flattenHeaders(res.trailers);
         const buf = Buffer.concat(chunks);
         if (binary) {
           resolve({
@@ -380,6 +405,7 @@ async function nodeHttpsRequest(
             headers: flatHeaders,
             body: "",
             rawBody: new Uint8Array(buf),
+            trailers,
           });
           return;
         }
@@ -387,16 +413,34 @@ async function nodeHttpsRequest(
           status: res.statusCode ?? 0,
           headers: flatHeaders,
           body: buf.toString("utf8"),
+          trailers,
         });
       });
     });
     clientReq.on("error", reject);
+    // `node:http` has no idle limit of its own; this is the one undici's fetch
+    // applies, so a call moved here to read its trailers cannot hang longer.
+    clientReq.setTimeout(300_000, () => {
+      clientReq.destroy(new Error("Plugin HTTP request went 5 minutes without data"));
+    });
     if (req.body != null) {
       // node:http accepts string | Buffer | Uint8Array directly.
       clientReq.write(req.body as Buffer | string | Uint8Array);
     }
     clientReq.end();
   });
+}
+
+/** Node's and undici's header maps, with repeated headers joined the way `Headers` does. */
+function flattenHeaders(
+  raw: Record<string, string | string[] | undefined> | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw ?? {})) {
+    if (v == null) continue;
+    out[k] = Array.isArray(v) ? v.join(", ") : String(v);
+  }
+  return out;
 }
 
 /** Look up an account's bastion binding for the host-services factory. */

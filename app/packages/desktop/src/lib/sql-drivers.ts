@@ -110,17 +110,21 @@ function httpRequest(req: {
   body?: string | Uint8Array;
   caCert?: string;
   responseEncoding?: "utf8" | "binary";
+  readTrailers?: boolean;
 }): Promise<{
   status: number;
   headers: Record<string, string>;
   body: string;
   rawBody?: Uint8Array;
+  /** `k8s_api_request` answers over `node:https`, which reads trailers on every request. */
+  trailers?: Record<string, string>;
 }> {
   return invoke<{
     status: number;
     headers: Record<string, string>;
     body: string;
     rawBody?: Uint8Array;
+    trailers?: Record<string, string>;
   }>("k8s_api_request", req);
 }
 

@@ -129,11 +129,15 @@ describe("named object lists", () => {
     ["environment", "EnvironmentList"],
     ["volume", "VolumeList"],
   ])("does not read an answer with no message at all as an empty %s list", async (type, rpc) => {
-    const { c } = client((method) => {
-      if (method === rpc) return [];
-      return method === "EnvironmentList" ? environments : new ProtoWriter();
-    });
-    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    // No status anywhere: a host that cannot read trailers, and one whose
+    // trailer section came back without the status.
+    for (const trailers of [null, {}]) {
+      const { c } = client((method) => {
+        if (method === rpc) return { stream: [], trailers };
+        return method === "EnvironmentList" ? environments : new ProtoWriter();
+      });
+      await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    }
   });
 
   it("reads an empty message and an OK status with no message as an empty list", async () => {

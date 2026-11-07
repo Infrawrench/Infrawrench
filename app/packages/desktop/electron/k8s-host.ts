@@ -92,6 +92,8 @@ interface K8sApiRequest {
    * (Modal's gRPC) would otherwise get it mangled by a UTF-8 decode.
    */
   responseEncoding?: "utf8" | "binary";
+  /** Accepted for `HttpHostServices`; `node:https` reads trailers on every request. */
+  readTrailers?: boolean;
 }
 
 ipcMain.handle(
@@ -104,6 +106,7 @@ ipcMain.handle(
     headers: Record<string, string>;
     body: string;
     rawBody?: Uint8Array;
+    trailers: Record<string, string>;
   }> => {
     let parsed: URL;
     try {
@@ -169,6 +172,9 @@ ipcMain.handle(
                   headers[k] = Array.isArray(v) ? v.join(", ") : String(v);
                 }
                 const bytes = Buffer.concat(chunks);
+                // Node parses a chunked response's trailer section by "end".
+                const trailers: Record<string, string> = {};
+                for (const [k, v] of Object.entries(res.trailers)) if (v != null) trailers[k] = v;
                 resolve(
                   req.responseEncoding === "binary"
                     ? {
@@ -176,8 +182,14 @@ ipcMain.handle(
                         headers,
                         body: "",
                         rawBody: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.length),
+                        trailers,
                       }
-                    : { status: res.statusCode ?? 0, headers, body: bytes.toString("utf8") },
+                    : {
+                        status: res.statusCode ?? 0,
+                        headers,
+                        body: bytes.toString("utf8"),
+                        trailers,
+                      },
                 );
               });
             });

@@ -100,6 +100,8 @@ interface FakeReqOpts {
   headers?: Record<string, string | string[] | undefined>;
   statusCode?: number;
   emitError?: boolean;
+  /** What the response's chunked trailer section carried. */
+  trailers?: Record<string, string>;
 }
 const httpsState: { last?: unknown; opts: FakeReqOpts } = { opts: {} };
 const httpState: { last?: unknown; opts: FakeReqOpts } = { opts: {} };
@@ -114,15 +116,18 @@ function makeRequestFn(state: { last?: unknown; opts: FakeReqOpts }) {
         return req;
       },
       write: vi.fn(),
+      setTimeout: vi.fn(),
       end: vi.fn(() => {
         if (state.opts.emitError) {
           handlers["error"]?.(new Error("socket error"));
           return;
         }
         const resHandlers: Record<string, (chunk?: unknown) => void> = {};
+        const trailers: Record<string, string> = {};
         const res = {
           statusCode: state.opts.statusCode ?? 200,
           headers: state.opts.headers ?? { "content-type": "text/plain" },
+          trailers,
           on: (ev: string, h: (chunk?: unknown) => void) => {
             resHandlers[ev] = h;
             return res;
@@ -130,6 +135,8 @@ function makeRequestFn(state: { last?: unknown; opts: FakeReqOpts }) {
         };
         cb(res);
         resHandlers["data"]?.(Buffer.from("https-body"));
+        // Node fills `trailers` as the body ends, just before "end".
+        res.trailers = state.opts.trailers ?? {};
         resHandlers["end"]?.();
       }),
     };
@@ -147,7 +154,13 @@ const undiciFetch = vi.fn(async (_url?: unknown, _init?: unknown) => ({
   headers: { entries: () => [["x-via", "bastion"]][Symbol.iterator]() },
   text: async () => "via-bastion",
 }));
-vi.mock("undici", () => ({ fetch: undiciFetch }));
+const undiciRequest = vi.fn(async (_url?: unknown, _init?: unknown) => ({
+  statusCode: 200,
+  headers: { "content-type": "application/grpc", "x-multi": ["a", "b"] },
+  trailers: { "grpc-status": "0" },
+  body: { arrayBuffer: async () => new Uint8Array([1, 2]).buffer },
+}));
+vi.mock("undici", () => ({ fetch: undiciFetch, request: undiciRequest }));
 
 // --- egress guard ----------------------------------------------------------
 // The policy itself is covered by egress-guard.test.ts; here we only check
@@ -823,5 +836,85 @@ describe("secret writes held during a create", () => {
       }),
     ).rejects.toThrow("provider refused the next step");
     expect(pg.queries.some((q) => q.sql.includes('insert into "secret_field_states"'))).toBe(true);
+  });
+});
+
+describe("http.request: response trailers", () => {
+  it("reads an unbound request that asks for trailers over node https, vetted and pinned", async () => {
+    httpsState.opts = {
+      headers: { "content-type": "application/grpc" },
+      trailers: { "grpc-status": "0" },
+    };
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const out = await hs.buildPluginHostServices({} as never, {}, { accountId: "a1" });
+    const resp = await out!.http!.request({
+      url: "https://api.modal.com/modal.client.ModalClient/WorkspaceBillingReport",
+      method: "POST",
+      headers: { te: "trailers" },
+      body: new Uint8Array([0, 0, 0, 0, 0]),
+      responseEncoding: "binary",
+      readTrailers: true,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(resolveDialAddress).toHaveBeenCalledWith("api.modal.com", 443, {
+      scope: { accountId: "a1", organizationId: undefined },
+      label: "HTTP host",
+    });
+    expect((httpsState.last as { agent: unknown }).agent).toBe(false);
+    expect(resp.trailers).toEqual({ "grpc-status": "0" });
+    expect(resp.rawBody).toEqual(new Uint8Array(Buffer.from("https-body")));
+    fetchSpy.mockRestore();
+  });
+
+  it("passes on trailers from a caCert request", async () => {
+    httpsState.opts = { trailers: { "grpc-status": "14" } };
+    const out = await hs.buildPluginHostServices({} as never, {});
+    const resp = await out!.http!.request({
+      url: "https://api.example.com/x",
+      method: "GET",
+      headers: {},
+      caCert: "CA",
+    });
+    expect(resp.trailers).toEqual({ "grpc-status": "14" });
+  });
+
+  it("reads trailers through a bastion with undici's request on the account's dispatcher", async () => {
+    resolveDispatcher.mockResolvedValue(fakeDispatcher());
+    const out = await hs.buildPluginHostServices(
+      { egressHosts: [], credentialFields: [] } as never,
+      {},
+      { bastionId: "bx" },
+    );
+    const resp = await out!.http!.request({
+      url: "https://api.modal.com/x",
+      method: "POST",
+      headers: {},
+      body: "payload",
+      responseEncoding: "binary",
+      readTrailers: true,
+    });
+    expect(undiciFetch).not.toHaveBeenCalled();
+    const init = undiciRequest.mock.calls[0]![1] as { dispatcher: unknown; body: unknown };
+    expect(init.dispatcher).toBeDefined();
+    expect(init.body).toBe("payload");
+    expect(resp).toEqual({
+      status: 200,
+      headers: { "content-type": "application/grpc", "x-multi": "a, b" },
+      body: "",
+      rawBody: new Uint8Array([1, 2]),
+      trailers: { "grpc-status": "0" },
+    });
+  });
+
+  it("leaves trailers off a plain fetch, which cannot read them", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      status: 200,
+      headers: new Headers(),
+      text: async () => "ok",
+    } as unknown as Response);
+    const out = await hs.buildPluginHostServices({} as never, {});
+    const resp = await out!.http!.request({ url: "https://api/x", method: "GET", headers: {} });
+    expect(resp.trailers).toBeUndefined();
+    fetchSpy.mockRestore();
   });
 });

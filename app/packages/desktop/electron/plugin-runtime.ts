@@ -100,7 +100,11 @@ function buildK8sHostServices(driverId: string, kubeconfig: string): HostService
  */
 const httpHostServices: HttpHostServices = {
   request: async (req) => {
+    // `fetch` cannot see trailers, so a request that reads them (gRPC's closing
+    // status) goes over `node:https` too.
     if (req.caCert) return nodeHttpsRequest(req);
+    // Off `fetch`, so it keeps fetch's own 5-minute idle limit rather than 30 seconds.
+    if (req.readTrailers) return nodeHttpsRequest(req, 300_000);
     const resp = await fetch(req.url, {
       method: req.method,
       headers: req.headers,
@@ -128,18 +132,22 @@ export function getDesktopHttpHostServices(): HttpHostServices {
   return httpHostServices;
 }
 
-function nodeHttpsRequest(req: {
-  url: string;
-  method: string;
-  headers: Record<string, string>;
-  body?: string | Uint8Array;
-  caCert?: string;
-  responseEncoding?: "utf8" | "binary";
-}): Promise<{
+function nodeHttpsRequest(
+  req: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body?: string | Uint8Array;
+    caCert?: string;
+    responseEncoding?: "utf8" | "binary";
+  },
+  idleTimeoutMs = 30_000,
+): Promise<{
   status: number;
   headers: Record<string, string>;
   body: string;
   rawBody?: Uint8Array;
+  trailers: Record<string, string>;
 }> {
   const parsed = new URL(req.url);
   const isHttps = parsed.protocol === "https:";
@@ -167,6 +175,9 @@ function nodeHttpsRequest(req: {
           if (v == null) continue;
           headers[k] = Array.isArray(v) ? v.join(", ") : String(v);
         }
+        // Node parses a chunked response's trailer section by "end".
+        const trailers: Record<string, string> = {};
+        for (const [k, v] of Object.entries(res.trailers)) if (v != null) trailers[k] = v;
         const buf = Buffer.concat(chunks);
         if (binary) {
           resolve({
@@ -174,6 +185,7 @@ function nodeHttpsRequest(req: {
             headers,
             body: "",
             rawBody: new Uint8Array(buf),
+            trailers,
           });
           return;
         }
@@ -181,12 +193,15 @@ function nodeHttpsRequest(req: {
           status: res.statusCode ?? 0,
           headers,
           body: buf.toString("utf8"),
+          trailers,
         });
       });
     });
     clientReq.on("error", reject);
-    clientReq.setTimeout(30_000, () => {
-      clientReq.destroy(new Error("Plugin HTTP request timed out (30s)"));
+    clientReq.setTimeout(idleTimeoutMs, () => {
+      clientReq.destroy(
+        new Error(`Plugin HTTP request timed out (${Math.round(idleTimeoutMs / 1000)}s)`),
+      );
     });
     if (req.body != null) clientReq.write(req.body);
     clientReq.end();

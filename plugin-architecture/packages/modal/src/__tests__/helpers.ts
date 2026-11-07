@@ -6,13 +6,20 @@ export interface Recorded {
   url: string;
   headers: Record<string, string>;
   request: ProtoMessage;
+  /** Whether the call asked the host for the response trailers. */
+  readTrailers: boolean;
 }
 
 export type Reply =
   | ProtoWriter
   | ProtoWriter[]
   | { grpcStatus: number; message?: string }
-  | { httpStatus: number; contentType?: string };
+  | { httpStatus: number; contentType?: string }
+  /**
+   * Messages followed by these trailers. `trailers: null` is a host that
+   * cannot read trailers at all, which leaves the field off the response.
+   */
+  | { stream: ProtoWriter[]; trailers: Record<string, string> | null };
 
 /** Length-prefix messages the way a gRPC response body carries them. */
 export function framed(messages: Uint8Array[]): Uint8Array {
@@ -30,6 +37,8 @@ export function framed(messages: Uint8Array[]): Uint8Array {
 /**
  * A fake host HTTP service that answers gRPC calls by method name, so the
  * plugin's requests (path, headers, protobuf body) run end to end offline.
+ * Messages close with the `grpc-status: 0` trailer a real server sends, as a
+ * host that can read trailers passes it on.
  */
 export function makeHttp(route: (method: string, request: ProtoMessage) => Reply) {
   const calls: Recorded[] = [];
@@ -40,11 +49,18 @@ export function makeHttp(route: (method: string, request: ProtoMessage) => Reply
       headers: Record<string, string>;
       body?: string | Uint8Array;
       responseEncoding?: "utf8" | "binary";
+      readTrailers?: boolean;
     }) {
       const method = req.url.split("/").pop() ?? "";
       const body = req.body instanceof Uint8Array ? req.body : new Uint8Array();
       const request = new ProtoMessage(body.subarray(5));
-      calls.push({ method, url: req.url, headers: req.headers, request });
+      calls.push({
+        method,
+        url: req.url,
+        headers: req.headers,
+        request,
+        readTrailers: req.readTrailers === true,
+      });
       const reply = route(method, request);
       if ("grpcStatus" in reply) {
         return {
@@ -66,12 +82,22 @@ export function makeHttp(route: (method: string, request: ProtoMessage) => Reply
           rawBody: new Uint8Array(),
         };
       }
+      if ("stream" in reply) {
+        return {
+          status: 200,
+          headers: { "content-type": "application/grpc" },
+          body: "",
+          rawBody: framed(reply.stream.map((w) => w.finish())),
+          ...(reply.trailers ? { trailers: reply.trailers } : {}),
+        };
+      }
       const messages = (Array.isArray(reply) ? reply : [reply]).map((w) => w.finish());
       return {
         status: 200,
         headers: { "content-type": "application/grpc" },
         body: "",
         rawBody: framed(messages),
+        trailers: { "grpc-status": "0" },
       };
     },
   };

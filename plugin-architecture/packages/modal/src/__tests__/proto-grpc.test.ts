@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ModalApiError, unary, unframe } from "../grpc.js";
+import { ModalApiError, serverStream, unary, unaryList, unframe } from "../grpc.js";
 import { ProtoMessage, ProtoWriter } from "../proto.js";
 import { ctxWith, framed, makeHttp, withMap } from "./helpers.js";
 
@@ -96,10 +96,76 @@ describe("gRPC framing", () => {
     });
   });
 
+  it("asks the host for the response trailers", async () => {
+    const { http, calls } = makeHttp(() => new ProtoWriter().string(2, "astrid"));
+    await unary(ctxWith(http), "WorkspaceNameLookup", new Uint8Array());
+    expect(calls[0]?.readTrailers).toBe(true);
+  });
+
   it("refuses a non-gRPC response such as a proxy's HTML page", async () => {
     const { http } = makeHttp(() => ({ httpStatus: 200, contentType: "text/html" }));
     await expect(unary(ctxWith(http), "AppList", new Uint8Array())).rejects.toThrow(
       /unexpected response type/,
     );
+  });
+});
+
+describe("gRPC status in trailers", () => {
+  const item = () => new ProtoWriter().string(1, "item");
+
+  it("returns a stream that closes with grpc-status 0", async () => {
+    const { http } = makeHttp(() => ({
+      stream: [item(), item()],
+      trailers: { "grpc-status": "0" },
+    }));
+    expect(
+      await serverStream(ctxWith(http), "WorkspaceBillingReport", new Uint8Array()),
+    ).toHaveLength(2);
+  });
+
+  it("throws on a stream that fails after its first messages", async () => {
+    const { http } = makeHttp(() => ({
+      stream: [item()],
+      trailers: { "grpc-status": "14", "grpc-message": "upstream%20reset" },
+    }));
+    await expect(
+      serverStream(ctxWith(http), "WorkspaceBillingReport", new Uint8Array()),
+    ).rejects.toMatchObject({ name: "ModalApiError", code: 14, grpcMessage: "upstream reset" });
+  });
+
+  it("throws on a stream whose trailers carry no grpc-status: it was cut off", async () => {
+    const { http } = makeHttp(() => ({ stream: [item()], trailers: {} }));
+    await expect(
+      serverStream(ctxWith(http), "WorkspaceBillingReport", new Uint8Array()),
+    ).rejects.toThrow(/ended without a gRPC status/);
+  });
+
+  it("throws on a stream when the host cannot read trailers, rather than guess it ended", async () => {
+    const { http } = makeHttp(() => ({ stream: [item()], trailers: null }));
+    await expect(
+      serverStream(ctxWith(http), "WorkspaceBillingReport", new Uint8Array()),
+    ).rejects.toThrow(/cannot read response trailers/);
+  });
+
+  it("still reads an empty stream as an empty report when it closes with status 0", async () => {
+    const { http } = makeHttp(() => ({ stream: [], trailers: { "grpc-status": "0" } }));
+    expect(await serverStream(ctxWith(http), "WorkspaceBillingReport", new Uint8Array())).toEqual(
+      [],
+    );
+  });
+
+  it("reads a list's empty answer as empty once the trailer says it succeeded", async () => {
+    const { http } = makeHttp(() => ({ stream: [], trailers: { "grpc-status": "0" } }));
+    expect(await unaryList(ctxWith(http), "AppList", new Uint8Array())).toEqual(new Uint8Array());
+  });
+
+  it("throws on a unary call whose trailer reports a failure", async () => {
+    const { http } = makeHttp(() => ({
+      stream: [item()],
+      trailers: { "grpc-status": "13", "grpc-message": "boom" },
+    }));
+    await expect(unary(ctxWith(http), "AppList", new Uint8Array())).rejects.toMatchObject({
+      code: 13,
+    });
   });
 });

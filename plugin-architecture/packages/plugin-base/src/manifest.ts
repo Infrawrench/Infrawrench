@@ -443,6 +443,12 @@ export interface KubernetesHostServices {
  * the endpoint returns arbitrary bytes, then `rawBody` carries them and
  * `body` is empty. Prefer that over decoding a UTF-8 string, which would
  * corrupt anything that isn't text.
+ *
+ * Pass `readTrailers: true` when the answer may end in a trailer section
+ * (gRPC's closing `grpc-status`), and read `trailers` back. `fetch` cannot
+ * see trailers, so a host takes a transport that can for that request where
+ * it has one; when it has none, `trailers` is absent and the plugin cannot
+ * tell how the response ended.
  */
 export interface HttpHostServices {
   /** Make an HTTP request through the host process. */
@@ -457,12 +463,20 @@ export interface HttpHostServices {
      * `"binary"` puts the raw bytes in `rawBody` and leaves `body` empty.
      */
     responseEncoding?: "utf8" | "binary";
+    /** Read the response's trailers into `trailers`, over a transport that can. */
+    readTrailers?: boolean;
   }): Promise<{
     status: number;
     headers: Record<string, string>;
     body: string;
     /** Set when `responseEncoding` was `"binary"`. */
     rawBody?: Uint8Array;
+    /**
+     * The trailers that ended the response, names lower-cased, when the
+     * transport could read them: `{}` means it ended with none. Absent means
+     * this transport cannot see trailers, so whether any were sent is unknown.
+     */
+    trailers?: Record<string, string>;
   }>;
   /**
    * The same request, answered as it arrives: chat tokens over SSE. Reach it through
