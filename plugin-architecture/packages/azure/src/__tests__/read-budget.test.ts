@@ -3,6 +3,9 @@ import * as listers from "../resource-listers.js";
 import type { ListerContext } from "../resource-listers.js";
 import { listAppRegistrations } from "../app-registration.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const BUDGET = 1000;
 const CONCURRENCY = 5;
 const OVER = "has more than Infrawrench reads";

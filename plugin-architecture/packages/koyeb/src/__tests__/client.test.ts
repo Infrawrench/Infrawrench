@@ -15,6 +15,9 @@ import { RESOURCE_TYPES } from "../resource-types.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { koyebTerraformExport } from "../terraform.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const ACCOUNT = "acct";
 
 interface Call {

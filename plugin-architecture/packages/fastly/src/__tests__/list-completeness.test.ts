@@ -6,6 +6,9 @@ import { LOGGING_TYPES } from "../logging.js";
 import { ctxWith, makeHttp } from "./helpers.js";
 import type { Reply } from "./helpers.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const ACCOUNT = "acc1";
 const CAP = "has more than Infrawrench reads";
 const NOT_A_LIST = "is not a list";

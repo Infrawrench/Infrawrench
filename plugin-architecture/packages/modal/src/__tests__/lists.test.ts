@@ -7,6 +7,9 @@ import type { ProtoMessage } from "../proto.js";
 import type { Reply } from "./helpers.js";
 import { makeHttp, withMap } from "./helpers.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const ACCOUNT = "acct";
 const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
 

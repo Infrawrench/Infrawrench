@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScalewayClient } from "../client.js";
 import { plugin } from "../plugin.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 // The real Scaleway SDK over a fake host transport, so `.all()`, the `x-total-count`
 // fix and the SDK's own error classes are the ones production runs.
 

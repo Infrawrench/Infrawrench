@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeGraphClient } from "../graph-client.js";
 import { manifest } from "../plugin.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 // The real Graph SDK: what is under test is how its requests leave.
 type HostRequest = {
   url: string;

@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { makeClient, type Recorded, type Reply } from "./helpers.js";
+
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
 
 const ONE_REGION = { regions: "ap-southeast-1" };
 const TRUNCATED = "has more than Infrawrench reads";

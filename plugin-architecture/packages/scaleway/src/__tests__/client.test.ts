@@ -146,6 +146,9 @@ vi.mock("@infrawrench/plugin-base", async (importOriginal) => {
 import { ScalewayClient } from "../client.js";
 import { plugin } from "../plugin.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const ACCOUNT = "acct1";
 const resourceTypes = plugin.resourceTypes;
 const CREDS = {

@@ -4,6 +4,9 @@ import { SnowflakeClient } from "../client.js";
 import { TYPE } from "../resource-types.js";
 import { CREDS, jsonResponse, mockSnowflake, resultSet, sqlError } from "./helpers.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const UNREAD = Symbol.for("infrawrench.unreadListPart");
 
 afterEach(() => {

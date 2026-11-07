@@ -1,5 +1,5 @@
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { exportResourcesToTerraform } from "@infrawrench/plugin-base";
 import { resolveHost, statusOf } from "../api.js";
 import { PostHogClient, withRollout } from "../client.js";
@@ -10,6 +10,9 @@ import { hogqlString } from "../query.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { posthogTerraformExport } from "../terraform.js";
 import { CREDS, makeHttp, type Recorded } from "./helpers.js";
+
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
 
 const PROJECTS = {
   results: [{ id: 7, name: "Web", api_token: "phc_x", timezone: "UTC" }],

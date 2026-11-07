@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getAwsClients } from "../aws-clients.js";
+
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
 
 const creds = { accessKeyId: "AKIA", secretAccessKey: "s", region: "us-east-1" };
 

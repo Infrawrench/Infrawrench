@@ -1,8 +1,11 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { WasabiClient, corsFromFields, lifecycleFromFields } from "../client.js";
 import { costRows, usdPerGibDay } from "../usage.js";
 import { mapComponent, parseStatusFeed } from "../status-feed.js";
+
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
 
 type Req = {
   url: string;

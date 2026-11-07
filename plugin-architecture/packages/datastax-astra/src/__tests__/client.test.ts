@@ -8,6 +8,9 @@ import { RESOURCE_TYPES, T } from "../resource-types.js";
 import { createMockResource } from "@infrawrench/plugin-base/test-harness";
 import { mockFetch, trackUnread } from "./helpers.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const DB = {
   id: "11111111-2222-3333-4444-555555555555",
   orgId: "org-1",

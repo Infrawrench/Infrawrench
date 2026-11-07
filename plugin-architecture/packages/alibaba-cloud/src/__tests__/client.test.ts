@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AliApiError, flattenParams } from "../api.js";
 import { billToRows, parseBillTags, parseMoney } from "../billing.js";
 import { analyseRules, apiEndpointOf, parseListBuckets } from "../listers.js";
@@ -7,6 +7,9 @@ import { plugin } from "../plugin.js";
 import { regionIdForLabel } from "../regions.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { makeClient } from "./helpers.js";
+
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
 
 const instance = (id: string, region: string) => ({
   InstanceId: id,

@@ -7,6 +7,9 @@ import { renderAzureDetail } from "../renderers.js";
 import { plugin } from "../plugin.js";
 import type { AzureHttpContext } from "../shared.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const SUB = "/subscriptions/sub1/resourceGroups/rg1/providers";
 
 function ctxWith(

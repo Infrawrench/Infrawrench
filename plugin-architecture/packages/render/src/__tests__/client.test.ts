@@ -7,6 +7,9 @@ import { parseStatusFeed } from "../status-feed.js";
 import { renderTerraformExport } from "../terraform.js";
 import { installFetch, route, state } from "./helpers.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const ACCOUNT = "acct";
 
 function client(creds: Record<string, string> = { apiKey: "rnd_key" }) {

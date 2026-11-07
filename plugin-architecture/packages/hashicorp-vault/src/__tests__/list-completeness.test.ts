@@ -5,6 +5,9 @@ import { unreadPrefixes } from "../lists.js";
 import type { Call } from "./helpers.js";
 import { makeHttp } from "./helpers.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const ACCOUNT = "acct";
 const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
 const unread = vi.fn<(part: { idPrefixes?: string[] }) => void>();

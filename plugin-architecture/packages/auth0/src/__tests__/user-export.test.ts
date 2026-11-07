@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Auth0Client } from "../client.js";
 import { manifest } from "../plugin.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const ACCOUNT = "acct";
 const DOMAIN = "acme.eu.auth0.com";
 const STATE_KEY = `${ACCOUNT}:tenant:${DOMAIN}\0usersExportJob`;

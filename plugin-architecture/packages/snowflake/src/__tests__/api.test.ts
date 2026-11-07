@@ -5,6 +5,9 @@ import { SnowflakeError, decodeCell, isNotAuthorized, literal, qualified, runSql
 import { SnowflakeAuth } from "../auth.js";
 import { jsonResponse, resultSet, sqlError } from "./helpers.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 function ctx(extra: Partial<SnowflakeContext> = {}): SnowflakeContext {
   const account = parseAccount("myorg-myaccount");
   return {

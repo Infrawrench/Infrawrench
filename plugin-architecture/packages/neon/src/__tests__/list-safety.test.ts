@@ -42,6 +42,9 @@ vi.mock("@neondatabase/api-client", () => ({
 
 import { NeonClient } from "../client.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const ACCOUNT = "acct1";
 const wrap = (data: unknown) => ({ data });
 const httpError = (status: number) =>

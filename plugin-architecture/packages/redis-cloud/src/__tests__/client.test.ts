@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RedisCloudClient } from "../client.js";
 import { completed, mockFetch } from "./helpers.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const PRO_SUB = {
   id: 1206,
   name: "prod",

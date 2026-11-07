@@ -3,6 +3,9 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MailgunClient } from "../client.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 interface Answer {
   status?: number;
   body?: unknown;

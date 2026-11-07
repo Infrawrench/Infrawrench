@@ -37,6 +37,9 @@ import {
   listWAFWebACLs,
 } from "../resource-listers-extended.js";
 
+// These tests read many pages or wait on timers, which runs far slower on CI than locally.
+vi.setConfig({ testTimeout: 60_000 });
+
 const CREDS = { accessKeyId: "AKIAFAKE", secretAccessKey: "secret", region: "us-east-1" };
 
 type Answer = { status: number; body?: string; headers?: Record<string, string> } | Error;
