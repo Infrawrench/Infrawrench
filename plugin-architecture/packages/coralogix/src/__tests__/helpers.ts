@@ -1,3 +1,5 @@
+import net from "node:net";
+import { afterEach, beforeEach, vi } from "vitest";
 import type { CoralogixContext } from "../api.js";
 import { resolveRegion } from "../regions.js";
 
@@ -11,6 +13,24 @@ export interface Recorded {
   method: string;
   headers: Record<string, string>;
   body?: unknown;
+}
+
+/**
+ * Fails a test that gets past the fake transport, rather than let it reach the
+ * provider's production API.
+ */
+export function blockNetwork(): void {
+  const refuse = (): never => {
+    throw new Error("A test reached for the network");
+  };
+  beforeEach(() => {
+    vi.stubGlobal("fetch", refuse);
+    vi.spyOn(net.Socket.prototype, "connect").mockImplementation(refuse);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
 }
 
 /**

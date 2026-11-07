@@ -8,7 +8,9 @@ import {
   parseUnitPrice,
 } from "../cost-data.js";
 import { cellsFromDailyRows, normalisePillar, normalisePriority } from "../usage.js";
-import { ctxWith, makeHttp } from "./helpers.js";
+import { blockNetwork, ctxWith, makeHttp } from "./helpers.js";
+
+blockNetwork();
 
 const v = (value: number) => ({ value });
 

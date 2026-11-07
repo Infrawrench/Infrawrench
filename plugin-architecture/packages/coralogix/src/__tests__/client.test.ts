@@ -4,10 +4,12 @@ import { CoralogixClient } from "../client.js";
 import { resolveRegion } from "../regions.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { coralogixPolicyTemplate } from "../preflight.js";
-import { makeHttp } from "./helpers.js";
+import { blockNetwork, makeHttp } from "./helpers.js";
 import type { Reply } from "./helpers.js";
 
 const ACCOUNT = "acct";
+
+blockNetwork();
 
 function client(route: (url: URL, method: string, body: unknown) => Reply, region = "eu2") {
   const { http, calls } = makeHttp(route);
@@ -242,6 +244,25 @@ describe("updates and actions", () => {
     await expect(
       c.updateResource("quota-rule", `${ACCOUNT}:quota-rule:spans`, ACCOUNT, { allocation: "130" }),
     ).rejects.toThrow(/100/);
+  });
+
+  it("makes a dashboard the default with a new idempotency key each time", async () => {
+    const { c, calls } = client((url, method) => {
+      if (method === "PUT" && url.pathname.endsWith("/dashboards/dashboards/v1/d1/default")) {
+        return { body: {} };
+      }
+      throw new Error(`Unexpected ${method} ${url.pathname}`);
+    });
+    await c.invokeAction("dashboard", `${ACCOUNT}:dashboard:d1`, "make-default", ACCOUNT);
+    await c.invokeAction("dashboard", `${ACCOUNT}:dashboard:d1`, "make-default", ACCOUNT);
+    const keys = calls.map((call) => (call.body as { requestId?: string }).requestId);
+    expect(keys).toHaveLength(2);
+    for (const key of keys) {
+      expect(key).toEqual(expect.any(String));
+      expect(key?.length).toBeGreaterThanOrEqual(1);
+      expect(key?.length).toBeLessThanOrEqual(128);
+    }
+    expect(keys[0]).not.toBe(keys[1]);
   });
 
   it("reports a failed webhook test with the provider's message", async () => {

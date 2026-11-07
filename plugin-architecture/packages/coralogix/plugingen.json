@@ -56,11 +56,6 @@
           "why": "The oneOf only says these fields are mutually exclusive. Each member is a bare `required`, which types as Record<string, never> and turns every field of the object into never."
         },
         {
-          "pointer": "/paths/~1dashboards~1dashboards~1v1~1{dashboard_id}~1default/put/requestBody/content/application~1json/schema/required",
-          "value": [],
-          "why": "The plugin sends an empty body with no requestId, which the document requires. Remove this when it sends one."
-        },
-        {
           "pointer": "/paths/~1parsing-rules~1limits~1v1/post/requestBody",
           "value": {
             "content": {

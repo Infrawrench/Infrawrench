@@ -1940,7 +1940,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    requestId?: string;
+                    requestId: string;
                 };
             };
         };

@@ -1026,7 +1026,7 @@ export class CoralogixClient implements PluginClient {
         }
         if (actionId === "make-default") {
           await apiV5(this.ctx).put(`/dashboards/dashboards/v1/${pathEncode(id)}/default`, {
-            body: {},
+            body: { requestId: crypto.randomUUID() },
           });
           return;
         }
