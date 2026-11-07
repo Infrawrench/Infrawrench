@@ -373,6 +373,48 @@ describe("transcribeAudio", () => {
     expect(result.summary).toContain("2 speakers");
   });
 
+  it("reads speaker_id and prompt_audio_seconds, as the document names them", async () => {
+    installFetch(() =>
+      jsonResponse({
+        text: "bonjour tout le monde",
+        model: "voxtral-mini-latest",
+        language: "fr",
+        usage: { prompt_audio_seconds: 4.2, prompt_tokens: 4, total_tokens: 9 },
+        segments: [
+          { text: "bonjour", start: 0, end: 1, speaker_id: "speaker_1" },
+          { text: "tout le monde", start: 1, end: 4.2, speaker_id: "speaker_2" },
+          { text: "merci", start: 4.2, end: 5, speaker_id: null },
+        ],
+      }),
+    );
+
+    const result = await client().transcribeAudio("mistral-voice", "id", ACCOUNT, {
+      audioBase64: Buffer.from("x").toString("base64"),
+      mimeType: "audio/webm",
+    });
+
+    expect(result.durationSeconds).toBe(4.2);
+    expect(result.summary).toContain("4.2 s of audio");
+    expect(result.summary).toContain("2 speakers");
+    expect(result.words?.map((w) => w.speaker)).toEqual(["speaker_1", "speaker_2", undefined]);
+  });
+
+  it("numbers a speaker id that is only a number", async () => {
+    installFetch(() =>
+      jsonResponse({
+        text: "oui",
+        model: "voxtral-mini-latest",
+        usage: {},
+        segments: [{ text: "oui", start: 0, end: 1, speaker_id: "3" }],
+      }),
+    );
+    const result = await client().transcribeAudio("mistral-voice", "id", ACCOUNT, {
+      audioBase64: Buffer.from("x").toString("base64"),
+      mimeType: "audio/webm",
+    });
+    expect(result.words?.[0]?.speaker).toBe("Speaker 3");
+  });
+
   it("falls back to a transcription model when the shared picker holds a TTS model", async () => {
     installFetch(() => jsonResponse({ text: "" }));
     await client().transcribeAudio("mistral-voice", "id", ACCOUNT, {

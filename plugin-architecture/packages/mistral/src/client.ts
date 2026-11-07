@@ -145,6 +145,12 @@ interface AudioModelStash {
   tts: string[];
 }
 
+/** The document's `speaker_id` is text; a bare number would read as nothing on its own. */
+function speakerLabel(id: string | number | null | undefined): { speaker?: string } {
+  if (id === null || id === undefined || id === "") return {};
+  return { speaker: /^\d+$/.test(String(id)) ? `Speaker ${id}` : String(id) };
+}
+
 function epochToIso(seconds: number | null | undefined): string {
   if (typeof seconds !== "number" || !Number.isFinite(seconds)) return "";
   return new Date(seconds * 1000).toISOString();
@@ -1091,7 +1097,9 @@ export class MistralClient implements PluginClient {
    * Multipart, so this uses global `fetch` with a real `FormData`: the host-http
    * path of `restRequest` stringifies `FormData` instead of encoding it. The trade-off is that this call bypasses bastion routing.
    *
-   * Diarisation is on, which is what lets `words` carry speaker labels.
+   * Diarisation is on, which is what puts a `speaker_id` on each segment. The
+   * document's response has only segments; `words` is still read first, in case
+   * the `word` timestamp granularity this asks for sends them.
    */
   transcribeAudio(
     _typeId: string,
@@ -1149,15 +1157,13 @@ export class MistralClient implements PluginClient {
             text: String(segment.text ?? "").trim(),
             ...(typeof segment.start === "number" ? { start: segment.start } : {}),
             ...(typeof segment.end === "number" ? { end: segment.end } : {}),
-            ...(segment.speaker !== null && segment.speaker !== undefined
-              ? { speaker: `Speaker ${segment.speaker}` }
-              : {}),
+            ...speakerLabel(segment.speaker_id ?? segment.speaker),
           });
         }
       }
 
       const speakers = new Set(words.map((word) => word.speaker).filter(Boolean));
-      const duration = result.usage?.audio_seconds;
+      const duration = result.usage?.prompt_audio_seconds ?? result.usage?.audio_seconds;
       const summaryParts = [result.model ?? model];
       if (typeof duration === "number") summaryParts.push(`${duration.toFixed(1)} s of audio`);
       if (speakers.size > 1) summaryParts.push(`${speakers.size} speakers`);

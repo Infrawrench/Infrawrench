@@ -70,9 +70,9 @@ export type UsageReport = ApiResponse<operations["users_api_admin_usage_get_usag
 
 type Transcription = ApiResponse<operations["audio_api_v1_transcriptions_post"]>;
 /**
- * What the transcription reader looks for. `words`, a segment's `speaker` and
- * `audio_seconds` are not in the document, which has `speaker_id` and
- * `prompt_audio_seconds`.
+ * The document's answer, plus what the reader still accepts if it comes: `words`, a
+ * segment's `speaker` and `audio_seconds` are not in the document, which has
+ * `speaker_id` and `prompt_audio_seconds`.
  */
 export type MistralTranscription = Omit<Transcription, "segments" | "usage"> & {
   usage?: Transcription["usage"] & { audio_seconds?: number };
