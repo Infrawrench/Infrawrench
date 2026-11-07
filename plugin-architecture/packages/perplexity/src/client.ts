@@ -17,6 +17,7 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import {
+  hostFetch,
   joinSubtitle,
   pathEncode,
   streamOpenAiSseChat,
@@ -139,6 +140,8 @@ function messageText(content: MessageContent | undefined): string {
  */
 export class PerplexityClient implements PluginClient {
   private readonly apiKey: string;
+  private readonly caCert: string;
+  private readonly http: HttpHostServices | undefined;
   private readonly api: PlatformApi;
   private readonly router: RouterApi;
 
@@ -146,10 +149,12 @@ export class PerplexityClient implements PluginClient {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Perplexity plugin: missing apiKey credential");
     this.apiKey = apiKey;
+    this.caCert = credentials["caCert"] ?? "";
+    this.http = services?.http;
     const { platform, router } = createPerplexityApis({
       apiKey,
-      caCert: credentials["caCert"] ?? "",
-      http: services?.http,
+      caCert: this.caCert,
+      http: this.http,
     });
     this.api = platform;
     this.router = router;
@@ -560,15 +565,19 @@ export class PerplexityClient implements PluginClient {
     const path = typeId === "perplexity-router-model" ? "/router/v1/chat/completions" : "/v1/sonar";
     let res: Response;
     try {
-      res = await fetch(`${API_BASE}${path}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
+      res = await hostFetch(
+        { http: this.http, caCert: this.caCert, stream: true },
+        `${API_BASE}${path}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({ model, messages: turns, stream: true }),
         },
-        body: JSON.stringify({ model, messages: turns, stream: true }),
-      });
+      );
     } catch (err) {
       yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
       return;

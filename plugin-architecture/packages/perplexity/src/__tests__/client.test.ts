@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { PerplexityClient, agentOutputText } from "../client.js";
 import { parseStatusFeed } from "../status-feed.js";
@@ -258,6 +258,95 @@ describe("Perplexity", () => {
     const shown = JSON.stringify(client.renderDetail(enriched ?? SKILL).sections);
     expect(shown).toContain("Could not read the revision history");
     expect(shown).not.toContain("No revision history");
+  });
+
+  describe("streaming chat", () => {
+    const SSE =
+      'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: {"choices":[{"delta":{"content":" there"}}]}\n\n';
+    const noFetch = vi.fn(async () => {
+      throw new Error("global fetch must not be called");
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      noFetch.mockClear();
+    });
+
+    async function collect(client: PerplexityClient, typeId: string, model: string) {
+      const events = [];
+      const stream = hostClient(client).streamChatMessage?.(
+        typeId,
+        `${ACCOUNT}:${typeId}:${model}`,
+        ACCOUNT,
+        [{ role: "user", content: "Hi" }],
+      );
+      for await (const event of stream ?? []) events.push(event);
+      return events;
+    }
+
+    const streamed = (status = 200, text = SSE) => ({
+      status,
+      headers: {},
+      body: new Response(text).body,
+    });
+
+    it.each([
+      ["perplexity-sonar-model", "sonar", "https://api.perplexity.ai/v1/sonar"],
+      [
+        "perplexity-router-model",
+        "perplexity/kimi-k3",
+        "https://api.perplexity.ai/router/v1/chat/completions",
+      ],
+    ])("streams %s through the host, not global fetch", async (typeId, model, url) => {
+      vi.stubGlobal("fetch", noFetch);
+      const request = vi.fn();
+      const requestStream = vi.fn<NonNullable<HttpHostServices["requestStream"]>>(async () =>
+        streamed(),
+      );
+      const client = new PerplexityClient({ apiKey: "k" }, { http: { request, requestStream } });
+      const events = await collect(client, typeId, model);
+      expect(events.at(-1)).toMatchObject({
+        kind: "done",
+        message: { content: "Hi there" },
+      });
+      expect(noFetch).not.toHaveBeenCalled();
+      expect(requestStream).toHaveBeenCalledTimes(1);
+      expect(requestStream.mock.lastCall).toMatchObject([
+        {
+          url,
+          method: "POST",
+          headers: { authorization: "Bearer k" },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: "Hi" }],
+            stream: true,
+          }),
+        },
+      ]);
+      expect(requestStream.mock.lastCall?.[0]).not.toHaveProperty("caCert");
+    });
+
+    it("takes a custom CA to the host even when it cannot stream", async () => {
+      vi.stubGlobal("fetch", noFetch);
+      const request = vi.fn(async () => ({ status: 200, headers: {}, body: SSE }));
+      const client = new PerplexityClient({ apiKey: "k", caCert: "PEM" }, { http: { request } });
+      const events = await collect(client, "perplexity-sonar-model", "sonar");
+      expect(events.at(-1)).toMatchObject({ kind: "done", message: { content: "Hi there" } });
+      expect(noFetch).not.toHaveBeenCalled();
+      expect(request.mock.lastCall).toMatchObject([{ caCert: "PEM" }]);
+    });
+
+    it("reports a failed stream with its status", async () => {
+      vi.stubGlobal("fetch", noFetch);
+      const client = new PerplexityClient(
+        { apiKey: "k" },
+        { http: { request: vi.fn(), requestStream: vi.fn(async () => streamed(402, "")) } },
+      );
+      const events = await collect(client, "perplexity-sonar-model", "sonar");
+      expect(events).toEqual([
+        { kind: "error", message: expect.stringContaining("out of credits") },
+      ]);
+    });
   });
 
   it("attaches the HTTP status to errors", async () => {
