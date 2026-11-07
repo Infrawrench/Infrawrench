@@ -21,6 +21,8 @@ import {
   externalIdOf,
   formatBytes,
   pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
   withMetricsCapability,
   type ApiBody,
   type ApiClient,
@@ -31,8 +33,8 @@ import {
   createReplicateTextApi,
   deleteVersionRequest,
   encodePath,
-  walkList,
-  type ListPage,
+  replicatePages,
+  VENDOR,
   type ReplicateAccount,
   type ReplicateCollection,
   type ReplicateConnection,
@@ -49,13 +51,15 @@ import { DeploymentResourceType } from "./resources/deployment.js";
 import { ModelResourceType } from "./resources/model.js";
 
 /**
- * Replicate's list endpoints have no page-size control at all: they return a
- * fixed 100 records per page and hand back a full opaque URL in `next`. These
- * caps bound how far we walk that chain per sync.
+ * Replicate's list routes have no page-size control: 100 rows a page. Inventory goes
+ * up to 50,000 rows and each model's versions up to 10,000, and past that a list
+ * throws, because a sync reads whatever it stops seeing as deleted.
  * https://replicate.com/docs/reference/http#predictions.list
  */
-const MAX_PAGES_HOT = 3;
-const MAX_PAGES_COLD = 10;
+const MAX_PAGES_INVENTORY = 500;
+const MAX_PAGES_VERSIONS = 100;
+/** How much of the prediction and training history a sync reads. */
+const MAX_PAGES_HISTORY = 3;
 
 /**
  * Replicate has no metrics endpoint, so the Metrics tab on deployments and
@@ -188,6 +192,7 @@ export class ReplicateClient implements PluginClient {
   private readonly connection: ReplicateConnection;
   private readonly api: ApiClient<paths>;
   private readonly textApi: ApiClient<paths>;
+  private readonly pages: ReturnType<typeof replicatePages>;
   private accountCache: ReplicateAccount | null = null;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -196,14 +201,25 @@ export class ReplicateClient implements PluginClient {
     this.connection = { apiToken, caCert: credentials["caCert"] ?? "", http: services?.http };
     this.api = createReplicateApi(this.connection);
     this.textApi = createReplicateTextApi(this.connection);
+    this.pages = replicatePages(this.api, { maxPages: MAX_PAGES_INVENTORY });
   }
 
-  /** Every item of a paginated collection, up to `maxPages`. */
-  private async paginate<Item>(
-    first: () => Promise<ListPage<Item>>,
-    maxPages: number,
-  ): Promise<Item[]> {
-    return (await walkList(this.connection, first, maxPages)).items;
+  /** The list is documented newest first. */
+  private recentPredictions(): Promise<ReplicatePrediction[]> {
+    // Rolling window: the newest 300. Older rows falling off is what this type means.
+    return this.pages.getAll("/predictions", "results", {
+      maxPages: MAX_PAGES_HISTORY,
+      partial: true,
+    });
+  }
+
+  /** The list is documented newest first. */
+  private recentTrainings(): Promise<ReplicateTraining[]> {
+    // Rolling window: the newest 300. Older rows falling off is what this type means.
+    return this.pages.getAll("/trainings", "results", {
+      maxPages: MAX_PAGES_HISTORY,
+      partial: true,
+    });
   }
 
   /** `GET /v1/account`: identity only. No billing fields exist on it. */
@@ -223,43 +239,36 @@ export class ReplicateClient implements PluginClient {
       switch (typeId) {
         case "prediction": {
           // https://replicate.com/docs/reference/http#predictions.list
-          const predictions = await this.paginate(
-            () => this.api.get("/predictions"),
-            MAX_PAGES_HOT,
-          );
+          const predictions = await this.recentPredictions();
           return predictions.map((prediction) => this.mapPrediction(prediction, accountId));
         }
         case "training": {
           // https://replicate.com/docs/reference/http#trainings.list
-          const trainings = await this.paginate(() => this.api.get("/trainings"), MAX_PAGES_HOT);
+          const trainings = await this.recentTrainings();
           return trainings.map((training) => this.mapTraining(training, accountId));
         }
         case "deployment": {
           // https://replicate.com/docs/reference/http#deployments.list
-          const deployments = await this.paginate(
-            () => this.api.get("/deployments"),
-            MAX_PAGES_COLD,
-          );
+          const deployments = await this.pages.getAll("/deployments", "results");
           return deployments.map((deployment) => this.mapDeployment(deployment, accountId));
         }
         case "collection": {
           // https://replicate.com/docs/reference/http#collections.list
-          const collections = await this.paginate(
-            () => this.api.get("/collections"),
-            MAX_PAGES_COLD,
-          );
+          const collections = await this.pages.getAll("/collections", "results");
           return collections.map((collection) => this.mapCollection(collection, accountId));
         }
         case "hardware": {
           // https://replicate.com/docs/reference/http#hardware.list: a bare
           // array, not a paginated envelope.
-          const hardware = await this.api.get("/hardware");
-          return (Array.isArray(hardware) ? hardware : []).map((entry) =>
-            this.mapHardware(entry, accountId),
-          );
+          const hardware = requireListPage(await this.api.get("/hardware"), {
+            vendor: VENDOR,
+            path: "/hardware",
+            key: null,
+          });
+          return hardware.map((entry) => this.mapHardware(entry, accountId));
         }
         case "file": {
-          const files = await this.paginate(() => this.api.get("/files"), MAX_PAGES_COLD);
+          const files = await this.pages.getAll("/files", "results");
           return files.map((file) => this.mapFile(file, accountId));
         }
         case "model":
@@ -283,15 +292,18 @@ export class ReplicateClient implements PluginClient {
   private async listAccountModels(accountId: string): Promise<ResourceInstance[]> {
     const [account, deployments, trainings, predictions] = await Promise.all([
       this.fetchAccount().catch((): ReplicateAccount => ({})),
-      this.paginate(() => this.api.get("/deployments"), MAX_PAGES_COLD).catch(
-        (): ReplicateDeployment[] => [],
-      ),
-      this.paginate(() => this.api.get("/trainings"), MAX_PAGES_HOT).catch(
-        (): ReplicateTraining[] => [],
-      ),
-      this.paginate(() => this.api.get("/predictions"), MAX_PAGES_HOT).catch(
-        (): ReplicatePrediction[] => [],
-      ),
+      this.pages.getAll("/deployments", "results").catch((err): ReplicateDeployment[] => {
+        rethrowIncompleteList(err);
+        return [];
+      }),
+      this.recentTrainings().catch((err): ReplicateTraining[] => {
+        rethrowIncompleteList(err);
+        return [];
+      }),
+      this.recentPredictions().catch((err): ReplicatePrediction[] => {
+        rethrowIncompleteList(err);
+        return [];
+      }),
     ]);
 
     /** `owner/name` → most recently seen version id. */
@@ -348,10 +360,14 @@ export class ReplicateClient implements PluginClient {
     const perModel = await Promise.all(
       owned.map(async (model) => {
         const ref = model.externalId ?? "";
-        const versions = await this.paginate(
-          () => this.api.get(`/models/${encodePath(ref)}/versions`),
-          MAX_PAGES_HOT,
-        ).catch((): ReplicateVersion[] => []);
+        const versions = await this.pages
+          .getAll(`/models/${encodePath(ref)}/versions`, "results", {
+            maxPages: MAX_PAGES_VERSIONS,
+          })
+          .catch((err): ReplicateVersion[] => {
+            rethrowIncompleteList(err);
+            return [];
+          });
         // The list is newest first, so the first entry is the latest version.
         return versions.map((version, index) =>
           this.mapVersion(ref, version, accountId, index === 0),
@@ -1401,11 +1417,14 @@ export class ReplicateClient implements PluginClient {
         created_after: new Date(startMs).toISOString(),
         created_before: new Date(endMs).toISOString(),
       };
-      const { items: predictions, truncated } = await walkList(
-        this.connection,
-        () => this.api.get("/predictions", { query }),
-        MAX_PAGES_METRICS,
-      );
+      let truncated = false;
+      const pages = replicatePages(this.api, {
+        maxPages: MAX_PAGES_METRICS,
+        onTruncated: () => {
+          truncated = true;
+        },
+      });
+      const predictions = await pages.getAll("/predictions", "results", { query, partial: true });
       if (truncated) {
         // Newest first, so the last one read is the oldest the chart can vouch for.
         const oldest = Date.parse(predictions[predictions.length - 1]?.created_at ?? "");

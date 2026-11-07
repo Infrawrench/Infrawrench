@@ -8,8 +8,8 @@
  */
 import {
   createApiClient,
-  jsonRestFetch,
   restRequest,
+  withLinkPagination,
   type ApiClient,
   type ApiListItem,
   type ApiResponse,
@@ -20,7 +20,7 @@ import type { components, operations, paths } from "./api-types.gen.js";
 
 export const API_BASE = "https://api.replicate.com/v1";
 
-const VENDOR = "Replicate";
+export const VENDOR = "Replicate";
 
 type Schemas = components["schemas"];
 
@@ -107,53 +107,17 @@ export async function deleteVersionRequest(
 }
 
 /**
- * Every list endpoint answers `{next, previous, results}` where the cursors are
- * fully-qualified URLs carrying an opaque `cursor` query param. They must be
- * followed verbatim: there is no documented way to build one by hand.
+ * Every list route answers `{next, previous, results}`, where `next` is a whole URL
+ * holding an opaque cursor, sent back as written. There is no page-size parameter.
+ * The document marks the end of a list only with a null `next`, so an empty page
+ * that still names one does not end it, and a wrong end would read as deletions.
  * https://replicate.com/docs/reference/http
  */
-export interface ListPage<Item> {
-  next?: string | null;
-  results?: Item[];
-}
-
-/** One `next` link, sent as written, to whichever host it names. */
-async function followPage<Item>(
-  { apiToken, caCert, http }: ReplicateConnection,
-  url: string,
-): Promise<ListPage<Item>> {
-  return jsonRestFetch<ListPage<Item>>({
-    vendor: VENDOR,
-    url,
-    errorPath: url.startsWith(API_BASE) ? url.slice(API_BASE.length) || "/" : url,
-    headers: jsonHeaders(apiToken),
-    ...(http ? { http } : {}),
-    ...(caCert ? { caCert } : {}),
-  });
-}
-
-/**
- * Walk a list from its typed first page. A hand loop rather than
- * `withLinkPagination` because that reads a `results` that is not an array as an
- * empty page, where this has always failed on it, and `next` is passed straight
- * back rather than decomposed because the cursor inside it is base64 of a
- * provider-private ordering key. `truncated` says a link was still in hand at
- * `maxPages`.
- */
-export async function walkList<Item>(
-  connection: ReplicateConnection,
-  first: () => Promise<ListPage<Item>>,
-  maxPages: number,
-): Promise<{ items: Item[]; truncated: boolean }> {
-  const items: Item[] = [];
-  let data = await first();
-  for (let page = 1; ; page += 1) {
-    items.push(...(data.results ?? []));
-    const url = data.next ?? undefined;
-    if (!url) return { items, truncated: false };
-    if (page >= maxPages) return { items, truncated: true };
-    data = await followPage<Item>(connection, url);
-  }
+export function replicatePages(
+  api: ApiClient<paths>,
+  options: { maxPages: number; onTruncated?: () => void },
+) {
+  return withLinkPagination(api, { next: "next", continueOnEmptyPage: true, ...options });
 }
 
 /** An `owner/name` reference as the two path segments the document's routes have. */

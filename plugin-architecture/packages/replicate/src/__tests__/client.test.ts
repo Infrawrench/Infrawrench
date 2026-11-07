@@ -615,3 +615,157 @@ describe("fetchMetricSeries", () => {
     });
   });
 });
+
+describe("reading a list", () => {
+  const api = "https://api.replicate.com/v1";
+  /** A list whose next page never runs out, each page holding one row. */
+  const endless = (path: string) => {
+    let page = 0;
+    return () => {
+      page += 1;
+      return jsonResponse({
+        next: `${api}${path}?cursor=${page}`,
+        results: [{ id: `r${page}`, owner: "acme", name: `n${page}`, slug: `s${page}` }],
+      });
+    };
+  };
+
+  it.each([
+    ["deployment", "/deployments"],
+    ["file", "/files"],
+    ["collection", "/collections"],
+  ])("throws past 50,000 %s rows, after 500 fixed pages", async (typeId, path) => {
+    installFetch(endless(path));
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(500);
+  });
+
+  it("reads past the old cap of ten pages", async () => {
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      return jsonResponse({
+        next: page < 12 ? `${api}/deployments?cursor=${page}` : null,
+        results: [{ owner: "acme", name: `d${page}` }],
+      });
+    });
+    expect(await client().listResources("deployment", ACCOUNT)).toHaveLength(12);
+  });
+
+  it("throws past 10,000 versions of one model, after 100 pages", async () => {
+    const versions = endless("/models/acme/detector/versions");
+    installFetch((url) => {
+      if (url.endsWith("/account")) return jsonResponse({ username: "acme" });
+      if (url.endsWith("/deployments")) {
+        return jsonResponse({
+          results: [{ owner: "acme", name: "d", current_release: { model: "acme/detector" } }],
+        });
+      }
+      if (url.endsWith("/trainings") || url.endsWith("/predictions")) {
+        return jsonResponse({ results: [] });
+      }
+      return versions();
+    });
+    await expect(client().listResources("model-version", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => c.url.includes("/versions"))).toHaveLength(100);
+  });
+
+  it.each([
+    ["prediction", "/predictions"],
+    ["training", "/trainings"],
+  ])("keeps the newest three pages of %s history without failing", async (typeId, path) => {
+    installFetch(endless(path));
+    expect(await client().listResources(typeId, ACCOUNT)).toHaveLength(3);
+    expect(calls).toHaveLength(3);
+  });
+
+  it("rejects a first page whose list key was renamed", async () => {
+    installFetch(() => jsonResponse({ next: null, items: [{ owner: "acme", name: "d" }] }));
+    await expect(client().listResources("deployment", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a later page whose list key was renamed", async () => {
+    installFetch((url) =>
+      url.includes("cursor")
+        ? jsonResponse({ next: null, detail: "Something went wrong" })
+        : jsonResponse({
+            next: `${api}/deployments?cursor=1`,
+            results: [{ owner: "acme", name: "d" }],
+          }),
+    );
+    await expect(client().listResources("deployment", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects hardware that is not an array", async () => {
+    installFetch(() => jsonResponse({ detail: "Something went wrong" }));
+    await expect(client().listResources("hardware", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("follows `next` past an empty page, since only a null `next` ends the list", async () => {
+    installFetch((url) =>
+      url.includes("cursor")
+        ? jsonResponse({ next: null, results: [{ owner: "acme", name: "d" }] })
+        : jsonResponse({ next: `${api}/deployments?cursor=1`, results: [] }),
+    );
+    expect(await client().listResources("deployment", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("refuses a next link to another host, sending it no credentials", async () => {
+    installFetch((url) => {
+      if (url.startsWith("https://evil.example")) throw new Error("reached evil.example");
+      return jsonResponse({
+        next: "https://evil.example/v1/deployments?cursor=1",
+        results: [{ owner: "acme", name: "d" }],
+      });
+    });
+    await expect(client().listResources("deployment", ACCOUNT)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+    expect(calls.some((c) => c.url.includes("evil.example"))).toBe(false);
+  });
+
+  it.each(["model", "model-version"])(
+    "the same refusal reaches the caller of the derived %s list",
+    async (typeId) => {
+      installFetch((url) => {
+        if (url.startsWith("https://evil.example")) throw new Error("reached evil.example");
+        if (url.endsWith("/account")) return jsonResponse({ username: "acme" });
+        if (url.endsWith("/deployments")) {
+          return jsonResponse({ next: "https://evil.example/v1/deployments", results: [] });
+        }
+        return jsonResponse({ results: [] });
+      });
+      await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow(
+        "Refusing to send the account's credentials there",
+      );
+      expect(calls.some((c) => c.url.includes("evil.example"))).toBe(false);
+    },
+  );
+
+  it("sends the first page and each link through the host's http service", async () => {
+    const request = vi.fn(async (_request: { url: string; caCert?: string }) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify(
+        _request.url.includes("cursor")
+          ? { next: null, results: [{ owner: "acme", name: "b" }] }
+          : { next: `${api}/deployments?cursor=1`, results: [{ owner: "acme", name: "a" }] },
+      ),
+    }));
+    const spy = installFetch(() => {
+      throw new Error("reached fetch");
+    });
+    const hosted = hostClient(new ReplicateClient({ apiToken: "r8_test" }, { http: { request } }));
+    expect(await hosted.listResources("deployment", ACCOUNT)).toHaveLength(2);
+    expect(request.mock.calls.map(([call]) => call.url)).toEqual([
+      `${api}/deployments`,
+      `${api}/deployments?cursor=1`,
+    ]);
+    expect(request.mock.calls[0]![0]).not.toHaveProperty("caCert");
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
