@@ -16,7 +16,8 @@
  *    the cluster's own CIDRs from `EGRESS_BLOCKED_CIDRS`.
  *  - Private customer space (RFC 1918, CGNAT, IPv6 ULA) is refused unless
  *    `EGRESS_ALLOW_PRIVATE_NETWORKS` is set. With it refused, a private host
- *    is reached through a bastion agent or an SSH tunnel instead.
+ *    is reached through an SSH tunnel instead. A bastion does not help here: it
+ *    refuses private and link-local addresses for a host the user typed (#770).
  *  - The single exception to the loopback rule is the local end of an SSH
  *    tunnel owned by the same account or organization as the caller. The
  *    tunnel resolver rewrites a connection to `127.0.0.1:<port>`; a tenant who
@@ -279,7 +280,7 @@ function refusal(label: string, host: string, address: string): EgressBlockedErr
     : `${label} ${host} resolves to a blocked address (${address})`;
   const hint =
     classifyIp(address) === "private"
-      ? "; private networks are reachable from the cloud only through a bastion or an SSH tunnel"
+      ? "; a private address is reachable from the cloud only through an SSH tunnel on the account, or from the desktop app"
       : "";
   return new EgressBlockedError(base + hint);
 }
@@ -358,7 +359,7 @@ export async function assertDialTargetsAllowed(
     if (target.kind === "local") {
       throw new EgressBlockedError(
         `${label} uses ${target.reason}, which the cloud server does not connect to. ` +
-          "Use a network address, reached through a bastion or an SSH tunnel if it is private.",
+          "Use a network address, reached through an SSH tunnel on the account if it is private.",
       );
     }
     if (target.kind === "host") {

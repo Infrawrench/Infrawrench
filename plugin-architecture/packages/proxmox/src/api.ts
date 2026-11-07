@@ -150,7 +150,7 @@ export class ProxmoxApi {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       throw new ProxmoxApiError(
-        `Proxmox VE is unreachable at ${this.baseUrl}: ${msg}. Check the URL, that port 8006 is reachable (directly, through a bastion or an SSH tunnel), and that the CA certificate matches the server's certificate.`,
+        `Proxmox VE is unreachable at ${this.baseUrl}: ${msg}. Check the URL, that port 8006 is reachable (directly or through an SSH tunnel), and that the CA certificate matches the server's certificate.`,
         503,
       );
     }

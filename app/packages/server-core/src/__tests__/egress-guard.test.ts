@@ -176,8 +176,10 @@ describe("resolveDialAddress", () => {
     );
   });
 
-  it("names the bastion route when refusing a private address", async () => {
-    await expect(resolveDialAddress("10.0.0.5", 5432)).rejects.toThrow(/bastion or an SSH tunnel/);
+  it("names the SSH tunnel, not a bastion, when refusing a private address", async () => {
+    const refusal = resolveDialAddress("10.0.0.5", 5432);
+    await expect(refusal).rejects.toThrow(/through an SSH tunnel/);
+    await expect(resolveDialAddress("10.0.0.5", 5432)).rejects.not.toThrow(/bastion/);
   });
 
   it("refuses a name if any answer is blocked", async () => {

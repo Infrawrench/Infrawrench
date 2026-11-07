@@ -116,7 +116,7 @@ export const ClusterResourceType = rt({
         title: "This cluster's Kubernetes API server is not reachable from the Internet.",
         suggestions: [
           "Turn on Public API Server in Edit to reach it from Infrawrench.",
-          "Or attach a bastion in the cluster's VPC to this account, or reach it over the cluster's Tailscale proxy.",
+          "Or reach it over the cluster's Tailscale proxy, or from the desktop app on a machine inside the VPC.",
         ],
       },
     },
