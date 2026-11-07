@@ -363,6 +363,9 @@ describe("FOCUS report url (#407)", () => {
       ),
     ).toEqual([]);
     expect(await answering({ body: {} }).client.fetchCostData("acct", range)).toEqual([]);
+    expect(
+      await answering({ body: { "focus-report": {} } }).client.fetchCostData("acct", range),
+    ).toEqual([]);
   });
 
   it("fails rather than report no spend for an answer it cannot read", async () => {

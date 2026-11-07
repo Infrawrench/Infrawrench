@@ -40,8 +40,9 @@ export function presignedUrl(
   answer: FocusReport & { "focus-report"?: FocusReport },
   month: string,
 ): string | undefined {
-  const url = answer.presigned_url ?? answer["focus-report"]?.presigned_url;
-  if (url || Object.keys(answer).length === 0) return url;
+  const { "focus-report": wrapped, ...top } = answer;
+  const report = top.presigned_url || !wrapped ? top : wrapped;
+  if (report.presigned_url || Object.keys(report).length === 0) return report.presigned_url;
   throw new Error(`Exoscale's FOCUS report answer for ${month} has no presigned_url`);
 }
 
