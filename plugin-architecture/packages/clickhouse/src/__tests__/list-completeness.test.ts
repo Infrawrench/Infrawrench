@@ -182,3 +182,211 @@ describe("usage costs", () => {
     expect(await client().fetchCostData(ACCOUNT, range)).toEqual([]);
   });
 });
+
+describe("backups and ClickPipes, per service", () => {
+  const services = { [`${ORG}/services`]: { body: { result: [service("a"), service("b")] } } };
+  const svc = (id: string) => `acct-1:ch-service:${id}`;
+  const pipes = (id: string) => `${ORG}/services/${id}/clickpipes`;
+  const backups = (id: string) => `${ORG}/services/${id}/backups`;
+
+  it.each([
+    ["ch-backup", backups],
+    ["ch-clickpipe", pipes],
+  ])("%s fails the type on a throttle, a 5xx or a rejected key", async (typeId, path) => {
+    for (const status of [429, 500, 401]) {
+      serve({
+        ...services,
+        [path("a")]: { body: { result: [{ id: "x" }] } },
+        [path("b")]: { status, body: "no" },
+      });
+      await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow(`failed: ${status}`);
+    }
+  });
+
+  it.each([
+    ["ch-backup", backups],
+    ["ch-clickpipe", pipes],
+  ])("%s refuses a page with its key renamed", async (typeId, path) => {
+    serve({
+      ...services,
+      [path("a")]: { body: { result: [] } },
+      [path("b")]: { body: { items: [] } },
+    });
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("carries the status on the error, for the hosts' backoff", async () => {
+    serve({
+      ...services,
+      [pipes("a")]: { status: 429, body: "slow" },
+      [pipes("b")]: { body: { result: [] } },
+    });
+    const failure: unknown = await client()
+      .listResources("ch-clickpipe", ACCOUNT)
+      .catch((err: unknown) => err);
+    expect(failure).toMatchObject({ status: 429 });
+  });
+
+  it.each([403, 400])("keeps one service's rows, and only its rows, on a %i", async (status) => {
+    serve({
+      ...services,
+      [pipes("a")]: { body: { result: [{ id: "p" }] } },
+      [pipes("b")]: { status, body: "no" },
+    });
+    const { value, unread } = await inListScope(() =>
+      client().listResources("ch-clickpipe", ACCOUNT),
+    );
+    expect(value.map((r) => r.externalId)).toEqual(["a/p"]);
+    expect(unread).toEqual([{ parentResourceIds: [svc("b")] }]);
+  });
+
+  it("keeps every service's rows, without an error, when a key may not read any", async () => {
+    serve({
+      ...services,
+      [pipes("a")]: { status: 403, body: "no" },
+      [pipes("b")]: { status: 403, body: "no" },
+    });
+    const { value, unread } = await inListScope(() =>
+      client().listResources("ch-clickpipe", ACCOUNT),
+    );
+    expect(value).toEqual([]);
+    expect(unread).toEqual([{ parentResourceIds: [svc("a"), svc("b")] }]);
+  });
+
+  it("reads a service that has gone, mid-deletion, as having none", async () => {
+    serve({
+      ...services,
+      [backups("a")]: { body: { result: [] } },
+      [backups("b")]: { status: 404, body: "gone" },
+    });
+    const { value, unread } = await inListScope(() => client().listResources("ch-backup", ACCOUNT));
+    expect(value).toEqual([]);
+    expect(unread).toEqual([]);
+  });
+
+  it("says a row is refused, not missing, when asked for one directly", async () => {
+    serve({
+      ...services,
+      [pipes("a")]: { status: 403, body: "no" },
+      [pipes("b")]: { body: { result: [] } },
+    });
+    await expect(
+      client().getResource("ch-clickpipe", "acct-1:ch-clickpipe:a/p", ACCOUNT),
+    ).rejects.toThrow("failed: 403");
+  });
+});
+
+describe("a credential refused a whole type", () => {
+  it.each([
+    ["ch-service", `${ORG}/services`],
+    ["ch-database", `${ORG}/services`],
+    ["ch-backup", `${ORG}/services`],
+    ["ch-clickpipe", `${ORG}/services`],
+    ["ch-api-key", `${ORG}/keys`],
+    ["ch-member", `${ORG}/members`],
+    ["ch-postgres", `${ORG}/postgres`],
+  ])("%s keeps its rows without an error on a 403", async (typeId, path) => {
+    serve({ [path]: { status: 403, body: "no" } });
+    const { value, unread } = await inListScope(() => client().listResources(typeId, ACCOUNT));
+    expect(value).toEqual([]);
+    expect(unread).toEqual([{ idPrefixes: [""] }]);
+  });
+
+  it("fails on a key the provider rejects outright", async () => {
+    serve({ [`${ORG}/keys`]: { status: 401, body: "bad key" } });
+    await expect(client().listResources("ch-api-key", ACCOUNT)).rejects.toThrow("failed: 401");
+  });
+
+  it("does not call a row not found when the list was refused", async () => {
+    serve({ [`${ORG}/keys`]: { status: 403, body: "no" } });
+    await expect(
+      client().getResource("ch-api-key", "acct-1:ch-api-key:k", ACCOUNT),
+    ).rejects.toThrow("failed: 403");
+  });
+});
+
+describe("databases", () => {
+  const list = (...services: unknown[]) => ({
+    [`${ORG}/services`]: { body: { result: services } },
+  });
+  const SQL_URL = "https://svc1.clickhouse.cloud:8443";
+
+  beforeEach(() => {
+    sdk.rows = [{ name: "default", engine: "Atomic", comment: "" }];
+  });
+
+  it("files them under the service the SQL connection reaches, and no other", async () => {
+    serve(list(service("svc1"), service("svc2")));
+    const { value, unread } = await inListScope(() =>
+      client().listResources("ch-database", ACCOUNT),
+    );
+    expect(value.map((r) => r.externalId)).toEqual(["svc1/default"]);
+    expect(unread).toEqual([]);
+    expect(sdk.urls).toEqual([SQL_URL]);
+  });
+
+  it("finds that service however the host was typed", async () => {
+    serve(list(service("svc1"), service("svc2")));
+    const c = client({ chHost: "https://SVC1.clickhouse.cloud:8443/" });
+    const rows = await c.listResources("ch-database", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["svc1/default"]);
+  });
+
+  it("files them under every service when the host is on none, as a private endpoint is", async () => {
+    serve(list(service("svc1"), service("svc2")));
+    const c = client({ chHost: "abc.vpce.clickhouse.cloud" });
+    const rows = await c.listResources("ch-database", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["svc1/default", "svc2/default"]);
+  });
+
+  it("fails on a failed read of a running service, so its rows stay", async () => {
+    serve(list(service("svc1")));
+    sdk.queryError = new Error("Timeout error.");
+    await expect(client().listResources("ch-database", ACCOUNT)).rejects.toThrow(
+      "ClickHouse query failed: Timeout error.",
+    );
+  });
+
+  it("fails on SQL credentials the service rejects", async () => {
+    serve(list(service("svc1")));
+    sdk.queryError = Object.assign(new Error("Authentication failed"), {
+      code: "516",
+      type: "AUTHENTICATION_FAILED",
+    });
+    await expect(client().listResources("ch-database", ACCOUNT)).rejects.toThrow(
+      "Authentication failed",
+    );
+  });
+
+  it("keeps the service's rows without an error when the SQL user may not read them", async () => {
+    serve(list(service("svc1")));
+    sdk.queryError = Object.assign(new Error("Not enough privileges"), {
+      code: "497",
+      type: "ACCESS_DENIED",
+    });
+    const { value, unread } = await inListScope(() =>
+      client().listResources("ch-database", ACCOUNT),
+    );
+    expect(value).toEqual([]);
+    expect(unread).toEqual([{ parentResourceIds: ["acct-1:ch-service:svc1"] }]);
+  });
+
+  it("keeps a stopped service's rows, with no query, and without an error", async () => {
+    serve(list(service("svc1", "stopped"), service("svc2")));
+    const { value, unread } = await inListScope(() =>
+      client().listResources("ch-database", ACCOUNT),
+    );
+    expect(value).toEqual([]);
+    expect(unread).toEqual([{ parentResourceIds: ["acct-1:ch-service:svc1"] }]);
+    expect(sdk.urls).toEqual([]);
+  });
+
+  it("keeps every row when there is no SQL connection to read them with", async () => {
+    serve(list(service("svc1")));
+    const { value, unread } = await inListScope(() =>
+      client({ chHost: "" }).listResources("ch-database", ACCOUNT),
+    );
+    expect(value).toEqual([]);
+    expect(unread).toEqual([{ idPrefixes: [""] }]);
+  });
+});

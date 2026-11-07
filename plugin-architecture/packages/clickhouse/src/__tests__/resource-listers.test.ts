@@ -123,12 +123,12 @@ describe("listDatabases", () => {
     expect(res[0]!.fields["engine"]).toBe("");
   });
 
-  it("returns empty when chQuery throws", async () => {
+  it("throws when chQuery throws", async () => {
     const ctx = makeCtx({
       chQuery: vi.fn(async () => {
         throw new Error("connection refused");
       }) as never,
     });
-    expect(await listDatabases(ctx, ACCOUNT, "svc1")).toEqual([]);
+    await expect(listDatabases(ctx, ACCOUNT, "svc1")).rejects.toThrow("connection refused");
   });
 });

@@ -158,9 +158,9 @@ describe("cloudApi (via listResources ch-service)", () => {
   });
 
   it("throws on non-ok cloud response", async () => {
-    router([[() => true, "denied", 403]]);
+    router([[() => true, "denied", 500]]);
     await expect(client().listResources("ch-service", ACCOUNT)).rejects.toThrow(
-      /ClickHouse Cloud GET .* failed: 403/,
+      /ClickHouse Cloud GET .* failed: 500/,
     );
   });
 
@@ -235,11 +235,10 @@ describe("listResources ch-database", () => {
     expect(urls.every((u) => u === "https://h.clickhouse.cloud:8443")).toBe(true);
   });
 
-  it("skips service when chQuery throws (listDatabases swallows)", async () => {
+  it("fails when chQuery throws, so a sync keeps the stored rows", async () => {
     router([[(u) => u.includes("/services"), { result: [RUNNING_SERVICE] }]]);
     sdkState.queryThrows = new Error("net down");
-    const res = await client().listResources("ch-database", ACCOUNT);
-    expect(res).toEqual([]);
+    await expect(client().listResources("ch-database", ACCOUNT)).rejects.toThrow(/net down/);
   });
 
   it("throws on unknown type", async () => {

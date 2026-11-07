@@ -3,6 +3,26 @@ import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 
 const VENDOR = "ClickHouse Cloud";
 
+/** A Cloud API refusal, with the status the hosts' backoff classification reads. */
+export class ClickHouseCloudError extends Error {
+  readonly status: number;
+  constructor(method: string, path: string, status: number, body: string) {
+    super(`ClickHouse Cloud ${method} ${path} failed: ${status} ${body}`);
+    this.name = "ClickHouseCloudError";
+    this.status = status;
+  }
+}
+
+export function cloudStatus(err: unknown): number | undefined {
+  return err instanceof ClickHouseCloudError ? err.status : undefined;
+}
+
+/** ClickHouse's ACCESS_DENIED: the SQL user lacks a grant, unlike a rejected login (516). */
+export function isSqlAccessDenied(err: unknown): boolean {
+  const cause = err instanceof Error ? err.cause : undefined;
+  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "497";
+}
+
 export interface ListerContext {
   cloudApi<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T>;
   chQuery(sql: string): Promise<Record<string, unknown>[]>;
@@ -154,37 +174,32 @@ export async function listDatabases(
   accountId: string,
   parentServiceId: string,
 ): Promise<ResourceInstance[]> {
-  try {
-    const rows = await ctx.chQuery(
-      "SELECT name, engine, comment FROM system.databases ORDER BY name",
-    );
-    return rows.map((row) => {
-      const name = String(row["name"] ?? "");
-      return {
-        id: ctx.id(accountId, "ch-database", `${parentServiceId}/${name}`),
-        pluginId: "clickhouse",
-        resourceTypeId: "ch-database",
-        accountId,
-        displayName: name,
-        parentResourceId: ctx.id(accountId, "ch-service", parentServiceId),
-        fields: {
-          name,
-          engine: String(row["engine"] ?? ""),
-          comment: String(row["comment"] ?? ""),
-        },
-        resolvedOutputs: {
-          databaseName: name,
-        },
-        secretStates: [],
-        externalId: `${parentServiceId}/${name}`,
-        createdAt: ctx.now(),
-        updatedAt: ctx.now(),
-      };
-    });
-  } catch {
-    // If we can't query the service (stopped, etc.), return empty
-    return [];
-  }
+  const rows = await ctx.chQuery(
+    "SELECT name, engine, comment FROM system.databases ORDER BY name",
+  );
+  return rows.map((row) => {
+    const name = String(row["name"] ?? "");
+    return {
+      id: ctx.id(accountId, "ch-database", `${parentServiceId}/${name}`),
+      pluginId: "clickhouse",
+      resourceTypeId: "ch-database",
+      accountId,
+      displayName: name,
+      parentResourceId: ctx.id(accountId, "ch-service", parentServiceId),
+      fields: {
+        name,
+        engine: String(row["engine"] ?? ""),
+        comment: String(row["comment"] ?? ""),
+      },
+      resolvedOutputs: {
+        databaseName: name,
+      },
+      secretStates: [],
+      externalId: `${parentServiceId}/${name}`,
+      createdAt: ctx.now(),
+      updatedAt: ctx.now(),
+    };
+  });
 }
 
 interface CloudBackup {

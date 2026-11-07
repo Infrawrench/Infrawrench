@@ -1,7 +1,7 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import type { PluginEffect } from "@infrawrench/plugin-base";
-import { hostFetch } from "@infrawrench/plugin-base";
+import { hostFetch, reportUnreadListPart, type UnreadListPart } from "@infrawrench/plugin-base";
 import { createClient, type ClickHouseClient as ClickHouseSdkClient } from "@clickhouse/client-web";
 import type {
   ActionNode,
@@ -35,7 +35,10 @@ import type {
 } from "./resource-listers.js";
 import {
   apiKeyToResource,
+  ClickHouseCloudError,
   clickPipeToResource,
+  cloudStatus,
+  isSqlAccessDenied,
   listApiKeys,
   listBackups,
   listClickPipes,
@@ -57,6 +60,13 @@ import { POSTGRES_LOG_FILTERS, postgresLogLines, serviceActivityLines } from "./
 import { CLOUD_REGIONS, postgresSizeOptions } from "./regions.js";
 
 const SQL_REQUEST_TIMEOUT_MS = 30_000;
+
+/** What reading a type found, what it left unread, and the refusal behind that if any. */
+interface TypeRead {
+  rows: ResourceInstance[];
+  unread?: UnreadListPart;
+  refusal?: unknown;
+}
 
 /**
  * ClickHouse Cloud plugin client.
@@ -126,9 +136,7 @@ export class ClickHouseClient implements PluginClient {
         ...(this.caCert ? { caCert: this.caCert } : {}),
       });
       if (result.status < 200 || result.status >= 300) {
-        throw new Error(
-          `ClickHouse Cloud ${method} ${path} failed: ${result.status} ${result.body}`,
-        );
+        throw new ClickHouseCloudError(method, path, result.status, result.body ?? "");
       }
       return result.body ?? "";
     }
@@ -141,7 +149,7 @@ export class ClickHouseClient implements PluginClient {
     const res = await fetch(url, init);
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`ClickHouse Cloud ${method} ${path} failed: ${res.status} ${text}`);
+      throw new ClickHouseCloudError(method, path, res.status, text);
     }
     return res.text();
   }
@@ -173,6 +181,16 @@ export class ClickHouseClient implements PluginClient {
       return url.toString().replace(/\/+$/, "");
     } catch {
       return withScheme;
+    }
+  }
+
+  /** The SQL connection's host, however it was typed, to compare with a service's. */
+  private get sqlHostname(): string {
+    const url = this.normalizeChUrl(this.chHost);
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return url;
     }
   }
 
@@ -299,57 +317,103 @@ export class ClickHouseClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
+      const read = await this.readType(typeId, accountId);
+      if (read.unread) reportUnreadListPart(read.unread);
+      return read.rows;
+    });
+  }
+
+  private async readType(typeId: string, accountId: string): Promise<TypeRead> {
+    try {
       switch (typeId) {
         case "ch-service":
-          return listServices(this.ctx, accountId);
-        case "ch-database": {
-          // List databases for all services
-          const services = await listServices(this.ctx, accountId);
-          const results: ResourceInstance[] = [];
-          for (const svc of services) {
-            if (svc.fields["state"] === "running" || svc.fields["state"] === "idle") {
-              try {
-                const dbs = await listDatabases(
-                  this.ctx,
-                  accountId,
-                  String(svc.fields["serviceId"]),
-                );
-                results.push(...dbs);
-              } catch {
-                // Skip services we can't query
-              }
-            }
-          }
-          return results;
-        }
+          return { rows: await listServices(this.ctx, accountId) };
+        case "ch-database":
+          return await this.readDatabases(accountId);
         case "ch-backup":
-        case "ch-clickpipe": {
-          // Per-service children. A service that refuses (no ClickPipes
-          // permission on the key, a service mid-deletion) is skipped rather
-          // than failing the whole listing.
-          const services = await listServices(this.ctx, accountId);
-          const lister = typeId === "ch-backup" ? listBackups : listClickPipes;
-          const perService = await Promise.all(
-            services.map(async (svc) => {
-              try {
-                return await lister(this.ctx, accountId, String(svc.fields["serviceId"]));
-              } catch {
-                return [];
-              }
-            }),
-          );
-          return perService.flat();
-        }
+          return await this.readPerService(accountId, listBackups);
+        case "ch-clickpipe":
+          return await this.readPerService(accountId, listClickPipes);
         case "ch-api-key":
-          return listApiKeys(this.ctx, accountId);
+          return { rows: await listApiKeys(this.ctx, accountId) };
         case "ch-member":
-          return listMembers(this.ctx, accountId);
+          return { rows: await listMembers(this.ctx, accountId) };
         case "ch-postgres":
-          return listPostgres(this.ctx, accountId);
+          return { rows: await listPostgres(this.ctx, accountId) };
         default:
           throw new Error(`ClickHouse plugin: unknown resource type "${typeId}"`);
       }
-    });
+    } catch (err) {
+      // A key without this type's permission is normal: it says nothing about the rows.
+      if (cloudStatus(err) !== 403) throw err;
+      return { rows: [], unread: { idPrefixes: [""] }, refusal: err };
+    }
+  }
+
+  /**
+   * The SQL connection reaches one service, so its databases are that service's alone. A
+   * host named on no service (a private endpoint, a proxy, a self-hosted server) reaches
+   * one that cannot be told apart, so they are filed under each that could be it.
+   */
+  private async readDatabases(accountId: string): Promise<TypeRead> {
+    const services = await listServices(this.ctx, accountId);
+    if (!this.chHost) return { rows: [], unread: { idPrefixes: [""] } };
+    const own = services.filter((s) => s.resolvedOutputs["host"] === this.sqlHostname);
+
+    const rows: ResourceInstance[] = [];
+    const unread: string[] = [];
+    let refusal: unknown;
+    for (const svc of own.length > 0 ? own : services) {
+      // A service that is not up cannot be asked, which says nothing about its databases.
+      if (svc.fields["state"] !== "running" && svc.fields["state"] !== "idle") {
+        unread.push(svc.id);
+        continue;
+      }
+      try {
+        rows.push(...(await listDatabases(this.ctx, accountId, String(svc.fields["serviceId"]))));
+      } catch (err) {
+        if (!isSqlAccessDenied(err)) throw err;
+        unread.push(svc.id);
+        refusal ??= err;
+      }
+    }
+    return {
+      rows,
+      ...(unread.length > 0 ? { unread: { parentResourceIds: unread } } : {}),
+      refusal,
+    };
+  }
+
+  /** Children of each service. A key's roles can be per service, so a refusal is per service. */
+  private async readPerService(
+    accountId: string,
+    lister: (ctx: ListerContext, accountId: string, id: string) => Promise<ResourceInstance[]>,
+  ): Promise<TypeRead> {
+    const services = await listServices(this.ctx, accountId);
+    const unread: string[] = [];
+    let refusal: unknown;
+    const perService = await Promise.all(
+      services.map(async (svc) => {
+        try {
+          return await lister(this.ctx, accountId, String(svc.fields["serviceId"]));
+        } catch (err) {
+          const status = cloudStatus(err);
+          // Listed a moment ago and now gone: it is mid-deletion, and so is all it had.
+          if (status === 404) return [];
+          // 400 is the only client error the document gives these routes, with no word
+          // on what it means for a service, so it cannot be read as the rows being gone.
+          if (status !== 403 && status !== 400) throw err;
+          unread.push(svc.id);
+          refusal ??= err;
+          return [];
+        }
+      }),
+    );
+    return {
+      rows: perService.flat(),
+      ...(unread.length > 0 ? { unread: { parentResourceIds: unread } } : {}),
+      refusal,
+    };
   }
 
   getResource(
@@ -358,9 +422,10 @@ export class ClickHouseClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const all = await runPluginEffect(this.listResources(typeId, accountId));
-      const found = all.find((r) => r.id === resourceId);
+      const read = await this.readType(typeId, accountId);
+      const found = read.rows.find((r) => r.id === resourceId);
       if (!found) {
+        if (read.refusal) throw read.refusal;
         throw new Error(`ClickHouse plugin: resource ${typeId}/${resourceId} not found`);
       }
       return found;
