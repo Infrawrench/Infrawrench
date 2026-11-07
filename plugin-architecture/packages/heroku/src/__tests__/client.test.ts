@@ -427,3 +427,43 @@ describe("catches around list reads", () => {
     );
   });
 });
+
+describe("a parent whose children are refused", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  const unread = vi.fn();
+  beforeEach(() => {
+    unread.mockReset();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+  });
+  afterEach(() => Reflect.deleteProperty(globalThis, UNREAD_HOOK));
+
+  it("names the app, so its stored rows stay, and reads the other apps", async () => {
+    routes["GET /apps"] = [APP, { ...APP, id: "a2", name: "two" }];
+    routes["GET /apps/a1/domains"] = () => reply({ id: "forbidden" }, 403);
+    routes["GET /apps/a2/domains"] = [{ id: "d2", hostname: "two.example", kind: "custom" }];
+    const rows = await client().listResources("domain", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["a2/d2"]);
+    expect(unread).toHaveBeenCalledTimes(1);
+    expect(unread).toHaveBeenCalledWith({ parentResourceIds: ["acct:app:a1"] });
+  });
+
+  it("names the pipeline when its review apps are refused", async () => {
+    routes["GET /pipelines"] = [{ id: "p1", name: "shop" }];
+    routes["GET /pipelines/p1/review-apps"] = () => reply({ id: "forbidden" }, 403);
+    expect(await client().listResources("review-app", ACCOUNT)).toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ parentResourceIds: ["acct:pipeline:p1"] });
+  });
+
+  it("reads an app that has gone as having no children", async () => {
+    routes["GET /apps"] = [APP];
+    expect(await client().listResources("domain", ACCOUNT)).toEqual([]);
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("fails the type on a throttle", async () => {
+    routes["GET /apps"] = [APP];
+    routes["GET /apps/a1/domains"] = () => reply({ id: "rate_limit" }, 429);
+    await expect(client().listResources("domain", ACCOUNT)).rejects.toThrow("429");
+    expect(unread).not.toHaveBeenCalled();
+  });
+});

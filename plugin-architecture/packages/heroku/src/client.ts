@@ -17,7 +17,11 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CreditAccessError, rethrowIncompleteList } from "@infrawrench/plugin-base";
+import {
+  CreditAccessError,
+  reportUnreadListPart,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import { HerokuApi } from "./api.js";
 import { fetchHerokuCostData } from "./cost-data.js";
 import {
@@ -140,18 +144,39 @@ export class HerokuClient implements PluginClient {
     return { id: a.id, name: a.name };
   }
 
-  private async perApp(
-    load: (app: HkApp) => Promise<ResourceInstance[]>,
+  /**
+   * Each parent's children. A 404 means the parent has gone, so it has none. A 403 only
+   * means this key may not read them (a `read` scoped token and config vars, a locked
+   * app), so the parent is named and its stored rows stay.
+   */
+  private async perParent<P extends { id: string }>(
+    parents: P[],
+    parentTypeId: "app" | "pipeline",
+    accountId: string,
+    load: (parent: P) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    const lists = await mapLimit(await this.apps(), FAN_OUT, async (a) => {
+    const lists = await mapLimit(parents, FAN_OUT, async (parent) => {
       try {
-        return await load(a);
+        return await load(parent);
       } catch (e) {
-        if (isStatus(e, 403, 404)) return [];
+        if (isStatus(e, 403)) {
+          reportUnreadListPart({
+            parentResourceIds: [`${accountId}:${parentTypeId}:${parent.id}`],
+          });
+          return [];
+        }
+        if (isStatus(e, 404)) return [];
         throw e;
       }
     });
     return lists.flat();
+  }
+
+  private async perApp(
+    accountId: string,
+    load: (app: HkApp) => Promise<ResourceInstance[]>,
+  ): Promise<ResourceInstance[]> {
+    return this.perParent(await this.apps(), "app", accountId, load);
   }
 
   private async pipelines(): Promise<HkPipeline[]> {
@@ -172,17 +197,10 @@ export class HerokuClient implements PluginClient {
   }
 
   private async perPipeline(
+    accountId: string,
     load: (p: HkPipeline) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    const lists = await mapLimit(await this.pipelines(), FAN_OUT, async (p) => {
-      try {
-        return await load(p);
-      } catch (e) {
-        if (isStatus(e, 403, 404)) return [];
-        throw e;
-      }
-    });
-    return lists.flat();
+    return this.perParent(await this.pipelines(), "pipeline", accountId, load);
   }
 
   // ── Listing ──────────────────────────────────────────────────────────
@@ -195,19 +213,19 @@ export class HerokuClient implements PluginClient {
         case "app":
           return (await this.apps()).map((a) => mapApp(a, accountId));
         case "formation":
-          return this.perApp(async (a) =>
+          return this.perApp(accountId, async (a) =>
             (await this.api.listAll<HkFormation>(`/apps/${enc(a.id)}/formation`)).map((fm) =>
               mapFormation(fm, a, accountId),
             ),
           );
         case "dyno":
-          return this.perApp(async (a) =>
+          return this.perApp(accountId, async (a) =>
             (await this.api.listAll<HkDyno>(`/apps/${enc(a.id)}/dynos`)).map((d) =>
               mapDyno(d, a, accountId),
             ),
           );
         case "release":
-          return this.perApp(async (a) =>
+          return this.perApp(accountId, async (a) =>
             (await this.recentReleases(a.id, RELEASES_PER_APP)).map((r) =>
               mapRelease(r, a, accountId),
             ),
@@ -217,7 +235,7 @@ export class HerokuClient implements PluginClient {
             rethrowIncompleteList(err);
             return [] as HkAddon[];
           });
-          return this.perApp(async (a) => {
+          return this.perApp(accountId, async (a) => {
             const vars = await this.api.request<Record<string, string | null>>(
               `/apps/${enc(a.id)}/config-vars`,
             );
@@ -232,25 +250,25 @@ export class HerokuClient implements PluginClient {
         case "add-on":
           return (await this.addons()).map((ad) => mapAddon(ad, accountId));
         case "domain":
-          return this.perApp(async (a) =>
+          return this.perApp(accountId, async (a) =>
             (await this.api.listAll<HkDomain>(`/apps/${enc(a.id)}/domains`)).map((d) =>
               mapDomain(d, a, accountId),
             ),
           );
         case "sni-endpoint":
-          return this.perApp(async (a) =>
+          return this.perApp(accountId, async (a) =>
             (await this.api.listAll<HkSniEndpoint>(`/apps/${enc(a.id)}/sni-endpoints`)).map((s) =>
               mapSniEndpoint(s, a, accountId),
             ),
           );
         case "log-drain":
-          return this.perApp(async (a) =>
+          return this.perApp(accountId, async (a) =>
             (await this.api.listAll<HkLogDrain>(`/apps/${enc(a.id)}/log-drains`)).map((d) =>
               mapLogDrain(d, a, accountId),
             ),
           );
         case "pipeline":
-          return this.perPipeline(async (p) => {
+          return this.perPipeline(accountId, async (p) => {
             const [couplings, review] = await Promise.all([
               this.couplingsOrNone(p.id),
               this.api
@@ -272,14 +290,14 @@ export class HerokuClient implements PluginClient {
             return [] as HkApp[];
           });
           const names = new Map(apps.map((a) => [a.id, a.name]));
-          return this.perPipeline(async (p) =>
+          return this.perPipeline(accountId, async (p) =>
             (await this.api.listAll<HkCoupling>(`/pipelines/${enc(p.id)}/pipeline-couplings`)).map(
               (c) => mapCoupling(c, p, names, accountId),
             ),
           );
         }
         case "review-app":
-          return this.perPipeline(async (p) =>
+          return this.perPipeline(accountId, async (p) =>
             (await this.api.listAll<HkReviewApp>(`/pipelines/${enc(p.id)}/review-apps`)).map((r) =>
               mapReviewApp(r, p.id, accountId),
             ),
