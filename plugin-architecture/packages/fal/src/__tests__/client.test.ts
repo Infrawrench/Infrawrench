@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HttpHostServices } from "@infrawrench/plugin-base";
 import { FalClient, analyticsSeries, modelUsageRows, serverlessUsageRows } from "../client.js";
 import type { ModelUsagePage, ServerlessUsagePage } from "../api.js";
@@ -347,10 +347,15 @@ describe("reading every row of a list", () => {
   });
 
   it("refuses a Serverless app list and a usage report that are not lists", async () => {
-    const apps = host(() => ({ body: { items: [] } }));
+    const apps = host((url) => ({
+      body: url.includes("/serverless/usage")
+        ? { time_series: [], next_cursor: null }
+        : { items: [] },
+    }));
     await expect(client(apps.http).listResources("fal-app", ACCOUNT)).rejects.toThrow(
       "is not a list",
     );
+    expect(apps.calls.some((c) => c.url.includes("/serverless/apps"))).toBe(true);
     const usage = host((url) => ({
       body: url.includes("/serverless/usage")
         ? { rows: [], next_cursor: null }
@@ -385,6 +390,207 @@ describe("reading every row of a list", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("Serverless apps outside the main environment", () => {
+  const client = (http: HttpHostServices) => hostClient(new FalClient({ apiKey: "k" }, { http }));
+  const app = (name: string, environment: string, endpointId = `me/${name}`) => ({
+    name,
+    environment,
+    endpoint_id: endpointId,
+  });
+  const usage = (...lines: Array<{ environment: string | null; app?: string }>) => ({
+    time_series: [
+      {
+        bucket: "2026-10-05T00:00:00Z",
+        results: lines.map((line) => serverlessLine({ app: "my-app", cost_total: 1, ...line })),
+      },
+    ],
+    next_cursor: null,
+  });
+  const environmentOf = (url: string) => new URL(url).searchParams.get("environment");
+
+  /** An account with my-app in main and in every environment `apps` has. */
+  function account(
+    lines: ReturnType<typeof usage>,
+    apps: Record<string, Array<ReturnType<typeof app>>> = {},
+  ) {
+    return host((url) => {
+      if (url.includes("/serverless/usage")) return { body: lines };
+      if (url.includes("/serverless/apps")) {
+        const environment = environmentOf(url);
+        return {
+          body: {
+            apps: environment ? (apps[environment] ?? []) : [app("my-app", "main")],
+          },
+        };
+      }
+      return { body: { time_series: [], next_cursor: null } };
+    });
+  }
+
+  it("lists the apps of every environment recent usage names, once each", async () => {
+    const { http, calls } = account(
+      usage(
+        { environment: "staging" },
+        { environment: "staging" },
+        { environment: "main" },
+        {
+          environment: null,
+        },
+      ),
+      { staging: [app("my-app", "staging"), app("beta-only", "staging")] },
+    );
+    const apps = await client(http).listResources("fal-app", ACCOUNT);
+    expect(apps.map((a) => [a.externalId, a.fields["environment"]])).toEqual([
+      ["me/my-app", "main"],
+      ["me/my-app--staging", "staging"],
+      ["me/beta-only--staging", "staging"],
+    ]);
+    expect(apps[1]?.resolvedOutputs["queueUrl"]).toBe("https://queue.fal.run/me/my-app--staging");
+    const reads = calls.filter((c) => c.url.includes("/serverless/apps"));
+    expect(reads.map((c) => environmentOf(c.url))).toEqual([null, "staging"]);
+  });
+
+  it("keeps an id fal already gave its environment suffix", async () => {
+    const { http } = account(usage({ environment: "staging" }), {
+      staging: [app("my-app", "staging", "me/my-app--staging")],
+    });
+    const apps = await client(http).listResources("fal-app", ACCOUNT);
+    expect(apps.map((a) => a.externalId)).toEqual(["me/my-app", "me/my-app--staging"]);
+  });
+
+  it("drops rows of another environment when fal ignores the one asked for", async () => {
+    const { http } = account(usage({ environment: "production" }), {
+      production: [app("my-app", "main")],
+    });
+    const apps = await client(http).listResources("fal-app", ACCOUNT);
+    expect(apps.map((a) => a.externalId)).toEqual(["me/my-app"]);
+  });
+
+  it("flushes a staging app's queue by its own id, never main's", async () => {
+    const { http, calls } = host(() => ({ status: 204 }));
+    await client(http).invokeAction(
+      "fal-app",
+      `${ACCOUNT}:fal-app:me/my-app--staging`,
+      "flush-queue",
+      ACCOUNT,
+    );
+    expect(calls.map((c) => [c.method, new URL(c.url).pathname])).toEqual([
+      ["DELETE", "/v1/serverless/apps/me/my-app--staging/queue"],
+    ]);
+  });
+
+  it.each([400, 404, 422])("reads a %d for one environment as no apps there", async (status) => {
+    const { http } = host((url) => {
+      if (url.includes("/serverless/usage")) return { body: usage({ environment: "production" }) };
+      if (environmentOf(url)) return { status };
+      return { body: { apps: [app("my-app", "main")] } };
+    });
+    const apps = await client(http).listResources("fal-app", ACCOUNT);
+    expect(apps.map((a) => a.externalId)).toEqual(["me/my-app"]);
+  });
+
+  it.each([429, 500])("fails the type when an environment answers %d", async (status) => {
+    const { http } = host((url) => {
+      if (url.includes("/serverless/usage")) return { body: usage({ environment: "staging" }) };
+      if (environmentOf(url)) return { status };
+      return { body: { apps: [app("my-app", "main")] } };
+    });
+    await expect(client(http).listResources("fal-app", ACCOUNT)).rejects.toMatchObject({ status });
+  });
+
+  it.each([429, 500, 401])("fails the type when usage answers %d", async (status) => {
+    const { http } = host((url) =>
+      url.includes("/serverless/usage") ? { status } : { body: { apps: [app("my-app", "main")] } },
+    );
+    await expect(client(http).listResources("fal-app", ACCOUNT)).rejects.toMatchObject({ status });
+  });
+
+  it("throws when the usage it discovers environments from never ends", async () => {
+    const { http, calls } = host((url) =>
+      url.includes("/serverless/usage")
+        ? { body: { time_series: [], next_cursor: "more" } }
+        : { body: { apps: [app("my-app", "main")] } },
+    );
+    await expect(client(http).listResources("fal-app", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => c.url.includes("/serverless/usage"))).toHaveLength(50);
+  });
+
+  describe("when the environments cannot be read", () => {
+    const HOOK = Symbol.for("infrawrench.unreadListPart");
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, HOOK);
+    });
+
+    it.each([400, 403, 404, 422])(
+      "lists main and keeps the stored rows when usage answers %d",
+      async (status) => {
+        const note = vi.fn();
+        Reflect.set(globalThis, HOOK, note);
+        const { http } = host((url) =>
+          url.includes("/serverless/usage")
+            ? { status }
+            : { body: { apps: [app("my-app", "main")] } },
+        );
+        const apps = await client(http).listResources("fal-app", ACCOUNT);
+        expect(apps.map((a) => a.externalId)).toEqual(["me/my-app"]);
+        expect(note).toHaveBeenCalledWith({ idPrefixes: [""] });
+      },
+    );
+
+    it("keeps the stored rows when one environment refuses the key", async () => {
+      const note = vi.fn();
+      Reflect.set(globalThis, HOOK, note);
+      const { http } = host((url) => {
+        if (url.includes("/serverless/usage")) return { body: usage({ environment: "staging" }) };
+        if (environmentOf(url)) return { status: 403 };
+        return { body: { apps: [app("my-app", "main")] } };
+      });
+      const apps = await client(http).listResources("fal-app", ACCOUNT);
+      expect(apps.map((a) => a.externalId)).toEqual(["me/my-app"]);
+      expect(note).toHaveBeenCalledWith({ idPrefixes: [""] });
+    });
+
+    it("reports nothing when it read them", async () => {
+      const note = vi.fn();
+      Reflect.set(globalThis, HOOK, note);
+      const { http } = account(usage({ environment: "staging" }), {
+        staging: [app("my-app", "staging")],
+      });
+      await client(http).listResources("fal-app", ACCOUNT);
+      expect(note).not.toHaveBeenCalled();
+    });
+  });
+
+  it("attaches a cost line to the app in the line's environment", async () => {
+    const { http } = account(
+      usage({ environment: "staging" }, { environment: "main" }, { environment: null }),
+      { staging: [app("my-app", "staging")] },
+    );
+    const rows = await client(http).fetchCostData(ACCOUNT, {
+      fromDate: "2026-10-01",
+      toDate: "2026-10-31",
+    });
+    expect(rows.map((r) => [r.resourceId, r.tags?.["environment"]])).toEqual([
+      ["me/my-app--staging", "staging"],
+      ["me/my-app", "main"],
+      ["me/my-app", undefined],
+    ]);
+    const listed = await client(http).listResources("fal-app", ACCOUNT);
+    expect(listed.map((a) => a.externalId)).toContain(rows[0]?.resourceId);
+  });
+
+  it("keeps a line's environment tag on the main app when that environment has no apps", async () => {
+    const { http } = account(usage({ environment: "production" }));
+    const [row] = await client(http).fetchCostData(ACCOUNT, {
+      fromDate: "2026-10-01",
+      toDate: "2026-10-31",
+    });
+    expect([row?.resourceId, row?.tags?.["environment"]]).toEqual(["me/my-app", "production"]);
   });
 });
 

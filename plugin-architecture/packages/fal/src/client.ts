@@ -23,6 +23,7 @@ import type {
 import {
   joinSubtitle,
   pathEncode,
+  reportUnreadListPart,
   requireListPage,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
@@ -57,6 +58,11 @@ const USAGE_SUMMARY_MAX_PAGES = 200;
 /** 50,000 rows at the 1,000 a cost page asks for. */
 const COST_MAX_PAGES = 50;
 const ANALYTICS_MAX_PAGES = 10;
+const MAIN_ENVIRONMENT = "main";
+/** Long enough that a staging app used now and then stays listed. */
+const ENVIRONMENT_LOOKBACK_DAYS = 90;
+/** How fal answers an environment or a discovery query it does not take, as no rows. */
+const REFUSED_QUERY = new Set([400, 404, 422]);
 
 const ANALYTICS_METRICS: Array<Exclude<keyof AnalyticsRow, "endpoint_id">> = [
   "request_count",
@@ -72,7 +78,7 @@ const ANALYTICS_METRICS: Array<Exclude<keyof AnalyticsRow, "endpoint_id">> = [
 ];
 
 type FieldValue = string | number | boolean | null | undefined;
-type AppName = Pick<App, "name" | "endpoint_id">;
+type AppName = Pick<App, "name" | "endpoint_id"> & Partial<Pick<App, "environment">>;
 
 function s(value: FieldValue): string {
   return value === undefined || value === null ? "" : String(value);
@@ -146,16 +152,12 @@ export function modelUsageRows(
   return rows;
 }
 
-/**
- * The app a usage line was billed to. The document has `app` as the deployed name with
- * the owner stripped and perhaps an environment or version suffix (`my-app-prod`), and
- * `<owner>/<name>` is what the app resource is known by. The longest listed name wins,
- * so `my-app-eu-dev` is not `my-app` when `my-app-eu` exists.
- */
-function appOfUsageLine(
-  line: string,
-  apps: readonly AppName[],
-): { endpointId: string; suffixed: boolean } {
+interface UsageLineApp {
+  endpointId: string;
+  suffixed: boolean;
+}
+
+function matchUsageLine(line: string, apps: readonly AppName[]): UsageLineApp | undefined {
   const exact = apps.find((a) => a.name === line || a.endpoint_id === line);
   if (exact) return { endpointId: exact.endpoint_id, suffixed: false };
   let best: AppName | undefined;
@@ -163,9 +165,53 @@ function appOfUsageLine(
     if (!line.startsWith(`${app.name}-`)) continue;
     if (!best || app.name.length > best.name.length) best = app;
   }
-  return best
-    ? { endpointId: best.endpoint_id, suffixed: true }
-    : { endpointId: line, suffixed: false };
+  return best && { endpointId: best.endpoint_id, suffixed: true };
+}
+
+/**
+ * The app a usage line was billed to. The document has `app` as the deployed name with
+ * the owner stripped and perhaps an environment or version suffix (`my-app-prod`), and
+ * `<owner>/<name>` is what the app resource is known by. The longest listed name wins,
+ * so `my-app-eu-dev` is not `my-app` when `my-app-eu` exists. A name can repeat across
+ * environments, so the line's own environment is tried first.
+ */
+function appOfUsageLine(
+  line: string,
+  environment: string | null,
+  apps: readonly AppName[],
+): UsageLineApp {
+  const deployedThere = environment ? apps.filter((a) => a.environment === environment) : [];
+  return (
+    matchUsageLine(line, deployedThere) ??
+    matchUsageLine(line, apps) ?? { endpointId: line, suffixed: false }
+  );
+}
+
+/** The environments other than main that usage lines were billed in. */
+function environmentsOfUsage(pages: Pick<ServerlessUsagePage, "time_series">[]): string[] {
+  const environments = new Set<string>();
+  for (const page of pages) {
+    for (const bucket of page.time_series ?? []) {
+      for (const { environment } of bucket.results ?? []) {
+        if (environment && environment !== MAIN_ENVIRONMENT) environments.add(environment);
+      }
+    }
+  }
+  return [...environments];
+}
+
+/**
+ * An app read from a named environment, under the address fal gives it: a staging URL
+ * ends in `--staging`, and the app's name repeats in each environment. Sharing main's id
+ * would merge the two rows, and Flush queue on the staging one would empty main's.
+ */
+function appInEnvironment(app: App, environment: string): App {
+  const suffix = `--${environment}`;
+  return {
+    ...app,
+    environment,
+    endpoint_id: app.endpoint_id.endsWith(suffix) ? app.endpoint_id : `${app.endpoint_id}${suffix}`,
+  };
 }
 
 export function serverlessUsageRows(
@@ -184,7 +230,7 @@ export function serverlessUsageRows(
         if (r.machine_type) tags["machineType"] = r.machine_type;
         if (r.environment) tags["environment"] = r.environment;
         if (r.is_surge) tags["surge"] = "true";
-        const app = r.app ? appOfUsageLine(r.app, apps) : undefined;
+        const app = r.app ? appOfUsageLine(r.app, r.environment, apps) : undefined;
         if (r.app && app?.suffixed) tags["app"] = r.app;
         rows.push({
           date,
@@ -421,12 +467,61 @@ export class FalClient implements PluginClient {
     });
   }
 
-  /** `GET /serverless/apps?expand=endpoints` */
+  /**
+   * `GET /serverless/apps?expand=endpoints`, for main and for each environment recent
+   * usage names, since fal's document has no route that lists environments.
+   */
   private async listApps(accountId: string): Promise<ResourceInstance[]> {
-    return (await this.readApps()).map((a) => this.mapApp(accountId, a));
+    const apps = await this.readApps(await this.recentEnvironments());
+    return apps.map((a) => this.mapApp(accountId, a));
   }
 
-  private async readApps(): Promise<App[]> {
+  /**
+   * Whatever cannot name an environment leaves that environment's rows unread rather than
+   * gone, so they stay. An outage or a throttle fails the type.
+   */
+  private async recentEnvironments(): Promise<string[]> {
+    const start = new Date(Date.now() - ENVIRONMENT_LOOKBACK_DAYS * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    try {
+      return environmentsOfUsage(
+        await allPages(
+          (cursor) =>
+            this.api.get("/serverless/usage", {
+              query: {
+                start,
+                timezone: "UTC",
+                timeframe: "month",
+                expand: "time_series",
+                limit: 1000,
+                ...afterCursor(cursor),
+              },
+            }),
+          { path: "/serverless/usage", key: "time_series", maxPages: COST_MAX_PAGES },
+        ),
+      );
+    } catch (err) {
+      const status = statusOf(err);
+      if (status !== 403 && !(status !== undefined && REFUSED_QUERY.has(status))) throw err;
+      reportUnreadListPart({ idPrefixes: [""] });
+      return [];
+    }
+  }
+
+  /** Main first, so that an id seen twice keeps main's row. */
+  private async readApps(environments: readonly string[] = []): Promise<App[]> {
+    const byId = new Map<string, App>();
+    for (const app of await this.readMainApps()) byId.set(app.endpoint_id, app);
+    for (const environment of environments) {
+      for (const app of await this.readEnvironmentApps(environment)) {
+        if (!byId.has(app.endpoint_id)) byId.set(app.endpoint_id, app);
+      }
+    }
+    return [...byId.values()];
+  }
+
+  private async readMainApps(): Promise<App[]> {
     let res: { apps?: App[] };
     try {
       res = await call(() => this.api.get("/serverless/apps", { query: { expand: "endpoints" } }));
@@ -439,6 +534,31 @@ export class FalClient implements PluginClient {
       path: "/serverless/apps",
       key: "apps",
     }).filter((a) => a.endpoint_id);
+  }
+
+  /**
+   * Usage can name what this route does not take: its document's example is `production`,
+   * and fal's own guides call the default `main`. So a refused name is no apps, and so is
+   * a row from an environment other than the one asked for.
+   */
+  private async readEnvironmentApps(environment: string): Promise<App[]> {
+    let res: { apps?: App[] };
+    try {
+      res = await call(() =>
+        this.api.get("/serverless/apps", { query: { expand: "endpoints", environment } }),
+      );
+    } catch (err) {
+      const status = statusOf(err);
+      if (status === 403) {
+        reportUnreadListPart({ idPrefixes: [""] });
+        return [];
+      }
+      if (status !== undefined && REFUSED_QUERY.has(status)) return [];
+      throw err;
+    }
+    return requireListPage(res.apps, { vendor: "fal", path: "/serverless/apps", key: "apps" })
+      .filter((a) => a.endpoint_id && (!a.environment || a.environment === environment))
+      .map((a) => appInEnvironment(a, environment));
   }
 
   private mapApp(accountId: string, a: App): ResourceInstance {
@@ -787,8 +907,7 @@ export class FalClient implements PluginClient {
         .toISOString()
         .slice(0, 10);
       const span = { start: range.fromDate, end, timezone: "UTC" };
-      const [apps, models, serverless] = await Promise.all([
-        this.readApps(),
+      const [models, serverless] = await Promise.all([
         allPages(
           (cursor) =>
             this.api.get("/models/usage", {
@@ -819,6 +938,7 @@ export class FalClient implements PluginClient {
           throw err;
         }),
       ]);
+      const apps = await this.readApps(environmentsOfUsage(serverless));
       return [...modelUsageRows(models, range), ...serverlessUsageRows(serverless, range, apps)];
     });
   }
