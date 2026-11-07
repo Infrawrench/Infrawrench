@@ -1,6 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TogetherClient } from "../client.js";
+import { plugin } from "../plugin.js";
 import { EndpointResourceType } from "../resources/endpoint.js";
 import { ManagedEndpointResourceType } from "../resources/managed-endpoint.js";
 
@@ -1111,6 +1112,10 @@ describe("v1 endpoints Together has closed to new work", () => {
 
     it("declares no lifecycle, so no sleep schedule can stop it for good", () => {
       expect(EndpointResourceType.lifecycle).toBeUndefined();
+    });
+
+    it("recommends no stop and start for it", () => {
+      expect(plugin.remediationCommands).toBeUndefined();
     });
 
     it("offers no Start on a stopped endpoint, and says why", () => {
