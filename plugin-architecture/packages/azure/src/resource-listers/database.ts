@@ -1,5 +1,5 @@
-import { rethrowIncompleteList, type ResourceInstance } from "@infrawrench/plugin-base";
-import { isArmDeniedOrGone } from "../arm-list.js";
+import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { isArmDeniedOrGone, readOrAbsent } from "../arm-list.js";
 import { flexibleSkuVCores } from "../extended-support.js";
 import {
   ARM,
@@ -181,8 +181,8 @@ const MANAGED_REDIS_API_VERSION = "2025-07-01";
  * modules) live on the cluster's database, not the cluster: a Managed Redis
  * cluster carries exactly one database, `default`, so the first database the
  * list returns is read and folded into the cluster's fields. That is one
- * extra request per cluster; a failure leaves the database fields blank
- * rather than dropping the cluster.
+ * extra request per cluster; a failure leaves the database fields out rather
+ * than dropping the cluster, and the sync keeps what it last read for them.
  */
 export async function listManagedRedis(
   ctx: ListerContext,
@@ -200,17 +200,10 @@ export async function listManagedRedis(
       const props = cluster["properties"] as Record<string, unknown> | undefined;
       const sku = cluster["sku"] as Record<string, unknown> | undefined;
 
-      let db: Record<string, unknown> | undefined;
-      try {
-        const dbs = await listAllPages(
-          ctx,
-          `${ARM}${azureId}/databases?api-version=${MANAGED_REDIS_API_VERSION}`,
-        );
-        db = dbs[0]?.["properties"] as Record<string, unknown> | undefined;
-      } catch (err) {
-        // See the doc comment: the cluster still lists.
-        rethrowIncompleteList(err);
-      }
+      const dbs = await readOrAbsent(() =>
+        listAllPages(ctx, `${ARM}${azureId}/databases?api-version=${MANAGED_REDIS_API_VERSION}`),
+      );
+      const db = dbs?.[0]?.["properties"] as Record<string, unknown> | undefined;
       const persistence = db?.["persistence"] as Record<string, unknown> | undefined;
       const modules = (db?.["modules"] as Array<Record<string, unknown>> | undefined) ?? [];
       const hostName = String(props?.["hostName"] ?? "");
@@ -230,28 +223,34 @@ export async function listManagedRedis(
           sku: String(sku?.["name"] ?? ""),
           provisioningState: String(props?.["provisioningState"] ?? ""),
           resourceState: String(props?.["resourceState"] ?? ""),
-          redisVersion: String(db?.["redisVersion"] ?? props?.["redisVersion"] ?? ""),
+          ...(dbs || props?.["redisVersion"] != null
+            ? { redisVersion: String(db?.["redisVersion"] ?? props?.["redisVersion"] ?? "") }
+            : {}),
           highAvailability: String(props?.["highAvailability"] ?? "Enabled"),
           redundancyMode: String(props?.["redundancyMode"] ?? ""),
           minimumTlsVersion: String(props?.["minimumTlsVersion"] ?? ""),
           publicNetworkAccess: String(props?.["publicNetworkAccess"] ?? ""),
-          clientProtocol: String(db?.["clientProtocol"] ?? ""),
-          clusteringPolicy: String(db?.["clusteringPolicy"] ?? ""),
-          evictionPolicy: String(db?.["evictionPolicy"] ?? ""),
-          modules: modules
-            .map((m) => String(m["name"] ?? ""))
-            .filter(Boolean)
-            .join(", "),
-          persistence: persistence?.["aofEnabled"]
-            ? "AOF"
-            : persistence?.["rdbEnabled"]
-              ? "RDB"
-              : db
-                ? "None"
-                : "",
-          accessKeysAuthentication: String(db?.["accessKeysAuthentication"] ?? ""),
+          ...(dbs
+            ? {
+                clientProtocol: String(db?.["clientProtocol"] ?? ""),
+                clusteringPolicy: String(db?.["clusteringPolicy"] ?? ""),
+                evictionPolicy: String(db?.["evictionPolicy"] ?? ""),
+                modules: modules
+                  .map((m) => String(m["name"] ?? ""))
+                  .filter(Boolean)
+                  .join(", "),
+                persistence: persistence?.["aofEnabled"]
+                  ? "AOF"
+                  : persistence?.["rdbEnabled"]
+                    ? "RDB"
+                    : db
+                      ? "None"
+                      : "",
+                accessKeysAuthentication: String(db?.["accessKeysAuthentication"] ?? ""),
+              }
+            : {}),
         },
-        resolvedOutputs: { hostName, port, resourceId: azureId },
+        resolvedOutputs: { hostName, ...(dbs ? { port } : {}), resourceId: azureId },
         secretStates: [],
         externalId: `${rg}/${name}`,
         createdAt: ctx.now(),

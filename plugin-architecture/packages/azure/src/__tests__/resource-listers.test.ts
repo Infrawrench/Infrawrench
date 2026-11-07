@@ -130,7 +130,7 @@ describe("listVMs", () => {
       throw new Error("nic boom");
     });
     const out = await listers.listVMs(ctx, ACCT);
-    expect(out[0]!.resolvedOutputs).toMatchObject({ publicIp: "", privateIp: "", fqdn: "" });
+    expect(out[0]!.resolvedOutputs).toEqual({});
   });
 
   it("tolerates a public IP fetch failure (inner catch)", async () => {
@@ -159,7 +159,7 @@ describe("listVMs", () => {
     });
     const out = await listers.listVMs(ctx, ACCT);
     expect(out[0]!.resolvedOutputs["privateIp"]).toBe("10.0.0.4");
-    expect(out[0]!.resolvedOutputs["publicIp"]).toBe("");
+    expect(out[0]!.resolvedOutputs).not.toHaveProperty("publicIp");
   });
 
   it("handles a VM with no NICs", async () => {

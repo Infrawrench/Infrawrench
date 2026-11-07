@@ -303,7 +303,7 @@ describe("listAppRegistrations", () => {
       };
     });
     const out = await listAppRegistrations({ ...ctxBase, graphClient: { api } as never }, "acct");
-    expect(out[0]!.fields["servicePrincipalId"]).toBe("");
+    expect(out[0]!.fields).not.toHaveProperty("servicePrincipalId");
   });
 });
 

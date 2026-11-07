@@ -13,6 +13,7 @@ import {
   requireListPage,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
+import { readOrAbsent } from "./arm-list.js";
 
 const APPLICATIONS_URL = "https://graph.microsoft.com/v1.0/applications";
 /** "The default and maximum page sizes are 100 and 999" (application-list). */
@@ -65,17 +66,16 @@ export async function listAppRegistrations(
   for (const app of apps) {
     const appId = String(app["appId"] ?? "");
     if (!appId) continue;
-    try {
+    const spId = await readOrAbsent(async () => {
       const spList = (await ctx.graphClient
         .api("/servicePrincipals")
         .filter(`appId eq '${appId}'`)
         .select("id")
         .get()) as { value: Array<Record<string, unknown>> };
-      const spId = spList.value[0]?.["id"];
-      if (typeof spId === "string") servicePrincipals.set(appId, spId);
-    } catch {
-      // skip: SP lookup failure shouldn't block listing
-    }
+      const id = spList.value[0]?.["id"];
+      return typeof id === "string" ? id : "";
+    });
+    if (spId !== undefined) servicePrincipals.set(appId, spId);
   }
 
   const now = ctx.now();
@@ -93,7 +93,10 @@ export async function listAppRegistrations(
         displayName,
         appId,
         objectId,
-        servicePrincipalId: servicePrincipals.get(appId) ?? "",
+        // Left out when the lookup failed: the sync keeps the id it last read.
+        ...(appId && !servicePrincipals.has(appId)
+          ? {}
+          : { servicePrincipalId: servicePrincipals.get(appId) ?? "" }),
         signInAudience: String(a["signInAudience"] ?? ""),
         createdDateTime: String(a["createdDateTime"] ?? ""),
       },

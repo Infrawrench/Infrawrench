@@ -295,8 +295,8 @@ describe("listManagedRedis", () => {
       return { value: [{ id: `${SUB}/Microsoft.Cache/redisEnterprise/c2`, name: "c2" }] };
     });
     const [redis] = await listers.listManagedRedis(ctx, ACCT);
-    expect(redis!.fields["persistence"]).toBe("");
-    expect(redis!.resolvedOutputs["port"]).toBe("10000");
+    expect(redis!.fields).not.toHaveProperty("persistence");
+    expect(redis!.resolvedOutputs).not.toHaveProperty("port");
   });
 });
 
@@ -350,7 +350,7 @@ describe("listAIServicesAccounts", () => {
 
   it("treats a failing deployments call as no deployments", async () => {
     const ctx = listerCtx((url) => {
-      if (url.includes("/deployments?")) throw new Error("400");
+      if (url.includes("/deployments?")) throw new Error("Azure API 400: not for this kind");
       return { value: [{ id: `${SUB}/Microsoft.CognitiveServices/accounts/sp`, kind: "Speech" }] };
     });
     const [account] = await listers.listAIServicesAccounts(ctx, ACCT);

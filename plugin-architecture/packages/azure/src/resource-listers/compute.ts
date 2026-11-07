@@ -1,4 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { readOrAbsent } from "../arm-list.js";
 import {
   ARM,
   listAllPages,
@@ -13,6 +14,72 @@ import {
   userAssignedIdentityNames,
   type ListerContext,
 } from "./shared.js";
+
+interface VmNetwork {
+  fields: Record<string, string>;
+  outputs: Record<string, string>;
+}
+
+/**
+ * Addresses and network pointers from a VM's first NIC. A blank says the VM has none,
+ * so it is only written once a read has shown that: what a failed read would have
+ * supplied is left out, and the stored value stands.
+ */
+async function readVmNetwork(
+  ctx: ListerContext,
+  vmProps: Record<string, unknown> | undefined,
+): Promise<VmNetwork> {
+  const networkProfile = vmProps?.["networkProfile"] as Record<string, unknown> | undefined;
+  const nics = networkProfile?.["networkInterfaces"] as Array<Record<string, unknown>> | undefined;
+  const nicId = String(nics?.[0]?.["id"] ?? "");
+  if (!nicId) {
+    return {
+      fields: {
+        vnetName: "",
+        subnetName: "",
+        networkResourceGroup: "",
+        networkSecurityGroup: "",
+        publicIpName: "",
+      },
+      outputs: { publicIp: "", privateIp: "", fqdn: "" },
+    };
+  }
+
+  const nic = await readOrAbsent(() =>
+    ctx.get<Record<string, unknown>>(`${ARM}${nicId}?api-version=2023-09-01`),
+  );
+  if (!nic) return { fields: {}, outputs: {} };
+
+  const nicProps = propsOf(nic);
+  const ipConfigs = nicProps?.["ipConfigurations"] as Array<Record<string, unknown>> | undefined;
+  const ipConfigProps = propsOf(ipConfigs?.[0]);
+  const subnetParts = subnetRef(refId(ipConfigProps, "subnet")).split("/");
+  const publicIpId = refId(ipConfigProps, "publicIPAddress");
+  const fields = {
+    networkSecurityGroup: extractName(refId(nicProps, "networkSecurityGroup")),
+    networkResourceGroup: subnetParts.length === 3 ? (subnetParts[0] ?? "") : "",
+    vnetName: subnetParts.length === 3 ? (subnetParts[1] ?? "") : "",
+    subnetName: subnetParts.length === 3 ? (subnetParts[2] ?? "") : "",
+    publicIpName: extractName(publicIpId),
+  };
+  const privateIp = String(ipConfigProps?.["privateIPAddress"] ?? "");
+  if (!publicIpId) return { fields, outputs: { privateIp, publicIp: "", fqdn: "" } };
+
+  const pip = await readOrAbsent(() =>
+    ctx.get<Record<string, unknown>>(`${ARM}${publicIpId}?api-version=2023-09-01`),
+  );
+  if (!pip) return { fields, outputs: { privateIp } };
+  const pipProps = propsOf(pip);
+  const dnsSettings = pipProps?.["dnsSettings"] as Record<string, unknown> | undefined;
+  return {
+    fields,
+    outputs: {
+      privateIp,
+      publicIp: String(pipProps?.["ipAddress"] ?? ""),
+      fqdn: String(dnsSettings?.["fqdn"] ?? ""),
+    },
+  };
+}
 
 export async function listVMs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   // Fetch VMs with instance view (includes power state)
@@ -50,66 +117,7 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
       (dataDisks ?? []).map((disk) => extractName(refId(disk, "managedDisk"))),
     );
 
-    // Resolve IP addresses from network interfaces
-    let publicIp = "";
-    let privateIp = "";
-    let fqdn = "";
-    // Pointers the NIC response carries alongside the addresses.
-    let vnetName = "";
-    let subnetName = "";
-    let networkResourceGroup = "";
-    let networkSecurityGroup = "";
-    let publicIpName = "";
-    const networkProfile = props?.["networkProfile"] as Record<string, unknown> | undefined;
-    const nics = networkProfile?.["networkInterfaces"] as
-      Array<Record<string, unknown>> | undefined;
-    if (nics && nics.length > 0) {
-      const firstNic = nics[0];
-      const nicId = firstNic ? String(firstNic["id"] ?? "") : "";
-      if (nicId) {
-        try {
-          const nic = await ctx.get<Record<string, unknown>>(
-            `${ARM}${nicId}?api-version=2023-09-01`,
-          );
-          const nicProps = nic["properties"] as Record<string, unknown> | undefined;
-          networkSecurityGroup = extractName(refId(nicProps, "networkSecurityGroup"));
-          const ipConfigs = nicProps?.["ipConfigurations"] as
-            Array<Record<string, unknown>> | undefined;
-          const firstIpConfig = ipConfigs?.[0];
-          if (firstIpConfig) {
-            const ipConfigProps = firstIpConfig["properties"] as
-              Record<string, unknown> | undefined;
-            privateIp = String(ipConfigProps?.["privateIPAddress"] ?? "");
-            const subnetParts = subnetRef(refId(ipConfigProps, "subnet")).split("/");
-            if (subnetParts.length === 3) {
-              networkResourceGroup = subnetParts[0] ?? "";
-              vnetName = subnetParts[1] ?? "";
-              subnetName = subnetParts[2] ?? "";
-            }
-            const publicIpRef = ipConfigProps?.["publicIPAddress"] as
-              Record<string, unknown> | undefined;
-            const publicIpId = String(publicIpRef?.["id"] ?? "");
-            publicIpName = extractName(publicIpId);
-            if (publicIpId) {
-              try {
-                const pip = await ctx.get<Record<string, unknown>>(
-                  `${ARM}${publicIpId}?api-version=2023-09-01`,
-                );
-                const pipProps = pip["properties"] as Record<string, unknown> | undefined;
-                publicIp = String(pipProps?.["ipAddress"] ?? "");
-                const dnsSettings = pipProps?.["dnsSettings"] as
-                  Record<string, unknown> | undefined;
-                fqdn = String(dnsSettings?.["fqdn"] ?? "");
-              } catch {
-                // Public IP might not be accessible
-              }
-            }
-          }
-        } catch {
-          // NIC might not be accessible
-        }
-      }
-    }
+    const network = await readVmNetwork(ctx, props);
 
     results.push({
       id: ctx.id(accountId, "azure-vm", `${rg}/${name}`),
@@ -127,11 +135,7 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
         osType: String(osDisk?.["osType"] ?? ""),
         imageReference: imageStr,
         osDiskSizeGb: Number(osDisk?.["diskSizeGB"] ?? 0),
-        vnetName,
-        subnetName,
-        networkResourceGroup,
-        networkSecurityGroup,
-        publicIpName,
+        ...network.fields,
         osDiskName,
         dataDiskNames,
         managedIdentities: joinRefs(userAssignedIdentityNames(vm)),
@@ -139,7 +143,7 @@ export async function listVMs(ctx: ListerContext, accountId: string): Promise<Re
           (props?.["osProfile"] as Record<string, unknown> | undefined)?.["adminUsername"] ?? "",
         ),
       },
-      resolvedOutputs: { publicIp, privateIp, fqdn },
+      resolvedOutputs: network.outputs,
       secretStates: [],
       externalId: `${rg}/${name}`,
       createdAt: String(props?.["timeCreated"] ?? ctx.now()),

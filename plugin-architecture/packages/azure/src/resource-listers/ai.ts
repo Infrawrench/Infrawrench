@@ -1,4 +1,5 @@
-import { rethrowIncompleteList, type ResourceInstance } from "@infrawrench/plugin-base";
+import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { isArmRefusal, readOrAbsent } from "../arm-list.js";
 import {
   ARM,
   extractResourceGroup,
@@ -31,8 +32,9 @@ function describeDeployment(deployment: Bag): string {
 /**
  * Azure AI services accounts at subscription scope, each with its model
  * deployments. Deployments cost one request per account; kinds without
- * deployments (Speech, Translator, ...) answer with an empty list or an error,
- * and either reads as "no deployments" rather than failing the whole listing.
+ * deployments (Speech, Translator, ...) answer with an empty list or a refusal,
+ * and either reads as "no deployments". Any other failure leaves the deployment
+ * fields out, and the sync keeps what it last read for them.
  */
 export async function listAIServicesAccounts(
   ctx: ListerContext,
@@ -50,16 +52,15 @@ export async function listAIServicesAccounts(
       const props = account["properties"] as Bag | undefined;
       const sku = account["sku"] as Bag | undefined;
 
-      let deployments: Bag[] = [];
-      try {
-        deployments = await listAllPages(
+      const deployments = await readOrAbsent(() =>
+        listAllPages(
           ctx,
           `${ARM}${azureId}/deployments?api-version=${COGNITIVE_API_VERSION}`,
-        );
-      } catch (err) {
-        // Not every kind hosts deployments; see the doc comment.
-        rethrowIncompleteList(err);
-      }
+        ).catch((err: unknown): Bag[] => {
+          if (isArmRefusal(err)) return [];
+          throw err;
+        }),
+      );
 
       return {
         id: ctx.id(accountId, "azure-ai-services", `${rg}/${name}`),
@@ -77,8 +78,12 @@ export async function listAIServicesAccounts(
           customSubDomainName: String(props?.["customSubDomainName"] ?? ""),
           publicNetworkAccess: String(props?.["publicNetworkAccess"] ?? "Enabled"),
           localAuthEnabled: props?.["disableLocalAuth"] !== true,
-          deploymentCount: deployments.length,
-          deployments: deployments.map(describeDeployment).join(", "),
+          ...(deployments
+            ? {
+                deploymentCount: deployments.length,
+                deployments: deployments.map(describeDeployment).join(", "),
+              }
+            : {}),
           managedIdentities: joinRefs(userAssignedIdentityNames(account)),
         },
         resolvedOutputs: {

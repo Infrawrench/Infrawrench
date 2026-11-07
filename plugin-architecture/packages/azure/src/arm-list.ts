@@ -5,7 +5,12 @@
  * row or throws: ARM pages at each provider's discretion, and nothing in a response
  * says a first page is the whole list except the absence of `nextLink`.
  */
-import { followableLink, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
+import {
+  followableLink,
+  ListTruncatedError,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 
 /**
  * What one poll can read and write (300 seconds, 2 GB). ARM's page size is the
@@ -66,4 +71,19 @@ export function isArmRefusal(err: unknown): boolean {
   const status = armStatus(err);
   if (status === undefined || status < 400 || status >= 500) return false;
   return status !== 401 && status !== 408 && status !== 429;
+}
+
+/**
+ * A read that only adds fields to a row the list already has. `undefined` when it
+ * failed, so the caller leaves those fields out: the sync merges a row's fields over
+ * what is stored and a missing key keeps its value, where a blank would overwrite it
+ * and record a change that never happened.
+ */
+export async function readOrAbsent<R>(read: () => Promise<R>): Promise<R | undefined> {
+  try {
+    return await read();
+  } catch (err) {
+    rethrowIncompleteList(err);
+    return undefined;
+  }
 }
