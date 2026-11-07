@@ -13,7 +13,7 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, reportUnreadListPart, requireListPage } from "@infrawrench/plugin-base";
 import type { PostmarkTransport, QueryValue, TokenKind } from "./api.js";
 import { isAccessDenied, listPaged, postmarkFetch, statusOf } from "./api.js";
 import type {
@@ -35,6 +35,7 @@ import {
   mapServer,
   mapTemplate,
   mapWebhook,
+  resourceId,
   splitScoped,
   triggersFrom,
 } from "./mappers.js";
@@ -226,19 +227,39 @@ export class PostmarkClient implements PluginClient {
     return entry;
   }
 
-  /** Run `fn` against each server that has a token; a server refusing access is skipped. */
+  /**
+   * Run `fn` against each server. A server that refuses its token, or that the
+   * account token shows no token for, is named as unread so a sync keeps its rows
+   * instead of reading them as deleted.
+   */
   private async perServer(
+    accountId: string,
     fn: (entry: ServerEntry) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    const entries = (await this.servers()).filter((e) => e.token);
+    const entries = await this.servers();
+    const unread: string[] = [];
+    let refusal: unknown;
     const results = await mapLimit(entries, CONCURRENCY, async (entry) => {
+      if (!entry.token) {
+        unread.push(entry.ref.id);
+        return [];
+      }
       try {
         return await fn(entry);
       } catch (err) {
-        if (isAccessDenied(err)) return [];
-        throw err;
+        if (!isAccessDenied(err)) throw err;
+        refusal ??= err;
+        unread.push(entry.ref.id);
+        return [];
       }
     });
+    if (unread.length > 0) {
+      const reported = reportUnreadListPart({
+        parentResourceIds: unread.sort().map((id) => resourceId(accountId, "postmark-server", id)),
+      });
+      // A host that keeps no track (the desktop) still shows a refusal on every server.
+      if (!reported && refusal !== undefined && unread.length === entries.length) throw refusal;
+    }
     return results.flat();
   }
 
@@ -287,21 +308,31 @@ export class PostmarkClient implements PluginClient {
         case "postmark-server":
           return (await this.servers()).map((e) => mapServer(accountId, e.server));
         case "postmark-message-stream":
-          return this.perServer(async (e) => {
+          return this.perServer(accountId, async (e) => {
             const res = await this.server<{ MessageStreams?: PmMessageStream[] }>(
               e.token,
               "/message-streams",
               { query: { MessageStreamType: "All", IncludeArchivedStreams: true } },
             );
-            return (res?.MessageStreams ?? []).map((s) => mapMessageStream(accountId, e.ref, s));
+            return requireListPage(res?.MessageStreams, {
+              vendor: "Postmark",
+              path: "/message-streams",
+              key: "MessageStreams",
+              page: res,
+            }).map((s) => mapMessageStream(accountId, e.ref, s));
           });
         case "postmark-webhook":
-          return this.perServer(async (e) => {
+          return this.perServer(accountId, async (e) => {
             const res = await this.server<{ Webhooks?: PmWebhook[] }>(e.token, "/webhooks");
-            return (res?.Webhooks ?? []).map((w) => mapWebhook(accountId, e.ref, w));
+            return requireListPage(res?.Webhooks, {
+              vendor: "Postmark",
+              path: "/webhooks",
+              key: "Webhooks",
+              page: res,
+            }).map((w) => mapWebhook(accountId, e.ref, w));
           });
         case "postmark-template":
-          return this.perServer(async (e) =>
+          return this.perServer(accountId, async (e) =>
             (
               await this.paged<PmTemplate>("server", e.token, "/templates", "Templates", {
                 TemplateType: "All",
@@ -309,7 +340,7 @@ export class PostmarkClient implements PluginClient {
             ).map((t) => mapTemplate(accountId, e.ref, t)),
           );
         case "postmark-inbound-rule":
-          return this.perServer(async (e) =>
+          return this.perServer(accountId, async (e) =>
             (
               await this.paged<PmInboundRule>(
                 "server",

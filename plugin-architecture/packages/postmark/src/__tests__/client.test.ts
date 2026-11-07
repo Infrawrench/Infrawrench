@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { evaluatePostureRule } from "@infrawrench/plugin-base";
 import { PostmarkApiError } from "../api.js";
 import { PostmarkClient, parseAddresses, serverBody } from "../client.js";
@@ -152,7 +152,7 @@ describe("servers and server-scoped listings", () => {
     expect(await c.listResources("postmark-sender-signature", "a")).toEqual([]);
   });
 
-  it("skips a server whose token is refused rather than failing the sync", async () => {
+  it("keeps the rows of a server whose token is refused rather than failing the sync", async () => {
     const { c } = client((url) => {
       if (url.pathname === "/servers") {
         return {
@@ -172,7 +172,15 @@ describe("servers and server-scoped listings", () => {
         ? { body: SERVERS }
         : { status: 401, body: { ErrorCode: 10, Message: "no" } },
     );
-    expect(await c2.listResources("postmark-inbound-rule", "a")).toEqual([]);
+    const unread = vi.fn();
+    const hook = Symbol.for("infrawrench.unreadListPart");
+    Reflect.set(globalThis, hook, unread);
+    try {
+      expect(await c2.listResources("postmark-inbound-rule", "a")).toEqual([]);
+    } finally {
+      Reflect.deleteProperty(globalThis, hook);
+    }
+    expect(unread).toHaveBeenCalledWith({ parentResourceIds: ["a:postmark-server:7"] });
     const rules = await c.listResources("postmark-inbound-rule", "a");
     expect(rules.map((r) => r.externalId).sort()).toEqual(["1/5", "2/5"]);
   });
