@@ -7,6 +7,7 @@ import {
   reportToRows,
 } from "../cost-data.js";
 import { ProtoWriter } from "../proto.js";
+import type { Reply } from "./helpers.js";
 import { ctxWith, makeHttp, ts, withMap } from "./helpers.js";
 
 const DAY = Date.parse("2026-09-03T00:00:00Z");
@@ -192,6 +193,58 @@ describe("fetchModalCostData", () => {
     await expect(
       fetchModalCostData(ctxWith(http), { fromDate: "2026-09-01", toDate: "2026-09-03" }),
     ).rejects.toMatchObject({ name: "CostSetupError" });
+  });
+
+  const withSummary = (reply: Reply) =>
+    fetchModalCostData(
+      ctxWith(
+        makeHttp((method) =>
+          method === "WorkspaceBillingSummary"
+            ? reply
+            : [
+                reportItem({
+                  objectId: "ap-1",
+                  description: "api",
+                  env: "main",
+                  day: DAY,
+                  cost: "4.000000",
+                  byResource: { CPU: "4.000000" },
+                }),
+              ],
+        ).http,
+      ),
+      { fromDate: "2026-09-01", toDate: "2026-09-03" },
+    );
+
+  it.each([
+    ["CANCELLED", 1],
+    ["UNKNOWN", 2],
+    ["DEADLINE_EXCEEDED", 4],
+    ["RESOURCE_EXHAUSTED", 8],
+    ["INTERNAL", 13],
+    ["UNAVAILABLE", 14],
+  ])("fails rather than lose a month's adjustments on %s", async (_name, grpcStatus) => {
+    await expect(withSummary({ grpcStatus })).rejects.toMatchObject({
+      name: "ModalApiError",
+      code: grpcStatus,
+    });
+  });
+
+  it("fails on a summary answered with an HTTP error", async () => {
+    await expect(withSummary({ httpStatus: 503 })).rejects.toMatchObject({
+      name: "ModalApiError",
+    });
+  });
+
+  it.each([
+    ["INVALID_ARGUMENT", 3],
+    ["NOT_FOUND", 5],
+    ["PERMISSION_DENIED", 7],
+    ["FAILED_PRECONDITION", 9],
+    ["UNIMPLEMENTED", 12],
+  ])("leaves the month at metered cost when Modal answers %s", async (_name, grpcStatus) => {
+    const rows = await withSummary({ grpcStatus });
+    expect(rows.map((r) => r.service)).toEqual(["CPU"]);
   });
 
   it("still fails on a rejected token", async () => {

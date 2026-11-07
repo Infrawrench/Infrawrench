@@ -74,6 +74,25 @@ function isPlanRefusal(err: unknown): boolean {
   );
 }
 
+/**
+ * Whether a failed summary may mean nothing about the cycle: the codes Modal's own SDK
+ * retries (`RETRYABLE_GRPC_STATUS_CODES`), a throttle, and anything that is no answer
+ * from Modal at all. The reconcile zeroes what a chunk does not return, so these fail
+ * the read and the stored adjustments stay.
+ */
+function isPassingFailure(err: unknown): boolean {
+  const code = grpcCodeOf(err);
+  return (
+    code === undefined ||
+    code === GrpcCode.CANCELLED ||
+    code === GrpcCode.UNKNOWN ||
+    code === GrpcCode.DEADLINE_EXCEEDED ||
+    code === GrpcCode.RESOURCE_EXHAUSTED ||
+    code === GrpcCode.INTERNAL ||
+    code === GrpcCode.UNAVAILABLE
+  );
+}
+
 function planError(err: unknown): CostSetupError {
   const detail = err instanceof Error ? err.message : String(err);
   return new CostSetupError(
@@ -223,7 +242,7 @@ export async function fetchModalCostData(
       // The usage rows already stand on their own; a summary Modal will not
       // give (an older cycle, a plan gate) only leaves the month at metered
       // cost. A rejected token is still a failure.
-      if (grpcCodeOf(err) === GrpcCode.UNAUTHENTICATED) throw err;
+      if (grpcCodeOf(err) === GrpcCode.UNAUTHENTICATED || isPassingFailure(err)) throw err;
     }
   }
   return rows;
