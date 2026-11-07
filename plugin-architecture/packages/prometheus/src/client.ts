@@ -18,7 +18,12 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf, withinListCap } from "@infrawrench/plugin-base";
+import {
+  decodePromptArgs,
+  externalIdOf,
+  requireListPage,
+  withinListCap,
+} from "@infrawrench/plugin-base";
 import type { PromContext } from "./api.js";
 import {
   amFetch,
@@ -157,14 +162,29 @@ export class PromClient implements PluginClient {
     return p.catch(() => undefined);
   }
 
-  private targets(state: "active" | "any" = "active"): Promise<TargetsData> {
-    return promFetch<TargetsData>(this.ctx, "/api/v1/targets", { query: { state } });
+  private async targets(state: "active" | "any" = "active"): Promise<TargetsData> {
+    const path = "/api/v1/targets";
+    const d = await promFetch<TargetsData | undefined>(this.ctx, path, { query: { state } });
+    return {
+      activeTargets: requireListPage(d?.activeTargets, {
+        vendor: "Prometheus",
+        path,
+        key: "activeTargets",
+      }),
+      droppedTargets: d?.droppedTargets ?? [],
+    };
   }
 
-  private ruleGroups(): Promise<RuleGroup[]> {
-    return promFetch<{ groups?: RuleGroup[] }>(this.ctx, "/api/v1/rules").then(
-      (d) => d?.groups ?? [],
-    );
+  private async ruleGroups(): Promise<RuleGroup[]> {
+    const path = "/api/v1/rules";
+    const d = await promFetch<{ groups?: RuleGroup[] } | undefined>(this.ctx, path);
+    return requireListPage(d?.groups, { vendor: "Prometheus", path, key: "groups" });
+  }
+
+  /** An Alertmanager v2 list, which its OpenAPI document answers as a bare array. */
+  private async amList<T>(path: string): Promise<T[]> {
+    const list = await amFetch<T[] | null | undefined>(this.ctx, path);
+    return requireListPage(list, { vendor: "Alertmanager", path: `/api/v2${path}`, key: null });
   }
 
   private async server(accountId: string): Promise<ResourceInstance> {
@@ -201,9 +221,9 @@ export class PromClient implements PluginClient {
     if (!this.ctx.alertmanagerUrl) return [];
     const [status, receivers, silences, alerts] = await Promise.all([
       amFetch<AmStatus>(this.ctx, "/status"),
-      this.soft(amFetch<Array<{ name?: string }>>(this.ctx, "/receivers")),
-      this.soft(amFetch<Silence[]>(this.ctx, "/silences")),
-      this.soft(amFetch<AmAlert[]>(this.ctx, "/alerts")),
+      this.soft(this.amList<{ name?: string }>("/receivers")),
+      this.soft(this.amList<Silence>("/silences")),
+      this.soft(this.amList<AmAlert>("/alerts")),
     ]);
     return [
       mapAlertmanager(accountId, this.ctx.alertmanagerUrl, status, {
@@ -253,29 +273,28 @@ export class PromClient implements PluginClient {
             const ids = ruleIds(g);
             return (g.rules ?? []).map((r, i) => mapRule(accountId, g, r, ids[i]!));
           });
-        case "prometheus-alert":
-          return (
-            (await promFetch<{ alerts?: Alert[] }>(this.ctx, "/api/v1/alerts")).alerts ?? []
-          ).map((a) => mapAlert(accountId, a));
+        case "prometheus-alert": {
+          const path = "/api/v1/alerts";
+          const d = await promFetch<{ alerts?: Alert[] } | undefined>(this.ctx, path);
+          return requireListPage(d?.alerts, { vendor: "Prometheus", path, key: "alerts" }).map(
+            (a) => mapAlert(accountId, a),
+          );
+        }
         case "prometheus-alertmanager":
           return this.alertmanager(accountId);
         case "prometheus-silence":
           if (!this.ctx.alertmanagerUrl) return [];
-          return ((await amFetch<Silence[]>(this.ctx, "/silences")) ?? []).map((s) =>
-            mapSilence(accountId, s),
-          );
+          return (await this.amList<Silence>("/silences")).map((s) => mapSilence(accountId, s));
         case "prometheus-am-alert":
           if (!this.ctx.alertmanagerUrl) return [];
-          return ((await amFetch<AmAlert[]>(this.ctx, "/alerts")) ?? []).map((a) =>
-            mapAmAlert(accountId, a),
-          );
+          return (await this.amList<AmAlert>("/alerts")).map((a) => mapAmAlert(accountId, a));
         case "prometheus-receiver": {
           if (!this.ctx.alertmanagerUrl) return [];
           const [receivers, alerts] = await Promise.all([
-            amFetch<Array<{ name?: string }>>(this.ctx, "/receivers"),
-            this.soft(amFetch<AmAlert[]>(this.ctx, "/alerts")),
+            this.amList<{ name?: string }>("/receivers"),
+            this.soft(this.amList<AmAlert>("/alerts")),
           ]);
-          return (receivers ?? []).map((r) =>
+          return receivers.map((r) =>
             mapReceiver(
               accountId,
               r.name ?? "",

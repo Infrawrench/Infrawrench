@@ -40,4 +40,36 @@ describe("lists that feed the sync", () => {
       "has more than Infrawrench reads",
     );
   });
+
+  it("reads a Go nil slice of targets as none", async () => {
+    const { c } = client(() => ok({ activeTargets: null }));
+    expect(await c.listResources("prometheus-target", ACCOUNT)).toEqual([]);
+  });
+
+  it.each([
+    ["prometheus-target", "/api/v1/targets"],
+    ["prometheus-scrape-pool", "/api/v1/targets"],
+    ["prometheus-rule-group", "/api/v1/rules"],
+    ["prometheus-rule", "/api/v1/rules"],
+    ["prometheus-alert", "/api/v1/alerts"],
+  ])("does not read %s from an answer without its list as none", async (type, path) => {
+    const { c } = client((call) =>
+      call.url.pathname === path ? ok({}) : ok({ scrapePools: [], activeTargets: [] }),
+    );
+    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("does not read a login page answered with 200 as no targets", async () => {
+    const { c } = client(() => ({ text: "<html>Sign in</html>" }));
+    await expect(c.listResources("prometheus-target", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["prometheus-silence", "/api/v2/silences"],
+    ["prometheus-am-alert", "/api/v2/alerts"],
+    ["prometheus-receiver", "/api/v2/receivers"],
+  ])("does not read an empty Alertmanager answer for %s as none", async (type, path) => {
+    const { c } = client((call) => (call.url.pathname === path ? { text: "" } : []));
+    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
 });
