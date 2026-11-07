@@ -55,6 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -105,6 +106,8 @@ const REFUSED = {
 
 describe("listResources routing", () => {
   it("lists schemas across catalogs and skips refused catalogs", async () => {
+    // A sync keeps the refused parents' rows; elsewhere the refusal fails the list.
+    vi.stubGlobal(Symbol.for("infrawrench.unreadListPart"), () => true);
     // 1: catalogs, 2: schemas for cat1 ok, 3: schemas for cat2 refused
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes("/catalogs"))
@@ -119,6 +122,8 @@ describe("listResources routing", () => {
   });
 
   it("lists tables across catalogs/schemas, skipping refused ones", async () => {
+    // A sync keeps the refused parents' rows; elsewhere the refusal fails the list.
+    vi.stubGlobal(Symbol.for("infrawrench.unreadListPart"), () => true);
     fetchMock.mockImplementation(async (url: string) => {
       if (url.includes("/catalogs"))
         return jsonResp({ catalogs: [{ name: "cat1" }, { name: "catX" }] });

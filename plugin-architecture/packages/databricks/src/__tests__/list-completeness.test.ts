@@ -214,6 +214,12 @@ describe.each(FAN_OUTS)("$name", ({ typeId, routes, read, kept, parent }) => {
     expect(unread).toHaveBeenCalledExactlyOnceWith({ parentResourceIds: [parent] });
   });
 
+  it("a refused parent fails the type where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    serve({ ...routes, [read]: denied });
+    await expect(list(typeId)).rejects.toThrow("403");
+  });
+
   it("a parent gone since the list has no children, so its rows can go", async () => {
     serve({ ...routes, [read]: gone });
     expect(externalIds(await list(typeId))).toEqual([kept]);
@@ -232,6 +238,12 @@ describe("a credential refused a whole type", () => {
     serve({ [route]: denied });
     await expect(list(typeId)).resolves.toEqual([]);
     expect(unread).toHaveBeenCalledExactlyOnceWith({ idPrefixes: [""] });
+  });
+
+  it("shows the refusal where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    serve({ [CATALOGS]: denied });
+    await expect(list("databricks-catalog")).rejects.toThrow("403");
   });
 
   it.each(FAILURES)("%s on the same read still fails the type", async (_name, answer) => {
@@ -271,6 +283,12 @@ describe("workspace objects", () => {
     serve({ ...routes, [root("/Users")]: denied });
     expect(externalIds(await list("databricks-workspace-object"))).toEqual(["1"]);
     expect(unread).toHaveBeenCalledExactlyOnceWith({ idPrefixes: [""] });
+  });
+
+  it("a refused root fails the type where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    serve({ ...routes, [root("/Users")]: denied });
+    await expect(list("databricks-workspace-object")).rejects.toThrow("403");
   });
 });
 
@@ -374,6 +392,14 @@ describe("a fan-out past what one poll can read", () => {
       const model = id.slice(`${ACCOUNT}:databricks-registered-model:`.length);
       expect(stats.modelsRead.has(model)).toBe(false);
     }
+  });
+
+  it("reads every parent where the host keeps no track of the rest", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const stats = serveModels();
+    const rows = await list("databricks-model-version");
+    expect(rows).toHaveLength(MODELS);
+    expect(stats.modelsRead.size).toBe(MODELS);
   });
 
   it("starts somewhere else each poll, so every parent is read over time", async () => {

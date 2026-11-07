@@ -82,7 +82,8 @@ async function readChildren(
       if (isGone(err)) return [];
       if (!isAccessRefusal(err)) throw err;
     }
-    reportUnreadListPart({ parentResourceIds: [parentResourceId] });
+    // A host that keeps no track (the desktop) answers false, and there the list is short.
+    if (!reportUnreadListPart({ parentResourceIds: [parentResourceId] })) throw err;
     return [];
   }
 }
@@ -105,10 +106,12 @@ export async function readEachParent(
   const start = Math.floor(Math.random() * parents.length);
   const ordered = [...parents.slice(start), ...parents.slice(0, start)];
   const results: ResourceInstance[] = [];
+  // A host that keeps no track answers false, and has no poll to outlast: it reads them all.
+  let tracked = true;
   for (const [index, parent] of ordered.entries()) {
-    if (budget.spent) {
-      reportUnreadListPart({ parentResourceIds: ordered.slice(index).map((p) => p.id) });
-      break;
+    if (tracked && budget.spent) {
+      tracked = reportUnreadListPart({ parentResourceIds: ordered.slice(index).map((p) => p.id) });
+      if (tracked) break;
     }
     results.push(
       ...(await readChildren(parent.id, underForeignCatalog(parent), () => read(parent))),
@@ -628,8 +631,9 @@ export async function listWorkspaceObjects(
       if (isGone(err)) continue;
       if (!isAccessRefusal(err)) throw err;
       // These rows have no parent, and ids are object ids, so nothing can name only the
-      // refused root's. Every row stays rather than that root's being pruned.
-      reportUnreadListPart({ idPrefixes: [""] });
+      // refused root's. Every row stays rather than that root's being pruned. A host that
+      // keeps no track (the desktop) answers false, and there the list would be short.
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
     }
   }
   return objects.map((o) => {
