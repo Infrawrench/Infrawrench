@@ -93,7 +93,14 @@ export interface LeakedSecretQuery {
 
 export interface LeakedSecretPage {
   findings: LeakedSecretFinding[];
-  /** True when more findings exist than `limit` allowed. */
+  /**
+   * True when `findings` is not everything the scanner holds: more findings
+   * exist than `limit` allowed, or part of the account could not be read (a
+   * project or page that failed while the rest succeeded). The host applies
+   * what it was given, never treats a finding missing from a truncated page
+   * as resolved, and shows the scan as partial. Throw instead when nothing
+   * useful could be read.
+   */
   truncated: boolean;
 }
 

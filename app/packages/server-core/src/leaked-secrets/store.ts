@@ -238,6 +238,7 @@ export async function listLeakedSecretScanners(
       lastScannedAt: iso(scan?.lastScannedAt),
       lastError: scan?.lastError ?? null,
       lastCount: scan?.lastCount ?? null,
+      lastPartial: scan?.lastPartial ?? false,
     };
   });
 }

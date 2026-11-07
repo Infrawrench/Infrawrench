@@ -23082,5 +23082,6 @@
   "dc971a56fd0bbf9e": "Speicherkonto (Azure)",
   "fb04958c5a610172": "Abonnement-ID (Azure)",
   "eca23137eaa743e1": "Zielzustand",
-  "da7baf7d75d582b7": "Mandanten-ID (Azure)"
+  "da7baf7d75d582b7": "Mandanten-ID (Azure)",
+  "ea534b7be0c3f932": "Der letzte Scan hat nur einen Teil dieses Scanners gelesen, daher fehlen möglicherweise einige Lecks."
 }

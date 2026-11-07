@@ -155,6 +155,12 @@ export interface LeakedSecretScanner {
   lastError: string | null;
   /** Findings returned by the last scan. */
   lastCount: number | null;
+  /**
+   * The last scan read only part of the scanner (more findings than one scan
+   * reads, or some could not be read), so a leak may be missing from the list.
+   * Absent from servers before API 1.97.0.
+   */
+  lastPartial?: boolean;
 }
 
 export type LeakedSecretCounts = Record<LeakedSecretStatus, number>;

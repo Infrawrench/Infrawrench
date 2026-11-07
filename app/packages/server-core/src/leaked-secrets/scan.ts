@@ -9,6 +9,12 @@
  * else (the account was edited, the reroll dialog was used), so it is
  * recorded as `detected` and closed upstream.
  *
+ * A scan only ever acts on the findings it was given; one it did not see is
+ * left as it is, never taken to be resolved. That is what makes a partial
+ * page (`truncated`: past the limit, or part of the scanner unreadable) safe
+ * to apply, and the scan row records it so the scanner list says the read
+ * was partial instead of looking clean.
+ *
  * The poller pass (`gateway`: it calls plugin code for arbitrary accounts)
  * claims due accounts with the `next_scan_at` lease, the `alerts/pass.ts`
  * idiom, so any number of replicas scan an account once. Never throws: every
@@ -134,6 +140,8 @@ export function planFindingUpdate(
 
 export interface ScanResult {
   found: number;
+  /** The scanner's page was truncated, so findings may be missing from this read. */
+  partial: boolean;
   newLeakIds: string[];
   detectedRotations: number;
 }
@@ -234,7 +242,12 @@ export async function scanLeakedSecretAccount(
   }
 
   const detectedRotations = await detectRotations(organizationId, accountId);
-  return { found: page.findings.length, newLeakIds, detectedRotations };
+  return {
+    found: page.findings.length,
+    partial: page.truncated,
+    newLeakIds,
+    detectedRotations,
+  };
 }
 
 /**
@@ -282,25 +295,34 @@ async function ensureScanRows(plugins: readonly LoadedPlugin[]): Promise<void> {
     .onConflictDoNothing();
 }
 
-async function finishScan(
-  accountId: string,
-  outcome: { count: number } | { error: string },
+type ScanOutcome = { count: number; partial: boolean } | { error: string };
+
+/**
+ * The scan row after one scan. A failure keeps the last good read's count and
+ * completeness: the error is what the scanner list shows while it lasts.
+ */
+export function scanRowUpdate(
+  outcome: ScanOutcome,
+  now: Date,
   nextAt: Date,
-) {
-  const now = new Date();
+): Partial<typeof leakedSecretScans.$inferInsert> {
+  if ("error" in outcome) {
+    return { lastError: outcome.error.slice(0, 500), nextScanAt: nextAt, updatedAt: now };
+  }
+  return {
+    lastError: null,
+    lastCount: outcome.count,
+    lastPartial: outcome.partial,
+    lastScannedAt: now,
+    nextScanAt: nextAt,
+    updatedAt: now,
+  };
+}
+
+async function finishScan(accountId: string, outcome: ScanOutcome, nextAt: Date) {
   await db
     .update(leakedSecretScans)
-    .set(
-      "error" in outcome
-        ? { lastError: outcome.error.slice(0, 500), nextScanAt: nextAt, updatedAt: now }
-        : {
-            lastError: null,
-            lastCount: outcome.count,
-            lastScannedAt: now,
-            nextScanAt: nextAt,
-            updatedAt: now,
-          },
-    )
+    .set(scanRowUpdate(outcome, new Date(), nextAt))
     .where(eq(leakedSecretScans.accountId, accountId));
 }
 
@@ -316,7 +338,7 @@ async function scanAndNotify(
       const result = await scanLeakedSecretAccount(row.organizationId, row.accountId, ctxCache);
       await finishScan(
         row.accountId,
-        { count: result.found },
+        { count: result.found, partial: result.partial },
         new Date(Date.now() + SCAN_INTERVAL_MS),
       );
       scanned += 1;

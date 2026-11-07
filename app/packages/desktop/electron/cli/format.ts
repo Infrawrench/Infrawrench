@@ -1178,7 +1178,13 @@ export function formatLeakStatus(
 export function formatLeakScanner(
   scanner: Pick<
     LeakedSecretScanner,
-    "accountName" | "label" | "lastScannedAt" | "lastError" | "lastCount" | "returnsSecretValue"
+    | "accountName"
+    | "label"
+    | "lastScannedAt"
+    | "lastError"
+    | "lastCount"
+    | "lastPartial"
+    | "returnsSecretValue"
   >,
 ): string {
   const who = `${safe(scanner.accountName)} (${safe(scanner.label)})`;
@@ -1188,8 +1194,9 @@ export function formatLeakScanner(
     scanner.lastCount != null
       ? `, ${scanner.lastCount} finding${scanner.lastCount === 1 ? "" : "s"}`
       : "";
+  const partial = scanner.lastPartial ? "; partial read, some findings may be missing" : "";
   const byType = scanner.returnsSecretValue ? "" : "; matches by token type only";
-  return `${who}: scanned ${formatChangeTime(scanner.lastScannedAt)}${count}${byType}`;
+  return `${who}: scanned ${formatChangeTime(scanner.lastScannedAt)}${count}${partial}${byType}`;
 }
 
 /** "2 open · 5 rotated · 1 dismissed", zero buckets left out. */

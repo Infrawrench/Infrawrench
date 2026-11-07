@@ -95,6 +95,10 @@ export function registerLeakedSecretPaths(ctx: BuildContext) {
     lastScannedAt: IsoDateTime.nullable(),
     lastError: z.string().nullable(),
     lastCount: z.number().int().nullable(),
+    lastPartial: z.boolean().openapi({
+      description:
+        "The last scan read only part of the scanner's findings (more than one scan reads, or some could not be read), so a leak may be missing from the list.",
+    }),
   }).openapi("LeakedSecretScanner");
 
   const LeakedSecretList = strict({

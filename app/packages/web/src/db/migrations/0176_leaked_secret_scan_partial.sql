@@ -1,0 +1,1 @@
+ALTER TABLE "leaked_secret_scans" ADD COLUMN "last_partial" boolean DEFAULT false NOT NULL;

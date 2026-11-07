@@ -23084,5 +23084,6 @@
   "dc971a56fd0bbf9e": "Cuenta de almacenamiento (Azure)",
   "fb04958c5a610172": "ID de suscripción (Azure)",
   "eca23137eaa743e1": "Estado de los destinos",
-  "da7baf7d75d582b7": "ID de inquilino (Azure)"
+  "da7baf7d75d582b7": "ID de inquilino (Azure)",
+  "ea534b7be0c3f932": "El último análisis leyó solo una parte de este escáner, así que pueden faltar algunas filtraciones."
 }

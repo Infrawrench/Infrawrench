@@ -90,6 +90,9 @@ export function PostureScreen() {
         onRetry={() => void leaks.refetch()}
         leaks={leaks.data?.leaks ?? []}
         scannerCount={leaks.data?.scanners.length ?? 0}
+        partialScanners={
+          leaks.data?.scanners.filter((s) => !s.lastError && s.lastPartial).length ?? 0
+        }
         focusedId={leakId}
       />
       <SectionTitle>Findings</SectionTitle>
@@ -254,6 +257,7 @@ function LeakedCredentialsSection({
   onRetry,
   leaks,
   scannerCount,
+  partialScanners,
   focusedId,
 }: {
   loading: boolean;
@@ -261,6 +265,8 @@ function LeakedCredentialsSection({
   onRetry: () => void;
   leaks: LeakedSecret[];
   scannerCount: number;
+  /** Scanners whose last read was partial, so a leak may be missing below. */
+  partialScanners: number;
   focusedId: string | undefined;
 }) {
   if (loading) {
@@ -332,6 +338,13 @@ function LeakedCredentialsSection({
             <LeakRow key={leak.id} leak={leak} highlighted={leak.id === focusedId} />
           ))}
         </Card>
+      )}
+      {partialScanners > 0 && (
+        <Text style={styles.footnote}>
+          {partialScanners === 1
+            ? "1 scanner's last scan read only part of it, so some leaks may be missing."
+            : `${partialScanners} scanners' last scans read only part of them, so some leaks may be missing.`}
+        </Text>
       )}
       {ordered.length > 0 && (
         <Text style={styles.footnote}>

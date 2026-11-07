@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.96.0",
+    "version": "1.97.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -34152,6 +34152,10 @@
               "integer",
               "null"
             ]
+          },
+          "lastPartial": {
+            "type": "boolean",
+            "description": "The last scan read only part of the scanner's findings (more than one scan reads, or some could not be read), so a leak may be missing from the list."
           }
         },
         "required": [
@@ -34163,7 +34167,8 @@
           "returnsSecretValue",
           "lastScannedAt",
           "lastError",
-          "lastCount"
+          "lastCount",
+          "lastPartial"
         ],
         "additionalProperties": false
       },

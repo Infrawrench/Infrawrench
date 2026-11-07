@@ -938,6 +938,9 @@ describe("leaked credentials helpers", () => {
     expect(formatLeakScanner({ ...scanner, returnsSecretValue: false, lastCount: 1 })).toBe(
       "acme (Secret scanning): scanned 2026-10-01 09:30, 1 finding; matches by token type only",
     );
+    expect(formatLeakScanner({ ...scanner, lastCount: 1000, lastPartial: true })).toBe(
+      "acme (Secret scanning): scanned 2026-10-01 09:30, 1000 findings; partial read, some findings may be missing",
+    );
     expect(formatLeakScanner({ ...scanner, lastScannedAt: null })).toBe(
       "acme (Secret scanning): first scan pending",
     );

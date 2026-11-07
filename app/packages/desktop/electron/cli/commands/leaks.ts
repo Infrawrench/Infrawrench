@@ -358,6 +358,6 @@ async function listLeaks(ctx: CliContext, flags: LeakFlags): Promise<void> {
 function printScanners(scanners: LeakedSecretScanner[]): void {
   for (const s of scanners) {
     const line = formatLeakScanner(s);
-    println(s.lastError ? c.red(line) : c.dim(line));
+    println(s.lastError ? c.red(line) : s.lastPartial ? c.yellow(line) : c.dim(line));
   }
 }

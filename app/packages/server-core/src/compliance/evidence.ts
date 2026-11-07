@@ -1215,6 +1215,7 @@ const leakedCredentials: EvidenceEvaluator = async (ctx) => {
         label: s.label,
         lastScannedAt: s.lastScannedAt,
         lastError: s.lastError,
+        lastPartial: s.lastPartial ?? false,
       })),
       leaks: summary.records,
       totalLeaks: read.total,

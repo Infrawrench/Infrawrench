@@ -318,6 +318,14 @@ export function LeakedCredentialsSection({
                         account: s.accountName,
                         scanner: gtData(s.label),
                       })}
+                {!s.lastError && s.lastScannedAt && s.lastPartial && (
+                  <span className="text-warning">
+                    {" "}
+                    {gt(
+                      "The last scan read only part of this scanner, so some leaks may be missing.",
+                    )}
+                  </span>
+                )}
                 {!s.returnsSecretValue && (
                   <span>
                     {" "}

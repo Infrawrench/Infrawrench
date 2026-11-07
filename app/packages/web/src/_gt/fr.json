@@ -23083,5 +23083,6 @@
   "dc971a56fd0bbf9e": "Compte de stockage (Azure)",
   "fb04958c5a610172": "ID d'abonnement (Azure)",
   "eca23137eaa743e1": "Santé des cibles",
-  "da7baf7d75d582b7": "ID de locataire (Azure)"
+  "da7baf7d75d582b7": "ID de locataire (Azure)",
+  "ea534b7be0c3f932": "La dernière analyse n'a lu qu'une partie de ce scanner, certaines fuites peuvent donc manquer."
 }

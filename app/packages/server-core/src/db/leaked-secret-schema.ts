@@ -122,6 +122,12 @@ export const leakedSecretScans = pgTable(
     lastScannedAt: timestamp("last_scanned_at"),
     lastError: text("last_error"),
     lastCount: integer("last_count"),
+    /**
+     * The last scan read only part of the scanner's findings (its page came
+     * back `truncated`): more than one scan reads, or some could not be read.
+     * A finding missing from that scan may still be open upstream.
+     */
+    lastPartial: boolean("last_partial").notNull().default(false),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({

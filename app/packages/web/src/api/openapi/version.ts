@@ -411,4 +411,6 @@
 // plugins now declare instead of hosts hard-coding them. Additive.
 // 1.96.0: `POST /accounts/{id}/sync` answers with optional `incompleteLists`, the types
 // a sync refused to prune because their list could not be read whole. Additive.
-export const API_VERSION = "1.96.0";
+// 1.97.0: `LeakedSecretScanner` gains `lastPartial`, set when the last scan read only part
+// of the scanner's findings. Additive.
+export const API_VERSION = "1.97.0";

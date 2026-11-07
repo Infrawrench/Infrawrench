@@ -56,7 +56,7 @@ Infrawrench keeps that fingerprint and a hint of at most the first and last four
 
 Each row shows the token type, where it was found (repository, file and line), when the scanner first saw it, and what it was matched to. Badges add what the scanner knows: **Also public** if it found the token somewhere public too, and **Still valid** or **No longer valid** if it checked with the issuer. A leak is **Critical** unless the scanner reports the token dead and it matches nothing Infrawrench holds, in which case it's **High**.
 
-Filter by status: **Open**, **Rotated**, **Dismissed**, and **Resolved upstream** for findings someone closed on the scanner before rotating them here. Under the header, each scanner account shows when it last scanned and, if it failed, why.
+Filter by status: **Open**, **Rotated**, **Dismissed**, and **Resolved upstream** for findings someone closed on the scanner before rotating them here. Under the header, each scanner account shows when it last scanned and, if it failed, why. A scan that could read only part of a scanner (more findings than one scan reads, or part of the account that could not be read) says so: leaks it did not see may be missing from the list, but nothing already listed is closed because a scan missed it.
 
 <insert [Posture tab with the Leaked credentials section at the top, Open filter selected, showing two open leaks: a referenced output matched by fingerprint with a Rotate button, and an account match with "Manage keys at DigitalOcean" and "Mark rotated" buttons] here>
 

@@ -273,3 +273,30 @@ describe("planFindingUpdate", () => {
     expect(plan({ ...open, matchConfidence: "token-type" }, "open")).toEqual({ reattribute: true });
   });
 });
+
+describe("scanRowUpdate", () => {
+  let update: typeof import("../leaked-secrets/scan").scanRowUpdate;
+  beforeAll(async () => {
+    update = (await import("../leaked-secrets/scan")).scanRowUpdate;
+  }, 120_000);
+
+  const now = new Date("2026-11-07T10:00:00Z");
+  const next = new Date("2026-11-07T10:30:00Z");
+
+  it("records a truncated page as a partial read, not a clean one", () => {
+    expect(update({ count: 1000, partial: true }, now, next)).toEqual({
+      lastError: null,
+      lastCount: 1000,
+      lastPartial: true,
+      lastScannedAt: now,
+      nextScanAt: next,
+      updatedAt: now,
+    });
+    expect(update({ count: 3, partial: false }, now, next)).toMatchObject({ lastPartial: false });
+  });
+
+  it("leaves the last read's completeness alone when a scan fails", () => {
+    const failed = update({ error: "x".repeat(600) }, now, next);
+    expect(failed).toEqual({ lastError: "x".repeat(500), nextScanAt: next, updatedAt: now });
+  });
+});
