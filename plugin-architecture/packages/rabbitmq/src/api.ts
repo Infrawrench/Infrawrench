@@ -167,11 +167,16 @@ export async function rmqFetch<T>(
 
 const VENDOR = "RabbitMQ";
 
+/** One unpaged list answer, refused unless it is an array. */
+export async function rmqList<T>(ctx: RabbitContext, path: string, query?: Query): Promise<T[]> {
+  const res = await rmqFetch<T[] | undefined>(ctx, path, query ? { query } : {});
+  return requireListPage(res, { vendor: VENDOR, path, key: null });
+}
+
 /** A list endpoint that 404s when its plugin is disabled (shovels, federation). */
 export async function rmqOptionalList<T>(ctx: RabbitContext, path: string): Promise<T[]> {
   try {
-    const res = await rmqFetch<T[]>(ctx, path);
-    return Array.isArray(res) ? res : [];
+    return await rmqList<T>(ctx, path);
   } catch (err) {
     if (statusOf(err) === 404) return [];
     throw err;

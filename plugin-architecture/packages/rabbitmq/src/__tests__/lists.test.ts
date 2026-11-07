@@ -135,3 +135,67 @@ describe("paged lists", () => {
     expect(fetchStub).not.toHaveBeenCalled();
   });
 });
+
+describe("answers that are not lists", () => {
+  it("refuses a virtual host list that is not an array", async () => {
+    for (const reply of [{ text: "" }, { body: { error: "x" } }]) {
+      const { c } = client((call) => (call.url.pathname === "/api/vhosts" ? reply : []));
+      await expect(c.listResources("rabbitmq-queue", ACCOUNT)).rejects.toThrow("is not a list");
+      await expect(c.listResources("rabbitmq-vhost", ACCOUNT)).rejects.toThrow("is not a list");
+    }
+  });
+
+  it("refuses a binding list that is not an array", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === "/api/vhosts" ? [{ name: "/" }] : { text: "" },
+    );
+    await expect(c.listResources("rabbitmq-binding", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a shovel or federation list that is not an array, but reads a 404 as none", async () => {
+    const bad = client((call) =>
+      call.url.pathname === "/api/parameters/shovel" ? { body: { error: "x" } } : [],
+    );
+    await expect(bad.c.listResources("rabbitmq-shovel", ACCOUNT)).rejects.toThrow("is not a list");
+    const fed = client((call) =>
+      call.url.pathname === "/api/federation-links" ? { text: "" } : [],
+    );
+    await expect(fed.c.listResources("rabbitmq-federation-upstream", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+    const off = client(() => ({ status: 404, body: { error: "Object Not Found" } }));
+    expect(await off.c.listResources("rabbitmq-shovel", ACCOUNT)).toEqual([]);
+  });
+
+  it("refuses a top-level list that is not an array", async () => {
+    const { c } = client(() => ({ text: "" }));
+    await expect(c.listResources("rabbitmq-policy", ACCOUNT)).rejects.toThrow("is not a list");
+    await expect(c.listResources("rabbitmq-user", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+  it("deletes no topic permission when the ones to keep cannot be read", async () => {
+    const { c, calls } = client((call) =>
+      call.method === "GET" ? { body: { error: "x" } } : undefined,
+    );
+    await expect(
+      c.deleteResource(
+        "rabbitmq-topic-permission",
+        "acct:rabbitmq-topic-permission:%2F/app/amq.topic",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow("is not a list");
+    expect(calls.map((x) => x.method)).toEqual(["GET"]);
+  });
+
+  it("writes no topic permission when the current one cannot be read", async () => {
+    const { c, calls } = client((call) => (call.method === "GET" ? { text: "" } : undefined));
+    await expect(
+      c.updateResource(
+        "rabbitmq-topic-permission",
+        "acct:rabbitmq-topic-permission:%2F/app/amq.topic",
+        ACCOUNT,
+        { write: ".*" },
+      ),
+    ).rejects.toThrow("is not a list");
+    expect(calls.map((x) => x.method)).toEqual(["GET"]);
+  });
+});

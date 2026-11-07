@@ -24,6 +24,7 @@ import {
   buildContext,
   RabbitApiError,
   rmqFetch,
+  rmqList,
   rmqOptionalList,
   rmqPaged,
   seg,
@@ -189,12 +190,16 @@ export class RabbitClient implements PluginClient {
     return rmqFetch<T>(this.ctx, path, query ? { query } : {});
   }
 
+  private list<T>(path: string, query?: Record<string, string | number | boolean>): Promise<T[]> {
+    return rmqList<T>(this.ctx, path, query);
+  }
+
   private vhosts(): Promise<Vhost[]> {
-    return this.get<Vhost[]>("/vhosts").then((v) => v ?? []);
+    return this.list<Vhost>("/vhosts");
   }
 
   private async vhostLimits(): Promise<Map<string, Record<string, number>>> {
-    const rows = await gated(this.get<VhostLimits[]>("/vhost-limits"));
+    const rows = await gated(this.list<VhostLimits>("/vhost-limits"));
     return new Map(rows.map((r) => [r.vhost ?? "/", r.value ?? {}]));
   }
 
@@ -222,7 +227,7 @@ export class RabbitClient implements PluginClient {
   private async bindings(): Promise<Binding[]> {
     const out: Binding[] = [];
     for (const v of await this.vhosts()) {
-      out.push(...((await this.get<Binding[]>(`/bindings/${seg(v.name ?? "/")}`)) ?? []));
+      out.push(...(await this.list<Binding>(`/bindings/${seg(v.name ?? "/")}`)));
     }
     // Every queue is implicitly bound to the default exchange; those are not real objects.
     return out.filter((b) => b.source !== "");
@@ -251,9 +256,9 @@ export class RabbitClient implements PluginClient {
 
   private async userRows(accountId: string): Promise<ResourceInstance[]> {
     const [users, perms, limits, me] = await Promise.all([
-      gated(this.get<User[]>("/users")),
-      gated(this.get<Permission[]>("/permissions")),
-      gated(this.get<Array<{ user?: string; value?: Record<string, number> }>>("/user-limits")),
+      gated(this.list<User>("/users")),
+      gated(this.list<Permission>("/permissions")),
+      gated(this.list<{ user?: string; value?: Record<string, number> }>("/user-limits")),
       this.whoami(),
     ]);
     const limitMap = new Map(limits.map((l) => [l.user ?? "", l.value ?? {}]));
@@ -291,7 +296,7 @@ export class RabbitClient implements PluginClient {
         case "rabbitmq-cluster":
           return [await this.cluster(accountId)];
         case "rabbitmq-node":
-          return (await gated(this.get<RabbitNode[]>("/nodes"))).map((n) => mapNode(accountId, n));
+          return (await gated(this.list<RabbitNode>("/nodes"))).map((n) => mapNode(accountId, n));
         case "rabbitmq-vhost": {
           const [vhosts, limits] = await Promise.all([this.vhosts(), this.vhostLimits()]);
           return vhosts.map((v) => mapVhost(accountId, v, limits.get(v.name ?? "/")));
@@ -305,21 +310,21 @@ export class RabbitClient implements PluginClient {
         case "rabbitmq-binding":
           return (await this.bindings()).map((b) => mapBinding(accountId, b));
         case "rabbitmq-policy":
-          return (await gated(this.get<Policy[]>("/policies"))).map((p) =>
+          return (await gated(this.list<Policy>("/policies"))).map((p) =>
             mapPolicy(accountId, "rabbitmq-policy", p),
           );
         case "rabbitmq-operator-policy":
-          return (await gated(this.get<Policy[]>("/operator-policies"))).map((p) =>
+          return (await gated(this.list<Policy>("/operator-policies"))).map((p) =>
             mapPolicy(accountId, "rabbitmq-operator-policy", p),
           );
         case "rabbitmq-user":
           return this.userRows(accountId);
         case "rabbitmq-permission":
-          return (await gated(this.get<Permission[]>("/permissions"))).map((p) =>
+          return (await gated(this.list<Permission>("/permissions"))).map((p) =>
             mapPermission(accountId, p),
           );
         case "rabbitmq-topic-permission":
-          return (await gated(this.get<Permission[]>("/topic-permissions"))).map((p) =>
+          return (await gated(this.list<Permission>("/topic-permissions"))).map((p) =>
             mapTopicPermission(accountId, p),
           );
         case "rabbitmq-connection":
@@ -684,7 +689,7 @@ export class RabbitClient implements PluginClient {
   fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
     return attempt(async () => {
       const out: QuotaUsage[] = [];
-      const nodes = await gated(this.get<RabbitNode[]>("/nodes"));
+      const nodes = await gated(this.list<RabbitNode>("/nodes"));
       for (const n of nodes) {
         const region = n.name;
         const add = (
@@ -1114,7 +1119,7 @@ export class RabbitClient implements PluginClient {
           };
         case "rabbitmq-permission":
         case "rabbitmq-topic-permission": {
-          const users = await gated(this.get<User[]>("/users")).catch(() => [] as User[]);
+          const users = await gated(this.list<User>("/users")).catch(() => [] as User[]);
           const topicExchanges =
             typeId === "rabbitmq-topic-permission"
               ? inVhost(
@@ -1732,10 +1737,10 @@ export class RabbitClient implements PluginClient {
         }
         case "rabbitmq-topic-permission": {
           const [vhost, user, exchange] = splitId(id, 3);
-          const rows = await this.get<Permission[]>(
+          const rows = await this.list<Permission>(
             `/topic-permissions/${seg(vhost!)}/${seg(user!)}`,
           );
-          const cur = (rows ?? []).find((r) => r.exchange === exchange) ?? {};
+          const cur = rows.find((r) => r.exchange === exchange) ?? {};
           await rmqFetch(this.ctx, `/topic-permissions/${seg(vhost!)}/${seg(user!)}`, {
             method: "PUT",
             body: {
@@ -1826,9 +1831,7 @@ export class RabbitClient implements PluginClient {
           // so the ones for other exchanges are written back afterwards.
           const [vhost, user, exchange] = splitId(id, 3);
           const path = `/topic-permissions/${seg(vhost!)}/${seg(user!)}`;
-          const keep = ((await this.get<Permission[]>(path)) ?? []).filter(
-            (p) => p.exchange !== exchange,
-          );
+          const keep = (await this.list<Permission>(path)).filter((p) => p.exchange !== exchange);
           await del(path);
           for (const p of keep)
             await rmqFetch(this.ctx, path, {
