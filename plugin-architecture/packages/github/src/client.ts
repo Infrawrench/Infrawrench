@@ -1135,11 +1135,17 @@ export class GitHubClient implements PluginClient {
       }
       if (typeId === "budget") {
         const budgetId = pathEncode(id);
-        const current = await byOwner(this.ctx, {
-          org: (api, org) => api.get(`/organizations/${org}/settings/billing/budgets/${budgetId}`),
-          enterprise: (api, enterprise) =>
-            api.get(`/enterprises/${enterprise}/settings/billing/budgets/${budgetId}`),
-        }).catch(() => undefined);
+        // Alerting goes as a whole, so keeping one half means reading it. If that read
+        // fails the edit must too: going on would blank what the user did not change.
+        const current =
+          "willAlert" in fields !== "alertRecipients" in fields
+            ? await byOwner(this.ctx, {
+                org: (api, org) =>
+                  api.get(`/organizations/${org}/settings/billing/budgets/${budgetId}`),
+                enterprise: (api, enterprise) =>
+                  api.get(`/enterprises/${enterprise}/settings/billing/budgets/${budgetId}`),
+              })
+            : undefined;
         const body: ApiBody<GhecOps["billing/update-budget"]> = {
           ...("budgetAmount" in fields
             ? { budget_amount: Math.round(Number(fields["budgetAmount"])) }

@@ -568,6 +568,19 @@ describe("budgets", () => {
     ).toThrow(/AI credits or premium requests/);
   });
 
+  it.each([
+    ["willAlert", { willAlert: "false" }],
+    ["alertRecipients", { alertRecipients: "hubot" }],
+  ])("refuses to edit only %s when the budget cannot be read", async (_name, fields) => {
+    const { c, calls } = client((_url, method) =>
+      method === "GET" ? { status: 500, body: { message: "boom" } } : { body: {} },
+    );
+    await expect(c.updateResource!("budget", "acc:budget:b1", "acc", fields)).rejects.toThrow(
+      "500",
+    );
+    expect(calls.filter((x) => x.method === "PATCH")).toHaveLength(0);
+  });
+
   it("leaves a budget's spend unknown when the cost centres cannot be read", async () => {
     const { c } = client((url) => {
       if (url.pathname.endsWith("/cost-centers")) return { status: 500, body: {} };
