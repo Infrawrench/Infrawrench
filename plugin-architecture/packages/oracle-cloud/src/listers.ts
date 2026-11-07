@@ -243,7 +243,11 @@ async function imageInfo(
   if (!imageCache.has(key)) {
     imageCache.set(
       key,
-      api.get<OciImage>("iaas", region, `/20160918/images/${imageId}`).catch(() => undefined),
+      api.get<OciImage>("iaas", region, `/20160918/images/${imageId}`).catch(() => {
+        // Only a found image is kept: a failed lookup is tried again on the next list.
+        imageCache.delete(key);
+        return undefined;
+      }),
     );
   }
   return imageCache.get(key);

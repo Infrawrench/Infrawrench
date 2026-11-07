@@ -290,3 +290,42 @@ describe("Oracle Cloud folder delete", () => {
     ]);
   });
 });
+
+describe("Oracle Cloud image lookups", () => {
+  it("looks an image up again after a failed lookup", async () => {
+    let imageReads = 0;
+    const { client } = makeClient((url) => {
+      if (url.pathname === "/20160918/instances") {
+        if (url.searchParams.get("compartmentId") !== TENANCY) return { body: [] };
+        return {
+          body: [
+            {
+              id: "ocid1.instance.oc1.iad.retry",
+              displayName: "retry",
+              compartmentId: TENANCY,
+              availabilityDomain: "Uocm:US-ASHBURN-AD-1",
+              region: "us-ashburn-1",
+              shape: "VM.Standard.E4.Flex",
+              imageId: "ocid1.image.oc1.iad.flaky",
+              lifecycleState: "RUNNING",
+            },
+          ],
+        };
+      }
+      if (url.pathname === "/20160918/vnicAttachments") return { body: [] };
+      if (url.pathname === "/20160918/bootVolumeAttachments") return { body: [] };
+      if (url.pathname === "/20160918/images/ocid1.image.oc1.iad.flaky") {
+        imageReads++;
+        if (imageReads === 1) return { status: 502, body: { code: "BadGateway", message: "x" } };
+        return {
+          body: { displayName: "Canonical-Ubuntu-24.04", operatingSystem: "Canonical Ubuntu" },
+        };
+      }
+      return identityRoute(url);
+    });
+    const [first] = await client.listResources("instance", "acct");
+    expect(first!.fields["sshUsername"]).toBe("opc");
+    const [second] = await client.listResources("instance", "acct");
+    expect(second!.fields["sshUsername"]).toBe("ubuntu");
+  });
+});
