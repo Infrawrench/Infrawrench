@@ -1,0 +1,357 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://us.posthog.com/api/schema/",
+  "patches": [
+    {
+      "pointer": "/paths/~1api~1billing~1/get/parameters/2",
+      "value": {
+        "in": "query",
+        "name": "limit",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "The credential check asks every area for one row, this one included. The route ignores it, and the request stays as it was."
+    },
+    {
+      "pointer": "/components/schemas/BillingOverviewResponse/properties/billing_period",
+      "value": {
+        "type": "object",
+        "properties": {
+          "current_period_end": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "Documented with no schema; the organization reads the end of the period from it."
+    },
+    {
+      "pointer": "/components/schemas/BillingTimeSeriesPoint/properties/breakdown_value",
+      "value": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "why": "Documented with no schema; it is one value per breakdown, or a single one for a single breakdown."
+    },
+    {
+      "pointer": "/components/schemas/FeatureFlag/properties/filters",
+      "value": {
+        "$ref": "#/components/schemas/FeatureFlagFiltersSchema"
+      },
+      "why": "Documented as free-form on the answer, while the create and update requests document the shape it holds."
+    },
+    {
+      "pointer": "/components/schemas/FeatureFlagConditionGroupSchema/properties/rollout_percentage",
+      "value": {
+        "type": ["number", "null"]
+      },
+      "why": "A condition stored with null means everyone, and the mapper reads that as 100."
+    },
+    {
+      "pointer": "/components/schemas/FeatureFlag/properties/tags/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Documented with no item type; tags are strings, as the requests document them."
+    },
+    {
+      "pointer": "/components/schemas/Dashboard/properties/tags/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Documented with no item type; tags are strings, as the requests document them."
+    },
+    {
+      "pointer": "/components/schemas/DashboardBasic/properties/tags/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Documented with no item type; tags are strings, as the requests document them."
+    },
+    {
+      "pointer": "/components/schemas/PatchedFeatureFlagPartialUpdateRequestSchema/properties/deleted",
+      "value": {
+        "type": "boolean"
+      },
+      "why": "Missing from the request. A flag cannot be hard deleted, and PATCH with deleted is how PostHog's own 405 says to do it."
+    },
+    {
+      "pointer": "/components/schemas/PatchedPatchedDashboardOpenApi/properties/deleted",
+      "value": {
+        "type": "boolean"
+      },
+      "why": "Missing from the request. A dashboard cannot be hard deleted, and PATCH with deleted is how PostHog's own 405 says to do it."
+    },
+    {
+      "pointer": "/components/schemas/FeatureFlagRollOutToEveryoneRequest/required",
+      "value": [],
+      "why": "Documented as required and sent without it today, which is #502. This keeps the request as it was."
+    },
+    {
+      "pointer": "/paths/~1api~1projects~1{project_id}~1experiments~1{id}~1launch~1/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "Documented with no body; the plugin sends an empty JSON object and the request stays as it was."
+    },
+    {
+      "pointer": "/paths/~1api~1projects~1{project_id}~1experiments~1{id}~1pause~1/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "Documented with no body; the plugin sends an empty JSON object and the request stays as it was."
+    },
+    {
+      "pointer": "/paths/~1api~1projects~1{project_id}~1experiments~1{id}~1resume~1/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "Documented with no body; the plugin sends an empty JSON object and the request stays as it was."
+    },
+    {
+      "pointer": "/paths/~1api~1projects~1{project_id}~1batch_exports~1{id}~1pause~1/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "Documented with no body; the plugin sends an empty JSON object and the request stays as it was."
+    },
+    {
+      "pointer": "/components/schemas/Insight/properties/query",
+      "value": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "source": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "why": "Documented as a union of every query kind, hundreds of kilobytes of types. The mapper only reads the kind."
+    },
+    {
+      "pointer": "/components/schemas/PatchedInsight/properties/query",
+      "value": {
+        "type": "object"
+      },
+      "why": "Documented as a union of every query kind, hundreds of kilobytes of types. The plugin never sends one."
+    },
+    {
+      "pointer": "/components/schemas/Insight/properties/dashboards/items",
+      "value": {
+        "oneOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer"
+              }
+            }
+          }
+        ]
+      },
+      "why": "Documented as ids; the mapper has always taken a dashboard object too."
+    },
+    {
+      "pointer": "/paths/~1api~1projects~1{project_id}~1query~1/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["query"],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "object",
+                  "required": ["kind", "query"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": ["HogQLQuery"]
+                    },
+                    "query": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Documented as a union of every query kind, hundreds of kilobytes of types. The plugin only sends HogQL."
+    },
+    {
+      "pointer": "/paths/~1api~1projects~1{project_id}~1query~1/post/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "type": ["array", "null"],
+            "items": {
+              "type": "string"
+            }
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {}
+            }
+          },
+          "error": {
+            "type": ["string", "null"]
+          }
+        }
+      },
+      "why": "Documented as a union of every query kind, hundreds of kilobytes of types. A HogQL answer holds these, and its column names are strings."
+    },
+    {
+      "pointer": "/paths/~1api~1projects~1{project_id}~1annotations~1/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "content": {
+                  "type": "string"
+                },
+                "date_marker": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Documented as the whole answer, read-only fields required. The scope is text a user picked, sent as typed."
+    },
+    {
+      "pointer": "/paths/~1api~1projects~1{project_id}~1dashboards~1/post/requestBody",
+      "value": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Documented as the whole answer, read-only fields required."
+    }
+  ],
+  "paths": {
+    "/api/billing/": ["get"],
+    "/api/billing/spend/": ["get"],
+    "/api/organizations/": ["get"],
+    "/api/organizations/{id}/": ["get"],
+    "/api/organizations/{organization_id}/members/": ["get"],
+    "/api/organizations/{organization_id}/members/{user__uuid}/": ["patch", "delete"],
+    "/api/organizations/{organization_id}/projects/": ["get"],
+    "/api/organizations/{organization_id}/projects/{id}/": ["get"],
+    "/api/projects/{project_id}/actions/": ["get"],
+    "/api/projects/{project_id}/actions/{id}/": ["get", "patch"],
+    "/api/projects/{project_id}/annotations/": ["get", "post"],
+    "/api/projects/{project_id}/annotations/{id}/": ["get", "patch"],
+    "/api/projects/{project_id}/batch_exports/": ["get"],
+    "/api/projects/{project_id}/batch_exports/{id}/": ["get", "delete"],
+    "/api/projects/{project_id}/batch_exports/{id}/pause/": ["post"],
+    "/api/projects/{project_id}/batch_exports/{id}/unpause/": ["post"],
+    "/api/projects/{project_id}/cohorts/": ["get"],
+    "/api/projects/{project_id}/cohorts/{id}/": ["get", "patch"],
+    "/api/projects/{project_id}/dashboards/": ["get", "post"],
+    "/api/projects/{project_id}/dashboards/{id}/": ["get", "patch"],
+    "/api/projects/{project_id}/experiments/": ["get"],
+    "/api/projects/{project_id}/experiments/{id}/": ["get", "patch"],
+    "/api/projects/{project_id}/experiments/{id}/archive/": ["post"],
+    "/api/projects/{project_id}/experiments/{id}/end/": ["post"],
+    "/api/projects/{project_id}/experiments/{id}/launch/": ["post"],
+    "/api/projects/{project_id}/experiments/{id}/pause/": ["post"],
+    "/api/projects/{project_id}/experiments/{id}/resume/": ["post"],
+    "/api/projects/{project_id}/feature_flags/": ["get", "post"],
+    "/api/projects/{project_id}/feature_flags/{id}/": ["get", "patch"],
+    "/api/projects/{project_id}/feature_flags/{id}/disable/": ["post"],
+    "/api/projects/{project_id}/feature_flags/{id}/enable/": ["post"],
+    "/api/projects/{project_id}/feature_flags/{id}/roll_out_to_everyone/": ["post"],
+    "/api/projects/{project_id}/hog_functions/": ["get"],
+    "/api/projects/{project_id}/hog_functions/{id}/": ["get", "patch"],
+    "/api/projects/{project_id}/insights/": ["get"],
+    "/api/projects/{project_id}/insights/{id}/": ["get", "patch"],
+    "/api/projects/{project_id}/query/": ["post"]
+  }
+}

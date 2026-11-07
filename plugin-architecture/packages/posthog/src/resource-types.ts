@@ -12,19 +12,6 @@ const PROJECT_DEP = { fieldKey: "projectId", targetTypeId: "project", label: "in
 const CREATED = f("createdAt", "Created", { required: false, editable: false });
 const TAGS = f("tags", "Tags", { required: false, description: "Comma-separated." });
 
-/** Project-scoped route segment per type. */
-export const PROJECT_ROUTES: Record<string, string> = {
-  "feature-flag": "feature_flags",
-  experiment: "experiments",
-  cohort: "cohorts",
-  dashboard: "dashboards",
-  insight: "insights",
-  action: "actions",
-  annotation: "annotations",
-  "hog-function": "hog_functions",
-  "batch-export": "batch_exports",
-};
-
 export const OrganizationResourceType = rt({
   name: "Organization",
   id: "organization",

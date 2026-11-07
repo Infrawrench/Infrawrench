@@ -1,7 +1,7 @@
 import type { CostFetchRange, CostRow, MetricSeries } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
-import type { PostHogContext } from "./api.js";
-import { phFetch, statusOf } from "./api.js";
+import type { PostHogContext, SpendPoint, SpendQuery } from "./api.js";
+import { statusOf } from "./api.js";
 
 /**
  * PostHog Cloud spend: `GET /api/billing/spend/` (scope `billing:read`), the
@@ -13,23 +13,10 @@ import { phFetch, statusOf } from "./api.js";
  * organization. Self-hosted instances have no billing service.
  */
 
-interface SpendSeries {
-  label?: string;
-  data?: number[];
-  dates?: string[];
-  breakdown_type?: string | null;
-  breakdown_value?: string | string[] | null;
-}
-
-interface SpendResponse {
-  results?: SpendSeries[];
-  next?: string | null;
-}
-
 const HELP = { label: "PostHog billing", url: "https://posthog.com/docs/billing" };
 
 /** Product label and team id of one series. */
-export function seriesKey(s: SpendSeries): { product: string; teamId?: string } {
+export function seriesKey(s: SpendPoint): { product: string; teamId?: string } {
   const label = s.label ?? "";
   const product = label.includes("::") ? label.slice(label.indexOf("::") + 2) : label;
   const value = s.breakdown_value;
@@ -44,16 +31,13 @@ export function seriesKey(s: SpendSeries): { product: string; teamId?: string } 
   };
 }
 
-async function spend(
-  ctx: PostHogContext,
-  query: Record<string, string | number>,
-): Promise<SpendSeries[]> {
-  const out: SpendSeries[] = [];
+async function spend(ctx: PostHogContext, query: SpendQuery): Promise<SpendPoint[]> {
+  const out: SpendPoint[] = [];
   let after: string | undefined;
   for (let i = 0; i < 20; i++) {
-    let res: SpendResponse;
+    let res;
     try {
-      res = await phFetch<SpendResponse>(ctx, "/api/billing/spend/", {
+      res = await ctx.api.get("/api/billing/spend/", {
         query: { ...query, ...(after ? { after } : {}) },
       });
     } catch (err) {
@@ -74,7 +58,7 @@ async function spend(
     }
     out.push(...(res?.results ?? []));
     after = typeof res?.next === "string" && res.next ? cursorOf(res.next) : undefined;
-    if (!after || !query["page_size"]) break;
+    if (!after || !query.page_size) break;
   }
   return out;
 }
@@ -93,8 +77,9 @@ export async function fetchPostHogCost(
   projectNames: Map<string, string> = new Map(),
 ): Promise<CostRow[]> {
   const series = await spend(ctx, {
-    start_date: range.fromDate,
-    end_date: range.toDate,
+    // An empty date has never been sent.
+    start_date: range.fromDate || null,
+    end_date: range.toDate || null,
     interval: "day",
     breakdowns: JSON.stringify(["type", "team"]),
     page_size: 100,

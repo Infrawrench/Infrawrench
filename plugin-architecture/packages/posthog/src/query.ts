@@ -1,6 +1,6 @@
-import type { MetricSeries } from "@infrawrench/plugin-base";
+import { pathEncode, type MetricSeries } from "@infrawrench/plugin-base";
 import type { PostHogContext } from "./api.js";
-import { PostHogApiError, phFetch } from "./api.js";
+import { PostHogApiError } from "./api.js";
 
 /**
  * HogQL through `POST /api/projects/{project_id}/query/` with
@@ -9,25 +9,10 @@ import { PostHogApiError, phFetch } from "./api.js";
  */
 export const METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-interface HogQLResponse {
-  columns?: string[];
-  results?: unknown[][];
-  error?: string | null;
-}
-
-export async function runHogQL(
-  ctx: PostHogContext,
-  projectId: string,
-  query: string,
-): Promise<{ columns: string[]; rows: unknown[][] }> {
-  const res = await phFetch<HogQLResponse>(
-    ctx,
-    `/api/projects/${encodeURIComponent(projectId)}/query/`,
-    {
-      method: "POST",
-      body: JSON.stringify({ query: { kind: "HogQLQuery", query }, name: "infrawrench" }),
-    },
-  );
+export async function runHogQL(ctx: PostHogContext, projectId: string, query: string) {
+  const res = await ctx.api.post(`/api/projects/${pathEncode(projectId)}/query/`, {
+    body: { query: { kind: "HogQLQuery", query }, name: "infrawrench" },
+  });
   if (res?.error) throw new PostHogApiError(400, `HogQL error: ${res.error}`);
   return { columns: res?.columns ?? [], rows: res?.results ?? [] };
 }
