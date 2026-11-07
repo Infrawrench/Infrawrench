@@ -407,6 +407,33 @@ describe("reading every page", () => {
   });
 });
 
+describe("instance type reads", () => {
+  it("fails the inventory rather than read a failed list as no instance types", async () => {
+    route("GET", "/v1/instance_types", () => new Response("{}", { status: 500 }));
+    await expect(client().listResources("instance-type", ACC)).rejects.toThrow(/500/);
+  });
+
+  it("refuses an instance type page with its list renamed", async () => {
+    route("GET", "/v1/instance_types", { message: "maintenance" });
+    await expect(client().listResources("instance-type", ACC)).rejects.toThrow("is not a list");
+  });
+
+  it("still lists instance types when only the prices fail", async () => {
+    route("GET", "/v1/instance_type_prices", () => new Response("{}", { status: 500 }));
+    const rows = await client().listResources("instance-type", ACC);
+    expect(rows.map((r) => r.externalId)).toEqual(["H100"]);
+    expect(rows[0]!.fields["pricePerHour"]).toBeUndefined();
+  });
+
+  it("still lists deployments when the catalog is down, without prices", async () => {
+    route("GET", "/v1/instance_types", () => new Response("{}", { status: 500 }));
+    route("GET", "/v1/instance_type_prices", () => new Response("{}", { status: 500 }));
+    const rows = await client().listResources("deployment", ACC);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.fields["pricePerHour"]).toBeUndefined();
+  });
+});
+
 describe("autoscaling validation", () => {
   it("enforces documented bounds", () => {
     expect(() => buildAutoscalingPatch({ targetUtilization: "120" }, {})).toThrow(/1 and 100/);

@@ -20,6 +20,7 @@ import {
   ListTruncatedError,
   pathEncode,
   QuotaAccessError,
+  rethrowIncompleteList,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import {
@@ -73,6 +74,7 @@ import {
 } from "./render.js";
 import { IDLE_WINDOW_DAYS } from "./resource-types.js";
 import type {
+  BasetenInstanceTypePrice,
   BasetenModel,
   BasetenModelApi,
   BasetenModelRef,
@@ -193,16 +195,26 @@ export class BasetenClient implements PluginClient {
       const [types, prices] = await Promise.all([
         this.api
           .get("/v1/instance_types")
-          .then((r) => r?.instance_types ?? [])
-          .catch(() => []),
+          .then((r) => listOf(r, "instance_types", "/v1/instance_types")),
         this.api
           .get("/v1/instance_type_prices")
           .then((r) => r?.instance_types ?? [])
-          .catch(() => []),
+          .catch((err): BasetenInstanceTypePrice[] => {
+            rethrowIncompleteList(err);
+            return [];
+          }),
       ]);
       return indexInstanceTypes(types, prices);
     });
     return this.catalogCache.value;
+  }
+
+  /** {@link instanceTypes} for what only joins a price on: no catalog just means no price. */
+  private instanceTypeHints(): Promise<InstanceTypeIndex> {
+    return this.instanceTypes().catch((err): InstanceTypeIndex => {
+      rethrowIncompleteList(err);
+      return new Map();
+    });
   }
 
   /** Per-deployment usage over the idle window; null when billing is unreadable. */
@@ -232,7 +244,7 @@ export class BasetenClient implements PluginClient {
         case "deployment": {
           const [models, index, usage] = await Promise.all([
             this.models(),
-            this.instanceTypes(),
+            this.instanceTypeHints(),
             this.deploymentUsage(),
           ]);
           const lists = await mapLimit(models, FAN_OUT, async (m) => {
@@ -250,7 +262,7 @@ export class BasetenClient implements PluginClient {
           return lists.flat();
         }
         case "environment": {
-          const [models, index] = await Promise.all([this.models(), this.instanceTypes()]);
+          const [models, index] = await Promise.all([this.models(), this.instanceTypeHints()]);
           const lists = await mapLimit(models, FAN_OUT, async (m) => {
             try {
               const path = `/v1/models/${enc(m.id)}/environments` as const;
@@ -353,7 +365,7 @@ export class BasetenClient implements PluginClient {
         const [d, model, index, usage] = await Promise.all([
           this.api.get(`/v1/models/${enc(modelId)}/deployments/${enc(id)}`),
           this.modelById(modelId),
-          this.instanceTypes(),
+          this.instanceTypeHints(),
           this.deploymentUsage(),
         ]);
         return mapDeployment(d, model, accountId, index, usage);
@@ -363,7 +375,7 @@ export class BasetenClient implements PluginClient {
         const [e, model, index] = await Promise.all([
           this.api.get(`/v1/models/${enc(modelId)}/environments/${enc(name)}`),
           this.modelById(modelId),
-          this.instanceTypes(),
+          this.instanceTypeHints(),
         ]);
         return mapEnvironment(e, model, accountId, index);
       }
@@ -577,7 +589,10 @@ export class BasetenClient implements PluginClient {
             ...(cleanup ? { promotion_settings: { promotion_cleanup_strategy: cleanup } } : {}),
           },
         });
-        const [model, index] = await Promise.all([this.modelById(modelId), this.instanceTypes()]);
+        const [model, index] = await Promise.all([
+          this.modelById(modelId),
+          this.instanceTypeHints(),
+        ]);
         return mapEnvironment(env ?? { name, model_id: modelId }, model, accountId, index);
       }
       if (typeId === "secret") {
