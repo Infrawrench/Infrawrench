@@ -64,16 +64,39 @@ type ProjectRoute<Suffix extends string> = ServerlessPaths[Extract<
  * each call is typed as whichever of the four routes that segment names.
  */
 interface ProjectPaths {
-  "/api/v1/serverless/projects/{type}": ProjectRoute<"">;
+  "/api/v1/serverless/projects/{type}": CursorListRoute<ProjectRoute<"">>;
   "/api/v1/serverless/projects/{type}/{id}": ProjectRoute<"/{id}">;
   "/api/v1/serverless/projects/{type}/{id}/status": ProjectRoute<"/{id}/status">;
   "/api/v1/serverless/projects/{type}/{id}/_resume": ProjectRoute<"/{id}/_resume">;
   "/api/v1/serverless/projects/{type}/{id}/_reset-credentials": ProjectRoute<"/{id}/_reset-credentials">;
 }
 
+/**
+ * A list route as `readCursorList` calls it: the same answer, plus the `next_page` query
+ * it may try. The document does not name that parameter, hence the type here.
+ */
+type CursorListRoute<Route> = Route extends { get: { responses: infer Responses } }
+  ? Omit<Route, "get"> & {
+      get: {
+        parameters: {
+          query?: { next_page?: string };
+          header?: never;
+          path?: never;
+          cookie?: never;
+        };
+        requestBody?: never;
+        responses: Responses;
+      };
+    }
+  : never;
+
+type EcCloudPaths = Omit<CloudPaths, "/organizations"> & {
+  "/organizations": CursorListRoute<CloudPaths["/organizations"]>;
+};
+
 /** Everything a request needs; split out so collectors can run without a client. */
 export interface EcContext {
-  cloud: ApiClient<CloudPaths>;
+  cloud: ApiClient<EcCloudPaths>;
   serverless: ApiClient<ServerlessPaths>;
   projects: ApiClient<ProjectPaths>;
   billing: ApiClient<BillingPaths>;
@@ -110,7 +133,7 @@ export function createEcContext(options: {
     ({ status, path, body }: { status: number; path: string; body: string }) =>
       new EcApiError(status, `Elastic Cloud API error ${status} for ${basePath}${path}: ${body}`);
   return {
-    cloud: createApiClient<CloudPaths>({
+    cloud: createApiClient<EcCloudPaths>({
       ...shared,
       baseUrl: `${CLOUD_API}${CLOUD_BASE_PATH}`,
       httpError: httpError(CLOUD_BASE_PATH),
@@ -133,26 +156,86 @@ export function createEcContext(options: {
   };
 }
 
+/** What a follow-up read sends, which the routes under `CursorListRoute` all accept. */
+export interface CursorSend {
+  headers?: Record<string, string>;
+  query?: { next_page: string };
+}
+
+/** One answer of a `readCursorList` read: its rows, under whichever key the route uses. */
+export interface CursorPage<T> {
+  list: readonly T[] | null | undefined;
+  next_page?: string | null | undefined;
+}
+
+/** The documents give no page size, so this is the sync's ceiling on sequential requests. */
+const CURSOR_LIST_MAX_PAGES = 1000;
+
+/** In the order tried: the first is how the Serverless document's traffic filters take it. */
+const CURSOR_CARRIERS: ReadonlyArray<(token: string) => CursorSend> = [
+  (token) => ({ headers: { "X-Elastic-Next-Page": token } }),
+  (token) => ({ query: { next_page: token } }),
+];
+
+/** A follow-up answer that says this way of sending the token does not work. */
+function refusedCursor(err: unknown): boolean {
+  const s = statusOf(err);
+  return s >= 400 && s < 500 && s !== 401 && s !== 429;
+}
+
 /**
- * The list of a route that can answer `next_page` while its document names no way to
- * send it back. A token means rows this read cannot reach, so the page is not used as
- * the whole list. Actually following it waits on a live check: #678.
+ * Every row of a route that answers `next_page` while its document names no way to send
+ * it back (#678). Each way of sending it is judged by what comes back: a new row, or the
+ * end of the list, means it works. A repeat of what is in hand means it was ignored. With
+ * none left the rest cannot be reached, and the list is refused rather than used as the
+ * whole of it. An error on the first read is left as it is for the caller to judge, but a
+ * refused follow-up is not: a caller reading a 403 as "no rows" would drop the ones in hand.
  */
-export function onlyPage<T>(
-  body: { next_page?: string | null | undefined },
-  list: readonly T[] | null | undefined,
+export async function readCursorList<T extends { id?: string | undefined }>(
   place: { path: string; key: string },
-): T[] {
-  const rows = requireListPage(list, { vendor: VENDOR, ...place });
-  if (body.next_page) {
-    throw new ListTruncatedError({
+  read: (send: CursorSend) => Promise<CursorPage<T>>,
+): Promise<T[]> {
+  const rows = new Map<string, T>();
+  const take = (page: CursorPage<T>): number => {
+    const before = rows.size;
+    for (const row of requireListPage(page.list, { vendor: VENDOR, ...place })) {
+      if (row.id && !rows.has(row.id)) rows.set(row.id, row);
+    }
+    return rows.size - before;
+  };
+  const unreachable = (pages: number) =>
+    new ListTruncatedError({
       vendor: VENDOR,
       path: place.path,
-      items: rows.length,
-      maxPages: 1,
+      items: rows.size,
+      maxPages: pages,
     });
+
+  const first = await read({});
+  take(first);
+  let token = first.next_page;
+  let carrier = 0;
+  let carrierWorks = false;
+  for (let requests = 1; token; requests++) {
+    const send = CURSOR_CARRIERS[carrier];
+    if (!send || requests === CURSOR_LIST_MAX_PAGES) throw unreachable(requests);
+    const page = await read(send(token)).catch((err: unknown) => {
+      if (refusedCursor(err)) return undefined;
+      throw err;
+    });
+    const added = page ? take(page) : 0;
+    if (page && !page.next_page) return [...rows.values()];
+    // The document says of its sibling route that a token does not promise rows, so an
+    // empty page with a new token is still moving.
+    if (page && (added > 0 || (page.list?.length === 0 && page.next_page !== token))) {
+      carrierWorks = true;
+      token = page.next_page;
+      continue;
+    }
+    if (carrierWorks) throw unreachable(requests + 1);
+    carrier++;
   }
-  return rows;
+  return [...rows.values()];
 }
 
 /** HTTP status of a failed call, or 0 for a transport error. */

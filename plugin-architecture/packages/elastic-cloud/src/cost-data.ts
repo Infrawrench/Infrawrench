@@ -28,7 +28,7 @@ import {
   requireListPage,
 } from "@infrawrench/plugin-base";
 import type { EcContext } from "./api.js";
-import { isPermissionError, onlyPage, statusOf, VENDOR } from "./api.js";
+import { isPermissionError, readCursorList, statusOf, VENDOR } from "./api.js";
 import type { EcCostsOverview, EcInstanceCosts, EcOrganization } from "./types.js";
 
 const DAY_MS = 86_400_000;
@@ -109,8 +109,10 @@ export function completeDays(range: CostFetchRange, nowMs: number): Array<[numbe
 /** The organizations the key can see. Most keys see exactly one. */
 export async function listOrganizations(ctx: EcContext): Promise<EcOrganization[]> {
   const path = "/organizations";
-  const res = await ctx.cloud.get(path);
-  return onlyPage(res, res.organizations, { path, key: "organizations" }).filter((o) => o.id);
+  return readCursorList<EcOrganization>({ path, key: "organizations" }, async (send) => {
+    const res = await ctx.cloud.get(path, send);
+    return { list: res.organizations, next_page: res.next_page };
+  });
 }
 
 /** Rows for one organization and one day, from that day's instance costs. */

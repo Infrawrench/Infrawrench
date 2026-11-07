@@ -24,7 +24,7 @@ import {
   type ApiBody,
 } from "@infrawrench/plugin-base";
 import type { EcContext } from "./api.js";
-import { createEcContext, isProjectType, onlyPage, statusOf, VENDOR } from "./api.js";
+import { createEcContext, isProjectType, readCursorList, statusOf, VENDOR } from "./api.js";
 import type { operations as BillingOperations } from "./api-types.billing.gen.js";
 import type { operations as ServerlessOperations } from "./api-types.serverless.gen.js";
 import {
@@ -282,8 +282,10 @@ export class ElasticCloudClient implements PluginClient {
   private async fetchProjectsOfType(type: ProjectType): Promise<EcProject[]> {
     try {
       const path = `/api/v1/serverless/projects/${pathEncode(type)}` as const;
-      const res = await this.ctx.projects.get(path);
-      return onlyPage<EcProject>(res, res.items, { path, key: "items" });
+      return await readCursorList<EcProject>({ path, key: "items" }, async (send) => {
+        const res = await this.ctx.projects.get(path, send);
+        return { list: res.items, next_page: res.next_page };
+      });
     } catch (err) {
       const s = statusOf(err);
       if (s === 403 || s === 404) return [];

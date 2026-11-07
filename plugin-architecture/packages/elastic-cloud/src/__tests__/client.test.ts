@@ -4,7 +4,7 @@ import type { HostServices } from "@infrawrench/plugin-base";
 import { ElasticCloudClient, sourcesToRules, thresholdsToAlerts } from "../client.js";
 import { chartToSeries } from "../metrics.js";
 import { parseStatusFeed, regionIdsForComponent } from "../status-feed.js";
-import { makeHttp, type Reply } from "./helpers.js";
+import { makeHttp, type Recorded, type Reply } from "./helpers.js";
 
 const DEPLOYMENT = {
   id: "dep1",
@@ -111,7 +111,8 @@ describe("ElasticCloudClient listing", () => {
       await expect(c.listResources(typeId, "acct")).rejects.toThrow(
         "has more than Infrawrench reads",
       );
-      expect(calls.filter((x) => x.url.pathname === path)).toHaveLength(1);
+      // The first page, then the token in a header and in the query, neither moving it.
+      expect(calls.filter((x) => x.url.pathname === path)).toHaveLength(3);
     });
 
     it.each([
@@ -250,6 +251,166 @@ describe("ElasticCloudClient listing", () => {
         "403",
       );
       expect(midway.calls).toHaveLength(2);
+    });
+  });
+
+  describe("a list whose document gives next_page no way back", () => {
+    const LISTS = [
+      ["organization", "/api/v1/organizations", "organizations"],
+      ["project", "/api/v1/serverless/projects/security", "items"],
+    ] as const;
+    const row = (id: string) => ({ id, name: id, type: "security", region_id: "r" });
+    const idsOf = (rows: Array<{ displayName: string }>) => rows.map((r) => r.displayName);
+
+    /** Answers `page(token, request)` on `path`, and an empty list on anything else. */
+    function paged(path: string, key: string, page: (token: string, request: Recorded) => Reply) {
+      const seen = client((url) => {
+        if (url.pathname !== path) return { body: { items: [] } };
+        const request = seen.calls.at(-1);
+        if (!request) throw new Error("A reply with no request");
+        const token =
+          request.headers["X-Elastic-Next-Page"] ?? request.url.searchParams.get("next_page") ?? "";
+        const reply = page(token, request);
+        if (!reply.body || typeof reply.body !== "object" || !("rows" in reply.body)) return reply;
+        const { rows, ...rest } = reply.body;
+        return { ...reply, body: { [key]: rows, ...rest } };
+      });
+      return { ...seen, ofPath: () => seen.calls.filter((x) => x.url.pathname === path) };
+    }
+
+    it.each(LISTS)("reads a %s list on through a header token", async (typeId, path, key) => {
+      const replies: Record<string, Reply> = {
+        "": { body: { rows: [row("a")], next_page: "t1" } },
+        t1: { body: { rows: [row("b")], next_page: "t2" } },
+        t2: { body: { rows: [row("c")] } },
+      };
+      const { c, ofPath } = paged(path, key, (token) => replies[token] ?? { status: 500 });
+      expect(idsOf(await c.listResources(typeId, "acct"))).toEqual(["a", "b", "c"]);
+      expect(ofPath().map((x) => x.headers["X-Elastic-Next-Page"])).toEqual([
+        undefined,
+        "t1",
+        "t2",
+      ]);
+      expect(ofPath().every((x) => !x.url.searchParams.has("next_page"))).toBe(true);
+    });
+
+    it.each(LISTS)("falls back to the query when %s ignores the header", async (typeId, p, key) => {
+      const { c, ofPath } = paged(p, key, (_, request) => {
+        const query = request.url.searchParams.get("next_page");
+        if (query === "t1") return { body: { rows: [row("b")], next_page: "t2" } };
+        if (query === "t2") return { body: { rows: [row("c")] } };
+        return { body: { rows: [row("a")], next_page: "t1" } };
+      });
+      expect(idsOf(await c.listResources(typeId, "acct"))).toEqual(["a", "b", "c"]);
+      // Once the query is known to work the header is not tried again.
+      expect(ofPath().map((x) => x.headers["X-Elastic-Next-Page"])).toEqual([
+        undefined,
+        "t1",
+        undefined,
+        undefined,
+      ]);
+      expect(ofPath().map((x) => x.url.searchParams.get("next_page"))).toEqual([
+        null,
+        null,
+        "t1",
+        "t2",
+      ]);
+    });
+
+    it.each(LISTS)("falls back to the query when %s refuses the header", async (typeId, p, key) => {
+      const { c, ofPath } = paged(p, key, (_, request) => {
+        if (request.headers["X-Elastic-Next-Page"]) return { status: 400, body: { errors: [] } };
+        if (request.url.searchParams.get("next_page")) return { body: { rows: [row("b")] } };
+        return { body: { rows: [row("a")], next_page: "t1" } };
+      });
+      expect(idsOf(await c.listResources(typeId, "acct"))).toEqual(["a", "b"]);
+      expect(ofPath()).toHaveLength(3);
+    });
+
+    it.each(LISTS)("takes a token on the last page of a %s list", async (typeId, path, key) => {
+      const { c, ofPath } = paged(path, key, (token) =>
+        token === "t1" ? { body: { rows: [] } } : { body: { rows: [row("a")], next_page: "t1" } },
+      );
+      expect(idsOf(await c.listResources(typeId, "acct"))).toEqual(["a"]);
+      expect(ofPath()).toHaveLength(2);
+    });
+
+    it.each(LISTS)("keeps one copy of a %s row that comes twice", async (typeId, path, key) => {
+      const replies: Record<string, Reply> = {
+        "": { body: { rows: [row("a"), row("b")], next_page: "t1" } },
+        t1: { body: { rows: [row("b"), row("c")] } },
+      };
+      const { c } = paged(path, key, (token) => replies[token] ?? { status: 500 });
+      expect(idsOf(await c.listResources(typeId, "acct"))).toEqual(["a", "b", "c"]);
+    });
+
+    it.each(LISTS)("fails a %s list that stalls once it has moved", async (typeId, path, key) => {
+      const replies: Record<string, Reply> = {
+        "": { body: { rows: [row("a")], next_page: "t1" } },
+        t1: { body: { rows: [row("b")], next_page: "t2" } },
+        t2: { body: { rows: [row("b")], next_page: "t3" } },
+      };
+      const { c, ofPath } = paged(path, key, (token) => replies[token] ?? { status: 500 });
+      await expect(c.listResources(typeId, "acct")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      // The header worked, so the query is not tried when it stops working.
+      expect(ofPath()).toHaveLength(3);
+    });
+
+    it.each(LISTS)("throws at the page cap on a %s list", async (typeId, path, key) => {
+      const { c, ofPath } = paged(path, key, (token) => {
+        const n = token ? Number(token) : 0;
+        return { body: { rows: [row(`r${n}`)], next_page: String(n + 1) } };
+      });
+      await expect(c.listResources(typeId, "acct")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(ofPath()).toHaveLength(1000);
+    });
+
+    it.each(LISTS)("fails a %s list renamed on a later page", async (typeId, path, key) => {
+      const { c } = paged(path, key, (token) =>
+        token ? { body: { renamed: [row("b")] } } : { body: { rows: [row("a")], next_page: "t1" } },
+      );
+      await expect(c.listResources(typeId, "acct")).rejects.toThrow("is not a list");
+    });
+
+    it.each(LISTS)("does not read a refused %s page as none", async (typeId, path, key) => {
+      const { c } = paged(path, key, (token) =>
+        token
+          ? { status: 403, body: { errors: [] } }
+          : { body: { rows: [row("a")], next_page: "t1" } },
+      );
+      await expect(c.listResources(typeId, "acct")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+
+    it("does not read a refused organization page as no budgets", async () => {
+      const { c } = paged("/api/v1/organizations", "organizations", (token) =>
+        token
+          ? { status: 404, body: { errors: [] } }
+          : { body: { rows: [{ id: "org1" }], next_page: "t1" } },
+      );
+      await expect(c.listResources("budget", "acct")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+
+    it.each(LISTS)("keeps the status of a %s page that failed outright", async (typeId, p, key) => {
+      for (const status of [401, 429, 503]) {
+        const { c, ofPath } = paged(p, key, (token) =>
+          token ? { status, body: {} } : { body: { rows: [row("a")], next_page: "t1" } },
+        );
+        await expect(c.listResources(typeId, "acct")).rejects.toThrow(String(status));
+        expect(ofPath()).toHaveLength(2);
+      }
+    });
+
+    it("still reads a 403 on the first page of a project list as none", async () => {
+      const { c } = client(() => ({ status: 403, body: { errors: [] } }));
+      await expect(c.listResources("project", "acct")).resolves.toEqual([]);
     });
   });
 

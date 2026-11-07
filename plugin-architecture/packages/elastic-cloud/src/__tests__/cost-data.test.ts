@@ -224,6 +224,23 @@ describe("fetchElasticCostData", () => {
     await expect(fetchElasticCreditBalance(ctxWith(http), NOW)).rejects.toThrow(more);
   });
 
+  it("collects every organization when the list runs to a second page", async () => {
+    const { http, calls } = makeHttp((url) => {
+      if (url.pathname === "/api/v1/organizations") {
+        return calls.at(-1)?.headers["X-Elastic-Next-Page"] === "t1"
+          ? { body: { organizations: [{ id: "org2" }] } }
+          : { body: { organizations: [{ id: "org1" }], next_page: "t1" } };
+      }
+      return { body: { total_ecu: 0, instances: [] } };
+    });
+    await expect(fetchElasticCostData(ctxWith(http), oneDay, NOW)).resolves.toEqual([]);
+    const billed = calls.map((x) => x.url.pathname).filter((path) => path.includes("/costs/"));
+    expect(billed).toEqual([
+      "/api/v2/billing/organizations/org1/costs/instances",
+      "/api/v2/billing/organizations/org2/costs/instances",
+    ]);
+  });
+
   it("fails when the organization list is renamed, for costs and for credits", async () => {
     const { http } = makeHttp(() => ({ body: { orgs: [{ id: "org1" }] } }));
     await expect(fetchElasticCostData(ctxWith(http), oneDay, NOW)).rejects.toThrow("is not a list");
