@@ -243,6 +243,42 @@ describe("costs", () => {
     ]);
   });
 
+  it("keeps ACCOUNT scope on a 500 whose body mentions 403", async () => {
+    installFetch(() => jsonResponse({ error: "upstream answered 403" }, 500));
+    await expect(
+      client().fetchCostData(ACCOUNT, { fromDate: "2026-07-01", toDate: "2026-07-01" }),
+    ).rejects.toThrow(/API error 500/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("keeps ACCOUNT scope on a 429 for an account id holding 401", async () => {
+    installFetch(() => jsonResponse({ error: "slow down" }, 429));
+    const team401 = hostClient(new FireworksClient({ apiKey: "fw_test", accountId: "team401" }));
+    await expect(
+      team401.fetchCostData(ACCOUNT, { fromDate: "2026-07-01", toDate: "2026-07-01" }),
+    ).rejects.toThrow(/API error 429/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("does not blame the key for a later page's 500 whose body mentions 403", async () => {
+    installFetch((_url, init) =>
+      JSON.parse(String(init?.body)).pageToken
+        ? jsonResponse({ error: "upstream answered 403" }, 500)
+        : jsonResponse({ rows: [], nextPageToken: "tok2" }),
+    );
+    await expect(
+      client().fetchCostData(ACCOUNT, { fromDate: "2026-07-01", toDate: "2026-07-01" }),
+    ).rejects.toThrow(/API error 500/);
+  });
+
+  it("asks for an admin key once SELF scope is refused too", async () => {
+    installFetch(() => jsonResponse({ message: "permission denied" }, 403));
+    await expect(
+      client().fetchCostData(ACCOUNT, { fromDate: "2026-07-01", toDate: "2026-07-01" }),
+    ).rejects.toThrow(/account-administrator key/);
+    expect(calls).toHaveLength(2);
+  });
+
   it("chunks a long range into windows the usage API accepts", async () => {
     installFetch(() => jsonResponse({ rows: [] }));
     await client().fetchCostData(ACCOUNT, { fromDate: "2026-01-01", toDate: "2026-03-31" });
@@ -595,6 +631,17 @@ describe("logs", () => {
     const result = await client().getLogs("user", `${ACCOUNT}:user:u1`, ACCOUNT, {});
     expect(new URL(calls[1]?.url ?? "").searchParams.get("filter")).toBe('email="a@example.com"');
     expect(result.text).toContain("Enterprise accounts");
+  });
+
+  it("does not call a 500 mentioning 403 an Enterprise refusal", async () => {
+    installFetch((url) =>
+      url.includes("/users/")
+        ? jsonResponse({ name: "accounts/my-team/users/u1", email: "a@example.com" })
+        : jsonResponse({ error: "API error 403 upstream" }, 500),
+    );
+    await expect(client().getLogs("user", `${ACCOUNT}:user:u1`, ACCOUNT, {})).rejects.toThrow(
+      /API error 500/,
+    );
   });
 });
 

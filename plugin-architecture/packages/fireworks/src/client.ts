@@ -28,6 +28,7 @@ import {
 } from "@infrawrench/plugin-base";
 import {
   createFireworksApi,
+  hasStatus,
   HOST,
   MAX_PAGES,
   PAGE_SIZE,
@@ -1673,8 +1674,8 @@ export class FireworksClient implements PluginClient {
             },
           });
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (!attempted && scope === "ACCOUNT" && /40[13]/.test(message)) {
+          const refused = hasStatus(error, 401, 403);
+          if (!attempted && scope === "ACCOUNT" && refused) {
             // Not an account admin: fall back to this principal's own spend
             // rather than reporting nothing.
             scope = "SELF";
@@ -1682,7 +1683,7 @@ export class FireworksClient implements PluginClient {
             page -= 1;
             continue;
           }
-          if (/40[13]/.test(message)) {
+          if (refused) {
             throw new CostSetupError(
               "Fireworks refused the usage-cost query for this API key. Querying account-wide costs requires an account-administrator key; a plain inference key can only read its own usage.",
               { label: "Fireworks billing", url: "https://app.fireworks.ai/settings/billing" },
@@ -1883,7 +1884,7 @@ export class FireworksClient implements PluginClient {
         pageToken = data.nextPageToken;
       }
     } catch (err) {
-      if (/API error 403\b/.test(err instanceof Error ? err.message : String(err))) {
+      if (hasStatus(err, 403)) {
         return [
           "Fireworks refused the audit log request. Audit logs are only available on Enterprise accounts.",
         ];

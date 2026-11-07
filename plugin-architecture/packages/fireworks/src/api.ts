@@ -14,6 +14,21 @@ export const HOST = "https://api.fireworks.ai";
 export const PAGE_SIZE = 200;
 export const MAX_PAGES = 20;
 
+/** Carries the status, because a path or a response body can hold any digits. */
+export class FireworksApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "FireworksApiError";
+    this.status = status;
+  }
+}
+
+export function hasStatus(error: unknown, ...statuses: number[]): boolean {
+  return error instanceof FireworksApiError && statuses.includes(error.status);
+}
+
 /** An operation's response, by its `operationId`. */
 export type FireworksResponse<Op extends keyof operations> = ApiResponse<operations[Op]>;
 
@@ -49,7 +64,10 @@ export function createFireworksApi(options: {
     headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
     // Errors have always named the whole path, account included.
     httpError: ({ status, url, body }: { status: number; url: string; body: string }) =>
-      new Error(`Fireworks API error ${status} for ${url.slice(HOST.length)}: ${body}`),
+      new FireworksApiError(
+        status,
+        `Fireworks API error ${status} for ${url.slice(HOST.length)}: ${body}`,
+      ),
     ...(http ? { http } : {}),
     ...(caCert ? { caCert } : {}),
   };
