@@ -23,6 +23,10 @@ import {
   jsonRestFetch,
   externalIdOf,
   formatBytes,
+  commaSeparated,
+  pathEncode,
+  type ApiBody,
+  type ApiResponse,
 } from "@infrawrench/plugin-base";
 import {
   GEMINI_PCM_BITS_PER_SAMPLE,
@@ -41,32 +45,32 @@ import {
   TTS_LANGUAGES,
   TTS_MODELS,
 } from "./speech-catalog.js";
+import {
+  BASE_URL,
+  createGeminiApi,
+  geminiHeaders,
+  listPages,
+  modelSegment,
+  type BatchOperation,
+  type CachedContent,
+  type FileSearchDocument,
+  type FileSearchStore,
+  type GeminiApi,
+  type GeminiFile,
+  type GeminiModel,
+  type PageQuery,
+  type TunedModel,
+} from "./api.js";
+import type { operations } from "./api-types.gen.js";
 import type {
-  CachedContent,
-  FileSearchDocument,
-  FileSearchStore,
-  GeminiFile,
-  GeminiModel,
-  GenerateContentRequest,
-  GenerateContentResponse,
   InteractionRequest,
   InteractionResponse,
-  ListCachedContentsResponse,
-  ListFileSearchDocumentsResponse,
-  ListFileSearchStoresResponse,
-  ListFilesResponse,
-  ListModelsResponse,
-  ListOperationsResponse,
-  ListTunedModelsResponse,
   ListVoicesResponse,
   ListWebhooksResponse,
-  Operation,
-  TunedModel,
   Voice,
   Webhook,
+  WebhookUpdate,
 } from "./api-types.js";
-
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
 /**
  * The default model for the STT half of the Speech tab. Audio understanding
@@ -103,9 +107,13 @@ const SPEECH_HELP_TEXT =
  *
  * Every call here is JSON in and JSON out, including both halves of the Speech
  * tab, since Interactions returns base64 audio inside a JSON envelope rather
- * than raw bytes. That means everything can go through `jsonRestFetch` and keep
- * bastion egress routing and the custom CA; no binary or multipart side-channel
- * is needed.
+ * than raw bytes. That means everything keeps bastion egress routing and no
+ * binary or multipart side-channel is needed.
+ *
+ * Calls go through the typed client in `api.ts`, apart from what its paths cannot
+ * write, which is on `fetch` below: webhooks, voices and Interactions are not in
+ * the OpenAPI document, and File Search documents are addressed by their full
+ * resource name, a path of several segments that goes out as given.
  */
 /**
  * Instruction for the transcription call, optionally pinned to a language.
@@ -123,12 +131,14 @@ function transcriptionPrompt(language: string | undefined): string {
 export class GeminiClient implements PluginClient {
   private readonly apiKey: string;
   private readonly services: HostServices | undefined;
+  private readonly api: GeminiApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Gemini plugin: missing apiKey credential");
     this.apiKey = apiKey;
     this.services = services;
+    this.api = createGeminiApi(apiKey, services?.http);
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -136,44 +146,15 @@ export class GeminiClient implements PluginClient {
       vendor: "Gemini",
       url: `${BASE_URL}${path}`,
       errorPath: path,
-      headers: {
-        // The legacy `?key=` query parameter also works, but the header keeps
-        // the key out of URLs, proxy logs and error messages.
-        "x-goog-api-key": this.apiKey,
-        Accept: "application/json",
-      },
+      headers: geminiHeaders(this.apiKey),
       ...(options ? { init: options } : {}),
       ...(this.services?.http ? { http: this.services.http } : {}),
     });
   }
 
   /**
-   * Walk a Google-standard `pageSize` / `pageToken` → `nextPageToken` list.
-   * Page-size defaults and caps vary per collection, so callers pass their own.
-   */
-  private async paginate<TItem, TResponse extends { nextPageToken?: string }>(
-    path: string,
-    pageSize: number,
-    pick: (response: TResponse) => TItem[] | undefined,
-    extraParams?: Record<string, string>,
-  ): Promise<TItem[]> {
-    const items: TItem[] = [];
-    let pageToken: string | undefined;
-    // Bounded so a pathological cursor cannot spin forever.
-    for (let page = 0; page < 25; page += 1) {
-      const params = new URLSearchParams({ pageSize: String(pageSize), ...extraParams });
-      if (pageToken) params.set("pageToken", pageToken);
-      const data = await this.fetch<TResponse>(`${path}?${params.toString()}`);
-      items.push(...(pick(data) ?? []));
-      if (!data.nextPageToken) break;
-      pageToken = data.nextPageToken;
-    }
-    return items;
-  }
-
-  /**
-   * The same walk for the newer snake_case surfaces (webhooks, voices), which
-   * take `page_size` / `page_token` and answer with `next_page_token`.
+   * The walk in `listPages`, for the newer snake_case surfaces (webhooks, voices),
+   * which take `page_size` / `page_token` and answer with `next_page_token`.
    */
   private async paginateSnake<TItem, TResponse extends { next_page_token?: string }>(
     path: string,
@@ -241,7 +222,7 @@ export class GeminiClient implements PluginClient {
         const resource = await this.findResource(typeId, resourceId, accountId);
         const [sttModels, customVoices] = await Promise.all([
           this.safely(() => this.fetchAudioCapableModelOptions(), []),
-          this.safely(() => this.fetchCustomVoices(), [] as Voice[]),
+          this.safely<Voice[]>(() => this.fetchCustomVoices(), []),
         ]);
         const voiceOptions: SpeechPanelOption[] = customVoices
           .filter((v) => Boolean(v.id))
@@ -288,7 +269,11 @@ export class GeminiClient implements PluginClient {
    * `pageSize` defaults to 50 and the endpoint returns at most 1000 per page.
    */
   private async fetchModels(): Promise<GeminiModel[]> {
-    return this.paginate<GeminiModel, ListModelsResponse>("/models", 1000, (r) => r.models);
+    return listPages(
+      1000,
+      (query) => this.api.get("/models", { query }),
+      (r) => r.models,
+    );
   }
 
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
@@ -334,9 +319,9 @@ export class GeminiClient implements PluginClient {
    * ⚠️ `pageSize` defaults to **10** here, not 50.
    */
   private async fetchTunedModels(): Promise<TunedModel[]> {
-    return this.paginate<TunedModel, ListTunedModelsResponse>(
-      "/tunedModels",
+    return listPages(
       1000,
+      (query) => this.api.get("/tunedModels", { query }),
       (r) => r.tunedModels,
     );
   }
@@ -388,7 +373,11 @@ export class GeminiClient implements PluginClient {
    * ⚠️ `pageSize` defaults to 10 and caps at **100** here.
    */
   private async fetchFiles(): Promise<GeminiFile[]> {
-    return this.paginate<GeminiFile, ListFilesResponse>("/files", 100, (r) => r.files);
+    return listPages(
+      100,
+      (query) => this.api.get("/files", { query }),
+      (r) => r.files,
+    );
   }
 
   private async listFiles(accountId: string): Promise<ResourceInstance[]> {
@@ -434,9 +423,9 @@ export class GeminiClient implements PluginClient {
    * `pageSize` is coerced down to 1000.
    */
   private async fetchCachedContents(): Promise<CachedContent[]> {
-    return this.paginate<CachedContent, ListCachedContentsResponse>(
-      "/cachedContents",
+    return listPages(
       1000,
+      (query) => this.api.get("/cachedContents", { query }),
       (r) => r.cachedContents,
     );
   }
@@ -482,8 +471,12 @@ export class GeminiClient implements PluginClient {
    * ⚠️ This is an Operations API: the response key is **`operations[]`**, not
    * `batches[]`, and the batch payload lives in each operation's `metadata`.
    */
-  private async fetchBatches(): Promise<Operation[]> {
-    return this.paginate<Operation, ListOperationsResponse>("/batches", 100, (r) => r.operations);
+  private async fetchBatches(): Promise<BatchOperation[]> {
+    return listPages(
+      100,
+      (query) => this.api.get("/batches", { query }),
+      (r) => r.operations,
+    );
   }
 
   private async listBatches(accountId: string): Promise<ResourceInstance[]> {
@@ -492,10 +485,10 @@ export class GeminiClient implements PluginClient {
     return operations.filter((o) => Boolean(o.name)).map((o) => this.mapBatch(accountId, o, now));
   }
 
-  private mapBatch(accountId: string, operation: Operation, now: string): ResourceInstance {
+  private mapBatch(accountId: string, operation: BatchOperation, now: string): ResourceInstance {
     const name = operation.name ?? "";
     const shortId = shortName(name);
-    const batch = operation.metadata ?? {};
+    const batch: Partial<NonNullable<BatchOperation["metadata"]>> = operation.metadata ?? {};
     const stats = batch.batchStats ?? {};
     return {
       id: `${accountId}:batch:${shortId}`,
@@ -534,9 +527,9 @@ export class GeminiClient implements PluginClient {
    * ⚠️ `pageSize` defaults to 10 and caps at **20** for stores and documents.
    */
   private async fetchFileSearchStores(): Promise<FileSearchStore[]> {
-    return this.paginate<FileSearchStore, ListFileSearchStoresResponse>(
-      "/fileSearchStores",
+    return listPages(
       20,
+      (query) => this.api.get("/fileSearchStores", { query }),
       (r) => r.fileSearchStores,
     );
   }
@@ -581,11 +574,20 @@ export class GeminiClient implements PluginClient {
     };
   }
 
-  /** `GET /v1beta/fileSearchStores/{store}/documents` */
+  /**
+   * `GET /v1beta/fileSearchStores/{store}/documents`, with the store's full
+   * resource name as the API gave it.
+   */
   private async fetchFileSearchDocuments(storeName: string): Promise<FileSearchDocument[]> {
-    return this.paginate<FileSearchDocument, ListFileSearchDocumentsResponse>(
-      `/${storeName}/documents`,
+    return listPages(
       20,
+      ({ pageSize, pageToken }: PageQuery) => {
+        const params = new URLSearchParams({ pageSize: String(pageSize) });
+        if (pageToken !== undefined) params.set("pageToken", pageToken);
+        return this.fetch<ApiResponse<operations["ListDocuments"]>>(
+          `/${storeName}/documents?${params.toString()}`,
+        );
+      },
       (r) => r.documents,
     );
   }
@@ -814,7 +816,7 @@ export class GeminiClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case "file-search-store": {
-          const models = await this.safely(() => this.fetchModels(), [] as GeminiModel[]);
+          const models = await this.safely<GeminiModel[]>(() => this.fetchModels(), []);
           const embeddingModels = models
             .filter((m) => Boolean(m.name))
             .filter((m) => (m.supportedGenerationMethods ?? []).includes("embedContent"))
@@ -1082,12 +1084,11 @@ export class GeminiClient implements PluginClient {
           // `POST /v1beta/fileSearchStores`: https://ai.google.dev/api/file-search
           const displayName = fields["displayName"];
           if (!displayName) throw new Error("Gemini plugin: a display name is required");
-          const store = await this.fetch<FileSearchStore>("/fileSearchStores", {
-            method: "POST",
-            body: JSON.stringify({
+          const store = await this.api.post("/fileSearchStores", {
+            body: {
               displayName,
               ...(fields["embeddingModel"] ? { embeddingModel: fields["embeddingModel"] } : {}),
-            }),
+            },
           });
           return this.mapFileSearchStore(accountId, store, now);
         }
@@ -1103,18 +1104,17 @@ export class GeminiClient implements PluginClient {
           const fileName = fields["inputFileName"];
           if (!model || !fileName) throw new Error("Gemini plugin: pick a model and an input file");
           const priority = fields["priority"]?.trim();
-          const operation = await this.fetch<Operation>(
-            `/${modelPath(model)}:batchGenerateContent`,
+          const operation = await this.api.post(
+            `/models/${modelSegment(model)}:batchGenerateContent`,
             {
-              method: "POST",
-              body: JSON.stringify({
+              body: {
                 batch: {
                   displayName: fields["displayName"] || shortName(fileName),
                   model: modelPath(model),
                   inputConfig: { fileName },
                   ...(priority ? { priority: String(Math.trunc(Number(priority))) } : {}),
                 },
-              }),
+              },
             },
           );
           return this.mapBatch(accountId, operation, now);
@@ -1186,28 +1186,31 @@ export class GeminiClient implements PluginClient {
     if (!storeName || !fileName) throw new Error("Gemini plugin: pick a store and a file");
     const maxTokens = Number(fields["maxTokensPerChunk"]);
     const overlap = Number(fields["maxOverlapTokens"]);
-    const operation = await this.fetch<Operation>(`/${storeName}:importFile`, {
-      method: "POST",
-      body: JSON.stringify({
-        fileName,
-        ...(Number.isFinite(maxTokens) && maxTokens > 0
-          ? {
-              chunkingConfig: {
-                whiteSpaceConfig: {
-                  maxTokensPerChunk: Math.trunc(maxTokens),
-                  ...(Number.isFinite(overlap) && overlap >= 0
-                    ? { maxOverlapTokens: Math.trunc(overlap) }
-                    : {}),
+    const operation = await this.fetch<ApiResponse<operations["ImportFile"]>>(
+      `/${storeName}:importFile`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          fileName,
+          ...(Number.isFinite(maxTokens) && maxTokens > 0
+            ? {
+                chunkingConfig: {
+                  whiteSpaceConfig: {
+                    maxTokensPerChunk: Math.trunc(maxTokens),
+                    ...(Number.isFinite(overlap) && overlap >= 0
+                      ? { maxOverlapTokens: Math.trunc(overlap) }
+                      : {}),
+                  },
                 },
-              },
-            }
-          : {}),
-      }),
-    });
+              }
+            : {}),
+        } satisfies ApiBody<operations["ImportFile"]>),
+      },
+    );
 
-    const documentName = operation.response?.["documentName"];
+    const documentName = operation.response?.documentName;
     if (operation.done && typeof documentName === "string" && documentName) {
-      const doc = await this.fetch<FileSearchDocument>(`/${documentName}`);
+      const doc = await this.fetch<ApiResponse<operations["GetDocument"]>>(`/${documentName}`);
       return this.mapFileSearchDocument(accountId, storeName, doc, now);
     }
     if (operation.error?.message) {
@@ -1251,45 +1254,45 @@ export class GeminiClient implements PluginClient {
             'Gemini plugin: only a cache\'s ttl is updatable; supply a duration such as "3600s"',
           );
         }
-        const cache = await this.fetch<CachedContent>(
-          `/cachedContents/${encodeURIComponent(externalId)}?updateMask=ttl`,
-          { method: "PATCH", body: JSON.stringify({ ttl }) },
-        );
+        const cache = await this.api.patch(`/cachedContents/${pathEncode(externalId)}`, {
+          query: { updateMask: "ttl" },
+          body: { ttl },
+        });
         return this.mapCachedContent(accountId, cache, now);
       }
 
       if (typeId === "batch") {
-        const body: Record<string, unknown> = {};
+        const body: ApiBody<operations["UpdateGenerateContentBatch"]> = {};
         const mask: string[] = [];
         if (fields["displayName"] !== undefined && fields["displayName"] !== "") {
-          body["displayName"] = fields["displayName"];
+          body.displayName = fields["displayName"];
           mask.push("displayName");
         }
         if (fields["priority"] !== undefined && String(fields["priority"]).trim() !== "") {
           const priority = Number(fields["priority"]);
           if (!Number.isInteger(priority))
             throw new Error("Gemini plugin: priority must be a whole number");
-          body["priority"] = String(priority);
+          body.priority = String(priority);
           mask.push("priority");
         }
         if (mask.length === 0)
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
-        await this.fetch<unknown>(
-          `/batches/${encodeURIComponent(externalId)}:updateGenerateContentBatch?updateMask=${mask.join(",")}`,
-          { method: "PATCH", body: JSON.stringify(body) },
-        );
+        await this.api.patch(`/batches/${pathEncode(externalId)}:updateGenerateContentBatch`, {
+          query: { updateMask: commaSeparated(mask) },
+          body,
+        });
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
 
       if (typeId === "webhook") {
-        const body: Record<string, unknown> = {};
+        const body: WebhookUpdate = {};
         const mask: string[] = [];
         if (fields["displayName"] !== undefined) {
-          body["name"] = fields["displayName"];
+          body.name = fields["displayName"];
           mask.push("name");
         }
         if (fields["uri"]?.trim()) {
-          body["uri"] = fields["uri"].trim();
+          body.uri = fields["uri"].trim();
           mask.push("uri");
         }
         if (fields["subscribedEvents"] !== undefined) {
@@ -1300,11 +1303,11 @@ export class GeminiClient implements PluginClient {
           }
           if (events.length === 0)
             throw new Error("Gemini plugin: subscribe to at least one event");
-          body["subscribed_events"] = events;
+          body.subscribed_events = events;
           mask.push("subscribed_events");
         }
         if (fields["state"] === "enabled" || fields["state"] === "disabled") {
-          body["state"] = fields["state"];
+          body.state = fields["state"];
           mask.push("state");
         }
         const hook = await this.fetch<Webhook>(
@@ -1340,22 +1343,20 @@ export class GeminiClient implements PluginClient {
 
       switch (typeId) {
         case "file":
-          await this.fetch(`/files/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+          await this.api.delete(`/files/${pathEncode(externalId)}`);
           return;
         case "cached-content":
-          await this.fetch(`/cachedContents/${encodeURIComponent(externalId)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`/cachedContents/${pathEncode(externalId)}`);
           return;
         case "tuned-model":
-          await this.fetch(`/tunedModels/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+          await this.api.delete(`/tunedModels/${pathEncode(externalId)}`);
           return;
         case "batch":
-          await this.fetch(`/batches/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+          await this.api.delete(`/batches/${pathEncode(externalId)}`);
           return;
         case "file-search-store":
-          await this.fetch(`/fileSearchStores/${encodeURIComponent(externalId)}?force=true`, {
-            method: "DELETE",
+          await this.api.delete(`/fileSearchStores/${pathEncode(externalId)}`, {
+            query: { force: true },
           });
           return;
         case "file-search-document":
@@ -1387,9 +1388,7 @@ export class GeminiClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       if (typeId === "batch" && actionId === "cancel") {
-        await this.fetch(`/batches/${encodeURIComponent(externalIdOf(resourceId))}:cancel`, {
-          method: "POST",
-        });
+        await this.api.post(`/batches/${pathEncode(externalIdOf(resourceId))}:cancel`);
         return;
       }
       if (typeId === "webhook" && actionId === "ping-webhook") {
@@ -2240,7 +2239,7 @@ export class GeminiClient implements PluginClient {
     let sttModels: SpeechPanelOption[] = [];
     if (typeof stashed === "string" && stashed.length > 0) {
       try {
-        const parsed = JSON.parse(stashed) as SpeechPanelOption[];
+        const parsed: SpeechPanelOption[] = JSON.parse(stashed);
         if (Array.isArray(parsed)) sttModels = parsed;
       } catch {
         /* fall through to the static default */
@@ -2410,34 +2409,30 @@ export class GeminiClient implements PluginClient {
       // assume wav/mp3.
       const mimeType = payload.mimeType || "audio/wav";
 
-      let response: GenerateContentResponse;
+      let response: ApiResponse<operations["GenerateContent"]>;
       try {
-        response = await this.fetch<GenerateContentResponse>(
-          `/models/${encodeURIComponent(model)}:generateContent`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              contents: [
-                {
-                  role: "user",
-                  parts: [
-                    {
-                      // The panel's language picker feeds `payload.language`
-                      // (TranscribeAudioPayload carries it; SynthesizeSpeechPayload
-                      // does not). Gemini has no language parameter on
-                      // generateContent, so the only way to honour the choice is
-                      // to name it in the instruction, otherwise the control is
-                      // inert and the request goes out identical either way.
-                      text: transcriptionPrompt(payload.language),
-                    },
-                    { inline_data: { mime_type: mimeType, data: payload.audioBase64 } },
-                  ],
-                },
-              ],
-              generationConfig: { temperature: 0 },
-            } satisfies GenerateContentRequest),
+        response = await this.api.post(`/models/${pathEncode(model)}:generateContent`, {
+          body: {
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    // The panel's language picker feeds `payload.language`
+                    // (TranscribeAudioPayload carries it; SynthesizeSpeechPayload
+                    // does not). Gemini has no language parameter on
+                    // generateContent, so the only way to honour the choice is
+                    // to name it in the instruction, otherwise the control is
+                    // inert and the request goes out identical either way.
+                    text: transcriptionPrompt(payload.language),
+                  },
+                  { inline_data: { mime_type: mimeType, data: payload.audioBase64 } },
+                ],
+              },
+            ],
+            generationConfig: { temperature: 0 },
           },
-        );
+        });
       } catch (error) {
         throw enrichTranscriptionError(error, mimeType);
       }
@@ -2504,7 +2499,7 @@ function customVoiceOptions(resource: ResourceInstance): SpeechPanelOption[] {
   const stashed = resource.resolvedOutputs?.["__customVoices__"];
   if (typeof stashed !== "string" || stashed.length === 0) return [];
   try {
-    const parsed = JSON.parse(stashed) as SpeechPanelOption[];
+    const parsed: SpeechPanelOption[] = JSON.parse(stashed);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -2522,7 +2517,7 @@ function parseEvents(raw: string | undefined): string[] {
   if (!value) return [];
   if (value.startsWith("[")) {
     try {
-      const parsed = JSON.parse(value) as unknown;
+      const parsed: unknown = JSON.parse(value);
       if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {
       /* fall through to the comma-separated form */

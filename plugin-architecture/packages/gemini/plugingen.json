@@ -1,0 +1,72 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://generativelanguage.googleapis.com/$discovery/OPENAPI3_0?version=v1beta",
+  "pathPrefix": "/v1beta",
+  "patches": [
+    {
+      "pointer": "/paths/~1cachedContents~1{id}/patch/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": { "ttl": { "type": "string", "format": "google-duration" } }
+      },
+      "why": "The document reuses the whole CachedContent, whose `model` is required. A field-masked PATCH sends only the masked field."
+    },
+    {
+      "pointer": "/paths/~1batches~1{generateContentBatch}:updateGenerateContentBatch/patch/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "displayName": { "type": "string" },
+          "priority": { "type": "string", "format": "int64" }
+        }
+      },
+      "why": "The document reuses the whole GenerateContentBatch, whose `model`, `displayName` and `inputConfig` are required. A field-masked PATCH sends only the masked fields."
+    },
+    {
+      "pointer": "/paths/~1batches~1{generateContentBatch}:updateGenerateContentBatch/patch/parameters/1/schema",
+      "value": { "type": "array", "items": { "type": "string" } },
+      "why": "A FieldMask is a comma-separated list. As an array it goes through `commaSeparated`, which leaves the commas unencoded as the plugin has always sent them."
+    },
+    {
+      "pointer": "/components/schemas/ListOperationsResponse/properties/operations/items",
+      "value": { "$ref": "#/components/schemas/BatchGenerateContentOperation" },
+      "why": "Only GET /batches lists these here, and the generic Operation leaves `metadata` free-form. Each one is the same operation batchGenerateContent returns, with the GenerateContentBatch in `metadata`."
+    },
+    {
+      "pointer": "/components/schemas/GenerateContentRequest/required",
+      "value": ["contents"],
+      "why": "The document requires `model` in the body as well as the path; the plugin has only ever sent it in the path."
+    },
+    {
+      "pointer": "/components/schemas/Part/properties/inline_data",
+      "value": {
+        "type": "object",
+        "properties": {
+          "mime_type": { "type": "string" },
+          "data": { "type": "string", "format": "byte" }
+        }
+      },
+      "why": "The document names only `inlineData`; proto JSON also accepts the snake_case field name, which is what the plugin sends and Google's audio samples show. Requests must not change."
+    }
+  ],
+  "paths": {
+    "/models": ["get"],
+    "/models/{model}:batchGenerateContent": ["post"],
+    "/models/{model}:generateContent": ["post"],
+    "/tunedModels": ["get"],
+    "/tunedModels/{tunedModel}": ["delete"],
+    "/files": ["get"],
+    "/files/{file}": ["delete"],
+    "/cachedContents": ["get"],
+    "/cachedContents/{id}": ["patch", "delete"],
+    "/batches": ["get"],
+    "/batches/{generateContentBatch}": ["delete"],
+    "/batches/{generateContentBatch}:cancel": ["post"],
+    "/batches/{generateContentBatch}:updateGenerateContentBatch": ["patch"],
+    "/fileSearchStores": ["get", "post"],
+    "/fileSearchStores/{fileSearchStore}": ["delete"],
+    "/fileSearchStores/{fileSearchStore}:importFile": ["post"],
+    "/fileSearchStores/{fileSearchStore}/documents": ["get"],
+    "/fileSearchStores/{fileSearchStore}/documents/{document}": ["get", "delete"]
+  }
+}
