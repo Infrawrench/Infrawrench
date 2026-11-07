@@ -526,15 +526,25 @@ export type {
 export { isSingleSqlStatement, assertSingleSqlStatement } from "./sql-statements.js";
 
 export {
+  ForeignLinkError,
   IncompleteListError,
   ListPageError,
   ListTruncatedError,
+  followableLink,
   isIncompleteListError,
+  isSameOrigin,
+  linkHostsUnder,
   requireListPage,
   rethrowIncompleteList,
   withinListCap,
 } from "./list-errors.js";
-export type { ListPageProblem, ListPlace, ListTruncation } from "./list-errors.js";
+export type {
+  FollowLinkOptions,
+  ForeignLinks,
+  ListPageProblem,
+  ListPlace,
+  ListTruncation,
+} from "./list-errors.js";
 
 export {
   commaSeparated,
@@ -560,7 +570,6 @@ export type {
   CursorApiClient,
   CursorDialect,
   CursorPagination,
-  ForeignLinks,
   LinkPagination,
   NextLinkOptions,
   NextPage,

@@ -157,17 +157,17 @@ const PAGES = {
 const followingPage = (cursor: string | undefined) => String(Number(cursor) + 1);
 
 /**
- * `X-Next-Page` where GitLab sends it. A proxy can strip the header, so without it
- * a full page means there may be another. An empty page defers to the header.
+ * `X-Next-Page` where GitLab sends it. A proxy can strip or mangle the header, so
+ * without a page number a full page means there may be another. It is only ever a
+ * number that goes back as `page`, on the instance's own host, so nothing in it can
+ * send the token elsewhere. An empty page defers to the header.
  */
 const nextPage: NextPage = ({ headers, items, cursor, pageSize }) => {
   const next = headers["x-next-page"];
-  if (next === undefined) {
-    return items.length < (pageSize ?? PAGES.pageSize) ? null : followingPage(cursor);
-  }
-  if (!next) return null;
+  if (next === "") return null;
   const page = Number(next);
-  return Number.isFinite(page) ? String(page) : null;
+  if (Number.isFinite(page) && next !== undefined) return String(page);
+  return items.length < (pageSize ?? PAGES.pageSize) ? null : followingPage(cursor);
 };
 
 function client(ctx: GitLabContext) {

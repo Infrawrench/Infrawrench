@@ -75,6 +75,23 @@ describe("a list answered with something else", () => {
   });
 });
 
+describe("a next page header that is not a number", () => {
+  it("stays on the instance and carries on from the page it knows", async () => {
+    const { c, calls } = client((call) =>
+      call.url.searchParams.get("page") === "1"
+        ? {
+            body: Array.from({ length: 100 }, (_, i) => ({ id: i, path_with_namespace: `a/${i}` })),
+            headers: { "x-next-page": "https://evil.example/projects" },
+          }
+        : { body: [] },
+    );
+    await expect(c.listResources("project", ACC)).resolves.toHaveLength(100);
+    expect(new Set(calls.map((call) => call.url.origin))).toEqual(
+      new Set(["https://gitlab.example.com"]),
+    );
+  });
+});
+
 describe("a list past its cap", () => {
   const endless = {
     body: [{ id: 1, path_with_namespace: "a/b" }],

@@ -411,6 +411,19 @@ describe("listResources dispatch + mappers", () => {
     );
   });
 
+  it("sends a cursor back to its own host, whatever it says", async () => {
+    let page = 0;
+    installFetch(() =>
+      jsonResponse(
+        page++ === 0
+          ? { domains: [{ name: "a.com" }], pagination: { next: "https://evil.example/x" } }
+          : { domains: [], pagination: { next: null } },
+      ),
+    );
+    await client().listResources("vercel-domain", ACCOUNT);
+    expect(new URL(calls[1]!.url).origin).toBe("https://api.vercel.com");
+  });
+
   it("refuses a list past its page cap, rather than prune the rest", async () => {
     installFetch(() => jsonResponse({ deployments: [{ uid: "d" }], pagination: { next: 1 } }));
     const failure = client().listResources("vercel-deployment", ACCOUNT);

@@ -16,7 +16,7 @@
  *   });
  *   const everyUser = await cursors.getAll(`/users`, "users");
  *
- *   const links = withLinkPagination(api, { next: nextLinkHeader(), maxPages: 25, foreignLinks: "follow" });
+ *   const links = withLinkPagination(api, { next: nextLinkHeader(), maxPages: 25 });
  *   const everyApp = await links.getAll(`/apps`, null);
  *
  *   await api.post(`/services`, { form: { FriendlyName: name, Sticky: true } });
@@ -32,7 +32,13 @@
  * ways and a sync that dies on an undocumented enum value helps nobody.
  */
 import { restRequest, type RestResponse } from "./http.js";
-import { ListPageError, ListTruncatedError } from "./list-errors.js";
+import {
+  ForeignLinkError,
+  isFollowable,
+  ListPageError,
+  ListTruncatedError,
+  type ForeignLinks,
+} from "./list-errors.js";
 import type { HttpHostServices } from "./manifest.js";
 
 /** A path segment known to contain no slashes. Made by {@link pathEncode}. */
@@ -799,7 +805,8 @@ function reportedTotal(total: WalkConfig["total"], page: PageAnswer): number | u
 }
 
 function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
-  const { cursorParam, sizeParam, next, hasMore, readCursor, onTruncated, foreignLinks } = config;
+  const { cursorParam, sizeParam, next, hasMore, readCursor, onTruncated } = config;
+  const { foreignLinks = "refuse" } = config;
   const { resolveLink, pagingFirst, total, cursorFirst } = config;
   // As in `createApiClient`: the implementation walks any path.
   const getResponse = client.getResponse as unknown as (
@@ -870,12 +877,9 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
               : new URL(value, url).href;
       if (!following) return items;
       if (config.stopOnRepeatedCursor && following === cursor) return items;
-      if (cursorParam === undefined && foreignLinks === "refuse") {
-        const target = new URL(following).origin;
-        if (target !== origin) {
-          throw new Error(
-            `Refusing to follow the next page of ${path} from ${origin} to ${target}`,
-          );
+      if (cursorParam === undefined) {
+        if (!isFollowable(following, origin, foreignLinks)) {
+          throw new ForeignLinkError({ vendor: client.vendor, path }, following, origin);
         }
       }
       written = value;
@@ -886,9 +890,6 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
     throw new ListTruncatedError({ vendor: client.vendor, path, items: items.length, maxPages });
   };
 }
-
-/** What to do about a next link to another host, which would carry the credentials there. */
-export type ForeignLinks = "follow" | "refuse";
 
 /** Turn a link as the provider wrote it into the URL to ask for. Empty or null ends the list. */
 export type ResolveLink = (link: string) => string | null | undefined;
@@ -907,10 +908,10 @@ export interface LinkPagination<
   next: Next;
   /**
    * Whether to follow a link to another origin, with the client's headers on it.
-   * No default: `"follow"` is what the plugins' own loops did, `"refuse"` throws
-   * rather than return part of a list, and a migrator has to say which it wants.
+   * `"refuse"` by default, which throws a `ForeignLinkError`. A provider that really
+   * hands out another host names it with `linkHostsUnder`, with a comment saying why.
    */
-  foreignLinks: ForeignLinks;
+  foreignLinks?: ForeignLinks;
   /**
    * Replace how a link is read. By default an absolute link is sent as written and
    * any other resolves against the page it came from, as a browser would, so `//x/y`

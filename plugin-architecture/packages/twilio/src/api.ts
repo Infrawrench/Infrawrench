@@ -134,7 +134,6 @@ const LISTS = {
   pagingFirst: true,
   maxPages: 50,
   continueOnEmptyPage: true,
-  foreignLinks: "follow",
 } as const;
 
 /** The classic API. Lists page through a host-relative `next_page_uri`, null on the last page. */

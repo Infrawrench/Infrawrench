@@ -144,6 +144,93 @@ export function withinListCap<T>(items: T[], maxItems: number, place: ListPlace)
   return items;
 }
 
+/**
+ * What to do about a next link to another origin, which would carry the credentials
+ * there. `"refuse"` is the default; a function allows the hosts a provider really
+ * hands out, as {@link linkHostsUnder} does; `"follow"` allows anything, and is only
+ * for keeping an old client's behaviour while it waits to be moved.
+ */
+export type ForeignLinks = "follow" | "refuse" | ((link: URL) => boolean);
+
+/** Whether a link, absolute or relative to the page it came from, stays on that page's origin. */
+export function isSameOrigin(link: string, pageUrl: string): boolean {
+  try {
+    return new URL(link, pageUrl).origin === new URL(pageUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * For a provider whose next links name a regional host: `foreignLinks:
+ * linkHostsUnder("sentry.io")` allows that host and its subdomains, over HTTPS only.
+ */
+export function linkHostsUnder(...domains: string[]): (link: URL) => boolean {
+  return ({ protocol, hostname }) =>
+    protocol === "https:" &&
+    domains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+}
+
+function originOf(link: string): string {
+  try {
+    return new URL(link).origin;
+  } catch {
+    return "something that is not a URL";
+  }
+}
+
+/** A next link that would have carried the credentials off the host they are for. */
+export class ForeignLinkError extends IncompleteListError {
+  readonly _tag = "ForeignLinkError";
+
+  constructor(place: ListPlace, link: string, origin: string) {
+    super(
+      place,
+      `${place.vendor}: the next page of ${place.path} is on ${originOf(link)}, not ${origin}. Refusing to send the account's credentials there.`,
+    );
+    this.name = "ForeignLinkError";
+  }
+}
+
+/** Whether `link`, which must be absolute, may be followed from a list that started on `origin`. */
+export function isFollowable(link: string, origin: string, foreignLinks: ForeignLinks): boolean {
+  if (foreignLinks === "follow") return true;
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    return false;
+  }
+  if (url.origin === origin) return true;
+  return typeof foreignLinks === "function" && foreignLinks(url);
+}
+
+export interface FollowLinkOptions extends ListPlace {
+  /** `"refuse"` by default. See {@link ForeignLinks}. */
+  foreignLinks?: ForeignLinks;
+}
+
+/**
+ * The URL to ask for next, for a hand-written loop: `link` resolved against the page
+ * it came from as a browser would, or a {@link ForeignLinkError} rather than send the
+ * token anywhere else.
+ *
+ *   const url = followableLink(next, pageUrl, { vendor: "Okta", path });
+ */
+export function followableLink(link: string, pageUrl: string, options: FollowLinkOptions): string {
+  const origin = new URL(pageUrl).origin;
+  let resolved: string;
+  try {
+    resolved = new URL(link, pageUrl).href;
+  } catch {
+    throw new ForeignLinkError(options, link, origin);
+  }
+  if (!isFollowable(resolved, origin, options.foreignLinks ?? "refuse")) {
+    throw new ForeignLinkError(options, resolved, origin);
+  }
+  return resolved;
+}
+
 /** True for any {@link IncompleteListError}, or anything wrapping one as its `cause`. */
 export function isIncompleteListError(err: unknown): boolean {
   let current: unknown = err;

@@ -18,7 +18,11 @@ import {
   type PageAnswer,
 } from "../api-client.js";
 import {
+  followableLink,
+  ForeignLinkError,
   isIncompleteListError,
+  isSameOrigin,
+  linkHostsUnder,
   ListPageError,
   ListTruncatedError,
   requireListPage,
@@ -1743,7 +1747,7 @@ describe("withLinkPagination", () => {
       pages("https://evil.test/x");
       await expect(
         concatenating({ foreignLinks: "refuse" }).getAll("/twilio", "calls"),
-      ).rejects.toThrow("from https://api.example.test to https://evil.test");
+      ).rejects.toThrow("is on https://evil.test, not https://api.example.test");
     });
 
     it("can answer something that is not a URL, which fails where the transport says so", async () => {
@@ -1829,6 +1833,42 @@ describe("withLinkPagination", () => {
   });
 
   describe("a link to another host", () => {
+    it("is refused by default, without asking", async () => {
+      fetchMock.mockResolvedValueOnce(paged([{ id: 1 }], link("https://evil.example/apps?n=2")));
+      const api = withLinkPagination(client(), { next: nextLinkHeader(), maxPages: 3 });
+      await expect(api.getAll("/apps", null)).rejects.toThrow(ForeignLinkError);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("is followed when it is a host the plugin names", async () => {
+      fetchMock
+        .mockResolvedValueOnce(paged([{ id: 1 }], link("https://eu.example.test/apps?n=2")))
+        .mockResolvedValueOnce(paged([{ id: 2 }]));
+      const api = withLinkPagination(client(), {
+        next: nextLinkHeader(),
+        maxPages: 3,
+        foreignLinks: linkHostsUnder("example.test"),
+      });
+      await expect(api.getAll("/apps", null)).resolves.toHaveLength(2);
+      expect(String(fetchMock.mock.calls[1]?.[0])).toBe("https://eu.example.test/apps?n=2");
+    });
+
+    it("is judged against where the list started, however it got there", async () => {
+      fetchMock
+        .mockResolvedValueOnce(paged([{ id: 1 }], link("https://eu.example.test/apps?n=2")))
+        .mockResolvedValueOnce(paged([{ id: 2 }], link(`${BASE}/apps?n=3`)))
+        .mockResolvedValueOnce(paged([{ id: 3 }], link("https://evil.example/apps")));
+      const api = withLinkPagination(client(), {
+        next: nextLinkHeader(),
+        maxPages: 5,
+        foreignLinks: linkHostsUnder("example.test"),
+      });
+      await expect(api.getAll("/apps", null)).rejects.toThrow(
+        "is on https://evil.example, not https://api.example.test",
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
     const foreign = "https://evil.test/apps?after=1";
 
     it("is followed, credentials and all, when the plugin says so", async () => {
@@ -1848,7 +1888,7 @@ describe("withLinkPagination", () => {
         foreignLinks: "refuse",
       });
       await expect(api.getAll("/apps", null)).rejects.toThrow(
-        "from https://api.example.test to https://evil.test",
+        "is on https://evil.test, not https://api.example.test",
       );
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
@@ -1873,7 +1913,7 @@ describe("withLinkPagination", () => {
           maxPages: 5,
           foreignLinks: "refuse",
         });
-        await expect(api.getAll("/apps", null)).rejects.toThrow(/Refusing/);
+        await expect(api.getAll("/apps", null)).rejects.toThrow(ForeignLinkError);
       }
     });
   });
@@ -2266,8 +2306,7 @@ export function compileTimeChecks(api: ApiClient<paths>, raw: string) {
     foreignLinks: "follow",
   });
 
-  // Which way a foreign link goes is not optional, and is one of the two.
-  // @ts-expect-error
+  // A foreign link is refused unless the plugin says otherwise, in a word it knows.
   withLinkPagination(api, { next: nextLinkHeader(), maxPages: 2 });
   // @ts-expect-error
   withLinkPagination(api, { next: nextLinkHeader(), maxPages: 2, foreignLinks: "maybe" });
@@ -2530,5 +2569,85 @@ describe("a host watching for a swallowed list error", () => {
     Reflect.set(globalThis, hook, seen);
     const made = new ListTruncatedError({ vendor: "Test", path: "/x", items: 1, maxPages: 1 });
     expect(seen).toHaveBeenCalledExactlyOnceWith(made);
+  });
+});
+
+describe("isSameOrigin", () => {
+  const page = "https://api.example.com/v1/x?page=1";
+
+  it.each([
+    ["an absolute link on the same origin", "https://api.example.com/y", true],
+    ["a relative link", "/y", true],
+    ["a query", "?page=2", true],
+    ["a bare path", "y", true],
+    ["another host", "https://evil.example/y", false],
+    ["a scheme-relative host", "//evil.example/y", false],
+    ["a subdomain", "https://eu.api.example.com/y", false],
+    ["another port", "https://api.example.com:8443/y", false],
+    ["a downgrade to http", "http://api.example.com/y", false],
+    ["a lookalike", "https://api.example.com.evil.example/y", false],
+    ["userinfo hiding the host", "https://api.example.com@evil.example/y", false],
+    ["something that is not a URL", "http://", false],
+  ])("%s", (_name, link, same) => {
+    expect(isSameOrigin(link, page)).toBe(same);
+  });
+});
+
+describe("linkHostsUnder", () => {
+  const allowed = linkHostsUnder("sentry.io");
+
+  it("takes the domain and its subdomains, over https", () => {
+    expect(allowed(new URL("https://sentry.io/x"))).toBe(true);
+    expect(allowed(new URL("https://us.sentry.io/x"))).toBe(true);
+  });
+
+  it("takes nothing else", () => {
+    expect(allowed(new URL("http://us.sentry.io/x"))).toBe(false);
+    expect(allowed(new URL("https://evilsentry.io/x"))).toBe(false);
+    expect(allowed(new URL("https://sentry.io.evil.example/x"))).toBe(false);
+  });
+});
+
+describe("followableLink", () => {
+  const page = "https://api.example.com/v1/x";
+  const place = { vendor: "Test", path: "/v1/x" };
+
+  it("resolves a link against the page it came from", () => {
+    expect(followableLink("/v1/x?page=2", page, place)).toBe("https://api.example.com/v1/x?page=2");
+    expect(followableLink("?page=2", page, place)).toBe("https://api.example.com/v1/x?page=2");
+    expect(followableLink("https://api.example.com/y", page, place)).toBe(
+      "https://api.example.com/y",
+    );
+  });
+
+  it.each([["https://evil.example/y"], ["//evil.example/y"], ["http://api.example.com/y"]])(
+    "refuses %s",
+    (link) => {
+      expect(() => followableLink(link, page, place)).toThrow(ForeignLinkError);
+    },
+  );
+
+  it("names the host, not the link, which can hold a token", () => {
+    expect(() => followableLink("https://evil.example/y?secret=1", page, place)).toThrow(
+      "Test: the next page of /v1/x is on https://evil.example, not https://api.example.com.",
+    );
+  });
+
+  it("allows what the plugin names", () => {
+    const options = { ...place, foreignLinks: linkHostsUnder("example.com") };
+    expect(followableLink("https://eu.example.com/y", page, options)).toBe(
+      "https://eu.example.com/y",
+    );
+    expect(() => followableLink("https://evil.example/y", page, options)).toThrow(ForeignLinkError);
+  });
+
+  it("is what a catch around a list lets through", () => {
+    let caught: unknown;
+    try {
+      followableLink("https://evil.example/y", page, place);
+    } catch (err) {
+      caught = err;
+    }
+    expect(isIncompleteListError(caught)).toBe(true);
   });
 });

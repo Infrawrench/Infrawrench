@@ -69,6 +69,47 @@ describe("a list answered with something else", () => {
   });
 });
 
+describe("a next link off Twilio's hosts", () => {
+  it.each([
+    ["another host", "https://evil.example/x.json"],
+    ["a host glued onto Twilio's", ".evil.example/x.json"],
+    ["plain http", "http://api.twilio.com/x.json"],
+  ])("is refused on the classic API, with no request sent: %s", async (_name, link) => {
+    const { c, calls } = client(() => ({
+      body: { usage_triggers: [{ sid: "UT1" }], next_page_uri: link },
+    }));
+    await expect(c.listResources("usage-trigger", ACCOUNT)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it("is refused on the v1 APIs too", async () => {
+    const { c, calls } = client(() => ({
+      body: { services: [{ sid: "VA1" }], meta: { next_page_url: "https://evil.example/x" } },
+    }));
+    await expect(c.listResources("verify-service", ACCOUNT)).rejects.toThrow(
+      "the next page of /v2/Services is on https://evil.example, not https://verify.twilio.com",
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it("is still followed when it stays on the host it came from", async () => {
+    const { c, calls } = client((url) =>
+      url.searchParams.get("Page") === "1"
+        ? { body: { services: [{ sid: "VA2" }], meta: { next_page_url: null } } }
+        : {
+            body: {
+              services: [{ sid: "VA1" }],
+              meta: { next_page_url: "https://verify.twilio.com/v2/Services?Page=1" },
+            },
+          },
+    );
+    await expect(c.listResources("verify-service", ACCOUNT)).resolves.toHaveLength(2);
+    expect(calls).toHaveLength(2);
+  });
+});
+
 describe("a list past its cap", () => {
   it("refuses a list that goes on past 50 pages, rather than prune the rest", async () => {
     const { c, calls } = client(() => ({
