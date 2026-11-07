@@ -69,6 +69,10 @@ import { COMMANDS, renderPromDetail, renderPromSidebar, silenceFields } from "./
 // the most rows one resource sync takes.
 const MAX_TARGETS = 100_000;
 
+// How servers answer a route they do not have: 404 (Prometheus, Thanos), 400
+// "unsupported path" (VictoriaMetrics), 405 or 501, and 403 from a proxy that allowlists paths.
+const NOT_OFFERED = new Set([400, 403, 404, 405, 501]);
+
 const DURATIONS: Record<string, number> = {
   m: 60_000,
   h: 3_600_000,
@@ -181,6 +185,23 @@ export class PromClient implements PluginClient {
     return requireListPage(d?.groups, { vendor: "Prometheus", path, key: "groups" });
   }
 
+  /**
+   * Every configured scrape pool, including those with no active target. Prometheus
+   * before 2.42, Thanos and VictoriaMetrics do not offer the route, and then the pools
+   * come from the targets alone. Any other failure fails the list, since reading it as
+   * none would drop the pools only this route names.
+   */
+  private async scrapePools(): Promise<string[]> {
+    const path = "/api/v1/scrape_pools";
+    try {
+      const d = await promFetch<{ scrapePools?: string[] } | undefined>(this.ctx, path);
+      return requireListPage(d?.scrapePools, { vendor: "Prometheus", path, key: "scrapePools" });
+    } catch (err) {
+      if (NOT_OFFERED.has(statusOf(err))) return [];
+      throw err;
+    }
+  }
+
   /** An Alertmanager v2 list, which its OpenAPI document answers as a bare array. */
   private async amList<T>(path: string): Promise<T[]> {
     const list = await amFetch<T[] | null | undefined>(this.ctx, path);
@@ -246,11 +267,8 @@ export class PromClient implements PluginClient {
         case "prometheus-server":
           return [await this.server(accountId)];
         case "prometheus-scrape-pool": {
-          const [data, pools] = await Promise.all([
-            this.targets("any"),
-            this.soft(promFetch<{ scrapePools?: string[] }>(this.ctx, "/api/v1/scrape_pools")),
-          ]);
-          const names = new Set<string>(pools?.scrapePools ?? []);
+          const [data, pools] = await Promise.all([this.targets("any"), this.scrapePools()]);
+          const names = new Set<string>(pools);
           for (const t of data.activeTargets ?? []) if (t.scrapePool) names.add(t.scrapePool);
           return [...names].sort().map((n) =>
             mapScrapePool(

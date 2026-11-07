@@ -72,4 +72,26 @@ describe("lists that feed the sync", () => {
     const { c } = client((call) => (call.url.pathname === path ? { text: "" } : []));
     await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
   });
+
+  it("fails scrape pools when /api/v1/scrape_pools fails, keeping pools with no targets", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === "/api/v1/scrape_pools"
+        ? { status: 503, text: "unavailable" }
+        : ok({ activeTargets: targets(1), droppedTargets: [] }),
+    );
+    await expect(c.listResources("prometheus-scrape-pool", ACCOUNT)).rejects.toThrow("503");
+  });
+
+  it.each([404, 400])(
+    "reads scrape pools from the targets when the server answers %i for scrape_pools",
+    async (status) => {
+      const { c } = client((call) =>
+        call.url.pathname === "/api/v1/scrape_pools"
+          ? { status, text: "unsupported path" }
+          : ok({ activeTargets: targets(2), droppedTargets: [] }),
+      );
+      const pools = await c.listResources("prometheus-scrape-pool", ACCOUNT);
+      expect(pools.map((p) => p.displayName)).toEqual(["node"]);
+    },
+  );
 });
