@@ -10,7 +10,7 @@ import type {
   PreflightPermission,
   PreflightResult,
 } from "@infrawrench/plugin-base";
-import { unencodedSegment } from "@infrawrench/plugin-base";
+import { pathEncode } from "@infrawrench/plugin-base";
 import { statusOf } from "./api.js";
 import type { CockroachClient } from "./client.js";
 
@@ -81,8 +81,7 @@ export async function verifyCockroachCredentials(
   const checks = await Promise.all([
     firstCluster
       ? probe("manage", [P.cluster], () =>
-          // Sent as written, unlike every other cluster path in this plugin.
-          client.api.get(`/api/v1/clusters/${unencodedSegment(firstCluster)}/sql-users`),
+          client.api.get(`/api/v1/clusters/${pathEncode(firstCluster)}/sql-users`),
         )
       : Promise.resolve<PreflightCapabilityCheck>({
           capabilityId: "manage",

@@ -209,6 +209,15 @@ describe("CockroachClient", () => {
       },
     });
   });
+
+  it("encodes the cluster id in the credential check", async () => {
+    const { client, calls } = fake([
+      on("GET", "/api/v1/clusters", { clusters: [{ ...cluster, id: "c/1?x" }] }),
+    ]);
+    await client.verifyCredentials();
+    const probe = calls.find((c) => c.url.includes("sql-users"))!;
+    expect(new URL(probe.url).pathname).toBe("/api/v1/clusters/c%2F1%3Fx/sql-users");
+  });
 });
 
 describe("helpers", () => {
