@@ -17,7 +17,12 @@
  * product containing "tax" is a `tax` row.
  */
 
-import type { CostChargeType, CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import {
+  requireListPage,
+  type CostChargeType,
+  type CostFetchRange,
+  type CostRow,
+} from "@infrawrench/plugin-base";
 import type { VultrApi } from "./api.js";
 import type { VultrInvoice, VultrInvoiceItem } from "./types.js";
 
@@ -117,10 +122,14 @@ export async function fetchVultrCostData(
   }
   const today = dayStart(new Date(now).toISOString()) ?? now;
   if (today >= from) {
-    const pending = await api.get<{ pending_charges?: VultrInvoiceItem[] }>(
-      "/billing/pending-charges",
-    );
-    for (const item of pending.pending_charges ?? []) builder.add(item, today);
+    const path = "/billing/pending-charges";
+    const pending = await api.get<{ pending_charges?: VultrInvoiceItem[] | null }>(path);
+    const items = requireListPage(pending.pending_charges, {
+      vendor: "Vultr",
+      path,
+      key: "pending_charges",
+    });
+    for (const item of items) builder.add(item, today);
   }
   return builder.build();
 }

@@ -1,6 +1,7 @@
 import type { HostServices } from "@infrawrench/plugin-base";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createVultrApi } from "../api.js";
+import { fetchVultrCostData } from "../cost-data.js";
 import {
   listBuckets,
   listDatabaseUsers,
@@ -227,5 +228,22 @@ describe("buckets", () => {
     expect(rows.map((r) => r.id)).toEqual(["acct:bucket:s1/x"]);
     expect(unreadParents(parts)).toEqual(["acct:object-storage:s2"]);
     expect(urls.some((u) => u.pathname.includes("/s2/"))).toBe(false);
+  });
+});
+
+describe("costs", () => {
+  it("refuses a pending-charges answer with no list instead of reading it as nothing owed", async () => {
+    const { api: a } = api((u) => {
+      if (u.pathname === "/v2/billing/invoices") return page("billing_invoices", []);
+      if (u.pathname === "/v2/billing/pending-charges") return { body: { error: "maintenance" } };
+      throw new Error(`unexpected ${u.pathname}`);
+    });
+    await expect(
+      fetchVultrCostData(
+        a,
+        { fromDate: "2026-09-01", toDate: "2026-09-10" },
+        Date.parse("2026-09-10T12:00:00Z"),
+      ),
+    ).rejects.toThrow("is not a list");
   });
 });
