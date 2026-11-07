@@ -102,6 +102,14 @@ interface ResolvedEndpoint {
  * SageMaker's `api.sagemaker.*` host, fips/dualstack, etc.).
  */
 async function resolveEndpoint(creds: AwsCredentials, service: string): Promise<ResolvedEndpoint> {
+  // No SDK client in the bundle to ask, and nothing unusual about its host or signing name.
+  if (service === "servicequotas") {
+    return {
+      host: legacyHost(service, creds.region),
+      signingName: service,
+      signingRegion: creds.region,
+    };
+  }
   const binding = SERVICE_BINDINGS[service];
   if (!binding) {
     throw new Error(`AWS transport: unknown service "${service}"`);
