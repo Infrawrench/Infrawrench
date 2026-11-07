@@ -23098,5 +23098,8 @@
   "0881de81d0d72477": "Privé le limite au projet ; interne le partage avec l'organisation.",
   "5ee93e8e2091fade": "Hôtes des clusters auto-hébergés",
   "afab26d899bf7e18": "Hôtes des endpoints de service",
-  "12d03674d6b583da": "L'adresse de vCenter Server (vCenter 7.0 ou ultérieur ; l'API REST n'est pas servie par les hôtes ESXi autonomes). Les adresses privées fonctionnent depuis l'application de bureau ou via un tunnel SSH sur le compte."
+  "12d03674d6b583da": "L'adresse de vCenter Server (vCenter 7.0 ou ultérieur ; l'API REST n'est pas servie par les hôtes ESXi autonomes). Les adresses privées fonctionnent depuis l'application de bureau ou via un tunnel SSH sur le compte.",
+  "7641a8956d254cd2": "5 000 min de build, 20 000 min d'Actions, 20 000 min de sandbox, 250 GB de stockage inclus",
+  "2e2f0ab228e60e2a": "500 min de build, 2 000 min d'Actions, 2 000 min de sandbox, 25 GB de stockage inclus",
+  "eabd5be68b2d427d": "Facultatif. Remplace tout tarif ou quota publié, un key=value par ligne ou séparés par des virgules : planFee, includedBuildMinutes, includedActionsMinutes, includedStorageGb, includedSandboxMinutes (quotas) ; buildMinute (0.04), actionsMinute (0.006), macosMinute (0.08), sandboxMinute (0.01), ciVcpuMinute (0.003, par vCPU-minute Depot CI), storageGbMonth (0.20) en USD ; cycleStartDay (1 à 28) si votre cycle de facturation ne commence pas le 1er. À utiliser pour un contrat Business ou un changement de prix."
 }
