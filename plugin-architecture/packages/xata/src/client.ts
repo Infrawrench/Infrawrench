@@ -47,6 +47,7 @@ import {
   createGatewayApi,
   createXataApi,
   enc,
+  idPart,
   listOf,
   statusOf,
   withInvitationPages,
@@ -823,7 +824,9 @@ export class XataClient implements PluginClient {
           await this.api.delete(this.branchPath(p[0], p[1], p[2]));
           return;
         case "xata-api-key":
-          await this.api.delete(`${this.orgPath(p[0])}/api-keys`, { body: { ids: [p[1]!] } });
+          await this.api.delete(`${this.orgPath(p[0])}/api-keys`, {
+            body: { ids: [idPart(p[1])] },
+          });
           return;
         case "xata-member":
           await this.api.delete(`${this.orgPath(p[0])}/members/${enc(p[1])}`);

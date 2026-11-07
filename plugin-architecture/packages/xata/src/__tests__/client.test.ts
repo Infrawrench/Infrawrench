@@ -684,3 +684,35 @@ describe("a 2xx that holds no list", () => {
     await expect(client.fetchQuotas(ACCOUNT)).rejects.toThrow("is not a list");
   });
 });
+
+describe("an id with a part missing", () => {
+  it.each([
+    ["xata-project", "org1"],
+    ["xata-project", "org1/"],
+    ["xata-branch", "org1/p1"],
+    ["xata-branch", "org1/p1/"],
+    ["xata-api-key", "org1"],
+    ["xata-api-key", "org1/"],
+    ["xata-member", "org1"],
+    ["xata-invitation", "org1/"],
+  ])("refuses to delete %s %s and sends nothing", async (typeId, externalId) => {
+    const { client, calls } = fake([]);
+    await expect(
+      client.deleteResource(typeId, `${ACCOUNT}:${typeId}:${externalId}`, ACCOUNT),
+    ).rejects.toThrow("incomplete");
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses an action or an update on one", async () => {
+    const { client, calls } = fake([]);
+    await expect(
+      client.invokeAction("xata-branch", `${ACCOUNT}:xata-branch:org1/p1`, "hibernate", ACCOUNT),
+    ).rejects.toThrow("incomplete");
+    await expect(
+      client.updateResource("xata-member", `${ACCOUNT}:xata-member:org1`, ACCOUNT, {
+        role: "admin",
+      }),
+    ).rejects.toThrow("incomplete");
+    expect(calls).toEqual([]);
+  });
+});

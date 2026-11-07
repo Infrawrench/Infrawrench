@@ -189,9 +189,14 @@ export function listOf<K extends string, T>(
   return requireListPage(page?.[key], { vendor: "Xata", path, key, page });
 }
 
-/** A missing part of a composite id has always gone out as the text `undefined`. */
+/** One part of a composite id, refused when blank rather than sent to a route it was not for. */
+export function idPart(s: string | undefined): string {
+  if (!s) throw new Error("Xata plugin: this resource's id is incomplete.");
+  return s;
+}
+
 export function enc(s: string | undefined): NoSlashString {
-  return pathEncode(String(s));
+  return pathEncode(idPart(s));
 }
 
 export type OrgPath = `/organizations/${NoSlashString}`;
