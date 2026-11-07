@@ -18,9 +18,9 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { B2Session } from "./api.js";
-import { B2Api, B2ApiError, coarseRegionOf, s3RegionOf, statusOf } from "./api.js";
+import { B2Api, B2ApiError, coarseRegionOf, s3RegionOf, statusOf, VENDOR } from "./api.js";
 import {
   bucketInstance,
   corsInstance,
@@ -57,6 +57,9 @@ import {
 } from "./usage.js";
 
 const BUCKET_CACHE_MS = 30_000;
+/** The most b2_list_keys answers at once; it bills per 1,000 returned, whatever the page size. */
+const KEY_PAGE_SIZE = 10_000;
+const MAX_KEY_PAGES = 10;
 const APPLICATION_KEY_FIELD = "applicationKey";
 
 const RW_CAPABILITIES = [
@@ -143,7 +146,11 @@ export class BackblazeB2Client implements PluginClient {
       const res = await this.api.call<{ buckets?: B2Bucket[] }>("b2_list_buckets", {
         body: { accountId: s.accountId },
       });
-      return (res?.buckets ?? []).sort((a, b) => a.bucketName.localeCompare(b.bucketName));
+      return requireListPage(res?.buckets, {
+        vendor: VENDOR,
+        path: "b2_list_buckets",
+        key: "buckets",
+      }).sort((a, b) => a.bucketName.localeCompare(b.bucketName));
     })();
     this.bucketsCache = { at: Date.now(), value };
     value.catch(() => {
@@ -275,19 +282,30 @@ export class BackblazeB2Client implements PluginClient {
     const s = await this.api.getSession();
     const out: B2Key[] = [];
     let start: string | undefined;
-    for (let page = 0; page < 50; page++) {
+    for (let page = 0; page < MAX_KEY_PAGES; page++) {
       const res = await this.api.call<{ keys?: B2Key[]; nextApplicationKeyId?: string | null }>(
         "b2_list_keys",
         {
           method: "GET",
-          query: { accountId: s.accountId, maxKeyCount: 1000, startApplicationKeyId: start },
+          query: {
+            accountId: s.accountId,
+            maxKeyCount: KEY_PAGE_SIZE,
+            startApplicationKeyId: start,
+          },
         },
       );
-      out.push(...(res?.keys ?? []));
+      out.push(
+        ...requireListPage(res?.keys, { vendor: VENDOR, path: "b2_list_keys", key: "keys" }),
+      );
       start = res?.nextApplicationKeyId ?? undefined;
-      if (!start) break;
+      if (!start) return out;
     }
-    return out;
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path: "b2_list_keys",
+      items: out.length,
+      maxPages: MAX_KEY_PAGES,
+    });
   }
 
   private async getNotificationRules(bucketId: string): Promise<B2NotificationRule[]> {
@@ -295,7 +313,11 @@ export class BackblazeB2Client implements PluginClient {
       "b2_get_bucket_notification_rules",
       { method: "GET", query: { bucketId } },
     );
-    return res?.eventNotificationRules ?? [];
+    return requireListPage(res?.eventNotificationRules, {
+      vendor: VENDOR,
+      path: "b2_get_bucket_notification_rules",
+      key: "eventNotificationRules",
+    });
   }
 
   private async setNotificationRules(bucketId: string, rules: B2NotificationRule[]): Promise<void> {

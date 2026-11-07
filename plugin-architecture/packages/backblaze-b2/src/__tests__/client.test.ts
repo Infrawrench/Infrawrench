@@ -380,3 +380,100 @@ describe("terraform", () => {
     expect(hcl).toContain("terraform import b2_bucket.photos_bucket b1");
   });
 });
+
+describe("lists that cannot say they have every row", () => {
+  const KEY = { applicationKeyId: "k1", keyName: "one", capabilities: [], accountId: "acct1" };
+  const REPORTS = { bucketId: "r1", bucketName: "b2-reports-acct1" };
+  const COST_RANGE = { fromDate: "2026-09-01", toDate: "2026-09-30" };
+
+  it("throws at the application key cap, after exactly 10 pages of the largest size", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [] } };
+      return { body: { keys: [KEY], nextApplicationKeyId: "more" } };
+    });
+    await expect(c.listResources("application-key", "a1")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    const reads = calls.filter((x) => x.url.pathname.endsWith("b2_list_keys"));
+    expect(reads).toHaveLength(10);
+    expect(reads[0]!.url.searchParams.get("maxKeyCount")).toBe("10000");
+  });
+
+  it("refuses a page of keys that is not a list, first or later", async () => {
+    const first = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [] } };
+      return { body: { applicationKeys: [KEY] } };
+    });
+    await expect(first.c.listResources("application-key", "a1")).rejects.toThrow("is not a list");
+
+    let page = 0;
+    const later = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [] } };
+      page++;
+      return page === 1
+        ? { body: { keys: [KEY], nextApplicationKeyId: "more" } }
+        : { body: { applicationKeys: [KEY] } };
+    });
+    await expect(later.c.listResources("application-key", "a1")).rejects.toThrow("is not a list");
+  });
+
+  it("refuses an answer with no bucket list instead of pruning every bucket", async () => {
+    const { c } = client(() => ({ body: { items: [BUCKET] } }));
+    await expect(c.listResources("bucket", "a1")).rejects.toThrow("is not a list");
+    const empty = client(() => ({ text: "" }));
+    await expect(empty.c.listResources("bucket", "a1")).rejects.toThrow("is not a list");
+  });
+
+  it("refuses notification rules that are not a list, which an edit would write back", async () => {
+    const { c } = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [BUCKET] } };
+      return { body: { rules: [] } };
+    });
+    await expect(c.listResources("notification-rule", "a1")).rejects.toThrow("is not a list");
+  });
+
+  it("throws at the usage report file cap instead of pricing part of a month", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [REPORTS] } };
+      if (url.pathname.endsWith("b2_list_file_names")) {
+        return { body: { files: [], nextFileName: "more" } };
+      }
+      throw new Error(`unexpected ${url.href}`);
+    });
+    await expect(c.fetchCostData("a1", COST_RANGE)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    const reads = calls.filter((x) => x.url.pathname.endsWith("b2_list_file_names"));
+    expect(reads).toHaveLength(20);
+    expect(reads[0]!.body).toMatchObject({ maxFileCount: 10000, prefix: "2026-09-" });
+  });
+
+  it("refuses a usage report page that is not a list, first or later", async () => {
+    const first = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [REPORTS] } };
+      return { body: { objects: [] } };
+    });
+    await expect(first.c.fetchCostData("a1", COST_RANGE)).rejects.toThrow("is not a list");
+
+    let page = 0;
+    const later = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [REPORTS] } };
+      page++;
+      return page === 1 ? { body: { files: [], nextFileName: "more" } } : { body: { objects: [] } };
+    });
+    await expect(later.c.fetchCostData("a1", COST_RANGE)).rejects.toThrow("is not a list");
+  });
+
+  it("does not report a missing reports bucket when the answer has no bucket list", async () => {
+    const { c } = client(() => ({ body: { items: [REPORTS] } }));
+    await expect(c.fetchCostData("a1", COST_RANGE)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a file browser page that is not a list", async () => {
+    const { c } = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [BUCKET] } };
+      return { body: { objects: [] } };
+    });
+    await expect(c.listStorageObjects("photos-bucket", "a/")).rejects.toThrow("is not a list");
+  });
+});

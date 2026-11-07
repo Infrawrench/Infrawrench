@@ -49,6 +49,13 @@ describe("usage reports", () => {
       "2026-02",
     ]);
   });
+
+  it("throws on a range past its month cap instead of dropping the newest months", () => {
+    expect(monthsBetween("2020-01", "2025-01")).toHaveLength(61);
+    expect(() => monthsBetween("2020-01-01", "2025-02-01")).toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
 });
 
 describe("status feed", () => {

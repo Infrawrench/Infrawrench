@@ -1,6 +1,7 @@
 import type { StorageObject } from "@infrawrench/plugin-base";
+import { requireListPage } from "@infrawrench/plugin-base";
 import type { B2Api } from "./api.js";
-import { B2ApiError } from "./api.js";
+import { B2ApiError, VENDOR } from "./api.js";
 import type { B2File } from "./types.js";
 
 /**
@@ -40,6 +41,7 @@ export class B2Storage {
     const bucketId = await this.bucketId(bucketName);
     const out: StorageObject[] = [];
     let start: string | undefined;
+    // A folder view: past 50,000 entries it shows the first ones. Nothing is stored or acted on.
     for (let page = 0; page < 50; page++) {
       const res = await this.api.call<{ files?: B2File[]; nextFileName?: string | null }>(
         "b2_list_file_names",
@@ -53,7 +55,12 @@ export class B2Storage {
           },
         },
       );
-      for (const file of res?.files ?? []) {
+      const files = requireListPage(res?.files, {
+        vendor: VENDOR,
+        path: "b2_list_file_names",
+        key: "files",
+      });
+      for (const file of files) {
         const name = file.fileName.slice(prefix.length);
         if (file.action === "folder") {
           out.push({

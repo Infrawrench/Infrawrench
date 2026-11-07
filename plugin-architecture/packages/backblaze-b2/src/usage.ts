@@ -1,7 +1,12 @@
 import type { CostRow, MetricSeries } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  ListTruncatedError,
+  requireListPage,
+  withinListCap,
+} from "@infrawrench/plugin-base";
 import type { B2Api } from "./api.js";
-import { statusOf } from "./api.js";
+import { statusOf, VENDOR } from "./api.js";
 import type { B2File } from "./types.js";
 
 /**
@@ -34,6 +39,10 @@ const CLASS_D_FREE_PER_DAY = 2500;
 const CLASS_D_USD_PER_10K = 0.004;
 /** Backblaze bills storage per 30-day period, so a TB-month is 720 TB-hours. */
 const HOURS_PER_BILLING_MONTH = 720;
+/** The most b2_list_file_names answers at once; it bills per 1,000 returned, whatever the size. */
+const REPORT_PAGE_SIZE = 10_000;
+const MAX_REPORT_PAGES = 20;
+const MAX_REPORT_MONTHS = 61;
 
 export function reportsBucketName(accountId: string): string {
   return `b2-reports-${accountId}`;
@@ -138,9 +147,8 @@ export function monthsBetween(fromDate: string, toDate: string): string[] {
       m = 1;
       y++;
     }
-    if (out.length > 60) break;
   }
-  return out;
+  return withinListCap(out, MAX_REPORT_MONTHS, { vendor: VENDOR, path: "usage report months" });
 }
 
 /** Reads (and briefly caches) the account's usage reports. */
@@ -170,7 +178,11 @@ export class UsageReports {
       const res = await this.api.call<{
         buckets?: Array<{ bucketId: string; bucketName: string }>;
       }>("b2_list_buckets", { body: { accountId: s.accountId, bucketName: name } });
-      found = res?.buckets ?? [];
+      found = requireListPage(res?.buckets, {
+        vendor: VENDOR,
+        path: "b2_list_buckets",
+        key: "buckets",
+      });
     } catch (err) {
       if (statusOf(err) === 401 || statusOf(err) === 403) {
         throw new CostSetupError(
@@ -193,26 +205,42 @@ export class UsageReports {
     return { id: bucket.bucketId, name: bucket.bucketName };
   }
 
-  private async loadMonth(month: string): Promise<UsageRow[]> {
-    const bucket = await this.reportsBucket();
+  private async reportFiles(bucketId: string, month: string): Promise<B2File[]> {
     const files: B2File[] = [];
     let start: string | undefined;
-    for (let page = 0; page < 20; page++) {
+    for (let page = 0; page < MAX_REPORT_PAGES; page++) {
       const res = await this.api.call<{ files?: B2File[]; nextFileName?: string | null }>(
         "b2_list_file_names",
         {
           body: {
-            bucketId: bucket.id,
+            bucketId,
             prefix: `${month}-`,
-            maxFileCount: 1000,
+            maxFileCount: REPORT_PAGE_SIZE,
             ...(start ? { startFileName: start } : {}),
           },
         },
       );
-      files.push(...(res?.files ?? []));
+      files.push(
+        ...requireListPage(res?.files, {
+          vendor: VENDOR,
+          path: "b2_list_file_names",
+          key: "files",
+        }),
+      );
       start = res?.nextFileName ?? undefined;
-      if (!start) break;
+      if (!start) return files;
     }
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path: "b2_list_file_names",
+      items: files.length,
+      maxPages: MAX_REPORT_PAGES,
+    });
+  }
+
+  private async loadMonth(month: string): Promise<UsageRow[]> {
+    const bucket = await this.reportsBucket();
+    const files = await this.reportFiles(bucket.id, month);
     const usageFiles = files.filter(
       (f) => f.action !== "folder" && /(^|\/)usage[^/]*\.csv$/i.test(f.fileName),
     );
