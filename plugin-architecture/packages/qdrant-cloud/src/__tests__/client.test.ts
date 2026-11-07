@@ -146,6 +146,115 @@ describe("transport", () => {
   });
 });
 
+describe("calls that name the cluster", () => {
+  const KEYS = `api.cloud.qdrant.io/api/cluster/auth/v2/accounts/${ACC}/database-api-keys`;
+  const SCHEDULES = `api.cloud.qdrant.io/api/cluster/backup/v1/accounts/${ACC}/backup_schedules`;
+  const schedule = {
+    id: "s1",
+    accountId: ACC,
+    clusterId: "c1",
+    schedule: "0 2 * * *",
+    retentionPeriod: "604800s",
+    status: "BACKUP_SCHEDULE_STATUS_ACTIVE",
+  };
+
+  it("deletes a database key with the cluster the list says it belongs to", async () => {
+    const { http, c } = client();
+    http.route("GET", KEYS, {
+      items: [
+        { id: "k9", clusterId: "c9" },
+        { id: "k1", clusterId: "c1" },
+      ],
+    });
+    http.route("DELETE", `${KEYS}/k1`, {});
+    await c.deleteResource("database-api-key", `${HOST_ACCOUNT}:database-api-key:k1`, HOST_ACCOUNT);
+    const del = http.calls.find((x) => x.method === "DELETE")!;
+    expect(del.url.pathname).toMatch(/\/database-api-keys\/k1$/);
+    expect(del.url.searchParams.get("clusterId")).toBe("c1");
+  });
+
+  it("answers 404 for a key the list no longer has, and deletes nothing", async () => {
+    const { http, c } = client();
+    http.route("GET", KEYS, { items: [{ id: "k9", clusterId: "c9" }] });
+    const err = await c
+      .deleteResource("database-api-key", `${HOST_ACCOUNT}:database-api-key:k1`, HOST_ACCOUNT)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(QdrantApiError);
+    expect((err as QdrantApiError).status).toBe(404);
+    expect(http.calls.some((x) => x.method === "DELETE")).toBe(false);
+  });
+
+  it("refuses to delete a key whose row names no cluster", async () => {
+    const { http, c } = client();
+    http.route("GET", KEYS, { items: [{ id: "k1" }] });
+    await expect(
+      c.deleteResource("database-api-key", `${HOST_ACCOUNT}:database-api-key:k1`, HOST_ACCOUNT),
+    ).rejects.toThrow(/cluster/);
+    expect(http.calls.some((x) => x.method === "DELETE")).toBe(false);
+  });
+
+  it("refuses a blank id on every delete", async () => {
+    const { http, c } = client();
+    for (const type of ["cluster", "database-api-key", "backup", "backup-schedule"]) {
+      await expect(
+        c.deleteResource(type, `${HOST_ACCOUNT}:${type}:`, HOST_ACCOUNT),
+      ).rejects.toThrow(/no id/);
+    }
+    expect(http.calls).toEqual([]);
+  });
+
+  it("reads a backup schedule with its cluster", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    http.route("GET", SCHEDULES, { items: [{ ...schedule, id: "s9", clusterId: "c9" }, schedule] });
+    http.route("GET", `${SCHEDULES}/s1`, { backupSchedule: schedule });
+    const r = await c.getResource(
+      "backup-schedule",
+      `${HOST_ACCOUNT}:backup-schedule:s1`,
+      HOST_ACCOUNT,
+    );
+    expect(r.fields).toMatchObject({ clusterId: "c1", clusterName: "search" });
+    const read = http.calls.find((x) => x.url.pathname.endsWith("/backup_schedules/s1"))!;
+    expect(read.url.searchParams.get("clusterId")).toBe("c1");
+  });
+
+  it("answers 404 for a schedule the list no longer has", async () => {
+    const { http, c } = client();
+    http.route("GET", SCHEDULES, {});
+    http.route("GET", `${SCHEDULES}/s1`, { backupSchedule: schedule });
+    const err = await c
+      .getResource("backup-schedule", `${HOST_ACCOUNT}:backup-schedule:s1`, HOST_ACCOUNT)
+      .catch((e) => e);
+    expect((err as QdrantApiError).status).toBe(404);
+  });
+
+  it("edits a schedule on top of what the read with its cluster returned", async () => {
+    const { http, c } = client();
+    http.route("GET", `${BASE}/clusters`, { items: [cluster] });
+    http.route("GET", SCHEDULES, { items: [schedule] });
+    http.route("GET", `${SCHEDULES}/s1`, { backupSchedule: schedule });
+    http.route("PUT", `${SCHEDULES}/s1`, { backupSchedule: schedule });
+    await c.updateResource("backup-schedule", `${HOST_ACCOUNT}:backup-schedule:s1`, HOST_ACCOUNT, {
+      retentionDays: "14",
+    });
+    const reads = http.calls.filter(
+      (x) => x.url.pathname.endsWith("/backup_schedules/s1") && x.method === "GET",
+    );
+    expect(reads.length).toBeGreaterThan(0);
+    for (const read of reads) expect(read.url.searchParams.get("clusterId")).toBe("c1");
+    const put = http.calls.find((x) => x.method === "PUT")!;
+    expect(put.body).toEqual({
+      backupSchedule: {
+        id: "s1",
+        accountId: ACC,
+        clusterId: "c1",
+        schedule: "0 2 * * *",
+        retentionPeriod: "1209600s",
+      },
+    });
+  });
+});
+
 describe("cluster updates", () => {
   it("applies edits on top of the current cluster and strips state", () => {
     const body = buildClusterUpdate(

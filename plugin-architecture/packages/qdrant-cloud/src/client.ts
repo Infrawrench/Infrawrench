@@ -34,6 +34,7 @@ import {
   daysToDuration,
   errorText,
   isStatus,
+  QdrantApiError,
   type QdrantCloudApi,
   type QdrantConnection,
 } from "./api.js";
@@ -71,6 +72,7 @@ import type {
   QcAccessRule,
   QcAlert,
   QcBackup,
+  QcBackupSchedule,
   QcCluster,
   QcCreditContracts,
   QcDatabaseApiKey,
@@ -405,6 +407,46 @@ export class QdrantCloudClient implements PluginClient {
     return res?.items ?? [];
   }
 
+  /**
+   * The cluster a database key belongs to. Qdrant's delete requires it and only the
+   * resource id reaches a delete, so it comes from the account's list of keys.
+   */
+  private async databaseKeyCluster(id: string): Promise<string> {
+    const key = (await this.listDatabaseKeys()).find((k) => k.id === id);
+    if (!key) {
+      throw new QdrantApiError(404, "database-api-keys", `Database API key ${id} was not found.`);
+    }
+    if (!key.clusterId) throw new Error(`Qdrant Cloud did not say which cluster key ${id} is on.`);
+    return key.clusterId;
+  }
+
+  private listBackupSchedules(): Promise<QcBackupSchedule[]> {
+    return collectPages((token) =>
+      this.api.get(`/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules`, {
+        query: { pageSize: 100, ...pageAfter(token) },
+      }),
+    );
+  }
+
+  /**
+   * One backup schedule. Qdrant's read requires the schedule's cluster and only the
+   * resource id reaches here, so it comes from the account's list of schedules.
+   */
+  private async getBackupSchedule(id: string): Promise<QcBackupSchedule> {
+    const row = (await this.listBackupSchedules()).find((s) => s.id === id);
+    if (!row) {
+      throw new QdrantApiError(404, "backup_schedules", `Backup schedule ${id} was not found.`);
+    }
+    if (!row.clusterId) {
+      throw new Error(`Qdrant Cloud did not say which cluster backup schedule ${id} is on.`);
+    }
+    const res = await this.api.get(
+      `/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules/${pathEncode(id)}`,
+      { query: { clusterId: row.clusterId } },
+    );
+    return res.backupSchedule;
+  }
+
   // ── Listing ──────────────────────────────────────────────────────────
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
@@ -426,14 +468,7 @@ export class QdrantCloudClient implements PluginClient {
           return list.filter((b) => !b.deletedAt).map((b) => mapBackup(b, accountId));
         }
         case "backup-schedule": {
-          const [list, clusters] = await Promise.all([
-            collectPages((token) =>
-              this.api.get(`/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules`, {
-                query: { pageSize: 100, ...pageAfter(token) },
-              }),
-            ),
-            this.clusters(),
-          ]);
+          const [list, clusters] = await Promise.all([this.listBackupSchedules(), this.clusters()]);
           const names = new Map(clusters.map((c) => [c.id, c.name]));
           return list
             .filter((s) => !s.deletedAt)
@@ -506,10 +541,7 @@ export class QdrantCloudClient implements PluginClient {
           return mapBackup(res.backup, accountId);
         }
         case "backup-schedule": {
-          const res = await this.api.get(
-            `/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules/${pathEncode(id)}`,
-          );
-          const s = res.backupSchedule;
+          const s = await this.getBackupSchedule(id);
           return mapBackupSchedule(s, await this.clusterName(s.clusterId ?? ""), accountId);
         }
         case "hybrid-environment": {
@@ -1247,10 +1279,7 @@ export class QdrantCloudClient implements PluginClient {
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "backup-schedule": {
-          const res = await this.api.get(
-            `/api/cluster/backup/v1/accounts/${this.acct}/backup_schedules/${pathEncode(id)}`,
-          );
-          const s = { ...res.backupSchedule };
+          const s = { ...(await this.getBackupSchedule(id)) };
           delete s.status;
           if (fields["schedule"]) {
             checkCron(fields["schedule"]);
@@ -1306,6 +1335,7 @@ export class QdrantCloudClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalOf(resourceId);
+      if (!id) throw new Error(`Qdrant Cloud plugin: ${typeId} delete with no id.`);
       switch (typeId) {
         case "cluster":
           await this.api.delete(`/api/cluster/v1/accounts/${this.acct}/clusters/${pathEncode(id)}`);
@@ -1314,6 +1344,7 @@ export class QdrantCloudClient implements PluginClient {
         case "database-api-key":
           await this.api.delete(
             `/api/cluster/auth/v2/accounts/${this.acct}/database-api-keys/${pathEncode(id)}`,
+            { query: { clusterId: await this.databaseKeyCluster(id) } },
           );
           return;
         case "backup":
