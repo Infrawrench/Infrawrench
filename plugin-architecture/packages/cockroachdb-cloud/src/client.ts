@@ -20,6 +20,7 @@ import {
   ListTruncatedError,
   pathEncode,
   requireListPage,
+  rethrowIncompleteList,
 } from "@infrawrench/plugin-base";
 import type { components, operations } from "./api-types.gen.js";
 import type {
@@ -445,7 +446,10 @@ export class CockroachClient implements PluginClient {
       case "crdb-api-key": {
         const [keys, sas] = await Promise.all([
           this.api.getAll("/api/v1/api-keys", "api_keys"),
-          this.serviceAccounts().catch((): CServiceAccount[] => []),
+          this.serviceAccounts().catch((err: unknown): CServiceAccount[] => {
+            rethrowIncompleteList(err);
+            return [];
+          }),
         ]);
         const names = new Map(sas.map((s) => [s.id, s.name]));
         return keys.map((k) =>
@@ -480,7 +484,12 @@ export class CockroachClient implements PluginClient {
       advanced ? settle(this.api.get(`/api/v1/clusters/${id}/cmek`)) : undefined,
       c.config.host
         ? undefined
-        : settle(this.api.getAll(`/api/v1/clusters/${id}/networking/allowlist`, "allowlist")),
+        : this.api
+            .getAll(`/api/v1/clusters/${id}/networking/allowlist`, "allowlist")
+            .catch((err: unknown) => {
+              rethrowIncompleteList(err);
+              return undefined;
+            }),
     ]);
     return clusterResource(c, accountId, { backups, deferral, window, cmek, allowlist });
   }

@@ -469,6 +469,109 @@ describe("CockroachClient", () => {
       expect(rows.map((r) => r.externalId)).toEqual(["c1/prometheus"]);
     });
   });
+
+  describe("lists that cannot say they are complete", () => {
+    const endless: Route = (call) =>
+      new URL(call.url).pathname === "/api/v1/clusters/c1/databases"
+        ? { status: 200, body: { databases: [], pagination: { next_page: "more" } } }
+        : undefined;
+
+    it("rejects a list that never ends, after exactly the page cap", async () => {
+      const { client, calls } = fake([
+        on("GET", "/api/v1/clusters", { clusters: [cluster] }),
+        endless,
+      ]);
+      await expect(client.listResources("crdb-database", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls.filter((c) => c.url.includes("/databases"))).toHaveLength(100);
+    });
+
+    it("reaches the caller through the service account lookup on API keys", async () => {
+      const { client } = fake([
+        on("GET", "/api/v1/api-keys", { api_keys: [] }),
+        on("GET", "/api/v1/service-accounts", { renamed: [] }),
+      ]);
+      await expect(client.listResources("crdb-api-key", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("still lists API keys when the service accounts are off limits", async () => {
+      const { client } = fake([
+        on("GET", "/api/v1/api-keys", {
+          api_keys: [{ id: "k", name: "k", service_account_id: "s", created_at: "" }],
+        }),
+        on("GET", "/api/v1/service-accounts", { code: 7, message: "denied" }, 403),
+      ]);
+      const rows = await client.listResources("crdb-api-key", ACCOUNT);
+      expect(rows.map((r) => r.externalId)).toEqual(["k"]);
+    });
+
+    it("reaches the caller through the allowlist read on a cluster", async () => {
+      const { client } = fake([
+        on("GET", "/api/v1/clusters", { clusters: [cluster] }),
+        on("GET", "/api/v1/clusters/c1/networking/allowlist", { renamed: [] }),
+      ]);
+      await expect(client.listResources("crdb-cluster", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("still lists a cluster when its allowlist is off limits", async () => {
+      const { client } = fake([
+        on("GET", "/api/v1/clusters", { clusters: [cluster] }),
+        on("GET", "/api/v1/clusters/c1/networking/allowlist", { code: 7, message: "no" }, 403),
+      ]);
+      const [row] = await client.listResources("crdb-cluster", ACCOUNT);
+      expect(row!.fields["allowlistOpen"]).toBeUndefined();
+    });
+  });
+
+  describe("transport", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const noFetch = () => {
+      const stub = vi.fn(() => {
+        throw new Error("unexpected fetch");
+      });
+      vi.stubGlobal("fetch", stub);
+      return stub;
+    };
+
+    const hostAnswering = () =>
+      vi.fn<NonNullable<HostServices["http"]>["request"]>(async () => ({
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ folders: [] }),
+      }));
+
+    it("goes through the host with no CA, and never fetch", async () => {
+      const stub = noFetch();
+      const request = hostAnswering();
+      const client = hostClient(new CockroachClient({ apiKey: "CCDB1_k" }, { http: { request } }));
+      await client.listResources("crdb-folder", ACCOUNT);
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(request.mock.calls[0]![0]).not.toHaveProperty("caCert");
+      expect(stub).not.toHaveBeenCalled();
+    });
+
+    it("hands the host a CA when one is set", async () => {
+      noFetch();
+      const request = hostAnswering();
+      const client = hostClient(
+        new CockroachClient({ apiKey: "CCDB1_k", caCert: "PEM" }, { http: { request } }),
+      );
+      await client.listResources("crdb-folder", ACCOUNT);
+      expect(request.mock.calls[0]![0]).toHaveProperty("caCert", "PEM");
+    });
+
+    it("uses fetch only with no host", async () => {
+      const stub = vi.fn(async () => new Response(JSON.stringify({ folders: [] })));
+      vi.stubGlobal("fetch", stub);
+      const client = hostClient(new CockroachClient({ apiKey: "CCDB1_k" }));
+      await client.listResources("crdb-folder", ACCOUNT);
+      expect(stub).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe("helpers", () => {
