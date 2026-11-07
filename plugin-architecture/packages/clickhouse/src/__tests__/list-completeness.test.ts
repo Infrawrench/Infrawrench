@@ -381,6 +381,16 @@ describe("databases", () => {
     expect(sdk.urls).toEqual([]);
   });
 
+  it("does not wake an idle service to list it, and keeps its rows", async () => {
+    serve(list(service("svc1", "idle")));
+    const { value, unread } = await inListScope(() =>
+      client().listResources("ch-database", ACCOUNT),
+    );
+    expect(value).toEqual([]);
+    expect(unread).toEqual([{ parentResourceIds: ["acct-1:ch-service:svc1"] }]);
+    expect(sdk.urls).toEqual([]);
+  });
+
   it("keeps every row when there is no SQL connection to read them with", async () => {
     serve(list(service("svc1")));
     const { value, unread } = await inListScope(() =>

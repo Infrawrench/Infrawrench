@@ -364,8 +364,9 @@ export class ClickHouseClient implements PluginClient {
     const unread: string[] = [];
     let refusal: unknown;
     for (const svc of own.length > 0 ? own : services) {
-      // A service that is not up cannot be asked, which says nothing about its databases.
-      if (svc.fields["state"] !== "running" && svc.fields["state"] !== "idle") {
+      // A service that is not up says nothing about its databases. That includes an idle
+      // one: a query would wake it, and on every poll would keep it from idling and bill it.
+      if (svc.fields["state"] !== "running") {
         unread.push(svc.id);
         continue;
       }

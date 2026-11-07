@@ -204,7 +204,7 @@ describe("cloudApi (via listResources ch-service)", () => {
 });
 
 describe("listResources ch-database", () => {
-  it("queries databases for running/idle services only", async () => {
+  it("queries databases for running services only", async () => {
     router([
       [
         (u) => u.includes("/services"),
@@ -226,13 +226,12 @@ describe("listResources ch-database", () => {
     ]);
     sdkState.jsonResult = [{ name: "default", engine: "Atomic", comment: "" }];
     const res = await client().listResources("ch-database", ACCOUNT);
-    // svc1 + svc3 are running/idle → 2 db results; svc2 skipped
-    expect(res).toHaveLength(2);
+    // Only svc1 is up: svc2 is stopped, and a query would wake idle svc3.
+    expect(res).toHaveLength(1);
     // Database listing runs through ctx.chQuery, which targets the single
     // configured credential host: one SDK client per queried service.
     const urls = sdkState.createArgs.map((a) => (a as { url: string }).url);
-    expect(urls).toHaveLength(2);
-    expect(urls.every((u) => u === "https://h.clickhouse.cloud:8443")).toBe(true);
+    expect(urls).toEqual(["https://h.clickhouse.cloud:8443"]);
   });
 
   it("fails when chQuery throws, so a sync keeps the stored rows", async () => {
