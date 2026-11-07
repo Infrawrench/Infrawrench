@@ -191,3 +191,52 @@ describe("Weaviate Cloud's cluster list", () => {
     );
   });
 });
+
+describe("child lists of a cluster", () => {
+  const cases: Array<[string, string, unknown]> = [
+    ["collection", "/v1/schema", { classes: [] }],
+    ["alias", "/v1/aliases", { aliases: [] }],
+    ["db-user", "/v1/users/db", []],
+    ["role", "/v1/authz/roles", []],
+    ["backup", "/v1/backups/gcs", []],
+  ];
+
+  function cluster(type: string, path: string, answer: unknown) {
+    const { http, c } = client();
+    if (type === "backup") http.route("GET", `${HOST}/v1/meta`, { modules: { "backup-gcs": {} } });
+    http.route("GET", `${HOST}${path}`, answer);
+    return c;
+  }
+
+  it.each(cases)("fails %s on an empty body rather than reading none", async (type, path) => {
+    const c = cluster(type, path, respond(200, "", true));
+    await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each(cases)("fails %s on an error object rather than reading none", async (type, path) => {
+    const c = cluster(type, path, { error: [{ message: "proxy" }], items: "x" });
+    const read = c.listResources(type, ACCOUNT);
+    if (type === "collection" || type === "alias") await expect(read).resolves.toEqual([]);
+    else await expect(read).rejects.toThrow("is not a list");
+  });
+
+  it.each(cases)("reads %s's empty answer as none", async (type, path, empty) => {
+    expect(await cluster(type, path, empty).listResources(type, ACCOUNT)).toEqual([]);
+  });
+
+  it.each([
+    ["collection", "/v1/schema"],
+    ["alias", "/v1/aliases"],
+  ])("reads %s's key left out as none, as go-swagger leaves an empty list", async (type, path) => {
+    expect(await cluster(type, path, {}).listResources(type, ACCOUNT)).toEqual([]);
+  });
+
+  it.each([
+    ["collection", "/v1/schema", { classes: "nope" }],
+    ["alias", "/v1/aliases", { aliases: { a: 1 } }],
+  ])("fails %s when its key is not a list", async (type, path, answer) => {
+    await expect(cluster(type, path, answer).listResources(type, ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+});

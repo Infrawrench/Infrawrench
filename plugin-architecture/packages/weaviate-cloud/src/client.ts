@@ -16,6 +16,7 @@ import type {
 import {
   ListPageError,
   reportUnreadListPart,
+  requireListPage,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { clusterKeyOf, errorText, isStatus, normalizeEndpoint, WeaviateApi } from "./api.js";
@@ -210,6 +211,26 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R
     }),
   );
   return out;
+}
+
+/** An answer the document gives as a bare array, or a ListPageError: never read as none. */
+function arrayAnswer<T>(res: readonly T[] | null | undefined, path: string): T[] {
+  return requireListPage(res, { vendor: "Weaviate", path, key: null });
+}
+
+type KeyedPage<T> = Record<string, readonly T[] | null | undefined> | null | undefined;
+
+/**
+ * The list under `key` of an object answer. The document makes `classes` and `aliases`
+ * optional arrays, which go-swagger leaves out when empty, so a missing key is none; an
+ * empty body or anything but an object is not.
+ */
+function keyedList<T>(res: KeyedPage<T>, key: string, path: string): T[] {
+  if (!res || typeof res !== "object" || Array.isArray(res)) {
+    throw new ListPageError({ vendor: "Weaviate", path, key, found: undefined, page: res });
+  }
+  const list = res[key];
+  return list === undefined ? [] : requireListPage(list, { vendor: "Weaviate", path, key });
 }
 
 /**
@@ -465,8 +486,7 @@ export class WeaviateClient implements PluginClient {
   }
 
   private async schema(conn: Conn): Promise<WvClass[]> {
-    const res = await conn.api.request<{ classes?: WvClass[] }>("/schema");
-    return res?.classes ?? [];
+    return keyedList<WvClass>(await conn.api.request("/schema"), "classes", "/schema");
   }
 
   private async clusterViews(accountId: string): Promise<ClusterView[]> {
@@ -550,8 +570,8 @@ export class WeaviateClient implements PluginClient {
         case "alias":
           return this.perCluster(accountId, async (conn, scope) => {
             try {
-              const res = await conn.api.request<{ aliases?: WvAlias[] }>("/aliases");
-              return (res?.aliases ?? []).map((a) => mapAlias(a, scope));
+              const res = await conn.api.request<KeyedPage<WvAlias>>("/aliases");
+              return keyedList(res, "aliases", "/aliases").map((a) => mapAlias(a, scope));
             } catch (e) {
               // Aliases arrived in Weaviate 1.32; older clusters answer 404.
               if (isStatus(e, 404, 405)) return [];
@@ -563,8 +583,9 @@ export class WeaviateClient implements PluginClient {
             const backends = backupBackends(await this.meta(conn));
             const lists = await mapLimit(backends, FAN_OUT, async (backend) => {
               try {
-                const res = await conn.api.request<WvBackup[]>(`/backups/${enc(backend)}`);
-                return (res ?? []).map((b) => mapBackup(b, backend, scope));
+                const path = `/backups/${enc(backend)}`;
+                const res = await conn.api.request<WvBackup[] | null | undefined>(path);
+                return arrayAnswer(res, path).map((b) => mapBackup(b, backend, scope));
               } catch (e) {
                 if (isStatus(e, 404, 405, 422, 501)) return [];
                 throw e;
@@ -575,10 +596,10 @@ export class WeaviateClient implements PluginClient {
         case "db-user":
           return this.perCluster(accountId, async (conn, scope) => {
             try {
-              const res = await conn.api.request<WvDbUser[]>("/users/db", {
+              const res = await conn.api.request<WvDbUser[] | null | undefined>("/users/db", {
                 query: { includeLastUsedTime: true },
               });
-              return (res ?? []).map((u) => mapUser(u, scope));
+              return arrayAnswer(res, "/users/db").map((u) => mapUser(u, scope));
             } catch (e) {
               // RBAC and DB users need Weaviate 1.30+ with RBAC on.
               if (isStatus(e, 404, 405)) return [];
@@ -588,8 +609,8 @@ export class WeaviateClient implements PluginClient {
         case "role":
           return this.perCluster(accountId, async (conn, scope) => {
             try {
-              const res = await conn.api.request<WvRole[]>("/authz/roles");
-              return (res ?? []).map((r) => mapRole(r, scope));
+              const res = await conn.api.request<WvRole[] | null | undefined>("/authz/roles");
+              return arrayAnswer(res, "/authz/roles").map((r) => mapRole(r, scope));
             } catch (e) {
               if (isStatus(e, 404, 405)) return [];
               throw e;
