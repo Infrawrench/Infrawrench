@@ -28,17 +28,13 @@ import { statusOf } from "./api.js";
 
 interface CapabilityProbe {
   capability: PreflightCapability;
-  /** A read the capability depends on; how it fails is the answer. */
-  probe: (ctx: DatadogContext) => Promise<object | undefined>;
+  /** A read the capability depends on; how it fails is the answer. `now` is epoch milliseconds. */
+  probe: (ctx: DatadogContext, now: number) => Promise<object | undefined>;
 }
 
 const perm = (id: string, label: string) => ({ id, label });
 
-// Worked out once, when this module loads, not per probe (#461).
-const LOADED_AT = Date.now();
-const LOADED_AT_S = Math.floor(LOADED_AT / 1000);
-const LOADED_MONTH = new Date(LOADED_AT).toISOString().slice(0, 7);
-const LOADED_HOUR_MINUS_2 = new Date(LOADED_AT - 2 * 3600_000).toISOString().slice(0, 13);
+const epochSeconds = (ms: number) => Math.floor(ms / 1000);
 
 const PROBES: CapabilityProbe[] = [
   {
@@ -49,8 +45,10 @@ const PROBES: CapabilityProbe[] = [
         "Estimated, projected and historical cost by product and organization, and cost attribution by tag. Both keys must belong to the parent organization.",
       requiredPermissions: [perm("usage_read", "Usage Read"), perm("billing_read", "Billing Read")],
     },
-    probe: (ctx) =>
-      ctx.v2.get("/api/v2/usage/estimated_cost", { query: { start_month: LOADED_MONTH } }),
+    probe: (ctx, now) =>
+      ctx.v2.get("/api/v2/usage/estimated_cost", {
+        query: { start_month: new Date(now).toISOString().slice(0, 7) },
+      }),
   },
   {
     capability: {
@@ -59,10 +57,10 @@ const PROBES: CapabilityProbe[] = [
       description: "Hourly usage by product on each organization's Metrics tab.",
       requiredPermissions: [perm("usage_read", "Usage Read")],
     },
-    probe: (ctx) =>
+    probe: (ctx, now) =>
       ctx.v2.get("/api/v2/usage/hourly_usage", {
         query: {
-          "filter[timestamp][start]": LOADED_HOUR_MINUS_2,
+          "filter[timestamp][start]": new Date(now - 2 * 3600_000).toISOString().slice(0, 13),
           "filter[product_families]": "infra_hosts",
           "page[limit]": 1,
         },
@@ -127,11 +125,11 @@ const PROBES: CapabilityProbe[] = [
       description: "Metric queries behind the host and monitor Metrics tabs.",
       requiredPermissions: [perm("timeseries_query", "Timeseries Query")],
     },
-    probe: (ctx) =>
+    probe: (ctx, now) =>
       ctx.v1.get("/api/v1/query", {
         query: {
-          from: LOADED_AT_S - 300,
-          to: LOADED_AT_S,
+          from: epochSeconds(now) - 300,
+          to: epochSeconds(now),
           query: "avg:datadog.agent.running{*}",
         },
       }),
@@ -147,7 +145,8 @@ const PROBES: CapabilityProbe[] = [
         perm("timeseries_query", "Timeseries Query"),
       ],
     },
-    probe: (ctx) => ctx.v1.get("/api/v1/metrics", { query: { from: LOADED_AT_S - 300 } }),
+    probe: (ctx, now) =>
+      ctx.v1.get("/api/v1/metrics", { query: { from: epochSeconds(now) - 300 } }),
   },
   {
     capability: {
@@ -235,10 +234,11 @@ export async function verifyDatadogCredentials(ctx: DatadogContext): Promise<Pre
     identity = undefined;
   }
 
+  const now = Date.now();
   const checks = await Promise.all(
     PROBES.map(async (probe): Promise<PreflightCapabilityCheck> => {
       try {
-        await probe.probe(ctx);
+        await probe.probe(ctx, now);
         return { capabilityId: probe.capability.id, status: "ok" };
       } catch (err) {
         const status = statusOf(err);
