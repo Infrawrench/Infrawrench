@@ -286,6 +286,55 @@ describe("a list that cannot say it has every row", () => {
   });
 });
 
+describe("a key refused for a whole admin type", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  const ADMIN_TYPES = [
+    "workspace",
+    "organization-user",
+    "invite",
+    "api-key",
+    "workspace-member",
+    "rate-limit",
+  ];
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
+  it.each(ADMIN_TYPES)("keeps the stored %s rows quietly on a 403", async (typeId) => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    installFetch(() => jsonResponse({ error: "scope" }, 403));
+
+    expect(await client().listResources(typeId, ACCOUNT)).toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+  });
+
+  it("still shows the 403 on a host that keeps no track", async () => {
+    installFetch(() => jsonResponse({ error: "scope" }, 403));
+
+    await expect(client().listResources("invite", ACCOUNT)).rejects.toThrow("403");
+  });
+
+  it.each([401, 429, 500])("fails the type on a %i", async (status) => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    installFetch(() => jsonResponse({ error: "no" }, status));
+
+    await expect(client().listResources("invite", ACCOUNT)).rejects.toThrow(String(status));
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("fails the data-plane types on a 403, which no admin scope explains", async () => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    installFetch(() => jsonResponse({ error: "no" }, 403));
+
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow("403");
+    expect(unread).not.toHaveBeenCalled();
+  });
+});
+
 describe("model mapping", () => {
   it("flattens the capabilities object into fields", async () => {
     installFetch(() =>

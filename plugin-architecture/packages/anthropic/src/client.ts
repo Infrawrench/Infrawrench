@@ -32,6 +32,7 @@ import {
   externalIdOf,
   ListPageError,
   ListTruncatedError,
+  reportUnreadListPart,
   requireListPage,
 } from "@infrawrench/plugin-base";
 import { anthropicTokenType } from "./ai-rates.js";
@@ -657,23 +658,52 @@ export class AnthropicClient implements PluginClient {
         case "file":
           return (await this.fetchFiles()).map((f) => this.mapFile(accountId, f));
         case "workspace":
-          return (await this.fetchWorkspaces()).map((w) => this.mapWorkspace(accountId, w));
+          return this.listAdminType(async () =>
+            (await this.fetchWorkspaces()).map((w) => this.mapWorkspace(accountId, w)),
+          );
         case "organization-user":
-          return (await this.fetchUsers()).map((u) => this.mapUser(accountId, u));
+          return this.listAdminType(async () =>
+            (await this.fetchUsers()).map((u) => this.mapUser(accountId, u)),
+          );
         case "invite":
-          return (await this.fetchInvites()).map((i) => this.mapInvite(accountId, i));
+          return this.listAdminType(async () =>
+            (await this.fetchInvites()).map((i) => this.mapInvite(accountId, i)),
+          );
         case "api-key":
-          return (await this.fetchApiKeys()).map((k) => this.mapApiKey(accountId, k));
+          return this.listAdminType(async () =>
+            (await this.fetchApiKeys()).map((k) => this.mapApiKey(accountId, k)),
+          );
         case "workspace-member":
-          return this.listWorkspaceMembers(accountId);
+          return this.listAdminType(() => this.listWorkspaceMembers(accountId));
         case "rate-limit":
-          return (await this.fetchRateLimits()).map((r) => this.mapRateLimit(accountId, r));
+          return this.listAdminType(async () =>
+            (await this.fetchRateLimits()).map((r) => this.mapRateLimit(accountId, r)),
+          );
         case "skill":
           return (await this.fetchSkills()).map((sk) => this.mapSkill(accountId, sk));
         default:
           throw new Error(`Anthropic plugin: unknown resource type "${typeId}"`);
       }
     });
+  }
+
+  /**
+   * Claude Enterprise admin keys carry scopes fixed at creation, and a call past them is a
+   * documented 403, so a key made for one API is refused every other type on every poll.
+   * https://platform.claude.com/docs/en/manage-claude/admin-api-keys#use-the-key
+   */
+  private async listAdminType(
+    read: () => Promise<ResourceInstance[]>,
+  ): Promise<ResourceInstance[]> {
+    try {
+      return await read();
+    } catch (err) {
+      if (!(err instanceof Error && /API error 403\b/.test(err.message))) throw err;
+      // This type's stored rows stay. A host that keeps no track (the desktop) answers false,
+      // and there the refusal should still show.
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      return [];
+    }
   }
 
   /**
