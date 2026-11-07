@@ -7,9 +7,10 @@ import { f, o, rt } from "@infrawrench/plugin-base";
  * `page`/`page_size`.
  * https://docs.mistral.ai/api/endpoint/jobs
  *
- * Mistral now files the fine-tuning API under "legacy" and no longer lists
- * the jobs endpoints in its public OpenAPI document. The listing still
- * answers, so existing jobs stay visible; nothing here creates one.
+ * Mistral now calls fine-tuning deprecated and no longer lists the jobs
+ * endpoints in its public OpenAPI document, with no removal date. Existing jobs
+ * stay visible while the listing answers, and the list reads as empty once it
+ * says the route is gone; nothing here creates one.
  * https://docs.mistral.ai/resources/deprecated/customization
  */
 export const MistralFineTuningJobResourceType = rt({

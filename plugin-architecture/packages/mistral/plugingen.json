@@ -65,7 +65,7 @@
           }
         }
       },
-      "why": "The document no longer lists GET /v1/fine_tuning/jobs, which the plugin still calls; this is the shape the plugin has always read."
+      "why": "The document no longer lists GET /v1/fine_tuning/jobs, which the plugin still calls and reads as empty once it answers 404 or 410; this is the shape the plugin has always read. Remove with the resource type if Mistral retires the route."
     },
     {
       "pointer": "/paths/~1audio~1speech/post/responses/200/content/text~1event-stream/schema",

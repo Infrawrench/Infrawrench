@@ -231,6 +231,38 @@ describe("incomplete lists", () => {
   });
 });
 
+describe("fine-tuning jobs, a route the document no longer lists", () => {
+  it.each([404, 410])("reads a %i on the first page as a retired API", async (status) => {
+    installFetch(() => jsonResponse({ detail: "Not Found" }, status));
+    expect(await client().listResources("mistral-fine-tuning-job", ACCOUNT)).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("still lists jobs while the route answers", async () => {
+    installFetch(() => jsonResponse({ data: [{ id: "ft-1", status: "SUCCESS" }] }));
+    const jobs = await client().listResources("mistral-fine-tuning-job", ACCOUNT);
+    expect(jobs.map((j) => j.externalId)).toEqual(["ft-1"]);
+  });
+
+  it("fails on any other error, so a bad day does not prune every job", async () => {
+    installFetch(() => jsonResponse({ detail: "API error 404 upstream" }, 500));
+    await expect(client().listResources("mistral-fine-tuning-job", ACCOUNT)).rejects.toThrow(
+      "API error 500",
+    );
+  });
+
+  it("fails on a 404 part way through, which is not a retired API", async () => {
+    installFetch(() =>
+      calls.length === 1
+        ? jsonResponse(fullPage("data", 100))
+        : jsonResponse({ detail: "Not Found" }, 404),
+    );
+    await expect(client().listResources("mistral-fine-tuning-job", ACCOUNT)).rejects.toThrow(
+      "API error 404",
+    );
+  });
+});
+
 /** Normalized AI tags `fetchCostData` stamps on every row (plugin-base `withAiCostTags`). */
 const MISTRAL_TAGS = { "ai:provider": "mistral" };
 

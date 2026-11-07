@@ -160,6 +160,11 @@ function speakerLabel(id: string | number | null | undefined): { speaker?: strin
   return { speaker: /^\d+$/.test(String(id)) ? `Speaker ${id}` : String(id) };
 }
 
+/** Anchored, because a provider's error body can quote a status of its own. */
+function isRouteGone(error: unknown): boolean {
+  return error instanceof Error && /^Mistral API error (404|410)\b/.test(error.message);
+}
+
 function epochToIso(seconds: number | null | undefined): string {
   if (typeof seconds !== "number" || !Number.isFinite(seconds)) return "";
   return new Date(seconds * 1000).toISOString();
@@ -391,11 +396,33 @@ export class MistralClient implements PluginClient {
     };
   }
 
-  /** `GET /v1/fine_tuning/jobs` (`page`/`page_size`). */
+  /**
+   * `GET /v1/fine_tuning/jobs` (`page`/`page_size`). The document no longer lists this
+   * route and Mistral calls the feature deprecated, with no date. A first page that
+   * says the route is gone means there is nothing left to list, rather than a failed
+   * sync on every account from then on. Later in a list, a 404 is only a failed read.
+   */
   private async listFineTuningJobs(accountId: string): Promise<ResourceInstance[]> {
-    const jobs = await this.lists.numbered.getAll("/fine_tuning/jobs", "data");
-    const now = new Date().toISOString();
-    return jobs.filter((x) => Boolean(x.id)).map((x) => this.mapFineTuningJob(accountId, x, now));
+    const path = "/fine_tuning/jobs";
+    const pageSize = 100;
+    const maxPages = 100;
+    const out: MistralFineTuningJob[] = [];
+    for (let page = 0; page < maxPages; page += 1) {
+      const query = { page, page_size: pageSize };
+      const body = await this.api.get(path, { query }).catch((error: unknown) => {
+        if (page === 0 && isRouteGone(error)) return { data: [] };
+        throw error;
+      });
+      const items = requireListPage(body.data, { vendor: "Mistral", path, key: "data" });
+      out.push(...items);
+      if (items.length < pageSize) {
+        const now = new Date().toISOString();
+        return out
+          .filter((x) => Boolean(x.id))
+          .map((x) => this.mapFineTuningJob(accountId, x, now));
+      }
+    }
+    throw new ListTruncatedError({ vendor: "Mistral", path, items: out.length, maxPages });
   }
 
   private mapFineTuningJob(
