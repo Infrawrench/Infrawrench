@@ -1448,7 +1448,15 @@ export class FireworksClient implements PluginClient {
             ? undefined
             : Number.parseInt(fields["maxReplicaCount"], 10),
       };
-      if (hasValues(patch)) await this.api.patch(`/deployments/${id}`, { body: patch });
+      if (hasValues(patch)) {
+        await patchAddingRequired(
+          patch,
+          (body) => this.api.patch(`/deployments/${id}`, { body }),
+          async () => ({
+            baseModel: (await this.api.get(`/deployments/${id}`)).baseModel || undefined,
+          }),
+        );
+      }
 
       return runPluginEffect(this.getResource(typeId, resourceId, accountId));
     });
@@ -1511,7 +1519,15 @@ export class FireworksClient implements PluginClient {
           role: fields["role"] || undefined,
           permissionPreset: fields["permissionPreset"],
         };
-        if (hasValues(patch)) await this.api.patch(`/users/${encoded}`, { body: patch });
+        if (!hasValues(patch)) return;
+        const send = (body: typeof patch) => this.api.patch(`/users/${encoded}`, { body });
+        if (patch.role) {
+          await send(patch);
+          return;
+        }
+        await patchAddingRequired(patch, send, async () => ({
+          role: (await this.api.get(`/users/${encoded}`)).role || undefined,
+        }));
         return;
       }
       case "quota": {
@@ -3276,6 +3292,27 @@ function strategyBody(
 /** Whether a patch has anything to send: `undefined` fields never reach the wire. */
 function hasValues(patch: object): boolean {
   return Object.values(patch).some((value) => value !== undefined);
+}
+
+/**
+ * The document requires `baseModel` on a deployment update and `role` on a user
+ * update, but describes no update mask, and whether Fireworks enforces either is
+ * unconfirmed (#556). So only the changed fields go first, and a 400 sends them again
+ * with the required field's stored value, which leaves that field as it was.
+ */
+async function patchAddingRequired<Body extends object>(
+  patch: Body,
+  send: (body: Body) => Promise<object>,
+  readRequired: () => Promise<Partial<Body>>,
+): Promise<void> {
+  try {
+    await send(patch);
+  } catch (error) {
+    if (!hasStatus(error, 400)) throw error;
+    const required = await readRequired().catch((): Partial<Body> => ({}));
+    if (!hasValues(required)) throw error;
+    await send({ ...patch, ...required });
+  }
 }
 
 /** `policy-picker` submits a JSON array; tolerate a comma list as well. */

@@ -257,6 +257,97 @@ describe("deployments", () => {
   });
 });
 
+describe("updates whose document requires a field", () => {
+  const deploymentId = `${ACCOUNT}:deployment:d1`;
+  const userId = `${ACCOUNT}:user:u1`;
+  const patches = () => calls.filter((call) => call.init?.method === "PATCH");
+  const patchBody = (index: number) => JSON.parse(String(patches()[index]?.init?.body));
+
+  /** Answers a PATCH without `field` with `failure`, as Fireworks would if it enforced it. */
+  function enforcing(field: string, stored: unknown, failure = 400) {
+    installFetch((_url, init) =>
+      init?.method === "PATCH" && !(field in JSON.parse(String(init.body)))
+        ? jsonResponse({ code: 3, message: `${field} is required` }, failure)
+        : jsonResponse(stored),
+    );
+  }
+
+  it("sends only the changed deployment fields when Fireworks accepts that", async () => {
+    installFetch(() => jsonResponse({ name: "accounts/my-team/deployments/d1" }));
+    await client().updateResource("deployment", deploymentId, ACCOUNT, { displayName: "New" });
+    expect(patches()).toHaveLength(1);
+    expect(patchBody(0)).toEqual({ displayName: "New" });
+  });
+
+  it("adds the stored base model when a deployment update is refused without it", async () => {
+    enforcing("baseModel", {
+      name: "accounts/my-team/deployments/d1",
+      baseModel: "accounts/fireworks/models/llama",
+    });
+    await client().updateResource("deployment", deploymentId, ACCOUNT, { displayName: "New" });
+    expect(patches()).toHaveLength(2);
+    expect(patchBody(1)).toEqual({
+      displayName: "New",
+      baseModel: "accounts/fireworks/models/llama",
+    });
+  });
+
+  it("surfaces the 400 when there is no stored base model to add", async () => {
+    enforcing("baseModel", { name: "accounts/my-team/deployments/d1" });
+    await expect(
+      client().updateResource("deployment", deploymentId, ACCOUNT, { displayName: "New" }),
+    ).rejects.toThrow(/API error 400/);
+    expect(patches()).toHaveLength(1);
+  });
+
+  it("surfaces the 400 when the stored deployment cannot be read", async () => {
+    installFetch((_url, init) =>
+      init?.method === "PATCH"
+        ? jsonResponse({ message: "bad window" }, 400)
+        : jsonResponse({ message: "down" }, 503),
+    );
+    await expect(
+      client().updateResource("deployment", deploymentId, ACCOUNT, { displayName: "New" }),
+    ).rejects.toThrow(/API error 400/);
+    expect(patches()).toHaveLength(1);
+  });
+
+  it("does not resend an update refused for anything but a 400", async () => {
+    enforcing("baseModel", { baseModel: "accounts/fireworks/models/llama" }, 500);
+    await expect(
+      client().updateResource("deployment", deploymentId, ACCOUNT, { displayName: "New" }),
+    ).rejects.toThrow(/API error 500/);
+    expect(patches()).toHaveLength(1);
+  });
+
+  it("sends only the changed user fields when Fireworks accepts that", async () => {
+    installFetch(() => jsonResponse({ name: "accounts/my-team/users/u1" }));
+    await client().updateResource("user", userId, ACCOUNT, { displayName: "Ada" });
+    expect(patches()).toHaveLength(1);
+    expect(patchBody(0)).toEqual({ displayName: "Ada" });
+  });
+
+  it("adds the stored role when a user update is refused without it", async () => {
+    enforcing("role", { name: "accounts/my-team/users/u1", role: "contributor" });
+    await client().updateResource("user", userId, ACCOUNT, { displayName: "Ada" });
+    expect(patches()).toHaveLength(2);
+    expect(patchBody(1)).toEqual({ displayName: "Ada", role: "contributor" });
+  });
+
+  it("does not replace a role the user picked with the stored one", async () => {
+    installFetch((_url, init) =>
+      init?.method === "PATCH"
+        ? jsonResponse({ message: "no such role" }, 400)
+        : jsonResponse({ role: "contributor" }),
+    );
+    await expect(
+      client().updateResource("user", userId, ACCOUNT, { role: "admin" }),
+    ).rejects.toThrow(/API error 400/);
+    expect(patches()).toHaveLength(1);
+    expect(patchBody(0)).toEqual({ role: "admin" });
+  });
+});
+
 describe("api keys", () => {
   it("wraps the create body and surfaces the once-only plaintext", async () => {
     installFetch(() =>
