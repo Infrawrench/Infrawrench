@@ -537,7 +537,12 @@ export class HoneycombClient implements PluginClient {
                 ? (
                     await v1(this.ctx, key)
                       .get(`/1/boards/${pathEncode(boardId)}/views`)
-                      .catch((): HnyBoardView[] => [])
+                      .catch((err: unknown): HnyBoardView[] => {
+                        // Only a board that has gone since, or a key refused it, has none.
+                        const status = statusOf(err);
+                        if (status === 403 || status === 404) return [];
+                        throw err;
+                      })
                   ).map((v) => mapBoardView(accountId, env, boardId, v))
                 : [],
             );

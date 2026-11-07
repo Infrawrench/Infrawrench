@@ -821,3 +821,29 @@ describe("a failed read of what the environments hang off", () => {
     expect(JSON.stringify(created)).toContain("hcxik_new");
   });
 });
+
+describe("board views", () => {
+  const routes =
+    (views: Reply) =>
+    (url: URL): Reply => {
+      if (url.pathname === "/1/auth") return { body: AUTH_V1 };
+      if (url.pathname === "/1/boards") return { body: [{ id: "b1", name: "Ops" }] };
+      if (url.pathname === "/1/boards/b1/views") return views;
+      return { status: 404 };
+    };
+
+  it("fails the list rather than read a failed read as a board with no views", async () => {
+    const { c } = client(routes({ status: 500, body: { error: "boom" } }));
+    await expect(c.listResources("board-view", ACCOUNT)).rejects.toThrow(/boom/);
+  });
+
+  it("lists a board that has gone since as having none", async () => {
+    const { c } = client(routes({ status: 404 }));
+    expect(await c.listResources("board-view", ACCOUNT)).toEqual([]);
+  });
+
+  it("rejects an answer that is not a list", async () => {
+    const { c } = client(routes({ body: { views: [] } }));
+    await expect(c.listResources("board-view", ACCOUNT)).rejects.toThrow();
+  });
+});
