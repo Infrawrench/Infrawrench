@@ -1,5 +1,15 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  pathEncode,
+  restRequest,
+  type ApiClient,
+  type ApiClientOptions,
+  type HttpHostServices,
+  type NoSlashString,
+} from "@infrawrench/plugin-base";
+import type { paths as DotcomPaths } from "./api-types.dotcom.gen.js";
+import type { paths as GhecPaths } from "./api-types.ghec.gen.js";
+import type { paths as RepoPaths } from "./api-types.repo.gen.js";
 
 /**
  * Where an account's API lives. GitHub.com serves REST from `api.github.com`;
@@ -93,6 +103,9 @@ export interface GitHubContext {
   http?: HttpHostServices;
 }
 
+/** What a client needs: the owner only decides which paths a caller writes. */
+export type GitHubConnection = Pick<GitHubContext, "token" | "host" | "caCert" | "http">;
+
 /** Thrown for any non-2xx answer, carrying the status callers branch on. */
 export class GitHubApiError extends Error {
   readonly status: number;
@@ -109,7 +122,7 @@ const STATUS_IN_MESSAGE = /GitHub API error (\d{3}) for ([^:]+): ([\s\S]*)$/;
 function friendlyMessage(status: number, path: string, body: string): string {
   let detail = body;
   try {
-    const parsed = JSON.parse(body) as { message?: string; errors?: Array<{ message?: string }> };
+    const parsed: { message?: string; errors?: Array<{ message?: string }> } = JSON.parse(body);
     const extra = (parsed.errors ?? [])
       .map((e) => e.message)
       .filter(Boolean)
@@ -121,7 +134,18 @@ function friendlyMessage(status: number, path: string, body: string): string {
   return `GitHub API error ${status} for ${path}: ${detail}`;
 }
 
-type Query = Record<string, string | number | boolean | undefined>;
+/**
+ * What a non-2xx answer throws. Read back out of the message on purpose: a path
+ * holding a colon, which only a cache id GitHub sent itself can do, does not match
+ * and stays a plain `Error`, and a request must not change how it fails.
+ */
+function failure(status: number, path: string, body: string): Error {
+  const message = `GitHub API error ${status} for ${path}: ${body}`;
+  const m = STATUS_IN_MESSAGE.exec(message);
+  if (!m) return new Error(message);
+  const code = Number(m[1]);
+  return new GitHubApiError(code, friendlyMessage(code, m[2]!, m[3]!));
+}
 
 function headers(token: string): Record<string, string> {
   return {
@@ -133,89 +157,118 @@ function headers(token: string): Record<string, string> {
 }
 
 /**
- * JSON request against the account's API host. Routed through the host HTTP
- * service whenever there is one: that is the only path that honours bastion
- * egress and a custom CA.
+ * Routed through the host HTTP service whenever there is one: that is the only
+ * path that honours bastion egress and a custom CA.
  */
-export async function ghFetch<T>(
-  ctx: Pick<GitHubContext, "token" | "host" | "caCert" | "http">,
-  path: string,
-  init?: Omit<RequestInit, "body"> & { query?: Query; body?: unknown },
-): Promise<T> {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(init?.query ?? {})) {
-    if (v !== undefined && v !== "") params.set(k, String(v));
-  }
-  const qs = params.toString();
-  const { query: _query, body, ...rest } = init ?? {};
-  const requestInit: RequestInit = {
-    ...rest,
-    ...(body !== undefined ? { body: typeof body === "string" ? body : JSON.stringify(body) } : {}),
+function clientOptions(ctx: GitHubConnection): ApiClientOptions {
+  return {
+    vendor: "GitHub",
+    baseUrl: ctx.host.apiUrl,
+    headers: headers(ctx.token),
+    http: ctx.http,
+    caCert: ctx.caCert,
+    httpError: ({ status, path, body }) => failure(status, path, body),
   };
-  try {
-    return await jsonRestFetch<T>({
-      vendor: "GitHub",
-      url: `${ctx.host.apiUrl}${path}${qs ? `?${qs}` : ""}`,
-      errorPath: path,
-      headers: headers(ctx.token),
-      ...(Object.keys(requestInit).length > 0 ? { init: requestInit } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const m = STATUS_IN_MESSAGE.exec(message);
-    if (m) {
-      const status = Number(m[1]);
-      throw new GitHubApiError(status, friendlyMessage(status, m[2]!, m[3]!));
-    }
-    throw err;
-  }
+}
+
+export type DotcomApi = ApiClient<DotcomPaths>;
+export type GhecApi = ApiClient<GhecPaths>;
+
+/**
+ * GitHub publishes one document per product and neither is a superset: only the
+ * github.com one has the organization billing routes, only the Enterprise Cloud
+ * one has `/enterprises/...`. A GHE.com host answers the same paths as github.com.
+ */
+export function dotcomApi(ctx: GitHubConnection): DotcomApi {
+  return createApiClient<DotcomPaths>(clientOptions(ctx));
+}
+
+export function ghecApi(ctx: GitHubConnection): GhecApi {
+  return createApiClient<GhecPaths>(clientOptions(ctx));
 }
 
 /**
- * A GET that also hands back the (lower-cased) response headers, for the list
- * endpoints that paginate by cursor in the `Link` header (`after`/`before`),
- * where `ghPaged`'s page numbers are refused. Same host-HTTP routing and
- * error mapping as `ghFetch`.
+ * The actions cache routes of one repository. Its id goes in the base URL because
+ * it is not always two segments: each `/` in it stays a path separator, however
+ * many there are.
  */
-export async function ghFetchWithHeaders<T>(
-  ctx: Pick<GitHubContext, "token" | "host" | "caCert" | "http">,
+export function repoApi(ctx: GitHubConnection, fullName: string): ApiClient<RepoPaths> {
+  const root = `/repos/${fullName.split("/").map(encodeURIComponent).join("/")}`;
+  return createApiClient<RepoPaths>({
+    ...clientOptions(ctx),
+    baseUrl: `${ctx.host.apiUrl}${root}`,
+    httpError: ({ status, path, body }) => failure(status, `${root}${path}`, body),
+  });
+}
+
+/**
+ * The owner's own call: organizations and enterprises have parallel routes in
+ * different documents, so each writes its own path and gets its own types.
+ */
+export function byOwner<OrgAnswer, EnterpriseAnswer>(
+  ctx: GitHubContext,
+  calls: {
+    org: (api: DotcomApi, org: NoSlashString) => Promise<OrgAnswer>;
+    enterprise: (api: GhecApi, enterprise: NoSlashString) => Promise<EnterpriseAnswer>;
+  },
+): Promise<OrgAnswer | EnterpriseAnswer> {
+  const slug = ownerSegment(ctx.owner);
+  return ctx.owner.kind === "org"
+    ? calls.org(dotcomApi(ctx), slug)
+    : calls.enterprise(ghecApi(ctx), slug);
+}
+
+/**
+ * A request no document lists, which stays hand-written. These are the shared
+ * create, edit and delete paths, which do not check the owner, as they run for
+ * the kind of owner GitHub has no such route for.
+ */
+export async function ghUnlisted<T>(
+  ctx: GitHubConnection,
+  method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string,
-  query: Query = {},
-): Promise<{ data: T; headers: Record<string, string> }> {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query)) {
-    if (v !== undefined && v !== "") params.set(k, String(v));
-  }
-  const qs = params.toString();
-  const url = `${ctx.host.apiUrl}${path}${qs ? `?${qs}` : ""}`;
-  const reqHeaders = headers(ctx.token);
-  let status: number;
-  let text: string;
-  const lower: Record<string, string> = {};
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url,
-      method: "GET",
-      headers: reqHeaders,
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-    status = res.status;
-    text = res.body;
-    for (const [k, v] of Object.entries(res.headers ?? {})) lower[k.toLowerCase()] = v;
-  } else {
-    const res = await fetch(url, { headers: reqHeaders });
-    status = res.status;
-    text = await res.text();
-    res.headers.forEach((v, k) => {
-      lower[k.toLowerCase()] = v;
-    });
-  }
-  if (status < 200 || status >= 300) {
-    throw new GitHubApiError(status, friendlyMessage(status, path, text));
-  }
-  return { data: (text ? JSON.parse(text) : undefined) as T, headers: lower };
+  body?: object,
+): Promise<T> {
+  const answer = await restRequest<T>({
+    vendor: "GitHub",
+    url: `${ctx.host.apiUrl}${path}`,
+    errorPath: path,
+    headers: headers(ctx.token),
+    init: { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) },
+    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+    ...(ctx.http ? { http: ctx.http } : {}),
+    httpError: ({ status, body: text }) => failure(status, path, text),
+  });
+  return answer.body;
+}
+
+/**
+ * For the list endpoints that paginate by cursor in the `Link` header
+ * (`after`/`before`), where page numbers are refused. These never sent a
+ * `Content-Type`, and a failure is always a {@link GitHubApiError}.
+ */
+function cursorClientOptions(ctx: GitHubConnection): ApiClientOptions {
+  return {
+    ...clientOptions(ctx),
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    httpError: ({ status, path, body }) =>
+      new GitHubApiError(status, friendlyMessage(status, path, body)),
+  };
+}
+
+/** One page of the owner's Dependabot alerts, with the (lower-cased) response headers. */
+export function dependabotAlertsPage(ctx: GitHubContext, query: { after?: string }) {
+  const options = cursorClientOptions(ctx);
+  const slug = ownerSegment(ctx.owner);
+  const paged = { state: "open", per_page: 100, ...query };
+  return ctx.owner.kind === "org"
+    ? createApiClient<DotcomPaths>(options).getResponse(`/orgs/${slug}/dependabot/alerts`, {
+        query: paged,
+      })
+    : createApiClient<GhecPaths>(options).getResponse(`/enterprises/${slug}/dependabot/alerts`, {
+        query: paged,
+      });
 }
 
 /** The `rel="next"` URL of a `Link` header, if there is one. */
@@ -236,29 +289,29 @@ export function nextLink(link: string | undefined): URL | undefined {
 
 /** POST a GraphQL query. Returns `data` and any field errors; never throws on partial data. */
 export async function ghGraphql<T>(
-  ctx: Pick<GitHubContext, "token" | "host" | "caCert" | "http">,
+  ctx: GitHubConnection,
   query: string,
-  variables: Record<string, unknown> = {},
 ): Promise<{ data?: T; errors?: Array<{ message?: string; type?: string }> }> {
-  try {
-    return await jsonRestFetch({
-      vendor: "GitHub",
-      url: ctx.host.graphqlUrl,
-      errorPath: "/graphql",
-      headers: headers(ctx.token),
-      init: { method: "POST", body: JSON.stringify({ query, variables }) },
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-      ...(ctx.http ? { http: ctx.http } : {}),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const m = STATUS_IN_MESSAGE.exec(message);
-    if (m) {
-      const status = Number(m[1]);
-      throw new GitHubApiError(status, friendlyMessage(status, m[2]!, m[3]!));
-    }
-    throw err;
-  }
+  const answer = await restRequest<{
+    data?: T;
+    errors?: Array<{ message?: string; type?: string }>;
+  }>({
+    vendor: "GitHub",
+    url: ctx.host.graphqlUrl,
+    errorPath: "/graphql",
+    headers: headers(ctx.token),
+    init: { method: "POST", body: JSON.stringify({ query, variables: {} }) },
+    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+    ...(ctx.http ? { http: ctx.http } : {}),
+    httpError: ({ status, body }) => failure(status, "/graphql", body),
+  });
+  return answer.body;
+}
+
+/** The paging parameters of one page, for a call to spread into its `query`. */
+export interface PageQuery {
+  per_page: number;
+  page: number;
 }
 
 /**
@@ -266,16 +319,14 @@ export async function ghGraphql<T>(
  * `pick` extracts the array from GitHub's `{ total_count, <things>: [] }`
  * wrapper. Stops on a short page and hard-stops at `maxPages`.
  */
-export async function ghPaged<T, R = unknown>(
-  ctx: GitHubContext,
-  path: string,
-  pick: (res: R) => T[] | undefined,
-  query: Query = {},
+export async function ghPaged<T, R>(
+  fetchPage: (query: PageQuery) => Promise<R>,
+  pick: (res: R) => readonly T[] | undefined,
   maxPages = 50,
 ): Promise<T[]> {
   const out: T[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    const res = await ghFetch<R>(ctx, path, { query: { ...query, per_page: 100, page } });
+    const res = await fetchPage({ per_page: 100, page });
     const batch = pick(res) ?? [];
     out.push(...batch);
     if (batch.length < 100) break;
@@ -289,8 +340,8 @@ export function statusOf(err: unknown): number {
 }
 
 /** URL path segment for the owner: `/orgs/acme` style roots differ per API family. */
-export function ownerSegment(owner: GitHubOwner): string {
-  return encodeURIComponent(owner.slug);
+export function ownerSegment(owner: GitHubOwner): NoSlashString {
+  return pathEncode(owner.slug);
 }
 
 /**
@@ -311,3 +362,13 @@ export function ownerBase(owner: GitHubOwner): string {
     ? `/orgs/${ownerSegment(owner)}`
     : `/enterprises/${ownerSegment(owner)}`;
 }
+
+/**
+ * A row the plugin reads without relying on any field: answers are not validated
+ * at runtime, and rows are also built here from what a form or a list already held.
+ */
+export type Sparse<T> = T extends readonly (infer Item)[]
+  ? readonly Sparse<Item>[]
+  : T extends object
+    ? { [K in keyof T]?: Sparse<T[K]> }
+    : T;

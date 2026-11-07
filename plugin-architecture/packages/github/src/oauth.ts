@@ -32,12 +32,16 @@
  */
 
 import type {
+  ApiListItem,
+  HttpHostServices,
   OAuthCompletionContext,
   OAuthCompletionResult,
   OAuthDeclaration,
   OAuthTokenSet,
 } from "@infrawrench/plugin-base";
-import { OAUTH_CREDENTIAL_KEY } from "@infrawrench/plugin-base";
+import { createApiClient, OAUTH_CREDENTIAL_KEY } from "@infrawrench/plugin-base";
+import type { operations, paths } from "./api-types.dotcom.gen.js";
+import type { Sparse } from "./api.js";
 import { formatOwner, resolveHost } from "./api.js";
 
 export const GITHUB_OAUTH: OAuthDeclaration = {
@@ -69,27 +73,46 @@ export function validateOAuthHost(credentials: Record<string, string>): string |
   return null;
 }
 
-interface GhUser {
-  login?: string;
-  name?: string | null;
-}
-
-export interface GhInstallation {
-  target_type?: string;
+/** A union of account kinds, each with only some of these. */
+export type GhInstallation = Sparse<
+  Omit<
+    ApiListItem<operations["apps/list-installations-for-authenticated-user"], "installations">,
+    "account"
+  >
+> & {
   account?: { login?: string; slug?: string; name?: string | null } | null;
+};
+
+/**
+ * The fetch the OAuth flow was handed, as the transport. A 2xx that is not JSON
+ * rejects here rather than reading as no answer: `/user` being `undefined` would
+ * be an exception further on, and failing here is what leaves the name off.
+ */
+function oauthTransport(doFetch: typeof fetch): HttpHostServices {
+  return {
+    request: async ({ url, headers }) => {
+      const res = await doFetch(url, { headers });
+      const body = await res.text();
+      if (res.ok) JSON.parse(body);
+      return { status: res.status, headers: {}, body };
+    },
+  };
 }
 
-async function getJson<T>(doFetch: typeof fetch, token: string, path: string): Promise<T> {
-  const res = await doFetch(`${API}${path}`, {
+function oauthApi(doFetch: typeof fetch, token: string) {
+  return createApiClient<paths>({
+    vendor: "GitHub",
+    baseUrl: API,
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${token}`,
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "Infrawrench",
     },
+    http: oauthTransport(doFetch),
+    contentType: "with-body",
+    httpError: ({ status, target }) => new Error(`GitHub API error ${status} for ${target}`),
   });
-  if (!res.ok) throw new Error(`GitHub API error ${res.status} for ${path}`);
-  return (await res.json()) as T;
 }
 
 /** Owner ids (`org:<login>` / `enterprise:<slug>`) the app is installed on. */
@@ -125,11 +148,9 @@ export async function fetchUserInstallations(
 ): Promise<GhInstallation[]> {
   const all: GhInstallation[] = [];
   for (let page = 1; page <= 10; page++) {
-    const body = await getJson<{ installations?: GhInstallation[] }>(
-      doFetch,
-      token,
-      `/user/installations?per_page=100&page=${page}`,
-    );
+    const body = await oauthApi(doFetch, token).get("/user/installations", {
+      query: { per_page: 100, page },
+    });
     const batch = body.installations ?? [];
     all.push(...batch);
     if (batch.length < 100) break;
@@ -148,7 +169,7 @@ export async function completeGitHubOAuth(
 ): Promise<OAuthCompletionResult> {
   const credentials: Record<string, string> = { host: "github.com" };
   const [user, installations] = await Promise.allSettled([
-    getJson<GhUser>(context.fetch, tokens.accessToken, "/user"),
+    oauthApi(context.fetch, tokens.accessToken).get("/user"),
     fetchUserInstallations(context.fetch, tokens.accessToken),
   ]);
   const owners =

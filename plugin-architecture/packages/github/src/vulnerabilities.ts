@@ -26,63 +26,27 @@
  * "no patched version", not an unknown.
  */
 
-import type { VulnerabilityFinding } from "@infrawrench/plugin-base";
+import type { ApiListItem, VulnerabilityFinding } from "@infrawrench/plugin-base";
 import {
   VulnerabilityAccessError,
   normalizeVulnerabilityFindings,
   normalizeVulnerabilitySeverity,
 } from "@infrawrench/plugin-base";
-import type { GitHubContext } from "./api.js";
-import { ghFetchWithHeaders, nextLink, ownerBase, statusOf } from "./api.js";
+import type { operations as DotcomOps } from "./api-types.dotcom.gen.js";
+import type { operations as GhecOps } from "./api-types.ghec.gen.js";
+import type { GitHubContext, Sparse } from "./api.js";
+import { dependabotAlertsPage, nextLink, statusOf } from "./api.js";
 
 /** Pages of 100 read at most: 5,000 open alerts. Beyond that the read is partial. */
 export const DEPENDABOT_MAX_PAGES = 50;
 
-interface GhPatchedVersion {
-  identifier?: string;
-}
+/** One alert, as the org / enterprise list returns it. */
+export type GhDependabotAlert = Sparse<
+  | ApiListItem<DotcomOps["dependabot/list-alerts-for-org"], null>
+  | ApiListItem<GhecOps["dependabot/list-alerts-for-enterprise"], null>
+>;
 
-interface GhPackage {
-  ecosystem?: string;
-  name?: string;
-}
-
-interface GhCvss {
-  score?: number | null;
-  vector_string?: string | null;
-}
-
-/** One alert, as the org / enterprise list returns it (fields this module reads). */
-export interface GhDependabotAlert {
-  number?: number;
-  state?: string;
-  dependency?: {
-    package?: GhPackage;
-    manifest_path?: string;
-    scope?: string | null;
-    relationship?: string | null;
-  };
-  security_advisory?: {
-    ghsa_id?: string;
-    cve_id?: string | null;
-    summary?: string;
-    severity?: string;
-    cvss?: GhCvss | null;
-    cvss_severities?: { cvss_v3?: GhCvss | null; cvss_v4?: GhCvss | null } | null;
-    identifiers?: Array<{ type?: string; value?: string }>;
-    withdrawn_at?: string | null;
-  };
-  security_vulnerability?: {
-    package?: GhPackage;
-    severity?: string;
-    vulnerable_version_range?: string;
-    first_patched_version?: GhPatchedVersion | null;
-  };
-  html_url?: string;
-  created_at?: string;
-  updated_at?: string;
-  repository?: { full_name?: string; html_url?: string };
-}
+type GhCvss = NonNullable<NonNullable<GhDependabotAlert["security_advisory"]>["cvss"]>;
 
 const HELP = {
   label: "Dependabot alert permissions",
@@ -153,21 +117,16 @@ export function mapDependabotAlert(alert: GhDependabotAlert): VulnerabilityFindi
  * a short list would read as alerts having been fixed.
  */
 export async function fetchDependabotFindings(ctx: GitHubContext): Promise<VulnerabilityFinding[]> {
-  const path = `${ownerBase(ctx.owner)}/dependabot/alerts`;
   const out: VulnerabilityFinding[] = [];
   let after: string | undefined;
   for (let page = 0; page < DEPENDABOT_MAX_PAGES; page++) {
-    let res: { data: GhDependabotAlert[]; headers: Record<string, string> };
+    let res: { body: readonly GhDependabotAlert[]; headers: Record<string, string> };
     try {
-      res = await ghFetchWithHeaders<GhDependabotAlert[]>(ctx, path, {
-        state: "open",
-        per_page: 100,
-        ...(after ? { after } : {}),
-      });
+      res = await dependabotAlertsPage(ctx, after ? { after } : {});
     } catch (err) {
       throw accessError(ctx, err) ?? err;
     }
-    for (const alert of Array.isArray(res.data) ? res.data : []) {
+    for (const alert of Array.isArray(res.body) ? res.body : []) {
       const f = mapDependabotAlert(alert);
       if (f) out.push(f);
     }

@@ -1,6 +1,6 @@
 import type { SeatPrice, SeatRecord } from "@infrawrench/plugin-base";
 import type { GitHubContext, GitHubOwner } from "./api.js";
-import { ghFetch, ownerBase, statusOf } from "./api.js";
+import { byOwner, statusOf } from "./api.js";
 import type { GhCopilotSeat } from "./mappers.js";
 
 /**
@@ -46,13 +46,14 @@ const MAX_PAGES = 500;
 export async function fetchCopilotSeatObjects(ctx: GitHubContext): Promise<GhCopilotSeat[]> {
   const out: GhCopilotSeat[] = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
-    let res: { seats?: GhCopilotSeat[] };
+    let res: { seats?: readonly GhCopilotSeat[] };
     try {
-      res = await ghFetch<{ seats?: GhCopilotSeat[] }>(
-        ctx,
-        `${ownerBase(ctx.owner)}/copilot/billing/seats`,
-        { query: { per_page: 100, page } },
-      );
+      const query = { per_page: 100, page };
+      res = await byOwner(ctx, {
+        org: (api, org) => api.get(`/orgs/${org}/copilot/billing/seats`, { query }),
+        enterprise: (api, enterprise) =>
+          api.get(`/enterprises/${enterprise}/copilot/billing/seats`, { query }),
+      });
     } catch (err) {
       if (page === 1 && statusOf(err) === 404) return [];
       throw err;

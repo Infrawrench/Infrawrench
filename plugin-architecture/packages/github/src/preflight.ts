@@ -24,17 +24,17 @@ import type {
   PreflightDeclaration,
   PreflightResult,
 } from "@infrawrench/plugin-base";
-import type { GitHubContext } from "./api.js";
-import { billingBase, ghFetch, ownerBase, statusOf } from "./api.js";
+import type { NoSlashString } from "@infrawrench/plugin-base";
+import type { DotcomApi, GhecApi, GitHubContext } from "./api.js";
+import { dotcomApi, ghecApi, ownerSegment, statusOf } from "./api.js";
 
 const perm = (id: string, label: string) => ({ id, label });
 
 interface CapabilityProbe {
   capability: PreflightCapability;
-  /** Where to probe, per owner kind; absent means "organizations only". */
-  org: (ctx: GitHubContext) => string;
-  enterprise?: (ctx: GitHubContext) => string;
-  query?: Record<string, string | number>;
+  /** What to ask, per owner kind; an owner kind with none cannot have this capability. */
+  org?: (api: DotcomApi, org: NoSlashString) => Promise<object | undefined>;
+  enterprise?: (api: GhecApi, enterprise: NoSlashString) => Promise<object | undefined>;
 }
 
 const now = new Date();
@@ -53,9 +53,10 @@ const PROBES: CapabilityProbe[] = [
       ],
       essential: true,
     },
-    org: (ctx) => `${billingBase(ctx.owner)}/usage/summary`,
-    enterprise: (ctx) => `${billingBase(ctx.owner)}/usage/summary`,
-    query: ym,
+    org: (api, org) =>
+      api.get(`/organizations/${org}/settings/billing/usage/summary`, { query: ym }),
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/settings/billing/usage/summary`, { query: ym }),
   },
   {
     capability: {
@@ -67,9 +68,10 @@ const PROBES: CapabilityProbe[] = [
         perm("manage_billing:enterprise", "Enterprise (classic token): manage_billing:enterprise"),
       ],
     },
-    org: (ctx) => `${billingBase(ctx.owner)}/budgets`,
-    enterprise: (ctx) => `${billingBase(ctx.owner)}/budgets`,
-    query: { per_page: 1 },
+    org: (api, org) =>
+      api.get(`/organizations/${org}/settings/billing/budgets`, { query: { per_page: 1 } }),
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/settings/billing/budgets`, { query: { per_page: 1 } }),
   },
   {
     capability: {
@@ -84,9 +86,9 @@ const PROBES: CapabilityProbe[] = [
         perm("manage_billing:copilot", "Enterprise (classic token): manage_billing:copilot"),
       ],
     },
-    org: (ctx) => `${ownerBase(ctx.owner)}/copilot/billing/seats`,
-    enterprise: (ctx) => `${ownerBase(ctx.owner)}/copilot/billing/seats`,
-    query: { per_page: 1 },
+    org: (api, org) => api.get(`/orgs/${org}/copilot/billing/seats`, { query: { per_page: 1 } }),
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/copilot/billing/seats`, { query: { per_page: 1 } }),
   },
   {
     capability: {
@@ -101,8 +103,9 @@ const PROBES: CapabilityProbe[] = [
         perm("read:enterprise", "Enterprise (classic token): read:enterprise"),
       ],
     },
-    org: (ctx) => `${ownerBase(ctx.owner)}/copilot/metrics/reports/organization-28-day/latest`,
-    enterprise: (ctx) => `${ownerBase(ctx.owner)}/copilot/metrics/reports/enterprise-28-day/latest`,
+    org: (api, org) => api.get(`/orgs/${org}/copilot/metrics/reports/organization-28-day/latest`),
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/copilot/metrics/reports/enterprise-28-day/latest`),
   },
   {
     capability: {
@@ -115,9 +118,9 @@ const PROBES: CapabilityProbe[] = [
         perm("manage_runners:enterprise", "Enterprise (classic token): manage_runners:enterprise"),
       ],
     },
-    org: (ctx) => `${ownerBase(ctx.owner)}/actions/hosted-runners`,
-    enterprise: (ctx) => `${ownerBase(ctx.owner)}/actions/hosted-runners`,
-    query: { per_page: 1 },
+    org: (api, org) => api.get(`/orgs/${org}/actions/hosted-runners`, { query: { per_page: 1 } }),
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/actions/hosted-runners`, { query: { per_page: 1 } }),
   },
   {
     capability: {
@@ -131,8 +134,7 @@ const PROBES: CapabilityProbe[] = [
         ),
       ],
     },
-    org: (ctx) => `${ownerBase(ctx.owner)}/actions/runners`,
-    query: { per_page: 1 },
+    org: (api, org) => api.get(`/orgs/${org}/actions/runners`, { query: { per_page: 1 } }),
   },
   {
     capability: {
@@ -145,8 +147,8 @@ const PROBES: CapabilityProbe[] = [
         perm("actions:write", "Repository: Actions (read and write)"),
       ],
     },
-    org: (ctx) => `${ownerBase(ctx.owner)}/actions/cache/usage-by-repository`,
-    query: { per_page: 1 },
+    org: (api, org) =>
+      api.get(`/orgs/${org}/actions/cache/usage-by-repository`, { query: { per_page: 1 } }),
   },
   {
     capability: {
@@ -160,8 +162,7 @@ const PROBES: CapabilityProbe[] = [
         ),
       ],
     },
-    org: (ctx) => `${ownerBase(ctx.owner)}/codespaces`,
-    query: { per_page: 1 },
+    org: (api, org) => api.get(`/orgs/${org}/codespaces`, { query: { per_page: 1 } }),
   },
   {
     capability: {
@@ -173,8 +174,7 @@ const PROBES: CapabilityProbe[] = [
         perm("secret_scanning_alerts:write", "Repository: Secret scanning alerts (read and write)"),
       ],
     },
-    org: (ctx) => `${ownerBase(ctx.owner)}/secret-scanning/alerts`,
-    query: { per_page: 1 },
+    org: (api, org) => api.get(`/orgs/${org}/secret-scanning/alerts`, { query: { per_page: 1 } }),
   },
   {
     capability: {
@@ -187,9 +187,12 @@ const PROBES: CapabilityProbe[] = [
         perm("security_events", "Enterprise (classic token): security_events or repo"),
       ],
     },
-    org: (ctx) => `${ownerBase(ctx.owner)}/dependabot/alerts`,
-    enterprise: (ctx) => `${ownerBase(ctx.owner)}/dependabot/alerts`,
-    query: { state: "open", per_page: 1 },
+    org: (api, org) =>
+      api.get(`/orgs/${org}/dependabot/alerts`, { query: { state: "open", per_page: 1 } }),
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/dependabot/alerts`, {
+        query: { state: "open", per_page: 1 },
+      }),
   },
   {
     capability: {
@@ -200,8 +203,8 @@ const PROBES: CapabilityProbe[] = [
         perm("manage_billing:enterprise", "Enterprise (classic token): manage_billing:enterprise"),
       ],
     },
-    org: () => "",
-    enterprise: (ctx) => `${billingBase(ctx.owner)}/cost-centers`,
+    enterprise: (api, enterprise) =>
+      api.get(`/enterprises/${enterprise}/settings/billing/cost-centers`),
   },
 ];
 
@@ -212,8 +215,8 @@ export const GITHUB_PREFLIGHT: PreflightDeclaration = {
 
 async function probe(ctx: GitHubContext, p: CapabilityProbe): Promise<PreflightCapabilityCheck> {
   const id = p.capability.id;
-  const path = ctx.owner.kind === "org" ? p.org(ctx) : p.enterprise?.(ctx);
-  if (!path) {
+  const isOrg = ctx.owner.kind === "org";
+  if (!(isOrg ? p.org : p.enterprise)) {
     return {
       capabilityId: id,
       status: "unknown",
@@ -224,7 +227,8 @@ async function probe(ctx: GitHubContext, p: CapabilityProbe): Promise<PreflightC
     };
   }
   try {
-    await ghFetch<unknown>(ctx, path, p.query ? { query: p.query } : undefined);
+    const slug = ownerSegment(ctx.owner);
+    await (isOrg ? p.org?.(dotcomApi(ctx), slug) : p.enterprise?.(ghecApi(ctx), slug));
     return { capabilityId: id, status: "ok" };
   } catch (err) {
     const status = statusOf(err);
@@ -254,7 +258,9 @@ async function probe(ctx: GitHubContext, p: CapabilityProbe): Promise<PreflightC
 }
 
 export async function verifyGitHubCredentials(ctx: GitHubContext): Promise<PreflightResult> {
-  const user = await ghFetch<{ login?: string }>(ctx, "/user").catch(() => undefined);
+  const user = await dotcomApi(ctx)
+    .get("/user")
+    .catch(() => undefined);
   const checks = await Promise.all(PROBES.map((p) => probe(ctx, p)));
   return {
     checks,

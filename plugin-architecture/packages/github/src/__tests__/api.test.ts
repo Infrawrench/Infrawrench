@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { pathEncode } from "@infrawrench/plugin-base";
 import {
   billingBase,
-  ghFetch,
+  dotcomApi,
   GitHubApiError,
   ownerBase,
   parseOwner,
@@ -54,10 +55,10 @@ describe("parseOwner", () => {
   });
 });
 
-describe("ghFetch", () => {
+describe("dotcomApi", () => {
   it("sends the token, API version and a user agent", async () => {
     const { http, calls } = makeHttp(() => ({ body: { ok: true } }));
-    await ghFetch(ctxWith(http), "/user");
+    await dotcomApi(ctxWith(http)).get("/user");
     expect(calls[0]!.headers["Authorization"]).toBe("Bearer tok");
     expect(calls[0]!.headers["X-GitHub-Api-Version"]).toBe("2022-11-28");
     expect(calls[0]!.headers["User-Agent"]).toBe("Infrawrench");
@@ -68,7 +69,9 @@ describe("ghFetch", () => {
       status: 403,
       body: { message: "Resource not accessible by personal access token" },
     }));
-    const err = await ghFetch(ctxWith(http), "/orgs/x/codespaces").catch((e: unknown) => e);
+    const err = await dotcomApi(ctxWith(http))
+      .get(`/orgs/${pathEncode("x")}/codespaces`)
+      .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(GitHubApiError);
     expect((err as GitHubApiError).status).toBe(403);
     expect((err as Error).message).toContain("Resource not accessible by personal access token");
