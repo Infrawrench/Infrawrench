@@ -55,13 +55,11 @@ import type {
   AxDashboard,
   AxDataset,
   AxDatasetCapability,
-  AxField,
   AxMonitor,
   AxNotifierProperties,
   AxNotifierRow,
   AxOrg,
   AxStarredQuery,
-  AxVirtualField,
 } from "./types.js";
 
 const TOKEN_SECRET_FIELD = "token";
@@ -89,6 +87,20 @@ function csv(value: string | undefined): string[] {
     .split(",")
     .map((v) => v.trim())
     .filter(Boolean);
+}
+
+/**
+ * What a dataset's field list may answer and still mean "none": a dataset this token
+ * cannot read or that has just gone, and the 400 the document gives a metrics dataset.
+ * Anything else fails the list, since the sync prunes what it stops seeing.
+ */
+function noFieldsWhen(dataset: AxDataset): (err: unknown) => never[] {
+  return (err) => {
+    const status = statusOf(err);
+    if (status === 403 || status === 404) return [];
+    if (status === 400 && dataset.kind === "otel:metrics:v1") return [];
+    throw err;
+  };
 }
 
 const ORG_CAPABILITIES = [
@@ -331,7 +343,7 @@ export class AxiomClient implements PluginClient {
               const id = d.id ?? d.name ?? "";
               const fields = await this.api
                 .get(`/datasets/${pathEncode(id)}/fields`)
-                .catch((): AxField[] => []);
+                .catch(noFieldsWhen(d));
               return (fields ?? []).map((f) => mapField(accountId, id, f));
             });
             return out.flat();
@@ -342,7 +354,7 @@ export class AxiomClient implements PluginClient {
             const out = await mapPooled(sets, POOL, async (d) => {
               const list = await this.api
                 .get("/vfields", { query: { dataset: d.name ?? d.id ?? "" } })
-                .catch((): AxVirtualField[] => []);
+                .catch(noFieldsWhen(d));
               return (list ?? []).map((v) =>
                 mapVirtualField(accountId, { ...v, dataset: v.dataset ?? d.id ?? d.name ?? "" }),
               );

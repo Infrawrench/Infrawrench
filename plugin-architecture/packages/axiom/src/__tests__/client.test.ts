@@ -1,7 +1,7 @@
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
-import { AxiomApiError } from "../api.js";
+import { AxiomApiError, statusOf } from "../api.js";
 import { firstRows, queryBase, rowsToSeries, tableRows } from "../apl.js";
 import { AxiomClient, logLine, monitorBody, notifierProperties } from "../client.js";
 import { mapDataset, mapNotifier, redactUrl } from "../mappers.js";
@@ -327,4 +327,62 @@ describe("terraform", () => {
     });
     expect(n?.variables?.[0]?.sensitive).toBe(true);
   });
+});
+
+describe("field listings", () => {
+  const DATASETS = [
+    { id: "a", name: "a", kind: "axiom:events:v1" },
+    { id: "b", name: "b", kind: "axiom:events:v1" },
+    { id: "m", name: "m", kind: "otel:metrics:v1" },
+  ];
+
+  /** Lists of both field types, with one dataset answering `reply`. */
+  function fieldsWith(dataset: string, reply: { status: number } | "drop") {
+    return client((url) => {
+      if (url.pathname === "/v2/datasets") return { body: DATASETS };
+      const name = url.searchParams.get("dataset") ?? url.pathname.split("/")[3];
+      if (name === dataset) {
+        if (reply === "drop") throw new Error("connection reset");
+        return { status: reply.status, body: { message: "no" } };
+      }
+      if (url.pathname.endsWith("/fields"))
+        return { body: [{ name: `${name}-f`, type: "string" }] };
+      if (url.pathname === "/v2/vfields") return { body: [{ id: `${name}-v`, name: "v" }] };
+      return { status: 404 };
+    }).c;
+  }
+
+  for (const type of ["field", "virtual-field"]) {
+    it(`fails a ${type} list when one dataset answers 500, rather than reading it as empty`, async () => {
+      const err = await fieldsWith("b", { status: 500 })
+        .listResources(type, ACCOUNT)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(AxiomApiError);
+      expect(statusOf(err)).toBe(500);
+    });
+
+    it(`fails a ${type} list when one dataset's connection drops`, async () => {
+      await expect(fieldsWith("b", "drop").listResources(type, ACCOUNT)).rejects.toThrow(
+        "connection reset",
+      );
+    });
+
+    it(`fails a ${type} list on a 400 from a dataset that is not a metrics dataset`, async () => {
+      await expect(fieldsWith("b", { status: 400 }).listResources(type, ACCOUNT)).rejects.toThrow(
+        /400/,
+      );
+    });
+
+    for (const status of [403, 404]) {
+      it(`keeps the other datasets of a ${type} list when one you cannot read answers ${status}`, async () => {
+        const rows = await fieldsWith("b", { status }).listResources(type, ACCOUNT);
+        expect(rows).toHaveLength(2);
+      });
+    }
+
+    it(`reads the documented 400 of a metrics dataset as no ${type}s`, async () => {
+      const rows = await fieldsWith("m", { status: 400 }).listResources(type, ACCOUNT);
+      expect(rows).toHaveLength(2);
+    });
+  }
 });
