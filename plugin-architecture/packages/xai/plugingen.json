@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs.x.ai/openapi.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1v1~1files~1{file_id}~1public-url~1revoke/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "type": "object" }
+          }
+        }
+      },
+      "why": "The document declares no body here, and the plugin sends `{}` as it does to the create route beside it. Kept so the request stays the same."
+    }
+  ],
+  "paths": {
+    "/v1/api-key": ["get"],
+    "/v1/language-models": ["get"],
+    "/v1/image-generation-models": ["get"],
+    "/v1/video-generation-models": ["get"],
+    "/v1/embedding-models": ["get"],
+    "/v1/files": ["get"],
+    "/v1/files/{file_id}": ["delete"],
+    "/v1/files/{file_id}/public-url": ["post"],
+    "/v1/files/{file_id}/public-url/revoke": ["post"],
+    "/v1/skills": ["get"],
+    "/v1/skills/{skill_id}": ["delete"]
+  }
+}

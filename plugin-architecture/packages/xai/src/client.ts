@@ -28,8 +28,10 @@ import {
   CreditAccessError,
   base64ToBytes,
   jsonRestFetch,
+  pathEncode,
   withAiCostTags,
 } from "@infrawrench/plugin-base";
+import { INFERENCE_BASE, createInferenceApi, type InferenceApi } from "./api.js";
 import {
   type XaiInvoice,
   type XaiInvoicePreview,
@@ -53,7 +55,6 @@ import {
   splitDocumentId,
 } from "./collections.js";
 
-const INFERENCE_BASE = "https://api.x.ai";
 const MANAGEMENT_BASE = "https://management-api.x.ai";
 
 /** Docs: POST /v1/tts caps `text` at 15,000 characters. */
@@ -142,66 +143,6 @@ const DASH = "—";
 
 // ---------------------------------------------------------------- API shapes
 
-interface XaiLanguageModel {
-  id: string;
-  owned_by?: string;
-  version?: string;
-  fingerprint?: string;
-  created?: number;
-  aliases?: string[];
-  input_modalities?: string[];
-  output_modalities?: string[];
-  long_context_threshold?: number;
-  prompt_text_token_price?: number;
-  completion_text_token_price?: number;
-  cached_prompt_text_token_price?: number;
-  prompt_text_token_price_long_context?: number;
-  completion_text_token_price_long_context?: number;
-  cached_prompt_text_token_price_long_context?: number;
-  prompt_image_token_price?: number;
-  search_price?: number;
-  /** Optional request parameters the model accepts. */
-  capabilities?: {
-    reasoning_effort?: string[];
-    default_reasoning_effort?: string | null;
-  } | null;
-}
-
-interface XaiImageModel {
-  id: string;
-  owned_by?: string;
-  version?: string;
-  fingerprint?: string;
-  created?: number;
-  aliases?: string[];
-  input_modalities?: string[];
-  output_modalities?: string[];
-  image_price?: number;
-  max_prompt_length?: number;
-  /** Per-image price by quality and resolution, on the same 1e8 scale. */
-  pricing?: Array<{ quality?: string; resolution?: string; price_per_image?: number }>;
-}
-
-interface XaiVideoModel {
-  id: string;
-  owned_by?: string;
-  version?: string;
-  fingerprint?: string;
-  created?: number;
-  aliases?: string[];
-  input_modalities?: string[];
-  output_modalities?: string[];
-}
-
-interface XaiSkill {
-  id: string;
-  name?: string;
-  description?: string;
-  default_version?: string;
-  latest_version?: string;
-  created_at?: number;
-}
-
 interface XaiBatchRequestMeta {
   batch_request_id?: string;
   create_time?: string;
@@ -209,30 +150,6 @@ interface XaiBatchRequestMeta {
   finish_time?: string | null;
   model?: string;
   state?: string;
-}
-
-interface XaiEmbeddingModel {
-  id: string;
-  owned_by?: string;
-  version?: string;
-  fingerprint?: string;
-  created?: number;
-  aliases?: string[];
-  input_modalities?: string[];
-  output_modalities?: string[];
-  prompt_text_token_price?: number;
-  prompt_image_token_price?: number;
-}
-
-interface XaiFile {
-  id: string;
-  filename: string;
-  bytes?: number;
-  created_at?: number;
-  expires_at?: number | null;
-  purpose?: string;
-  public_url?: string | null;
-  public_url_expires_at?: number | null;
 }
 
 interface XaiBatch {
@@ -373,6 +290,7 @@ export class XaiClient implements PluginClient {
   private readonly managementKey: string | undefined;
   private readonly caCert: string | undefined;
   private readonly services: HostServices | undefined;
+  private readonly inference: InferenceApi;
   private teamIdPromise: Promise<string> | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -382,11 +300,16 @@ export class XaiClient implements PluginClient {
     this.managementKey = credentials["managementKey"] || undefined;
     this.caCert = credentials["caCert"] || undefined;
     this.services = services;
+    this.inference = createInferenceApi({
+      apiKey,
+      caCert: this.caCert,
+      http: services?.http,
+    });
   }
 
   // ------------------------------------------------------------------ HTTP
 
-  /** JSON over the inference host. Docs: https://docs.x.ai/openapi.json */
+  /** JSON over the inference host, for what its OpenAPI document leaves out (see `api.ts`). */
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
     return jsonRestFetch<T>({
       vendor: "xAI",
@@ -427,7 +350,7 @@ export class XaiClient implements PluginClient {
    * `Uint8Array` instead means it still goes through `services.http`, so
    * bastion egress routing and a custom CA keep working for uploads.
    */
-  private async postMultipart<T>(path: string, parts: MultipartPart[]): Promise<T> {
+  private async postMultipart(path: string, parts: MultipartPart[]): Promise<XaiSttResponse> {
     const boundary = `----infrawrench${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
     const body = buildMultipartBody(boundary, parts);
     const url = `${INFERENCE_BASE}${path}`;
@@ -448,12 +371,12 @@ export class XaiClient implements PluginClient {
       if (result.status < 200 || result.status >= 300) {
         throw new Error(`xAI API error ${result.status} for ${path}: ${result.body}`);
       }
-      return JSON.parse(result.body) as T;
+      return JSON.parse(result.body);
     }
 
-    const res = await fetch(url, { method: "POST", headers, body: body as BodyInit });
+    const res = await fetch(url, { method: "POST", headers, body });
     if (!res.ok) throw new Error(`xAI API error ${res.status} for ${path}: ${await res.text()}`);
-    return (await res.json()) as T;
+    return await res.json();
   }
 
   /**
@@ -481,7 +404,7 @@ export class XaiClient implements PluginClient {
       const id = validation.scopeId || validation.teamId;
       if (id) return id;
     }
-    const info = await this.fetch<{ team_id?: string }>("/v1/api-key");
+    const info = await this.inference.get("/v1/api-key");
     if (!info.team_id) throw new Error("xAI plugin: could not determine the team id for this key");
     return info.team_id;
   }
@@ -521,16 +444,10 @@ export class XaiClient implements PluginClient {
 
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
     const [language, image, video, embedding] = await Promise.all([
-      this.fetch<{ models?: XaiLanguageModel[] }>("/v1/language-models"),
-      this.fetch<{ models?: XaiImageModel[] }>("/v1/image-generation-models").catch(() => ({
-        models: [] as XaiImageModel[],
-      })),
-      this.fetch<{ models?: XaiVideoModel[] }>("/v1/video-generation-models").catch(() => ({
-        models: [] as XaiVideoModel[],
-      })),
-      this.fetch<{ models?: XaiEmbeddingModel[] }>("/v1/embedding-models").catch(() => ({
-        models: [] as XaiEmbeddingModel[],
-      })),
+      this.inference.get("/v1/language-models"),
+      this.inference.get("/v1/image-generation-models").catch(() => ({ models: [] })),
+      this.inference.get("/v1/video-generation-models").catch(() => ({ models: [] })),
+      this.inference.get("/v1/embedding-models").catch(() => ({ models: [] })),
     ]);
 
     const now = new Date().toISOString();
@@ -641,11 +558,15 @@ export class XaiClient implements PluginClient {
     let seenToken: string | undefined;
 
     for (let page = 0; page < 20; page++) {
-      const qs = new URLSearchParams({ limit: "100", order: "desc", sort_by: "created_at" });
-      if (token) qs.set("pagination_token", token);
-      const data = await this.fetch<{ data?: XaiFile[]; pagination_token?: string | null }>(
-        `/v1/files?${qs.toString()}`,
-      );
+      const data = await this.inference.get("/v1/files", {
+        query: {
+          limit: 100,
+          order: "desc",
+          sort_by: "created_at",
+          // As text, whatever the last page handed back.
+          ...(token ? { pagination_token: String(token) } : {}),
+        },
+      });
       const batch = data.data ?? [];
       for (const file of batch) {
         out.push({
@@ -1001,13 +922,10 @@ export class XaiClient implements PluginClient {
     let after: string | undefined;
 
     for (let page = 0; page < 20; page++) {
-      const qs = new URLSearchParams({ limit: "100", order: "desc" });
-      if (after) qs.set("after", after);
-      const data = await this.fetch<{
-        data?: XaiSkill[];
-        has_more?: boolean;
-        last_id?: string;
-      }>(`/v1/skills?${qs.toString()}`);
+      const data = await this.inference.get("/v1/skills", {
+        // As text, whatever the last page handed back.
+        query: { limit: 100, order: "desc", ...(after ? { after: String(after) } : {}) },
+      });
       for (const skill of data.data ?? []) {
         out.push({
           id: `${accountId}:skill:${skill.id}`,
@@ -1220,7 +1138,7 @@ export class XaiClient implements PluginClient {
   private async speechVoiceOptions(): Promise<SpeechPanelOption[]> {
     const [builtIn, custom] = await Promise.all([
       this.fetchBuiltInVoices(),
-      this.fetchCustomVoices().catch(() => [] as XaiCustomVoice[]),
+      this.fetchCustomVoices().catch((): XaiCustomVoice[] => []),
     ]);
     const options: SpeechPanelOption[] = builtIn.map((v) => ({
       id: v.voice_id,
@@ -1609,8 +1527,8 @@ export class XaiClient implements PluginClient {
       }
       if (typeId === "collection-document") {
         const [collections, files] = await Promise.all([
-          this.fetchCollections().catch(() => [] as XaiCollection[]),
-          this.listFiles("picker").catch(() => [] as ResourceInstance[]),
+          this.fetchCollections().catch((): XaiCollection[] => []),
+          this.listFiles("picker").catch((): ResourceInstance[] => []),
         ]);
         return {
           fields: [
@@ -1646,7 +1564,7 @@ export class XaiClient implements PluginClient {
 
   private async listEmbeddingModelOptions(): Promise<Array<{ id: string; label: string }>> {
     try {
-      const data = await this.fetch<{ models?: XaiEmbeddingModel[] }>("/v1/embedding-models");
+      const data = await this.inference.get("/v1/embedding-models");
       return (data.models ?? []).map((m) => ({ id: m.id, label: m.id }));
     } catch {
       return [];
@@ -1655,7 +1573,7 @@ export class XaiClient implements PluginClient {
 
   private async listModelAclOptions(): Promise<Array<{ id: string; label: string }>> {
     try {
-      const data = await this.fetch<{ models?: XaiLanguageModel[] }>("/v1/language-models");
+      const data = await this.inference.get("/v1/language-models");
       return (data.models ?? []).map((m) => ({ id: m.id, label: m.id }));
     } catch {
       return [];
@@ -1902,7 +1820,7 @@ export class XaiClient implements PluginClient {
         return;
       }
       if (typeId === "file") {
-        await this.fetch(`/v1/files/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+        await this.inference.delete(`/v1/files/${pathEncode(externalId)}`);
         return;
       }
       if (typeId === "custom-voice") {
@@ -1912,10 +1830,7 @@ export class XaiClient implements PluginClient {
         return;
       }
       if (typeId === "skill") {
-        const result = await this.fetch<{ deleted?: boolean }>(
-          `/v1/skills/${encodeURIComponent(externalId)}`,
-          { method: "DELETE" },
-        );
+        const result = await this.inference.delete(`/v1/skills/${pathEncode(externalId)}`);
         if (result.deleted === false)
           throw new Error(`xAI plugin: skill ${externalId} was not deleted`);
         return;
@@ -1972,16 +1887,12 @@ export class XaiClient implements PluginClient {
         return;
       }
       if (typeId === "file" && actionId === "create-public-url") {
-        await this.fetch(`/v1/files/${encodeURIComponent(externalId)}/public-url`, {
-          method: "POST",
-          body: JSON.stringify({}),
-        });
+        await this.inference.post(`/v1/files/${pathEncode(externalId)}/public-url`, { body: {} });
         return;
       }
       if (typeId === "file" && actionId === "revoke-public-url") {
-        await this.fetch(`/v1/files/${encodeURIComponent(externalId)}/public-url/revoke`, {
-          method: "POST",
-          body: JSON.stringify({}),
+        await this.inference.post(`/v1/files/${pathEncode(externalId)}/public-url/revoke`, {
+          body: {},
         });
         return;
       }
@@ -2092,7 +2003,7 @@ export class XaiClient implements PluginClient {
       });
 
       const started = Date.now();
-      const res = await this.postMultipart<XaiSttResponse>("/v1/stt", parts);
+      const res = await this.postMultipart("/v1/stt", parts);
       const elapsed = Date.now() - started;
 
       const words: TranscriptWord[] = (res.words ?? []).map((w) => ({
