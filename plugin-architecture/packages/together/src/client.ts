@@ -28,6 +28,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   CostSetupError,
+  ListTruncatedError,
   base64ToBytes,
   bytesToBase64,
   joinSubtitle,
@@ -35,6 +36,7 @@ import {
   formatBytes,
   hostFetch,
   pathEncode,
+  requireListPage,
   withMetricsCapability,
   withAiCostTags,
 } from "@infrawrench/plugin-base";
@@ -42,6 +44,7 @@ import {
   API_BASE,
   createTogetherApi,
   undocumentedRequest,
+  withDmiPagination,
   type BatchJob,
   type BillingUsageLineItem,
   type BillingUsageReport,
@@ -51,7 +54,6 @@ import {
   type CreatedBatch,
   type DedicatedEndpoint,
   type DmiAnalytics,
-  type DmiDeployments,
   type DmiEndpoint,
   type DmiEndpointEvent,
   type DmiEndpointMetrics,
@@ -179,6 +181,15 @@ const DEFAULT_TTS_VOICE = "af_heart";
  * a much lower ceiling and let the host reject oversized files before encoding.
  */
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+
+const EVALUATIONS_FIRST_ASK = 100;
+const EVALUATIONS_MOST = 10_000;
+const MAX_BILLING_PAGES = 50;
+
+/** The list a page holds, or a throw: a sync reads an empty list as everything deleted. */
+function listAt<T>(list: readonly T[] | null | undefined, path: string, key: string | null): T[] {
+  return requireListPage(list, { vendor: "Together", path, key });
+}
 
 /** Shape stashed under the `__workers__` resolved output of a GPU cluster. */
 interface StashedNode {
@@ -548,6 +559,7 @@ export class TogetherClient implements PluginClient {
   private readonly apiKey: string;
   private readonly connection: TogetherConnection;
   private readonly api: ReturnType<typeof createTogetherApi>;
+  private readonly dmi: ReturnType<typeof withDmiPagination>;
   private whoamiCache: WhoAmI | null = null;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -556,6 +568,7 @@ export class TogetherClient implements PluginClient {
     this.apiKey = apiKey;
     this.connection = { apiKey, caCert: credentials["caCert"] ?? "", http: services?.http };
     this.api = createTogetherApi(this.connection);
+    this.dmi = withDmiPagination(this.api);
   }
 
   private async undocumented<T>(path: string, init?: RequestInit): Promise<T> {
@@ -589,27 +602,35 @@ export class TogetherClient implements PluginClient {
         case "fine-tune": {
           // `{ data: [...] }`. No pagination params documented on this route.
           const data = await this.api.get("/v1/fine-tunes");
-          return (data.data ?? []).map((job) => this.mapFineTune(job, accountId));
+          return listAt(data.data, "/v1/fine-tunes", "data").map((job) =>
+            this.mapFineTune(job, accountId),
+          );
         }
         case "file": {
           const data = await this.api.get("/v1/files");
-          return (data.data ?? []).map((file) => this.mapFile(file, accountId));
+          return listAt(data.data, "/v1/files", "data").map((file) =>
+            this.mapFile(file, accountId),
+          );
         }
         case "endpoint": {
           // v1 lists are a flat `{ object, data }` with NO pagination params at all.
           const data = await this.undocumented<{ data?: ListEndpoint[] }>("/endpoints");
-          return (data.data ?? []).map((endpoint) => this.mapEndpoint(endpoint, accountId));
+          return listAt(data.data, "/v1/endpoints", "data").map((endpoint) =>
+            this.mapEndpoint(endpoint, accountId),
+          );
         }
         case "managed-endpoint":
           return this.listManagedEndpoints(accountId);
         case "hardware": {
           const data = await this.undocumented<{ data?: TogetherHardware[] }>("/hardware");
-          return (data.data ?? []).map((hardware) => this.mapHardware(hardware, accountId));
+          return listAt(data.data, "/v1/hardware", "data").map((hardware) =>
+            this.mapHardware(hardware, accountId),
+          );
         }
         case "batch": {
           // Bare array, not a `{ data }` envelope: the one v1 list that differs.
           const batches = await this.api.get("/v1/batches");
-          return (Array.isArray(batches) ? batches : []).map((batch) =>
+          return listAt(batches, "/v1/batches", null).map((batch) =>
             this.mapBatch(batch, accountId),
           );
         }
@@ -617,19 +638,20 @@ export class TogetherClient implements PluginClient {
           // `{ clusters: [...] }`, no pagination params.
           // https://docs.together.ai/reference/clusters-list
           const data = await this.api.get("/v1/compute/clusters");
-          return (data.clusters ?? []).map((cluster) => this.mapCluster(cluster, accountId));
+          return listAt(data.clusters, "/v1/compute/clusters", "clusters").map((cluster) =>
+            this.mapCluster(cluster, accountId),
+          );
         }
         case "shared-volume": {
           // `{ volumes: [...] }`. https://docs.together.ai/reference/clusters_storages-list
           const data = await this.api.get("/v1/compute/clusters/storage/volumes");
-          return (data.volumes ?? []).map((volume) => this.mapVolume(volume, accountId));
+          return listAt(data.volumes, "/v1/compute/clusters/storage/volumes", "volumes").map(
+            (volume) => this.mapVolume(volume, accountId),
+          );
         }
         case "evaluation": {
-          // Path is `/evaluation`, singular. Also a bare array.
-          const evaluations = await this.api.get("/v1/evaluation", { query: { limit: 100 } });
-          return (Array.isArray(evaluations) ? evaluations : []).map((evaluation) =>
-            this.mapEvaluation(evaluation, accountId),
-          );
+          const evaluations = await this.fetchEvaluations();
+          return evaluations.map((evaluation) => this.mapEvaluation(evaluation, accountId));
         }
         default:
           throw new Error(`Together plugin: unknown resource type "${typeId}"`);
@@ -647,7 +669,7 @@ export class TogetherClient implements PluginClient {
    */
   private async fetchModels(): Promise<TogetherModel[]> {
     const models = await this.undocumented<TogetherModel[]>("/models");
-    const list = Array.isArray(models) ? [...models] : [];
+    const list = [...listAt(models, "/v1/models", null)];
     const present = new Set(list.map((model) => model.id));
     for (const id of SPEECH_MODEL_IDS) {
       if (!present.has(id)) {
@@ -664,6 +686,30 @@ export class TogetherClient implements PluginClient {
   }
 
   /**
+   * `GET /v1/evaluation`, singular, is a bare array with `limit` and no cursor, and the
+   * document states no maximum. So a normal account keeps the size that is known to
+   * work, and only a full answer asks for more. A server that clamps `limit` answers
+   * the same count again, which says nothing about the rest.
+   */
+  private async fetchEvaluations(): Promise<EvaluationJob[]> {
+    const path = "/v1/evaluation";
+    const read = async (limit: number) =>
+      listAt(await this.api.get(path, { query: { limit } }), path, null);
+    const first = await read(EVALUATIONS_FIRST_ASK);
+    if (first.length < EVALUATIONS_FIRST_ASK) return first;
+    const all = await read(EVALUATIONS_MOST);
+    if (all.length <= first.length || all.length >= EVALUATIONS_MOST) {
+      throw new ListTruncatedError({
+        vendor: "Together",
+        path,
+        items: all.length,
+        maxItems: all.length <= first.length ? first.length : EVALUATIONS_MOST,
+      });
+    }
+    return all;
+  }
+
+  /**
    * v2 Dedicated Managed Inference. Unlike every v1 list, this one paginates:
    * `limit` + `after`, with the next cursor in `next_cursor` (null at the end).
    * The project id comes from `/v1/whoami`.
@@ -671,16 +717,10 @@ export class TogetherClient implements PluginClient {
   private async listManagedEndpoints(accountId: string): Promise<ResourceInstance[]> {
     const { project_id: projectId } = await this.whoami();
     if (!projectId) return [];
-    const endpoints: DmiEndpoint[] = [];
-    let after: string | undefined;
-    for (let page = 0; page < 20; page += 1) {
-      const data = await this.api.get(`/v2/projects/${pathEncode(projectId)}/endpoints`, {
-        query: { limit: 100, ...(after ? { after } : {}) },
-      });
-      endpoints.push(...(data.data ?? []));
-      if (!data.next_cursor) break;
-      after = data.next_cursor;
-    }
+    const endpoints = await this.dmi.getAll(
+      `/v2/projects/${pathEncode(projectId)}/endpoints`,
+      "data",
+    );
     return endpoints.map((endpoint) => this.mapManagedEndpoint(endpoint, accountId));
   }
 
@@ -1865,10 +1905,14 @@ export class TogetherClient implements PluginClient {
     }
     const project = pathEncode(projectId);
     const endpoint = pathEncode(endpointId);
-    const deployments = await this.api
-      .get(`/v2/projects/${project}/endpoints/${endpoint}/deployments`, { query: { limit: 500 } })
-      .catch((): Partial<DmiDeployments> => ({}));
-    for (const deployment of deployments.data ?? []) {
+    // All of them or none: this deletes what it reads, and the endpoint cannot go while
+    // one is left. 500 is the document's largest page.
+    const deployments = await this.dmi.getAll(
+      `/v2/projects/${project}/endpoints/${endpoint}/deployments`,
+      "data",
+      { pageSize: 500, maxPages: 20 },
+    );
+    for (const deployment of deployments) {
       if (!deployment.id) continue;
       await this.api.delete(
         `/v2/projects/${project}/endpoints/${endpoint}/deployments/${pathEncode(deployment.id)}`,
@@ -1941,10 +1985,10 @@ export class TogetherClient implements PluginClient {
     const merged = new Map<string, CostRow>();
     const currentMonth = new Date().toISOString().slice(0, 7);
 
-    for (const month of monthsInRange(range.fromDate, range.toDate)) {
+    months: for (const month of monthsInRange(range.fromDate, range.toDate)) {
       if (month > currentMonth) break;
       let after: string | undefined;
-      for (let page = 0; page < 50; page += 1) {
+      for (let page = 0; page < MAX_BILLING_PAGES; page += 1) {
         let report: BillingUsageReport;
         try {
           report = await this.api.get("/v1/billing/usage", {
@@ -1971,7 +2015,7 @@ export class TogetherClient implements PluginClient {
         }
 
         const currency = report.currency || "USD";
-        for (const window of report.data ?? []) {
+        for (const window of listAt(report.data, "/v1/billing/usage", "data")) {
           const date = window.date || window.start_time?.slice(0, 10) || "";
           if (!date || date < range.fromDate || date > range.toDate) continue;
           for (const item of window.line_items ?? []) {
@@ -1984,9 +2028,15 @@ export class TogetherClient implements PluginClient {
             else merged.set(key, { ...row, amount });
           }
         }
-        if (!report.next_cursor) break;
+        if (!report.next_cursor) continue months;
         after = report.next_cursor;
       }
+      throw new ListTruncatedError({
+        vendor: "Together",
+        path: "/v1/billing/usage",
+        items: merged.size,
+        maxPages: MAX_BILLING_PAGES,
+      });
     }
     return [...merged.values()];
   }

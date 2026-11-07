@@ -1,4 +1,9 @@
-import { createApiClient, jsonRestFetch, type HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  jsonRestFetch,
+  withCursorPagination,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
 import type { components, paths } from "./api-types.gen.js";
 
 type Schemas = components["schemas"];
@@ -37,6 +42,20 @@ export function createTogetherApi({ apiKey, caCert, http }: TogetherConnection) 
       new Error(`Together API error ${status} for ${errorPath(url)}: ${body}`),
     http,
     caCert,
+  });
+}
+
+/**
+ * The v2 lists: `limit` and `after`, with `next_cursor` null on the last page. 10,000
+ * rows by default. The document states no maximum page size for most of them.
+ */
+export function withDmiPagination(api: ReturnType<typeof createTogetherApi>) {
+  return withCursorPagination(api, {
+    cursorParam: "after",
+    sizeParam: "limit",
+    next: "next_cursor",
+    pageSize: 100,
+    maxPages: 100,
   });
 }
 
@@ -160,7 +179,6 @@ export type BatchJob = Schemas["BatchJob"];
 export type CreatedBatch = BatchJob & Schemas["BatchJobWithWarning"];
 export type EvaluationJob = Schemas["EvaluationJob"];
 export type DmiEndpoint = Schemas["DE.Endpoint"];
-export type DmiDeployments = Schemas["DE.ListDeploymentsResponse"];
 export type DmiEndpointEvent = Schemas["DE.EndpointEvent"];
 export type DmiEndpointMetrics = Schemas["DE.EndpointMetrics"];
 export type DmiAnalytics = Schemas["DE.AnalyticsData"];

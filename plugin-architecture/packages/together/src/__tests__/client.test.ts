@@ -388,6 +388,165 @@ describe("host HTTP", () => {
   });
 });
 
+describe("reading a whole list or failing", () => {
+  const LISTS: Array<[string, string]> = [
+    ["fine-tune", "data"],
+    ["file", "data"],
+    ["endpoint", "data"],
+    ["hardware", "data"],
+    ["gpu-cluster", "clusters"],
+    ["shared-volume", "volumes"],
+  ];
+
+  it.each(LISTS)("refuses a %s page whose %s key was renamed", async (typeId) => {
+    installFetch(() => jsonResponse({ items: [{ id: "x" }] }));
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each(["batch", "evaluation", "model"])(
+    "refuses a %s answer that is not an array",
+    async (t) => {
+      installFetch(() => jsonResponse({ error: { message: "try later" } }));
+      await expect(client().listResources(t, ACCOUNT)).rejects.toThrow("is not a list");
+    },
+  );
+
+  it("keeps a null list as no rows", async () => {
+    installFetch(() => jsonResponse({ data: null }));
+    await expect(client().listResources("file", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("fails a managed endpoint list that never ends, after exactly 100 pages", async () => {
+    let pages = 0;
+    installFetch((url) => {
+      if (url.includes("whoami")) return jsonResponse({ project_id: "proj-1" });
+      pages += 1;
+      return jsonResponse({ data: [{ id: `e${pages}` }], next_cursor: `cur-${pages}` });
+    });
+    await expect(client().listResources("managed-endpoint", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(pages).toBe(100);
+  });
+
+  it("fails a managed endpoint page that is not a list, first or later", async () => {
+    let pages = 0;
+    installFetch((url) => {
+      if (url.includes("whoami")) return jsonResponse({ project_id: "proj-1" });
+      pages += 1;
+      return pages === 1
+        ? jsonResponse({ data: [{ id: "e1" }], next_cursor: "cur-2" })
+        : jsonResponse({ items: [] });
+    });
+    await expect(client().listResources("managed-endpoint", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+    pages = 1;
+    await expect(client().listResources("managed-endpoint", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  const evaluations = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({ workflow_id: `eval-${i}`, type: "score" }));
+
+  it("asks for more evaluations when the first answer is full", async () => {
+    installFetch((url) => jsonResponse(evaluations(url.endsWith("limit=100") ? 100 : 250)));
+    const items = await client().listResources("evaluation", ACCOUNT);
+    expect(items).toHaveLength(250);
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.together.ai/v1/evaluation?limit=100",
+      "https://api.together.ai/v1/evaluation?limit=10000",
+    ]);
+  });
+
+  it("fails when a bigger ask for evaluations gets no more rows", async () => {
+    installFetch(() => jsonResponse(evaluations(100)));
+    await expect(client().listResources("evaluation", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("fails when even the biggest ask for evaluations comes back full", async () => {
+    installFetch((url) => jsonResponse(evaluations(url.endsWith("limit=100") ? 100 : 10000)));
+    await expect(client().listResources("evaluation", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  const RANGE = { fromDate: "2026-03-01", toDate: "2026-03-31" };
+
+  it("fails a billing report that never ends, after exactly 50 pages", async () => {
+    let pages = 0;
+    installFetch(() => {
+      pages += 1;
+      return jsonResponse({ data: [], next_cursor: `cur-${pages}` });
+    });
+    await expect(client().fetchCostData!(ACCOUNT, RANGE)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(pages).toBe(50);
+  });
+
+  it("fails a billing page that is not a list", async () => {
+    installFetch(() => jsonResponse({ windows: [] }));
+    await expect(client().fetchCostData!(ACCOUNT, RANGE)).rejects.toThrow("is not a list");
+  });
+});
+
+describe("deleting a managed endpoint", () => {
+  const resourceId = `${ACCOUNT}:managed-endpoint:e1`;
+
+  function deletes() {
+    return calls.filter((call) => call.init?.method === "DELETE").map((call) => call.url);
+  }
+
+  it("deletes the deployments on every page, at the documented page size", async () => {
+    installFetch((url, init) => {
+      if (url.includes("whoami")) return jsonResponse({ project_id: "proj-1" });
+      if (init?.method === "DELETE") return jsonResponse({}, 204);
+      if (url.endsWith("/deployments?limit=500")) {
+        return jsonResponse({ data: [{ id: "d1" }], next_cursor: "cur-2" });
+      }
+      if (url.endsWith("/deployments?limit=500&after=cur-2")) {
+        return jsonResponse({ data: [{ id: "d2" }], next_cursor: null });
+      }
+      throw new Error(`unrouted: ${url}`);
+    });
+    await client().deleteResource("managed-endpoint", resourceId, ACCOUNT);
+    expect(deletes()).toEqual([
+      "https://api.together.ai/v2/projects/proj-1/endpoints/e1/deployments/d1",
+      "https://api.together.ai/v2/projects/proj-1/endpoints/e1/deployments/d2",
+      "https://api.together.ai/v2/projects/proj-1/endpoints/e1",
+    ]);
+  });
+
+  it("deletes nothing when the deployments cannot be read", async () => {
+    installFetch((url) => {
+      if (url.includes("whoami")) return jsonResponse({ project_id: "proj-1" });
+      return jsonResponse({ error: { message: "try later" } }, 500);
+    });
+    await expect(client().deleteResource("managed-endpoint", resourceId, ACCOUNT)).rejects.toThrow(
+      /500/,
+    );
+    expect(deletes()).toEqual([]);
+  });
+
+  it("deletes nothing when the deployments never end", async () => {
+    let pages = 0;
+    installFetch((url) => {
+      if (url.includes("whoami")) return jsonResponse({ project_id: "proj-1" });
+      pages += 1;
+      return jsonResponse({ data: [{ id: `d${pages}` }], next_cursor: `cur-${pages}` });
+    });
+    await expect(client().deleteResource("managed-endpoint", resourceId, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(pages).toBe(20);
+    expect(deletes()).toEqual([]);
+  });
+});
+
 describe("evaluations", () => {
   it("keys evaluations on workflow_id and hits the singular path", async () => {
     installFetch(() =>
