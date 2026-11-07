@@ -4,6 +4,8 @@ import type {
   ResourceInstance,
   SizeOption,
 } from "@infrawrench/plugin-base";
+import { rethrowIncompleteList } from "@infrawrench/plugin-base";
+import { perRegion, readList } from "./lists.js";
 
 /**
  * Public Cloud features added on top of the original listers: Octavia load
@@ -39,12 +41,6 @@ function splitRegional(resourceId: string): { region: string; id: string } {
   return { region: externalId.slice(0, slash), id: externalId.slice(slash + 1) };
 }
 
-async function perRegion<T>(api: OvhApi, fn: (region: string) => Promise<T[]>): Promise<T[]> {
-  const regions = await api.listUpRegions();
-  const results = await Promise.all(regions.map((r) => fn(r).catch(() => [] as T[])));
-  return results.flat();
-}
-
 // ── Octavia load balancers ───────────────────────────────────────────────────
 
 interface OctaviaLb {
@@ -76,12 +72,15 @@ export async function listOctaviaLoadBalancers(
   api: OvhApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  return perRegion(api, async (region) => {
+  const regions = await api.listUpRegions();
+  return perRegion(regions, "octavia-load-balancer", accountId, async (region) => {
     const [lbs, flavors] = await Promise.all([
-      api.fetch<OctaviaLb[]>(api.cloudPath(`${lbBase(region)}/loadbalancer`)),
-      api
-        .fetch<OctaviaFlavor[]>(api.cloudPath(`${lbBase(region)}/flavor`))
-        .catch(() => [] as OctaviaFlavor[]),
+      readList<OctaviaLb>(api.fetch, api.cloudPath(`${lbBase(region)}/loadbalancer`)),
+      // Only names a flavor id: a row without its flavor's name is still a whole row.
+      api.fetch<OctaviaFlavor[]>(api.cloudPath(`${lbBase(region)}/flavor`)).catch((err) => {
+        rethrowIncompleteList(err);
+        return [] as OctaviaFlavor[];
+      }),
     ]);
     const flavorNames = new Map(flavors.map((f) => [f.id, f.name]));
     return lbs.map((lb) => mapOctaviaLb(lb, region, flavorNames, accountId));

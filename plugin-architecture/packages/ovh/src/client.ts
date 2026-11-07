@@ -24,9 +24,11 @@ import {
   joinSubtitle,
   labeledFieldItems,
   resourceTypeDisplayName,
+  rethrowIncompleteList,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import { fetchOvhCostData } from "./cost-data.js";
+import { isAccessRefusal, OvhApiError, perRegion, readList, reportTypeUnread } from "./lists.js";
 import * as extras from "./extras.js";
 import type { OvhApi } from "./extras.js";
 
@@ -266,7 +268,7 @@ export class OvhClient implements PluginClient {
         ...(this.caCert ? { caCert: this.caCert } : {}),
       });
       if (result.status < 200 || result.status >= 300) {
-        throw new Error(`OVH API error ${result.status} for ${path}: ${result.body}`);
+        throw new OvhApiError(path, result.status, result.body);
       }
       if (result.status === 204 || !result.body) return undefined as unknown as T;
       return JSON.parse(result.body) as T;
@@ -279,7 +281,7 @@ export class OvhClient implements PluginClient {
     });
 
     if (!res.ok) {
-      throw new Error(`OVH API error ${res.status} for ${path}: ${await res.text()}`);
+      throw new OvhApiError(path, res.status, await res.text());
     }
     if (res.status === 204) return undefined as unknown as T;
     return res.json() as Promise<T>;
@@ -311,35 +313,47 @@ export class OvhClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      switch (typeId) {
-        case "instance":
-          return this.listInstances(accountId);
-        case "managed-kube":
-          return this.listManagedKubeClusters(accountId);
-        case "managed-db":
-          return this.listManagedDatabases(accountId);
-        case "volume":
-          return this.listVolumes(accountId);
-        case "object-storage-bucket":
-          return this.listObjectStorageBuckets(accountId);
-        case "load-balancer":
-          return this.listLoadBalancers(accountId);
-        case "private-network":
-          return this.listPrivateNetworks(accountId);
-        case "floating-ip":
-          return this.listFloatingIps(accountId);
-        case "gateway":
-          return this.listGateways(accountId);
-        case "octavia-load-balancer":
-          return extras.listOctaviaLoadBalancers(this.api, accountId);
-        case "volume-snapshot":
-          return extras.listVolumeSnapshots(this.api, accountId);
-        case "container-registry":
-          return extras.listRegistries(this.api, accountId);
-        default:
-          throw new Error(`OVH plugin: unknown resource type "${typeId}"`);
+      try {
+        return await this.readType(typeId, accountId);
+      } catch (err) {
+        // A consumer key limited by access rules is normal, and failing the type on every
+        // poll would page someone. Its stored rows stay, with no error.
+        if (!isAccessRefusal(err)) throw err;
+        reportTypeUnread();
+        return [];
       }
     });
+  }
+
+  private async readType(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "instance":
+        return this.listInstances(accountId);
+      case "managed-kube":
+        return this.listManagedKubeClusters(accountId);
+      case "managed-db":
+        return this.listManagedDatabases(accountId);
+      case "volume":
+        return this.listVolumes(accountId);
+      case "object-storage-bucket":
+        return this.listObjectStorageBuckets(accountId);
+      case "load-balancer":
+        return this.listLoadBalancers(accountId);
+      case "private-network":
+        return this.listPrivateNetworks(accountId);
+      case "floating-ip":
+        return this.listFloatingIps(accountId);
+      case "gateway":
+        return this.listGateways(accountId);
+      case "octavia-load-balancer":
+        return extras.listOctaviaLoadBalancers(this.api, accountId);
+      case "volume-snapshot":
+        return extras.listVolumeSnapshots(this.api, accountId);
+      case "container-registry":
+        return extras.listRegistries(this.api, accountId);
+      default:
+        throw new Error(`OVH plugin: unknown resource type "${typeId}"`);
+    }
   }
 
   getResource(
@@ -348,7 +362,7 @@ export class OvhClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const all = await this.readType(typeId, accountId);
       const found = all.find((r) => r.id === resourceId);
       if (!found) throw new Error(`OVH plugin: resource ${typeId}/${resourceId} not found`);
       return found;
@@ -1762,19 +1776,13 @@ export class OvhClient implements PluginClient {
 
   private async listObjectStorageBuckets(accountId: string): Promise<ResourceInstance[]> {
     const regions = await this.listUpRegions();
-    const perRegion = await Promise.all(
-      regions.map(async (region) => {
-        try {
-          const buckets = await this.ovhFetch<OvhStorageContainer[]>(
-            this.cloudPath(`/region/${enc(region)}/storage`),
-          );
-          return buckets.map((bucket) => this.mapObjectStorageBucket(bucket, region, accountId));
-        } catch {
-          return [];
-        }
-      }),
-    );
-    return perRegion.flat();
+    return perRegion(regions, "object-storage-bucket", accountId, async (region) => {
+      const buckets = await readList<OvhStorageContainer>(
+        this.api.fetch,
+        this.cloudPath(`/region/${enc(region)}/storage`),
+      );
+      return buckets.map((bucket) => this.mapObjectStorageBucket(bucket, region, accountId));
+    });
   }
 
   private mapObjectStorageBucket(
@@ -1879,19 +1887,13 @@ export class OvhClient implements PluginClient {
 
   private async listFloatingIps(accountId: string): Promise<ResourceInstance[]> {
     const regions = await this.listUpRegions();
-    const perRegion = await Promise.all(
-      regions.map(async (region) => {
-        try {
-          const ips = await this.ovhFetch<OvhFloatingIp[]>(
-            this.cloudPath(`/region/${enc(region)}/floatingip`),
-          );
-          return ips.map((ip) => this.mapFloatingIp(ip, region, accountId));
-        } catch {
-          return [];
-        }
-      }),
-    );
-    return perRegion.flat();
+    return perRegion(regions, "floating-ip", accountId, async (region) => {
+      const ips = await readList<OvhFloatingIp>(
+        this.api.fetch,
+        this.cloudPath(`/region/${enc(region)}/floatingip`),
+      );
+      return ips.map((ip) => this.mapFloatingIp(ip, region, accountId));
+    });
   }
 
   private mapFloatingIp(ip: OvhFloatingIp, region: string, accountId: string): ResourceInstance {
@@ -1921,19 +1923,13 @@ export class OvhClient implements PluginClient {
 
   private async listGateways(accountId: string): Promise<ResourceInstance[]> {
     const regions = await this.listUpRegions();
-    const perRegion = await Promise.all(
-      regions.map(async (region) => {
-        try {
-          const gateways = await this.ovhFetch<OvhGateway[]>(
-            this.cloudPath(`/region/${enc(region)}/gateway?withSubnets=true`),
-          );
-          return gateways.map((gateway) => this.mapGateway(gateway, region, accountId));
-        } catch {
-          return [];
-        }
-      }),
-    );
-    return perRegion.flat();
+    return perRegion(regions, "gateway", accountId, async (region) => {
+      const gateways = await readList<OvhGateway>(
+        this.api.fetch,
+        this.cloudPath(`/region/${enc(region)}/gateway?withSubnets=true`),
+      );
+      return gateways.map((gateway) => this.mapGateway(gateway, region, accountId));
+    });
   }
 
   private mapGateway(gateway: OvhGateway, region: string, accountId: string): ResourceInstance {
@@ -2057,7 +2053,8 @@ export class OvhClient implements PluginClient {
         let pools: OvhKubeNodePool[] = [];
         try {
           pools = await this.ovhFetch<OvhKubeNodePool[]>(this.cloudPath(`/kube/${id}/nodepool`));
-        } catch {
+        } catch (err) {
+          rethrowIncompleteList(err);
           // No permission to list node pools: leave fields empty
         }
         // The only metric the MKS API exposes: etcd usage against its quota.
