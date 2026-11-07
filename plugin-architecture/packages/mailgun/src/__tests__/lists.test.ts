@@ -691,3 +691,77 @@ describe("edits that merge with what is there", () => {
     expect(calls.some((x) => x.method === "PUT")).toBe(false);
   });
 });
+
+describe("a domain's tracking and IP pool reads", () => {
+  const TRACKING = {
+    tracking: { open: { active: true }, click: { active: false }, unsubscribe: { active: true } },
+  };
+  const TRACKED = ["trackOpens", "trackClicks", "trackUnsubscribes"];
+
+  function domainsWith(tracking: Answer, pool: Answer) {
+    return client((url) => {
+      if (url.pathname === "/v4/domains")
+        return { body: { total_count: 1, items: [{ name: "a.test" }] } };
+      if (url.pathname === "/v4/domains/a.test") return { body: { domain: { name: "a.test" } } };
+      if (url.pathname === "/v3/domains/a.test/tracking") return tracking;
+      if (url.pathname === "/v3/ips/domain/a.test") return pool;
+      throw new Error(`Unexpected ${url.pathname}`);
+    }, "us");
+  }
+
+  it.each([
+    ["a 429", 429],
+    ["a 500", 500],
+    ["a 400", 400],
+  ])("leaves the fields out on %s, so the stored ones stay", async (_, status) => {
+    const { c } = domainsWith(
+      { status, body: { message: "no" } },
+      { status, body: { message: "no" } },
+    );
+    const [row] = await c.listResources("mailgun-domain", "a");
+    for (const key of [...TRACKED, "ipPoolId"]) expect(row!.fields).not.toHaveProperty(key);
+    expect(row!.fields["name"]).toBe("a.test");
+  });
+
+  it("writes the pool and tracking a read answered", async () => {
+    const { c } = domainsWith(
+      { body: TRACKING },
+      { body: { extra_dedicated_ips: { pool_id: "p1" } } },
+    );
+    const [row] = await c.listResources("mailgun-domain", "a");
+    expect(row!.fields).toMatchObject({
+      trackOpens: true,
+      trackClicks: false,
+      trackUnsubscribes: true,
+      ipPoolId: "p1",
+    });
+  });
+
+  it.each([
+    ["a 200 naming no pool", { body: { extra_dedicated_ips: {} } }],
+    ["a 200 with no spillover settings", { body: {} }],
+    ["a 404", { status: 404, body: { message: "not found" } }],
+  ])("clears a stored pool on %s", async (_, pool: Answer) => {
+    const { c } = domainsWith({ body: TRACKING }, pool);
+    const [row] = await c.listResources("mailgun-domain", "a");
+    expect(row!.fields["ipPoolId"]).toBe("");
+  });
+});
+
+it("keeps the tracking an edit wrote when the read after it fails", async () => {
+  const { c } = client((url, method) => {
+    if (method === "PUT") return { body: {} };
+    if (url.pathname === "/v4/domains/a.test") return { body: { domain: { name: "a.test" } } };
+    if (url.pathname === "/v3/domains/a.test/tracking") return { status: 503, body: {} };
+    if (url.pathname === "/v3/ips/domain/a.test") return { status: 503, body: {} };
+    if (url.pathname.startsWith("/v3/a.test/") || url.pathname.endsWith("/sending_queues"))
+      return { status: 404, body: {} };
+    if (url.pathname.startsWith("/v1/analytics/")) return { status: 404, body: {} };
+    throw new Error(`Unexpected ${method} ${url.pathname}`);
+  }, "us");
+  const row = await c.updateResource("mailgun-domain", "a:mailgun-domain:us/a.test", "a", {
+    trackOpens: "false",
+  });
+  expect(row.fields["trackOpens"]).toBe(false);
+  expect(row.fields).not.toHaveProperty("ipPoolId");
+});

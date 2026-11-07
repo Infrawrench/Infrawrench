@@ -395,16 +395,17 @@ export class MailgunClient implements PluginClient {
       this.call<{ tracking?: MgTracking }>(region, `/v3/domains/${enc}/tracking`).catch(
         () => undefined,
       ),
-      this.call<{ extra_dedicated_ips?: { pool_id?: string } }>(
-        region,
-        `/v3/ips/domain/${enc}`,
-      ).catch(() => undefined),
+      this.call<{ extra_dedicated_ips?: { pool_id?: string } }>(region, `/v3/ips/domain/${enc}`)
+        .then((answer) => answer.extra_dedicated_ips?.pool_id ?? "")
+        .catch((err: unknown) => (statusOf(err) === 404 ? "" : undefined)),
     ]);
+    // A failed read leaves its fields out, so the sync keeps the stored ones; an answer
+    // naming no pool writes "" so a domain taken out of its pool stops pointing at it.
     return {
       region,
       detail,
       ...(tracking?.tracking ? { tracking: tracking.tracking } : {}),
-      ...(pool?.extra_dedicated_ips?.pool_id ? { ipPoolId: pool.extra_dedicated_ips.pool_id } : {}),
+      ...(pool !== undefined ? { ipPoolId: pool } : {}),
     };
   }
 
@@ -1491,6 +1492,7 @@ export class MailgunClient implements PluginClient {
             ["trackClicks", "click"],
             ["trackUnsubscribes", "unsubscribe"],
           ];
+          const written: Record<string, boolean> = {};
           for (const [key, kind] of tracking) {
             const v = bool(fields[key]);
             if (v === undefined) continue;
@@ -1498,8 +1500,12 @@ export class MailgunClient implements PluginClient {
               method: "PUT",
               form: { active: v },
             });
+            written[key] = v;
           }
-          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          const updated = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          // The host stores this answer as the row, so a tracking read that failed after
+          // the write must not drop the values just set.
+          return { ...updated, fields: { ...written, ...updated.fields } };
         }
         case "mailgun-webhook": {
           const slash = rest.indexOf("/");

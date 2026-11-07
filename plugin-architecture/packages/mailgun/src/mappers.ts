@@ -58,6 +58,7 @@ export interface DomainBundle {
   region: MailgunRegion;
   detail: MgDomainDetail;
   tracking?: MgTracking;
+  /** "" when the domain has no pool, absent when the read failed. */
   ipPoolId?: string;
 }
 
