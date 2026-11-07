@@ -39,6 +39,33 @@ beforeEach(() => {
   signedS3Fetch.mockReset();
 });
 
+describe("the config's transport", () => {
+  const send = vi.fn(async () => new Response(""));
+  const hosted: S3StorageConfig = { ...cfg, fetch: send };
+
+  it.each<[string, () => Promise<unknown>]>([
+    ["listS3Objects", () => listS3Objects(hosted, "b", "")],
+    ["uploadS3Object", () => uploadS3Object(hosted, "b", "k", new File(["x"], "x"))],
+    ["makeS3Folder", () => makeS3Folder(hosted, "b", "k")],
+    ["deleteS3Object", () => deleteS3Object(hosted, "b", "k")],
+    ["deleteS3Object on a folder", () => deleteS3Object(hosted, "b", "k/")],
+    ["getS3BucketPolicy", () => getS3BucketPolicy(hosted, "b")],
+    ["putS3BucketPolicy", () => putS3BucketPolicy(hosted, "b", "{}")],
+    ["putS3BucketPolicy clearing it", () => putS3BucketPolicy(hosted, "b", "")],
+  ])("%s signs and sends over it", async (_name, call) => {
+    signedS3Fetch.mockResolvedValue(resp({ text: "" }));
+    await call();
+    expect(signedS3Fetch).toHaveBeenCalled();
+    for (const [options] of signedS3Fetch.mock.calls) expect(options.fetch).toBe(send);
+  });
+
+  it("leaves the signer's own default where a config has none", async () => {
+    signedS3Fetch.mockResolvedValue(resp({ text: "" }));
+    await listS3Objects(cfg, "b", "");
+    expect(signedS3Fetch.mock.calls[0]?.[0]).not.toHaveProperty("fetch");
+  });
+});
+
 describe("URL builders", () => {
   it("virtualHostedUrl builds {bucket}.{host}/{key} and encodes segments", () => {
     const build = virtualHostedUrl((region) => `${region}.example.com`)("nyc3");

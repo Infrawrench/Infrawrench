@@ -1,5 +1,5 @@
 import type { S3StorageConfig } from "@infrawrench/plugin-base";
-import { signedS3Fetch, virtualHostedUrl } from "@infrawrench/plugin-base";
+import { hostFetch, signedS3Fetch, virtualHostedUrl } from "@infrawrench/plugin-base";
 import type { CoreWeaveContext } from "./api.js";
 import { cwFetch } from "./api.js";
 import type { CwAccessKey, CwBucket } from "./mappers.js";
@@ -116,6 +116,10 @@ export class TemporaryS3Credentials {
 
   constructor(private readonly ctx: CoreWeaveContext) {}
 
+  /** What a call signed with these goes over, so it reaches the bastion. */
+  readonly fetch = (url: string, init: RequestInit): Promise<Response> =>
+    hostFetch(this.ctx, url, init);
+
   async get(): Promise<CachedCredentials> {
     if (this.cached && this.cached.expiresAt - REFRESH_MARGIN_MS > Date.now()) return this.cached;
     this.inflight ??= this.exchange().finally(() => {
@@ -155,6 +159,7 @@ export async function s3ConfigFor(
     accessKey: c.accessKey,
     secretKey: c.secretKey,
     region: zone,
+    fetch: creds.fetch,
     ...(c.sessionToken ? { sessionToken: c.sessionToken } : {}),
     buildUrl: virtualHostedUrl(() => S3_HOST)(zone),
   };
@@ -169,6 +174,7 @@ async function signedBucketRequest(
 ): Promise<void> {
   const c = await creds.get();
   const res = await signedS3Fetch({
+    fetch: creds.fetch,
     accessKey: c.accessKey,
     secretKey: c.secretKey,
     region: zone,

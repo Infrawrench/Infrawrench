@@ -30,6 +30,7 @@ export function bucketConfig(
       accessKey: api.apiKey,
       secretKey: api.apiSecret,
       region: zone,
+      fetch: api.fetch,
       buildUrl: pathStyleUrl(() => host)(zone),
     },
   };

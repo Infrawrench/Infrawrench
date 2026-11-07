@@ -25,6 +25,7 @@ import { fetchScalewayPriceCatalog } from "./price-catalog.js";
 import {
   deleteS3Object,
   getS3BucketPolicy,
+  hostFetch,
   joinSubtitle,
   jsonRestFetch,
   labeledFieldItems,
@@ -164,6 +165,10 @@ export class ScalewayClient implements PluginClient {
     return this.sdkClient;
   }
 
+  /** What a signed Object Storage call goes over, so it reaches the bastion. */
+  private readonly s3Transport = (url: string, init: RequestInit): Promise<Response> =>
+    hostFetch({ http: this.services?.http }, url, init);
+
   private async fetchThroughHost(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const request = input instanceof Request ? input : new Request(input, init);
     const headers: Record<string, string> = {};
@@ -269,6 +274,7 @@ export class ScalewayClient implements PluginClient {
 
     const url = `https://${host}${path}`;
     const res = await signedS3Fetch({
+      fetch: this.s3Transport,
       accessKey: this.accessKey,
       secretKey: this.secretKey,
       region,
@@ -2664,9 +2670,11 @@ export class ScalewayClient implements PluginClient {
       // Cold cache: probe each region's S3 endpoint until one acknowledges
       // the bucket (HEAD against `{host}/{bucket}` returns 200 for hits,
       // 404/301 otherwise). Stops at the first match.
+      let failure: unknown;
       for (const candidate of Object.keys(ScalewayClient.REGION_INFO)) {
         try {
           const res = await signedS3Fetch({
+            fetch: this.s3Transport,
             accessKey: this.accessKey,
             secretKey: this.secretKey,
             region: candidate,
@@ -2679,11 +2687,15 @@ export class ScalewayClient implements PluginClient {
             region = candidate;
             break;
           }
-        } catch {
+        } catch (err) {
           // Network or signing failure: try the next region.
+          failure ??= err;
         }
       }
       if (!region) {
+        // No region answered, which says nothing about the bucket. It is also how a
+        // request the edge cannot make asks the gateway to run it instead.
+        if (failure) throw failure;
         throw new Error(
           `Scaleway plugin: could not locate Object Storage bucket "${bucket}" in any known region. ` +
             "Verify the bucket exists and the account credentials have read access.",
@@ -2695,6 +2707,7 @@ export class ScalewayClient implements PluginClient {
       accessKey: this.accessKey,
       secretKey: this.secretKey,
       region,
+      fetch: this.s3Transport,
       buildUrl: pathStyleUrl((r) => `s3.${r}.scw.cloud`)(region),
     };
   }

@@ -1,7 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { evaluateOrphanRule, exportResourcesToTerraform } from "@infrawrench/plugin-base";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { executeCommand, firewallRuleBody } from "../actions.js";
 import { VultrApiError, createVultrApi, statusOf } from "../api.js";
 import { planMonthly, sizePricing } from "../catalog.js";
@@ -467,5 +467,39 @@ describe("terraform", () => {
     const out = exportResourcesToTerraform([inst], () => plugin.terraformExport);
     expect(out.hcl).toContain('resource "vultr_instance"');
     expect(out.hcl).toContain("vultr/vultr");
+  });
+});
+
+describe("the Object Storage browser", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends every call through the host's HTTP service (#370)", async () => {
+    vi.stubGlobal("fetch", () => {
+      throw new Error("reached the global fetch");
+    });
+    const { services, calls } = host((c) => {
+      if (c.url.includes("/object-storage/"))
+        return {
+          body: {
+            object_storage: {
+              s3_hostname: "ewr1.vultrobjects.com",
+              s3_access_key: "AK",
+              s3_secret_key: "SK",
+            },
+          },
+        };
+      return { body: "<ListBucketResult></ListBucketResult>" };
+    });
+    const client = hostClient(new VultrClient({ apiKey: "K" }, plugin.resourceTypes, services));
+    await client.listStorageObjects("s1/b", "");
+    await client.uploadStorageObject("s1/b", "k", new File(["x"], "x"));
+    await client.makeStorageFolder("s1/b", "f/");
+    await client.deleteStorageObject("s1/b", "k");
+    const s3 = calls.filter((c) => c.url.includes("ewr1.vultrobjects.com"));
+    expect(s3.map((c) => c.method)).toEqual(["GET", "PUT", "PUT", "DELETE"]);
+  });
+
+  it("declares the host those calls go to, or a bastion's allowlist refuses them", () => {
+    expect(plugin.manifest.egressHosts).toContain("*.vultrobjects.com");
   });
 });

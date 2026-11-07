@@ -169,3 +169,34 @@ describe("Terraform export", () => {
     expect(result.hcl).toContain('source  = "coreweave/coreweave"');
   });
 });
+
+describe("the S3 API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends every bucket and object call through the host's HTTP service (#370)", async () => {
+    vi.stubGlobal("fetch", () => {
+      throw new Error("reached the global fetch");
+    });
+    const urls: string[] = [];
+    const request = vi.fn(async ({ url }: { url: string; method: string }) => {
+      urls.push(url);
+      const body = url.includes("temporary-credentials")
+        ? { AccessKeyId: "AK", SecretAccessKey: "SK", Token: "T" }
+        : url.includes("api.coreweave.com")
+          ? { info: { name: "b", location: "US-EAST-04A" } }
+          : "<ListBucketResult></ListBucketResult>";
+      return {
+        status: 200,
+        headers: {},
+        body: typeof body === "string" ? body : JSON.stringify(body),
+      };
+    });
+    const client = hostClient(new CoreWeaveClient({ apiToken: "t" }, { http: { request } }));
+    await client.listStorageObjects("b", "");
+    await client.uploadStorageObject("b", "k", new File(["x"], "x"));
+    await client.makeStorageFolder("b", "f/");
+    await client.deleteStorageObject("b", "k");
+    await client.deleteResource("bucket", "acc:bucket:b", "acc");
+    expect(urls.filter((u) => u.includes("cwobject.com")).length).toBe(5);
+  });
+});

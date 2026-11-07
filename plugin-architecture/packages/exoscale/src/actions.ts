@@ -101,6 +101,7 @@ export async function deleteResource(
       return done(dns.delete(`/anti-affinity-group/${rawId(raw)}`), dns);
     case "bucket": {
       const res = await signedS3Fetch({
+        fetch: api.fetch,
         accessKey: api.apiKey,
         secretKey: api.apiSecret,
         region: zone,

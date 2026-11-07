@@ -25,6 +25,7 @@
 
 import {
   createApiClient,
+  hostFetch,
   unencodedSegment,
   type ApiClient,
   type HostServices,
@@ -137,6 +138,8 @@ export interface ExoscaleApi {
   zones(): Promise<string[]>;
   /** The public zone list, or a throw: a sync over a known list would prune any zone it lacks. */
   liveZones(): Promise<string[]>;
+  /** The host's transport with none of this API's signing, for what SigV4 signs itself. */
+  fetch(url: string, init: RequestInit): Promise<Response>;
 }
 
 export interface ExoscaleApiConfig {
@@ -272,6 +275,8 @@ export function createExoscaleApi(config: ExoscaleApiConfig): ExoscaleApi {
     at,
     liveZones,
     zones: () => liveZones().catch(() => [...KNOWN_ZONES]),
+    fetch: (url, init) =>
+      hostFetch({ http: config.services?.http, caCert: config.caCert }, url, init),
   };
 }
 

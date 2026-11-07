@@ -1,7 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { evaluateOrphanRule, exportResourcesToTerraform } from "@infrawrench/plugin-base";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { executeCommand } from "../actions.js";
 import { CivoApiError, createCivoApi, regional, statusOf } from "../api.js";
 import { CivoClient, connectionString } from "../client.js";
@@ -287,5 +287,35 @@ describe("terraform", () => {
     const out = exportResourcesToTerraform([inst], () => plugin.terraformExport);
     expect(out.hcl).toContain('resource "civo_instance"');
     expect(out.hcl).toContain("u1");
+  });
+});
+
+describe("the Object Store browser", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sends every call through the host's HTTP service (#370)", async () => {
+    vi.stubGlobal("fetch", () => {
+      throw new Error("reached the global fetch");
+    });
+    const { services, calls } = host((c) => {
+      if (c.url.includes("/objectstores/"))
+        return {
+          body: {
+            name: "b",
+            objectstore_endpoint: "objectstore.lon1.civo.com",
+            owner_info: { credential_id: "c1" },
+          },
+        };
+      if (c.url.includes("/objectstore/credentials/"))
+        return { body: { access_key_id: "AK", secret_access_key_id: "SK" } };
+      return { body: "<ListBucketResult></ListBucketResult>" };
+    });
+    const client = hostClient(new CivoClient({ apiKey: "K" }, plugin.resourceTypes, services));
+    await client.listStorageObjects("LON1/s1", "");
+    await client.uploadStorageObject("LON1/s1", "k", new File(["x"], "x"));
+    await client.makeStorageFolder("LON1/s1", "f/");
+    await client.deleteStorageObject("LON1/s1", "k");
+    const s3 = calls.filter((c) => c.url.includes("objectstore.lon1.civo.com"));
+    expect(s3.map((c) => c.method)).toEqual(["GET", "PUT", "PUT", "DELETE"]);
   });
 });

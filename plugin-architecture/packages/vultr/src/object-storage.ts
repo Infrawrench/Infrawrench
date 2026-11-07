@@ -48,6 +48,7 @@ export class ObjectStorageBrowser {
             accessKey: sub.s3_access_key,
             secretKey: sub.s3_secret_key,
             region,
+            fetch: this.api.fetch,
             buildUrl: pathStyleUrl(() => host)(region),
           };
         });

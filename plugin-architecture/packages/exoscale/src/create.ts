@@ -886,6 +886,7 @@ const splitRef = (ref: string | undefined): { zone: string; id: string } => {
 
 export async function createBucket(api: ExoscaleApi, zone: string, name: string): Promise<void> {
   const res = await signedS3Fetch({
+    fetch: api.fetch,
     accessKey: api.apiKey,
     secretKey: api.apiSecret,
     region: zone,

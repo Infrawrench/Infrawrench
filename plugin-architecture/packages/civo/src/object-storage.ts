@@ -65,6 +65,7 @@ export class ObjectStoreBrowser {
         accessKey: cred.access_key_id,
         secretKey: cred.secret_access_key_id,
         region: signingRegion,
+        fetch: this.api.fetch,
         buildUrl: pathStyleUrl(() => host)(signingRegion),
       },
     };

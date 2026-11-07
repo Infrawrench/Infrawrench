@@ -18,7 +18,7 @@
  * (`CivoApiError.status`) for the hosts' backoff classification.
  */
 
-import type { HostServices } from "@infrawrench/plugin-base";
+import { hostFetch, type HostServices } from "@infrawrench/plugin-base";
 
 export const CIVO_API_BASE = "https://api.civo.com/v2";
 
@@ -70,6 +70,8 @@ export interface CivoApi {
   ): Promise<T>;
   /** Every item of a list endpoint, bare array or paginated. */
   list<T>(path: string, query?: Query): Promise<T[]>;
+  /** The host's transport with none of this API's auth, for a signed S3 call. */
+  fetch(url: string, init: RequestInit): Promise<Response>;
 }
 
 export interface CivoApiConfig {
@@ -131,6 +133,7 @@ export function createCivoApi(config: CivoApiConfig): CivoApi {
   }
 
   const api: CivoApi = {
+    fetch: (url, init) => hostFetch({ http, caCert: config.caCert }, url, init),
     get<T>(path: string, query?: Query) {
       return request<T>("GET", buildUrl(base, path, query), path);
     },

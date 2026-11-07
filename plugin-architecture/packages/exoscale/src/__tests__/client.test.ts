@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authorization, createExoscaleApi, rawId, type Schemas, statusOf } from "../api.js";
 import { ExoscaleClient } from "../client.js";
 import { focusRows, monthsBetween, parseFocusBody } from "../cost-data.js";
-import { recordBody } from "../create.js";
+import { createBucket, recordBody } from "../create.js";
 import { mapInstance, mapRecord, mapSecurityGroup, openToWorld } from "../listers.js";
 import { plugin } from "../plugin.js";
 import { quotasFrom } from "../quotas.js";
@@ -669,5 +669,27 @@ describe("terraform", () => {
     expect(hcl).toContain("i1@ch-gva-2");
     expect(hcl).toContain("r1@d1");
     expect(hcl).toContain("var.exoscale_api_secret");
+  });
+});
+
+describe("SOS", () => {
+  blockFetch();
+
+  it("sends every bucket and object call through the host, without this API's signature (#370)", async () => {
+    const { services, calls } = host(() => ({ body: "<ListBucketResult></ListBucketResult>" }));
+    const client = clientOver(services);
+    await client.listStorageObjects("ch-gva-2/b", "");
+    await client.uploadStorageObject("ch-gva-2/b", "k", new File(["x"], "x"));
+    await client.makeStorageFolder("ch-gva-2/b", "f/");
+    await client.deleteStorageObject("ch-gva-2/b", "k");
+    await client.deleteResource("bucket", "acc:bucket:ch-gva-2/b");
+    const api = createExoscaleApi({ apiKey: "k", apiSecret: "s", services });
+    await createBucket(api, "ch-gva-2", "b");
+    expect(calls.map((c) => c.method)).toEqual(["GET", "PUT", "PUT", "DELETE", "DELETE", "PUT"]);
+    for (const call of calls) {
+      expect(call.url).toContain("sos-ch-gva-2.exo.io");
+      expect(call.headers["authorization"]).toContain("AWS4-HMAC-SHA256");
+      expect(call.headers["Authorization"]).toBeUndefined();
+    }
   });
 });

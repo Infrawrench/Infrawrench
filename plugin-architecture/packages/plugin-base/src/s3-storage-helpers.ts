@@ -12,7 +12,7 @@
  */
 
 import type { StorageObject } from "./schema.js";
-import { signedS3Fetch } from "./signed-s3-request.js";
+import { signedS3Fetch, type SignedS3FetchOptions } from "./signed-s3-request.js";
 
 export interface S3StorageConfig {
   accessKey: string;
@@ -31,6 +31,12 @@ export interface S3StorageConfig {
    * `key` is "" for bucket-level requests.
    */
   buildUrl: (bucket: string, key: string, query?: Record<string, string>) => string;
+  /**
+   * What the signed request is sent over: `(url, init) => hostFetch({ http, caCert },
+   * url, init)` in anything with a host, because that is the only path with bastion
+   * routing. The global `fetch` without one.
+   */
+  fetch?: SignedS3FetchOptions["fetch"];
 }
 
 function joinQuery(params: Record<string, string>): string {
@@ -92,6 +98,7 @@ async function s3Fetch(
   };
   if (Object.keys(headers).length > 0) init.headers = headers;
   if (body !== undefined) init.body = body;
+  if (cfg.fetch) init.fetch = cfg.fetch;
   return signedS3Fetch(init);
 }
 

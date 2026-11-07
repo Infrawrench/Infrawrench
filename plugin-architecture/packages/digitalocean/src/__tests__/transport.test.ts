@@ -52,6 +52,23 @@ describe("every provider call goes through the host's HTTP service (#370)", () =
     expect(unexpected).not.toHaveBeenCalled();
   });
 
+  it("sends every Spaces storage browser call there", async () => {
+    const request = answering("<ListBucketResult></ListBucketResult>");
+    const spaces = hosted(request, { spacesAccessKeyId: "AK", spacesSecretAccessKey: "SK" });
+    await spaces.listStorageObjects("b", "");
+    await spaces.uploadStorageObject("b", "k", new File(["x"], "x"));
+    await spaces.makeStorageFolder("b", "f/");
+    await spaces.deleteStorageObject("b", "k");
+    await spaces.getManifest(`${ACC}:spaces-bucket:b`, ACC);
+    await spaces.applyManifest(`${ACC}:spaces-bucket:b`, ACC, "{}");
+    const methods = request.mock.calls.map(([call]) => call.method);
+    expect(methods).toEqual(expect.arrayContaining(["GET", "PUT", "DELETE"]));
+    for (const [call] of request.mock.calls) {
+      expect(call.url).toContain("digitaloceanspaces.com");
+    }
+    expect(unexpected).not.toHaveBeenCalled();
+  });
+
   it("sends a written call there", async () => {
     const request = answering(JSON.stringify({ usage: {} }));
     await hosted(request).fetchMetricSeries("gen-ai-agent", `${ACC}:gen-ai-agent:a-1`, ACC);

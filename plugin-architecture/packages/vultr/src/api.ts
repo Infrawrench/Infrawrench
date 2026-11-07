@@ -17,7 +17,7 @@
  * which tracks the API reference.
  */
 
-import type { HostServices } from "@infrawrench/plugin-base";
+import { hostFetch, type HostServices } from "@infrawrench/plugin-base";
 
 export const VULTR_API_BASE = "https://api.vultr.com/v2";
 
@@ -61,6 +61,8 @@ export interface VultrApi {
   send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T>;
   /** Every page of a collection; `key` names the envelope array. */
   all<T>(path: string, key: string, query?: Query): Promise<T[]>;
+  /** The host's transport with none of this API's auth, for a signed S3 call. */
+  fetch(url: string, init: RequestInit): Promise<Response>;
 }
 
 export interface VultrApiConfig {
@@ -124,6 +126,7 @@ export function createVultrApi(config: VultrApiConfig): VultrApi {
   }
 
   const api: VultrApi = {
+    fetch: (url, init) => hostFetch({ http, caCert: config.caCert }, url, init),
     get<T>(path: string, query?: Query) {
       return request<T>("GET", buildUrl(base, path, query), path);
     },

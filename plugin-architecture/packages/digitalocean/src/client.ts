@@ -2096,6 +2096,7 @@ export class DigitalOceanClient implements PluginClient {
       accessKey,
       secretKey,
       region,
+      fetch: this.api.fetch,
       buildUrl: virtualHostedUrl((r) => `${r}.digitaloceanspaces.com`)(region),
     };
   }

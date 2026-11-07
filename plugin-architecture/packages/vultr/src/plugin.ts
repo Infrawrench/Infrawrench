@@ -11,7 +11,7 @@ import { vultrTerraformExport } from "./terraform.js";
 
 export const manifest = {
   id: "vultr",
-  egressHosts: ["api.vultr.com"],
+  egressHosts: ["api.vultr.com", "*.vultrobjects.com"],
   displayName: "Vultr",
   description:
     "Vultr cloud: billed spend from invoices and month-to-date charges, account credit, and instances, bare metal, block storage, snapshots, backups, Kubernetes (VKE), Managed Databases, load balancers, firewall groups, VPCs, reserved IPs, DNS, Object Storage, SSH keys and startup scripts.",
