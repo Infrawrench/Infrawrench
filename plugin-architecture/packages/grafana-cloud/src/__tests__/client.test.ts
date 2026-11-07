@@ -537,3 +537,65 @@ describe("alert rule folder names", () => {
     await expect(client.listResources("alert-rule", "acct")).rejects.toThrow("is not a list");
   });
 });
+
+describe("updating an access policy", () => {
+  const attributes = {
+    lokiQueryPolicy: { maxQueryLength: "720h", requiredLabels: ["team"] },
+    pdcConfiguration: { limitedHosts: ["db.internal"] },
+  };
+
+  function withPolicy(read: Record<string, unknown>) {
+    const made = makeHttp((url, method) => {
+      if (url.pathname === "/api/v1/accesspolicies/p1") {
+        return { body: method === "GET" ? { id: "p1", name: "infra", ...read } : {} };
+      }
+      if (url.pathname === "/api/v1/accesspolicies") return { body: { items: [] } };
+      return baseRoute(url, method) ?? { status: 404 };
+    });
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http: made.http }));
+    return { client, posted: () => made.calls.find((c) => c.method === "POST")?.body };
+  }
+
+  it("sends the attributes back when turning a policy off", async () => {
+    const { client, posted } = withPolicy({ scopes: [], realms: [], attributes });
+    await client.invokeAction("access-policy", "acct:access-policy:us/p1", "disable", "acct");
+    expect(posted()).toMatchObject({ status: "inactive", attributes });
+  });
+
+  it("sends the attributes back on a rename", async () => {
+    const { client, posted } = withPolicy({ scopes: [], realms: [], attributes });
+    await client
+      .updateResource("access-policy", "acct:access-policy:us/p1", "acct", {
+        displayName: "Renamed",
+      })
+      .catch(() => undefined);
+    expect(posted()).toMatchObject({ displayName: "Renamed", attributes });
+  });
+
+  it("leaves out what the update body does not take", async () => {
+    const { client, posted } = withPolicy({
+      scopes: [],
+      realms: [],
+      attributes: { allowedAudiences: ["a"], allowedScopes: ["b"], ...attributes },
+    });
+    await client.invokeAction("access-policy", "acct:access-policy:us/p1", "enable", "acct");
+    expect(posted()).toHaveProperty("attributes", attributes);
+  });
+
+  it("adds no attributes to a policy with none", async () => {
+    const { client, posted } = withPolicy({ scopes: [], realms: [] });
+    await client.invokeAction("access-policy", "acct:access-policy:us/p1", "enable", "acct");
+    expect(posted()).not.toHaveProperty("attributes");
+    const empty = withPolicy({ scopes: [], realms: [], attributes: { allowedScopes: ["b"] } });
+    await empty.client.invokeAction("access-policy", "acct:access-policy:us/p1", "enable", "acct");
+    expect(empty.posted()).not.toHaveProperty("attributes");
+  });
+
+  it.each(["us/", "/p1", "p1"])("refuses a blank part in the id %s", async (externalId) => {
+    const { client, posted } = withPolicy({ scopes: [], realms: [] });
+    await expect(
+      client.invokeAction("access-policy", `acct:access-policy:${externalId}`, "disable", "acct"),
+    ).rejects.toThrow("no region or id");
+    expect(posted()).toBeUndefined();
+  });
+});

@@ -822,12 +822,21 @@ export class GrafanaCloudClient implements PluginClient {
   }
 
   /**
-   * Access policy updates send the whole policy: scopes and realms are read
-   * back first so changing the name or the status never drops them.
+   * Access policy updates send the whole policy: everything is read back first so
+   * changing the name or the status never drops it. Nothing says what an update
+   * with no `attributes` does, and they hold limits (the Loki query policy, the PDC
+   * hosts), so they go back as read: the same values if Grafana would have kept them.
+   * `allowedAudiences` and `allowedScopes` are on the read only, not the update body.
    */
   private async updatePolicy(region: string, policyId: string, patch: Record<string, string>) {
+    if (!region || !policyId) {
+      throw new Error(
+        `Grafana Cloud plugin: access policy "${region}/${policyId}" has no region or id`,
+      );
+    }
     const id = pathEncode(policyId);
     const current = await this.cloud.get(`/v1/accesspolicies/${id}`, { query: { region } });
+    const { lokiQueryPolicy, pdcConfiguration } = current.attributes ?? {};
     await this.cloud.post(`/v1/accesspolicies/${id}`, {
       headers: requestId(),
       query: { region },
@@ -835,6 +844,14 @@ export class GrafanaCloudClient implements PluginClient {
         displayName: current.displayName ?? current.name,
         scopes: current.scopes ?? [],
         realms: current.realms ?? [],
+        ...(lokiQueryPolicy || pdcConfiguration
+          ? {
+              attributes: {
+                ...(lokiQueryPolicy ? { lokiQueryPolicy } : {}),
+                ...(pdcConfiguration ? { pdcConfiguration } : {}),
+              },
+            }
+          : {}),
         ...(current.conditions ? { conditions: current.conditions } : {}),
         ...(current.status ? { status: current.status } : {}),
         ...patch,
