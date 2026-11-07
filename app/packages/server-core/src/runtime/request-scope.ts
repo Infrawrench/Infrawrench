@@ -66,6 +66,8 @@ interface IncompleteListTracker {
   error?: Error;
   /** What the list said it did not read, for the prune. Only the list's own scope needs it. */
   unread?: UnreadListPart[];
+  /** Whether the caller keeps unread rows, as the resource sync does. */
+  acceptsUnread: boolean;
   parent?: IncompleteListTracker | undefined;
 }
 
@@ -131,9 +133,32 @@ function noteIncompleteList(error: Error): void {
 // own copy of plugin-base, the same reason `GatewayOnlyError`'s stub reaches a hook.
 Reflect.set(globalThis, Symbol.for("infrawrench.incompleteList"), noteIncompleteList);
 
-function noteUnreadListPart(part: UnreadListPart): void {
+/**
+ * True when the caller will keep the rows named unread. A read whose caller keeps
+ * none (cost, seats and findings, which replace what is stored) cannot be trusted
+ * whole, so it fails. Outside any checked read there is nobody to tell, and the
+ * plugin hears false so it can read everything instead.
+ */
+function noteUnreadListPart(part: UnreadListPart): boolean {
   const tracker = storage.getStore()?.incompleteList;
-  if (tracker) (tracker.unread ??= []).push(part);
+  if (!tracker) return false;
+  if (tracker.acceptsUnread) {
+    (tracker.unread ??= []).push(part);
+    return true;
+  }
+  tracker.error ??= new UnreadListPartError();
+  return false;
+}
+
+/** A list that left part of itself unread, in a read that replaces what is stored. */
+class UnreadListPartError extends Error {
+  readonly incompleteList = true;
+  constructor() {
+    super(
+      "Part of this list could not be read, so it was not used: the stored values are kept until a read gets all of it.",
+    );
+    this.name = "UnreadListPartError";
+  }
 }
 
 // `reportUnreadListPart` calls this, a global for the same reason.
@@ -149,7 +174,10 @@ export async function runListChecked<T>(
   onUnread?: (parts: UnreadListPart[]) => void,
 ): Promise<T> {
   const parent = storage.getStore();
-  const tracker: IncompleteListTracker = { parent: parent?.incompleteList };
+  const tracker: IncompleteListTracker = {
+    parent: parent?.incompleteList,
+    acceptsUnread: onUnread !== undefined,
+  };
   const value = await storage.run({ ...parent, incompleteList: tracker }, fn);
   if (tracker.error) throw tracker.error;
   if (tracker.unread) onUnread?.(tracker.unread);

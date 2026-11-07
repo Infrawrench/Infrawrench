@@ -19,6 +19,16 @@ describe("reportUnreadListPart", () => {
       Reflect.deleteProperty(globalThis, hook);
     }
   });
+
+  it("answers false when the host says nobody keeps the rows", () => {
+    const hook = Symbol.for("infrawrench.unreadListPart");
+    Reflect.set(globalThis, hook, () => false);
+    try {
+      expect(reportUnreadListPart({ idPrefixes: [""] })).toBe(false);
+    } finally {
+      Reflect.deleteProperty(globalThis, hook);
+    }
+  });
 });
 
 describe("SecretReadError", () => {

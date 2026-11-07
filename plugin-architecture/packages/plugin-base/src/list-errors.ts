@@ -298,7 +298,9 @@ const UNREAD_LIST_PART_HOOK = Symbol.for("infrawrench.unreadListPart");
  *
  * A global because the plugin's copy of this package is not the host's, as for
  * {@link IncompleteListError}. Where a host keeps no track, as on the desktop, whose lists
- * prune nothing, it does nothing and answers false, so a refusal can still be shown there:
+ * prune nothing, it does nothing and answers false, so a refusal can still be shown there.
+ * It also answers false outside a sync (a cost, seat or findings read, which then fails,
+ * or a workflow's own call), so a rotating budget should read everything when it does:
  *
  *   if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
  *   return [];
@@ -306,8 +308,8 @@ const UNREAD_LIST_PART_HOOK = Symbol.for("infrawrench.unreadListPart");
 export function reportUnreadListPart(part: UnreadListPart): boolean {
   const note: unknown = Reflect.get(globalThis, UNREAD_LIST_PART_HOOK);
   if (typeof note !== "function") return false;
-  note(part);
-  return true;
+  // A host answers false when nobody keeps the rows; anything else means taken.
+  return note(part) !== false;
 }
 
 /** True for any {@link IncompleteListError}, or anything wrapping one as its `cause`. */
