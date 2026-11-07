@@ -174,6 +174,16 @@
       "why": "Documented as an object. With format json any JSON value is a record, and the plugin sends text where the payload is not JSON."
     },
     {
+      "pointer": "/components/schemas/OrganizationProjectsListResponse/properties/projects/items/properties/tags",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "why": "Documented as an object whose only property is called ANY. It maps tag names to values."
+    },
+    {
       "pointer": "/components/schemas/ProjectListResponse/properties/projects/items/properties/tags",
       "value": {
         "type": "object",
@@ -366,6 +376,12 @@
     "/billing-group/{billing_group_id}/invoice/{invoice_number}/lines": ["get"],
     "/billing-group/{billing_group_id}/project-assign/{project}": ["post"],
     "/clouds": ["get"],
+    "/organization/{organization_id}/billing-groups": ["get"],
+    "/organization/{organization_id}/invoice/{invoice_number}/lines": ["get"],
+    "/organization/{organization_id}/invoices": ["get"],
+    "/organization/{organization_id}/project/{project_id}": ["patch", "delete"],
+    "/organization/{organization_id}/projects": ["get", "post"],
+    "/organizations": ["get"],
     "/project": ["get", "post"],
     "/project/{project}": ["put", "delete"],
     "/project/{project}/alerts": ["get"],

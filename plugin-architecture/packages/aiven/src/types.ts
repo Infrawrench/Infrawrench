@@ -22,6 +22,9 @@ export type Loose<T> = T extends readonly (infer Item)[]
 type Item<List> = NonNullable<List> extends readonly (infer One)[] ? One : never;
 
 export type AvProject = ApiListItem<operations["ProjectList"], "projects">;
+/** A project from either list route: the organization route has far fewer fields. */
+export type AvProjectRow = Loose<AvProject>;
+export type AvOrganization = ApiListItem<operations["UserOrganizationsList"], "organizations">;
 export type AvService = AivenResponse<"ServiceGet">["service"];
 export type AvComponent = Item<AvService["components"]>;
 export type AvServiceUser = Item<AvService["users"]>;
@@ -35,8 +38,19 @@ export type AvVpc = AivenResponse<"VpcGet">;
 export type AvVpcRow = ApiListItem<operations["VpcList"], "vpcs">;
 export type AvPeering = Item<AvVpc["peering_connections"]>;
 export type AvBillingGroup = ApiListItem<operations["BillingGroupList"], "billing_groups">;
+/** A billing group from either list route, in the old route's field names. */
+export type AvBillingGroupRow = Loose<AvBillingGroup> & { organization_id?: string };
 export type AvInvoice = ApiListItem<operations["BillingGroupInvoiceList"], "invoices">;
+/** `organization_id` is set when the invoice came from the organization route. */
+export type AvInvoiceRow = Loose<AvInvoice> & { organization_id?: string };
 export type AvInvoiceLine = ApiListItem<operations["BillingGroupInvoiceLinesList"], "lines">;
+/** An invoice line from either route, in the old route's field names. */
+export type AvInvoiceLineRow = {
+  [K in Exclude<keyof AvInvoiceLine, "service_type" | "tags">]?: AvInvoiceLine[K] | undefined;
+} & {
+  service_type?: string | undefined;
+  tags?: Record<string, string> | undefined;
+};
 export type AvCredit = ApiListItem<operations["BillingGroupCreditsList"], "credits">;
 export type AvPlan = ApiListItem<operations["ProjectServicePlanList"], "service_plans">;
 export type AvCloud = ApiListItem<operations["ListClouds"], "clouds">;

@@ -6,8 +6,9 @@ import type {
   CostRow,
 } from "@infrawrench/plugin-base";
 import type { AivenContext } from "./api.js";
-import { createAivenApi, enc, listOf } from "./api.js";
-import type { AvInvoice, AvInvoiceLine, Loose } from "./types.js";
+import { createAivenApi } from "./api.js";
+import { listBillingGroups, listInvoiceLines, listInvoices } from "./organization-routes.js";
+import type { AvInvoice, AvInvoiceLineRow, AvInvoiceRow, Loose } from "./types.js";
 
 /**
  * Spend from billing-group invoices (verified 2026-10):
@@ -18,6 +19,9 @@ import type { AvInvoice, AvInvoiceLine, Loose } from "./types.js";
  * - `GET /billing-group/{id}/invoice/{n}/lines` returns lines with
  *   `line_total_usd`, project, service, plan, cloud, billing tags, a
  *   `line_type`, and for time-billed resources `timestamp_begin`/`end`.
+ *
+ * All three are marked for removal; `organization-routes.ts` moves to their
+ * successors when they stop answering.
  *
  * Aiven bills services by the hour but only exposes the totals per invoice
  * line, so each line is spread evenly over the days it covers (its own
@@ -50,7 +54,7 @@ const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 /** Spread one line over the UTC days it covers, keeping the days inside the range. */
 export function spreadLine(
-  line: Loose<AvInvoiceLine>,
+  line: AvInvoiceLineRow,
   invoice: Loose<AvInvoice>,
   range: CostFetchRange,
   now: number = Date.now(),
@@ -119,21 +123,16 @@ export async function fetchAivenCostData(
   range: CostFetchRange,
 ): Promise<CostRow[] | CostFetchResult> {
   const api = createAivenApi(ctx);
-  const groups = listOf(
-    (await api.get("/billing-group"))?.billing_groups,
-    "/billing-group",
-    "billing_groups",
-  );
+  const groups = await listBillingGroups(api);
   const rows: CostRow[] = [];
   let degraded = false;
   const from = Date.parse(`${range.fromDate}T00:00:00Z`);
   const to = Date.parse(`${range.toDate}T23:59:59Z`);
   for (const g of groups) {
     if (!g.billing_group_id) continue;
-    let invoices: AvInvoice[] = [];
+    let invoices: AvInvoiceRow[] = [];
     try {
-      const path = `/billing-group/${enc(g.billing_group_id)}/invoice` as const;
-      invoices = listOf((await api.get(path))?.invoices, path, "invoices");
+      invoices = await listInvoices(api, g);
     } catch (err) {
       rethrowIncompleteList(err);
       degraded = true;
@@ -146,14 +145,10 @@ export async function fetchAivenCostData(
       if (Number.isFinite(pb) && pb > to) continue;
       if (Number.isFinite(pe) && pe < from) continue;
       try {
-        const lines =
-          (
-            await api.get(
-              `/billing-group/${enc(g.billing_group_id)}/invoice/${enc(inv.invoice_number)}/lines`,
-            )
-          )?.lines ?? [];
+        const lines = await listInvoiceLines(api, g, inv);
         for (const line of lines) rows.push(...spreadLine(line, inv, range));
-      } catch {
+      } catch (err) {
+        rethrowIncompleteList(err);
         degraded = true;
       }
     }

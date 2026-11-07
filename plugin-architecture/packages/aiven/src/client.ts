@@ -43,14 +43,21 @@ import {
   parts,
   serviceConnectionString,
 } from "./mappers.js";
+import {
+  listBillingGroups,
+  listInvoices,
+  listProjects,
+  organizationOf,
+  untilRemoved,
+} from "./organization-routes.js";
 import { ENRICH, renderAivenDetail, renderAivenSidebar } from "./render.js";
 import { RESOURCE_TYPES, T, isMaintenanceDay } from "./resource-types.js";
 import type {
-  AvBillingGroup,
+  AvBillingGroupRow,
   AvCloud,
   AvCredit,
   AvPlan,
-  AvProject,
+  AvProjectRow,
   AvService,
   AvServiceTypes,
   AvTopicDetail,
@@ -171,11 +178,11 @@ export class AivenClient implements PluginClient {
   readonly ctx: AivenContext;
   private readonly api: AivenApi;
   private readonly cache = {
-    projects: ttlCache<AvProject[]>(),
+    projects: ttlCache<AvProjectRow[]>(),
     services: ttlCache<Array<{ project: string; svc: AvService }>>(),
     vpcs: ttlCache<Array<{ project: string; vpc: AvVpcRow }>>(),
     vpcDetails: ttlCache<Array<{ project: string; vpc: Loose<AvVpc> }>>(),
-    billingGroups: ttlCache<AvBillingGroup[]>(),
+    billingGroups: ttlCache<AvBillingGroupRow[]>(),
     clouds: ttlCache<AvCloud[]>(),
     plans: ttlCache<AvPlan[]>(),
     ca: ttlCache<string>(),
@@ -201,10 +208,8 @@ export class AivenClient implements PluginClient {
   // Listings
   // -------------------------------------------------------------------------
 
-  projects(): Promise<AvProject[]> {
-    return this.cache.projects.get("projects", async () =>
-      listOf((await this.api.get("/project"))?.projects, "/project", "projects"),
-    );
+  projects(): Promise<AvProjectRow[]> {
+    return this.cache.projects.get("projects", () => listProjects(this.api));
   }
 
   /** Every service in every project, with users, pools and ACLs embedded. */
@@ -262,14 +267,24 @@ export class AivenClient implements PluginClient {
     });
   }
 
-  private billingGroups(): Promise<AvBillingGroup[]> {
-    return this.cache.billingGroups.get("billing-groups", async () =>
-      listOf(
-        (await this.api.get("/billing-group"))?.billing_groups,
-        "/billing-group",
-        "billing_groups",
-      ),
-    );
+  private billingGroups(): Promise<AvBillingGroupRow[]> {
+    return this.cache.billingGroups.get("billing-groups", () => listBillingGroups(this.api));
+  }
+
+  /** The project's row, for the organization route that replaces a removed one. */
+  private async projectRow(name: string): Promise<AvProjectRow | undefined> {
+    return (await this.projects()).find((p) => p.project_name === name);
+  }
+
+  /** Sends only what changed: this route is a PATCH. */
+  private async patchProject(
+    project: string,
+    body: AivenBody<"OrganizationProjectsUpdate">,
+    removal: unknown,
+  ): Promise<void> {
+    const org = (await this.projectRow(project))?.organization_id;
+    if (!org) throw removal;
+    await this.api.patch(`/organization/${enc(org)}/project/${enc(project)}`, { body });
   }
 
   private clouds(project?: string): Promise<AvCloud[]> {
@@ -585,7 +600,16 @@ export class AivenClient implements PluginClient {
         case T.project: {
           const [alerts, credits, groups, clouds] = await Promise.all([
             settle(this.api.get(`/project/${enc(ext)}/alerts`)),
-            settle(this.api.get(`/project/${enc(ext)}/credits`)),
+            settle(
+              untilRemoved(
+                () => this.api.get(`/project/${enc(ext)}/credits`),
+                (removal) => {
+                  const group = resource.fields["billingGroupId"];
+                  if (typeof group !== "string" || !group) throw removal;
+                  return this.api.get(`/billing-group/${enc(group)}/credits`);
+                },
+              ),
+            ),
             settle(this.billingGroups()),
             settle(this.cloudOptions(ext)),
           ]);
@@ -700,12 +724,19 @@ export class AivenClient implements PluginClient {
         }
         case T.billingGroup: {
           const [invoices, credits] = await Promise.all([
-            settle(this.api.get(`/billing-group/${enc(ext)}/invoice`)),
+            settle(
+              this.billingGroups().then((groups) =>
+                listInvoices(
+                  this.api,
+                  groups.find((g) => g.billing_group_id === ext) ?? { billing_group_id: ext },
+                ),
+              ),
+            ),
             settle(this.api.get(`/billing-group/${enc(ext)}/credits`)),
           ]);
           put(
             ENRICH.invoices,
-            invoices?.invoices?.slice(0, 12).map((i) => ({
+            invoices?.slice(0, 12).map((i) => ({
               number: i.invoice_number ?? "",
               period: `${(i.period_begin ?? "").slice(0, 10)} to ${(i.period_end ?? "").slice(0, 10)}`,
               state: i.state ?? "",
@@ -1300,14 +1331,38 @@ export class AivenClient implements PluginClient {
         case T.project: {
           const name = (fields["name"] ?? "").trim();
           if (!name) throw new Error("Give the project a name.");
-          const res = await this.api.post("/project", {
-            body: {
-              project: name,
-              ...(fields["cloud"] ? { cloud: fields["cloud"] } : {}),
-              ...(fields["billingGroupId"] ? { billing_group_id: fields["billingGroupId"] } : {}),
+          const created = await untilRemoved(
+            async (): Promise<AvProjectRow | undefined> =>
+              (
+                await this.api.post("/project", {
+                  body: {
+                    project: name,
+                    ...(fields["cloud"] ? { cloud: fields["cloud"] } : {}),
+                    ...(fields["billingGroupId"]
+                      ? { billing_group_id: fields["billingGroupId"] }
+                      : {}),
+                  },
+                })
+              )?.project,
+            async (removal) => {
+              // This route requires a billing group, which also says which organization.
+              const billingGroupId = fields["billingGroupId"];
+              if (!billingGroupId) throw new Error("Pick a billing group.");
+              const groups = await this.billingGroups();
+              const group = groups.find((g) => g.billing_group_id === billingGroupId);
+              const org = group && (await organizationOf(this.api, group));
+              if (!org) throw removal;
+              await this.api.post(`/organization/${enc(org)}/projects`, {
+                body: { project_id: name, billing_group_id: billingGroupId, tags: {} },
+              });
+              return {
+                project_name: name,
+                organization_id: org,
+                billing_group_id: billingGroupId,
+              };
             },
-          });
-          return mapProject(accountId, res?.project ?? { project_name: name });
+          );
+          return mapProject(accountId, created ?? { project_name: name });
         }
         case T.service: {
           const project = this.projectOf(fields, parentResourceId);
@@ -1497,9 +1552,11 @@ export class AivenClient implements PluginClient {
       switch (typeId) {
         case T.project:
           if (fields["techEmails"] !== undefined) {
-            await this.api.put(`/project/${enc(ext)}`, {
-              body: { tech_emails: list(fields["techEmails"]).map((email) => ({ email })) },
-            });
+            const body = { tech_emails: list(fields["techEmails"]).map((email) => ({ email })) };
+            await untilRemoved(
+              async () => void (await this.api.put(`/project/${enc(ext)}`, { body })),
+              (removal) => this.patchProject(ext, body, removal),
+            );
           }
           break;
         case T.service: {
@@ -1570,7 +1627,14 @@ export class AivenClient implements PluginClient {
       const three = () => parts(ext, 3);
       switch (typeId) {
         case T.project:
-          return void (await this.api.delete(`/project/${enc(ext)}`));
+          return untilRemoved(
+            async () => void (await this.api.delete(`/project/${enc(ext)}`)),
+            async (removal) => {
+              const org = (await this.projectRow(ext))?.organization_id;
+              if (!org) throw removal;
+              await this.api.delete(`/organization/${enc(org)}/project/${enc(ext)}`);
+            },
+          );
         case T.service: {
           const [project, name] = parts(ext, 2);
           return void (await this.api.delete(svcPath(project, name)));
@@ -1710,15 +1774,33 @@ export class AivenClient implements PluginClient {
         case `${T.project}:set-cloud`:
           await this.api.put(`/project/${enc(ext)}`, { body: { cloud: form["cloud"] } });
           return { ok: true, message: "Default cloud saved." };
-        case `${T.project}:set-billing-group`:
+        case `${T.project}:set-billing-group`: {
           if (!form["billingGroupId"]) throw new Error("Pick a billing group.");
-          await this.api.post(
-            `/billing-group/${enc(form["billingGroupId"])}/project-assign/${enc(ext)}`,
-            { body: {} },
+          const billingGroupId = form["billingGroupId"];
+          await untilRemoved(
+            async () =>
+              void (await this.api.post(
+                `/billing-group/${enc(billingGroupId)}/project-assign/${enc(ext)}`,
+                { body: {} },
+              )),
+            (removal) => this.patchProject(ext, { billing_group_id: billingGroupId }, removal),
           );
           return { ok: true, message: "Project moved." };
+        }
         case `${T.project}:claim-credit`:
-          await this.api.post(`/project/${enc(ext)}/credits`, { body: { code: form["code"] } });
+          await untilRemoved(
+            async () =>
+              void (await this.api.post(`/project/${enc(ext)}/credits`, {
+                body: { code: form["code"] },
+              })),
+            async (removal) => {
+              const group = (await this.projectRow(ext))?.billing_group_id;
+              if (!group) throw removal;
+              await this.api.post(`/billing-group/${enc(group)}/credits`, {
+                body: { code: form["code"] },
+              });
+            },
+          );
           return { ok: true, message: "Credit claimed." };
         case `${T.billingGroup}:claim-credit`:
           await this.api.post(`/billing-group/${enc(ext)}/credits`, {

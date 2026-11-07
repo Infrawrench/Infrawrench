@@ -102,6 +102,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization/{organization_id}/billing-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OrganizationBillingGroupList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization/{organization_id}/invoice/{invoice_number}/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OrganizationBillingInvoiceLinesList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization/{organization_id}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OrganizationBillingInvoiceList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization/{organization_id}/project/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["OrganizationProjectsDelete"];
+        options?: never;
+        head?: never;
+        patch: operations["OrganizationProjectsUpdate"];
+        trace?: never;
+    };
+    "/organization/{organization_id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["OrganizationProjectsList"];
+        put?: never;
+        post: operations["OrganizationProjectsCreate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["UserOrganizationsList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/project": {
         parameters: {
             query?: never;
@@ -1018,6 +1114,123 @@ export interface components {
         };
         ListCloudsResponse: ListCloudsResponse_878d1d5c;
         ListProjectCloudsResponse: ListCloudsResponse_878d1d5c;
+        OrganizationBillingGroupListResponse: {
+            billing_groups: {
+                billing_address_id: string;
+                billing_contact_emails: {
+                    email: string;
+                }[];
+                billing_emails: {
+                    email: string;
+                }[];
+                billing_group_id: string;
+                billing_group_name: string;
+                create_time: string;
+                custom_invoice_text?: string;
+                organization_id: string;
+                payment_method?: {
+                    payment_method_id: string;
+                    /** @enum {string} */
+                    payment_method_type: "aws_subscription" | "azure_subscription" | "bank_transfer" | "credit_card" | "gcp_subscription" | "custom";
+                };
+                shipping_address_id: string;
+                vat_id?: string;
+            }[];
+            next?: string;
+            prev?: string;
+        };
+        OrganizationBillingInvoiceLinesListResponse: {
+            lines: {
+                begin_time?: string;
+                cloud?: string;
+                /** @enum {string} */
+                currency?: "AUD" | "CAD" | "CHF" | "DKK" | "EUR" | "GBP" | "JPY" | "NOK" | "NZD" | "SEK" | "SGD" | "USD";
+                description?: string;
+                end_time?: string;
+                /** @enum {string} */
+                line_type: "commitment_fee" | "credit_consumption" | "extra_charge" | "multiplier" | "other_event" | "pro_platform_charge" | "rounding" | "service_charge" | "support_charge";
+                plan?: string;
+                project_id?: string;
+                service_id?: string;
+                service_type?: string;
+                tags?: Record<string, never>;
+                total: string;
+                total_usd: string;
+            }[];
+        };
+        OrganizationBillingInvoiceListResponse: {
+            invoices: {
+                billing_group_id: string;
+                create_time: string;
+                /** @enum {string} */
+                currency: "AUD" | "CAD" | "CHF" | "DKK" | "EUR" | "GBP" | "JPY" | "NOK" | "NZD" | "SEK" | "SGD" | "USD";
+                download_only: boolean;
+                due_date?: string;
+                invoice_number: string;
+                invoice_period: {
+                    begin_time: string;
+                    end_time: string;
+                };
+                issue_date: string;
+                net: string;
+                net_usd: string;
+                organization_id: string;
+                overdue: boolean;
+                /** @enum {string} */
+                state: "accrual" | "consolidated" | "due" | "estimate" | "failed_credit_card_charge" | "failed_no_credit_card" | "mailed" | "no_payment_expected" | "paid" | "partner_metering" | "uncollectible" | "waived";
+                total: string;
+                total_usd: string;
+            }[];
+        };
+        OrganizationProjectsCreateRequestBody: {
+            base_port?: number;
+            billing_group_id: string;
+            parent_id?: string;
+            project_id: string;
+            tags: {
+                ANY?: string;
+            };
+            tech_emails?: {
+                email: string;
+            }[];
+        };
+        OrganizationProjectsCreateResponse: OrganizationProjectsCreateResponse_ca9e5a5f;
+        OrganizationProjectsListResponse: {
+            projects: {
+                account_id?: string;
+                base_port?: number;
+                billing_group_id?: string;
+                end_of_life_extension: {
+                    ANY?: {
+                        eol_date: string;
+                        version: string;
+                    };
+                };
+                parent_id: string;
+                project_id: string;
+                tags: {
+                    [key: string]: string;
+                };
+                tech_emails: {
+                    email: string;
+                }[];
+            }[];
+            total_project_count: number;
+        };
+        OrganizationProjectsUpdateRequestBody: {
+            base_port?: number;
+            billing_group_id?: string;
+            organization_id?: string;
+            parent_id?: string;
+            project_name?: string;
+            tags?: {
+                ANY?: string;
+            };
+            tech_emails?: {
+                email: string;
+            }[];
+        };
+        OrganizationProjectsUpdateResponse: OrganizationProjectsCreateResponse_ca9e5a5f;
         ProjectAlertsListResponse: {
             alerts: {
                 create_time: string;
@@ -2146,6 +2359,18 @@ export interface components {
             }[];
             message?: string;
         };
+        UserOrganizationsListResponse: {
+            organizations: {
+                account_id: string;
+                create_time: string;
+                default_governance_user_group_id?: string;
+                organization_id: string;
+                organization_name: string;
+                /** @enum {string} */
+                tier: "business" | "personal";
+                update_time: string;
+            }[];
+        };
         VpcCreateRequestBody: {
             cloud_name: string;
             network_cidr: string;
@@ -2203,12 +2428,21 @@ export interface components {
         invoice_number: string;
         kafka_acl_id: string;
         listprojectclouds_sort_by_proximity: boolean;
+        organization_id: string;
+        organizationbillinggrouplist_cursor: string;
+        organizationbillinggrouplist_limit: number;
+        organizationbillinginvoicelist_billing_group_ids: unknown[];
+        organizationbillinginvoicelist_ending_date: string;
+        organizationbillinginvoicelist_starting_date: string;
+        organizationbillinginvoicelist_state: unknown[];
+        organizationprojectslist_billing_group_id: string;
         peer_cloud_account: string;
         peer_region: string;
         peer_resource_group: string;
         peer_vpc: string;
         pool_name: string;
         project: string;
+        project_id: string;
         project_vpc_id: string;
         service_name: string;
         service_type: string;
@@ -2376,6 +2610,191 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListCloudsResponse"];
+                };
+            };
+        };
+    };
+    OrganizationBillingGroupList: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["organizationbillinggrouplist_cursor"];
+                limit?: components["parameters"]["organizationbillinggrouplist_limit"];
+            };
+            header?: never;
+            path: {
+                organization_id: components["parameters"]["organization_id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationBillingGroupListResponse"];
+                };
+            };
+        };
+    };
+    OrganizationBillingInvoiceLinesList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                invoice_number: components["parameters"]["invoice_number"];
+                organization_id: components["parameters"]["organization_id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationBillingInvoiceLinesListResponse"];
+                };
+            };
+        };
+    };
+    OrganizationBillingInvoiceList: {
+        parameters: {
+            query?: {
+                billing_group_ids?: components["parameters"]["organizationbillinginvoicelist_billing_group_ids"];
+                ending_date?: components["parameters"]["organizationbillinginvoicelist_ending_date"];
+                starting_date?: components["parameters"]["organizationbillinginvoicelist_starting_date"];
+                state?: components["parameters"]["organizationbillinginvoicelist_state"];
+            };
+            header?: never;
+            path: {
+                organization_id: components["parameters"]["organization_id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationBillingInvoiceListResponse"];
+                };
+            };
+        };
+    };
+    OrganizationProjectsDelete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: components["parameters"]["organization_id"];
+                project_id: components["parameters"]["project_id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrganizationProjectsUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: components["parameters"]["organization_id"];
+                project_id: components["parameters"]["project_id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrganizationProjectsUpdateRequestBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationProjectsUpdateResponse"];
+                };
+            };
+        };
+    };
+    OrganizationProjectsList: {
+        parameters: {
+            query?: {
+                billing_group_id?: components["parameters"]["organizationprojectslist_billing_group_id"];
+            };
+            header?: never;
+            path: {
+                organization_id: components["parameters"]["organization_id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationProjectsListResponse"];
+                };
+            };
+        };
+    };
+    OrganizationProjectsCreate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organization_id: components["parameters"]["organization_id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OrganizationProjectsCreateRequestBody"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationProjectsCreateResponse"];
+                };
+            };
+        };
+    };
+    UserOrganizationsList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOrganizationsListResponse"];
                 };
             };
         };
@@ -4077,6 +4496,29 @@ type maintenance_6b4a4ac3 = {
         impact_portable_text?: string;
         start_after?: string;
         start_at?: string;
+    }[];
+};
+type OrganizationProjectsCreateResponse_ca9e5a5f = {
+    account_id?: string;
+    base_port?: number;
+    billing_group_id?: string;
+    end_of_life_extension: {
+        ANY?: {
+            eol_date: string;
+            version: string;
+        };
+    };
+    features?: {
+        ANY?: boolean;
+    };
+    organization_id: string;
+    parent_id: string;
+    project_id: string;
+    tags: {
+        ANY?: string;
+    };
+    tech_emails: {
+        email: string;
     }[];
 };
 type plugin_d122f324 = {
