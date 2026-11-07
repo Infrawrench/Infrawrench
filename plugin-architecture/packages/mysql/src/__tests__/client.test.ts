@@ -165,6 +165,21 @@ describe("MySQLClient", () => {
         expect(res[0]!.fields["host"]).toBe("db.example.com");
         expect(unread).toEqual([{ idPrefixes: [""] }]);
       });
+
+      it("shows the refusal where the host keeps no track, and still finds the connected database", async () => {
+        const error = Object.assign(new Error("Access denied"), {
+          code: "ER_SPECIFIC_ACCESS_DENIED_ERROR",
+          errno: 1227,
+        });
+        sql.query.mockRejectedValue(error);
+        await expect(client().listResources("mysql-database", "acct")).rejects.toBe(error);
+        const found = await client().getResource(
+          "mysql-database",
+          "acct:mysql-database:appdb",
+          "acct",
+        );
+        expect(found.displayName).toBe("appdb");
+      });
     });
   });
 
