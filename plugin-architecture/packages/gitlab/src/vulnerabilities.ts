@@ -45,13 +45,13 @@ import {
   normalizeVulnerabilitySeverity,
 } from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
-import { pathEncode } from "@infrawrench/plugin-base";
+import { ListTruncatedError, pathEncode } from "@infrawrench/plugin-base";
 import { gitlabApi, glGraphql, statusOf } from "./api.js";
 
-/** Pages of 100 read for a group-scoped account. */
-export const GROUP_MAX_PAGES = 50;
-/** Pages of 100 read per project for an unscoped account. */
-export const PROJECT_MAX_PAGES = 10;
+/** Pages of 100 read for a group-scoped account. Past this the read fails. */
+export const GROUP_MAX_PAGES = 200;
+/** Pages of 100 read per project for an unscoped account. Past this the read fails. */
+export const PROJECT_MAX_PAGES = 50;
 /** Projects read at once for an unscoped account. */
 const PROJECT_CONCURRENCY = 4;
 
@@ -346,10 +346,18 @@ async function readScope(
       if (f) out.push(f);
     }
     const info = scope.vulnerabilities.pageInfo;
-    if (!info?.hasNextPage || !info.endCursor || info.endCursor === after) break;
+    if (!info?.hasNextPage || !info.endCursor || info.endCursor === after) {
+      return { status: "ok", findings: out, permissionKnown: probe.permissionField };
+    }
     after = info.endCursor;
   }
-  return { status: "ok", findings: out, permissionKnown: probe.permissionField };
+  // The host deletes findings a read stops returning and logs them as fixed.
+  throw new ListTruncatedError({
+    vendor: "GitLab",
+    path: `${fullPath} vulnerabilities`,
+    items: out.length,
+    maxPages,
+  });
 }
 
 /** Projects the REST fallback probes at most. */

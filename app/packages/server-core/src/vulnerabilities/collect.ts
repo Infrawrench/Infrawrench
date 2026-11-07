@@ -22,6 +22,7 @@ import {
   vulnerabilityResolutions,
 } from "../db/schema";
 import { renderableHelpLink, renderableHelpUrl } from "../help-links";
+import { runListChecked } from "../runtime/request-scope";
 import { loadAccountClient } from "../sync-resources";
 
 export interface VulnerabilityCollectionResult {
@@ -80,7 +81,8 @@ export async function collectAccountVulnerabilities(
     throw new Error(`Plugin "${account.pluginId}" does not report vulnerability findings`);
   }
 
-  const raw = await client.listVulnerabilityFindings(accountId);
+  const listFindings = client.listVulnerabilityFindings.bind(client);
+  const raw = await runListChecked(() => listFindings(accountId));
   const findings = normalizeVulnerabilityFindings(raw).slice(0, MAX_FINDINGS_PER_ACCOUNT);
   const collectedAt = new Date();
 

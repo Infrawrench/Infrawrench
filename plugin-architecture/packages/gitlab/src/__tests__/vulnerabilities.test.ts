@@ -3,6 +3,7 @@ import { VulnerabilityAccessError } from "@infrawrench/plugin-base";
 import { describe, expect, it } from "vitest";
 import type { GitLabContext } from "../api.js";
 import { plugin } from "../plugin.js";
+import { GROUP_MAX_PAGES } from "../vulnerabilities.js";
 import type { GlVulnerability } from "../vulnerabilities.js";
 import {
   fetchGitLabVulnerabilities,
@@ -177,6 +178,25 @@ describe("mapGitLabVulnerability", () => {
 });
 
 describe("fetchGitLabVulnerabilities", () => {
+  it("refuses a report past its page cap, rather than close the rest as fixed", async () => {
+    let cursor = 0;
+    const { http, calls } = makeHttp(() =>
+      page({
+        id: "gid://gitlab/Group/7",
+        fullPath: "acme",
+        userPermissions: { readSecurityResource: true },
+        vulnerabilities: {
+          nodes: [DEPENDENCY],
+          pageInfo: { hasNextPage: true, endCursor: `c${++cursor}` },
+        },
+      }),
+    );
+    await expect(
+      fetchGitLabVulnerabilities(ctxWith(http), { groupPath: "acme", projects: [] }),
+    ).rejects.toThrow("GitLab: acme vulnerabilities has more than Infrawrench reads");
+    expect(calls).toHaveLength(GROUP_MAX_PAGES);
+  });
+
   it("walks the group's report by cursor, asking only for open package/image findings", async () => {
     const { http, calls } = makeHttp((call: Call) => {
       const vars = (call.body as { variables: { after: string | null } }).variables;

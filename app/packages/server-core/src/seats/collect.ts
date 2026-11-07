@@ -20,6 +20,7 @@ import { normalizeSeatRecords } from "@infrawrench/plugin-base";
 
 import { db } from "../db/client";
 import { accountSeatPolls, accountSeats } from "../db/schema";
+import { runListChecked } from "../runtime/request-scope";
 import { loadAccountClient } from "../sync-resources";
 import { actedOnFindings } from "./acted";
 import { captureSeatSaving } from "./capture";
@@ -51,8 +52,9 @@ export async function collectAccountSeats(
     throw new Error(`Plugin "${account.pluginId}" does not list seats`);
   }
   const settings = await getSeatSettings(organizationId);
+  const fetchSeats = client.fetchSeats.bind(client);
   const records = normalizeSeatRecords(
-    await client.fetchSeats(accountId, { lookbackDays: settings.inactiveDays }),
+    await runListChecked(() => fetchSeats(accountId, { lookbackDays: settings.inactiveDays })),
   );
   const collectedAt = new Date();
 
