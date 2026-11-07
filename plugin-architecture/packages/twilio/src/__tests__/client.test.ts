@@ -511,6 +511,25 @@ describe("phone numbers", () => {
     });
   });
 
+  it("reports no orphan for a subaccount number, whose messaging services the main account cannot list", async () => {
+    const { c } = client((url) =>
+      url.pathname === `/2010-04-01/Accounts/${SUB}/IncomingPhoneNumbers.json`
+        ? {
+            body: page("incoming_phone_numbers", [
+              { sid: "PN4", account_sid: SUB, phone_number: "+447700900124", type: "mobile" },
+            ]),
+          }
+        : numbersRoute(url),
+    );
+    const list = await c.listResources("phone-number", ACCOUNT);
+    const pn4 = list.find((r) => r.externalId === "PN4")!;
+    expect(pn4.fields["messagingServiceSid"] ?? "").toBe("");
+    expect(pn4.fields["messagingServiceUnread"]).toBeTruthy();
+    expect(evaluateOrphanRule(PhoneNumberResourceType.orphanRule, pn4.fields)).toBeNull();
+    const pn2 = list.find((r) => r.externalId === "PN2")!;
+    expect(evaluateOrphanRule(PhoneNumberResourceType.orphanRule, pn2.fields)).toMatch(/billed/);
+  });
+
   it("only lists main-account numbers with an API key", async () => {
     const { c, calls } = client(numbersRoute, true);
     const list = await c.listResources("phone-number", ACCOUNT);

@@ -149,6 +149,20 @@ export function capabilityList(c: TwPhoneNumber["capabilities"]): string {
   return out.join(", ");
 }
 
+/**
+ * Why an empty messaging service proves nothing for this number, or "" when it does.
+ * Messaging services live on their own host, which Twilio scopes to the credential's own
+ * account: the main account's list never names a subaccount's services, so a
+ * subaccount number found in none of them may still be a sender in one.
+ */
+function messagingServiceUnread(found: boolean, owner: string, ctx: PhoneNumberContext): string {
+  if (found) return "";
+  if (owner && owner !== ctx.mainAccountSid) {
+    return "The subaccount's messaging services are not read";
+  }
+  return ctx.membershipComplete ? "" : "This credential may not read messaging services";
+}
+
 export function mapPhoneNumber(
   accountId: string,
   p: TwPhoneNumber,
@@ -189,8 +203,7 @@ export function mapPhoneNumber(
       trunkSid: p.trunk_sid ?? "",
       messagingServiceSid: service?.sid ?? "",
       messagingServiceName: service?.name,
-      messagingServiceUnread:
-        service || ctx.membershipComplete ? "" : "This credential may not read messaging services",
+      messagingServiceUnread: messagingServiceUnread(service !== undefined, owner, ctx),
       ownerAccountSid: owner,
       subaccountSid: owner && owner !== ctx.mainAccountSid ? owner : "",
       subaccountName: owner !== ctx.mainAccountSid ? ctx.subaccountNames.get(owner) : undefined,
