@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import { BetterStackApiError } from "../api.js";
@@ -74,9 +74,8 @@ describe("listing", () => {
     expect(calls[0]?.headers["Authorization"]).toBe("Bearer tele-tok");
   });
 
-  it("lists a product the token cannot reach as empty, and maps errors with status", async () => {
+  it("maps errors with status", async () => {
     const { c } = client(() => ({ status: 401, body: { errors: "Invalid Team API token." } }));
-    expect(await c.listResources("dashboard", ACCOUNT)).toEqual([]);
     const err = await c.getResource("monitor", "acc:monitor:1", ACCOUNT).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(BetterStackApiError);
     expect((err as BetterStackApiError).status).toBe(401);
@@ -94,6 +93,239 @@ describe("listing", () => {
     const [s] = await c.listResources("status-page-section", ACCOUNT);
     expect(s?.externalId).toBe("9/5");
     expect(s?.parentResourceId).toBe("acc:status-page:9");
+  });
+});
+
+describe("a list that cannot say it has every row", () => {
+  const forever = (url: URL) => {
+    const page = Number(url.searchParams.get("page") ?? "1");
+    return {
+      body: {
+        data: [{ id: String(page), attributes: {} }],
+        pagination: { next: `https://uptime.betterstack.com${url.pathname}?page=${page + 1}` },
+      },
+    };
+  };
+
+  it("asks for the documented largest page, which is smaller for incidents", async () => {
+    const { c, calls } = client(() => ({ body: { data: [], pagination: { next: null } } }));
+    await c.listResources("monitor", ACCOUNT);
+    await c.listResources("source-group", ACCOUNT);
+    await c.listResources("incident", ACCOUNT);
+    expect(calls.map((x) => x.url.searchParams.get("per_page"))).toEqual(["250", "250", "50"]);
+  });
+
+  it("reads past the old 50 page stop", async () => {
+    const { c, calls } = client((url) => {
+      const page = Number(url.searchParams.get("page") ?? "1");
+      return {
+        body: {
+          data: [{ id: String(page), attributes: {} }],
+          pagination: {
+            next:
+              page < 60 ? `https://uptime.betterstack.com${url.pathname}?page=${page + 1}` : null,
+          },
+        },
+      };
+    });
+    expect(await c.listResources("monitor", ACCOUNT)).toHaveLength(60);
+    expect(calls).toHaveLength(60);
+  });
+
+  it("throws at the cap: 100,000 rows at 250 a page", async () => {
+    const { c, calls } = client(forever);
+    await expect(c.listResources("monitor", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(400);
+  });
+
+  it("throws at the cap: 1,000 requests at incidents' 50 a page", async () => {
+    const { c, calls } = client(forever);
+    await expect(c.listResources("incident", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(1000);
+  });
+
+  it("refuses a page whose list was renamed, first or later", async () => {
+    const first = client(() => ({ body: { items: [] } }));
+    await expect(first.c.listResources("monitor", ACCOUNT)).rejects.toThrow("is not a list");
+    const later = client((url) =>
+      url.searchParams.get("page") === "2"
+        ? { body: { items: [] } }
+        : {
+            body: {
+              data: [{ id: "1", attributes: {} }],
+              pagination: { next: "https://uptime.betterstack.com/api/v2/monitors?page=2" },
+            },
+          },
+    );
+    await expect(later.c.listResources("monitor", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a next link to another host, and sends nothing there", async () => {
+    const { c, calls } = client(() => ({
+      body: { data: [], pagination: { next: "https://evil.example/api/v2/monitors?page=2" } },
+    }));
+    await expect(c.listResources("monitor", ACCOUNT)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it("keeps a picker working on a list past the cap", async () => {
+    const { c, calls } = client((url) =>
+      url.pathname === "/api/v2/monitors" ? forever(url) : { body: { data: [] } },
+    );
+    const config = await c.getCreateConfig("status-page-resource");
+    expect(JSON.stringify(config)).toContain("Monitor:50");
+    expect(calls.filter((x) => x.url.pathname === "/api/v2/monitors")).toHaveLength(50);
+  });
+});
+
+describe("status page children", () => {
+  const pages = { body: { data: [{ id: "8" }, { id: "9" }] } };
+  const section = { body: { data: [{ id: "5", attributes: { name: "API", position: 0 } }] } };
+
+  it.each(["status-page-section", "status-page-resource", "status-report"])(
+    "fails %s when one page's read fails, rather than prune that page's rows",
+    async (typeId) => {
+      const { c } = client((url) => {
+        if (url.pathname === "/api/v2/status-pages") return pages;
+        if (url.pathname.startsWith("/api/v2/status-pages/8/")) return { status: 500 };
+        return section;
+      });
+      await expect(c.listResources(typeId, ACCOUNT)).rejects.toThrow("500");
+    },
+  );
+
+  it("passes on a page that cannot say it has every child", async () => {
+    const { c } = client((url) => {
+      if (url.pathname === "/api/v2/status-pages") return pages;
+      if (url.pathname === "/api/v2/status-pages/8/sections") {
+        return { body: { data: [], pagination: { next: "https://evil.example/x" } } };
+      }
+      return section;
+    });
+    await expect(c.listResources("status-page-section", ACCOUNT)).rejects.toThrow(
+      "Refusing to send the account's credentials there",
+    );
+  });
+
+  it("reads a page gone since the list as having none", async () => {
+    const { c } = client((url) => {
+      if (url.pathname === "/api/v2/status-pages") return pages;
+      if (url.pathname === "/api/v2/status-pages/8/sections") return { status: 404 };
+      return section;
+    });
+    const list = await c.listResources("status-page-section", ACCOUNT);
+    expect(list.map((s) => s.externalId)).toEqual(["9/5"]);
+  });
+
+  it("opens one child without reading any other page", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname === "/api/v2/status-pages/9/sections") return section;
+      return { status: 500 };
+    });
+    const found = await c.getResource(
+      "status-page-section",
+      "acc:status-page-section:9/5",
+      ACCOUNT,
+    );
+    expect(found.externalId).toBe("9/5");
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("a token refused for a whole type", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  const trackRows = () => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    return unread;
+  };
+  const refused = { status: 401, body: { errors: "Invalid Team API token." } };
+  const empty = { body: { data: [], pagination: { next: null } } };
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
+  it("keeps the rows quietly when the token works on the other product", async () => {
+    const unread = trackRows();
+    const { c, calls } = client((url) => (url.host === "uptime.betterstack.com" ? empty : refused));
+    expect(await c.listResources("dashboard", ACCOUNT)).toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    expect(calls.map((x) => x.url.pathname)).toEqual(["/api/v2/dashboards", "/api/v2/monitors"]);
+  });
+
+  it("tries the token by itself, not the Telemetry one beside it", async () => {
+    const unread = trackRows();
+    const { c, calls } = client(
+      (_url, _method, _body, headers) =>
+        headers["Authorization"] === "Bearer alive" ? empty : refused,
+      { apiToken: "dead", telemetryToken: "alive" },
+    );
+    await expect(c.listResources("monitor", ACCOUNT)).rejects.toThrow("401");
+    expect(calls.map((x) => [x.url.host, x.headers["Authorization"]])).toEqual([
+      ["uptime.betterstack.com", "Bearer dead"],
+      ["telemetry.betterstack.com", "Bearer dead"],
+    ]);
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("does not read a dead token as a narrow one: every host refusing fails the type", async () => {
+    const unread = trackRows();
+    const { c } = client(() => refused);
+    await expect(c.listResources("monitor", ACCOUNT)).rejects.toThrow("401");
+    await expect(c.listResources("dashboard", ACCOUNT)).rejects.toThrow("401");
+    await expect(c.listResources("team-member", ACCOUNT)).rejects.toThrow("401");
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("fails the type when a Telemetry token of its own is refused", async () => {
+    const unread = trackRows();
+    const { c, calls } = client(
+      (url) => (url.host === "uptime.betterstack.com" ? empty : refused),
+      {
+        apiToken: "uptime",
+        telemetryToken: "dead",
+      },
+    );
+    await expect(c.listResources("source", ACCOUNT)).rejects.toThrow("401");
+    expect(calls).toHaveLength(1);
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("fails the type when the other product cannot say either way", async () => {
+    const unread = trackRows();
+    const { c } = client((url) =>
+      url.host === "uptime.betterstack.com" ? { status: 500 } : refused,
+    );
+    await expect(c.listResources("dashboard", ACCOUNT)).rejects.toThrow("401");
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("keeps the rows quietly on a 403", async () => {
+    const unread = trackRows();
+    const { c, calls } = client(() => ({ status: 403, body: { errors: "Forbidden" } }));
+    expect(await c.listResources("monitor", ACCOUNT)).toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("still shows the refusal on a host that keeps no track", async () => {
+    const { c } = client((url) => (url.host === "uptime.betterstack.com" ? empty : refused));
+    await expect(c.listResources("dashboard", ACCOUNT)).rejects.toThrow("401");
+  });
+
+  it.each([429, 500])("fails the type on a %i", async (status) => {
+    const unread = trackRows();
+    const { c, calls } = client(() => ({ status }));
+    await expect(c.listResources("monitor", ACCOUNT)).rejects.toThrow(String(status));
+    expect(calls).toHaveLength(1);
+    expect(unread).not.toHaveBeenCalled();
   });
 });
 
@@ -236,6 +468,20 @@ describe("cost", () => {
     await expect(
       fetchBetterStackCost({ token: "t", http }, { fromDate: "2026-07-01", toDate: "2026-07-02" }),
     ).rejects.toBeInstanceOf(CostSetupError);
+  });
+
+  it("refuses an answer with no list, rather than read it as nothing billed", async () => {
+    const range = { fromDate: "2026-07-01", toDate: "2026-07-02" };
+    const overview = makeHttp(() => ({ body: {} }));
+    await expect(fetchBetterStackCost({ token: "t", http: overview.http }, range)).rejects.toThrow(
+      "is not a list",
+    );
+    const perProduct = makeHttp((url) =>
+      url.pathname === "/api/v2/usage" ? { body: { data: [{ id: "logs" }] } } : { body: {} },
+    );
+    await expect(
+      fetchBetterStackCost({ token: "t", http: perProduct.http }, range),
+    ).rejects.toThrow("is not a list");
   });
 
   it("splits long ranges into 400-day chunks", () => {

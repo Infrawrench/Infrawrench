@@ -19,9 +19,9 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import type { BetterStackContext, Host, JsonApiItem } from "./api.js";
-import { bsFetch, bsPaged, mapPooled, statusOf } from "./api.js";
+import { externalIdOf, reportUnreadListPart } from "@infrawrench/plugin-base";
+import type { BetterStackContext, Host, JsonApiItem, Paging } from "./api.js";
+import { bsFetch, bsPaged, mapPooled, statusOf, tokenWorksBeyond } from "./api.js";
 import { fetchBetterStackCost } from "./cost.js";
 import {
   mapAlert,
@@ -56,6 +56,8 @@ type Attrs = Record<string, unknown>;
 const POOL = 4;
 const INCIDENT_DAYS = 30;
 const SQL_SECRET_FIELD = "sqlConnection";
+// A create form's options can be part of a long list: nothing is stored from them.
+const PICKER: Paging = { maxPages: 50, partial: true };
 
 const opt = (id: string, label = id) => ({ id, label });
 
@@ -87,14 +89,14 @@ function pickList(raw: string | undefined): string[] {
 }
 
 /** Where each simple type lives: host, collection path, and its mapper. */
-const COLLECTIONS: Record<string, { host: Host; path: string }> = {
+const COLLECTIONS: Record<string, { host: Host; path: string; perPage?: number }> = {
   monitor: { host: "uptime", path: "/api/v2/monitors" },
   "monitor-group": { host: "uptime", path: "/api/v2/monitor-groups" },
   heartbeat: { host: "uptime", path: "/api/v2/heartbeats" },
   "heartbeat-group": { host: "uptime", path: "/api/v2/heartbeat-groups" },
   "status-page": { host: "uptime", path: "/api/v2/status-pages" },
   "on-call-calendar": { host: "uptime", path: "/api/v2/on-calls" },
-  incident: { host: "uptime", path: "/api/v3/incidents" },
+  incident: { host: "uptime", path: "/api/v3/incidents", perPage: 50 },
   "escalation-policy": { host: "uptime", path: "/api/v3/policies" },
   source: { host: "telemetry", path: "/api/v2/sources" },
   "source-group": { host: "telemetry", path: "/api/v1/source-groups" },
@@ -132,27 +134,44 @@ export class BetterStackClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   /**
-   * A 401/403 on one product means the token is scoped to the other one (a
-   * team Uptime token cannot read Telemetry and vice versa) or is not global:
-   * list that type empty. Other failures still throw.
+   * A team token reaches one product, and a type on the other product answers it 401 or 403
+   * on every poll, which should not show red. A token dead everywhere still fails the type.
    */
-  private async scoped(load: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
+  private async scoped(
+    host: Host,
+    load: () => Promise<ResourceInstance[]>,
+  ): Promise<ResourceInstance[]> {
     try {
       return await load();
     } catch (err) {
-      const status = statusOf(err);
-      if (status === 401 || status === 403) return [];
-      throw err;
+      if (!(await this.refusedForThisProductOnly(host, err))) throw err;
+      // This type's stored rows stay. A host that keeps no track (the desktop) answers false,
+      // and there the refusal should still show.
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      return [];
     }
+  }
+
+  private async refusedForThisProductOnly(host: Host, err: unknown): Promise<boolean> {
+    const status = statusOf(err);
+    if (status === 403) return true;
+    if (status !== 401) return false;
+    // A Telemetry token of its own is there for this host, so its refusal says it is wrong.
+    if (host === "telemetry" && this.ctx.telemetryToken) return false;
+    return tokenWorksBeyond(this.ctx, host);
   }
 
   private async collection(
     typeId: string,
     query: Record<string, string | number | undefined> = {},
+    paging: Paging = {},
   ) {
     const c = COLLECTIONS[typeId];
     if (!c) throw new Error(`Better Stack plugin: unknown resource type "${typeId}"`);
-    return bsPaged<Attrs>(this.ctx, c.host, c.path, query);
+    return bsPaged<Attrs>(this.ctx, c.host, c.path, query, {
+      ...(c.perPage ? { perPage: c.perPage } : {}),
+      ...paging,
+    });
   }
 
   private incidentWindow() {
@@ -164,8 +183,8 @@ export class BetterStackClient implements PluginClient {
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
       if (typeId in STATUS_PAGE_CHILDREN)
-        return this.scoped(() => this.listPageChildren(typeId, accountId));
-      return this.scoped(async () => {
+        return this.scoped("uptime", () => this.listPageChildren(typeId, accountId));
+      return this.scoped(COLLECTIONS[typeId]?.host ?? "uptime", async () => {
         switch (typeId) {
           case "monitor":
             return (await this.collection(typeId)).data.map((m) => mapMonitor(accountId, m));
@@ -187,21 +206,15 @@ export class BetterStackClient implements PluginClient {
           case "escalation-policy":
             return (await this.collection(typeId)).data.map((p) => mapPolicy(accountId, p));
           case "source":
-            return (await this.collection(typeId, { per_page: 50 })).data.map((x) =>
-              mapSource(accountId, x),
-            );
+            return (await this.collection(typeId)).data.map((x) => mapSource(accountId, x));
           case "source-group":
-            return (await this.collection(typeId, { per_page: 50 })).data.map((x) =>
+            return (await this.collection(typeId)).data.map((x) =>
               mapSimple(accountId, "source-group", x),
             );
           case "dashboard":
-            return (await this.collection(typeId, { per_page: 50 })).data.map((x) =>
-              mapDashboard(accountId, x),
-            );
+            return (await this.collection(typeId)).data.map((x) => mapDashboard(accountId, x));
           case "telemetry-alert":
-            return (await this.collection(typeId, { per_page: 50 })).data.map((x) =>
-              mapAlert(accountId, x),
-            );
+            return (await this.collection(typeId)).data.map((x) => mapAlert(accountId, x));
           case "team-member":
             return (await this.collection(typeId)).data.map((x) => mapMember(accountId, x));
           default:
@@ -213,22 +226,32 @@ export class BetterStackClient implements PluginClient {
 
   private async listPageChildren(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     const pages = (await this.collection("status-page")).data;
-    const sub = STATUS_PAGE_CHILDREN[typeId] ?? "";
-    const out = await mapPooled(pages, POOL, async (p) => {
-      const items = await bsPaged<Attrs>(
-        this.ctx,
-        "uptime",
-        `/api/v2/status-pages/${encodeURIComponent(p.id)}/${sub}`,
-      ).catch(() => ({ data: [] as Array<JsonApiItem<Attrs>> }));
-      return items.data.map((x) =>
-        typeId === "status-page-section"
-          ? mapSection(accountId, p.id, x)
-          : typeId === "status-page-resource"
-            ? mapPageResource(accountId, p.id, x)
-            : mapReport(accountId, p.id, x),
-      );
-    });
+    const out = await mapPooled(pages, POOL, (p) => this.pageChildren(typeId, accountId, p.id));
     return out.flat();
+  }
+
+  private async pageChildren(
+    typeId: string,
+    accountId: string,
+    pageId: string,
+  ): Promise<ResourceInstance[]> {
+    const sub = STATUS_PAGE_CHILDREN[typeId] ?? "";
+    const items = await bsPaged<Attrs>(
+      this.ctx,
+      "uptime",
+      `/api/v2/status-pages/${encodeURIComponent(pageId)}/${sub}`,
+    ).catch((err: unknown) => {
+      // The page went between the two reads, so there are no children left to keep.
+      if (statusOf(err) === 404) return { data: [] as Array<JsonApiItem<Attrs>> };
+      throw err;
+    });
+    return items.data.map((x) =>
+      typeId === "status-page-section"
+        ? mapSection(accountId, pageId, x)
+        : typeId === "status-page-resource"
+          ? mapPageResource(accountId, pageId, x)
+          : mapReport(accountId, pageId, x),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -294,9 +317,10 @@ export class BetterStackClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       if (typeId in STATUS_PAGE_CHILDREN) {
-        const found = (await this.listPageChildren(typeId, accountId)).find(
-          (r) => r.externalId === id,
-        );
+        // A child's external id is "<page>/<child>".
+        const pageId = id.split("/")[0];
+        const children = pageId ? await this.pageChildren(typeId, accountId, pageId) : [];
+        const found = children.find((r) => r.externalId === id);
         if (!found) throw new Error(`Better Stack plugin: resource ${typeId}/${id} not found`);
         return found;
       }
@@ -648,7 +672,7 @@ export class BetterStackClient implements PluginClient {
   private async teams(): Promise<string[]> {
     const names = new Set<string>();
     for (const typeId of ["monitor", "heartbeat", "on-call-calendar", "source"]) {
-      const res = await this.collection(typeId).catch(() => ({
+      const res = await this.collection(typeId, {}, PICKER).catch(() => ({
         data: [] as Array<JsonApiItem<Attrs>>,
       }));
       for (const x of res.data) {
@@ -676,7 +700,7 @@ export class BetterStackClient implements PluginClient {
   }
 
   private async optionsOf(typeId: string, label: (a: Attrs, id: string) => string) {
-    const res = await this.collection(typeId).catch(() => ({
+    const res = await this.collection(typeId, {}, PICKER).catch(() => ({
       data: [] as Array<JsonApiItem<Attrs>>,
     }));
     return res.data.map((x) => opt(x.id, label(x.attributes ?? {}, x.id)));
@@ -894,6 +918,8 @@ export class BetterStackClient implements PluginClient {
                   this.ctx,
                   "uptime",
                   `/api/v2/status-pages/${encodeURIComponent(externalIdOf(parentResourceId))}/sections`,
+                  {},
+                  PICKER,
                 )
                   .then((r) => r.data.map((s) => opt(s.id, String(s.attributes?.["name"] ?? s.id))))
                   .catch(() => [])
@@ -994,9 +1020,13 @@ export class BetterStackClient implements PluginClient {
             ],
           };
         case "escalation-policy": {
-          const urgencies = await bsPaged<Attrs>(this.ctx, "uptime", "/api/v2/urgencies").catch(
-            () => ({ data: [] as Array<JsonApiItem<Attrs>> }),
-          );
+          const urgencies = await bsPaged<Attrs>(
+            this.ctx,
+            "uptime",
+            "/api/v2/urgencies",
+            {},
+            PICKER,
+          ).catch(() => ({ data: [] as Array<JsonApiItem<Attrs>> }));
           return {
             fields: [
               ...(await this.teamField()),

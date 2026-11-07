@@ -1,5 +1,12 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  followableLink,
+  hostTransport,
+  jsonRestFetch,
+  linkHostsUnder,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 
 /**
  * Better Stack spreads its API over three hosts, all JSON:API and all
@@ -37,6 +44,7 @@ export class BetterStackApiError extends Error {
   }
 }
 
+const VENDOR = "Better Stack";
 const STATUS_IN_MESSAGE = /Better Stack API error (\d{3})/;
 
 type Query = Record<string, string | number | boolean | undefined>;
@@ -81,7 +89,7 @@ export async function bsFetch<T>(
   const token = host === "telemetry" ? (ctx.telemetryToken ?? ctx.token) : ctx.token;
   try {
     return await jsonRestFetch<T>({
-      vendor: "Better Stack",
+      vendor: VENDOR,
       url: url.toString(),
       errorPath: label,
       headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
@@ -115,37 +123,89 @@ interface Page<A> {
   pagination?: { next?: string | null };
 }
 
-/** Follow `pagination.next` until it runs out (hard stop at `maxPages`). */
+export interface Paging {
+  /** The route's documented largest page. Most say 250; incidents say 50. */
+  perPage?: number;
+  /** For a `partial` read. A list that must be whole keeps the cap worked out below. */
+  maxPages?: number;
+  /** For a read nothing is stored from, such as a picker: return what the cap reached. */
+  partial?: boolean;
+}
+
+const DEFAULT_PER_PAGE = 250;
+// One poll's limits for a list that goes through the resource sync.
+const MAX_ROWS = 100_000;
+const MAX_REQUESTS = 1000;
+
+/** Follow `pagination.next` to the end, or throw: a sync prunes whatever a list stops returning. */
 export async function bsPaged<A>(
   ctx: BetterStackContext,
   host: Host,
   path: string,
   query: Query = {},
-  maxPages = 50,
+  paging: Paging = {},
 ): Promise<{ data: Array<JsonApiItem<A>>; included: JsonApiItem[] }> {
+  const perPage = paging.perPage ?? DEFAULT_PER_PAGE;
+  const maxPages = paging.maxPages ?? Math.min(MAX_REQUESTS, Math.ceil(MAX_ROWS / perPage));
   const data: Array<JsonApiItem<A>> = [];
   const included: JsonApiItem[] = [];
-  let next: string | null = path;
-  let first = true;
-  for (let page = 0; page < maxPages && next; page++) {
-    const res: Page<A> = await bsFetch<Page<A>>(ctx, host, next, first ? { query } : undefined);
-    first = false;
-    data.push(...(res.data ?? []));
+  let next = path;
+  for (let page = 0; page < maxPages; page++) {
+    const res: Page<A> = await bsFetch<Page<A>>(
+      ctx,
+      host,
+      next,
+      page === 0 ? { query: { per_page: perPage, ...query } } : undefined,
+    );
+    data.push(...requireListPage(res.data, { vendor: VENDOR, path, key: "data" }));
     included.push(...(res.included ?? []));
-    next = relative(res.pagination?.next ?? null);
+    const link = res.pagination?.next;
+    if (!link) return { data, included };
+    next = onChosenHost(link, `${baseOf(host)}${next}`, path);
   }
-  return { data, included };
+  if (paging.partial) return { data, included };
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: data.length, maxPages });
 }
 
-/** Keep pagination on the host we chose (links may name incidents.betterstack.com). */
-function relative(link: string | null): string | null {
-  if (!link) return null;
-  try {
-    const u = new URL(link);
-    return `${u.pathname}${u.search}`;
-  } catch {
-    return link;
+/**
+ * Better Stack's documented next links name incidents.betterstack.com for the Uptime API.
+ * Anything under betterstack.com goes back to the host this list started on, whose token it is.
+ */
+function onChosenHost(link: string, pageUrl: string, path: string): string {
+  const url = new URL(
+    followableLink(link, pageUrl, {
+      vendor: VENDOR,
+      path,
+      foreignLinks: linkHostsUnder("betterstack.com"),
+    }),
+  );
+  return `${url.pathname}${url.search}`;
+}
+
+/**
+ * Better Stack answers 401 to a dead token and to a live team token on the other product's
+ * host alike. This asks whether `ctx.token` itself is accepted on a host other than `host`,
+ * so the first can fail its type and the second need not. A probe that cannot say answers false.
+ */
+export async function tokenWorksBeyond(ctx: BetterStackContext, host: Host): Promise<boolean> {
+  const ownToken = { token: ctx.token, ...hostTransport(ctx.http, ctx.caCert) };
+  const probes: Array<{ host: Host; path: string }> = [
+    { host: "uptime", path: "/api/v2/monitors" },
+    { host: "telemetry", path: "/api/v2/sources" },
+  ];
+  for (const probe of probes) {
+    if (probe.host === host) continue;
+    try {
+      await bsFetch(ownToken, probe.host, probe.path, { query: { per_page: 1 } });
+      return true;
+    } catch (err) {
+      const status = statusOf(err);
+      // A 403 is a token Better Stack recognised and turned down.
+      if (status === 403) return true;
+      if (status !== 401) return false;
+    }
   }
+  return false;
 }
 
 export function statusOf(err: unknown): number {

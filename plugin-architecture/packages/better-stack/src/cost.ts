@@ -8,7 +8,7 @@
  * `finalized: false` and restated on later passes.
  */
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import { CostSetupError, requireListPage } from "@infrawrench/plugin-base";
 import type { BetterStackContext } from "./api.js";
 import { bsFetch, mapPooled, statusOf } from "./api.js";
 
@@ -54,9 +54,14 @@ export async function fetchBetterStackCost(
   for (const chunk of chunks(range)) {
     let products: UsageProduct[];
     try {
-      products =
-        (await bsFetch<{ data?: UsageProduct[] }>(ctx, "main", "/api/v2/usage", { query: chunk }))
-          .data ?? [];
+      const res = await bsFetch<{ data?: UsageProduct[] }>(ctx, "main", "/api/v2/usage", {
+        query: chunk,
+      });
+      products = requireListPage(res.data, {
+        vendor: "Better Stack",
+        path: "/api/v2/usage",
+        key: "data",
+      });
     } catch (err) {
       const status = statusOf(err);
       if (status === 401 || status === 403) {
@@ -71,15 +76,14 @@ export async function fetchBetterStackCost(
       throw err;
     }
     const perProduct = await mapPooled(products, 3, async (p) => {
-      const res = await bsFetch<{ data?: UsageItem[] }>(
-        ctx,
-        "main",
-        `/api/v2/usage/${encodeURIComponent(p.id)}`,
-        {
-          query: { ...chunk, dimension: "cost", resolution: "day" },
-        },
-      );
-      return { product: p, items: res.data ?? [] };
+      const path = `/api/v2/usage/${encodeURIComponent(p.id)}`;
+      const res = await bsFetch<{ data?: UsageItem[] }>(ctx, "main", path, {
+        query: { ...chunk, dimension: "cost", resolution: "day" },
+      });
+      return {
+        product: p,
+        items: requireListPage(res.data, { vendor: "Better Stack", path, key: "data" }),
+      };
     });
     for (const { product, items } of perProduct) {
       const service = product.attributes?.name ?? product.id;
