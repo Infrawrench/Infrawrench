@@ -94,6 +94,7 @@ describe("listResources", () => {
             top_provider: { context_length: 8192, max_completion_tokens: 4096, is_moderated: true },
           },
         ],
+        total_count: 1,
       });
     });
 
@@ -115,6 +116,7 @@ describe("listResources", () => {
           data: Array.from({ length: 1000 }, (_, i) => ({ id: `a/m${i}` })),
         });
       }
+      if (page === 3) return jsonResponse({ data: [] });
       expect(url).toContain("offset=1000");
       return jsonResponse({ data: [{ id: "a/last" }] });
     });
@@ -172,7 +174,7 @@ describe("listResources", () => {
   it("lists API keys including disabled ones", async () => {
     installFetch((url) => {
       expect(url).toContain("include_disabled=true");
-      expect(url).toContain("offset=0");
+      if (!url.includes("offset=0")) return jsonResponse({ data: [] });
       return jsonResponse({
         data: [
           {
@@ -191,6 +193,108 @@ describe("listResources", () => {
     const rows = await client().listResources("api-key", ACCOUNT);
     expect(rows[0]?.fields["limitReset"]).toBe("monthly");
     expect(rows[0]?.fields["limitRemaining"]).toBe(74.5);
+    expect(calls[0]?.url).toContain("offset=0");
+  });
+
+  it("reads API keys to an empty page, whatever size the pages are", async () => {
+    // The document gives no page size for GET /keys, so a short page does not end it.
+    installFetch((url) => {
+      const offset = new URL(url).searchParams.get("offset");
+      if (offset === "0") return jsonResponse({ data: [{ hash: "a" }, { hash: "b" }] });
+      if (offset === "2") return jsonResponse({ data: [{ hash: "c" }] });
+      return jsonResponse({ data: [] });
+    });
+    const rows = await client().listResources("api-key", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["a", "b", "c"]);
+    expect(new URL(calls[2]!.url).searchParams.get("offset")).toBe("3");
+  });
+
+  it("refuses a model catalogue longer than it reads", async () => {
+    installFetch(() =>
+      jsonResponse({ data: Array.from({ length: 1000 }, (_, i) => ({ id: `a/m${i}` })) }),
+    );
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(20);
+  });
+
+  it("refuses an API key list that never ends, after 500 pages", async () => {
+    let next = 0;
+    installFetch(() => jsonResponse({ data: [{ hash: `k${next++}` }] }));
+    await expect(client().listResources("api-key", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(500);
+  });
+
+  it.each(["guardrail", "workspace", "byok-credential"])(
+    "reads 10,000 rows of %s and refuses more",
+    async (typeId) => {
+      let next = 0;
+      installFetch(() =>
+        jsonResponse({
+          data: Array.from({ length: 100 }, () => ({ id: `row-${next++}`, name: "x" })),
+        }),
+      );
+      await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(100);
+    },
+  );
+
+  it("ends a management list on its total_count without another request", async () => {
+    installFetch(() =>
+      jsonResponse({
+        data: Array.from({ length: 100 }, (_, i) => ({ id: `w${i}`, name: "x" })),
+        total_count: 100,
+      }),
+    );
+    expect(await client().listResources("workspace", ACCOUNT)).toHaveLength(100);
+    expect(calls).toHaveLength(1);
+  });
+
+  it.each([
+    ["model", "/models"],
+    ["provider", "/providers"],
+    ["api-key", "/keys"],
+    ["guardrail", "/guardrails"],
+    ["workspace", "/workspaces"],
+    ["byok-credential", "/byok"],
+    ["model-endpoint", "/models"],
+  ])("refuses a %s page with its list renamed", async (typeId) => {
+    installFetch(() => jsonResponse({ items: [{ id: "a/b", hash: "h", slug: "s" }] }));
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a later page with its list renamed", async () => {
+    installFetch((url) =>
+      url.includes("offset=0")
+        ? jsonResponse({ data: Array.from({ length: 1000 }, (_, i) => ({ id: `a/m${i}` })) })
+        : jsonResponse({ items: [] }),
+    );
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads a list whose total is left out to its empty page", async () => {
+    let page = 0;
+    installFetch(() => {
+      page++;
+      return jsonResponse({ data: page === 1 ? [{ id: "w1", name: "x" }] : [] });
+    });
+    expect(await client().listResources("workspace", ACCOUNT)).toHaveLength(1);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("ends the model catalogue on its total_count, not a short page", async () => {
+    // A server capping `limit` below 1000 would otherwise end the catalogue on page one.
+    installFetch((url) => {
+      const offset = Number(new URL(url).searchParams.get("offset"));
+      return jsonResponse({ data: [{ id: `a/m${offset}` }], total_count: 2 });
+    });
+    const rows = await client().listResources("model", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["a/m0", "a/m1"]);
   });
 });
 
@@ -347,6 +451,13 @@ describe("fetchCostData", () => {
     ]);
   });
 
+  it("refuses an /activity answer with its list renamed, so no cost rows are replaced", async () => {
+    installFetch(() => jsonResponse({ items: [] }));
+    await expect(
+      client().fetchCostData(ACCOUNT, { fromDate: "2026-07-01", toDate: "2026-07-28" }),
+    ).rejects.toThrow("is not a list");
+  });
+
   it("raises a CostSetupError when /activity 403s on a non-management key", async () => {
     installFetch(() => jsonResponse({ error: { code: 403 } }, 403));
     await expect(
@@ -362,6 +473,7 @@ describe("fetchMetricSeries", () => {
       if (url.includes("/models?")) {
         return jsonResponse({
           data: [{ id: "openai/gpt-4.1", canonical_slug: "openai/gpt-4.1-2025-04-14" }],
+          total_count: 1,
         });
       }
       if (url.endsWith("/analytics/query")) {
@@ -712,7 +824,7 @@ describe("guardrails", () => {
   it("lists with offset + limit and flattens the policy lists", async () => {
     installFetch(() => jsonResponse({ data: [guardrail], total_count: 1 }));
     const [resource] = await client().listResources("guardrail", ACCOUNT);
-    expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/guardrails?offset=0&limit=100");
+    expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/guardrails?limit=100&offset=0");
     const auth = (calls[0]?.init?.headers as Record<string, string>)["Authorization"];
     expect(auth).toBe("Bearer sk-or-v1-management");
     expect(resource?.fields).toMatchObject({

@@ -1,9 +1,12 @@
 import {
   createApiClient,
+  withCursorPagination,
   type ApiBody,
   type ApiListItem,
   type ApiResponse,
+  type CursorApiClient,
   type HttpHostServices,
+  type PageAnswer,
 } from "@infrawrench/plugin-base";
 import type { components, operations, paths } from "./api-types.gen.js";
 
@@ -43,6 +46,28 @@ export type OrByokUpdate = ApiBody<operations["updateBYOKKey"]>;
 export type OrSpeechRequest = ApiBody<operations["createAudioSpeech"]>;
 export type OrTranscriptionRequest = ApiBody<operations["createAudioTranscriptions"]>;
 
+/** The most `limit` takes on guardrail, workspace, BYOK and assignment lists. */
+const MANAGEMENT_PAGE_SIZE = 100;
+/** 10,000 rows. */
+const MANAGEMENT_MAX_PAGES = 100;
+/**
+ * GET /keys takes `offset` alone and its document gives no page size, so this is
+ * 10,000 rows at 20 a page and 50,000 at 100.
+ */
+const KEY_MAX_PAGES = 500;
+
+/** The next `offset`: where this page's rows end, whatever size the server made it. */
+function nextOffset({ cursor, items }: PageAnswer): number {
+  return Number(cursor) + items.length;
+}
+
+type OffsetLists<SizeParam extends string> = CursorApiClient<
+  paths,
+  { cursorParam: "offset"; sizeParam: SizeParam; next: typeof nextOffset; hasMore: never }
+>;
+
+export type OpenRouterApi = OffsetLists<"limit"> & { keys: OffsetLists<never> };
+
 /**
  * One client per key, because OpenRouter takes different keys on different
  * routes: see `OpenRouterClient`.
@@ -51,14 +76,30 @@ export function createOpenRouterApi(options: {
   key: string;
   caCert: string | undefined;
   http: HttpHostServices | undefined;
-}) {
-  return createApiClient<paths>({
+}): OpenRouterApi {
+  const api = createApiClient<paths>({
     vendor: "OpenRouter",
     baseUrl: BASE_URL,
     headers: { Authorization: `Bearer ${options.key}`, Accept: "application/json" },
     caCert: options.caCert,
     http: options.http,
   });
+  const lists = withCursorPagination(api, {
+    cursorParam: "offset",
+    firstCursor: 0,
+    sizeParam: "limit",
+    pageSize: MANAGEMENT_PAGE_SIZE,
+    maxPages: MANAGEMENT_MAX_PAGES,
+    next: nextOffset,
+    total: "total_count",
+  });
+  return Object.assign(lists, {
+    /** GET /keys: no `limit`, no total, so only an empty page ends it. */
+    keys: withCursorPagination(api, {
+      cursorParam: "offset",
+      firstCursor: 0,
+      maxPages: KEY_MAX_PAGES,
+      next: nextOffset,
+    }),
+  });
 }
-
-export type OpenRouterApi = ReturnType<typeof createOpenRouterApi>;

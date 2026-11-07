@@ -32,6 +32,7 @@ import {
   hostFetch,
   joinSubtitle,
   pathEncode,
+  requireListPage,
   withAiCostTags,
 } from "@infrawrench/plugin-base";
 import {
@@ -79,6 +80,8 @@ const MANAGEMENT_ONLY_TYPES = new Set(["api-key", "guardrail", "workspace", "byo
 
 /** GET /models caps `limit` at 1000. Pagination is offset+limit, not a cursor. */
 const MODELS_PAGE_SIZE = 1000;
+/** 20,000 rows, against a catalogue of about 500. */
+const MODELS_MAX_PAGES = 20;
 
 /**
  * Listing every provider endpoint for every model would be one request per
@@ -173,9 +176,6 @@ const FALLBACK_STT_MODEL = "openai/whisper-large-v3";
 
 const DASH = "—";
 
-/** Guardrail, workspace and BYOK listings cap `limit` at 100. */
-const MANAGEMENT_PAGE_SIZE = 100;
-
 /**
  * OpenRouter plugin client.
  *
@@ -250,17 +250,15 @@ export class OpenRouterClient implements PluginClient {
         case "api-key":
           return this.listApiKeys(accountId);
         case "guardrail":
-          return (await this.listPaged((query) => this.api.get("/guardrails", { query }))).map(
-            (g) => mapGuardrail(accountId, g),
+          return (await this.api.getAll("/guardrails", "data")).map((g) =>
+            mapGuardrail(accountId, g),
           );
         case "workspace":
-          return (await this.listPaged((query) => this.api.get("/workspaces", { query }))).map(
-            (w) => mapWorkspace(accountId, w),
+          return (await this.api.getAll("/workspaces", "data")).map((w) =>
+            mapWorkspace(accountId, w),
           );
         case "byok-credential":
-          return (await this.listPaged((query) => this.api.get("/byok", { query }))).map((b) =>
-            mapByok(accountId, b),
-          );
+          return (await this.api.getAll("/byok", "data")).map((b) => mapByok(accountId, b));
         default:
           throw new Error(`OpenRouter plugin: unknown resource type "${typeId}"`);
       }
@@ -277,18 +275,12 @@ export class OpenRouterClient implements PluginClient {
     return models.map((m) => this.mapModel(accountId, now, m));
   }
 
-  private async fetchAllModels(): Promise<OrModel[]> {
-    const out: OrModel[] = [];
-    // offset+limit, not a cursor.
-    for (let offset = 0; offset < 20 * MODELS_PAGE_SIZE; offset += MODELS_PAGE_SIZE) {
-      const data = await this.api.get("/models", {
-        query: { limit: MODELS_PAGE_SIZE, offset, output_modalities: "all" },
-      });
-      const page = data.data ?? [];
-      out.push(...page);
-      if (page.length < MODELS_PAGE_SIZE) break;
-    }
-    return out;
+  private fetchAllModels(): Promise<OrModel[]> {
+    return this.api.getAll("/models", "data", {
+      query: { output_modalities: "all" },
+      pageSize: MODELS_PAGE_SIZE,
+      maxPages: MODELS_MAX_PAGES,
+    });
   }
 
   private mapModel(accountId: string, now: string, m: OrModelFields): ResourceInstance {
@@ -343,7 +335,11 @@ export class OpenRouterClient implements PluginClient {
     const listing = await this.api.get("/models", {
       query: { limit: ENDPOINT_FANOUT_MODELS, sort: "most-popular", output_modalities: "all" },
     });
-    const ids = (listing.data ?? []).map((m) => m.id);
+    const ids = requireListPage(listing.data, {
+      vendor: "OpenRouter",
+      path: "/models",
+      key: "data",
+    }).map((m) => m.id);
     const now = new Date().toISOString();
     const out: ResourceInstance[] = [];
 
@@ -422,33 +418,16 @@ export class OpenRouterClient implements PluginClient {
     };
   }
 
-  /**
-   * Offset + limit listing used by the management collections, which report
-   * `total_count` alongside each page. A hand loop rather than `getAll`, which has
-   * no way to stop at `total_count`.
-   */
-  private async listPaged<T>(
-    readPage: (query: {
-      offset: number;
-      limit: number;
-    }) => Promise<{ data?: T[]; total_count?: number }>,
-  ): Promise<T[]> {
-    const out: T[] = [];
-    for (let offset = 0; offset < 50 * MANAGEMENT_PAGE_SIZE; offset += MANAGEMENT_PAGE_SIZE) {
-      const data = await readPage({ offset, limit: MANAGEMENT_PAGE_SIZE });
-      const page = data.data ?? [];
-      out.push(...page);
-      if (page.length < MANAGEMENT_PAGE_SIZE) break;
-      if (data.total_count !== undefined && out.length >= data.total_count) break;
-    }
-    return out;
-  }
-
   /** GET /providers */
   private async listProviders(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.api.get("/providers");
     const now = new Date().toISOString();
-    return (data.data ?? []).map((p) => ({
+    const providers = requireListPage(data.data, {
+      vendor: "OpenRouter",
+      path: "/providers",
+      key: "data",
+    });
+    return providers.map((p) => ({
       id: `${accountId}:provider:${p.slug}`,
       pluginId: "openrouter",
       resourceTypeId: "provider",
@@ -474,19 +453,10 @@ export class OpenRouterClient implements PluginClient {
   /** GET /keys: offset-paginated, management key required. */
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();
-    const out: ResourceInstance[] = [];
-    const pageSize = 100;
-
-    for (let offset = 0; offset < 50 * pageSize; offset += pageSize) {
-      const data = await this.api.get("/keys", { query: { offset, include_disabled: true } });
-      const page = data.data ?? [];
-      for (const k of page) out.push(this.mapKey(accountId, now, k));
-      if (page.length === 0) break;
-      // The API doesn't report a total, so stop as soon as a page repeats the
-      // last hash we already have.
-      if (page.length < pageSize) break;
-    }
-    return out;
+    const keys = await this.api.keys.getAll("/keys", "data", {
+      query: { include_disabled: true },
+    });
+    return keys.map((k) => this.mapKey(accountId, now, k));
   }
 
   private mapKey(accountId: string, now: string, k: OrKey): ResourceInstance {
@@ -544,9 +514,9 @@ export class OpenRouterClient implements PluginClient {
         const id = pathEncode(externalId);
         const [data, assignments] = await Promise.all([
           this.api.get(`/guardrails/${id}`),
-          this.listPaged((query) =>
-            this.api.get(`/guardrails/${id}/assignments/keys`, { query }),
-          ).catch(() => undefined),
+          this.api
+            .getAll(`/guardrails/${id}/assignments/keys`, "data", { partial: true })
+            .catch(() => undefined),
         ]);
         return mapGuardrail(accountId, data.data, assignments);
       }
@@ -791,7 +761,7 @@ export class OpenRouterClient implements PluginClient {
   private async fetchActivity(): Promise<OrActivityItem[]> {
     try {
       const data = await this.api.get("/activity");
-      return data.data ?? [];
+      return requireListPage(data.data, { vendor: "OpenRouter", path: "/activity", key: "data" });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes("403") || message.includes("401")) {
@@ -981,9 +951,7 @@ export class OpenRouterClient implements PluginClient {
             .catch((): OrKey[] => [])
         : Promise.resolve<OrKey[]>([]),
       need.workspaces
-        ? this.listPaged((query) => this.api.get("/workspaces", { query })).catch(
-            (): OrWorkspace[] => [],
-          )
+        ? this.api.getAll("/workspaces", "data", { partial: true }).catch((): OrWorkspace[] => [])
         : Promise.resolve<OrWorkspace[]>([]),
     ]);
     return {
