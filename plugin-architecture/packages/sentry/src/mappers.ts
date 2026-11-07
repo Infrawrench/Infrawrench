@@ -1,192 +1,86 @@
 /**
- * Raw Sentry API shapes (only the fields the plugin reads) and their mapping
- * to `ResourceInstance`s. Field names follow the public API reference
- * (https://docs.sentry.io/api/, 2026-10).
+ * Sentry API shapes, generated from its OpenAPI document (only the fields the
+ * plugin reads), and their mapping to `ResourceInstance`s.
  */
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ApiResponse, ResourceInstance } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
 import type { SentryInstance } from "./regions.js";
 
 export const PLUGIN_ID = "sentry";
 
-export interface SentryOrganization {
-  id?: string;
-  slug: string;
-  name?: string;
-  dateCreated?: string;
-  status?: { id?: string; name?: string };
-  links?: { organizationUrl?: string; regionUrl?: string };
-}
+/** One row of a list operation, by its `operationId`. */
+type Row<Op extends keyof operations> =
+  ApiResponse<operations[Op]> extends ReadonlyArray<infer Item> ? Item : never;
 
-export interface SentryTeamRef {
-  id?: string;
-  slug?: string;
-  name?: string;
-}
+// Each is the list row cut down to what the mappers read, so the single reads
+// and the creates, which answer with more, fit too. Fields the document lacks
+// are added by hand with `&`.
 
-export interface SentryProject {
-  id: string;
-  slug: string;
-  name?: string;
-  platform?: string | null;
-  status?: string;
-  dateCreated?: string;
-  firstEvent?: string | null;
-  teams?: SentryTeamRef[];
-  team?: SentryTeamRef | null;
-  isMember?: boolean;
-  hasAccess?: boolean;
-}
+export type SentryOrganization = Pick<
+  Row<"listOrganizations">,
+  "id" | "slug" | "name" | "dateCreated" | "status" | "links"
+>;
 
-export interface SentryTeam {
-  id: string;
-  slug: string;
-  name?: string;
-  dateCreated?: string;
-  memberCount?: number;
-  projects?: Array<{ slug?: string; name?: string }>;
-}
-
-export interface SentryRelease {
-  version: string;
-  shortVersion?: string;
-  ref?: string | null;
-  url?: string | null;
-  dateCreated?: string;
-  dateReleased?: string | null;
-  newGroups?: number;
-  commitCount?: number;
-  deployCount?: number;
-  lastDeploy?: { environment?: string; dateFinished?: string } | null;
-  projects?: Array<{ slug?: string; name?: string }>;
-}
-
-export interface SentryIssue {
-  id: string;
-  shortId?: string;
-  title?: string;
-  culprit?: string;
-  level?: string;
-  status?: string;
-  substatus?: string | null;
-  priority?: string | null;
-  count?: string | number;
-  userCount?: number;
-  firstSeen?: string;
-  lastSeen?: string;
-  permalink?: string;
-  issueType?: string;
-  issueCategory?: string;
-  assignedTo?: { name?: string; email?: string; type?: string } | null;
-  project?: { id?: string; slug?: string; name?: string };
-}
-
-export interface SentryClientKey {
-  id: string;
-  name?: string;
-  label?: string;
-  public?: string;
-  isActive?: boolean;
-  dateCreated?: string;
-  projectId?: number | string;
-  dsn?: { public?: string };
-  rateLimit?: { count?: number; window?: number } | null;
-}
-
-export interface SentryCondition {
-  id?: string;
-  type?: string;
-  comparison?: unknown;
-  conditionResult?: unknown;
-}
-
-export interface SentryAction {
-  id?: string;
-  type?: string;
-  config?: { targetType?: string; targetDisplay?: string | null; targetIdentifier?: string | null };
-}
-
-export interface SentryWorkflow {
-  id: string;
-  name?: string;
-  enabled?: boolean;
-  environment?: string | null;
-  config?: { frequency?: number };
-  triggers?: { logicType?: string; conditions?: SentryCondition[] } | null;
-  actionFilters?: Array<{
-    logicType?: string;
-    conditions?: SentryCondition[];
-    actions?: SentryAction[];
-  }>;
-  detectorIds?: string[];
-  lastTriggered?: string | null;
-  owner?: string | null;
-  dateCreated?: string;
-}
-
-export interface SentryDetector {
-  id: string;
-  projectId?: string;
-  name?: string;
-  description?: string | null;
-  type?: string;
-  enabled?: boolean;
-  workflowIds?: string[];
-  owner?: { type?: string; name?: string; email?: string } | null;
-  dateCreated?: string;
-  config?: Record<string, unknown> | null;
-  dataSources?: Array<{
-    type?: string;
-    queryObj?: {
-      snubaQuery?: {
-        dataset?: string;
-        query?: string;
-        aggregate?: string;
-        timeWindow?: number;
-        environment?: string | null;
-      };
-    };
-  }> | null;
-  conditionGroup?: { logicType?: string; conditions?: SentryCondition[] } | null;
-  latestGroup?: { id?: string; shortId?: string; title?: string } | null;
-}
-
-export interface SentryCronMonitor {
-  id: string;
-  slug: string;
-  name?: string;
-  status?: string;
-  isMuted?: boolean;
-  config?: {
-    schedule_type?: string;
-    schedule?: string | [number, string];
-    checkin_margin?: number | null;
-    max_runtime?: number | null;
-    timezone?: string | null;
-  };
-  environments?: Array<{
-    name?: string;
+export type SentryProject = Pick<
+  Row<"listOrganizationProjects">,
+  "id" | "slug" | "name" | "platform" | "dateCreated" | "firstEvent" | "teams"
+> &
+  // A single read may leave `team` out.
+  Partial<Pick<Row<"listOrganizationProjects">, "team">> & {
+    /** Only a single read answers with this; list rows and creates do not. */
     status?: string;
-    isMuted?: boolean;
-    lastCheckIn?: string | null;
-    nextCheckIn?: string | null;
-  }>;
-  project?: { id?: string; slug?: string };
-  dateCreated?: string;
-}
+  };
 
-export interface SentryUptimeMonitor {
-  id: string;
-  name?: string;
-  url?: string;
-  method?: string;
-  intervalSeconds?: number;
-  timeoutMs?: number;
-  status?: string;
-  uptimeStatus?: number | string;
-  environment?: string | null;
-  projectSlug?: string;
-  owner?: { name?: string; type?: string } | null;
-}
+export type SentryTeam = Pick<
+  Row<"listOrganizationTeams">,
+  "id" | "slug" | "name" | "dateCreated" | "memberCount" | "projects"
+>;
+
+export type SentryRelease = Pick<
+  Row<"listOrganizationReleases">,
+  | "version"
+  | "shortVersion"
+  | "ref"
+  | "url"
+  | "dateCreated"
+  | "dateReleased"
+  | "newGroups"
+  | "commitCount"
+  | "deployCount"
+  | "lastDeploy"
+  | "projects"
+>;
+
+export type SentryIssue = Pick<
+  Row<"listOrganizationIssues">,
+  | "id"
+  | "shortId"
+  | "title"
+  | "culprit"
+  | "level"
+  | "status"
+  | "substatus"
+  | "priority"
+  | "count"
+  | "userCount"
+  | "firstSeen"
+  | "lastSeen"
+  | "permalink"
+  | "issueType"
+  | "issueCategory"
+  | "assignedTo"
+  | "project"
+>;
+
+export type SentryClientKey = Row<"listOrganizationProjectKeys">;
+
+export type SentryWorkflow = ApiResponse<operations["getOrganizationWorkflow"]>;
+
+export type SentryDetector = ApiResponse<operations["getOrganizationDetector"]>;
+
+export type SentryCronMonitor = Row<"listOrganizationMonitors">;
+
+export type SentryUptimeMonitor = Row<"listOrganizationUptimeMonitors">;
 
 type FieldValue = string | number | boolean | undefined | null;
 
@@ -196,7 +90,7 @@ export function instance(
   externalId: string,
   displayName: string,
   fields: Record<string, FieldValue>,
-  outputs: Record<string, string | undefined> = {},
+  outputs: Record<string, string | null | undefined> = {},
   parentExternalId?: string,
 ): ResourceInstance {
   const now = new Date().toISOString();
@@ -421,12 +315,12 @@ export function mapClientKey(
 
 const humanType = (t: string | undefined): string => (t ?? "").replace(/_/g, " ");
 
-function conditionText(c: SentryCondition): string {
+function conditionText(c: { type?: string; comparison?: unknown }): string {
   const type = humanType(c.type);
   const cmp = c.comparison;
   if (cmp === undefined || cmp === null || cmp === true) return type;
   if (typeof cmp === "object") {
-    const o = cmp as { value?: unknown; interval?: unknown };
+    const o: { value?: unknown; interval?: unknown } = cmp;
     if (o.value !== undefined) {
       return `${type} ${String(o.value)}${o.interval ? ` in ${String(o.interval)}` : ""}`;
     }
@@ -434,6 +328,10 @@ function conditionText(c: SentryCondition): string {
   }
   return `${type} ${String(cmp)}`;
 }
+
+type SentryAction = NonNullable<
+  NonNullable<SentryWorkflow["actionFilters"]>[number]["actions"]
+>[number];
 
 function actionText(a: SentryAction): string {
   const target = a.config?.targetDisplay || a.config?.targetType || "";

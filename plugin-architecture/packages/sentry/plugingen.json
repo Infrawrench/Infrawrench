@@ -1,0 +1,1024 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/getsentry/sentry-api-schema/main/openapi-derefed.json",
+  "pathPrefix": "/api/0",
+  "patches": [
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1monitors~1/get/parameters/5",
+      "value": {
+        "name": "per_page",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every cursor-paginated list takes per_page, as the document says of its siblings; the plugin asks for 100."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1project-keys~1/get/parameters/4",
+      "value": {
+        "name": "per_page",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every cursor-paginated list takes per_page, as the document says of its siblings; the plugin asks for 100."
+    },
+    {
+      "pointer": "/paths/~1projects~1{organization_id_or_slug}~1{project_id_or_slug}~1keys~1/get/parameters/4",
+      "value": {
+        "name": "per_page",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every cursor-paginated list takes per_page, as the document says of its siblings; the plugin asks for 100."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1monitors~1{monitor_id_or_slug}~1checkins~1/get/parameters/3",
+      "value": {
+        "name": "per_page",
+        "in": "query",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "why": "Every cursor-paginated list takes per_page, as the document says of its siblings; the plugin asks for 100."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1issues~1/put/parameters/3/schema/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin holds ids as the strings the API answers with and sends them as they are."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1/put/parameters/2/schema/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin holds ids as the strings the API answers with and sends them as they are."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1detectors~1/put/parameters/3/schema/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin holds ids as the strings the API answers with and sends them as they are."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1stats_v2~1/get/parameters/8/schema",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "why": "The parameter repeats, and the enum lags the categories the API answers with (span, log_byte), which the plugin asks for by name."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1stats_v2~1/get/parameters/9/schema",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "filtered",
+            "rate_limited",
+            "invalid",
+            "abuse",
+            "client_discard",
+            "cardinality_limited"
+          ]
+        }
+      },
+      "why": "The parameter repeats: the plugin asks for accepted, filtered and rate_limited in one call."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1stats_v2~1/get/parameters/7/schema/items",
+      "value": {
+        "type": ["string", "integer"]
+      },
+      "why": "The document leaves the item untyped; these are project ids, or -1 for all of them."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1stats_v2~1/get/responses/200/content/application~1json/schema/properties/groups/items/properties/by",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": ["string", "integer"]
+        }
+      },
+      "why": "The document leaves the values untyped; each is a category or outcome name, or a project id."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1stats_v2~1/get/responses/200/content/application~1json/schema/properties/groups/items/properties/totals",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "number"
+        }
+      },
+      "why": "The document leaves the values untyped; each field's total is a number."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1stats_v2~1/get/responses/200/content/application~1json/schema/properties/groups/items/properties/series",
+      "value": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "why": "The document leaves the values untyped; each field's series is a list of numbers."
+    },
+    {
+      "pointer": "/paths/~1projects~1{organization_id_or_slug}~1{project_id_or_slug}~1/put/requestBody/content/application~1json/schema/required",
+      "value": [],
+      "why": "The endpoint updates partially; the plugin sends only what changed."
+    },
+    {
+      "pointer": "/paths/~1teams~1{organization_id_or_slug}~1{team_id_or_slug}~1/put/requestBody/content/application~1json/schema/required",
+      "value": [],
+      "why": "The endpoint updates partially; the plugin renames a team without sending its slug."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1monitors~1{monitor_id_or_slug}~1/put/requestBody/content/application~1json/schema/required",
+      "value": [],
+      "why": "The endpoint updates partially; the plugin sends only what changed."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1monitors~1{monitor_id_or_slug}~1/put/requestBody/content/application~1json/schema/properties/isMuted",
+      "value": {
+        "type": "boolean"
+      },
+      "why": "The body is a camel-case serializer (its own description says so), so is_muted is sent as isMuted."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1{workflow_id}~1/put/requestBody/content/application~1json/schema/properties/detectorIds/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "The plugin sends back the ids as GET answers them: strings."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1{workflow_id}~1/put/requestBody/content/application~1json/schema/properties/triggers",
+      "value": {
+        "nullable": true
+      },
+      "why": "The plugin sends back the triggers GET answered, whose shape is looser than this union."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1{workflow_id}~1/put/requestBody/content/application~1json/schema/properties/actionFilters",
+      "value": {
+        "type": "array",
+        "items": {}
+      },
+      "why": "The plugin sends back the filters GET answered, whose shape is looser than this union."
+    },
+    {
+      "pointer": "/paths/~1projects~1{organization_id_or_slug}~1{project_id_or_slug}~1keys~1{key_id}~1/put/requestBody/content/application~1json/schema/properties/rateLimit",
+      "value": {
+        "type": "object",
+        "description": "Applies a rate limit to cap the number of errors accepted during a given time window. To\ndisable entirely set `rateLimit` to null.\n```json\n{\n    \"rateLimit\": {\n        \"window\": 7200, // time in seconds\n        \"count\": 1000 // error cap\n    }\n}\n```",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          },
+          "window": {
+            "type": "integer",
+            "maximum": 86400,
+            "minimum": 0,
+            "nullable": true
+          }
+        },
+        "nullable": true
+      },
+      "why": "Clearing a key's rate limit sends null, which the endpoint reads as no limit."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1monitors~1{monitor_id_or_slug}~1/put/requestBody/content/application~1json/schema/properties/config/allOf/0/properties/timezone",
+      "value": {
+        "type": "string"
+      },
+      "why": "The timezone goes through as typed, and listing 600 names here gets nothing checked that the provider does not check better."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1issues~1{issue_id}~1/get/responses/200/content/application~1json/schema/properties/stats/additionalProperties/items",
+      "value": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "why": "Its own description says [timestamp, count] pairs."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1/get/responses/200/content/application~1json/schema/items/properties/config/properties",
+      "value": {
+        "frequency": {
+          "type": "number"
+        }
+      },
+      "why": "The document leaves config untyped; frequency is the one key the plugin reads, in minutes."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1/get/responses/200/content/application~1json/schema/items/properties/triggers/properties/conditions",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "comparison": {},
+            "conditionResult": {}
+          }
+        }
+      },
+      "why": "An alternative of unknown[] makes every condition unknown, and comparison is not only a boolean or integer: threshold conditions hold {value, interval}."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1/get/responses/200/content/application~1json/schema/items/properties/actionFilters/items/properties/conditions",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "comparison": {},
+            "conditionResult": {}
+          }
+        }
+      },
+      "why": "An alternative of unknown[] makes every condition unknown, and comparison is not only a boolean or integer: threshold conditions hold {value, interval}."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1/get/responses/200/content/application~1json/schema/items/properties/actionFilters/items/properties/actions",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "targetType": {
+                  "type": "string"
+                },
+                "targetDisplay": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "targetIdentifier": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "An alternative of unknown[] makes every action unknown, and config is untyped; these are the keys the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1{workflow_id}~1/get/responses/200/content/application~1json/schema/properties/config/properties",
+      "value": {
+        "frequency": {
+          "type": "number"
+        }
+      },
+      "why": "The document leaves config untyped; frequency is the one key the plugin reads, in minutes."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1{workflow_id}~1/get/responses/200/content/application~1json/schema/properties/triggers/properties/conditions",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "comparison": {},
+            "conditionResult": {}
+          }
+        }
+      },
+      "why": "An alternative of unknown[] makes every condition unknown, and comparison is not only a boolean or integer: threshold conditions hold {value, interval}."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1{workflow_id}~1/get/responses/200/content/application~1json/schema/properties/actionFilters/items/properties/conditions",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "comparison": {},
+            "conditionResult": {}
+          }
+        }
+      },
+      "why": "An alternative of unknown[] makes every condition unknown, and comparison is not only a boolean or integer: threshold conditions hold {value, interval}."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1workflows~1{workflow_id}~1/get/responses/200/content/application~1json/schema/properties/actionFilters/items/properties/actions",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "targetType": {
+                  "type": "string"
+                },
+                "targetDisplay": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "targetIdentifier": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "An alternative of unknown[] makes every action unknown, and config is untyped; these are the keys the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1detectors~1/get/responses/200/content/application~1json/schema/items/properties/dataSources/items",
+      "value": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "queryObj": {
+            "type": "object",
+            "properties": {
+              "snubaQuery": {
+                "type": "object",
+                "properties": {
+                  "dataset": {
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": "string"
+                  },
+                  "aggregate": {
+                    "type": "string"
+                  },
+                  "timeWindow": {
+                    "type": "number"
+                  },
+                  "environment": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document leaves data sources untyped; these are the keys the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1detectors~1/get/responses/200/content/application~1json/schema/items/properties/conditionGroup",
+      "value": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "logicType": {
+            "type": "string"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "comparison": {},
+                "conditionResult": {}
+              }
+            }
+          }
+        }
+      },
+      "why": "The document leaves the group untyped; these are the keys the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1detectors~1/get/responses/200/content/application~1json/schema/items/properties/latestGroup",
+      "value": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shortId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "The document leaves the group untyped; these are the keys the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1detectors~1{detector_id}~1/get/responses/200/content/application~1json/schema/properties/dataSources/items",
+      "value": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "queryObj": {
+            "type": "object",
+            "properties": {
+              "snubaQuery": {
+                "type": "object",
+                "properties": {
+                  "dataset": {
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": "string"
+                  },
+                  "aggregate": {
+                    "type": "string"
+                  },
+                  "timeWindow": {
+                    "type": "number"
+                  },
+                  "environment": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document leaves data sources untyped; these are the keys the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1detectors~1{detector_id}~1/get/responses/200/content/application~1json/schema/properties/conditionGroup",
+      "value": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "logicType": {
+            "type": "string"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "comparison": {},
+                "conditionResult": {}
+              }
+            }
+          }
+        }
+      },
+      "why": "The document leaves the group untyped; these are the keys the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1detectors~1{detector_id}~1/get/responses/200/content/application~1json/schema/properties/latestGroup",
+      "value": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shortId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "The document leaves the group untyped; these are the keys the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1uptime~1",
+      "value": {
+        "get": {
+          "operationId": "listOrganizationUptimeMonitors",
+          "parameters": [
+            {
+              "name": "organization_id_or_slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "per_page",
+              "in": "query",
+              "schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "name": "cursor",
+              "in": "query",
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["id"],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "method": {
+                          "type": "string"
+                        },
+                        "intervalSeconds": {
+                          "type": "integer"
+                        },
+                        "timeoutMs": {
+                          "type": "integer"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "uptimeStatus": {
+                          "type": ["integer", "string"]
+                        },
+                        "environment": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "projectSlug": {
+                          "type": "string"
+                        },
+                        "owner": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "type": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the document, which covers the public API; written from what the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1organizations~1{organization_id_or_slug}~1uptime-stats~1",
+      "value": {
+        "get": {
+          "operationId": "listOrganizationUptimeStats",
+          "parameters": [
+            {
+              "name": "organization_id_or_slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "uptimeDetectorId",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "since",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "name": "until",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "name": "resolution",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "prefixItems": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "number"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Not in the document, which covers the public API; written from what the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1projects~1{organization_id_or_slug}~1{project_id_or_slug}~1uptime~1{uptime_detector_id}~1",
+      "value": {
+        "get": {
+          "operationId": "getProjectUptimeMonitor",
+          "parameters": [
+            {
+              "name": "organization_id_or_slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "project_id_or_slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "uptime_detector_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "method": {
+                        "type": "string"
+                      },
+                      "intervalSeconds": {
+                        "type": "integer"
+                      },
+                      "timeoutMs": {
+                        "type": "integer"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "uptimeStatus": {
+                        "type": ["integer", "string"]
+                      },
+                      "environment": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "projectSlug": {
+                        "type": "string"
+                      },
+                      "owner": {
+                        "type": "object",
+                        "nullable": true,
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "operationId": "updateProjectUptimeMonitor",
+          "parameters": [
+            {
+              "name": "organization_id_or_slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "project_id_or_slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "uptime_detector_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "intervalSeconds": {
+                      "type": "integer"
+                    },
+                    "timeoutMs": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["active", "disabled"]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["id"],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "method": {
+                        "type": "string"
+                      },
+                      "intervalSeconds": {
+                        "type": "integer"
+                      },
+                      "timeoutMs": {
+                        "type": "integer"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "uptimeStatus": {
+                        "type": ["integer", "string"]
+                      },
+                      "environment": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "projectSlug": {
+                        "type": "string"
+                      },
+                      "owner": {
+                        "type": "object",
+                        "nullable": true,
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "operationId": "deleteProjectUptimeMonitor",
+          "parameters": [
+            {
+              "name": "organization_id_or_slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "project_id_or_slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "uptime_detector_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "202": {
+              "description": "Accepted"
+            },
+            "204": {
+              "description": "No content"
+            }
+          }
+        }
+      },
+      "why": "Not in the document, which covers the public API; written from what the plugin reads and sends."
+    }
+  ],
+  "paths": {
+    "/organizations/": ["get"],
+    "/organizations/{organization_id_or_slug}/": ["get"],
+    "/organizations/{organization_id_or_slug}/projects/": ["get"],
+    "/organizations/{organization_id_or_slug}/teams/": ["get", "post"],
+    "/organizations/{organization_id_or_slug}/releases/": ["get"],
+    "/organizations/{organization_id_or_slug}/releases/{version}/": ["get"],
+    "/organizations/{organization_id_or_slug}/issues/": ["get", "put"],
+    "/organizations/{organization_id_or_slug}/issues/{issue_id}/": ["get"],
+    "/organizations/{organization_id_or_slug}/project-keys/": ["get"],
+    "/organizations/{organization_id_or_slug}/workflows/": ["get", "put"],
+    "/organizations/{organization_id_or_slug}/workflows/{workflow_id}/": ["get", "put", "delete"],
+    "/organizations/{organization_id_or_slug}/detectors/": ["get", "put"],
+    "/organizations/{organization_id_or_slug}/detectors/{detector_id}/": ["get", "delete"],
+    "/organizations/{organization_id_or_slug}/monitors/": ["get"],
+    "/organizations/{organization_id_or_slug}/monitors/{monitor_id_or_slug}/": [
+      "get",
+      "put",
+      "delete"
+    ],
+    "/organizations/{organization_id_or_slug}/monitors/{monitor_id_or_slug}/checkins/": ["get"],
+    "/organizations/{organization_id_or_slug}/stats_v2/": ["get"],
+    "/organizations/{organization_id_or_slug}/uptime/": ["get"],
+    "/organizations/{organization_id_or_slug}/uptime-stats/": ["get"],
+    "/projects/{organization_id_or_slug}/{project_id_or_slug}/": ["get", "put", "delete"],
+    "/projects/{organization_id_or_slug}/{project_id_or_slug}/keys/": ["get", "post"],
+    "/projects/{organization_id_or_slug}/{project_id_or_slug}/keys/{key_id}/": [
+      "get",
+      "put",
+      "delete"
+    ],
+    "/projects/{organization_id_or_slug}/{project_id_or_slug}/uptime/{uptime_detector_id}/": [
+      "get",
+      "put",
+      "delete"
+    ],
+    "/teams/{organization_id_or_slug}/{team_id_or_slug}/": ["get", "put", "delete"],
+    "/teams/{organization_id_or_slug}/{team_id_or_slug}/projects/": ["post"]
+  }
+}

@@ -9,10 +9,9 @@ import type {
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import type { SentryContext } from "./api.js";
-import { isPermissionError, sentryPaged } from "./api.js";
+import { isPermissionError, sentryApi } from "./api.js";
 import { SentryClient, assertUsableToken } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
-import type { SentryOrganization } from "./mappers.js";
 import { SENTRY_PREFLIGHT, sentryPolicyTemplate } from "./preflight.js";
 import { DEFAULT_RATES, RATE_KEYS } from "./rates.js";
 import { DEFAULT_REGION_ID, REGION_PICKER, resolveInstance } from "./regions.js";
@@ -245,7 +244,7 @@ async function listCredentialOptions(
     ...(services?.http ? { http: services.http } : {}),
   };
   try {
-    const orgs = await sentryPaged<SentryOrganization>(ctx, "/organizations/", {}, 5);
+    const orgs = await sentryApi(ctx).getAll("/organizations/", null, { maxPages: 5 });
     if (orgs.length === 0) {
       throw new Error(
         `The token can see no organizations in the ${ctx.instance.label} region. Check the region (Organization Settings shows the data storage location).`,

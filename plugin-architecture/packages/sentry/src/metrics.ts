@@ -10,8 +10,9 @@
  */
 
 import type { MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
+import { pathEncode } from "@infrawrench/plugin-base";
 import type { SentryContext } from "./api.js";
-import { sentryFetch, sentryRequest, nextPageUrl } from "./api.js";
+import { sentryApi } from "./api.js";
 import type { StatsResponse } from "./cost-data.js";
 import { MAX_STATS_DAYS, fetchStats } from "./cost-data.js";
 import { usageCategoryOf } from "./rates.js";
@@ -20,6 +21,7 @@ export const DEFAULT_METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const USAGE_METRICS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const CHECKIN_PAGES = 10;
 
 export interface TimeRange {
   startMs: number;
@@ -57,7 +59,7 @@ const OUTCOME_LABELS: Record<string, string> = {
  */
 export function seriesFromStats(res: StatsResponse, categories?: string[]): MetricSeries[] {
   const intervals = res.intervals ?? [];
-  const out = new Map<string, MetricSeries>();
+  const out = new Map<string, MetricSeries & { points: MetricSeriesPoint[] }>();
   for (const g of res.groups ?? []) {
     const cat = usageCategoryOf(String(g.by["category"] ?? ""));
     if (!cat || (categories && !categories.includes(cat.key))) continue;
@@ -73,7 +75,7 @@ export function seriesFromStats(res: StatsResponse, categories?: string[]): Metr
       };
       out.set(label, series);
     }
-    const points = series.points as MetricSeriesPoint[];
+    const { points } = series;
     (g.series?.["sum(quantity)"] ?? []).forEach((v, i) => {
       if (points[i])
         points[i] = { timestamp: points[i]!.timestamp, value: points[i]!.value + v / cat.divisor };
@@ -118,9 +120,8 @@ export async function issueSeries(
   issueId: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
-  const issue = await sentryFetch<{ stats?: Record<string, Array<[number, number]>> }>(
-    ctx,
-    `/organizations/${encodeURIComponent(org)}/issues/${encodeURIComponent(issueId)}/`,
+  const issue = await sentryApi(ctx).get(
+    `/organizations/${pathEncode(org)}/issues/${pathEncode(issueId)}/`,
   );
   const long = range.endMs - range.startMs > 2 * DAY_MS;
   const buckets = issue?.stats?.[long ? "30d" : "24h"] ?? issue?.stats?.["24h"] ?? [];
@@ -130,31 +131,31 @@ export async function issueSeries(
   return points.length > 0 ? [{ label: "Events", unit: "events", points }] : [];
 }
 
-interface CheckIn {
-  status?: string;
-  duration?: number | null;
-  dateCreated?: string;
-  environment?: string;
-}
-
 export async function cronSeries(
   ctx: SentryContext,
   org: string,
   slug: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
-  const path = `/organizations/${encodeURIComponent(org)}/monitors/${encodeURIComponent(slug)}/checkins/`;
-  const all: CheckIn[] = [];
-  let res = await sentryRequest<CheckIn[]>(ctx, path, { query: { per_page: 100 } });
-  for (let page = 0; page < 10; page++) {
-    const batch = Array.isArray(res.body) ? res.body : [];
-    all.push(...batch);
-    const oldest = batch[batch.length - 1]?.dateCreated;
-    const next = nextPageUrl(res.headers["link"]);
-    if (!next || (oldest && Date.parse(oldest) < range.startMs)) break;
-    res = await sentryRequest<CheckIn[]>(ctx, next);
-  }
-  const inRange = all
+  // Ten pages are charted. When the tenth has a next link an eleventh is asked
+  // for and dropped, which is what this walk has always put on the wire.
+  let pages = 0;
+  let charted = 0;
+  const rows = await sentryApi(ctx).getAll(
+    `/organizations/${pathEncode(org)}/monitors/${pathEncode(slug)}/checkins/`,
+    null,
+    {
+      maxPages: CHECKIN_PAGES + 1,
+      stopWhen: (batch) => {
+        pages += 1;
+        if (pages <= CHECKIN_PAGES) charted += batch.length;
+        const oldest = batch[batch.length - 1]?.dateCreated;
+        return !!oldest && Date.parse(oldest) < range.startMs;
+      },
+    },
+  );
+  const inRange = rows
+    .slice(0, charted)
     .filter((c) => c.dateCreated && Date.parse(c.dateCreated) >= range.startMs)
     .filter((c) => Date.parse(c.dateCreated!) <= range.endMs)
     .sort((a, b) => Date.parse(a.dateCreated!) - Date.parse(b.dateCreated!));
@@ -182,18 +183,14 @@ export async function uptimeSeries(
 ): Promise<MetricSeries[]> {
   const span = range.endMs - range.startMs;
   const resolution = span <= DAY_MS ? "15m" : span <= WEEK_MS ? "1h" : "1d";
-  const res = await sentryFetch<Record<string, Array<[number, Record<string, number>]>>>(
-    ctx,
-    `/organizations/${encodeURIComponent(org)}/uptime-stats/`,
-    {
-      query: {
-        uptimeDetectorId: detectorId,
-        since: Math.floor(range.startMs / 1000),
-        until: Math.floor(range.endMs / 1000),
-        resolution,
-      },
+  const res = await sentryApi(ctx).get(`/organizations/${pathEncode(org)}/uptime-stats/`, {
+    query: {
+      uptimeDetectorId: detectorId,
+      since: Math.floor(range.startMs / 1000),
+      until: Math.floor(range.endMs / 1000),
+      resolution,
     },
-  );
+  });
   const buckets = res?.[detectorId] ?? Object.values(res ?? {})[0] ?? [];
   const success: MetricSeriesPoint[] = [];
   const failure: MetricSeriesPoint[] = [];
