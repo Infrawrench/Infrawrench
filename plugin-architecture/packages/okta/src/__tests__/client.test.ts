@@ -388,6 +388,90 @@ describe("list reads", () => {
   });
 });
 
+describe("editing an event hook", () => {
+  const H = `${ACCOUNT}:event-hook:who1`;
+  const expression = "event.target.?[displayName eq 'Sales'].size()>0";
+  const current = (filter: object | null) => ({
+    id: "who1",
+    name: "Old",
+    events: {
+      type: "EVENT_TYPE",
+      items: ["group.user_membership.add", "user.session.start"],
+      filter,
+    },
+    channel: {
+      type: "HTTP",
+      version: "1.0.0",
+      config: {
+        uri: "https://hooks.example.com/okta",
+        method: "POST",
+        authScheme: { type: "HEADER", key: "authorization" },
+      },
+    },
+  });
+  const filter = {
+    type: "EXPRESSION_LANGUAGE",
+    eventFilterMap: [
+      { event: "group.user_membership.add", condition: { version: null, expression } },
+    ],
+  };
+  const edit = async (read: object, fields: Record<string, string>) => {
+    const client = ssws((call) => ({
+      body: call.method === "PUT" ? JSON.parse(call.body!) : read,
+    }));
+    await client.updateResource("event-hook", H, ACCOUNT, fields);
+    return JSON.parse(calls.find((c) => c.method === "PUT")!.body!);
+  };
+
+  it("keeps the filter on a rename, in the shape the document's example sends", async () => {
+    const body = await edit(current(filter), { name: "New" });
+    expect(body.name).toBe("New");
+    expect(body.events).toEqual({
+      type: "EVENT_TYPE",
+      items: ["group.user_membership.add", "user.session.start"],
+      filter: {
+        type: "EXPRESSION_LANGUAGE",
+        eventFilterMap: [{ event: "group.user_membership.add", condition: { expression } }],
+      },
+    });
+  });
+
+  it("keeps the filter when the URL changes", async () => {
+    const body = await edit(current(filter), { uri: "https://hooks.example.com/new" });
+    expect(body.channel.config.uri).toBe("https://hooks.example.com/new");
+    expect(body.events.filter.eventFilterMap).toHaveLength(1);
+  });
+
+  it("drops only the entries for events the edit unsubscribes", async () => {
+    const two = {
+      ...filter,
+      eventFilterMap: [
+        ...filter.eventFilterMap,
+        { event: "user.session.start", condition: { expression: "true" } },
+      ],
+    };
+    const body = await edit(current(two), { events: "user.session.start" });
+    expect(body.events).toEqual({
+      type: "EVENT_TYPE",
+      items: ["user.session.start"],
+      filter: {
+        type: "EXPRESSION_LANGUAGE",
+        eventFilterMap: [{ event: "user.session.start", condition: { expression: "true" } }],
+      },
+    });
+  });
+
+  it("sends no filter when the last filtered event goes", async () => {
+    const body = await edit(current(filter), { events: "user.session.start" });
+    expect(body.events).not.toHaveProperty("filter");
+  });
+
+  it("sends no filter for a hook without one", async () => {
+    const body = await edit(current(null), { name: "New" });
+    expect(body.events).not.toHaveProperty("filter");
+  });
+});
+
 describe("editing a trusted origin", () => {
   const T = `${ACCOUNT}:trusted-origin:tos1`;
   const dashboard = { type: "IFRAME_EMBED", allowedOktaApps: ["OKTA_ENDUSER"] };

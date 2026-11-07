@@ -175,6 +175,25 @@ function withScope(
   return scopes.some((scope) => scope.type === type) ? scopes : [...scopes, { type }];
 }
 
+/**
+ * A hook's filter as it goes back on a replace, or nothing if it has none left: an entry
+ * for an event the hook no longer subscribes to goes with it, and a condition's `version`
+ * is read-only.
+ */
+function eventFilterFor(
+  filter: Schemas["EventHookFilters"] | undefined,
+  items: string[],
+): Schemas["EventHookFilters"] | undefined {
+  const entries = (filter?.eventFilterMap ?? [])
+    .filter((entry) => entry.event !== undefined && items.includes(entry.event))
+    .map(({ condition, ...entry }) => {
+      if (!condition) return entry;
+      const { version: _readOnly, ...written } = condition;
+      return { ...entry, condition: written };
+    });
+  return entries.length > 0 ? { ...filter, eventFilterMap: entries } : undefined;
+}
+
 type GroupStats = NonNullable<NonNullable<Schemas["Group"]["_embedded"]>["stats"]>;
 
 type ZoneItem = string | Schemas["NetworkZoneLocation"];
@@ -1512,19 +1531,16 @@ export class OktaClient implements PluginClient {
               value: fields["authHeaderValue"],
             };
           }
+          const items =
+            fields["events"] !== undefined ? list(fields["events"]) : (current.events?.items ?? []);
+          const filter = eventFilterFor(current.events?.filter, items);
           return this.mapEventHook(
             accountId,
             await this.api.rest.put(`/api/v1/eventHooks/${id}`, {
               body: {
                 name: fields["name"] ?? current.name,
                 description: fields["description"] ?? current.description ?? null,
-                events: {
-                  type: "EVENT_TYPE",
-                  items:
-                    fields["events"] !== undefined
-                      ? list(fields["events"])
-                      : (current.events?.items ?? []),
-                },
+                events: { type: "EVENT_TYPE", items, ...(filter ? { filter } : {}) },
                 channel: {
                   type: "HTTP",
                   version: current.channel?.version ?? "1.0.0",
