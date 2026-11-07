@@ -1,9 +1,11 @@
 import {
   createApiClient,
+  pathEncode,
   restRequest,
   type ApiClientOptions,
   type ApiResponse,
   type HttpHostServices,
+  type NoSlashString,
   type ParamValue,
 } from "@infrawrench/plugin-base";
 import type { paths as ComputePaths } from "./api-types.compute.gen.js";
@@ -69,6 +71,17 @@ function errorText(body: string): string {
 function apiError(status: number, url: string, body: string): BunnyApiError {
   const path = new URL(url).pathname;
   return new BunnyApiError(status, `bunny.net API error ${status} for ${path}: ${errorText(body)}`);
+}
+
+/**
+ * An id as one path segment. A blank one would address the collection, or a different
+ * route, rather than the resource, which on a delete is the last thing anybody wants.
+ */
+export function idSegment(id: string | number | undefined): NoSlashString {
+  if (id === undefined || String(id).trim() === "") {
+    throw new Error("bunny.net plugin: this needs a resource id, and it is blank.");
+  }
+  return pathEncode(id);
 }
 
 /** An empty value is left out rather than sent as `x=`. */

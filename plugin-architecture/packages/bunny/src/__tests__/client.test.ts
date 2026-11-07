@@ -202,6 +202,120 @@ describe("actions and edits", () => {
   });
 });
 
+describe("ids in paths", () => {
+  const HOSTILE = "7/../../billing?x=1";
+  const ENCODED = "7%2F..%2F..%2Fbilling%3Fx%3D1";
+
+  it.each([
+    ["pull-zone", `/pullzone/${ENCODED}`],
+    ["storage-zone", `/storagezone/${ENCODED}`],
+    ["dns-zone", `/dnszone/${ENCODED}`],
+    ["video-library", `/videolibrary/${ENCODED}`],
+    ["edge-script", `/compute/script/${ENCODED}`],
+    ["container-app", `/mc/apps/${ENCODED}`],
+  ])("encodes the id when deleting a %s", async (type, path) => {
+    const { c, calls } = client(() => ({ body: "" }));
+    await c.deleteResource(type, `a1:${type}:${HOSTILE}`, "a1");
+    expect(calls.map((x) => x.url)).toEqual([`https://api.bunny.net${path}`]);
+  });
+
+  it.each([
+    ["pull-zone", "purge-all", `/pullzone/${ENCODED}/purgeCache`],
+    ["pull-zone", "reset-token-key", `/pullzone/${ENCODED}/resetSecurityKey`],
+    ["storage-zone", "reset-password", `/storagezone/${ENCODED}/resetPassword`],
+    ["video-library", "reset-api-key", `/videolibrary/${ENCODED}/resetApiKey`],
+    ["edge-script", "publish", `/compute/script/${ENCODED}/publish`],
+    ["container-app", "restart", `/mc/apps/${ENCODED}/restart`],
+    ["container-app", "deploy", `/mc/apps/${ENCODED}/deploy`],
+    ["container-app", "undeploy", `/mc/apps/${ENCODED}/undeploy`],
+  ])("encodes the id on %s %s", async (type, action, path) => {
+    const { c, calls } = client(() => ({ body: "" }));
+    await c.invokeAction(type, `a1:${type}:${HOSTILE}`, action, "a1");
+    expect(calls.map((x) => x.url)).toEqual([`https://api.bunny.net${path}`]);
+  });
+
+  it("encodes both ids of a child on delete", async () => {
+    const { c, calls } = client(() => ({ body: "" }));
+    await c.deleteResource("edge-rule", "a1:edge-rule:7/g?1/x", "a1");
+    await c.deleteResource("dns-record", "a1:dns-record:3/9?x", "a1");
+    expect(calls.map((x) => x.url)).toEqual([
+      "https://api.bunny.net/pullzone/7/edgerules/g%3F1%2Fx",
+      "https://api.bunny.net/dnszone/3/records/9%3Fx",
+    ]);
+  });
+
+  it("encodes the id in an update and on the statistics routes", async () => {
+    const { c, calls } = client((u) => ({
+      body: u.pathname.endsWith("/statistics") ? {} : { Id: 7, Name: "z" },
+    }));
+    await c.updateResource("storage-zone", `a1:storage-zone:${HOSTILE}`, "a1", {
+      custom404FilePath: "/404.html",
+    });
+    expect(calls[0]!.url).toBe(`https://api.bunny.net/storagezone/${ENCODED}`);
+    await c.fetchMetricSeries("dns-zone", `a1:dns-zone:${HOSTILE}`, "a1");
+    expect(new URL(calls.at(-1)!.url).pathname).toBe(`/dnszone/${ENCODED}/statistics`);
+  });
+
+  it.each(["pull-zone", "storage-zone", "dns-zone", "video-library", "edge-script"])(
+    "refuses to delete a %s with a blank id",
+    async (type) => {
+      const { c, calls } = client(() => ({ body: "" }));
+      await expect(c.deleteResource(type, `a1:${type}:`, "a1")).rejects.toThrow("blank");
+      expect(calls).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["hostname", "a1:hostname:7"],
+    ["hostname", "a1:hostname:7/"],
+    ["hostname", "a1:hostname:/cdn.example.com"],
+    ["edge-rule", "a1:edge-rule:7"],
+    ["dns-record", "a1:dns-record:3"],
+  ])("refuses to delete a %s missing an id: %s", async (type, id) => {
+    const { c, calls } = client(() => ({ body: "" }));
+    await expect(c.deleteResource(type, id, "a1")).rejects.toThrow("does not name a child");
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to add a hostname to a blank pull zone", async () => {
+    const { c, calls } = client(() => ({ body: "" }));
+    await expect(c.createResource("hostname", "a1", { hostname: "x.example.com" })).rejects.toThrow(
+      "blank",
+    );
+    expect(calls).toEqual([]);
+  });
+
+  describe("storage objects", () => {
+    const zone = {
+      Id: 1,
+      Name: "assets",
+      Password: "ZONEPW",
+      StorageHostname: "ny.storage.bunnycdn.com",
+    };
+
+    it.each(["", "/", "//", "..", "a/..", "./a"])(
+      "refuses to delete the object key %j, which would reach something else",
+      async (key) => {
+        const { c, calls } = client(() => ({ body: [zone] }));
+        await expect(c.deleteStorageObject("assets", key)).rejects.toThrow(
+          "does not name a storage object",
+        );
+        expect(calls.filter((x) => x.method === "DELETE")).toEqual([]);
+      },
+    );
+
+    it("still deletes a folder and an object with an awkward name", async () => {
+      const { c, calls } = client((u) => (u.host === "api.bunny.net" ? { body: [zone] } : {}));
+      await c.deleteStorageObject("assets", "img/");
+      await c.deleteStorageObject("assets", "a b?.txt");
+      expect(calls.filter((x) => x.method === "DELETE").map((x) => x.url)).toEqual([
+        "https://ny.storage.bunnycdn.com/assets/img/",
+        "https://ny.storage.bunnycdn.com/assets/a%20b%3F.txt",
+      ]);
+    });
+  });
+});
+
 describe("storage browser", () => {
   it("lists with the zone password on the zone's storage host", async () => {
     const { c, calls } = client((u) => {

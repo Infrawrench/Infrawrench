@@ -15,18 +15,14 @@ import type {
   SidebarItemSchema,
   StorageObject,
 } from "@infrawrench/plugin-base";
-import {
-  CreditAccessError,
-  externalIdOf,
-  pathEncode,
-  unencodedSegment,
-} from "@infrawrench/plugin-base";
+import { CreditAccessError, externalIdOf } from "@infrawrench/plugin-base";
 import type { BunnyApis, BunnyContext, Chart } from "./api.js";
 import {
   BunnyApiError,
   bunnyPaged,
   chartPoints,
   createBunnyApis,
+  idSegment,
   listStorage,
   mcApps,
   statusOf,
@@ -84,6 +80,13 @@ function parsePicked(raw: string | undefined): string[] {
     }
   }
   return splitList(t);
+}
+
+/** A child's ids for a write, where a blank key would reach the API as an empty value. */
+function childOf(id: string): { parent: string; key: string } {
+  const { parent, key } = splitChild(id);
+  if (!parent || !key) throw new Error(`bunny.net plugin: "${id}" does not name a child resource.`);
+  return { parent, key };
 }
 
 function ymd(ms: number): string {
@@ -245,7 +248,7 @@ export class BunnyClient implements PluginClient {
   }
 
   private async pullZone(id: string): Promise<PullZone> {
-    return this.api.core.get(`/pullzone/${pathEncode(id)}`);
+    return this.api.core.get(`/pullzone/${idSegment(id)}`);
   }
 
   // ── Listing ─────────────────────────────────────────────────────────────
@@ -293,7 +296,7 @@ export class BunnyClient implements PluginClient {
           try {
             const items = await mcApps(this.api.mc);
             const apps = await Promise.all(
-              items.map((a) => this.api.mc.get(`/apps/${pathEncode(a.id)}`)),
+              items.map((a) => this.api.mc.get(`/apps/${idSegment(a.id)}`)),
             );
             return apps.filter(Boolean).map((a) => appInstance(accountId, a));
           } catch (err) {
@@ -344,13 +347,13 @@ export class BunnyClient implements PluginClient {
         case "storage-zone":
           return storageZoneInstance(
             accountId,
-            await this.api.core.get(`/storagezone/${pathEncode(id)}`),
+            await this.api.core.get(`/storagezone/${idSegment(id)}`),
           );
         case "dns-zone":
-          return dnsZoneInstance(accountId, await this.api.core.get(`/dnszone/${pathEncode(id)}`));
+          return dnsZoneInstance(accountId, await this.api.core.get(`/dnszone/${idSegment(id)}`));
         case "dns-record": {
           const { parent, key } = splitChild(id);
-          const zone = await this.api.core.get(`/dnszone/${pathEncode(parent)}`);
+          const zone = await this.api.core.get(`/dnszone/${idSegment(parent)}`);
           const rec = (zone.Records ?? []).find((r) => String(r.Id) === key);
           if (!rec) throw new BunnyApiError(404, `bunny.net: DNS record ${id} not found`);
           return dnsRecordInstance(accountId, zone, rec);
@@ -358,15 +361,15 @@ export class BunnyClient implements PluginClient {
         case "video-library":
           return libraryInstance(
             accountId,
-            await this.api.core.get(`/videolibrary/${pathEncode(id)}`),
+            await this.api.core.get(`/videolibrary/${idSegment(id)}`),
           );
         case "edge-script":
           return scriptInstance(
             accountId,
-            await this.api.compute.get(`/compute/script/${pathEncode(id)}`),
+            await this.api.compute.get(`/compute/script/${idSegment(id)}`),
           );
         case "container-app":
-          return appInstance(accountId, await this.api.mc.get(`/apps/${pathEncode(id)}`));
+          return appInstance(accountId, await this.api.mc.get(`/apps/${idSegment(id)}`));
         case "hostname":
         case "edge-rule": {
           const { parent } = splitChild(id);
@@ -410,29 +413,29 @@ export class BunnyClient implements PluginClient {
       }
       if (typeId === "hostname" && outputKey === "url") return `https://${splitChild(id).key}`;
       if (typeId === "storage-zone") {
-        const z = await this.api.core.get(`/storagezone/${pathEncode(id)}`);
+        const z = await this.api.core.get(`/storagezone/${idSegment(id)}`);
         if (outputKey === "storageHostname") return z.StorageHostname ?? "";
         if (outputKey === "password") return z.Password ?? "";
         if (outputKey === "readOnlyPassword") return z.ReadOnlyPassword ?? "";
         if (outputKey === "ftpUsername") return z.Name;
       }
       if (typeId === "dns-zone" && outputKey === "nameservers") {
-        const z = await this.api.core.get(`/dnszone/${pathEncode(id)}`);
+        const z = await this.api.core.get(`/dnszone/${idSegment(id)}`);
         return [z.Nameserver1, z.Nameserver2].filter(Boolean).join(", ");
       }
       if (typeId === "video-library") {
         if (outputKey === "libraryId") return id;
-        const l = await this.api.core.get(`/videolibrary/${pathEncode(id)}`);
+        const l = await this.api.core.get(`/videolibrary/${idSegment(id)}`);
         if (outputKey === "apiKey") return l.ApiKey ?? "";
         if (outputKey === "readOnlyApiKey") return l.ReadOnlyApiKey ?? "";
       }
       if (typeId === "edge-script" && outputKey === "url") {
-        const s = await this.api.compute.get(`/compute/script/${pathEncode(id)}`);
+        const s = await this.api.compute.get(`/compute/script/${idSegment(id)}`);
         const h = s.DefaultHostname ?? s.SystemHostname ?? "";
         return h ? `https://${h}` : "";
       }
       if (typeId === "container-app" && outputKey === "endpoint") {
-        const a = await this.api.mc.get(`/apps/${pathEncode(id)}`);
+        const a = await this.api.mc.get(`/apps/${idSegment(id)}`);
         return a.displayEndpoint?.address ?? "";
       }
       throw new Error(`bunny.net plugin: unknown output ${outputKey} on ${typeId}`);
@@ -885,7 +888,7 @@ export class BunnyClient implements PluginClient {
         case "hostname": {
           const pz = fields["pullZoneId"] || parent;
           const host = (fields["hostname"] ?? "").trim().toLowerCase();
-          await this.api.core.post(`/pullzone/${unencodedSegment(pz)}/addHostname`, {
+          await this.api.core.post(`/pullzone/${idSegment(pz)}/addHostname`, {
             body: { Hostname: host },
           });
           if (fields["certificate"] !== "no") {
@@ -901,7 +904,7 @@ export class BunnyClient implements PluginClient {
         case "edge-rule": {
           const pz = fields["pullZoneId"] || parent;
           const before = new Set(((await this.pullZone(pz)).EdgeRules ?? []).map((r) => r.Guid));
-          await this.api.core.post(`/pullzone/${unencodedSegment(pz)}/edgerules/addOrUpdate`, {
+          await this.api.core.post(`/pullzone/${idSegment(pz)}/edgerules/addOrUpdate`, {
             body: edgeRuleFromFields(fields),
           });
           const created = ((await this.pullZone(pz)).EdgeRules ?? []).find(
@@ -934,7 +937,7 @@ export class BunnyClient implements PluginClient {
         }
         case "dns-record": {
           const zoneId = fields["zoneId"] || parent;
-          const rec = await this.api.core.put(`/dnszone/${unencodedSegment(zoneId)}/records`, {
+          const rec = await this.api.core.put(`/dnszone/${idSegment(zoneId)}/records`, {
             body: recordBody(fields),
           });
           return runPluginEffect(
@@ -983,15 +986,15 @@ export class BunnyClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "pull-zone":
-          await this.api.core.post(`/pullzone/${unencodedSegment(id)}`, {
+          await this.api.core.post(`/pullzone/${idSegment(id)}`, {
             body: pullZoneUpdateBody(fields),
           });
           this.invalidate();
           break;
         case "hostname": {
-          const { parent, key } = splitChild(id);
+          const { parent, key } = childOf(id);
           if (fields["forceSsl"] !== undefined) {
-            await this.api.core.post(`/pullzone/${unencodedSegment(parent)}/setForceSSL`, {
+            await this.api.core.post(`/pullzone/${idSegment(parent)}/setForceSSL`, {
               body: { Hostname: key, ForceSSL: bool(fields["forceSsl"]) === true },
             });
           }
@@ -999,7 +1002,7 @@ export class BunnyClient implements PluginClient {
           break;
         }
         case "edge-rule": {
-          const { parent, key } = splitChild(id);
+          const { parent, key } = childOf(id);
           const current = ((await this.pullZone(parent)).EdgeRules ?? []).find(
             (r) => r.Guid === key,
           );
@@ -1007,22 +1010,19 @@ export class BunnyClient implements PluginClient {
           const onlyEnabled = Object.keys(fields).every((k) => k === "enabled");
           if (onlyEnabled) {
             await this.api.core.post(
-              `/pullzone/${unencodedSegment(parent)}/edgerules/${unencodedSegment(key)}/setEdgeRuleEnabled`,
+              `/pullzone/${idSegment(parent)}/edgerules/${idSegment(key)}/setEdgeRuleEnabled`,
               { body: { Id: Number(parent), Value: bool(fields["enabled"]) === true } },
             );
           } else {
-            await this.api.core.post(
-              `/pullzone/${unencodedSegment(parent)}/edgerules/addOrUpdate`,
-              {
-                body: edgeRuleFromFields(fields, current),
-              },
-            );
+            await this.api.core.post(`/pullzone/${idSegment(parent)}/edgerules/addOrUpdate`, {
+              body: edgeRuleFromFields(fields, current),
+            });
           }
           this.invalidate();
           break;
         }
         case "storage-zone": {
-          await this.api.core.post(`/storagezone/${unencodedSegment(id)}`, {
+          await this.api.core.post(`/storagezone/${idSegment(id)}`, {
             body: {
               ReplicationZones: list(fields["replicationRegions"])?.map((r) => r.toUpperCase()),
               Rewrite404To200: flag(fields["rewrite404To200"]),
@@ -1034,33 +1034,32 @@ export class BunnyClient implements PluginClient {
         }
         case "dns-zone": {
           if (fields["soaEmail"] !== undefined || fields["logging"] !== undefined) {
-            await this.api.core.post(`/dnszone/${unencodedSegment(id)}`, {
+            await this.api.core.post(`/dnszone/${idSegment(id)}`, {
               body: { SoaEmail: fields["soaEmail"], LoggingEnabled: flag(fields["logging"]) },
             });
           }
           if (fields["dnssec"] !== undefined) {
-            const dnssec = `/dnszone/${unencodedSegment(id)}/dnssec` as const;
+            const dnssec = `/dnszone/${idSegment(id)}/dnssec` as const;
             if (bool(fields["dnssec"])) await this.api.core.post(dnssec);
             else await this.api.core.delete(dnssec);
           }
           break;
         }
         case "dns-record": {
-          const { parent, key } = splitChild(id);
+          const { parent, key } = childOf(id);
           const current = await runPluginEffect(
             this.getResource("dns-record", resourceId, accountId),
           );
           const merged: Record<string, string> = {};
           for (const [k, v] of Object.entries(current.fields)) merged[k] = String(v);
           Object.assign(merged, fields);
-          await this.api.core.post(
-            `/dnszone/${unencodedSegment(parent)}/records/${unencodedSegment(key)}`,
-            { body: { ...recordBody(merged), Id: Number(key) } },
-          );
+          await this.api.core.post(`/dnszone/${idSegment(parent)}/records/${idSegment(key)}`, {
+            body: { ...recordBody(merged), Id: Number(key) },
+          });
           break;
         }
         case "video-library": {
-          await this.api.core.post(`/videolibrary/${unencodedSegment(id)}`, {
+          await this.api.core.post(`/videolibrary/${idSegment(id)}`, {
             body: {
               Name: fields["name"],
               EnabledResolutions: fields["resolutions"],
@@ -1077,17 +1076,17 @@ export class BunnyClient implements PluginClient {
         }
         case "edge-script":
           if (fields["name"] !== undefined) {
-            await this.api.compute.post(`/compute/script/${unencodedSegment(id)}`, {
+            await this.api.compute.post(`/compute/script/${idSegment(id)}`, {
               body: { Name: fields["name"] },
             });
           }
           break;
         case "container-app": {
-          const app = await this.api.mc.get(`/apps/${unencodedSegment(id)}`);
+          const app = await this.api.mc.get(`/apps/${idSegment(id)}`);
           const min = int(fields["minInstances"]) ?? app.autoScaling?.min ?? 1;
           const max = int(fields["maxInstances"]) ?? app.autoScaling?.max ?? min;
           if (max < min) throw new Error("Max instances must be at least min instances.");
-          await this.api.mc.put(`/apps/${unencodedSegment(id)}/autoscaling`, {
+          await this.api.mc.put(`/apps/${idSegment(id)}/autoscaling`, {
             body: { min, max },
           });
           break;
@@ -1106,43 +1105,39 @@ export class BunnyClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "pull-zone":
-          await this.api.core.delete(`/pullzone/${unencodedSegment(id)}`);
+          await this.api.core.delete(`/pullzone/${idSegment(id)}`);
           break;
         case "hostname": {
-          const { parent, key } = splitChild(id);
-          await this.api.core.delete(`/pullzone/${unencodedSegment(parent)}/removeHostname`, {
+          const { parent, key } = childOf(id);
+          await this.api.core.delete(`/pullzone/${idSegment(parent)}/removeHostname`, {
             body: { Hostname: key },
           });
           break;
         }
         case "edge-rule": {
-          const { parent, key } = splitChild(id);
-          await this.api.core.delete(
-            `/pullzone/${unencodedSegment(parent)}/edgerules/${unencodedSegment(key)}`,
-          );
+          const { parent, key } = childOf(id);
+          await this.api.core.delete(`/pullzone/${idSegment(parent)}/edgerules/${idSegment(key)}`);
           break;
         }
         case "storage-zone":
-          await this.api.core.delete(`/storagezone/${unencodedSegment(id)}`);
+          await this.api.core.delete(`/storagezone/${idSegment(id)}`);
           break;
         case "dns-zone":
-          await this.api.core.delete(`/dnszone/${unencodedSegment(id)}`);
+          await this.api.core.delete(`/dnszone/${idSegment(id)}`);
           break;
         case "dns-record": {
-          const { parent, key } = splitChild(id);
-          await this.api.core.delete(
-            `/dnszone/${unencodedSegment(parent)}/records/${unencodedSegment(key)}`,
-          );
+          const { parent, key } = childOf(id);
+          await this.api.core.delete(`/dnszone/${idSegment(parent)}/records/${idSegment(key)}`);
           break;
         }
         case "video-library":
-          await this.api.core.delete(`/videolibrary/${unencodedSegment(id)}`);
+          await this.api.core.delete(`/videolibrary/${idSegment(id)}`);
           break;
         case "edge-script":
-          await this.api.compute.delete(`/compute/script/${unencodedSegment(id)}`);
+          await this.api.compute.delete(`/compute/script/${idSegment(id)}`);
           break;
         case "container-app":
-          await this.api.mc.delete(`/apps/${unencodedSegment(id)}`);
+          await this.api.mc.delete(`/apps/${idSegment(id)}`);
           break;
         default:
           throw new Error(`bunny.net plugin: ${typeId} cannot be deleted`);
@@ -1159,7 +1154,7 @@ export class BunnyClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const raw = unencodedSegment(id);
+      const raw = idSegment(id);
       switch (`${typeId}:${actionId}`) {
         case "pull-zone:purge-all":
           await this.api.core.post(`/pullzone/${raw}/purgeCache`, { body: {} });
@@ -1169,7 +1164,7 @@ export class BunnyClient implements PluginClient {
           return;
         case "hostname:load-certificate":
           await this.api.core.get("/pullzone/loadFreeCertificate", {
-            query: { hostname: splitChild(id).key },
+            query: { hostname: childOf(id).key },
           });
           return;
         case "storage-zone:reset-password":
@@ -1219,7 +1214,7 @@ export class BunnyClient implements PluginClient {
       if (typeId === "pull-zone" && command === "purge-tag") {
         const tag = (values["tag"] ?? "").trim();
         if (!tag) throw new Error("Enter a cache tag.");
-        await this.api.core.post(`/pullzone/${unencodedSegment(id)}/purgeCache`, {
+        await this.api.core.post(`/pullzone/${idSegment(id)}/purgeCache`, {
           body: { CacheTag: tag },
         });
         return { message: `Purged objects tagged ${tag}.` };
@@ -1227,7 +1222,7 @@ export class BunnyClient implements PluginClient {
       if (typeId === "pull-zone" && command === "add-hostname") {
         const host = (values["hostname"] ?? "").trim().toLowerCase();
         if (!host) throw new Error("Enter a hostname.");
-        await this.api.core.post(`/pullzone/${unencodedSegment(id)}/addHostname`, {
+        await this.api.core.post(`/pullzone/${idSegment(id)}/addHostname`, {
           body: { Hostname: host },
         });
         if (values["certificate"] !== "no") {
@@ -1249,6 +1244,18 @@ export class BunnyClient implements PluginClient {
     if (!z?.Password)
       throw new BunnyApiError(404, `bunny.net: storage zone ${name} not found or has no password`);
     return { ...z, Password: z.Password };
+  }
+
+  /**
+   * A DELETE on a directory is recursive, so a blank key would empty the whole zone, and a
+   * dot segment collapses in the URL to somewhere other than the key it came from.
+   */
+  private objectUrl(z: StorageZone, key: string): string {
+    const segments = key.split("/").filter(Boolean);
+    if (segments.length === 0 || segments.some((s) => s === "." || s === "..")) {
+      throw new Error(`bunny.net plugin: "${key}" does not name a storage object.`);
+    }
+    return this.storageUrl(z, key);
   }
 
   private storageUrl(z: StorageZone, path: string): string {
@@ -1288,7 +1295,7 @@ export class BunnyClient implements PluginClient {
   ): PluginEffect<void> {
     return attempt(async () => {
       const z = await this.zoneByName(bucket);
-      await writeStorage(this.ctx, this.storageUrl(z, key), z.Password, {
+      await writeStorage(this.ctx, this.objectUrl(z, key), z.Password, {
         method: "PUT",
         bytes: new Uint8Array(await file.arrayBuffer()),
       });
@@ -1303,7 +1310,7 @@ export class BunnyClient implements PluginClient {
       const z = await this.zoneByName(bucket);
       await writeStorage(
         this.ctx,
-        this.storageUrl(z, key.endsWith("/") ? key : `${key}/`),
+        this.objectUrl(z, key.endsWith("/") ? key : `${key}/`),
         z.Password,
         {
           method: "PUT",
@@ -1317,7 +1324,7 @@ export class BunnyClient implements PluginClient {
     return attempt(async () => {
       // DELETE on a directory removes it recursively.
       const z = await this.zoneByName(bucket);
-      await writeStorage(this.ctx, this.storageUrl(z, key), z.Password, { method: "DELETE" });
+      await writeStorage(this.ctx, this.objectUrl(z, key), z.Password, { method: "DELETE" });
     });
   }
 
@@ -1359,7 +1366,7 @@ export class BunnyClient implements PluginClient {
       const hourly = end - start <= 3 * 86_400_000;
       const dates = { dateFrom: ymd(start), dateTo: ymd(end) };
       const id = externalIdOf(resourceId);
-      const raw = unencodedSegment(id);
+      const raw = idSegment(id);
       switch (resourceTypeId) {
         case "pull-zone":
         case "account": {
