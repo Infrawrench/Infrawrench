@@ -377,6 +377,35 @@ describe("removeSeat", () => {
   });
 });
 
+describe("a resource id with nothing after its type", () => {
+  it.each(["copilot-seat", "hosted-runner", "runner", "codespace", "budget", "cost-center"])(
+    "refuses to delete a %s",
+    async (type) => {
+      const { c, calls } = client(() => {
+        throw new Error("no request should be made");
+      }, "enterprise:big");
+      await expect(c.deleteResource!(type, `acc:${type}:`, "acc")).rejects.toThrow(/no id/);
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it("refuses to edit one or act on one", async () => {
+    const { c, calls } = client(() => {
+      throw new Error("no request should be made");
+    });
+    await expect(
+      c.updateResource!("budget", "acc:budget:", "acc", { budgetAmount: "5" }),
+    ).rejects.toThrow(/no id/);
+    await expect(
+      c.invokeAction!("actions-cache", "acc:actions-cache:", "delete-all-caches", "acc"),
+    ).rejects.toThrow(/no id/);
+    await expect(
+      c.invokeAction!("copilot-seat", "acc:copilot-seat:", "remove-seat", "acc"),
+    ).rejects.toThrow(/no id/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("org-only and enterprise-only types", () => {
   it("refuses a codespace write on an enterprise account, before calling GitHub", async () => {
     const { c, calls } = client(() => {

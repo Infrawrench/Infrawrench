@@ -1113,7 +1113,7 @@ export class GitHubClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = requireExternalId(resourceId);
       this.invalidate();
       if (typeId === "hosted-runner") {
         const body: ApiBody<GhecOps["actions/update-hosted-runner-for-enterprise"]> = {
@@ -1224,7 +1224,7 @@ export class GitHubClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = requireExternalId(resourceId);
       const segment = pathEncode(id);
       this.invalidate();
       switch (typeId) {
@@ -1318,7 +1318,7 @@ export class GitHubClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = requireExternalId(resourceId);
       this.invalidate();
       if (typeId === "copilot-seat" && actionId === "remove-seat")
         return this.cancelCopilotSeat(id);
@@ -1379,6 +1379,13 @@ export class GitHubClient implements PluginClient {
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     return renderGitHubSidebar(resource);
   }
+}
+
+/** The id a write acts on: a blank one must not reach the API. */
+function requireExternalId(resourceId: string): string {
+  const id = externalIdOf(resourceId);
+  if (!id) throw new Error(`GitHub plugin: ${resourceId} has no id to act on`);
+  return id;
 }
 
 function splitCodespaceId(id: string): { user: string; name: string } {
