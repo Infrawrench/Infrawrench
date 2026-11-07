@@ -1,4 +1,4 @@
-import type { HostServices } from "@infrawrench/plugin-base";
+import { ListPageError, ListTruncatedError, type HostServices } from "@infrawrench/plugin-base";
 import { KoyebApiError, buildQuery, sendRequest, type QueryValue } from "./kit.js";
 
 /**
@@ -12,7 +12,35 @@ import { KoyebApiError, buildQuery, sendRequest, type QueryValue } from "./kit.j
 
 export const API_BASE = "https://app.koyeb.com";
 const PAGE = 100;
-const MAX_PAGES = 30;
+// 100,000 rows, the most one poll can read and write. The spec gives `limit` no maximum.
+const MAX_PAGES = 1000;
+
+/** Every field a `List*Reply` in the spec has besides its list. */
+const PAGING_FIELDS = new Set(["count", "has_next", "limit", "offset", "order"]);
+
+export type ListReply<T> = Record<string, T[] | string | number | boolean | null | undefined>;
+
+function isEmptyReply<T>(reply: ListReply<T> | undefined): boolean {
+  if (typeof reply !== "object" || reply === null || Array.isArray(reply)) return false;
+  return (
+    Object.keys(reply).every((field) => PAGING_FIELDS.has(field)) &&
+    reply["has_next"] !== true &&
+    !(Number(reply["count"] ?? 0) > 0)
+  );
+}
+
+/**
+ * The list on one answer. Koyeb answers through a gRPC gateway, where proto3 JSON can
+ * leave an empty list out, so a missing key is no rows, but only on an answer with
+ * nothing else in it that would say otherwise: a renamed key or an error wrapped in a
+ * 200 has other fields, and a sync would read those as every row deleted.
+ */
+export function pageRows<T>(reply: ListReply<T> | undefined, key: string, path: string): T[] {
+  const list = reply?.[key];
+  if (Array.isArray(list)) return list;
+  if (list === null || (list === undefined && isEmptyReply(reply))) return [];
+  throw new ListPageError({ vendor: "Koyeb", path, key, found: list, page: reply });
+}
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -58,21 +86,33 @@ export class KoyebApi {
   ): Promise<T[]> {
     const out: T[] = [];
     for (let page = 0; page < MAX_PAGES; page++) {
-      const res = await this.request<Record<string, unknown>>(path, {
-        query: { ...query, limit: String(PAGE), offset: String(page * PAGE) },
+      const res = await this.request<ListReply<T> | undefined>(path, {
+        // Counted in rows, so a server answering fewer than asked for skips nothing.
+        query: { ...query, limit: String(PAGE), offset: String(out.length) },
       });
-      const rows = Array.isArray(res?.[key]) ? (res[key] as T[]) : [];
+      const rows = pageRows<T>(res, key, path);
       out.push(...rows);
+      const saysMore = res?.["has_next"];
+      if (rows.length === 0) {
+        if (saysMore !== true) return out;
+        throw new ListPageError({
+          vendor: "Koyeb",
+          path,
+          key,
+          found: rows,
+          saysMoreWith: "no rows",
+        });
+      }
       // int64 fields arrive as JSON strings from Koyeb's gRPC gateway.
-      const count = Number(res?.["count"]);
+      const count = Number(res?.["count"] ?? Number.NaN);
       const hasNext =
-        typeof res?.["has_next"] === "boolean"
-          ? (res["has_next"] as boolean)
-          : Number.isFinite(count) && res?.["count"] !== undefined
+        typeof saysMore === "boolean"
+          ? saysMore
+          : Number.isFinite(count)
             ? out.length < count
             : rows.length === PAGE;
-      if (!hasNext || rows.length === 0) break;
+      if (!hasNext) return out;
     }
-    return out;
+    throw new ListTruncatedError({ vendor: "Koyeb", path, items: out.length, maxPages: MAX_PAGES });
   }
 }

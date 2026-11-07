@@ -19,8 +19,12 @@ import type {
   SidebarItemSchema,
   SizeOption,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, withMetricsCapability } from "@infrawrench/plugin-base";
-import { KoyebApi } from "./api.js";
+import {
+  QuotaAccessError,
+  rethrowIncompleteList,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
+import { KoyebApi, pageRows, type ListReply } from "./api.js";
 import { invoiceRows } from "./cost-data.js";
 import {
   cached,
@@ -205,13 +209,13 @@ export class KoyebClient implements PluginClient {
         case "deployment": {
           const services = await this.services();
           const lists = await mapLimit(services, FAN_OUT, async (s) => {
-            const res = await this.api.request<{ deployments?: KyDeployment[] }>(
-              "/v1/deployments",
-              {
-                query: { service_id: s.id, limit: String(DEPLOYMENTS_PER_SERVICE) },
-              },
-            );
-            return (res?.deployments ?? []).map((d) =>
+            // Rolling window: the newest N. Older rows falling off is what this type means.
+            // The spec gives no order; Koyeb's own CLI takes `limit=1` as the latest.
+            const path = "/v1/deployments";
+            const res = await this.api.request<ListReply<KyDeployment> | undefined>(path, {
+              query: { service_id: s.id, limit: String(DEPLOYMENTS_PER_SERVICE) },
+            });
+            return pageRows<KyDeployment>(res, "deployments", path).map((d) =>
               mapDeployment(d, s.active_deployment_id ?? "", accountId),
             );
           });
@@ -230,7 +234,10 @@ export class KoyebClient implements PluginClient {
         case "domain": {
           const [domains, apps] = await Promise.all([
             this.api.listAll<KyDomain>("/v1/domains", "domains"),
-            this.apps().catch(() => [] as KyApp[]),
+            this.apps().catch((err: unknown) => {
+              rethrowIncompleteList(err);
+              return [] as KyApp[];
+            }),
           ]);
           const names = new Map(apps.map((a) => [a.id, a.name]));
           return domains.map((d) => mapDomain(d, names, accountId));

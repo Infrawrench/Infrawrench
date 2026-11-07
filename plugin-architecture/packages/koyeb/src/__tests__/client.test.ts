@@ -328,3 +328,129 @@ describe("terraform", () => {
     expect(out?.variables?.[0]?.sensitive).toBe(true);
   });
 });
+
+describe("lists", () => {
+  const full = (from: number) =>
+    Array.from({ length: 100 }, (_, i) => ({ ...APP, id: `a${from + i}` }));
+
+  it("throws at the page cap instead of returning part of the list", async () => {
+    routes["GET /v1/apps"] = (c: Call) => ({
+      apps: full(Number(c.query.get("offset"))),
+      has_next: true,
+    });
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(1000);
+  });
+
+  it("reads a list far past the old cap of 3,000 rows", async () => {
+    routes["GET /v1/apps"] = (c: Call) => {
+      const offset = Number(c.query.get("offset"));
+      return { apps: full(offset), has_next: offset < 4900 };
+    };
+    await expect(client().listResources("app", ACCOUNT)).resolves.toHaveLength(5000);
+  });
+
+  it("rejects a renamed key on the first page", async () => {
+    routes["GET /v1/apps"] = { applications: [APP], has_next: false };
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a renamed key on a later page", async () => {
+    routes["GET /v1/apps"] = (c: Call) =>
+      c.query.get("offset") === "0"
+        ? { apps: full(0), has_next: true }
+        : { applications: [APP], has_next: false };
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a list that is not an array, an empty body and an error wrapped in a 200", async () => {
+    routes["GET /v1/apps"] = { apps: "none" };
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+    routes["GET /v1/apps"] = () => new Response("", { status: 200 });
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+    routes["GET /v1/apps"] = { status: 500, code: "internal", message: "try again" };
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a missing list on a page that says it has rows", async () => {
+    routes["GET /v1/apps"] = { count: "5", limit: "100", offset: "0" };
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+    routes["GET /v1/apps"] = { limit: "100", offset: "0", has_next: true };
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads the empty answers a gRPC gateway can give as no rows", async () => {
+    for (const empty of [
+      { apps: [], count: "0", has_next: false },
+      { apps: null },
+      { count: 0, limit: "100", offset: "0", has_next: false },
+      {},
+    ]) {
+      routes["GET /v1/apps"] = empty;
+      await expect(client().listResources("app", ACCOUNT)).resolves.toEqual([]);
+    }
+  });
+
+  it("ends a full last page on a next page with the list left out", async () => {
+    routes["GET /v1/projects"] = (c: Call) =>
+      c.query.get("offset") === "0"
+        ? { projects: Array.from({ length: 100 }, (_, i) => ({ id: `p${i}`, name: `p${i}` })) }
+        : { limit: "100", offset: "100" };
+    await expect(client().listResources("project", ACCOUNT)).resolves.toHaveLength(100);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("rejects an empty page that says there is more", async () => {
+    routes["GET /v1/apps"] = { apps: [], has_next: true };
+    await expect(client().listResources("app", ACCOUNT)).rejects.toThrow("that says there is more");
+  });
+
+  it("skips nothing when the server answers fewer rows than asked for", async () => {
+    const all = Array.from({ length: 120 }, (_, i) => ({ ...APP, id: `a${i}` }));
+    routes["GET /v1/apps"] = (c: Call) => {
+      const offset = Number(c.query.get("offset"));
+      return { apps: all.slice(offset, offset + 50), count: "120" };
+    };
+    const apps = await client().listResources("app", ACCOUNT);
+    expect(apps.map((a) => a.externalId)).toEqual(all.map((a) => a.id));
+  });
+
+  it("does not hide a bad apps list behind the domain list's catch", async () => {
+    routes["GET /v1/domains"] = {
+      domains: [{ id: "d1", name: "shop.example.com", app_id: "app1" }],
+      count: "1",
+    };
+    routes["GET /v1/apps"] = { applications: [APP] };
+    await expect(client().listResources("domain", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("still lists domains when the apps read merely fails", async () => {
+    routes["GET /v1/domains"] = {
+      domains: [{ id: "d1", name: "shop.example.com", app_id: "app1" }],
+      count: "1",
+    };
+    routes["GET /v1/apps"] = () => new Response("{}", { status: 500 });
+    await expect(client().listResources("domain", ACCOUNT)).resolves.toHaveLength(1);
+  });
+});
+
+describe("deployments", () => {
+  it("reads the newest few of each service", async () => {
+    routes["GET /v1/services"] = { services: [SERVICE], has_next: false };
+    routes["GET /v1/deployments"] = { deployments: [DEP], has_next: true };
+    await expect(client().listResources("deployment", ACCOUNT)).resolves.toHaveLength(1);
+    const read = calls.find((c) => c.path === "/v1/deployments")!;
+    expect(read.query.get("service_id")).toBe("svc1");
+    expect(read.query.get("limit")).toBe("10");
+  });
+
+  it("rejects a page that is not a list, rather than reading the service as having none", async () => {
+    routes["GET /v1/services"] = { services: [SERVICE], has_next: false };
+    routes["GET /v1/deployments"] = { items: [DEP] };
+    await expect(client().listResources("deployment", ACCOUNT)).rejects.toThrow("is not a list");
+    routes["GET /v1/deployments"] = () => new Response("", { status: 200 });
+    await expect(client().listResources("deployment", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+});
