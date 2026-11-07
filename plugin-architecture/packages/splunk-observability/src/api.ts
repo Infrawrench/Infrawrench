@@ -1,5 +1,5 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { jsonRestFetch, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 
 /**
  * Splunk Observability Cloud realms, from the realm index at
@@ -19,6 +19,8 @@ export const REALMS: Array<{ id: string; label: string; location: string }> = [
   { id: "au0", label: "AU0", location: "AWS ap-southeast-2" },
   { id: "sg0", label: "SG0", location: "AWS ap-southeast-1" },
 ];
+
+const VENDOR = "Splunk Observability";
 
 export interface SplunkContext {
   realm: string;
@@ -88,7 +90,7 @@ export async function sfFetch<T>(
   const { query, ...rest } = init ?? {};
   try {
     return await jsonRestFetch<T>({
-      vendor: "Splunk Observability",
+      vendor: VENDOR,
       url: withQuery(`${apiBase(ctx)}${path}`, query),
       errorPath: path,
       headers: { Accept: "application/json", "X-SF-Token": ctx.token },
@@ -109,24 +111,75 @@ export function statusOf(err: unknown): number {
 }
 
 const PAGE = 1000;
-const MAX_PAGES = 20;
+/** Requests, not rows: 100,000 rows at the default page size. */
+const MAX_PAGES = 100;
+/**
+ * Splunk answers at most 10,000 objects to one query however it is paged
+ * ("Retrieve data basics"), so a list that ends there with a count above it is cut.
+ */
+const RESULT_CEILING = 10_000;
 
-/** `limit`/`offset` listing whose answer is `{ count, results }`. */
+export interface OffsetListOptions<T> {
+  page?: number;
+  /** For a search sent as a POST. */
+  init?: RequestInit;
+  /**
+   * For a route whose paging is not documented: a row seen twice means it ignored
+   * the offset, and counting the same page again would read the rest as deleted.
+   */
+  idOf?: (row: T) => string | undefined;
+}
+
+/**
+ * `limit`/`offset` listing whose answer is `{ count, results }`. The next offset is
+ * what was read so far, and `count` decides the end, so a server that answers fewer
+ * rows than asked is still read to the end.
+ */
 export async function offsetList<T>(
   ctx: SplunkContext,
   path: string,
   query: Query = {},
-  page = PAGE,
+  options: OffsetListOptions<T> = {},
 ): Promise<T[]> {
+  const page = options.page ?? PAGE;
   const out: T[] = [];
+  const seen = new Set<string>();
   for (let i = 0; i < MAX_PAGES; i++) {
-    const res = await sfFetch<{ count?: number; results?: T[] } | T[]>(ctx, path, {
-      query: { ...query, limit: page, offset: i * page },
+    const res = await sfFetch<{ count?: number; results?: T[] } | T[] | null>(ctx, path, {
+      ...options.init,
+      query: { ...query, limit: page, offset: out.length },
     });
-    const items = Array.isArray(res) ? res : (res?.results ?? []);
+    const items = Array.isArray(res)
+      ? res
+      : requireListPage(res?.results, { vendor: VENDOR, path, key: "results" });
+    if (options.idOf) {
+      for (const row of items) {
+        const id = options.idOf(row);
+        if (id === undefined) continue;
+        if (seen.has(id))
+          throw new Error(
+            `${VENDOR}: ${path} answered ${id} on two pages, so it is not paging by offset. Refusing to read that as the whole list.`,
+          );
+        seen.add(id);
+      }
+    }
     out.push(...items);
     const total = Array.isArray(res) ? undefined : res?.count;
-    if (items.length < page || (total !== undefined && out.length >= total)) break;
+    if (total === undefined) {
+      if (items.length < page) return out;
+      continue;
+    }
+    if (out.length >= total) return out;
+    if (items.length === 0) {
+      if (out.length >= RESULT_CEILING)
+        throw new ListTruncatedError({
+          vendor: VENDOR,
+          path,
+          items: out.length,
+          maxItems: RESULT_CEILING,
+        });
+      return out;
+    }
   }
-  return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages: MAX_PAGES });
 }

@@ -14,7 +14,12 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  ListTruncatedError,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { SplunkContext } from "./api.js";
 import { appUrl, normalizeRealm, offsetList, sfFetch, statusOf } from "./api.js";
 import type {
@@ -62,6 +67,10 @@ import { verifySplunkCredentials } from "./preflight.js";
 
 const SEVERITIES = ["Critical", "Major", "Minor", "Warning", "Info"];
 const SYNTH = "/v2/synthetics";
+const VENDOR = "Splunk Observability";
+const TEST_PAGE_SIZE = 100;
+/** 10,000 tests. */
+const TEST_PAGES = 100;
 
 /** The organization's usage metrics, from "View organization metrics" (2026-10). */
 export const ORG_USAGE_PROGRAM = [
@@ -192,23 +201,22 @@ export class SplunkObservabilityClient implements PluginClient {
   }
 
   private async tests(): Promise<SfTest[]> {
+    const path = `${SYNTH}/tests`;
     const out: SfTest[] = [];
-    for (let page = 1; page <= 20; page++) {
-      const res = await sfFetch<{ tests?: SfTest[]; totalCount?: number }>(
-        this.ctx,
-        `${SYNTH}/tests`,
-        {
-          query: { page, perPage: 100 },
-        },
-      );
-      out.push(...(res.tests ?? []));
+    for (let page = 1; page <= TEST_PAGES; page++) {
+      const res = await sfFetch<{ tests?: SfTest[]; totalCount?: number } | null>(this.ctx, path, {
+        query: { page, perPage: TEST_PAGE_SIZE },
+      });
+      const tests = requireListPage(res?.tests, { vendor: VENDOR, path, key: "tests" });
+      out.push(...tests);
+      const total = res?.totalCount;
       if (
-        (res.tests ?? []).length < 100 ||
-        (res.totalCount !== undefined && out.length >= res.totalCount)
+        tests.length === 0 ||
+        (total !== undefined ? out.length >= total : tests.length < TEST_PAGE_SIZE)
       )
-        break;
+        return out;
     }
-    return out;
+    throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages: TEST_PAGES });
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
@@ -251,7 +259,10 @@ export class SplunkObservabilityClient implements PluginClient {
           return this.scoped(async () => {
             const [charts, dashboards] = await Promise.all([
               offsetList<SfChart>(this.ctx, "/v2/chart"),
-              offsetList<SfDashboard>(this.ctx, "/v2/dashboard").catch(() => [] as SfDashboard[]),
+              offsetList<SfDashboard>(this.ctx, "/v2/dashboard").catch((err: unknown) => {
+                rethrowIncompleteList(err);
+                return [] as SfDashboard[];
+              }),
             ]);
             const owner = new Map<string, string>();
             for (const d of dashboards)
@@ -276,7 +287,7 @@ export class SplunkObservabilityClient implements PluginClient {
           );
         case "org-token":
           return this.scoped(async () =>
-            (await offsetList<SfToken>(this.ctx, "/v2/token", {}, 500)).map((t) =>
+            (await offsetList<SfToken>(this.ctx, "/v2/token", {}, { page: 500 })).map((t) =>
               mapToken(accountId, t),
             ),
           );
