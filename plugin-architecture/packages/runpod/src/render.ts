@@ -25,6 +25,8 @@ export function resourceStatus(resource: ResourceInstance): ResourceStatus {
           return "provisioning";
         case "stopped":
           return "info";
+        case "error":
+          return "error";
         case "terminated":
           return "unknown";
         default:
@@ -68,6 +70,7 @@ function headerActions(resource: ResourceInstance): ActionNode[] {
   if (resource.resourceTypeId === "pod") {
     const status = String(f["status"] ?? "");
     const locked = f["locked"] === true;
+    // The document's table of valid transitions; anything else answers 409.
     if ((status === "running" || status === "starting") && !locked) {
       actions.push(
         action("Stop", "stop", {
@@ -76,19 +79,18 @@ function headerActions(resource: ResourceInstance): ActionNode[] {
           success: "Stop requested.",
           danger: true,
         }),
+      );
+    }
+    if (status === "running" && !locked) {
+      actions.push(
         action("Restart", "restart", {
           confirm:
             "Restart this pod? Running processes are killed and the container disk is wiped.",
           success: "Restart requested.",
         }),
-        action("Reset", "reset", {
-          confirm:
-            "Reset this pod? The container is recreated from its image; only the pod volume survives.",
-          success: "Reset requested.",
-          danger: true,
-        }),
       );
-    } else if (status === "stopped") {
+    }
+    if (status === "stopped" || status === "error") {
       actions.push(action("Start", "start", { success: "Start requested." }));
     }
     if (status !== "terminated") {
@@ -96,13 +98,14 @@ function headerActions(resource: ResourceInstance): ActionNode[] {
         locked
           ? action("Unlock", "unlock", { success: "Pod unlocked." })
           : action("Lock", "lock", {
-              confirm: "Lock this pod? It cannot be stopped or reset until it is unlocked.",
+              confirm: "Lock this pod? It cannot be stopped until it is unlocked.",
               success: "Pod locked.",
             }),
       );
     }
   }
-  if (resource.resourceTypeId === "serverless-endpoint") {
+  // A load balancing endpoint has no queue, and no such route.
+  if (resource.resourceTypeId === "serverless-endpoint" && f["endpointType"] !== "LOAD_BALANCER") {
     actions.push(
       action("Purge Queue", "purge-queue", {
         confirm:
@@ -114,6 +117,21 @@ function headerActions(resource: ResourceInstance): ActionNode[] {
   }
   actions.push({ kind: "action", label: "Refresh", action: { type: "refresh-resource" } });
   return actions;
+}
+
+/**
+ * Only what the type still declares. A resource stored before the move to REST v2
+ * keeps fields Runpod no longer has (`machineId`, `interruptible`, `version`) until
+ * its next sync, and they would otherwise show under a made-up label.
+ */
+function declaredFields(
+  resource: ResourceInstance,
+  resourceTypes: ResourceTypeDefinition[],
+): ResourceInstance["fields"] {
+  const declared = resourceTypes.find((t) => t.id === resource.resourceTypeId)?.fields;
+  if (!declared) return resource.fields;
+  const keys = new Set(declared.map((field) => field.key));
+  return Object.fromEntries(Object.entries(resource.fields).filter(([key]) => keys.has(key)));
 }
 
 export function renderRunpodDetail(
@@ -128,7 +146,11 @@ export function renderRunpodDetail(
       children: [
         {
           kind: "key-value-list",
-          items: labeledFieldItems(f, resourceTypes, resource.resourceTypeId),
+          items: labeledFieldItems(
+            declaredFields(resource, resourceTypes),
+            resourceTypes,
+            resource.resourceTypeId,
+          ),
         },
       ],
     },

@@ -15,7 +15,12 @@ export function runpodInstancePricing(
     const flavor = String(fields["cpuFlavorId"] ?? "");
     if (gpu) instanceTypes = [gpu];
     else if (flavor) {
-      instanceTypes = [`${flavor}-${String(fields["vcpus"])}-${String(fields["memoryGb"])}`];
+      // The document's catalog example already writes an id in that shape.
+      instanceTypes = [
+        /-\d+-\d+$/.test(flavor)
+          ? flavor
+          : `${flavor}-${String(fields["vcpus"])}-${String(fields["memoryGb"])}`,
+      ];
     }
   } else if (resource.resourceTypeId === "serverless-endpoint") {
     instanceTypes = String(fields["gpuTypeIds"] ?? "")

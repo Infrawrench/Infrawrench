@@ -10,8 +10,8 @@ import { runpodTerraformExport } from "./terraform.js";
 
 export const manifest = {
   id: "runpod",
-  // REST management API, GraphQL (account, GPU types, SSH keys) and the Serverless queue API
-  egressHosts: ["rest.runpod.io", "api.runpod.io", "api.runpod.ai"],
+  // REST v2 and GraphQL share api.runpod.io; the Serverless queue API is on api.runpod.ai
+  egressHosts: ["api.runpod.io", "api.runpod.ai"],
   displayName: "Runpod",
   description:
     "GPU cloud. Pods with start, stop, restart and SSH, Serverless endpoints with queue health, templates, network volumes, registry credentials and SSH keys, plus billed spend, balance, savings plans and account limits.",
@@ -32,10 +32,9 @@ export const manifest = {
     caCertCredentialField,
   ]),
   /**
-   * Billed spend from Runpod's REST billing history: per-pod and
-   * per-Serverless-endpoint charges plus network storage, bucketed by day in
-   * USD. Recent days can still move while a pod is running, so a short
-   * restatement window absorbs them.
+   * Billed spend from Runpod's REST billing history: per-pod, per-Serverless-endpoint
+   * and per-network-volume charges, bucketed by day in USD. Recent days can still move
+   * while a pod is running, so a short restatement window absorbs them.
    */
   costs: {
     dimensions: ["service", "region", "resource"],

@@ -3,46 +3,55 @@ import type { operations } from "./api-types.gen.js";
 
 /**
  * REST payloads come from the published OpenAPI document
- * (`https://rest.runpod.io/v1/openapi.json`, see `plugingen.json`). GraphQL has
+ * (`https://api.runpod.io/v2/openapi.json`, see `plugingen.json`). GraphQL has
  * no document the generator can read, so those are the slice this plugin reads,
  * with names from the public schema reference (`https://graphql-spec.runpod.io`,
- * checked 2026-10) and everything optional.
+ * checked 2026-11) and everything optional.
  */
 
-/** `imageName` and `networkVolumeId` are read as fallbacks; the document lists neither on a pod. */
-export type RpPod = ApiResponse<operations["GetPod"]> & {
-  imageName?: string;
-  networkVolumeId?: string;
-};
+export type RpPod = ApiResponse<operations["getPod"]>;
+export type RpEndpoint = ApiResponse<operations["getEndpoint"]>;
+export type RpTemplate = ApiResponse<operations["getTemplate"]>;
+export type RpNetworkVolume = ApiResponse<operations["getNetworkVolume"]>;
+export type RpRegistryAuth = ApiResponse<operations["createRegistry"]>;
+export type RpPodBillingRecord = ApiListItem<operations["listPodBilling"], "records">;
+export type RpServerlessBillingRecord = ApiListItem<operations["listServerlessBilling"], "records">;
+export type RpVolumeBillingRecord = ApiListItem<operations["listNetworkVolumeBilling"], "records">;
+export type RpGpuType = ApiListItem<operations["listGpuTypes"], "gpus">;
+export type RpCpuType = ApiListItem<operations["listCpuTypes"], "cpus">;
+export type RpDataCenter = ApiListItem<operations["listDataCenters"], "dataCenters">;
 
-/** The document lists `flashboot` as an input only. */
-export type RpEndpoint = ApiResponse<operations["GetEndpoint"]> & { flashboot?: boolean };
-
-export type RpTemplate = ApiResponse<operations["GetTemplate"]>;
-export type RpNetworkVolume = ApiResponse<operations["CreateNetworkVolume"]>;
-export type RpRegistryAuth = ApiResponse<operations["CreateContainerRegistryAuth"]>;
-export type RpBillingRecord = ApiListItem<operations["PodBilling"], null>;
-export type RpVolumeBillingRecord = ApiListItem<operations["NetworkVolumeBilling"], null>;
-
-export interface RpSavingsPlan {
-  id?: string;
-  costPerHr?: number;
-  startTime?: string;
-  endTime?: string;
-  gpuTypeId?: string;
-  podId?: string;
-}
-
-/** GraphQL extras merged into each pod: runtime telemetry and the SSH proxy host id. */
+/** What only GraphQL reports about a pod. REST lists carry no runtime at all. */
 export interface RpPodExtras {
   id: string;
-  createdAt?: string;
-  machine?: { podHostId?: string; dataCenterId?: string; secureCloud?: boolean };
+  adjustedCostPerHr?: number | null;
+  lastStatusChange?: string | null;
+  machine?: {
+    location?: string | null;
+    gpuDisplayName?: string | null;
+    maintenanceStart?: string | null;
+    maintenanceEnd?: string | null;
+    maintenanceNote?: string | null;
+  } | null;
   runtime?: {
     uptimeInSeconds?: number;
     container?: { cpuPercent?: number; memoryPercent?: number };
     gpus?: Array<{ id?: string; gpuUtilPercent?: number; memoryUtilPercent?: number }>;
+    ports?: Array<{
+      ip?: string | null;
+      isIpPublic?: boolean | null;
+      privatePort?: number | null;
+      publicPort?: number | null;
+      type?: string | null;
+    }>;
   } | null;
+}
+
+/** What only GraphQL reports about a template. */
+export interface RpTemplateExtras {
+  id: string;
+  readme?: string | null;
+  earned?: number | null;
 }
 
 export interface RpEndpointHealth {
@@ -63,32 +72,13 @@ export interface RpEndpointHealth {
   };
 }
 
-export interface RpGpuType {
-  id: string;
-  displayName?: string;
-  memoryInGb?: number;
-  manufacturer?: string;
-  secureCloud?: boolean;
-  communityCloud?: boolean;
-  securePrice?: number | null;
-  communityPrice?: number | null;
-  secureSpotPrice?: number | null;
-  communitySpotPrice?: number | null;
-  maxGpuCount?: number | null;
-  lowestPrice?: {
-    stockStatus?: string | null;
-    uninterruptablePrice?: number | null;
-    minimumBidPrice?: number | null;
-  } | null;
-}
-
-export interface RpDataCenter {
-  id: string;
-  name?: string;
-  location?: string;
-  storageSupport?: boolean;
-  listed?: boolean;
-  gpuAvailability?: Array<{ gpuTypeId?: string; available?: boolean; stockStatus?: string | null }>;
+export interface RpSavingsPlan {
+  id?: string;
+  costPerHr?: number;
+  startTime?: string;
+  endTime?: string;
+  gpuTypeId?: string;
+  podId?: string;
 }
 
 export interface RpMyself {
@@ -99,7 +89,6 @@ export interface RpMyself {
   spendLimit?: number | null;
   maxServerlessConcurrency?: number | null;
   underBalance?: boolean | null;
-  pubKey?: string | null;
   savingsPlans?: Array<
     RpSavingsPlan & {
       upfrontCost?: number | null;

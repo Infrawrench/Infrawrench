@@ -7,29 +7,49 @@ import { fieldNumber, fieldString, tf } from "@infrawrench/plugin-base";
 import { splitList } from "./mappers.js";
 
 /**
- * Terraform mapping for Runpod: provider `runpod/runpod` (Runpod's own,
- * community tier on the Registry, v1.0.9). Attribute names verified against
- * the provider's generated schemas (`runpod/terraform-provider-runpod`,
- * `internal/provider/resource_*\/*_resource_gen.go`, 2026-10). The provider
- * reads `RUNPOD_API_KEY` from the environment, so the provider block is empty
- * and nothing secret is written.
+ * Terraform mapping for Runpod: provider `runpod/runpod` 2.x, the first that speaks
+ * REST v2; 1.x calls REST v1 and stops working when v1 is retired. Attribute names
+ * verified against the provider's `docs/resources` at v2.0.0 (2026-11). The provider
+ * reads `RUNPOD_API_KEY` from the environment, so the provider block is empty and
+ * nothing secret is written.
  *
- * None of the provider's resources implement `ImportState`, so no import id
- * is emitted: applying the export creates new objects alongside the live
- * ones. Every block says so.
+ * Everything imports by id except registry credentials, whose username and password
+ * the API never returns, so applying that block creates a new credential.
  */
 
 const NO_IMPORT = [
-  "The runpod/runpod provider cannot import existing objects: applying this",
+  "The runpod/runpod provider cannot import registry credentials: applying this",
   "creates a new one. Delete the original afterwards if you are migrating.",
+];
+
+// An imported pod is replaced for each create-time attribute the read does not return
+// (template_id, data_center_ids, start_ssh and so on), so none of those are written.
+const POD_IMPORT = [
+  "Check `terraform plan` shows no replacement before applying: replacing a pod",
+  "destroys it. Environment variable values are not synced. If you add `env`, list",
+  "every key: the first apply removes any it leaves out.",
 ];
 
 function list(value: string): TerraformValue {
   return tf.list(splitList(value).map((v) => tf.str(v)));
 }
 
+function persistentVolume(size: number, path: string): TerraformValue {
+  return tf.map({ size: tf.num(size), path: tf.str(path || "/workspace") });
+}
+
+/** `cpu5c:4, cpu5g:8`, as the mapper writes it. */
+function cpuConfigs(value: string): TerraformValue {
+  return tf.list(
+    splitList(value).map((config) => {
+      const [id = "", vcpus = ""] = config.split(":");
+      return tf.map({ cpu_type_id: tf.str(id), vcpu_count: tf.num(Number(vcpus)) });
+    }),
+  );
+}
+
 export const runpodTerraformExport: TerraformExportCapability = {
-  provider: { name: "runpod", source: "runpod/runpod", version: "~> 1.0" },
+  provider: { name: "runpod", source: "runpod/runpod", version: "~> 2.0" },
   providerConfig: {},
   variables: [],
   supportedResourceTypeIds: [
@@ -46,6 +66,7 @@ export const runpodTerraformExport: TerraformExportCapability = {
         const size = fieldNumber(resource, "sizeGb");
         const region = fieldString(resource, "region");
         if (!size || !region) return null;
+        const storage = fieldString(resource, "storageType");
         return {
           resource: {
             type: "runpod_network_volume",
@@ -53,9 +74,10 @@ export const runpodTerraformExport: TerraformExportCapability = {
             attributes: {
               name: tf.str(name),
               size: tf.num(size),
-              data_center_id: tf.str(region),
+              data_center: tf.str(region),
+              ...(storage ? { type: tf.str(storage) } : {}),
             },
-            comments: NO_IMPORT,
+            importId: resource.externalId,
           },
         };
       }
@@ -63,99 +85,115 @@ export const runpodTerraformExport: TerraformExportCapability = {
         const image = fieldString(resource, "imageName");
         if (!image) return null;
         const ports = fieldString(resource, "ports");
-        const mount = fieldString(resource, "volumeMountPath");
         const category = fieldString(resource, "category");
         const auth = fieldString(resource, "containerRegistryAuthId");
+        const volume = fieldNumber(resource, "volumeGb");
         return {
           resource: {
             type: "runpod_template",
             name,
             attributes: {
               name: tf.str(name),
-              image_name: tf.str(image),
-              is_serverless: tf.bool(resource.fields["isServerless"] === true),
+              image: tf.str(image),
+              serverless: tf.bool(resource.fields["isServerless"] === true),
               ...(category ? { category: tf.str(category) } : {}),
-              container_disk_in_gb: tf.num(fieldNumber(resource, "containerDiskGb") ?? 0),
-              volume_in_gb: tf.num(fieldNumber(resource, "volumeGb") ?? 0),
-              ...(mount ? { volume_mount_path: tf.str(mount) } : {}),
+              disk: tf.num(fieldNumber(resource, "containerDiskGb") ?? 0),
+              ...(volume
+                ? {
+                    persistent_volume: persistentVolume(
+                      volume,
+                      fieldString(resource, "volumeMountPath"),
+                    ),
+                  }
+                : {}),
               ...(ports ? { ports: list(ports) } : {}),
-              ...(auth ? { container_registry_auth_id: tf.str(auth) } : {}),
+              ...(auth ? { registry: tf.str(auth) } : {}),
             },
-            comments: [
-              ...NO_IMPORT,
-              "Environment variable values are not synced: add `env = { ... }` by hand.",
-            ],
+            importId: resource.externalId,
+            comments: ["Environment variable values are not synced: add `env = { ... }` by hand."],
           },
         };
       }
       case "serverless-endpoint": {
-        const template = fieldString(resource, "templateId");
-        if (!template) return null;
-        const gpuTypes = fieldString(resource, "gpuTypeIds");
+        const image = fieldString(resource, "imageName");
+        const routing = fieldString(resource, "endpointType");
+        const scaler = fieldString(resource, "scalerType");
+        // Runpod keeps no template link on an endpoint. A resource not synced since the
+        // move to REST v2 has none of these, and the provider requires them.
+        if (!image || !routing || !scaler) return null;
+        const pools = fieldString(resource, "gpuPools");
+        const cpus = fieldString(resource, "cpuConfigs");
         const dcs = fieldString(resource, "dataCenters");
         const volume = fieldString(resource, "networkVolumeId");
-        const scaler = fieldString(resource, "scalerType");
-        const cpu = fieldString(resource, "computeType") === "CPU";
+        const flashboot = fieldString(resource, "flashboot");
+        const idle = fieldNumber(resource, "idleTimeout");
         return {
           resource: {
-            type: "runpod_endpoint",
+            type: "runpod_serverless_endpoint",
             name,
             attributes: {
               name: tf.str(name),
-              template_id: tf.str(template),
-              compute_type: tf.str(cpu ? "CPU" : "GPU"),
-              ...(gpuTypes && !cpu ? { gpu_type_ids: list(gpuTypes) } : {}),
-              ...(!cpu ? { gpu_count: tf.num(fieldNumber(resource, "gpuCount") ?? 1) } : {}),
+              endpoint_type: tf.str(routing),
+              image: tf.str(image),
+              ...(pools ? { gpu_pools: list(pools) } : {}),
+              ...(pools ? { gpu_count: tf.num(fieldNumber(resource, "gpuCount") ?? 1) } : {}),
+              ...(cpus ? { cpu: cpuConfigs(cpus) } : {}),
               workers_min: tf.num(fieldNumber(resource, "workersMin") ?? 0),
               workers_max: tf.num(fieldNumber(resource, "workersMax") ?? 1),
-              idle_timeout: tf.num(fieldNumber(resource, "idleTimeout") ?? 5),
-              ...(scaler ? { scaler_type: tf.str(scaler) } : {}),
-              ...(scaler
-                ? { scaler_value: tf.num(fieldNumber(resource, "scalerValue") ?? 4) }
-                : {}),
-              flashboot: tf.bool(resource.fields["flashboot"] === true),
+              ...(idle ? { idle_timeout: tf.num(idle) } : {}),
+              scaling_type: tf.str(scaler),
+              scaling_value: tf.num(fieldNumber(resource, "scalerValue") ?? 4),
+              ...(flashboot ? { flashboot: tf.str(flashboot) } : {}),
               ...(dcs ? { data_center_ids: list(dcs) } : {}),
-              ...(volume ? { network_volume_id: tf.str(volume) } : {}),
+              ...(volume ? { network_volumes: tf.list([tf.str(volume)]) } : {}),
             },
-            comments: NO_IMPORT,
+            importId: resource.externalId,
+            comments: ["Environment variable values are not synced: add `env = { ... }` by hand."],
           },
         };
       }
       case "pod": {
         const image = fieldString(resource, "imageName");
-        const gpu = fieldString(resource, "gpuTypeId");
         if (!image) return null;
+        const gpu = fieldString(resource, "gpuTypeId");
+        const flavor = fieldString(resource, "cpuFlavorId");
         const ports = fieldString(resource, "ports");
         const mount = fieldString(resource, "volumeMountPath");
-        const template = fieldString(resource, "templateId");
         const volume = fieldString(resource, "networkVolumeId");
+        const disk = fieldNumber(resource, "volumeGb");
         const cloud = fieldString(resource, "cloudType");
+        const more = fieldString(resource, "additionalNetworkVolumes");
         return {
           resource: {
             type: "runpod_pod",
             name,
             attributes: {
               name: tf.str(name),
-              image_name: tf.str(image),
+              image: tf.str(image),
               ...(gpu ? { gpu_type_id: tf.str(gpu) } : {}),
               ...(gpu ? { gpu_count: tf.num(fieldNumber(resource, "gpuCount") ?? 1) } : {}),
+              ...(!gpu && flavor ? { cpu_type_id: tf.str(flavor) } : {}),
+              ...(!gpu && flavor
+                ? { vcpu_count: tf.num(fieldNumber(resource, "vcpus") ?? 2) }
+                : {}),
               ...(cloud
-                ? { cloud_type: tf.str(cloud.startsWith("Community") ? "COMMUNITY" : "SECURE") }
+                ? { cloud: tf.str(cloud.startsWith("Community") ? "COMMUNITY" : "SECURE") }
                 : {}),
-              container_disk_in_gb: tf.num(fieldNumber(resource, "containerDiskGb") ?? 0),
-              volume_in_gb: tf.num(fieldNumber(resource, "volumeGb") ?? 0),
-              ...(mount ? { volume_mount_path: tf.str(mount) } : {}),
-              // The provider takes ports as one comma-separated string.
-              ...(ports ? { ports: tf.str(splitList(ports).join(",")) } : {}),
-              ...(template ? { template_id: tf.str(template) } : {}),
-              ...(volume ? { network_volume_id: tf.str(volume) } : {}),
-              ...(resource.fields["interruptible"] === true
-                ? { interruptible: tf.bool(true) }
+              disk: tf.num(fieldNumber(resource, "containerDiskGb") ?? 0),
+              ...(disk ? { persistent_volume: persistentVolume(disk, mount) } : {}),
+              ...(volume
+                ? {
+                    network_volumes: tf.list([
+                      tf.map({ volume_id: tf.str(volume), path: tf.str(mount || "/workspace") }),
+                    ]),
+                  }
                 : {}),
+              ...(ports ? { ports: list(ports) } : {}),
             },
+            importId: resource.externalId,
             comments: [
-              ...NO_IMPORT,
-              'Environment variable values are not synced: add `env = ["KEY=value"]` by hand.',
+              ...POD_IMPORT,
+              ...(more ? [`Also mounts ${more}: add them to \`network_volumes\` by hand.`] : []),
             ],
           },
         };
@@ -166,7 +204,7 @@ export const runpodTerraformExport: TerraformExportCapability = {
           .replace(/[^a-z0-9_]/g, "_");
         return {
           resource: {
-            type: "runpod_container_registry_auth",
+            type: "runpod_registry",
             name,
             attributes: {
               name: tf.str(name),

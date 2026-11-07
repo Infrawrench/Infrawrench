@@ -22823,5 +22823,22 @@
   "059ee4996cb68ced": "sin valor",
   "52d6d920a1ce3546": "Abrir la página completa de esta instancia",
   "428973eab7417ad7": "Precios y especificaciones de instancias",
-  "8e151e8d76ecbf2c": "Filtrar por nombre o familia"
+  "8e151e8d76ecbf2c": "Filtrar por nombre o familia",
+  "8da580101c0d158c": "Un pod bloqueado no se puede detener hasta que se desbloquee",
+  "526876ed0ba0fd58": "Una clave pública SSH que Runpod instala en los pods nuevos creados con acceso SSH",
+  "2187027fab8a7ae3": "Al menos 10 GB. Runpod no puede quitar el volumen de una plantilla una vez definido",
+  "5039d5712e827c78": "URL base de un endpoint con balanceo de carga, para las rutas que definen tus workers",
+  "369dd85cbb1c13b4": "Configuraciones de CPU",
+  "6f3f228981c2119f": "Variante de CPU y vCPUs por worker",
+  "cc5e14a6b4eb13a4": "No se aplica a un endpoint de cola que escala según el número de solicitudes",
+  "1fe40b69e40e72ff": "Se edita en la consola de Runpod; la API actual de Runpod no puede escribirlo",
+  "e2fc2640b06eb1d5": "Todos los tipos de GPU de esos pools, menos los excluidos",
+  "8c0dd4250b811f3f": "Arranques en frío más rápidos; PRIORITY_FLASHBOOT además obtiene capacidad prioritaria",
+  "23d2feb7eb8204c8": "Pools de GPU",
+  "5d9b0720c0940a5d": "URL del balanceador de carga",
+  "f7338b02ae3219cc": "Más volúmenes de red",
+  "54c718e7f5770611": "Persiste tras los reinicios; se factura mientras el pod está detenido. Al menos 10 GB. Solo puede crecer",
+  "180b01e1b5665c79": "Runpod no conserva ningún vínculo para los pods creados mediante su API actual",
+  "d4d54cda75e8b219": "Segundos en cola (QUEUE_DELAY, 0.5 o más) o solicitudes por worker (REQUEST_COUNT, 1 o más)",
+  "ae214436dd2f33af": "A través de la cola de trabajos de Runpod, o directamente a las rutas que definen tus workers"
 }

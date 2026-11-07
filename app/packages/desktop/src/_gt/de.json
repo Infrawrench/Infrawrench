@@ -22821,5 +22821,22 @@
   "059ee4996cb68ced": "kein Wert",
   "52d6d920a1ce3546": "Vollständige Seite dieser Instanz öffnen",
   "428973eab7417ad7": "Instanzpreise und Spezifikationen",
-  "8e151e8d76ecbf2c": "Nach Name oder Familie filtern"
+  "8e151e8d76ecbf2c": "Nach Name oder Familie filtern",
+  "8da580101c0d158c": "Ein gesperrter Pod kann erst gestoppt werden, wenn er entsperrt ist",
+  "526876ed0ba0fd58": "Ein öffentlicher SSH-Schlüssel, den Runpod auf neuen Pods installiert, die mit SSH-Zugriff erstellt werden",
+  "2187027fab8a7ae3": "Mindestens 10 GB. Runpod kann das Volume einer Vorlage nach dem Festlegen nicht mehr entfernen",
+  "5039d5712e827c78": "Basis-URL eines Load-Balancing-Endpoints für die Pfade, die Ihre Worker definieren",
+  "369dd85cbb1c13b4": "CPU-Konfigurationen",
+  "6f3f228981c2119f": "CPU-Variante und vCPUs pro Worker",
+  "cc5e14a6b4eb13a4": "Gilt nicht für einen Queue-Endpoint, der nach Anzahl der Anfragen skaliert",
+  "1fe40b69e40e72ff": "Wird in der Runpod-Konsole bearbeitet; die aktuelle API von Runpod kann es nicht schreiben",
+  "e2fc2640b06eb1d5": "Jeder GPU-Typ in diesen Pools, abzüglich der ausgeschlossenen",
+  "8c0dd4250b811f3f": "Schnellere Kaltstarts; PRIORITY_FLASHBOOT erhält zusätzlich vorrangige Kapazität",
+  "23d2feb7eb8204c8": "GPU-Pools",
+  "5d9b0720c0940a5d": "Load-Balancer-URL",
+  "f7338b02ae3219cc": "Weitere Netzwerk-Volumes",
+  "54c718e7f5770611": "Bleibt über Neustarts hinweg erhalten; wird abgerechnet, solange der Pod gestoppt ist. Mindestens 10 GB. Kann nur wachsen",
+  "180b01e1b5665c79": "Runpod speichert keine Verknüpfung für Pods, die über die aktuelle API erstellt wurden",
+  "d4d54cda75e8b219": "Sekunden in der Warteschlange (QUEUE_DELAY, 0.5 oder mehr) oder Anfragen pro Worker (REQUEST_COUNT, 1 oder mehr)",
+  "ae214436dd2f33af": "Über die Job-Warteschlange von Runpod oder direkt zu den Pfaden, die Ihre Worker definieren"
 }

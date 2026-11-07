@@ -104,18 +104,32 @@ describe("status feed", () => {
 
 describe("cost data", () => {
   const range = { fromDate: "2026-09-01", toDate: "2026-09-30" };
-  const ctx = { regions: new Map([["pod1", "EU-RO-1"]]), names: new Map([["pod1", "trainer"]]) };
+  const ctx = {
+    regions: new Map([
+      ["pod1", "EU-RO-1"],
+      ["vol1", "US-TX-3"],
+    ]),
+    names: new Map([
+      ["pod1", "trainer"],
+      ["vol1", "data"],
+    ]),
+  };
+  const bucket = (day: string) => ({
+    startTime: `${day}T00:00:00Z`,
+    endTime: `${day}T23:59:59Z`,
+  });
 
-  it("maps pod billing records with region, name and hours", () => {
+  it("maps pod billing records with region and name", () => {
+    const amounts = { gpuAmount: 0, cpuAmount: 0, diskAmount: 0 };
     const rows = mapComputeRecords(
       [
-        { podId: "pod1", amount: 1.5, time: "2026-09-02T00:00:00Z", timeBilledMs: 7_200_000 },
-        { podId: "gone", amount: 0.5, time: "2026-09-02T00:00:00Z" },
-        { podId: "pod1", amount: 9, time: "2026-08-31T00:00:00Z" },
-        { podId: "pod1", amount: 0, time: "2026-09-03T00:00:00Z" },
+        { podId: "pod1", totalAmount: 1.5, ...amounts, ...bucket("2026-09-02") },
+        { podId: "gone", totalAmount: 0.5, ...amounts, ...bucket("2026-09-02") },
+        { podId: "pod1", totalAmount: 9, ...amounts, ...bucket("2026-08-31") },
+        { podId: "pod1", totalAmount: 0, ...amounts, ...bucket("2026-09-03") },
       ],
       "Pods",
-      "podId",
+      (r) => r.podId,
       range,
       ctx,
     );
@@ -128,29 +142,35 @@ describe("cost data", () => {
         tags: { resource_name: "trainer" },
         currency: "USD",
         amount: 1.5,
-        usageAmount: 2,
-        usageUnit: "hours",
       },
       { date: "2026-09-02", service: "Pods", resourceId: "gone", currency: "USD", amount: 0.5 },
     ]);
   });
 
-  it("splits standard and high-performance network storage", () => {
+  it("splits standard and high-performance network storage per volume", () => {
     const rows = mapVolumeRecords(
       [
         {
-          time: "2026-09-05T00:00:00Z",
-          amount: 0.2,
-          diskSpaceBilledGb: 100,
-          highPerformanceStorageAmount: 0.1,
-          highPerformanceStorageDiskSpaceBilledGb: 10,
+          ...bucket("2026-09-05"),
+          networkVolumeId: "vol1",
+          totalAmount: 0.3,
+          standardAmount: 0.2,
+          highPerformanceAmount: 0.1,
+        },
+        {
+          ...bucket("2026-09-05"),
+          networkVolumeId: "vol2",
+          totalAmount: 0,
+          standardAmount: 0,
+          highPerformanceAmount: 0,
         },
       ],
       range,
+      ctx,
     );
-    expect(rows.map((r) => [r.service, r.amount, r.usageAmount])).toEqual([
-      ["Network Volumes", 0.2, 100],
-      ["High Performance Storage", 0.1, 10],
+    expect(rows.map((r) => [r.service, r.resourceId, r.region, r.amount])).toEqual([
+      ["Network Volumes", "vol1", "US-TX-3", 0.2],
+      ["High Performance Storage", "vol1", "US-TX-3", 0.1],
     ]);
   });
 
@@ -165,43 +185,188 @@ describe("cost data", () => {
 });
 
 describe("terraform", () => {
-  it("exports a network volume and a template without an import id", () => {
-    const vol = makeInstance({
-      accountId: "a",
-      typeId: "network-volume",
-      externalId: "vol1",
-      displayName: "data",
-      fields: { name: "data", sizeGb: 100, region: "EU-RO-1", attachedTo: "" },
-    });
-    const out = runpodTerraformExport.mapResource(vol)!;
-    expect(out.resource.type).toBe("runpod_network_volume");
-    expect(out.resource.importId).toBeUndefined();
-    expect(out.resource.attributes["data_center_id"]).toEqual({ kind: "string", value: "EU-RO-1" });
+  const str = (value: string) => ({ kind: "string", value });
+  const num = (value: number) => ({ kind: "number", value });
+  const instance = (
+    typeId: string,
+    externalId: string,
+    fields: Record<string, string | number | boolean>,
+  ) => makeInstance({ accountId: "a", typeId, externalId, displayName: externalId, fields });
 
-    const tpl = makeInstance({
-      accountId: "a",
-      typeId: "template",
-      externalId: "t1",
-      displayName: "worker",
-      fields: { name: "worker", imageName: "img", isServerless: true, ports: "8000/http" },
+  it("targets the provider that speaks REST v2", () => {
+    expect(runpodTerraformExport.provider.version).toBe("~> 2.0");
+  });
+
+  it("exports a network volume and a template, importable by id", () => {
+    const out = runpodTerraformExport.mapResource(
+      instance("network-volume", "vol1", {
+        name: "data",
+        sizeGb: 100,
+        region: "EU-RO-1",
+        storageType: "STANDARD",
+        attachedTo: "",
+      }),
+    )!;
+    expect(out.resource.type).toBe("runpod_network_volume");
+    expect(out.resource.importId).toBe("vol1");
+    expect(out.resource.attributes).toEqual({
+      name: str("data"),
+      size: num(100),
+      data_center: str("EU-RO-1"),
+      type: str("STANDARD"),
     });
-    const t = runpodTerraformExport.mapResource(tpl)!;
-    expect(t.resource.attributes["is_serverless"]).toEqual({ kind: "bool", value: true });
-    expect(t.resource.attributes["ports"]).toEqual({
-      kind: "list",
-      items: [{ kind: "string", value: "8000/http" }],
+
+    const t = runpodTerraformExport.mapResource(
+      instance("template", "t1", {
+        name: "worker",
+        imageName: "img",
+        isServerless: true,
+        ports: "8000/http",
+        containerDiskGb: 20,
+        volumeGb: 20,
+        volumeMountPath: "/workspace",
+        containerRegistryAuthId: "reg1",
+      }),
+    )!;
+    expect(t.resource.importId).toBe("t1");
+    expect(t.resource.attributes).toMatchObject({
+      image: str("img"),
+      serverless: { kind: "bool", value: true },
+      disk: num(20),
+      registry: str("reg1"),
+      persistent_volume: { kind: "map", entries: { size: num(20), path: str("/workspace") } },
+      ports: { kind: "list", items: [str("8000/http")] },
     });
   });
 
-  it("keeps registry passwords in a sensitive variable", () => {
-    const auth = makeInstance({
-      accountId: "a",
-      typeId: "container-registry-auth",
-      externalId: "clz1",
-      displayName: "ghcr",
-      fields: { name: "ghcr" },
+  it("exports a Serverless endpoint in the provider's new shape", () => {
+    const out = runpodTerraformExport.mapResource(
+      instance("serverless-endpoint", "ep1", {
+        name: "llm",
+        endpointType: "QUEUE",
+        imageName: "img",
+        gpuPools: "ADA_24, AMPERE_16",
+        gpuCount: 2,
+        workersMin: 0,
+        workersMax: 5,
+        idleTimeout: 5,
+        scalerType: "QUEUE_DELAY",
+        scalerValue: 4,
+        flashboot: "FLASHBOOT",
+        dataCenters: "US-KS-2",
+        networkVolumeId: "vol1",
+      }),
+    )!;
+    expect(out.resource.type).toBe("runpod_serverless_endpoint");
+    expect(out.resource.importId).toBe("ep1");
+    expect(out.resource.attributes).toMatchObject({
+      endpoint_type: str("QUEUE"),
+      image: str("img"),
+      gpu_pools: { kind: "list", items: [str("ADA_24"), str("AMPERE_16")] },
+      gpu_count: num(2),
+      scaling_type: str("QUEUE_DELAY"),
+      scaling_value: num(4),
+      flashboot: str("FLASHBOOT"),
+      network_volumes: { kind: "list", items: [str("vol1")] },
     });
-    const out = runpodTerraformExport.mapResource(auth)!;
+  });
+
+  it("exports a CPU endpoint's configurations", () => {
+    const out = runpodTerraformExport.mapResource(
+      instance("serverless-endpoint", "ep1", {
+        name: "cpu",
+        endpointType: "QUEUE",
+        imageName: "img",
+        cpuConfigs: "cpu5c:4, cpu5g:8",
+        scalerType: "REQUEST_COUNT",
+        scalerValue: 2,
+      }),
+    )!;
+    expect(out.resource.attributes["cpu"]).toEqual({
+      kind: "list",
+      items: [
+        { kind: "map", entries: { cpu_type_id: str("cpu5c"), vcpu_count: num(4) } },
+        { kind: "map", entries: { cpu_type_id: str("cpu5g"), vcpu_count: num(8) } },
+      ],
+    });
+    expect(out.resource.attributes["gpu_pools"]).toBeUndefined();
+    expect(out.resource.attributes["idle_timeout"]).toBeUndefined();
+  });
+
+  it("skips an endpoint not synced since the move, which lacks what the provider requires", () => {
+    expect(
+      runpodTerraformExport.mapResource(
+        instance("serverless-endpoint", "ep1", { name: "old", templateId: "t", flashboot: true }),
+      ),
+    ).toBeNull();
+  });
+
+  it("exports a pod with no spot flag, and nothing that would replace it on import", () => {
+    const out = runpodTerraformExport.mapResource(
+      instance("pod", "pod1", {
+        name: "trainer",
+        imageName: "img",
+        gpuTypeId: "NVIDIA GeForce RTX 4090",
+        gpuCount: 1,
+        cloudType: "Community Cloud",
+        containerDiskGb: 50,
+        volumeGb: 20,
+        volumeMountPath: "/workspace",
+        ports: "8888/http, 22/tcp",
+        templateId: "t1",
+        interruptible: true,
+        machineId: "m1",
+      }),
+    )!;
+    expect(out.resource.importId).toBe("pod1");
+    const { attributes } = out.resource;
+    expect(attributes).toMatchObject({
+      image: str("img"),
+      gpu_type_id: str("NVIDIA GeForce RTX 4090"),
+      cloud: str("COMMUNITY"),
+      disk: num(50),
+      ports: { kind: "list", items: [str("8888/http"), str("22/tcp")] },
+    });
+    for (const absent of [
+      "interruptible",
+      "machine_id",
+      "template_id",
+      "data_center_ids",
+      "start_ssh",
+    ]) {
+      expect(attributes[absent]).toBeUndefined();
+    }
+  });
+
+  it("exports a CPU pod and its network volume", () => {
+    const out = runpodTerraformExport.mapResource(
+      instance("pod", "pod2", {
+        name: "c",
+        imageName: "img",
+        cpuFlavorId: "cpu5c",
+        vcpus: 4,
+        networkVolumeId: "vol1",
+        volumeMountPath: "/data",
+        additionalNetworkVolumes: "vol2",
+      }),
+    )!;
+    expect(out.resource.attributes).toMatchObject({
+      cpu_type_id: str("cpu5c"),
+      vcpu_count: num(4),
+      network_volumes: {
+        kind: "list",
+        items: [{ kind: "map", entries: { volume_id: str("vol1"), path: str("/data") } }],
+      },
+    });
+    expect(out.resource.comments?.join(" ")).toContain("vol2");
+  });
+
+  it("keeps registry passwords in a sensitive variable, and says it cannot import", () => {
+    const out = runpodTerraformExport.mapResource(
+      instance("container-registry-auth", "clz1", { name: "ghcr" }),
+    )!;
+    expect(out.resource.type).toBe("runpod_registry");
+    expect(out.resource.importId).toBeUndefined();
     expect(out.resource.attributes["password"]).toEqual({
       kind: "ref",
       expr: "var.runpod_registry_password_clz1",
