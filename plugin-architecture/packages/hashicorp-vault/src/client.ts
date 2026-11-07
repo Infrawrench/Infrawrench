@@ -110,6 +110,17 @@ function tokenIsGone(err: unknown): boolean {
   return status === 403 && err instanceof Error && /bad token/i.test(err.message);
 }
 
+/**
+ * For a read of one row's details. Refused or gone is an answer, and the row stays
+ * without them. A throttle or 5xx fails the type, so a passing failure cannot blank
+ * what is stored.
+ */
+function detailAbsent(err: unknown): undefined {
+  const status = statusOf(err);
+  if (status === 400 || status === 403 || status === 404) return undefined;
+  throw err;
+}
+
 const POLICY_TEMPLATE = `# Read secrets under secret/data/app/*
 path "secret/data/app/*" {
   capabilities = ["read", "list"]
@@ -421,7 +432,7 @@ export class VaultClient implements PluginClient {
               accountId,
               root.mount,
               key,
-              await this.kvMetadata(root.mount, key).catch(() => undefined),
+              await this.kvMetadata(root.mount, key).catch(detailAbsent),
             );
           },
         );
@@ -435,7 +446,7 @@ export class VaultClient implements PluginClient {
       case "vault-policy": {
         const names = await vaultList(this.ctx, "/sys/policies/acl");
         return mapLimit(names, 6, async (n) => {
-          const text = await this.policyText(n).catch(() => undefined);
+          const text = await this.policyText(n).catch(detailAbsent);
           return mapPolicy(accountId, n, text);
         });
       }
@@ -454,7 +465,7 @@ export class VaultClient implements PluginClient {
                   `/${encodePath(mount)}/roles/${encodeURIComponent(n)}`,
                 )
                   .then((r) => r?.data)
-                  .catch(() => undefined),
+                  .catch(detailAbsent),
               ),
             )),
           );
@@ -473,10 +484,14 @@ export class VaultClient implements PluginClient {
           ({ root, key }) => `${root.idPrefix}${hyphenSerial(key)}`,
           deadline,
           async ({ root, key }) => {
-            const c = await this.cert(root.mount, key).catch(
-              () => ({ pem: "" }) as { pem: string; revocation?: number },
+            const c = await this.cert(root.mount, key).catch(detailAbsent);
+            return mapPkiCert(
+              accountId,
+              root.mount,
+              key,
+              parsePemCertificate(c?.pem ?? ""),
+              c?.revocation,
             );
-            return mapPkiCert(accountId, root.mount, key, parsePemCertificate(c.pem), c.revocation);
           },
         );
       }
@@ -487,7 +502,7 @@ export class VaultClient implements PluginClient {
           await walkFolders(this.ctx, [{ path: "/sys/leases/lookup/", idPrefix }], deadline),
           ({ key }) => `${idPrefix}${key}`,
           deadline,
-          async ({ key }) => mapLease(accountId, key, await this.lease(key).catch(() => undefined)),
+          async ({ key }) => mapLease(accountId, key, await this.lease(key).catch(detailAbsent)),
         );
       }
       case "vault-token": {
@@ -563,7 +578,13 @@ export class VaultClient implements PluginClient {
         case "vault-pki-cert": {
           const { mount, rest } = splitId(id);
           const c = await this.cert(mount, rest);
-          const r = mapPkiCert(accountId, mount, rest, parsePemCertificate(c.pem), c.revocation);
+          const r = mapPkiCert(
+            accountId,
+            mount,
+            rest,
+            parsePemCertificate(c?.pem ?? ""),
+            c?.revocation,
+          );
           return c.pem
             ? { ...r, resolvedOutputs: { ...r.resolvedOutputs, certificate: c.pem } }
             : r;

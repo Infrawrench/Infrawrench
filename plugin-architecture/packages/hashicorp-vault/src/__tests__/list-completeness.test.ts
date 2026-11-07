@@ -427,3 +427,50 @@ describe("a credential refused for a whole type", () => {
     await expect(c.listResources("vault-audit-device", ACCOUNT)).rejects.toThrow("boom");
   });
 });
+
+describe("a detail read that fails", () => {
+  const CERTS = (detail: unknown) => (call: Call) => {
+    if (call.url.pathname === "/v1/sys/mounts") return PKI_MOUNTS;
+    if (isList(call)) return { data: { keys: ["aa"] } };
+    return detail;
+  };
+
+  it.each([
+    ["certificate", "vault-pki-cert", CERTS],
+    [
+      "lease",
+      "vault-lease",
+      (detail: unknown) => (call: Call) => (isList(call) ? { data: { keys: ["aa"] } } : detail),
+    ],
+    [
+      "policy",
+      "vault-policy",
+      (detail: unknown) => (call: Call) => (isList(call) ? { data: { keys: ["aa"] } } : detail),
+    ],
+    [
+      "PKI role",
+      "vault-pki-role",
+      (detail: unknown) => (call: Call) => {
+        if (call.url.pathname === "/v1/sys/mounts") return PKI_MOUNTS;
+        return isList(call) ? { data: { keys: ["aa"] } } : detail;
+      },
+    ],
+    [
+      "KV secret",
+      "vault-kv-secret",
+      (detail: unknown) => (call: Call) => {
+        if (call.url.pathname === "/v1/sys/mounts") return KV_MOUNTS;
+        return isList(call) ? { data: { keys: ["aa"] } } : detail;
+      },
+    ],
+  ] as const)(
+    "%s: a throttle fails the type, a refusal keeps a bare row",
+    async (_, type, route) => {
+      const throttled = client(route({ status: 429, body: { errors: ["slow down"] } }));
+      await expect(throttled.c.listResources(type, ACCOUNT)).rejects.toThrow("slow down");
+
+      const denied = client(route({ status: 403, body: { errors: ["permission denied"] } }));
+      expect(await denied.c.listResources(type, ACCOUNT)).toHaveLength(1);
+    },
+  );
+});
