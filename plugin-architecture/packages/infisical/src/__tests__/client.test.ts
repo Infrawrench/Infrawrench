@@ -592,6 +592,71 @@ describe("a secret's value", () => {
   });
 });
 
+describe("identity lockouts", () => {
+  const row = (id: string) => ({
+    id: `m-${id}`,
+    identityId: id,
+    role: "admin",
+    identity: { id, name: id, authMethods: ["universal-auth"] },
+  });
+  const lockedRow = (id: string) => ({
+    ...row(id),
+    identity: { ...row(id).identity, activeLockoutAuthMethods: ["universal-auth"] },
+  });
+
+  function identityClient(search: (call: Call) => { status?: number; body: unknown }) {
+    return client((call) => {
+      if (call.url.endsWith("/identities/details")) {
+        return { body: { identityDetails: { organization: { id: "org-1" } } } };
+      }
+      if (call.url.endsWith("/identities/search")) return search(call);
+      return { body: { identities: [row("id-1"), row("id-2")], totalCount: 2 } };
+    });
+  }
+
+  it("shows a locked out identity in a listing, from the search", async () => {
+    const c = identityClient(() => ({
+      body: { identities: [row("id-1"), lockedRow("id-2")], totalCount: 2 },
+    }));
+    const [open, locked] = await c.listResources("machine-identity", ACCOUNT);
+    expect(open!.fields["lockedOut"]).toBe("");
+    expect(locked!.fields["lockedOut"]).toBe("universal-auth");
+    expect(c.renderSidebarItem(locked!).status?.label).toBe("Locked out");
+  });
+
+  it("pages the search", async () => {
+    const c = identityClient((call) => {
+      const { offset }: { offset: number } = JSON.parse(call.body!);
+      if (offset === 0) {
+        return {
+          body: {
+            identities: Array.from({ length: 100 }, (_, i) => row(`other-${i}`)),
+            totalCount: 101,
+          },
+        };
+      }
+      return { body: { identities: [lockedRow("id-2")], totalCount: 101 } };
+    });
+    const list = await c.listResources("machine-identity", ACCOUNT);
+    expect(list[1]!.fields["lockedOut"]).toBe("universal-auth");
+    expect(calls.filter((x) => x.url.endsWith("/identities/search"))).toHaveLength(2);
+  });
+
+  it("keeps every identity when the search fails", async () => {
+    const c = identityClient(() => ({ status: 500, body: { message: "boom" } }));
+    const list = await c.listResources("machine-identity", ACCOUNT);
+    expect(list.map((i) => i.externalId)).toEqual(["id-1", "id-2"]);
+  });
+
+  it("does not search for the credentials check", async () => {
+    const c = identityClient(() => {
+      throw new Error("no search was needed");
+    });
+    await c.verifyCredentials();
+    expect(calls.some((x) => x.url.endsWith("/identities/search"))).toBe(false);
+  });
+});
+
 describe("mutations", () => {
   it("renames and re-values a secret through the v4 PATCH", async () => {
     const c = client((call) => {

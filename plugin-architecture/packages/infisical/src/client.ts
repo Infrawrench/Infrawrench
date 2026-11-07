@@ -74,6 +74,8 @@ const AUDIT_PAGE_SIZE = 1000;
  * so this stays well under what raising it to the usual 1,000 would need.
  */
 const MAX_DYNAMIC_SECRET_PATHS = 40;
+const IDENTITY_SEARCH_PAGE_SIZE = 100;
+const MAX_IDENTITY_SEARCH_PAGES = 100;
 const CERTIFICATE_PAGE_SIZE = 100;
 /** 50,000 rows: certificates are short-lived, so a project can hold many. */
 const MAX_CERTIFICATE_PAGES = 500;
@@ -321,6 +323,29 @@ export class InfisicalClient implements PluginClient {
   }
 
   /**
+   * The rows of `GET /identities` have no lockouts; the search's do. The listing stays the word
+   * on which identities exist, so a search that fails costs this sync the status, not the rows.
+   */
+  private async identityLockouts(): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    try {
+      for (let page = 0; page < MAX_IDENTITY_SEARCH_PAGES; page++) {
+        const body = await this.api.rest.post("/api/v1/identities/search", {
+          body: { limit: IDENTITY_SEARCH_PAGE_SIZE, offset: page * IDENTITY_SEARCH_PAGE_SIZE },
+        });
+        const rows = body.identities ?? [];
+        for (const row of rows) {
+          out.set(str(row.identity?.id), row.identity?.activeLockoutAuthMethods ?? []);
+        }
+        if (rows.length < IDENTITY_SEARCH_PAGE_SIZE || out.size >= body.totalCount) break;
+      }
+    } catch (error) {
+      console.warn(`Infisical plugin: could not read identity lockouts: ${String(error)}`);
+    }
+    return out;
+  }
+
+  /**
    * Infisical's source refuses an offset past 100 on this route, so a project with more than
    * 200 certificate authorities fails with its 400 here rather than reading short.
    */
@@ -438,8 +463,20 @@ export class InfisicalClient implements PluginClient {
               }).map((i) => this.mapIntegration(accountId, str(p.id), i));
             },
           );
-        case "machine-identity":
-          return (await this.identities()).map((m) => this.mapIdentity(accountId, m));
+        case "machine-identity": {
+          const identities = await this.identities();
+          const lockouts = await this.identityLockouts();
+          return identities.map((m) =>
+            this.mapIdentity(accountId, {
+              ...m,
+              identity: {
+                ...m.identity,
+                activeLockoutAuthMethods:
+                  lockouts.get(str(m.identity?.id)) ?? m.identity?.activeLockoutAuthMethods ?? [],
+              },
+            }),
+          );
+        }
         case "certificate-authority":
           return this.each(
             await this.certProjects(),
