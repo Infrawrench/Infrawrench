@@ -126,6 +126,58 @@ describe("api", () => {
     expect(list.map((i) => i.externalId)).toEqual(["i1", "i2"]);
     expect(calls[0]!.url.searchParams.get("page_size")).toBe("100");
   });
+
+  it("throws at the page cap rather than returning part of the instances", async () => {
+    route("GET", "/instances", { data: [INSTANCE], page_token: "again" });
+    await expect(client().listResources("instance", "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("follows a token past an empty page, since only a null token ends the list", async () => {
+    route("GET", "/instances", (c: Call) => {
+      const token = c.url.searchParams.get("page_token");
+      if (!token) return { data: [], page_token: "more" };
+      return { data: [INSTANCE], page_token: null };
+    });
+    const list = await client().listResources("instance", "acct");
+    expect(list.map((i) => i.externalId)).toEqual(["i1"]);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("throws on a page of instances with no list, first or later", async () => {
+    route("GET", "/instances", { items: [INSTANCE], page_token: null });
+    await expect(client().listResources("instance", "acct")).rejects.toThrow("is not a list");
+
+    route("GET", "/instances", (c: Call) =>
+      c.url.searchParams.get("page_token")
+        ? { items: [INSTANCE], page_token: null }
+        : { data: [INSTANCE], page_token: "next" },
+    );
+    await expect(client().listResources("instance", "acct")).rejects.toThrow("is not a list");
+  });
+
+  it("throws on an empty 200 for instances rather than reading it as none", async () => {
+    route("GET", "/instances", () => new Response("", { status: 200 }));
+    await expect(client().listResources("instance", "acct")).rejects.toThrow("is not a list");
+  });
+
+  it("goes through the host's transport when it has one", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ data: [INSTANCE], page_token: null }),
+    }));
+    const hosted = hostClient(
+      new LambdaCloudClient({ apiKey: "secret_k" }, RESOURCE_TYPES, { http: { request } }),
+    );
+    const list = await hosted.listResources("instance", "acct");
+    expect(list.map((i) => i.externalId)).toEqual(["i1"]);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0]).not.toHaveProperty("0.caCert");
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("instances", () => {

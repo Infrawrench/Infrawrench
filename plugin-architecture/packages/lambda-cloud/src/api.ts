@@ -1,4 +1,9 @@
-import { createApiClient, type ApiClient, type HostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  withCursorPagination,
+  type ApiClient,
+  type HostServices,
+} from "@infrawrench/plugin-base";
 import type { paths } from "./api-types.gen.js";
 import type { LInstance } from "./types.js";
 
@@ -77,29 +82,18 @@ export function unwrap<T>(answer: { data: T }): T {
   return answer === undefined ? answer : answer.data;
 }
 
-/**
- * Every instance (only `/instances` paginates today), up to 100 pages.
- *
- * Not `withCursorPagination`: here an empty 200 ends the list, while JSON `null` or
- * a `data` that is not a list fails it. `getAll` cannot tell an empty 200 from `null`
- * and reads a bad `data` as an empty page, and the host prunes what a sync stops
- * seeing, so a failure has to stay a failure.
- */
-export async function listInstances(api: LambdaApi): Promise<LInstance[]> {
-  const out: LInstance[] = [];
-  let token: string | undefined;
-  for (let page = 0; page < 100; page++) {
-    const raw = await api.get("/instances", {
-      // A token goes back as text, whatever the provider sent: the client would
-      // write an object as `page_token[a]=1` and an array as a repeated key.
-      query: { page_size: 100, ...(token === undefined ? {} : { page_token: String(token) }) },
-    });
-    if (raw === undefined) break;
-    out.push(...(raw.data ?? []));
-    token = raw.page_token || undefined;
-    if (!token) break;
-  }
-  return out;
+/** Every instance. `/instances` is the only list here that pages. */
+export function listInstances(api: LambdaApi): Promise<LInstance[]> {
+  return withCursorPagination(api, {
+    cursorParam: "page_token",
+    sizeParam: "page_size",
+    pageSize: 100,
+    next: "page_token",
+    maxPages: 100,
+    // The document ends a list only by a null `page_token`, so a token after an empty
+    // page still means more rows.
+    continueOnEmptyPage: true,
+  }).getAll("/instances", "data");
 }
 
 export function isStatus(err: unknown, ...statuses: number[]): boolean {
