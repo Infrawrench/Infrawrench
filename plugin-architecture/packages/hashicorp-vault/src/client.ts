@@ -39,6 +39,7 @@ import type {
   VaultTokenInfo,
 } from "./mappers.js";
 import {
+  hyphenSerial,
   mapAudit,
   mapAuthMethod,
   mapCluster,
@@ -49,17 +50,15 @@ import {
   mapPkiRole,
   mapPolicy,
   mapToken,
+  SEP,
   splitId,
   trimSlash,
 } from "./mappers.js";
+import { listDeadline, mapLimit, readWithinBudget, walkFolders } from "./lists.js";
 import { COMMANDS, renderVaultDetail, renderVaultSidebar } from "./render.js";
 import { parsePemCertificate } from "./x509.js";
 
-const MAX_KV_PER_MOUNT = 500;
 const MAX_KV_METADATA = 200;
-const MAX_CERTS_PER_MOUNT = 200;
-const MAX_LEASES = 300;
-const MAX_TOKENS = 200;
 
 /** Health answers non-2xx for perfectly normal states (standby 429, sealed 503…). */
 const HEALTH_STATUSES = [429, 472, 473, 474, 501, 503, 530];
@@ -98,6 +97,18 @@ const AUTH_METHODS = [
   { id: "okta", label: "Okta" },
   { id: "radius", label: "RADIUS" },
 ];
+
+/**
+ * An accessor listed a moment ago whose token has gone. Vault answers 400 "invalid
+ * accessor" once the index entry is gone, and 403 "bad token" while the entry outlives
+ * the token. Any other 403 is this credential being refused, which says nothing about
+ * the token.
+ */
+function tokenIsGone(err: unknown): boolean {
+  const status = statusOf(err);
+  if (status === 400 || status === 404) return true;
+  return status === 403 && err instanceof Error && /bad token/i.test(err.message);
+}
 
 const POLICY_TEMPLATE = `# Read secrets under secret/data/app/*
 path "secret/data/app/*" {
@@ -157,24 +168,6 @@ function keyValuePairs(raw: string | undefined): Record<string, string> {
       return i < 0 ? [pair, ""] : [pair.slice(0, i).trim(), pair.slice(i + 1).trim()];
     }),
   );
-}
-
-async function mapLimit<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (next < items.length) {
-        const i = next++;
-        out[i] = await fn(items[i]!);
-      }
-    }),
-  );
-  return out;
 }
 
 export function buildContext(
@@ -321,42 +314,11 @@ export class VaultClient implements PluginClient {
       .map(([p]) => trimSlash(p));
   }
 
-  private async kvPaths(mount: string): Promise<string[]> {
-    const out: string[] = [];
-    const walk = async (prefix: string, depth: number): Promise<void> => {
-      if (out.length >= MAX_KV_PER_MOUNT || depth > 10) return;
-      for (const key of await vaultList(
-        this.ctx,
-        `/${encodePath(mount)}/metadata/${encodePath(prefix)}`,
-      )) {
-        if (out.length >= MAX_KV_PER_MOUNT) return;
-        if (key.endsWith("/")) await walk(`${prefix}${key}`, depth + 1);
-        else out.push(`${prefix}${key}`);
-      }
-    };
-    await walk("", 0);
-    return out;
-  }
-
   private kvMetadata(mount: string, path: string): Promise<VaultKvMetadata> {
     return vaultFetch<{ data?: VaultKvMetadata }>(
       this.ctx,
       `/${encodePath(mount)}/metadata/${encodePath(path)}`,
     ).then((r) => r?.data ?? {});
-  }
-
-  private async leaseIds(): Promise<string[]> {
-    const out: string[] = [];
-    const walk = async (prefix: string, depth: number): Promise<void> => {
-      if (out.length >= MAX_LEASES || depth > 12) return;
-      for (const key of await vaultList(this.ctx, `/sys/leases/lookup/${encodePath(prefix)}`)) {
-        if (out.length >= MAX_LEASES) return;
-        if (key.endsWith("/")) await walk(`${prefix}${key}`, depth + 1);
-        else out.push(`${prefix}${key}`);
-      }
-    };
-    await walk("", 0);
-    return out;
   }
 
   private lease(id: string): Promise<VaultLease> {
@@ -419,25 +381,25 @@ export class VaultClient implements PluginClient {
         case "vault-mount":
           return Object.entries(await this.mounts(true)).map(([p, m]) => mapMount(accountId, p, m));
         case "vault-kv-secret": {
-          const out: ResourceInstance[] = [];
+          const roots = (await this.mountsOfType("kv-v2")).map((mount) => ({
+            mount,
+            path: `/${encodePath(mount)}/metadata/`,
+            idPrefix: `${accountId}:vault-kv-secret:${mount}${SEP}`,
+          }));
           let detailed = 0;
-          for (const mount of await this.mountsOfType("kv-v2")) {
-            const paths = await this.kvPaths(mount).catch((err: unknown) => {
-              if (statusOf(err) === 403) return [] as string[];
-              throw err;
-            });
-            const rows = await mapLimit(paths, 6, async (path) => {
-              if (detailed++ >= MAX_KV_METADATA) return mapKvSecret(accountId, mount, path);
+          return mapLimit(
+            await walkFolders(this.ctx, roots, listDeadline()),
+            6,
+            async ({ root, key }) => {
+              if (detailed++ >= MAX_KV_METADATA) return mapKvSecret(accountId, root.mount, key);
               return mapKvSecret(
                 accountId,
-                mount,
-                path,
-                await this.kvMetadata(mount, path).catch(() => undefined),
+                root.mount,
+                key,
+                await this.kvMetadata(root.mount, key).catch(() => undefined),
               );
-            });
-            out.push(...rows);
-          }
-          return out;
+            },
+          );
         }
         case "vault-auth-method": {
           const res = payload<Record<string, VaultMount>>(await vaultFetch(this.ctx, "/sys/auth"));
@@ -475,38 +437,56 @@ export class VaultClient implements PluginClient {
           return out;
         }
         case "vault-pki-cert": {
-          const out: ResourceInstance[] = [];
-          for (const mount of await this.mountsOfType("pki")) {
-            const serials = (await vaultList(this.ctx, `/${encodePath(mount)}/certs`)).slice(
-              0,
-              MAX_CERTS_PER_MOUNT,
-            );
-            out.push(
-              ...(await mapLimit(serials, 6, async (s) => {
-                const c = await this.cert(mount, s).catch(
-                  () => ({ pem: "" }) as { pem: string; revocation?: number },
-                );
-                return mapPkiCert(accountId, mount, s, parsePemCertificate(c.pem), c.revocation);
-              })),
-            );
-          }
-          return out;
+          const roots = (await this.mountsOfType("pki")).map((mount) => ({
+            mount,
+            path: `/${encodePath(mount)}/certs`,
+            idPrefix: `${accountId}:vault-pki-cert:${mount}${SEP}`,
+          }));
+          const deadline = listDeadline();
+          return readWithinBudget(
+            await walkFolders(this.ctx, roots, deadline),
+            ({ root, key }) => `${root.idPrefix}${hyphenSerial(key)}`,
+            deadline,
+            async ({ root, key }) => {
+              const c = await this.cert(root.mount, key).catch(
+                () => ({ pem: "" }) as { pem: string; revocation?: number },
+              );
+              return mapPkiCert(
+                accountId,
+                root.mount,
+                key,
+                parsePemCertificate(c.pem),
+                c.revocation,
+              );
+            },
+          );
         }
         case "vault-lease": {
-          const ids = await this.leaseIds();
-          return mapLimit(ids, 6, async (id) =>
-            mapLease(accountId, id, await this.lease(id).catch(() => undefined)),
+          const deadline = listDeadline();
+          const idPrefix = `${accountId}:vault-lease:`;
+          return readWithinBudget(
+            await walkFolders(this.ctx, [{ path: "/sys/leases/lookup/", idPrefix }], deadline),
+            ({ key }) => `${idPrefix}${key}`,
+            deadline,
+            async ({ key }) =>
+              mapLease(accountId, key, await this.lease(key).catch(() => undefined)),
           );
         }
         case "vault-token": {
-          const accessors = (await vaultList(this.ctx, "/auth/token/accessors")).slice(
-            0,
-            MAX_TOKENS,
+          const deadline = listDeadline();
+          const idPrefix = `${accountId}:vault-token:`;
+          return readWithinBudget(
+            await walkFolders(this.ctx, [{ path: "/auth/token/accessors", idPrefix }], deadline),
+            ({ key }) => `${idPrefix}${key}`,
+            deadline,
+            async ({ key }) => {
+              const token = await this.tokenByAccessor(key).catch((err: unknown) => {
+                if (tokenIsGone(err)) return undefined;
+                throw err;
+              });
+              return token && mapToken(accountId, token);
+            },
           );
-          const tokens = await mapLimit(accessors, 6, (a) =>
-            this.tokenByAccessor(a).catch(() => undefined),
-          );
-          return tokens.filter((t): t is VaultTokenInfo => !!t).map((t) => mapToken(accountId, t));
         }
         case "vault-audit-device": {
           const res = payload<Record<string, VaultAuditDevice>>(

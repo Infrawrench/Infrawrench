@@ -267,7 +267,7 @@ export const LeaseResourceType = rt({
   id: "vault-lease",
   pinnable: false,
   description:
-    "A lease on a dynamic secret (database or cloud credentials and similar): when it was issued and when it expires. Renew or revoke it. Listing leases needs a sudo-capable token; the first 300 are shown.",
+    "A lease on a dynamic secret (database or cloud credentials and similar): when it was issued and when it expires. Renew or revoke it. Listing leases needs a sudo-capable token. Past 2,000, a different part of the list refreshes on each poll.",
   fields: [
     f("leaseId", "Lease ID", ro),
     f("prefix", "Issued By", ro),
@@ -290,7 +290,7 @@ export const TokenResourceType = rt({
   id: "vault-token",
   pinnable: false,
   description:
-    "A Vault token, identified by its accessor: policies, the auth path that issued it, TTL and expiry. Renew or revoke it. Listing tokens needs a sudo-capable token; the first 200 are shown.",
+    "A Vault token, identified by its accessor: policies, the auth path that issued it, TTL and expiry. Renew or revoke it. Listing tokens needs a sudo-capable token. Past 2,000, a different part of the list refreshes on each poll.",
   fields: [
     f("accessor", "Accessor", ro),
     f("displayName", "Display Name", ro),
