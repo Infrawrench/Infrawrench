@@ -599,3 +599,27 @@ describe("updating an access policy", () => {
     expect(posted()).toBeUndefined();
   });
 });
+
+describe("access policy tokens", () => {
+  it("asks for expired tokens, so they can be seen and deleted", async () => {
+    const live = { id: "t1", name: "live", accessPolicyId: "p1" };
+    const expired = {
+      id: "t2",
+      name: "old",
+      accessPolicyId: "p1",
+      expiresAt: "2020-01-01T00:00:00Z",
+    };
+    const { http } = makeHttp((url, method) => {
+      if (url.pathname === "/api/v1/accesspolicies") return { body: { items: [] } };
+      if (url.pathname === "/api/v1/tokens") {
+        const all = url.searchParams.get("includeExpired") === "true";
+        return { body: { items: all ? [live, expired] : [live] } };
+      }
+      return baseRoute(url, method) ?? { status: 404 };
+    });
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http }));
+    const tokens = await client.listResources("access-policy-token", "acct");
+    expect(tokens.map((t) => t.fields["name"])).toEqual(["live", "old"]);
+    expect(tokens[1]?.fields["expiresAt"]).toBe("2020-01-01T00:00:00Z");
+  });
+});

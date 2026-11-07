@@ -295,6 +295,9 @@ export class GrafanaCloudClient implements PluginClient {
         this.cloud.get("/v1/tokens", {
           query: {
             region,
+            // The name implies they are left out otherwise. Asking is right either
+            // way, and an expired token is one a user needs to find and delete.
+            includeExpired: true,
             pageSize: CURSOR_PAGE_SIZE,
             ...(cursor ? { pageCursor: cursor } : {}),
           },
