@@ -85,15 +85,85 @@ describe("listing", () => {
     expect(calls[0]!.url).toContain("https://api.workos.com/organizations?");
   });
 
-  it("stops following cursors at the page cap and warns about truncation", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    // Every page returns a continuation cursor: the client must stop at the
-    // documented MAX_LIST_PAGES bound rather than looping forever.
+  it("refuses to call a list complete when its cursor outlasts the cap", async () => {
+    // Every page returns a continuation cursor: 500 pages of 100 is 50,000 rows.
     installFetch(() => jsonResponse(list([{ id: "user_x", email: "x@acme.com" }], "cur")));
-    const users = await client().listResources("user", ACCOUNT);
-    expect(calls).toHaveLength(20);
-    expect(users).toHaveLength(20);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("truncated at 20 pages"));
+    await expect(client().listResources("user", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(500);
+  });
+
+  it("refuses a page whose list is not a list, on the first page and on a later one", async () => {
+    installFetch(() => jsonResponse({ object: "list", users: [] }));
+    await expect(client().listResources("user", ACCOUNT)).rejects.toThrow("is not a list");
+
+    calls = [];
+    let page = 0;
+    vi.restoreAllMocks();
+    installFetch(() =>
+      ++page === 1
+        ? jsonResponse(list([{ id: "user_1", email: "a@acme.com" }], "cur"))
+        : jsonResponse({ object: "list", users: [] }),
+    );
+    await expect(client().listResources("user", ACCOUNT)).rejects.toThrow("is not a list");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("refuses a roles answer that is not a list", async () => {
+    installFetch(() => jsonResponse({ object: "list", roles: [] }));
+    await expect(client().listResources("role", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["organization-membership", "/user_management/organization_memberships"],
+    ["invitation", "/user_management/invitations"],
+  ])("fails %s rather than prune an organization whose read failed", async (typeId, route) => {
+    installFetch((url) => {
+      if (url.includes("/user_management/users")) return jsonResponse(list([]));
+      if (url.includes(route)) {
+        return url.includes(`organization_id=${ORG2}`)
+          ? jsonResponse({ message: "server error" }, 500)
+          : jsonResponse(list([{ id: "row_1", organization_id: ORG }]));
+      }
+      return jsonResponse(ORG_LIST);
+    });
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow(/500/);
+  });
+
+  it("fails a directory's users rather than prune them when its read failed", async () => {
+    installFetch((url) => {
+      if (url.includes("/directory_users")) return jsonResponse({ message: "busy" }, 503);
+      return jsonResponse(list([{ id: "directory_1", name: "Okta" }]));
+    });
+    await expect(client().listResources("directory-user", ACCOUNT)).rejects.toThrow(/503/);
+  });
+
+  it("carries a truncated child list through the fan-out", async () => {
+    installFetch((url) => {
+      if (url.includes("/user_management/invitations")) {
+        return jsonResponse(list([{ id: "inv_1" }], "cur"));
+      }
+      return jsonResponse(ORG_LIST);
+    });
+    await expect(client().listResources("invitation", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("does not label memberships from a truncated user list", async () => {
+    installFetch((url) => {
+      if (url.includes("/user_management/users")) {
+        return jsonResponse(list([{ id: "user_1", email: "a@acme.com" }], "cur"));
+      }
+      if (url.includes("/user_management/organization_memberships")) {
+        return jsonResponse(list([]));
+      }
+      return jsonResponse(ORG_LIST);
+    });
+    await expect(client().listResources("organization-membership", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
   });
 
   it("follows the after cursor across pages", async () => {
@@ -276,6 +346,36 @@ describe("delete and actions", () => {
       caClient.deleteResource("organization", `${ACCOUNT}:organization:${ORG}`, ACCOUNT),
     ).rejects.toThrow(/CA certificate/);
     expect(calls).toHaveLength(0);
+  });
+
+  it("refuses to sign a user out everywhere when the session list is truncated", async () => {
+    installFetch((url, init) => {
+      if (init?.method === "POST") throw new Error(`Unexpected write to ${url}`);
+      return jsonResponse(list([{ id: "session_1", status: "active" }], "cur"));
+    });
+    await expect(
+      client().invokeAction("user", `${ACCOUNT}:user:user_1`, "revoke-sessions", ACCOUNT),
+    ).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls.filter((c) => c.init?.method === "POST")).toHaveLength(0);
+  });
+
+  it("goes through the host HTTP service, with no caCert unless one is set", async () => {
+    const stub = installFetch(() => {
+      throw new Error("fetch must not be called when the host supplies HTTP");
+    });
+    const request = vi.fn(async (_req: { url: string; caCert?: string }) => ({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(list([{ id: ORG, name: "Acme" }])),
+    }));
+    const hosted = hostClient(
+      new WorkosClient({ apiKey: "sk_test_key" }, { http: { request } } as never),
+    );
+    await hosted.listResources("organization", ACCOUNT);
+    await hosted.deleteResource("organization", `${ACCOUNT}:organization:${ORG}`, ACCOUNT);
+    expect(request).toHaveBeenCalledTimes(2);
+    for (const [sent] of request.mock.calls) expect(sent).not.toHaveProperty("caCert");
+    expect(stub).not.toHaveBeenCalled();
   });
 
   it("revokes instead of deleting invitations", async () => {

@@ -1,5 +1,7 @@
 import {
   createApiClient,
+  withCursorPagination,
+  type ApiFailure,
   type ApiListItem,
   type ApiResponse,
   type HttpHostServices,
@@ -11,8 +13,20 @@ export const BASE_URL = "https://api.workos.com";
 /** WorkOS list page size: the API caps `limit` at 100. */
 export const PAGE_SIZE = 100;
 
-/** Hard cap on cursor-following so a huge environment can't hang a sync. */
-export const MAX_LIST_PAGES = 20;
+/** 50,000 rows, the most a resource sync can prune. A list longer than this throws. */
+export const MAX_LIST_PAGES = 500;
+
+/**
+ * For a picker or a label on a detail view, over lists that can run to every user in an
+ * environment: part of the list is fine, and nothing is stored or acted on as complete.
+ */
+export const PICKER_READ = { maxPages: 20, partial: true } as const;
+
+/** Which part of a list a read needs. */
+export interface ListRead {
+  maxPages?: number;
+  partial?: boolean;
+}
 
 /** An operation's response, by its `operationId`. */
 type WosResponse<Op extends keyof operations> = ApiResponse<operations[Op]>;
@@ -54,50 +68,20 @@ export type WosSession = ApiListItem<operations["UserlandUserSessionsController_
 export type WosEvent = ApiListItem<operations["EventsController_list"], "data">;
 export type WosWebhookEndpoint = ApiListItem<operations["WebhookEndpointsController_list"], "data">;
 
-/** The paging parameters of one request of a list. */
-interface Paging {
-  limit: number;
-  after?: string;
+/** A failed call with its status, for the callers that branch on one. */
+export class WorkosApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "WorkosApiError";
+  }
 }
 
-/** Standard WorkOS list envelope: `{object: "list", data, list_metadata}`. */
-interface Page<T> {
-  data?: T[];
-  list_metadata?: { after?: string | null };
-}
-
-/**
- * Follow the `list_metadata.after` cursor until the API stops returning one
- * (bounded by MAX_LIST_PAGES). `getPage` asks for one page of `path`, so its route,
- * its other parameters and its response are all checked at the call. It stays a loop
- * rather than `withCursorPagination` because this has always read a cursor that is
- * not a string as the end of the list, and warned about a cursor left on an empty page.
- */
-export async function paginate<const Path extends string, T>(
-  path: Path,
-  getPage: (path: Path, paging: Paging) => Promise<Page<T>>,
-): Promise<T[]> {
-  const out: T[] = [];
-  let after = "";
-
-  for (let page = 0; page < MAX_LIST_PAGES; page++) {
-    const body = await getPage(path, after ? { limit: PAGE_SIZE, after } : { limit: PAGE_SIZE });
-    const items = body.data ?? [];
-    out.push(...items);
-    after = cursorOf(body);
-    if (!after || items.length === 0) break;
-  }
-
-  // A cursor surviving the page cap means the listing is a prefix, not the
-  // whole set. There is no host warning channel for list results, so the
-  // console is the one place this can surface (visible in poller logs).
-  if (after) {
-    console.warn(
-      `WorkOS plugin: list ${path} truncated at ${MAX_LIST_PAGES} pages (${out.length} items); a continuation cursor remains`,
-    );
-  }
-
-  return out;
+/** The key cannot see this object, or it has gone since the list that named it. */
+export function isOutOfReach(err: unknown): boolean {
+  return err instanceof WorkosApiError && (err.status === 403 || err.status === 404);
 }
 
 /** The next cursor, or `""` at the end of a list. Responses are not validated. */
@@ -144,9 +128,22 @@ export function createWorkosApi(options: {
 }) {
   const { apiKey, caCert, http } = options;
   const headers = { Authorization: `Bearer ${apiKey}`, Accept: "application/json" };
-  const common = { vendor: "WorkOS", baseUrl: BASE_URL, headers, caCert };
+  const common = {
+    vendor: "WorkOS",
+    baseUrl: BASE_URL,
+    headers,
+    caCert,
+    httpError: ({ status, target, body }: ApiFailure) =>
+      new WorkosApiError(status, `WorkOS API error ${status} for ${target}: ${body}`),
+  };
   return {
-    api: createApiClient<paths>({ ...common, http }),
+    api: withCursorPagination(createApiClient<paths>({ ...common, http }), {
+      cursorParam: "after",
+      sizeParam: "limit",
+      pageSize: PAGE_SIZE,
+      maxPages: MAX_LIST_PAGES,
+      next: "list_metadata.after",
+    }),
     bodiless: createApiClient<paths>({
       ...common,
       contentType: "with-body",

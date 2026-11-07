@@ -13,7 +13,14 @@ import type {
   ResourceStatus,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { commaSeparated, joinSubtitle, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  commaSeparated,
+  externalIdOf,
+  joinSubtitle,
+  pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type {
   ApiBody,
   CredentialExport,
@@ -24,7 +31,9 @@ import type {
 import type { operations } from "./api-types.gen.js";
 import {
   createWorkosApi,
-  paginate,
+  isOutOfReach,
+  PICKER_READ,
+  type ListRead,
   type WosApiKey,
   type WosConnection,
   type WosDirectory,
@@ -65,6 +74,31 @@ const ALL_MEMBERSHIP_STATUSES = ["active", "inactive", "pending"] as const;
 
 function str(value: string | null | undefined): string {
   return typeof value === "string" ? value : "";
+}
+
+/** For a read shown to a person, where a failure can show as none but part of a list cannot. */
+function noneUnlessIncomplete(err: unknown): never[] {
+  rethrowIncompleteList(err);
+  return [];
+}
+
+/**
+ * Run `load` once per parent. A parent the key cannot read holds nothing it can see, and
+ * must not empty the whole listing. Any other failure says nothing about what the parent
+ * holds, and reading it as none would prune its rows, so it fails the listing.
+ */
+async function loadPerParent<T>(
+  kind: string,
+  ids: string[],
+  load: (id: string) => Promise<T[]>,
+): Promise<T[]> {
+  const settled = await Promise.allSettled(ids.map((id) => load(id)));
+  return settled.flatMap((result, index) => {
+    if (result.status === "fulfilled") return result.value;
+    if (!isOutOfReach(result.reason)) throw result.reason;
+    console.warn(`WorkOS plugin: skipping ${kind} ${ids[index]}: ${result.reason}`);
+    return [];
+  });
 }
 
 /** Parse a `policy-picker` value (a JSON array of ids), tolerating a comma list. */
@@ -209,36 +243,24 @@ export class WorkosClient implements PluginClient {
     this.bodiless = bodiless;
   }
 
-  private async fetchOrganizations(): Promise<WosOrganization[]> {
-    // GET /organizations: cursor-paginated list.
-    return paginate("/organizations", (path, query) => this.api.get(path, { query }));
+  private async fetchOrganizations(read: ListRead = {}): Promise<WosOrganization[]> {
+    return this.api.getAll("/organizations", "data", read);
   }
 
-  /**
-   * Run `load` once per organization, tolerating per-org failures: one org
-   * the key can't read must not empty the whole listing.
-   */
   private async listForEachOrganization<T>(
     load: (organizationId: string) => Promise<T[]>,
   ): Promise<T[]> {
     const orgs = await this.fetchOrganizations();
-    const ids = orgs.map((org) => str(org.id)).filter(Boolean);
-    const settled = await Promise.allSettled(ids.map((id) => load(id)));
-    settled.forEach((result, index) => {
-      if (result.status === "rejected") {
-        console.warn(`WorkOS plugin: skipping organization ${ids[index]}: ${result.reason}`);
-      }
-    });
-    return settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+    return loadPerParent("organization", orgs.map((org) => str(org.id)).filter(Boolean), load);
   }
 
-  private async fetchUsers(): Promise<WosUser[]> {
-    return paginate("/user_management/users", (path, query) => this.api.get(path, { query }));
+  private async fetchUsers(read: ListRead = {}): Promise<WosUser[]> {
+    return this.api.getAll("/user_management/users", "data", read);
   }
 
   /** Map user_id → email so memberships can be labelled readably. */
-  private async fetchUserEmailMap(): Promise<Map<string, string>> {
-    const users = await this.fetchUsers().catch(() => []);
+  private async fetchUserEmailMap(read: ListRead = {}): Promise<Map<string, string>> {
+    const users = await this.fetchUsers(read).catch(noneUnlessIncomplete);
     const map = new Map<string, string>();
     for (const user of users) {
       if (user.id && user.email) map.set(user.id, user.email);
@@ -280,9 +302,7 @@ export class WorkosClient implements PluginClient {
           return invitations.map((invitation) => this.mapInvitation(accountId, invitation));
         }
         case "connection": {
-          const connections = await paginate("/connections", (path, query) =>
-            this.api.get(path, { query }),
-          );
+          const connections = await this.api.getAll("/connections", "data");
           return connections.map((connection) => this.mapConnection(accountId, connection));
         }
         case "directory": {
@@ -304,7 +324,11 @@ export class WorkosClient implements PluginClient {
         case "role": {
           // GET /authorization/roles: plain {data} list, no pagination.
           const body = await this.api.get("/authorization/roles");
-          return (body.data ?? []).map((role) => this.mapRole(accountId, role));
+          return requireListPage(body.data, {
+            vendor: "WorkOS",
+            path: "/authorization/roles",
+            key: "data",
+          }).map((role) => this.mapRole(accountId, role));
         }
         case "webhook-endpoint": {
           const endpoints = await this.fetchWebhookEndpoints();
@@ -328,11 +352,10 @@ export class WorkosClient implements PluginClient {
         }
         case "organization-role": {
           const roles = await this.listForEachOrganization(async (orgId) => {
-            const body = await this.api.get(
-              `/authorization/organizations/${pathEncode(orgId)}/roles`,
-            );
+            const path = `/authorization/organizations/${pathEncode(orgId)}/roles` as const;
+            const body = await this.api.get(path);
             // The org listing also returns the environment roles it inherits.
-            return (body.data ?? [])
+            return requireListPage(body.data, { vendor: "WorkOS", path, key: "data" })
               .filter((role) => role.type === "OrganizationRole")
               .map((role) => ({ role, orgId }));
           });
@@ -349,16 +372,12 @@ export class WorkosClient implements PluginClient {
           return keys.map(({ key, orgId }) => this.mapApiKey(accountId, orgId, key));
         }
         case "feature-flag": {
-          const flags = await paginate("/feature-flags", (path, query) =>
-            this.api.get(path, { query }),
-          );
+          const flags = await this.api.getAll("/feature-flags", "data");
           return flags.map((flag) => this.mapFeatureFlag(accountId, flag));
         }
         case "group": {
           const groups = await this.listForEachOrganization((orgId) =>
-            paginate(`/organizations/${pathEncode(orgId)}/groups`, (path, query) =>
-              this.api.get(path, { query }),
-            ),
+            this.api.getAll(`/organizations/${pathEncode(orgId)}/groups`, "data"),
           );
           return groups.map((group) => this.mapGroup(accountId, group));
         }
@@ -369,11 +388,10 @@ export class WorkosClient implements PluginClient {
   }
 
   private async fetchDirectories(organizationId?: string): Promise<WosDirectory[]> {
-    return paginate("/directories", (path, paging) =>
-      this.api.get(path, {
-        query:
-          organizationId === undefined ? paging : { organization_id: organizationId, ...paging },
-      }),
+    return this.api.getAll(
+      "/directories",
+      "data",
+      organizationId === undefined ? {} : { query: { organization_id: organizationId } },
     );
   }
 
@@ -381,65 +399,44 @@ export class WorkosClient implements PluginClient {
     organizationId: string,
     statuses: readonly WosMembershipStatus[] = ALL_MEMBERSHIP_STATUSES,
   ): Promise<WosMembership[]> {
-    return paginate("/user_management/organization_memberships", (path, paging) =>
-      this.api.get(path, {
-        query: {
-          organization_id: organizationId,
-          statuses: commaSeparated(statuses),
-          ...paging,
-        },
-      }),
-    );
+    return this.api.getAll("/user_management/organization_memberships", "data", {
+      query: { organization_id: organizationId, statuses: commaSeparated(statuses) },
+    });
   }
 
   private async fetchInvitations(organizationId: string): Promise<WosInvitation[]> {
-    return paginate("/user_management/invitations", (path, paging) =>
-      this.api.get(path, { query: { organization_id: organizationId, ...paging } }),
-    );
+    return this.api.getAll("/user_management/invitations", "data", {
+      query: { organization_id: organizationId },
+    });
   }
 
   private async fetchDirectoryUsers(directory: string): Promise<WosDirectoryUser[]> {
-    return paginate("/directory_users", (path, paging) =>
-      this.api.get(path, { query: { directory, ...paging } }),
-    );
+    return this.api.getAll("/directory_users", "data", { query: { directory } });
   }
 
   private async fetchDirectoryGroups(directory: string): Promise<WosDirectoryGroup[]> {
-    return paginate("/directory_groups", (path, paging) =>
-      this.api.get(path, { query: { directory, ...paging } }),
-    );
+    return this.api.getAll("/directory_groups", "data", { query: { directory } });
   }
 
   private async fetchWebhookEndpoints(): Promise<WosWebhookEndpoint[]> {
-    return paginate("/webhook_endpoints", (path, query) => this.api.get(path, { query }));
+    return this.api.getAll("/webhook_endpoints", "data");
   }
 
   private async fetchPermissions(): Promise<WosPermission[]> {
-    return paginate("/authorization/permissions", (path, query) => this.api.get(path, { query }));
+    return this.api.getAll("/authorization/permissions", "data");
   }
 
   private async fetchApiKeys(organizationId: string): Promise<WosApiKey[]> {
-    return paginate(`/organizations/${pathEncode(organizationId)}/api_keys`, (path, query) =>
-      this.api.get(path, { query }),
-    );
+    return this.api.getAll(`/organizations/${pathEncode(organizationId)}/api_keys`, "data");
   }
 
-  private async fetchSessions(userId: string): Promise<WosSession[]> {
-    return paginate(`/user_management/users/${pathEncode(userId)}/sessions`, (path, query) =>
-      this.api.get(path, { query }),
-    );
+  private async fetchSessions(userId: string, read: ListRead = {}): Promise<WosSession[]> {
+    return this.api.getAll(`/user_management/users/${pathEncode(userId)}/sessions`, "data", read);
   }
 
   private async listForEachDirectory<T>(load: (directoryId: string) => Promise<T[]>): Promise<T[]> {
     const directories = await this.fetchDirectories();
-    const ids = directories.map((d) => str(d.id)).filter(Boolean);
-    const settled = await Promise.allSettled(ids.map((id) => load(id)));
-    settled.forEach((result, index) => {
-      if (result.status === "rejected") {
-        console.warn(`WorkOS plugin: skipping directory ${ids[index]}: ${result.reason}`);
-      }
-    });
-    return settled.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+    return loadPerParent("directory", directories.map((d) => str(d.id)).filter(Boolean), load);
   }
 
   // -------------------------------------------------------------------------
@@ -1155,12 +1152,12 @@ export class WorkosClient implements PluginClient {
 
       if (resourceTypeId === "organization") {
         const [memberships, invitations, connections, directories] = await Promise.all([
-          this.fetchMemberships(id).catch(() => []),
-          this.fetchInvitations(id).catch(() => []),
-          paginate("/connections", (path, paging) =>
-            this.api.get(path, { query: { organization_id: id, ...paging } }),
-          ).catch(() => []),
-          this.fetchDirectories(id).catch(() => []),
+          this.fetchMemberships(id).catch(noneUnlessIncomplete),
+          this.fetchInvitations(id).catch(noneUnlessIncomplete),
+          this.api
+            .getAll("/connections", "data", { query: { organization_id: id } })
+            .catch(noneUnlessIncomplete),
+          this.fetchDirectories(id).catch(noneUnlessIncomplete),
         ]);
         const pending = invitations.filter((invitation) => invitation.state === "pending").length;
         const active = memberships.filter((membership) => membership.status === "active").length;
@@ -1190,8 +1187,8 @@ export class WorkosClient implements PluginClient {
           ];
         }
         const [users, groups] = await Promise.all([
-          this.fetchDirectoryUsers(id).catch(() => []),
-          this.fetchDirectoryGroups(id).catch(() => []),
+          this.fetchDirectoryUsers(id).catch(noneUnlessIncomplete),
+          this.fetchDirectoryGroups(id).catch(noneUnlessIncomplete),
         ]);
         return [
           { label: "Synced Users", value: String(users.length) },
@@ -1453,7 +1450,7 @@ export class WorkosClient implements PluginClient {
    */
   private async organizationPickerField(parentResourceId?: string): Promise<CreateFieldConfig[]> {
     if (parentResourceId) return [];
-    const orgs = await this.fetchOrganizations().catch(() => []);
+    const orgs = await this.fetchOrganizations(PICKER_READ).catch(noneUnlessIncomplete);
     const options = orgs
       .filter((org) => org.id)
       .map((org) => ({ id: str(org.id), label: str(org.name) || str(org.id) }));
@@ -1505,7 +1502,7 @@ export class WorkosClient implements PluginClient {
 
   /** Every permission in the environment, as policy-picker options. */
   private async permissionOptions(): Promise<PolicyOption[]> {
-    const permissions = await this.fetchPermissions().catch(() => []);
+    const permissions = await this.fetchPermissions().catch(noneUnlessIncomplete);
     return permissions
       .filter((permission) => permission.slug)
       .map((permission) => ({
@@ -2147,8 +2144,8 @@ export class WorkosClient implements PluginClient {
           break;
         case "feature-flag": {
           const [orgs, users] = await Promise.all([
-            this.fetchOrganizations().catch(() => []),
-            this.fetchUsers().catch(() => []),
+            this.fetchOrganizations(PICKER_READ).catch(noneUnlessIncomplete),
+            this.fetchUsers(PICKER_READ).catch(noneUnlessIncomplete),
           ]);
           extra["__targets__"] = JSON.stringify([
             ...orgs.map((org) => ({
@@ -2165,14 +2162,17 @@ export class WorkosClient implements PluginClient {
         case "group": {
           const [orgId, groupId] = orgScoped(id);
           const [members, memberships, emails] = await Promise.all([
-            paginate(
-              `/organizations/${pathEncode(orgId)}/groups/${pathEncode(groupId)}/organization-memberships`,
-              (path, query) => this.api.get(path, { query }),
-            ).catch(() => []),
+            this.api
+              .getAll(
+                `/organizations/${pathEncode(orgId)}/groups/${pathEncode(groupId)}/organization-memberships`,
+                "data",
+                PICKER_READ,
+              )
+              .catch(noneUnlessIncomplete),
             // Only an active membership is offered, as before: the document does not
             // say a deactivated or pending one can join a group.
-            this.fetchMemberships(orgId, ["active"]).catch(() => []),
-            this.fetchUserEmailMap(),
+            this.fetchMemberships(orgId, ["active"]).catch(noneUnlessIncomplete),
+            this.fetchUserEmailMap(PICKER_READ),
           ]);
           const label = (m: WosMemberRow) =>
             emails.get(str(m.user_id)) || str(m.user_id) || str(m.id);
@@ -2188,7 +2188,10 @@ export class WorkosClient implements PluginClient {
           break;
         }
         case "user": {
-          const sessions = await this.fetchSessions(id).catch(() => []);
+          // Newest first by the document's default, and the table shows 50 of a page of 100.
+          const sessions = await this.fetchSessions(id, { maxPages: 1, partial: true }).catch(
+            noneUnlessIncomplete,
+          );
           extra["__sessions__"] = JSON.stringify(sessions.slice(0, 50));
           break;
         }

@@ -351,6 +351,61 @@ describe("organizations", () => {
     );
   });
 
+  it("keeps a picker's old reach and reads part of a long list as part of it", async () => {
+    const urls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((async (input: string) => {
+      urls.push(String(input));
+      const text = JSON.stringify({
+        data: [{ id: `id_${urls.length}`, email: "a@acme.com", name: "A" }],
+        list_metadata: { after: "more" },
+      });
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => JSON.parse(text),
+        text: async () => text,
+      } as unknown as Response;
+    }) as unknown as typeof fetch);
+    const client = hostClient(new WorkosClient({ apiKey: "sk_test_key" }));
+    const enriched = await client.enrichDetail({
+      id: `${ACCOUNT}:feature-flag:flag_1`,
+      resourceTypeId: "feature-flag",
+      accountId: ACCOUNT,
+      resolvedOutputs: {},
+    } as never);
+    // Twenty pages each of organizations and of users, as it has always read.
+    expect(urls).toHaveLength(40);
+    expect(JSON.parse(enriched.resolvedOutputs["__targets__"]!)).toHaveLength(40);
+  });
+
+  it("shows a user's newest sessions from one page", async () => {
+    const urls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((async (input: string) => {
+      urls.push(String(input));
+      const text = JSON.stringify({
+        data: Array.from({ length: 100 }, (_, n) => ({ id: `session_${n}` })),
+        list_metadata: { after: "more" },
+      });
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => JSON.parse(text),
+        text: async () => text,
+      } as unknown as Response;
+    }) as unknown as typeof fetch);
+    const client = hostClient(new WorkosClient({ apiKey: "sk_test_key" }));
+    const enriched = await client.enrichDetail({
+      id: `${ACCOUNT}:user:user_1`,
+      resourceTypeId: "user",
+      accountId: ACCOUNT,
+      resolvedOutputs: {},
+    } as never);
+    expect(urls).toHaveLength(1);
+    expect(JSON.parse(enriched.resolvedOutputs["__sessions__"]!)).toHaveLength(50);
+  });
+
   it("offers only active memberships as group member candidates", async () => {
     const { client, calls } = routed({
       "GET /user_management/users": list([]),
