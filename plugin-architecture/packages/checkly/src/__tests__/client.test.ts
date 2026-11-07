@@ -443,6 +443,83 @@ describe("reading every row, or throwing", () => {
   });
 });
 
+describe("a group's checks", () => {
+  const members = (prefix: string, n: number) =>
+    Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i}`, checkType: "URL" }));
+  const inGroup = "/v1/check-groups/7/checks";
+
+  it("runs every check of a group past the first page", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname === inGroup)
+        return {
+          body: url.searchParams.get("page") === "1" ? members("a", 100) : members("b", 3),
+        };
+      return { status: 201, body: { sessions: [] } };
+    });
+    await c.invokeAction("check-group", "acc:check-group:7", "run", ACCOUNT);
+    expect(
+      calls.filter((x) => x.url.pathname === inGroup).map((x) => x.url.searchParams.get("page")),
+    ).toEqual(["1", "2"]);
+    const trigger = calls.find((x) => x.url.pathname === "/v2/check-sessions/trigger");
+    expect(trigger?.body).toEqual({
+      target: { checkId: [...members("a", 100), ...members("b", 3)].map((m) => m.id) },
+    });
+  });
+
+  it("triggers nothing when a group's list cannot be read to its end", async () => {
+    const { c, calls } = client((url) =>
+      url.pathname === inGroup ? { body: members("a", 100) } : { status: 201, body: {} },
+    );
+    await expect(
+      c.invokeAction("check-group", "acc:check-group:7", "run", ACCOUNT),
+    ).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls.filter((x) => x.url.pathname === inGroup)).toHaveLength(100);
+    expect(calls.some((x) => x.url.pathname === "/v2/check-sessions/trigger")).toBe(false);
+  });
+
+  it("triggers nothing on a page that is not a list", async () => {
+    const { c, calls } = client((url) =>
+      url.pathname === inGroup ? { body: { message: "nope" } } : { status: 201, body: {} },
+    );
+    await expect(
+      c.invokeAction("check-group", "acc:check-group:7", "run", ACCOUNT),
+    ).rejects.toThrow("is not a list");
+    expect(calls.some((x) => x.url.pathname === "/v2/check-sessions/trigger")).toBe(false);
+  });
+
+  it("does not send an id the answer left out", async () => {
+    const { c, calls } = client((url) =>
+      url.pathname === inGroup
+        ? { body: [{ id: "a", checkType: "URL" }, { checkType: "URL" }] }
+        : { status: 201, body: {} },
+    );
+    await c.invokeAction("check-group", "acc:check-group:7", "run", ACCOUNT);
+    expect(calls.find((x) => x.method === "POST")?.body).toEqual({ target: { checkId: ["a"] } });
+  });
+
+  it("counts every check on the detail view", async () => {
+    const { c } = client((url) => {
+      if (url.pathname === inGroup)
+        return {
+          body: url.searchParams.get("page") === "1" ? members("a", 100) : members("b", 3),
+        };
+      return { body: { id: 7, name: "G" } };
+    });
+    const group = await c.getResource("check-group", "acc:check-group:7", ACCOUNT);
+    expect(group.fields["checkCount"]).toBe(103);
+  });
+
+  it("leaves the detail count unknown, not zero, when it cannot be read", async () => {
+    const { c } = client((url) =>
+      url.pathname === inGroup
+        ? { status: 500, body: { message: "boom" } }
+        : { body: { id: 7, name: "G" } },
+    );
+    const group = await c.getResource("check-group", "acc:check-group:7", ACCOUNT);
+    expect(group.fields["checkCount"]).toBeUndefined();
+  });
+});
+
 describe("creating", () => {
   it("creates an API check with a status assertion", async () => {
     const { c, calls } = client(() => ({

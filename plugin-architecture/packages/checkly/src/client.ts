@@ -400,6 +400,10 @@ export class ChecklyClient implements PluginClient {
     return this.api.getAll("/v1/check-groups", null, options);
   }
 
+  private groupChecks(id: NoSlashString) {
+    return this.api.getAll(`/v1/check-groups/${id}/checks`, null);
+  }
+
   private rawCheck(id: string) {
     return this.api.get(`/v1/checks/${pathEncode(id)}`);
   }
@@ -422,11 +426,12 @@ export class ChecklyClient implements PluginClient {
         case "check-group": {
           const [g, checks] = await Promise.all([
             this.api.get(`/v1/check-groups/${id}`),
-            this.api
-              .get(`/v1/check-groups/${id}/checks`, { query: { limit: 100 } })
-              .catch(() => []),
+            this.groupChecks(id).catch((err): null => {
+              rethrowIncompleteList(err);
+              return null;
+            }),
           ]);
-          return mapGroup(accountId, g, (checks ?? []).length);
+          return mapGroup(accountId, g, checks?.length);
         }
         case "alert-channel":
           return mapChannel(accountId, await this.api.get(`/v1/alert-channels/${id}`));
@@ -1350,10 +1355,8 @@ export class ChecklyClient implements PluginClient {
           return;
         }
         if (actionId === "run") {
-          const checks = await this.api.get(`/v1/check-groups/${pathEncode(id)}/checks`, {
-            query: { limit: 100 },
-          });
-          return this.trigger((checks ?? []).map((c) => String(c.id)).filter(Boolean));
+          const checks = await this.groupChecks(pathEncode(id));
+          return this.trigger(checks.flatMap((c) => (c.id ? [c.id] : [])));
         }
       }
       if (typeId === "private-location" && actionId === "generate-key") {
