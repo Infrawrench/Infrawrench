@@ -4,7 +4,8 @@
  * GetUsage answers one aggregate for whatever `[start_at, end_at]` window it
  * is asked about: container build minutes per project, GitHub Actions minutes
  * per repository broken down by workflow and runner label, storage per
- * storage type, and agent sandbox minutes per agent type. There are no daily
+ * storage type, agent sandbox minutes per agent type, and Depot CI vCPU-minutes
+ * per repository, workflow and runner. There are no daily
  * buckets, so a daily cost row is one request per UTC day.
  *
  * It reports quantities, never money, and Depot has no billing endpoint, so
@@ -49,6 +50,7 @@ export const SERVICE = {
   cache: "Cache storage",
   registry: "Registry storage",
   sandboxes: "Agent sandboxes",
+  ci: "Depot CI",
   plan: "Depot plan",
 } as const;
 
@@ -74,6 +76,26 @@ export interface DayUsage {
   }>;
   storage: Array<{ type: string; gb: number }>;
   sandboxes: Array<{ type: string; minutes: number; count: number }>;
+  ci: Array<{ repo: string; workflow: string; runner: string; vcpuMinutes: number }>;
+}
+
+/** Cycle-to-date usage before a day, in each included pool's own unit. */
+export interface CycleUsed {
+  builds: number;
+  actions: number;
+  /** Depot CI minutes measured at 2 vCPUs, the unit the plan's allowance is in. */
+  ci: number;
+}
+
+/** Depot CI bills per vCPU, and the plan's included minutes are measured at 2 vCPUs. */
+export const CI_VCPUS_PER_INCLUDED_MINUTE = 2;
+
+export function usedInCycle(day: DayUsage): CycleUsed {
+  return {
+    builds: day.builds.reduce((s, b) => s + b.minutes, 0),
+    actions: day.actions.filter((a) => !a.macos).reduce((s, a) => s + a.billed, 0),
+    ci: day.ci.reduce((s, c) => s + c.vcpuMinutes, 0) / CI_VCPUS_PER_INCLUDED_MINUTE,
+  };
 }
 
 const num = (v: unknown): number => {
@@ -135,6 +157,12 @@ export function normalizeUsage(usage: WireUsage): DayUsage {
       minutes: num(s.minutesBilled),
       count: num(s.sandboxesCount),
     })),
+    ci: (usage.depotCi ?? []).map((c) => ({
+      repo: c.repo ?? "",
+      workflow: c.workflow || c.workflowPath || "",
+      runner: c.runner ?? "",
+      vcpuMinutes: num(c.vcpuMinutesBilled),
+    })),
   };
 }
 
@@ -162,15 +190,14 @@ export function billableFraction(before: number, today: number, allowance: numbe
 const round = (n: number, places = 6): number => Number(n.toFixed(places));
 
 /**
- * Price one day. `buildsBefore` / `actionsBefore` are the cycle-to-date
- * totals before this day, used against the included pools.
+ * Price one day. `before` is the cycle-to-date usage before this day, used
+ * against the included pools.
  */
 export function priceDay(
   date: string,
   day: DayUsage,
   rates: DepotRates,
-  buildsBefore: number,
-  actionsBefore: number,
+  before: CycleUsed,
   cycleDays: number,
   projectIds: Map<string, string>,
 ): CostRow[] {
@@ -184,8 +211,8 @@ export function priceDay(
     } else rows.set(key, row);
   };
 
-  const buildMinutes = day.builds.reduce((s, b) => s + b.minutes, 0);
-  const buildShare = billableFraction(buildsBefore, buildMinutes, rates.includedBuildMinutes);
+  const today = usedInCycle(day);
+  const buildShare = billableFraction(before.builds, today.builds, rates.includedBuildMinutes);
   for (const b of day.builds) {
     if (b.minutes <= 0) continue;
     const projectId = projectIds.get(b.project);
@@ -201,11 +228,9 @@ export function priceDay(
     });
   }
 
-  const pooled = day.actions.filter((a) => !a.macos);
-  const actionsMinutes = pooled.reduce((s, a) => s + a.billed, 0);
   const actionsShare = billableFraction(
-    actionsBefore,
-    actionsMinutes,
+    before.actions,
+    today.actions,
     rates.includedActionsMinutes,
   );
   for (const a of day.actions) {
@@ -266,6 +291,23 @@ export function priceDay(
     });
   }
 
+  const ciShare = billableFraction(before.ci, today.ci, rates.includedSandboxMinutes);
+  for (const c of day.ci) {
+    if (c.vcpuMinutes <= 0) continue;
+    const tags: Record<string, string> = { repo: c.repo };
+    if (c.workflow) tags["workflow"] = c.workflow;
+    if (c.runner) tags["runner"] = c.runner;
+    add({
+      date,
+      service: SERVICE.ci,
+      tags,
+      currency: "USD",
+      amount: c.vcpuMinutes * ciShare * rates.ciVcpuMinute,
+      usageAmount: c.vcpuMinutes,
+      usageUnit: "vCPU-minutes",
+    });
+  }
+
   return [...rows.values()].map((row) => ({
     ...row,
     amount: round(row.amount),
@@ -278,7 +320,8 @@ function hasUsage(day: DayUsage): boolean {
     day.builds.some((b) => b.minutes > 0 || b.count > 0) ||
     day.actions.some((a) => a.billed > 0 || a.elapsed > 0) ||
     day.storage.some((s) => s.gb > 0) ||
-    day.sandboxes.some((s) => s.minutes > 0)
+    day.sandboxes.some((s) => s.minutes > 0) ||
+    day.ci.some((c) => c.vcpuMinutes > 0)
   );
 }
 
@@ -333,22 +376,18 @@ export async function fetchDepotCostData(
 
   const out: CostRow[] = [];
   let cycleStart = -1;
-  let buildsBefore = 0;
-  let actionsBefore = 0;
+  let before: CycleUsed = { builds: 0, actions: 0, ci: 0 };
   days.forEach((d, i) => {
     const day = usages[i]!;
     const cycle = cycleBounds(d, cycleStartDay).startMs;
     if (cycle !== cycleStart) {
       cycleStart = cycle;
-      buildsBefore = 0;
-      actionsBefore = 0;
+      before = { builds: 0, actions: 0, ci: 0 };
     }
     const cycleDays = cycleLengthDays(d, cycleStartDay);
     if (d >= fromMs) {
       const date = isoDate(d);
-      out.push(
-        ...priceDay(date, day, ctx.rates, buildsBefore, actionsBefore, cycleDays, projectIds),
-      );
+      out.push(...priceDay(date, day, ctx.rates, before, cycleDays, projectIds));
       if (ctx.rates.planFee > 0 && activeCycles.has(cycle)) {
         out.push({
           date,
@@ -358,8 +397,12 @@ export async function fetchDepotCostData(
         });
       }
     }
-    buildsBefore += day.builds.reduce((s, b) => s + b.minutes, 0);
-    actionsBefore += day.actions.filter((a) => !a.macos).reduce((s, a) => s + a.billed, 0);
+    const used = usedInCycle(day);
+    before = {
+      builds: before.builds + used.builds,
+      actions: before.actions + used.actions,
+      ci: before.ci + used.ci,
+    };
   });
   return out;
 }

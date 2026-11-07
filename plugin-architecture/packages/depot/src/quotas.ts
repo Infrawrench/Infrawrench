@@ -10,7 +10,7 @@
 
 import type { QuotaUsage } from "@infrawrench/plugin-base";
 import { getUsage, type DepotTransport } from "./api.js";
-import { normalizeUsage } from "./cost-data.js";
+import { normalizeUsage, usedInCycle } from "./cost-data.js";
 import { cycleBounds, type DepotRates } from "./rates.js";
 
 export async function fetchDepotQuotas(
@@ -22,8 +22,7 @@ export async function fetchDepotQuotas(
   const { startMs } = cycleBounds(todayMs, rates.cycleStartDay);
   const usage = normalizeUsage(await getUsage(transport, startMs, now.getTime()));
 
-  const buildMinutes = usage.builds.reduce((s, b) => s + b.minutes, 0);
-  const actionsMinutes = usage.actions.filter((a) => !a.macos).reduce((s, a) => s + a.billed, 0);
+  const used = usedInCycle(usage);
   // Cache and registry share one storage allowance, so the types are summed.
   const storageGb = usage.storage.reduce((s, x) => s + x.gb, 0);
 
@@ -54,7 +53,7 @@ export async function fetchDepotQuotas(
     "container-builds",
     "Included Docker build minutes (billing cycle)",
     rates.includedBuildMinutes,
-    buildMinutes,
+    used.builds,
     "minutes",
   );
   push(
@@ -62,7 +61,7 @@ export async function fetchDepotQuotas(
     "github-actions",
     "Included GitHub Actions minutes (billing cycle)",
     rates.includedActionsMinutes,
-    actionsMinutes,
+    used.actions,
     "minutes",
   );
   push(
@@ -72,6 +71,15 @@ export async function fetchDepotQuotas(
     rates.includedStorageGb,
     storageGb,
     "GB",
+  );
+  // Sandboxes and Managed Agents share this pool, but their usage is not counted here.
+  push(
+    "included-sandbox-minutes",
+    "depot-ci",
+    "Included sandbox compute minutes used by Depot CI (billing cycle)",
+    rates.includedSandboxMinutes,
+    used.ci,
+    "minutes",
   );
   return out;
 }

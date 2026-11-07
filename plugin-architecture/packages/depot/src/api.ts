@@ -133,6 +133,21 @@ export interface WireSandboxUsage {
   minutesBilled?: number;
 }
 
+/**
+ * `depot.core.v1.DepotCIUsage`: one row per repository, workflow and runner. Covers job
+ * attempts that finished on or after 2026-05-22, when Depot started tracking it.
+ */
+export interface WireDepotCiUsage {
+  repo?: string;
+  workflow?: string;
+  workflowPath?: string;
+  runner?: string;
+  attemptCount?: number;
+  minutesElapsed?: number;
+  /** Per vCPU: a 2 vCPU sandbox running 10 minutes bills 20, unlike Actions' `minutesBilled`. */
+  vcpuMinutesBilled?: number;
+}
+
 /** `depot.core.v1.GetUsageResponse`. */
 export interface WireUsage {
   periodStart?: string;
@@ -141,6 +156,7 @@ export interface WireUsage {
   githubActionsJobs?: WireActionsUsage[];
   storage?: WireStorageUsage[];
   agentSandbox?: WireSandboxUsage[];
+  depotCi?: WireDepotCiUsage[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -311,5 +327,6 @@ export async function getUsage(
   requireListPage(usage.githubActionsJobs ?? null, { ...place, key: "githubActionsJobs" });
   requireListPage(usage.storage ?? null, { ...place, key: "storage" });
   requireListPage(usage.agentSandbox ?? null, { ...place, key: "agentSandbox" });
+  requireListPage(usage.depotCi ?? null, { ...place, key: "depotCi" });
   return usage;
 }

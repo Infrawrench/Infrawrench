@@ -62,7 +62,7 @@ export const manifest = {
       key: "rateOverrides",
       label: "Rate Overrides (optional)",
       description:
-        "Optional. Replace any published rate or allowance, one key=value per line or comma-separated: planFee, includedBuildMinutes, includedActionsMinutes, includedStorageGb (allowances); buildMinute (0.04), actionsMinute (0.006), macosMinute (0.08), sandboxMinute (0.01), storageGbMonth (0.20) in USD; cycleStartDay (1 to 28) if your billing cycle does not start on the 1st. Use it for a Business contract or a price change.",
+        "Optional. Replace any published rate or allowance, one key=value per line or comma-separated: planFee, includedBuildMinutes, includedActionsMinutes, includedStorageGb, includedSandboxMinutes (allowances); buildMinute (0.04), actionsMinute (0.006), macosMinute (0.08), sandboxMinute (0.01), ciVcpuMinute (0.003, per Depot CI vCPU-minute), storageGbMonth (0.20) in USD; cycleStartDay (1 to 28) if your billing cycle does not start on the 1st. Use it for a Business contract or a price change.",
       sensitive: false,
       optional: true,
       multiline: true,
@@ -74,8 +74,8 @@ export const manifest = {
    * Estimated spend from `UsageService/GetUsage` (see `cost-data.ts`).
    *
    * `service` is the product (container builds, GitHub Actions runners,
-   * macOS runners, cache and registry storage, agent sandboxes, the plan
-   * fee); `resource` is the project for build minutes; `tag` carries
+   * macOS runners, cache and registry storage, agent sandboxes, Depot CI, the
+   * plan fee); `resource` is the project for build minutes; `tag` carries
    * project, repo, workflow, runner, storage type and agent type, which is
    * how runner minutes are broken down by repository.
    *

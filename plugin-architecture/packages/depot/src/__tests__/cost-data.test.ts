@@ -11,6 +11,7 @@ import { resolveRates } from "../rates.js";
 import type { WireUsage } from "../api.js";
 
 const NOW = new Date("2026-10-04T12:00:00Z");
+const NONE_USED = { builds: 0, actions: 0, ci: 0 };
 
 function response(body: unknown, status = 200): Response {
   const text = JSON.stringify(body);
@@ -172,8 +173,7 @@ describe("priceDay", () => {
         agentSandbox: [{ agentType: "claude", sandboxesCount: 1, minutesBilled: 20 }],
       }),
       rates,
-      0,
-      0,
+      NONE_USED,
       31,
       new Map([["web", "proj-web"]]),
     );
@@ -204,8 +204,8 @@ describe("priceDay", () => {
         ],
       }),
       rates,
-      450, // 50 minutes of allowance left: half of today's 100 bills
-      0,
+      // 50 minutes of allowance left: half of today's 100 bills
+      { ...NONE_USED, builds: 450 },
       31,
       new Map(),
     );
@@ -265,5 +265,58 @@ describe("fetchDepotCostData", () => {
     await expect(
       fetchDepotCostData(ctx("startup"), { fromDate: "2026-10-04", toDate: "2026-10-04" }),
     ).rejects.toBeInstanceOf(CostSetupError);
+  });
+});
+
+describe("Depot CI", () => {
+  const CI: WireUsage = {
+    depotCi: [
+      {
+        repo: "acme/api",
+        workflow: "CI",
+        workflowPath: ".depot/workflows/ci.yml",
+        runner: "depot-ubuntu-24.04-4",
+        attemptCount: 3,
+        minutesElapsed: 25,
+        vcpuMinutesBilled: 100,
+      },
+    ],
+  };
+
+  it("prices billed vCPU-minutes at the sandbox compute rate", () => {
+    const { rates } = resolveRates("usage-only", "");
+    const rows = priceDay("2026-10-01", normalizeUsage(CI), rates, NONE_USED, 31, new Map());
+    expect(rows).toEqual([
+      {
+        date: "2026-10-01",
+        service: SERVICE.ci,
+        tags: { repo: "acme/api", workflow: "CI", runner: "depot-ubuntu-24.04-4" },
+        currency: "USD",
+        // $0.00005 per vCPU-second
+        amount: 0.3,
+        usageAmount: 100,
+        usageUnit: "vCPU-minutes",
+      },
+    ]);
+  });
+
+  it("draws on the plan's included minutes, measured at 2 vCPUs", async () => {
+    // 2,100 vCPU-minutes a day is 1,050 of the Developer plan's 2,000 included minutes.
+    installUsage(() => ({
+      depotCi: [{ repo: "acme/api", runner: "depot-ubuntu-24.04", vcpuMinutesBilled: 2100 }],
+    }));
+    const rows = await fetchDepotCostData(ctx("developer"), {
+      fromDate: "2026-10-01",
+      toDate: "2026-10-02",
+    });
+    const ci = (date: string) => rows.find((r) => r.date === date && r.service === SERVICE.ci)!;
+    expect(ci("2026-10-01").amount).toBe(0);
+    // 1,050 before, 950 left: 100 of today's 1,050 minutes bill, 200 vCPU-minutes.
+    expect(ci("2026-10-02").amount).toBe(0.6);
+    expect(rows.some((r) => r.service === SERVICE.plan)).toBe(true);
+  });
+
+  it("reads an answer without the Depot CI list as none", () => {
+    expect(normalizeUsage({}).ci).toEqual([]);
   });
 });

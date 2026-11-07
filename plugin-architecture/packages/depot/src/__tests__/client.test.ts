@@ -582,6 +582,7 @@ describe("quotas", () => {
           },
         ],
         storage: [{ storageType: "cache", totalGb: 40 }],
+        depotCi: [{ repo: "acme/api", vcpuMinutesBilled: 600 }],
       }),
     });
     const quotas = await fetchDepotQuotas(
@@ -594,6 +595,7 @@ describe("quotas", () => {
       ["included-build-minutes", 1200, 5000],
       ["included-actions-minutes", 300, 20000],
       ["included-storage", 40, 250],
+      ["included-sandbox-minutes", 300, 20000],
     ]);
   });
 

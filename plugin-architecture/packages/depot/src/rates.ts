@@ -23,6 +23,11 @@
  * $0.01/min, cache and registry storage $0.20/GB/month. macOS runners are
  * listed at a flat $0.08/min with no multiplier; they are priced from elapsed
  * minutes at that rate and kept out of the included-minutes pool.
+ *
+ * Depot CI is sandbox compute, $0.00005 per vCPU-second ($0.003 per vCPU-minute,
+ * the unit the API's `vcpuMinutesBilled` counts). Its included minutes, 2,000 on
+ * Developer and 20,000 on Startup, are measured at 2 vCPUs and shared with Depot
+ * Sandboxes and Managed Agents (https://depot.dev/pricing, November 2026).
  */
 
 export interface DepotRates {
@@ -31,6 +36,8 @@ export interface DepotRates {
   includedBuildMinutes: number;
   includedActionsMinutes: number;
   includedStorageGb: number;
+  /** Included sandbox compute minutes, measured at 2 vCPUs. Depot CI draws on them. */
+  includedSandboxMinutes: number;
   /** USD per container build minute beyond the allowance. */
   buildMinute: number;
   /** USD per billed GitHub Actions minute beyond the allowance. */
@@ -39,6 +46,8 @@ export interface DepotRates {
   macosMinute: number;
   /** USD per billed agent sandbox minute. */
   sandboxMinute: number;
+  /** USD per billed Depot CI vCPU-minute beyond the allowance. */
+  ciVcpuMinute: number;
   /** USD per GB-month of cache and registry storage beyond the allowance. */
   storageGbMonth: number;
   /** Day of the month a billing cycle starts on (1 to 28). */
@@ -52,7 +61,11 @@ export interface DepotPlan {
   summary: string;
   rates: Pick<
     DepotRates,
-    "planFee" | "includedBuildMinutes" | "includedActionsMinutes" | "includedStorageGb"
+    | "planFee"
+    | "includedBuildMinutes"
+    | "includedActionsMinutes"
+    | "includedStorageGb"
+    | "includedSandboxMinutes"
   >;
 }
 
@@ -62,6 +75,7 @@ export const LIST_RATES = {
   actionsMinute: 0.006,
   macosMinute: 0.08,
   sandboxMinute: 0.01,
+  ciVcpuMinute: 0.003,
   storageGbMonth: 0.2,
 } as const;
 
@@ -69,36 +83,50 @@ export const DEPOT_PLANS: readonly DepotPlan[] = [
   {
     id: "developer",
     label: "Developer ($20/month)",
-    summary: "500 build min, 2,000 Actions min, 25 GB storage included",
+    summary: "500 build min, 2,000 Actions min, 2,000 sandbox min, 25 GB storage included",
     rates: {
       planFee: 20,
       includedBuildMinutes: 500,
       includedActionsMinutes: 2000,
       includedStorageGb: 25,
+      includedSandboxMinutes: 2000,
     },
   },
   {
     id: "startup",
     label: "Startup ($200/month)",
-    summary: "5,000 build min, 20,000 Actions min, 250 GB storage included",
+    summary: "5,000 build min, 20,000 Actions min, 20,000 sandbox min, 250 GB storage included",
     rates: {
       planFee: 200,
       includedBuildMinutes: 5000,
       includedActionsMinutes: 20000,
       includedStorageGb: 250,
+      includedSandboxMinutes: 20000,
     },
   },
   {
     id: "business",
     label: "Business (custom contract)",
     summary: "No fee or allowance assumed; set yours under Rate overrides",
-    rates: { planFee: 0, includedBuildMinutes: 0, includedActionsMinutes: 0, includedStorageGb: 0 },
+    rates: {
+      planFee: 0,
+      includedBuildMinutes: 0,
+      includedActionsMinutes: 0,
+      includedStorageGb: 0,
+      includedSandboxMinutes: 0,
+    },
   },
   {
     id: "usage-only",
     label: "Usage only (list rates, no plan)",
     summary: "Every minute and GB priced at the published overage rate",
-    rates: { planFee: 0, includedBuildMinutes: 0, includedActionsMinutes: 0, includedStorageGb: 0 },
+    rates: {
+      planFee: 0,
+      includedBuildMinutes: 0,
+      includedActionsMinutes: 0,
+      includedStorageGb: 0,
+      includedSandboxMinutes: 0,
+    },
   },
 ];
 
@@ -110,10 +138,12 @@ export const OVERRIDE_KEYS = [
   "includedBuildMinutes",
   "includedActionsMinutes",
   "includedStorageGb",
+  "includedSandboxMinutes",
   "buildMinute",
   "actionsMinute",
   "macosMinute",
   "sandboxMinute",
+  "ciVcpuMinute",
   "storageGbMonth",
   "cycleStartDay",
 ] as const satisfies ReadonlyArray<keyof DepotRates>;
