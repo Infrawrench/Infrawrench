@@ -30,6 +30,7 @@ import type {
   A0Client,
   A0Connection,
   A0CustomDomain,
+  A0EnabledClient,
   A0Log,
   A0LogStream,
   A0Organization,
@@ -286,10 +287,12 @@ export class Auth0Client implements PluginClient {
   /** The applications a connection is enabled for, at the route's largest page. */
   private async enabledClientIds(connectionId: string): Promise<string[]> {
     const path = `/connections/${pathEncode(connectionId)}/clients` as const;
-    const clients = await checkpoints(path, "clients", (query) => this.rest.get(path, { query }), {
-      take: 1000,
-      maxPages: 10,
-    });
+    const clients = await checkpoints<"clients", A0EnabledClient>(
+      path,
+      "clients",
+      (query) => this.rest.get(path, { query }),
+      { take: 1000, maxPages: 10 },
+    );
     return clients.map((c) => str(c.client_id));
   }
 
