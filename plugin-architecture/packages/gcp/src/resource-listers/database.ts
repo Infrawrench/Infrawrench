@@ -1,5 +1,10 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { lastSegment, readEachParent, type ListerContext } from "./shared.js";
+import {
+  isLocationPlaceholder,
+  lastSegment,
+  readEachParent,
+  type ListerContext,
+} from "./shared.js";
 import { engineInfoFromVersion } from "../cloudsql-engine.js";
 import { cloudSqlTierVcpus } from "../extended-support.js";
 
@@ -302,36 +307,38 @@ export async function listMemorystoreRedis(
     `https://redis.googleapis.com/v1/projects/${p}/locations/-/instances`,
     "instances",
   );
-  return items.map((inst) => {
-    const fullName = String(inst["name"]);
-    const name = fullName.split("/").pop() ?? "";
-    const region = fullName.split("/")[3] ?? "";
-    return {
-      id: ctx.id(accountId, "memorystore-redis", fullName),
-      pluginId: "gcp",
-      resourceTypeId: "memorystore-redis",
-      accountId,
-      displayName: name,
-      fields: {
-        name,
-        region,
-        tier: String(inst["tier"] ?? ""),
-        memorySizeGb: Number(inst["memorySizeGb"] ?? 0),
-        redisVersion: String(inst["redisVersion"] ?? ""),
-        state: String(inst["state"] ?? ""),
-        // Full network name (`projects/<p>/global/networks/<name>`) in the API.
-        authorizedNetwork: lastSegment(inst["authorizedNetwork"]),
-      },
-      resolvedOutputs: {
-        host: String(inst["host"] ?? ""),
-        port: String(inst["port"] ?? "6379"),
-      },
-      secretStates: [],
-      externalId: fullName,
-      createdAt: String(inst["createTime"] ?? ctx.now()),
-      updatedAt: ctx.now(),
-    };
-  });
+  return items
+    .filter((inst) => !isLocationPlaceholder(inst))
+    .map((inst) => {
+      const fullName = String(inst["name"]);
+      const name = fullName.split("/").pop() ?? "";
+      const region = fullName.split("/")[3] ?? "";
+      return {
+        id: ctx.id(accountId, "memorystore-redis", fullName),
+        pluginId: "gcp",
+        resourceTypeId: "memorystore-redis",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          region,
+          tier: String(inst["tier"] ?? ""),
+          memorySizeGb: Number(inst["memorySizeGb"] ?? 0),
+          redisVersion: String(inst["redisVersion"] ?? ""),
+          state: String(inst["state"] ?? ""),
+          // Full network name (`projects/<p>/global/networks/<name>`) in the API.
+          authorizedNetwork: lastSegment(inst["authorizedNetwork"]),
+        },
+        resolvedOutputs: {
+          host: String(inst["host"] ?? ""),
+          port: String(inst["port"] ?? "6379"),
+        },
+        secretStates: [],
+        externalId: fullName,
+        createdAt: String(inst["createTime"] ?? ctx.now()),
+        updatedAt: ctx.now(),
+      };
+    });
 }
 
 /**

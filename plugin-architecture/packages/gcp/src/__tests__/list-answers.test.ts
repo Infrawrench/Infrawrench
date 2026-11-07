@@ -119,7 +119,6 @@ describe("a page that is not a list", () => {
   });
 });
 
-
 describe("a list that does not end", () => {
   it.each([
     ["a plain list", "pubsub-topic", { topics: [], nextPageToken: "more" }],
@@ -143,7 +142,6 @@ describe("a list that does not end", () => {
     expect(reads()).toHaveLength(10);
   });
 });
-
 
 describe("lists that stopped at their first page", () => {
   const twoPages = (key: string, row: (n: number) => unknown) => (url: URL) =>
@@ -183,7 +181,6 @@ describe("lists that stopped at their first page", () => {
   });
 });
 
-
 describe("Dataflow jobs", () => {
   it("reads every region's, not just the us-central1 that jobs.list answers for", async () => {
     const { client, reads } = clientFor(() => ({
@@ -197,3 +194,62 @@ describe("Dataflow jobs", () => {
   });
 });
 
+describe("an answer that says part of the list did not come back", () => {
+  const instance = { name: "projects/proj/locations/us-a/instances/a" };
+
+  it.each([
+    ["cloud-function", { functions: [{ name: "f/g" }], unreachable: ["us-b"] }],
+    ["memorystore-valkey", { instances: [instance], unreachable: ["us-b"] }],
+    ["gke-cluster", { clusters: [{ name: "c" }], missingZones: ["us-b-a"] }],
+    ["firestore-database", { databases: [{ name: "d/(default)" }], unreachable: ["d/x"] }],
+    ["bigtable-instance", { instances: [{ name: "i/a" }], failedLocations: ["l/us-b"] }],
+    ["dataflow-job", { jobs: [{ id: "j" }], failedLocation: [{ name: "us-b" }] }],
+    [
+      "gce-instance",
+      {
+        items: {
+          "zones/us-a": { instances: [{ name: "vm", id: "1", zone: "z/us-a" }] },
+          "zones/us-b": { warning: { code: "UNREACHABLE" } },
+        },
+      },
+    ],
+  ])("%s keeps what it read and leaves the type out of the prune", async (typeId, page) => {
+    const { client } = clientFor(() => page);
+    await expect(client.listResources(typeId, ACCT)).resolves.toHaveLength(1);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [`${ACCT}:${typeId}:`] });
+  });
+
+  it("Redis drops the placeholder it sends for a location it could not reach", async () => {
+    const { client } = clientFor(() => ({
+      instances: [
+        instance,
+        {
+          name: "projects/proj/locations/us-b/instances/-",
+          state: "ERROR",
+          statusMessage: "location not available for ListInstances",
+        },
+      ],
+    }));
+    const rows = await client.listResources("memorystore-redis", ACCT);
+    expect(rows.map((r) => r.displayName)).toEqual(["a"]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: [`${ACCT}:memorystore-redis:`] });
+  });
+
+  it.each([
+    ["cloud-function", { functions: [{ name: "f/g" }], unreachable: [] }],
+    ["memorystore-redis", { instances: [instance] }],
+    [
+      "gce-instance",
+      {
+        items: {
+          "zones/us-a": { instances: [{ name: "vm", id: "1", zone: "z/us-a" }] },
+          "zones/us-b": { warning: { code: "NO_RESULTS_ON_PAGE" } },
+        },
+      },
+    ],
+  ])("%s reports nothing when all of it came back", async (typeId, page) => {
+    const { client } = clientFor(() => page);
+    await expect(client.listResources(typeId, ACCT)).resolves.toHaveLength(1);
+    expect(unread).not.toHaveBeenCalled();
+  });
+});

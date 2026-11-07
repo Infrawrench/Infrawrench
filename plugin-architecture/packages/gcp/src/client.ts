@@ -55,7 +55,7 @@ import {
   revokeGcpJitAccess,
   type GcpJitContext,
 } from "./jit-access.js";
-import { hostFetch } from "@infrawrench/plugin-base";
+import { hostFetch, reportUnreadListPart } from "@infrawrench/plugin-base";
 import type { HostServices, PreflightResult } from "@infrawrench/plugin-base";
 import { runGcpPreflight } from "./preflight.js";
 import {
@@ -115,7 +115,7 @@ function gceDiskLine(
 }
 import type { ListerContext } from "./resource-listers.js";
 import * as listers from "./resource-listers.js";
-import { readPages } from "./resource-listers/shared.js";
+import { readPages, saysPartWentUnread } from "./resource-listers/shared.js";
 import type { FirestoreContext } from "./firestore-handlers.js";
 import { executeFirestoreCommand } from "./firestore-handlers.js";
 import type { BigQuerySpannerContext } from "./bigquery-spanner-handlers.js";
@@ -280,10 +280,23 @@ export class GcpClient implements PluginClient {
     };
   }
 
-  private get listerCtx(): ListerContext {
+  /**
+   * Google's lists across locations answer 200 with what they could reach and name the
+   * rest. What they name can't be called gone, and failing the type would throw away
+   * what did come back, so those rows are kept and the type isn't pruned. By the whole
+   * type, because the list names locations and not every row's id does.
+   */
+  private listerCtx(typeId: string, accountId: string): ListerContext {
+    const get = async <T>(url: string): Promise<T> => {
+      const body = await this.get<T>(url);
+      if (saysPartWentUnread(body)) {
+        reportUnreadListPart({ idPrefixes: [this.id(accountId, typeId, "")] });
+      }
+      return body;
+    };
     return {
-      get: this.get.bind(this),
-      paginate: this.paginate.bind(this),
+      get,
+      paginate: (baseUrl, key, params) => readPages(get, baseUrl, key, params),
       id: this.id.bind(this),
       now: this.now.bind(this),
     };
@@ -357,7 +370,7 @@ export class GcpClient implements PluginClient {
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
       const p = this.project;
-      const ctx = this.listerCtx;
+      const ctx = this.listerCtx(typeId, accountId);
       switch (typeId) {
         case "gcp-project":
           return listers.listGcpProjects(ctx, accountId, p);

@@ -97,3 +97,24 @@ describe("fetchGcpCommitments", () => {
     expect(calls[1]).toContain("pageToken=page-2");
   });
 });
+
+describe("fetchGcpCommitments when a region did not answer", () => {
+  it("fails rather than reading that region as having no commitments", async () => {
+    const get = async () => ({
+      items: {
+        "regions/us-central1": { commitments: [] },
+        "regions/us-east1": { warning: { code: "UNREACHABLE" } },
+      },
+    });
+    await expect(fetchGcpCommitments({ project: "p", get: get as never })).rejects.toThrow(
+      "regions/us-east1",
+    );
+  });
+
+  it("reads a region's no-results warning as none", async () => {
+    const get = async () => ({
+      items: { "regions/us-east1": { warning: { code: "NO_RESULTS_ON_PAGE" } } },
+    });
+    await expect(fetchGcpCommitments({ project: "p", get: get as never })).resolves.toEqual([]);
+  });
+});

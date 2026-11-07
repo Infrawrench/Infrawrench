@@ -239,3 +239,39 @@ export function readEachRegion<R, T>(
 ): Promise<T[]> {
   return readFanOut(regions, read, answerOfRegion, options);
 }
+
+/** The fields a list across locations uses to say some of them did not answer. */
+const UNREAD_PART_FIELDS = [
+  "unreachable", // Redis, Memcached, Cloud Run and Firestore among others
+  "unreachables", // Compute, under returnPartialSuccess
+  "failedLocations", // Bigtable
+  "failedLocation", // Dataflow
+  "missingZones", // GKE
+];
+
+function warnsUnreachable(value: unknown): boolean {
+  return (
+    isRecord(value) && isRecord(value["warning"]) && value["warning"]["code"] === "UNREACHABLE"
+  );
+}
+
+/**
+ * Whether a 2xx list answer says it left part of the list out. Redis also documents a
+ * placeholder row, named `.../instances/-`, for a location it could not reach.
+ */
+export function saysPartWentUnread(body: unknown): boolean {
+  if (!isRecord(body)) return false;
+  for (const field of UNREAD_PART_FIELDS) {
+    const unread = body[field];
+    if (Array.isArray(unread) && unread.length > 0) return true;
+  }
+  if (warnsUnreachable(body)) return true;
+  if (isRecord(body["items"]) && Object.values(body["items"]).some(warnsUnreachable)) return true;
+  const instances = body["instances"];
+  return Array.isArray(instances) && instances.some(isLocationPlaceholder);
+}
+
+/** The row Redis lists in place of a location it could not reach. */
+export function isLocationPlaceholder(row: unknown): boolean {
+  return isRecord(row) && String(row["name"] ?? "").endsWith("/instances/-");
+}

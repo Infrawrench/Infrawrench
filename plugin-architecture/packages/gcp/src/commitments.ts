@@ -47,7 +47,7 @@ interface GcpCommitment {
 
 interface AggregatedScope {
   commitments?: GcpCommitment[];
-  warning?: unknown;
+  warning?: { code?: string };
 }
 
 interface AggregatedListResponse {
@@ -142,6 +142,14 @@ export async function fetchGcpCommitments(ctx: GcpCommitmentsContext): Promise<C
     if (pageToken) url.searchParams.set("pageToken", pageToken);
     const page = await ctx.get<AggregatedListResponse>(url.toString());
     for (const [scope, entry] of Object.entries(page.items ?? {})) {
+      // The host reconciles against this list, so a region that did not answer can't
+      // read as having no commitments.
+      if (entry.warning?.code === "UNREACHABLE") {
+        throw Object.assign(
+          new Error(`Compute Engine could not reach ${scope} to list its commitments.`),
+          { status: 503 },
+        );
+      }
       // Scope keys look like "regions/us-central1"; scopes without
       // commitments carry only a warning entry.
       const scopeRegion = scope.startsWith("regions/") ? scope.slice("regions/".length) : undefined;
