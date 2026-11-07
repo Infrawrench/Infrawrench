@@ -19,6 +19,20 @@ import {
 export interface ChildRead<R> {
   rows: R[];
   unread: UnreadListPart[];
+  /** Why the first parent the key was refused went unread, if one was. */
+  refusal?: unknown;
+}
+
+/**
+ * A read that left part of itself unread, where the host keeps no track of what that was
+ * (the desktop, or a call outside a sync). The type is read again with no budget, which
+ * leaves only refusals unread, and a refusal is thrown as it came.
+ */
+export class UnkeptReadError extends Error {
+  constructor(readonly refusal: unknown) {
+    super("Neon plugin: part of this list was left unread, where nothing keeps the rest.");
+    this.name = "UnkeptReadError";
+  }
 }
 
 interface ReadChildrenOptions {
@@ -53,6 +67,7 @@ export async function collectChildren<P, R>(
   const parts: UnreadListPart[] = [];
   let started = 0;
   let refused = 0;
+  let refusal: unknown;
   const rows = await flatMapPooled(
     parents,
     async (parent) => {
@@ -66,6 +81,7 @@ export async function collectChildren<P, R>(
       } catch (err) {
         if (isPermissionRefused(err)) {
           refused++;
+          refusal ??= err;
           parts.push(unread(parent));
           return [];
         }
@@ -77,16 +93,25 @@ export async function collectChildren<P, R>(
     rotationStart(parents.length),
   );
   if (parents.length > 0 && refused === parents.length) parts.push({ idPrefixes: [""] });
-  return { rows, unread: parts };
+  return { rows, unread: parts, ...(refusal !== undefined ? { refusal } : {}) };
 }
 
 function isNotFound(err: unknown): boolean {
   return httpStatus(err) === 404;
 }
 
-/** Report what a read left unread, in the scope of the type asking. */
-export function reportUnread(parts: readonly UnreadListPart[]): void {
-  for (const part of parts) reportUnreadListPart(part);
+/**
+ * Report what a read left unread, in the scope of the type asking. Throws an
+ * {@link UnkeptReadError} where the host keeps no track of it. A lookup reports nothing.
+ */
+export function reportUnread(
+  read: Pick<ChildRead<unknown>, "unread" | "refusal">,
+  budget: PollBudget,
+): void {
+  if (!budget.reportsUnread) return;
+  for (const part of read.unread) {
+    if (!reportUnreadListPart(part)) throw new UnkeptReadError(read.refusal);
+  }
 }
 
 /** {@link collectChildren} for a read only one type uses. */
@@ -98,7 +123,7 @@ export async function readChildren<P, R>(
   options?: ReadChildrenOptions,
 ): Promise<R[]> {
   const result = await collectChildren(parents, budget, read, unread, options);
-  reportUnread(result.unread);
+  reportUnread(result, budget);
   return result.rows;
 }
 
@@ -175,7 +200,7 @@ export class ListRun {
   /** Every branch in reach, reporting what is not to the type asking. */
   async branches(accountId: string): Promise<ProjectBranch[]> {
     const read = await this.readBranches(accountId);
-    reportUnread(read.unread);
+    reportUnread(read, this.budget);
     return read.rows;
   }
 

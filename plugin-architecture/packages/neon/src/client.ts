@@ -62,6 +62,7 @@ import {
   projectUnread,
   readChildren,
   reportUnread,
+  UnkeptReadError,
   type ChildRead,
 } from "./services/list-run.js";
 import {
@@ -203,9 +204,15 @@ export class NeonClient implements PluginClient {
     try {
       return await this.readType(run, typeId, accountId);
     } catch (err) {
-      // A restricted key is normal: its rows stay, and the type does not go red.
+      // A host that keeps no track of what a poll's budget left: it reads them all instead.
+      if (err instanceof UnkeptReadError) {
+        if (err.refusal !== undefined || !run.budget.bounded) throw err.refusal ?? err;
+        return this.listType(new ListRun(this.api, PollBudget.unbounded()), typeId, accountId);
+      }
+      // A restricted key is normal: its rows stay, and the type does not go red. A host
+      // that keeps no track (the desktop) answers false, and there the refusal shows.
       if (!isPermissionRefused(err)) throw err;
-      reportUnreadListPart({ idPrefixes: [""] });
+      if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
       return [];
     }
   }
@@ -264,7 +271,7 @@ export class NeonClient implements PluginClient {
    */
   private runForOne(typeId: string, resourceId: string): ListRun {
     const projectId = typeId === "neon-project" ? "" : externalIdOf(resourceId).split("/")[0];
-    return new ListRun(this.api, PollBudget.unbounded(), projectId || undefined);
+    return new ListRun(this.api, PollBudget.forLookup(), projectId || undefined);
   }
 
   resolveOutput(
@@ -1002,7 +1009,7 @@ export class NeonClient implements PluginClient {
       if (typeId === "neon-data-api") {
         const fields: CreateResourceConfig["fields"] = [];
         if (!parentResourceId) {
-          const run = new ListRun(this.api, PollBudget.unbounded());
+          const run = new ListRun(this.api, PollBudget.forLookup());
           const databases = await this.listAllDatabases(run, "create");
           const options = databases.map((db) => ({
             id: `${String(db.fields["projectId"])}/${String(db.fields["branchId"])}/${String(
@@ -1852,7 +1859,7 @@ export class NeonClient implements PluginClient {
 
   private async listAllDatabases(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
     const read = await this.readDatabases(run, accountId);
-    reportUnread(read.unread);
+    reportUnread(read, run.budget);
     return read.rows;
   }
 
@@ -1873,7 +1880,12 @@ export class NeonClient implements PluginClient {
         },
         (ref) => branchUnread(accountId, ref),
       );
-      return { rows: databases.rows, unread: [...branches.unread, ...databases.unread] };
+      const refusal = branches.refusal ?? databases.refusal;
+      return {
+        rows: databases.rows,
+        unread: [...branches.unread, ...databases.unread],
+        ...(refusal !== undefined ? { refusal } : {}),
+      };
     });
   }
 
@@ -1923,7 +1935,7 @@ export class NeonClient implements PluginClient {
   private async listAllDataApis(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
     const databases = await this.readDatabases(run, accountId);
     // A database this poll did not reach leaves its Data API row unread too.
-    reportUnread(databases.unread);
+    reportUnread(databases, run.budget);
     return readChildren(
       databases.rows,
       run.budget,

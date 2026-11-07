@@ -36,9 +36,12 @@ export class PollBudget {
   private readonly waiting: Array<() => void> = [];
 
   private constructor(
-    private readonly bounded: boolean,
+    /** False for a read with no poll to fit inside. */
+    readonly bounded: boolean,
     /** The requests that may be in flight at once. */
     readonly slots: number,
+    /** False for a read that finds one thing, or fills a picker: it lists nothing whole. */
+    readonly reportsUnread = true,
   ) {}
 
   /** A poll's budget. */
@@ -46,9 +49,14 @@ export class PollBudget {
     return new PollBudget(true, NEON_LIST_CONCURRENCY);
   }
 
-  /** For one user's read of one thing, which has to find it. */
+  /** For a list read whole, with no poll to fit inside. */
   static unbounded(): PollBudget {
     return new PollBudget(false, NEON_SINGLE_READ_CONCURRENCY);
+  }
+
+  /** For one user's read of one thing, which has to find it, or of a picker's options. */
+  static forLookup(): PollBudget {
+    return new PollBudget(false, NEON_SINGLE_READ_CONCURRENCY, false);
   }
 
   get maxEnumeratedProjects(): number {

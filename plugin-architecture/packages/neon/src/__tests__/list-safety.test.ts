@@ -138,6 +138,14 @@ describe("listing projects", () => {
     expect(unread).toEqual([{ idPrefixes: [""] }]);
   });
 
+  it("shows the refusal where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    api.listProjects.mockRejectedValue(httpError(403));
+    await expect(makeClient().listResources("neon-project", ACCOUNT)).rejects.toMatchObject({
+      response: { status: 403 },
+    });
+  });
+
   it.each([401, 429, 500])("fails the type on a %i", async (status) => {
     api.listProjects.mockRejectedValue(httpError(status));
     await expect(makeClient().listResources("neon-project", ACCOUNT)).rejects.toMatchObject({
@@ -189,6 +197,22 @@ describe("children of projects", () => {
     const rows = await makeClient().listResources("neon-branch", ACCOUNT);
     expect(rows.map((r) => r.id)).toEqual(["acct1:neon-branch:p1/br-1"]);
     expect(unread).toEqual([{ parentResourceIds: ["acct1:neon-project:p2"] }]);
+  });
+
+  it("shows a project the key may not read where the host keeps no track", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    api.listProjects.mockResolvedValue(projects("p1", "p2"));
+    api.listProjectBranches.mockImplementation(async ({ projectId }: { projectId: string }) => {
+      if (projectId === "p2") throw httpError(403);
+      return wrap({ branches: [branch("br-1")] });
+    });
+    await expect(makeClient().listResources("neon-branch", ACCOUNT)).rejects.toMatchObject({
+      response: { status: 403 },
+    });
+    api.listProjectBranchDatabases.mockResolvedValue(wrap({ databases: [] }));
+    await expect(makeClient().listResources("neon-database", ACCOUNT)).rejects.toMatchObject({
+      response: { status: 403 },
+    });
   });
 
   it("keeps every row of the type, without an error, when every project refuses", async () => {
@@ -558,6 +582,14 @@ describe("the budget of one poll", () => {
     expect(read.length).toBeLessThanOrEqual(1000);
     expect(named().size).toBe(1500 - read.length);
     for (const id of read) expect(named().has(id)).toBe(false);
+  });
+
+  it("reads every project where the host keeps no track of the rest", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    account(1500);
+    await expect(makeClient().listResources("neon-endpoint", ACCOUNT)).resolves.toEqual([]);
+    const read = new Set(api.listProjectEndpoints.mock.calls.map(([id]) => String(id)));
+    expect(read.size).toBe(1500);
   });
 
   it("keeps a whole poll inside 1,000 requests, and every type gets some of them", async () => {
