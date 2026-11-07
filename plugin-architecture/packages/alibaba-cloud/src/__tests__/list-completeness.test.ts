@@ -223,6 +223,28 @@ describe("a page that is not a list", () => {
     await expect(wrong.client.listResources("fc-function", "acct")).rejects.toThrow(NOT_A_LIST);
   });
 
+  it("reads a missing list as empty only on an answer that is otherwise an empty last page", async () => {
+    const zero = listWith((req) =>
+      req.action === "ListLoadBalancers" ? { body: { RequestId: "r", TotalCount: 0 } } : undefined,
+    );
+    expect(await zero.client.listResources("alb", "acct")).toEqual([]);
+
+    const counted = listWith((req) =>
+      req.action === "ListLoadBalancers" ? { body: { RequestId: "r", TotalCount: 3 } } : undefined,
+    );
+    await expect(counted.client.listResources("alb", "acct")).rejects.toThrow(NOT_A_LIST);
+
+    const albMore = listWith((req) =>
+      req.action === "ListLoadBalancers" ? { body: { RequestId: "r", NextToken: "t" } } : undefined,
+    );
+    await expect(albMore.client.listResources("alb", "acct")).rejects.toThrow(NOT_A_LIST);
+
+    const fcMore = listWith((req) =>
+      req.action === "ListFunctions" ? { body: { nextToken: "t" } } : undefined,
+    );
+    await expect(fcMore.client.listResources("fc-function", "acct")).rejects.toThrow(NOT_A_LIST);
+  });
+
   it("rejects a RAM answer with no user list", async () => {
     const { client } = listWith((req) =>
       req.action === "ListUsers" ? { body: { IsTruncated: false } } : undefined,

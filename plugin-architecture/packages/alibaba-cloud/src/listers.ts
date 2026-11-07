@@ -690,16 +690,16 @@ export async function listAlbs(ctx: ListContext): Promise<ResourceInstance[]> {
   }
   const all = await perRegion(ctx.inventory, "alb", ctx.regionHint, async (region) => {
     // Scanned in every region, so a wrong guess at an empty answer would fail every poll.
+    // Alibaba's Terraform provider reads a missing list as none when TotalCount is zero.
     const items = await nextTokens(
       { path: "ListLoadBalancers", key: "LoadBalancers", pageSize: 100, missingListIsEmpty: true },
       async (token) => {
-        const res = await ctx.api.rpc<{ LoadBalancers?: Alb[]; NextToken?: string }>(
-          "alb",
-          region,
-          "ListLoadBalancers",
-          { MaxResults: 100, NextToken: token },
-        );
-        return { items: res.LoadBalancers, next: res.NextToken };
+        const res = await ctx.api.rpc<{
+          LoadBalancers?: Alb[];
+          NextToken?: string;
+          TotalCount?: number;
+        }>("alb", region, "ListLoadBalancers", { MaxResults: 100, NextToken: token });
+        return { items: res.LoadBalancers, next: res.NextToken, total: res.TotalCount };
       },
     );
     return items.map((l) => ({ l, region }));
@@ -1218,6 +1218,7 @@ export function mapFunction(accountId: string, region: string, fn: FcFunction): 
 export async function listFunctions(ctx: ListContext): Promise<ResourceInstance[]> {
   const all = await perRegion(ctx.inventory, "fc", ctx.regionHint, async (region) => {
     // Scanned in every region, so a wrong guess at an empty answer would fail every poll.
+    // Alibaba's Terraform provider reads an answer with no list as none.
     const items = await nextTokens(
       { path: "ListFunctions", key: "functions", pageSize: 100, missingListIsEmpty: true },
       async (token) => {

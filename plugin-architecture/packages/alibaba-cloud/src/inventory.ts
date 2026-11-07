@@ -178,22 +178,26 @@ export async function pageNumbers<T>(
  * Page through a NextToken listing. These answers carry no count to check an empty page
  * against (ECS documents its TotalCount as invalid when paging by token), so a list key
  * has to be there. `missingListIsEmpty` is for a product whose document does not show
- * what an empty answer holds.
+ * what an empty answer holds, and even there only an answer that is otherwise an empty
+ * last page (no next token, and a count of zero when it sends one) reads as no rows.
  */
 export async function nextTokens<T>(
   list: PagedList & { missingListIsEmpty?: boolean },
-  fetchPage: (
-    token: string | undefined,
-  ) => Promise<{ items: readonly T[] | null | undefined; next?: string | undefined }>,
+  fetchPage: (token: string | undefined) => Promise<{
+    items: readonly T[] | null | undefined;
+    next?: string | undefined;
+    total?: number | undefined;
+  }>,
 ): Promise<T[]> {
   const { path, key, pageSize, missingListIsEmpty } = list;
   const maxPages = maxPagesFor(pageSize);
   const out: T[] = [];
   let token: string | undefined;
   for (let i = 0; i < maxPages; i++) {
-    const { items, next } = await fetchPage(token);
+    const { items, next, total } = await fetchPage(token);
+    const emptyLastPage = !next && Number(total ?? 0) === 0;
     const rows =
-      items === undefined && missingListIsEmpty
+      items === undefined && missingListIsEmpty && emptyLastPage
         ? []
         : requireListPage(items, { vendor: VENDOR, path, key });
     out.push(...rows);
