@@ -14,8 +14,10 @@ import { crnService } from "./regions.js";
  * Usage Reports API v4 (`billing.cloud.ibm.com`). Costs come from
  * `GET /v4/accounts/{account}/resource_instances/usage/{yyyy-mm}`: one record
  * per resource instance and plan per month, each with per-metric `cost`
- * (after discounts) and `rated_cost` (before). IBM only reports usage by
- * month, so rows are dated to the 1st and the declaration is `periodNative`.
+ * (after discounts) and `rated_cost` (before). What `billable` or
+ * `non_chargeable` says is not charged counts as zero, with its usage kept. IBM
+ * only reports usage by month, so rows are dated to the 1st and the declaration
+ * is `periodNative`.
  * Credits are the account summary's `offers` (promotional credit).
  */
 
@@ -69,8 +71,11 @@ export function usageToRows(month: string, records: InstanceUsage[]): CostRow[] 
   for (const r of records) {
     const crn = r.resource_instance_id ?? "";
     for (const m of r.usage ?? []) {
-      const amount = Number(m.cost ?? 0);
-      const gross = Number(m.rated_cost ?? amount);
+      // Both flags mean the cost is shown but never billed. A list price of zero
+      // keeps a re-rated invoice from charging for it too.
+      const charged = r.billable !== false && m.non_chargeable !== true;
+      const amount = charged ? Number(m.cost ?? 0) : 0;
+      const gross = charged ? Number(m.rated_cost ?? amount) : 0;
       if (!Number.isFinite(amount) || (amount === 0 && !m.quantity)) continue;
       const tags: Record<string, string> = {};
       if (r.plan_name) tags["plan"] = r.plan_name;

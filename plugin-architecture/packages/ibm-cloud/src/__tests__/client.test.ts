@@ -326,6 +326,29 @@ describe("billing", () => {
     ).toBe("cl123");
   });
 
+  it("counts a metric or instance IBM does not charge for as no money, keeping its usage", () => {
+    const rows = usageToRows("2026-09", [
+      {
+        resource_instance_id: "crn:v1:bluemix:public:kms:us-south:a/acct:paid::",
+        billable: true,
+        usage: [
+          { metric: "charged", quantity: 2, cost: 10, rated_cost: 12 },
+          { metric: "shown-only", quantity: 3, cost: 7, rated_cost: 9, non_chargeable: true },
+        ],
+      },
+      {
+        resource_instance_id: "crn:v1:bluemix:public:kms:us-south:a/acct:free::",
+        billable: false,
+        usage: [{ metric: "free", quantity: 5, cost: 100, rated_cost: 110 }],
+      },
+    ]);
+    expect(rows.map((r) => [r.tags?.["metric"], r.amount, r.listAmount, r.usageAmount])).toEqual([
+      ["charged", 10, 12, 2],
+      ["shown-only", 0, 0, 3],
+      ["free", 0, 0, 5],
+    ]);
+  });
+
   it("turns a refused usage read into a setup error", async () => {
     const { client } = makeClient(() => ({
       status: 403,
