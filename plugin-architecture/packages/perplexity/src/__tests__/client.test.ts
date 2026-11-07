@@ -349,6 +349,35 @@ describe("Perplexity", () => {
     });
   });
 
+  it("deletes a skill by its latest revision, which the active one may not be", async () => {
+    const { http, calls } = host((_url, method) =>
+      method === "GET"
+        ? { body: { skill_id: "sk1", revision: "active", latest_revision: "latest" } }
+        : { status: 204 },
+    );
+    await hostClient(new PerplexityClient({ apiKey: "k" }, { http })).deleteResource(
+      "perplexity-skill",
+      `${ACCOUNT}:perplexity-skill:sk1`,
+      ACCOUNT,
+    );
+    expect(calls[1]?.url).toBe("https://api.perplexity.ai/v1/skills/sk1?expected_revision=latest");
+  });
+
+  it.each([
+    ["a blank id", `${ACCOUNT}:perplexity-skill:`, { skill_id: "sk1", revision: "rev" }],
+    ["no revision to guard with", `${ACCOUNT}:perplexity-skill:sk1`, { skill_id: "sk1" }],
+  ])("refuses to delete a skill with %s", async (_name, id, skill) => {
+    const { http, calls } = host(() => ({ body: skill }));
+    await expect(
+      hostClient(new PerplexityClient({ apiKey: "k" }, { http })).deleteResource(
+        "perplexity-skill",
+        id,
+        ACCOUNT,
+      ),
+    ).rejects.toThrow("Refusing to delete");
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
   describe("list reads a sync prunes by", () => {
     const list = (http: HttpHostServices, typeId: string) =>
       hostClient(new PerplexityClient({ apiKey: "k" }, { http })).listResources(typeId, ACCOUNT);

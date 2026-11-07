@@ -530,16 +530,21 @@ export class PerplexityClient implements PluginClient {
     });
   }
 
-  /** `DELETE /v1/skills/{id}?expected_revision=` guarded by the current revision. */
+  /** `DELETE /v1/skills/{id}?expected_revision=` guarded by the latest revision. */
   deleteResource(typeId: string, resourceId: string, accountId: string): PluginEffect<void> {
     return attempt(async () => {
       if (typeId !== "perplexity-skill")
         throw new Error(`Perplexity plugin: ${typeId} cannot be deleted`);
       const id = externalIdOf(resourceId, accountId, typeId);
+      if (!id) throw new Error("Perplexity plugin: Refusing to delete a skill with no id");
       const current = await statusErrors(this.api.get(`/v1/skills/${pathEncode(id)}`));
+      // `revision` is the active one here; the delete is checked against the latest.
+      const expected = current.latest_revision || current.revision;
+      if (!expected)
+        throw new Error(`Perplexity plugin: Refusing to delete skill ${id} with no revision`);
       await statusErrors(
         this.api.delete(`/v1/skills/${pathEncode(id)}`, {
-          query: { expected_revision: s(current.revision) },
+          query: { expected_revision: expected },
         }),
       );
     });
