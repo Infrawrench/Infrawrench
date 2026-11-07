@@ -31,6 +31,14 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
   }) as typeof fetch);
 }
 
+/** Answers forever, but fails a loop with no cap rather than hang the run. */
+function endlessPages(body: unknown) {
+  return () => {
+    if (calls.length > 200) throw new Error("no page cap");
+    return jsonResponse(body);
+  };
+}
+
 function client() {
   return hostClient(
     new CloudinaryClient({ cloudName: "demo", apiKey: "key", apiSecret: "secret" }),
@@ -283,7 +291,7 @@ describe("listResources", () => {
     });
 
     it("rejects an asset list that never ends, after exactly its page cap", async () => {
-      installFetch(() => jsonResponse({ resources: [hero], next_cursor: "again" }));
+      installFetch(endlessPages({ resources: [hero], next_cursor: "again" }));
       await expect(client().listResources("media-asset", ACCOUNT)).rejects.toThrow(
         "has more than Infrawrench reads",
       );
@@ -326,10 +334,9 @@ describe("listResources", () => {
     });
 
     it("rejects subfolders that never end, after exactly its page cap", async () => {
+      const endless = endlessPages({ folders: [named("a/one")], next_cursor: "again" });
       installFetch((url) =>
-        url.endsWith("/folders")
-          ? jsonResponse({ folders: [named("a")] })
-          : jsonResponse({ folders: [named("a/one")], next_cursor: "again" }),
+        url.endsWith("/folders") ? jsonResponse({ folders: [named("a")] }) : endless(),
       );
       await expect(client().listResources("folder", ACCOUNT)).rejects.toThrow(
         "has more than Infrawrench reads",
@@ -348,7 +355,11 @@ describe("listResources", () => {
 
     it("rejects a list cut off at the provider's limit of 2000", async () => {
       const rows = Array.from({ length: 2000 }, (_, i) => named(`f${i}`));
-      installFetch(() => jsonResponse({ folders: rows, next_cursor: null, total_count: 2001 }));
+      installFetch((url) =>
+        url.endsWith("/folders")
+          ? jsonResponse({ folders: rows, next_cursor: null, total_count: 2001 })
+          : jsonResponse({ folders: [] }),
+      );
       await expect(client().listResources("folder", ACCOUNT)).rejects.toThrow(
         "has more than Infrawrench reads",
       );
@@ -374,7 +385,7 @@ describe("listResources", () => {
     ["upload-mapping", "mappings", { folder: "f", template: "https://x.example/" }],
   ])("%s pages", (type, key, row) => {
     it("rejects a list that never ends, after exactly its page cap", async () => {
-      installFetch(() => jsonResponse({ [key]: [row], next_cursor: "again" }));
+      installFetch(endlessPages({ [key]: [row], next_cursor: "again" }));
       await expect(client().listResources(type, ACCOUNT)).rejects.toThrow(
         "has more than Infrawrench reads",
       );
@@ -556,8 +567,8 @@ describe("a transformation's derived asset count", () => {
   });
 
   it("shows as a lower bound when there are more than one page holds", async () => {
-    installFetch(() =>
-      jsonResponse({
+    installFetch(
+      endlessPages({
         name: "t_thumb",
         named: true,
         used: true,
