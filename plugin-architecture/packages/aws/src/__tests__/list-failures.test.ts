@@ -310,6 +310,42 @@ describe("a regional fan-out", () => {
   });
 });
 
+describe("a global or home-region type refused whole", () => {
+  const refusedEverywhere = () =>
+    client((url) => {
+      if (url.hostname.startsWith("ec2.")) return regionsXml(["us-east-1"]);
+      return accessDenied();
+    });
+
+  it.each([
+    "iam-user",
+    "s3-bucket",
+    "route53-hosted-zone",
+    "cloudfront-distribution",
+    "bedrock-model",
+  ])("keeps the stored %s rows without an error", async (typeId) => {
+    const { c } = refusedEverywhere();
+    const { value, unread } = await inListScope(() => c.listResources(typeId, "acct"));
+    expect(value).toEqual([]);
+    expect(unread).toEqual(WHOLE_TYPE_UNREAD);
+  });
+
+  it("fails with the refusal when nobody keeps the rows", async () => {
+    const { c } = refusedEverywhere();
+    await expect(c.listResources("iam-user", "acct")).rejects.toThrow(/not authorized/);
+  });
+
+  it("still fails on a throttle, a 5xx or a bad key", async () => {
+    for (const answer of [throttled(), serverError(), expiredRest()]) {
+      const { c } = client(() => answer);
+      const { unread } = await inListScope(async () => {
+        await expect(c.listResources("iam-user", "acct")).rejects.toThrow();
+      });
+      expect(unread).toEqual([]);
+    }
+  });
+});
+
 describe("DescribeRegions", () => {
   it("falls back to the home region when permissions deny it, and stays there", async () => {
     const { c, request } = client((url) => {

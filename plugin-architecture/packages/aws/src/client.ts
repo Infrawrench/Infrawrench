@@ -471,7 +471,15 @@ export class AWSClient implements PluginClient {
       // Global resources have no concept of region: list them once. Home-region
       // types are regional but only meaningful where the playground runs.
       if (AWSClient.GLOBAL_TYPES.has(typeId) || AWSClient.HOME_REGION_TYPES.has(typeId)) {
-        return lister(this.ctxFor(this.creds.region), accountId);
+        try {
+          return await lister(this.ctxFor(this.creds.region), accountId);
+        } catch (err) {
+          // One region is the whole type here, so its refusal is the whole type
+          // refused: keep the stored rows, as a fan-out does when every region refuses.
+          if (!isRegionUnavailable(err)) throw err;
+          reportTypeUnread(err);
+          return [];
+        }
       }
 
       // When the host knows the caller only cares about one region (e.g. the
