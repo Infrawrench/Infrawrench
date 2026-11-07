@@ -15,7 +15,7 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, reportUnreadListPart } from "@infrawrench/plugin-base";
 import type { SlContext } from "./api.js";
 import {
   SpaceliftApiError,
@@ -62,6 +62,35 @@ import {
 } from "./render.js";
 
 const RUN_LIMIT = 50;
+/** Newest runs kept per stack when the account has no run search. */
+const RUNS_PER_STACK = 5;
+/**
+ * Stacks whose runs one poll reads when the account has no run search, one request
+ * each. Spacelift documents no rate limit, so this stays at what the plugin always read.
+ */
+const RUN_STACK_BUDGET = 15;
+
+/**
+ * The stacks to read runs for this poll, and those left for later. Polls share nothing,
+ * so past the budget the start moves with the clock by the golden ratio, which spreads
+ * evenly over the list however long it is.
+ */
+function stackWindow<T>(sorted: T[]): { now: T[]; later: T[] } {
+  if (sorted.length <= RUN_STACK_BUDGET) return { now: sorted, later: [] };
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  return { now: rotated.slice(0, RUN_STACK_BUDGET), later: rotated.slice(RUN_STACK_BUDGET) };
+}
+
+/**
+ * A query the account's schema or the key's role refuses (an unknown field or
+ * argument, a forbidden one), as opposed to a throttle, an outage or a bad key.
+ */
+function isRefusedQuery(err: unknown): boolean {
+  const status = statusOf(err);
+  return status === 400 || status === 403 || status === 404;
+}
 const MAX_LOG_PAGES = 30;
 const bool = (v: string | undefined) => v === "true" || v === "1";
 
@@ -418,13 +447,23 @@ export class SpaceliftClient implements PluginClient {
     };
     const query = `query($input: SearchInput!) { searchRuns(input: $input) { edges { node { run { ${RUN_FIELDS} } stack { id name } isModule } } } }`;
     for (const orderBy of [true, false]) {
-      const res = await this.soft<{ searchRuns?: { edges?: Edge[] } }>("searchRuns", query, {
-        input: {
-          first: RUN_LIMIT,
-          ...(orderBy ? { orderBy: { field: "createdAt", direction: "DESC" } } : {}),
-        },
-      });
+      let res: { searchRuns?: { edges?: Edge[] } } | undefined;
+      try {
+        res = await this.q<{ searchRuns?: { edges?: Edge[] } }>("searchRuns", query, {
+          input: {
+            first: RUN_LIMIT,
+            ...(orderBy ? { orderBy: { field: "createdAt", direction: "DESC" } } : {}),
+          },
+        });
+      } catch (err) {
+        // Only a query this account's schema refuses moves on to the next way of
+        // reading runs; a throttle or an outage fails the type and keeps its rows.
+        if (!isRefusedQuery(err)) throw err;
+        continue;
+      }
       if (res?.searchRuns?.edges) {
+        // Rolling window: the newest 50. Older rows falling off is what this type means.
+        // searchRuns is account-wide history ordered newest first, with or without orderBy.
         return res.searchRuns.edges
           .map((e) => e.node)
           .filter((n): n is NonNullable<Edge["node"]> => Boolean(n?.run && n.stack && !n.isModule))
@@ -439,28 +478,46 @@ export class SpaceliftClient implements PluginClient {
           );
       }
     }
-    // No run search on this account: read the latest runs of the most recently active stacks.
-    const stacks = [...(await this.stacks())]
-      .sort((a, b) => (b.stateSetAt ?? 0) - (a.stateSetAt ?? 0))
-      .slice(0, 15);
+    // No run search on this account: read the latest runs stack by stack, as many stacks
+    // as one poll's budget allows, and name the others so their runs stay until a later
+    // poll reaches them.
+    const sorted = [...(await this.stacks())].sort((a, b) => a.id.localeCompare(b.id));
+    const { now, later } = stackWindow(sorted);
+    const unread = later.map((s) => `${accountId}:stack:${s.id}`);
+    let refusal: unknown;
     const out: ResourceInstance[] = [];
-    for (const s of stacks) {
-      const res = await this.soft<{ stack?: { runs?: SlRun[] } }>(
-        "stack runs",
-        `query($id: ID!) { stack(id: $id) { runs(before: null) { ${RUN_FIELDS} } } }`,
-        {
-          id: s.id,
-        },
-      );
+    for (const s of now) {
+      let res: { stack?: { runs?: SlRun[] } | null };
+      try {
+        res = await this.q<{ stack?: { runs?: SlRun[] } | null }>(
+          "stack runs",
+          `query($id: ID!) { stack(id: $id) { runs(before: null) { ${RUN_FIELDS} } } }`,
+          { id: s.id },
+        );
+      } catch (err) {
+        const status = statusOf(err);
+        // Listed a moment ago and gone now: so are its runs.
+        if (status === 404) continue;
+        if (status !== 403) throw err;
+        unread.push(`${accountId}:stack:${s.id}`);
+        refusal ??= err;
+        continue;
+      }
+      // Rolling window: the newest 5 per stack. Older rows falling off is what this type means.
       out.push(
         ...(res?.stack?.runs ?? [])
-          .slice(0, 5)
+          .slice(0, RUNS_PER_STACK)
           .map((r) => mapRun(accountId, s.id, s.name, r, this.runUrl(s.id, r.id))),
       );
     }
-    return out
-      .sort((a, b) => String(b.fields["createdAt"]).localeCompare(String(a.fields["createdAt"])))
-      .slice(0, RUN_LIMIT);
+    if (unread.length > 0) {
+      const reported = reportUnreadListPart({ parentResourceIds: unread });
+      // Where a host keeps no track (the desktop), a key refused every stack should show.
+      if (!reported && refusal !== undefined && out.length === 0) throw refusal;
+    }
+    return out.sort((a, b) =>
+      String(b.fields["createdAt"]).localeCompare(String(a.fields["createdAt"])),
+    );
   }
 
   private async accountResource(accountId: string): Promise<ResourceInstance> {

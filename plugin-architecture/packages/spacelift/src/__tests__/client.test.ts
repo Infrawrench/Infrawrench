@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { gql, normaliseEndpoint, statusForErrors, statusOf } from "../api.js";
 import { SpaceliftClient, stackUpdateInput, vendorInput } from "../client.js";
 import { runSeries } from "../metrics.js";
@@ -121,6 +121,99 @@ describe("listing", () => {
     const [s] = await c.listResources("stack", ACC);
     expect(s).toMatchObject({ externalId: "net", parentResourceId: `${ACC}:space:root` });
     expect(s!.resolvedOutputs["url"]).toBe("https://acme.app.spacelift.io/stack/net");
+  });
+
+  describe("runs without run search", () => {
+    const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      vi.restoreAllMocks();
+    });
+
+    const stacks = Array.from({ length: 20 }, (_, i) => ({
+      id: `s${String(i).padStart(2, "0")}`,
+      name: `S${i}`,
+    }));
+    const noSearch = { errors: [{ message: 'Cannot query field "searchRuns" on type "Query".' }] };
+    const runsOf = (id: string) => ({
+      stack: {
+        runs: Array.from({ length: 8 }, (_, i) => ({
+          id: `${id}-r${i}`,
+          state: "FINISHED",
+          createdAt: 1_790_000_000 - i,
+        })),
+      },
+    });
+    function fanOut(onStack: (id: string) => unknown = runsOf) {
+      return client((q, vars) => {
+        if (q.includes("searchRuns")) return noSearch;
+        if (q.includes("runs(before")) return onStack(String(vars["id"]));
+        return { stacks };
+      });
+    }
+    const readStacks = (calls: Call[]) =>
+      calls
+        .map((c) => c.body as { query: string; variables?: { id?: string } })
+        .filter((b) => b.query.includes("runs(before"))
+        .map((b) => String(b.variables?.id));
+
+    it("reads 15 stacks a poll and names the rest as unread, so their runs stay", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const { c, calls } = fanOut();
+      const runs = await c.listResources("run", ACC);
+      const read = readStacks(calls);
+      expect(read).toHaveLength(15);
+      // Rolling window: the newest five runs of each stack read.
+      expect(runs).toHaveLength(75);
+      const left = stacks.map((s) => s.id).filter((id) => !read.includes(id));
+      expect(unread).toHaveBeenCalledWith({
+        parentResourceIds: left.map((id) => `${ACC}:stack:${id}`),
+      });
+    });
+
+    it("rotates which stacks it reads so every stack is read over time", async () => {
+      Reflect.set(globalThis, UNREAD_HOOK, vi.fn());
+      const seen = new Set<string>();
+      const start = Date.UTC(2026, 10, 7);
+      for (let minute = 0; minute < 12; minute++) {
+        vi.spyOn(Date, "now").mockReturnValue(start + minute * 60_000);
+        const { c, calls } = fanOut();
+        await c.listResources("run", ACC);
+        for (const id of readStacks(calls)) seen.add(id);
+        vi.restoreAllMocks();
+      }
+      expect(seen.size).toBe(20);
+    });
+
+    it("names a stack whose runs the key may not read, and keeps the rest", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      // Minute zero starts the window at the first stack.
+      vi.spyOn(Date, "now").mockReturnValue(30_000);
+      const { c, calls } = fanOut((id) =>
+        id === "s00" ? { errors: [{ message: "Forbidden: permission denied" }] } : runsOf(id),
+      );
+      const runs = await c.listResources("run", ACC);
+      expect(readStacks(calls)).toEqual(stacks.slice(0, 15).map((s) => s.id));
+      expect(runs).toHaveLength(70);
+      expect(unread).toHaveBeenCalledWith({
+        parentResourceIds: [...stacks.slice(15), stacks[0]!].map((s) => `${ACC}:stack:${s.id}`),
+      });
+    });
+
+    it("fails the type when a stack's runs are throttled, so the stored runs stay", async () => {
+      Reflect.set(globalThis, UNREAD_HOOK, vi.fn());
+      const { c } = fanOut(() => ({ errors: [{ message: "rate limit exceeded" }] }));
+      await expect(c.listResources("run", ACC)).rejects.toThrow("rate limit");
+    });
+  });
+
+  it("fails the type when run search is throttled instead of reading none", async () => {
+    const { c } = client((q) =>
+      q.includes("searchRuns") ? { errors: [{ message: "Too many requests" }] } : { stacks: [] },
+    );
+    await expect(c.listResources("run", ACC)).rejects.toThrow("Too many requests");
   });
 
   it("lists recent runs from run search, skipping modules", async () => {
