@@ -1,7 +1,9 @@
 import {
   CostSetupError,
   CreditAccessError,
+  ListTruncatedError,
   QuotaAccessError,
+  requireListPage,
   type CostChargeType,
   type CostFetchRange,
   type CostRow,
@@ -9,6 +11,7 @@ import {
   type QuotaUsage,
 } from "@infrawrench/plugin-base";
 import { isPermissionGap, type AliApi } from "./api.js";
+import { VENDOR } from "./inventory.js";
 import { regionIdForLabel } from "./regions.js";
 
 /**
@@ -87,28 +90,38 @@ function setupError(err: unknown): never {
   throw err;
 }
 
+/** Pages of 300. A day past this throws rather than report part of its spend. */
+const MAX_DAY_BILL_PAGES = 1000;
+
 export async function fetchDayBill(api: AliApi, day: string): Promise<BillItem[]> {
+  const where = { vendor: VENDOR, path: "DescribeInstanceBill", key: "Data.Items" };
   const items: BillItem[] = [];
   let token: string | undefined;
-  for (let page = 0; page < 200; page++) {
-    const res = await api.rpc<{ Data?: { Items?: BillItem[]; NextToken?: string } }>(
-      "bss",
-      "",
-      "DescribeInstanceBill",
-      {
-        BillingCycle: day.slice(0, 7),
-        BillingDate: day,
-        Granularity: "DAILY",
-        IsHideZeroCharge: true,
-        MaxResults: 300,
-        NextToken: token,
-      },
-    );
-    items.push(...(res.Data?.Items ?? []));
-    token = res.Data?.NextToken;
-    if (!token) break;
+  for (let page = 0; page < MAX_DAY_BILL_PAGES; page++) {
+    const res = await api.rpc<{
+      Data?: { Items?: BillItem[]; NextToken?: string; TotalCount?: number };
+    }>("bss", "", "DescribeInstanceBill", {
+      BillingCycle: day.slice(0, 7),
+      BillingDate: day,
+      Granularity: "DAILY",
+      IsHideZeroCharge: true,
+      MaxResults: 300,
+      NextToken: token,
+    });
+    const data = res.Data;
+    // A count of zero says the day is empty on its own, as it may be with zero charges hidden.
+    if (!(data?.Items === undefined && data?.TotalCount === 0)) {
+      items.push(...requireListPage(data?.Items, where));
+    }
+    token = data?.NextToken;
+    if (!token) return items;
   }
-  return items;
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path: where.path,
+    items: items.length,
+    maxPages: MAX_DAY_BILL_PAGES,
+  });
 }
 
 export function billToRows(day: string, items: BillItem[]): CostRow[] {

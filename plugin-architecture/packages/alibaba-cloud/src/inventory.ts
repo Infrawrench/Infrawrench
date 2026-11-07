@@ -1,3 +1,4 @@
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import {
   AliApiError,
   isPermissionGap,
@@ -113,34 +114,79 @@ export async function perRegion<T>(
   return results.flat();
 }
 
-/** Page through a PageNumber/PageSize listing until TotalCount is reached. */
+export const VENDOR = "Alibaba Cloud";
+
+/**
+ * A resource sync reads every type inside one poll, so a list stops at whichever comes
+ * first. Past either it throws: part of a list reads as the rest having been deleted.
+ */
+const MAX_LIST_ROWS = 100_000;
+const MAX_LIST_REQUESTS = 1000;
+
+function maxPagesFor(pageSize: number): number {
+  return Math.min(MAX_LIST_REQUESTS, Math.ceil(MAX_LIST_ROWS / pageSize));
+}
+
+/** One paged list: the action that reads it, where its rows are, and the page size it asks for. */
+export interface PagedList {
+  path: string;
+  key: string;
+  pageSize: number;
+}
+
+/**
+ * Page through a PageNumber/PageSize listing until TotalCount is reached. A short page
+ * does not end it while TotalCount says there is more, since a product may send fewer
+ * than it was asked for. An empty page does, as it does on every other dialect.
+ */
 export async function pageNumbers<T>(
-  pageSize: number,
-  fetchPage: (page: number) => Promise<{ items: T[]; total?: number | undefined }>,
-  maxPages = 100,
+  list: PagedList,
+  fetchPage: (
+    page: number,
+  ) => Promise<{ items: readonly T[] | null | undefined; total?: number | undefined }>,
 ): Promise<T[]> {
+  const { path, key, pageSize } = list;
+  const maxPages = maxPagesFor(pageSize);
   const out: T[] = [];
   for (let page = 1; page <= maxPages; page++) {
     const { items, total } = await fetchPage(page);
-    out.push(...items);
-    if (items.length < pageSize) break;
-    if (total !== undefined && out.length >= total) break;
+    // A count of zero says it is empty on its own. Anything else needs its rows.
+    const rows =
+      items === undefined && total === 0
+        ? []
+        : requireListPage(items, { vendor: VENDOR, path, key });
+    out.push(...rows);
+    if (rows.length === 0) return out;
+    if (total === undefined ? rows.length < pageSize : out.length >= total) return out;
   }
-  return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
 }
 
-/** Page through a NextToken listing. */
+/**
+ * Page through a NextToken listing. These answers carry no count to check an empty page
+ * against (ECS documents its TotalCount as invalid when paging by token), so a list key
+ * has to be there. `missingListIsEmpty` is for a product whose document does not show
+ * what an empty answer holds.
+ */
 export async function nextTokens<T>(
-  fetchPage: (token: string | undefined) => Promise<{ items: T[]; next?: string | undefined }>,
-  maxPages = 100,
+  list: PagedList & { missingListIsEmpty?: boolean },
+  fetchPage: (
+    token: string | undefined,
+  ) => Promise<{ items: readonly T[] | null | undefined; next?: string | undefined }>,
 ): Promise<T[]> {
+  const { path, key, pageSize, missingListIsEmpty } = list;
+  const maxPages = maxPagesFor(pageSize);
   const out: T[] = [];
   let token: string | undefined;
   for (let i = 0; i < maxPages; i++) {
     const { items, next } = await fetchPage(token);
-    out.push(...items);
-    if (!next) break;
+    const rows =
+      items === undefined && missingListIsEmpty
+        ? []
+        : requireListPage(items, { vendor: VENDOR, path, key });
+    out.push(...rows);
+    if (!next) return out;
     token = next;
   }
-  return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
 }

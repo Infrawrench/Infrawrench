@@ -1,6 +1,11 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import {
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
+  type ResourceInstance,
+} from "@infrawrench/plugin-base";
 import { isPermissionGap, mapLimit, type AliApi } from "./api.js";
-import { nextTokens, pageNumbers, perRegion, type Inventory } from "./inventory.js";
+import { VENDOR, nextTokens, pageNumbers, perRegion, type Inventory } from "./inventory.js";
 import { OSS_REGIONS, ossEndpoint } from "./regions.js";
 
 /**
@@ -177,15 +182,18 @@ export async function describeInstances(
   region: string,
   extra: Record<string, unknown> = {},
 ): Promise<EcsInstance[]> {
-  return nextTokens(async (token) => {
-    const res = await api.rpc<{ Instances?: { Instance?: EcsInstance[] }; NextToken?: string }>(
-      "ecs",
-      region,
-      "DescribeInstances",
-      { RegionId: region, MaxResults: 100, NextToken: token, ...extra },
-    );
-    return { items: res.Instances?.Instance ?? [], next: res.NextToken };
-  });
+  return nextTokens(
+    { path: "DescribeInstances", key: "Instances.Instance", pageSize: 100 },
+    async (token) => {
+      const res = await api.rpc<{ Instances?: { Instance?: EcsInstance[] }; NextToken?: string }>(
+        "ecs",
+        region,
+        "DescribeInstances",
+        { RegionId: region, MaxResults: 100, NextToken: token, ...extra },
+      );
+      return { items: res.Instances?.Instance, next: res.NextToken };
+    },
+  );
 }
 
 export async function listInstances(ctx: ListContext): Promise<ResourceInstance[]> {
@@ -233,14 +241,14 @@ interface EcsDisk {
 
 export async function listDisks(ctx: ListContext): Promise<ResourceInstance[]> {
   const all = await perRegion(ctx.inventory, "ecs", ctx.regionHint, (region) =>
-    nextTokens(async (token) => {
+    nextTokens({ path: "DescribeDisks", key: "Disks.Disk", pageSize: 500 }, async (token) => {
       const res = await ctx.api.rpc<{ Disks?: { Disk?: EcsDisk[] }; NextToken?: string }>(
         "ecs",
         region,
         "DescribeDisks",
-        { RegionId: region, MaxResults: 100, NextToken: token },
+        { RegionId: region, MaxResults: 500, NextToken: token },
       );
-      return { items: res.Disks?.Disk ?? [], next: res.NextToken };
+      return { items: res.Disks?.Disk, next: res.NextToken };
     }),
   );
   return all.map((d) =>
@@ -287,17 +295,20 @@ interface EcsSnapshot {
 
 export async function listSnapshots(ctx: ListContext): Promise<ResourceInstance[]> {
   const all = await perRegion(ctx.inventory, "ecs", ctx.regionHint, async (region) => {
-    const items = await nextTokens(async (token) => {
-      const res = await ctx.api.rpc<{
-        Snapshots?: { Snapshot?: EcsSnapshot[] };
-        NextToken?: string;
-      }>("ecs", region, "DescribeSnapshots", {
-        RegionId: region,
-        MaxResults: 100,
-        NextToken: token,
-      });
-      return { items: res.Snapshots?.Snapshot ?? [], next: res.NextToken };
-    });
+    const items = await nextTokens(
+      { path: "DescribeSnapshots", key: "Snapshots.Snapshot", pageSize: 100 },
+      async (token) => {
+        const res = await ctx.api.rpc<{
+          Snapshots?: { Snapshot?: EcsSnapshot[] };
+          NextToken?: string;
+        }>("ecs", region, "DescribeSnapshots", {
+          RegionId: region,
+          MaxResults: 100,
+          NextToken: token,
+        });
+        return { items: res.Snapshots?.Snapshot, next: res.NextToken };
+      },
+    );
     return items.map((s) => ({ ...s, RegionId: s.RegionId ?? region }));
   });
   return all.map((s) =>
@@ -383,17 +394,20 @@ export function analyseRules(perms: SgPermission[]): {
 
 export async function listSecurityGroups(ctx: ListContext): Promise<ResourceInstance[]> {
   const all = await perRegion(ctx.inventory, "ecs", ctx.regionHint, async (region) => {
-    const groups = await nextTokens(async (token) => {
-      const res = await ctx.api.rpc<{
-        SecurityGroups?: { SecurityGroup?: SecurityGroup[] };
-        NextToken?: string;
-      }>("ecs", region, "DescribeSecurityGroups", {
-        RegionId: region,
-        MaxResults: 100,
-        NextToken: token,
-      });
-      return { items: res.SecurityGroups?.SecurityGroup ?? [], next: res.NextToken };
-    });
+    const groups = await nextTokens(
+      { path: "DescribeSecurityGroups", key: "SecurityGroups.SecurityGroup", pageSize: 100 },
+      async (token) => {
+        const res = await ctx.api.rpc<{
+          SecurityGroups?: { SecurityGroup?: SecurityGroup[] };
+          NextToken?: string;
+        }>("ecs", region, "DescribeSecurityGroups", {
+          RegionId: region,
+          MaxResults: 100,
+          NextToken: token,
+        });
+        return { items: res.SecurityGroups?.SecurityGroup, next: res.NextToken };
+      },
+    );
     return mapLimit(groups, 4, async (g) => {
       const rules = await ctx.api
         .rpc<{ Permissions?: { Permission?: SgPermission[] } }>(
@@ -453,15 +467,18 @@ export async function listVpcs(ctx: ListContext): Promise<ResourceInstance[]> {
     VSwitchIds?: { VSwitchId?: string[] };
   }
   const all = await perRegion(ctx.inventory, "vpc", ctx.regionHint, async (region) => {
-    const items = await pageNumbers(50, async (page) => {
-      const res = await ctx.api.rpc<{ Vpcs?: { Vpc?: Vpc[] }; TotalCount?: number }>(
-        "vpc",
-        region,
-        "DescribeVpcs",
-        { RegionId: region, PageNumber: page, PageSize: 50 },
-      );
-      return { items: res.Vpcs?.Vpc ?? [], total: res.TotalCount };
-    });
+    const items = await pageNumbers(
+      { path: "DescribeVpcs", key: "Vpcs.Vpc", pageSize: 50 },
+      async (page) => {
+        const res = await ctx.api.rpc<{ Vpcs?: { Vpc?: Vpc[] }; TotalCount?: number }>(
+          "vpc",
+          region,
+          "DescribeVpcs",
+          { RegionId: region, PageNumber: page, PageSize: 50 },
+        );
+        return { items: res.Vpcs?.Vpc, total: res.TotalCount };
+      },
+    );
     return items.map((v) => ({ ...v, RegionId: v.RegionId ?? region }));
   });
   return all.map((v) =>
@@ -499,15 +516,18 @@ export async function listVSwitches(ctx: ListContext): Promise<ResourceInstance[
     CreationTime?: string;
   }
   const all = await perRegion(ctx.inventory, "vpc", ctx.regionHint, async (region) => {
-    const items = await pageNumbers(50, async (page) => {
-      const res = await ctx.api.rpc<{ VSwitches?: { VSwitch?: VSwitch[] }; TotalCount?: number }>(
-        "vpc",
-        region,
-        "DescribeVSwitches",
-        { RegionId: region, PageNumber: page, PageSize: 50 },
-      );
-      return { items: res.VSwitches?.VSwitch ?? [], total: res.TotalCount };
-    });
+    const items = await pageNumbers(
+      { path: "DescribeVSwitches", key: "VSwitches.VSwitch", pageSize: 50 },
+      async (page) => {
+        const res = await ctx.api.rpc<{ VSwitches?: { VSwitch?: VSwitch[] }; TotalCount?: number }>(
+          "vpc",
+          region,
+          "DescribeVSwitches",
+          { RegionId: region, PageNumber: page, PageSize: 50 },
+        );
+        return { items: res.VSwitches?.VSwitch, total: res.TotalCount };
+      },
+    );
     return items.map((s) => ({ s, region }));
   });
   return all.map(({ s, region }) =>
@@ -547,17 +567,20 @@ export async function listEips(ctx: ListContext): Promise<ResourceInstance[]> {
     AllocationTime?: string;
   }
   const all = await perRegion(ctx.inventory, "vpc", ctx.regionHint, async (region) => {
-    const items = await pageNumbers(100, async (page) => {
-      const res = await ctx.api.rpc<{
-        EipAddresses?: { EipAddress?: Eip[] };
-        TotalCount?: number;
-      }>("vpc", region, "DescribeEipAddresses", {
-        RegionId: region,
-        PageNumber: page,
-        PageSize: 100,
-      });
-      return { items: res.EipAddresses?.EipAddress ?? [], total: res.TotalCount };
-    });
+    const items = await pageNumbers(
+      { path: "DescribeEipAddresses", key: "EipAddresses.EipAddress", pageSize: 100 },
+      async (page) => {
+        const res = await ctx.api.rpc<{
+          EipAddresses?: { EipAddress?: Eip[] };
+          TotalCount?: number;
+        }>("vpc", region, "DescribeEipAddresses", {
+          RegionId: region,
+          PageNumber: page,
+          PageSize: 100,
+        });
+        return { items: res.EipAddresses?.EipAddress, total: res.TotalCount };
+      },
+    );
     return items.map((e) => ({ e, region }));
   });
   return all.map(({ e, region }) =>
@@ -604,17 +627,20 @@ export async function listSlbs(ctx: ListContext): Promise<ResourceInstance[]> {
     CreateTime?: string;
   }
   const all = await perRegion(ctx.inventory, "slb", ctx.regionHint, async (region) => {
-    const items = await pageNumbers(100, async (page) => {
-      const res = await ctx.api.rpc<{
-        LoadBalancers?: { LoadBalancer?: Slb[] };
-        TotalCount?: number;
-      }>("slb", region, "DescribeLoadBalancers", {
-        RegionId: region,
-        PageNumber: page,
-        PageSize: 100,
-      });
-      return { items: res.LoadBalancers?.LoadBalancer ?? [], total: res.TotalCount };
-    });
+    const items = await pageNumbers(
+      { path: "DescribeLoadBalancers", key: "LoadBalancers.LoadBalancer", pageSize: 100 },
+      async (page) => {
+        const res = await ctx.api.rpc<{
+          LoadBalancers?: { LoadBalancer?: Slb[] };
+          TotalCount?: number;
+        }>("slb", region, "DescribeLoadBalancers", {
+          RegionId: region,
+          PageNumber: page,
+          PageSize: 100,
+        });
+        return { items: res.LoadBalancers?.LoadBalancer, total: res.TotalCount };
+      },
+    );
     return items.map((l) => ({ l, region }));
   });
   return all.map(({ l, region }) =>
@@ -658,15 +684,19 @@ export async function listAlbs(ctx: ListContext): Promise<ResourceInstance[]> {
     CreateTime?: string;
   }
   const all = await perRegion(ctx.inventory, "alb", ctx.regionHint, async (region) => {
-    const items = await nextTokens(async (token) => {
-      const res = await ctx.api.rpc<{ LoadBalancers?: Alb[]; NextToken?: string }>(
-        "alb",
-        region,
-        "ListLoadBalancers",
-        { MaxResults: 100, NextToken: token },
-      );
-      return { items: res.LoadBalancers ?? [], next: res.NextToken };
-    });
+    // Scanned in every region, so a wrong guess at an empty answer would fail every poll.
+    const items = await nextTokens(
+      { path: "ListLoadBalancers", key: "LoadBalancers", pageSize: 100, missingListIsEmpty: true },
+      async (token) => {
+        const res = await ctx.api.rpc<{ LoadBalancers?: Alb[]; NextToken?: string }>(
+          "alb",
+          region,
+          "ListLoadBalancers",
+          { MaxResults: 100, NextToken: token },
+        );
+        return { items: res.LoadBalancers, next: res.NextToken };
+      },
+    );
     return items.map((l) => ({ l, region }));
   });
   return all.map(({ l, region }) =>
@@ -767,17 +797,20 @@ export async function rdsAttribute(
 
 export async function listRds(ctx: ListContext): Promise<ResourceInstance[]> {
   const all = await perRegion(ctx.inventory, "rds", ctx.regionHint, async (region) => {
-    const items = await pageNumbers(100, async (page) => {
-      const res = await ctx.api.rpc<{
-        Items?: { DBInstance?: RdsAttribute[] };
-        TotalRecordCount?: number;
-      }>("rds", region, "DescribeDBInstances", {
-        RegionId: region,
-        PageNumber: page,
-        PageSize: 100,
-      });
-      return { items: res.Items?.DBInstance ?? [], total: res.TotalRecordCount };
-    });
+    const items = await pageNumbers(
+      { path: "DescribeDBInstances", key: "Items.DBInstance", pageSize: 100 },
+      async (page) => {
+        const res = await ctx.api.rpc<{
+          Items?: { DBInstance?: RdsAttribute[] };
+          TotalRecordCount?: number;
+        }>("rds", region, "DescribeDBInstances", {
+          RegionId: region,
+          PageNumber: page,
+          PageSize: 100,
+        });
+        return { items: res.Items?.DBInstance, total: res.TotalRecordCount };
+      },
+    );
     // Storage and port are only on the attribute call.
     return mapLimit(items, 4, async (d) => {
       const attr = await rdsAttribute(ctx.api, region, d.DBInstanceId).catch(() => undefined);
@@ -837,17 +870,20 @@ export function mapRedis(accountId: string, region: string, r: RedisInstance): R
 
 export async function listRedis(ctx: ListContext): Promise<ResourceInstance[]> {
   const all = await perRegion(ctx.inventory, "redis", ctx.regionHint, async (region) => {
-    const items = await pageNumbers(50, async (page) => {
-      const res = await ctx.api.rpc<{
-        Instances?: { KVStoreInstance?: RedisInstance[] };
-        TotalCount?: number;
-      }>("redis", region, "DescribeInstances", {
-        RegionId: region,
-        PageNumber: page,
-        PageSize: 50,
-      });
-      return { items: res.Instances?.KVStoreInstance ?? [], total: res.TotalCount };
-    });
+    const items = await pageNumbers(
+      { path: "DescribeInstances", key: "Instances.KVStoreInstance", pageSize: 50 },
+      async (page) => {
+        const res = await ctx.api.rpc<{
+          Instances?: { KVStoreInstance?: RedisInstance[] };
+          TotalCount?: number;
+        }>("redis", region, "DescribeInstances", {
+          RegionId: region,
+          PageNumber: page,
+          PageSize: 50,
+        });
+        return { items: res.Instances?.KVStoreInstance, total: res.TotalCount };
+      },
+    );
     return items.map((r) => ({ r, region }));
   });
   return all.map(({ r, region }) => mapRedis(ctx.accountId, region, r));
@@ -894,6 +930,9 @@ export function parseListBuckets(xml: string): {
   };
 }
 
+const MAX_BUCKET_PAGES = 50;
+const BUCKET_LIST = { vendor: VENDOR, path: "OSS ListBuckets", key: "ListAllMyBucketsResult" };
+
 /** ListBuckets is account-wide; any OSS region answers it. */
 export async function listBucketSummaries(
   api: AliApi,
@@ -902,18 +941,30 @@ export async function listBucketSummaries(
   const region = OSS_REGIONS.has(homeRegion) ? homeRegion : "ap-southeast-1";
   const out: OssBucketSummary[] = [];
   let marker = "";
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < MAX_BUCKET_PAGES; i++) {
     const res = await api.oss({
       method: "GET",
       region,
       query: { "max-keys": "1000", ...(marker ? { marker } : {}) },
     });
+    // The regex below would read any other answer as an account with no buckets.
+    if (!res.body.includes("<ListAllMyBucketsResult")) {
+      throw new ListPageError({ ...BUCKET_LIST, found: undefined, page: res.body });
+    }
     const page = parseListBuckets(res.body);
     out.push(...page.buckets);
-    if (!page.truncated || !page.nextMarker) break;
+    if (!page.truncated) return out;
+    if (!page.nextMarker) {
+      throw new ListPageError({ ...BUCKET_LIST, found: undefined, saysMoreWith: "no cursor" });
+    }
     marker = page.nextMarker;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path: BUCKET_LIST.path,
+    items: out.length,
+    maxPages: MAX_BUCKET_PAGES,
+  });
 }
 
 export async function bucketInfo(
@@ -1021,20 +1072,23 @@ export function mapCluster(accountId: string, region: string, c: AckCluster): Re
 }
 
 async function clustersIn(api: AliApi, region: string): Promise<AckCluster[]> {
-  return pageNumbers(100, async (page) => {
-    const res = await api.roa<{
-      clusters?: AckCluster[];
-      page_info?: { total_count?: number };
-    }>({
-      product: "cs",
-      region,
-      action: "DescribeClustersV1",
-      method: "GET",
-      path: "/api/v1/clusters",
-      query: { region_id: region, page_size: 100, page_number: page },
-    });
-    return { items: res.clusters ?? [], total: res.page_info?.total_count };
-  });
+  return pageNumbers(
+    { path: "DescribeClustersV1", key: "clusters", pageSize: 100 },
+    async (page) => {
+      const res = await api.roa<{
+        clusters?: AckCluster[];
+        page_info?: { total_count?: number };
+      }>({
+        product: "cs",
+        region,
+        action: "DescribeClustersV1",
+        method: "GET",
+        path: "/api/v1/clusters",
+        query: { region_id: region, page_size: 100, page_number: page },
+      });
+      return { items: res.clusters, total: res.page_info?.total_count };
+    },
+  );
 }
 
 export async function listClusters(ctx: ListContext): Promise<ResourceInstance[]> {
@@ -1148,17 +1202,21 @@ export function mapFunction(accountId: string, region: string, fn: FcFunction): 
 
 export async function listFunctions(ctx: ListContext): Promise<ResourceInstance[]> {
   const all = await perRegion(ctx.inventory, "fc", ctx.regionHint, async (region) => {
-    const items = await nextTokens(async (token) => {
-      const res = await ctx.api.roa<{ functions?: FcFunction[]; nextToken?: string }>({
-        product: "fc",
-        region,
-        action: "ListFunctions",
-        method: "GET",
-        path: "/2023-03-30/functions",
-        query: { limit: 100, nextToken: token },
-      });
-      return { items: res.functions ?? [], next: res.nextToken };
-    });
+    // Scanned in every region, so a wrong guess at an empty answer would fail every poll.
+    const items = await nextTokens(
+      { path: "ListFunctions", key: "functions", pageSize: 100, missingListIsEmpty: true },
+      async (token) => {
+        const res = await ctx.api.roa<{ functions?: FcFunction[]; nextToken?: string }>({
+          product: "fc",
+          region,
+          action: "ListFunctions",
+          method: "GET",
+          path: "/2023-03-30/functions",
+          query: { limit: 100, nextToken: token },
+        });
+        return { items: res.functions, next: res.nextToken };
+      },
+    );
     return items.map((fn) => ({ fn, region }));
   });
   return all.map(({ fn, region }) => mapFunction(ctx.accountId, region, fn));
@@ -1195,15 +1253,18 @@ interface DnsDomain {
 }
 
 export async function describeDomains(api: AliApi): Promise<DnsDomain[]> {
-  return pageNumbers(100, async (page) => {
-    const res = await api.rpc<{ Domains?: { Domain?: DnsDomain[] }; TotalCount?: number }>(
-      "alidns",
-      "",
-      "DescribeDomains",
-      { PageNumber: page, PageSize: 100, Lang: "en" },
-    );
-    return { items: res.Domains?.Domain ?? [], total: res.TotalCount };
-  });
+  return pageNumbers(
+    { path: "DescribeDomains", key: "Domains.Domain", pageSize: 100 },
+    async (page) => {
+      const res = await api.rpc<{ Domains?: { Domain?: DnsDomain[] }; TotalCount?: number }>(
+        "alidns",
+        "",
+        "DescribeDomains",
+        { PageNumber: page, PageSize: 100, Lang: "en" },
+      );
+      return { items: res.Domains?.Domain, total: res.TotalCount };
+    },
+  );
 }
 
 export async function listDomains(ctx: ListContext): Promise<ResourceInstance[]> {
@@ -1262,18 +1323,21 @@ export function mapRecord(accountId: string, domain: string, r: DnsRecord): Reso
 }
 
 export async function recordsOf(ctx: ListContext, domain: string): Promise<ResourceInstance[]> {
-  const items = await pageNumbers(500, async (page) => {
-    const res = await ctx.api.rpc<{
-      DomainRecords?: { Record?: DnsRecord[] };
-      TotalCount?: number;
-    }>("alidns", "", "DescribeDomainRecords", {
-      DomainName: domain,
-      PageNumber: page,
-      PageSize: 500,
-      Lang: "en",
-    });
-    return { items: res.DomainRecords?.Record ?? [], total: res.TotalCount };
-  });
+  const items = await pageNumbers(
+    { path: "DescribeDomainRecords", key: "DomainRecords.Record", pageSize: 500 },
+    async (page) => {
+      const res = await ctx.api.rpc<{
+        DomainRecords?: { Record?: DnsRecord[] };
+        TotalCount?: number;
+      }>("alidns", "", "DescribeDomainRecords", {
+        DomainName: domain,
+        PageNumber: page,
+        PageSize: 500,
+        Lang: "en",
+      });
+      return { items: res.DomainRecords?.Record, total: res.TotalCount };
+    },
+  );
   return items.map((r) => mapRecord(ctx.accountId, domain, r));
 }
 
@@ -1349,18 +1413,29 @@ export async function ramUserResource(ctx: ListContext, u: RamUser): Promise<Res
   );
 }
 
+const MAX_RAM_USER_PAGES = 50;
+
 export async function listRamUsers(ctx: ListContext): Promise<ResourceInstance[]> {
+  const where = { vendor: VENDOR, path: "ListUsers", key: "Users.User" };
   const users: RamUser[] = [];
   let marker: string | undefined;
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < MAX_RAM_USER_PAGES; i++) {
     const res = await ctx.api.rpc<{
       Users?: { User?: RamUser[] };
       IsTruncated?: boolean;
       Marker?: string;
     }>("ram", "", "ListUsers", { MaxItems: 1000, Marker: marker });
-    users.push(...(res.Users?.User ?? []));
-    if (!res.IsTruncated || !res.Marker) break;
+    users.push(...requireListPage(res.Users?.User, where));
+    if (!res.IsTruncated) return mapLimit(users, 4, (u) => ramUserResource(ctx, u));
+    if (!res.Marker) {
+      throw new ListPageError({ ...where, found: undefined, saysMoreWith: "no cursor" });
+    }
     marker = res.Marker;
   }
-  return mapLimit(users, 4, (u) => ramUserResource(ctx, u));
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path: where.path,
+    items: users.length,
+    maxPages: MAX_RAM_USER_PAGES,
+  });
 }

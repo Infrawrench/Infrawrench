@@ -22,13 +22,15 @@ import {
   buildCostEstimate,
   externalIdOf,
   fetchInstanceOnDemandRates,
+  ListPageError,
+  ListTruncatedError,
   type InstancePricingHostServices,
 } from "@infrawrench/plugin-base";
 import { AliApi, isPermissionGap, mapLimit } from "./api.js";
 import { fetchBalance, fetchCostData, fetchQuotas, monthToDate } from "./billing.js";
 import { createResource, getCreateConfig, RDS_ENGINES } from "./create.js";
 import { getResourceByExternalId } from "./get.js";
-import { Inventory } from "./inventory.js";
+import { Inventory, VENDOR } from "./inventory.js";
 import {
   functionHttpUrl,
   listAccount,
@@ -61,6 +63,8 @@ import { renderDetail, renderSidebarItem } from "./render.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 
 const HOURS_PER_MONTH = 730;
+/** Pages of 1,000 keys. */
+const MAX_FOLDER_DELETE_PAGES = 100;
 
 function badRequest(message: string): Error {
   return Object.assign(new Error(message), { status: 400 });
@@ -1160,9 +1164,10 @@ export class AlibabaCloudClient implements PluginClient {
 
   private async allKeysUnder(bucket: string, prefix: string): Promise<string[]> {
     const { region, id } = splitRegional(bucket);
+    const path = "OSS ListObjectsV2";
     const keys: string[] = [];
     let token = "";
-    for (let page = 0; page < 100; page++) {
+    for (let page = 0; page < MAX_FOLDER_DELETE_PAGES; page++) {
       const res = await this.api.oss({
         method: "GET",
         region,
@@ -1175,10 +1180,25 @@ export class AlibabaCloudClient implements PluginClient {
         },
       });
       for (const c of [...res.body.matchAll(/<Key>([^<]*)<\/Key>/g)]) keys.push(decodeXml(c[1]!));
+      if (xmlValue(res.body, "IsTruncated") !== "true") return keys;
       token = xmlValue(res.body, "NextContinuationToken");
-      if (xmlValue(res.body, "IsTruncated") !== "true" || !token) break;
+      if (!token) {
+        throw new ListPageError({
+          vendor: VENDOR,
+          path,
+          key: "Contents",
+          found: undefined,
+          saysMoreWith: "no cursor",
+        });
+      }
     }
-    return keys;
+    // Before any delete has been sent, so a folder too long to read is left whole.
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path,
+      items: keys.length,
+      maxPages: MAX_FOLDER_DELETE_PAGES,
+    });
   }
 }
 
