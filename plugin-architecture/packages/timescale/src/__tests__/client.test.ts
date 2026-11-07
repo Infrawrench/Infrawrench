@@ -112,6 +112,34 @@ describe("TimescaleClient", () => {
     expect(await client.listResources("ts-allow-list", "acc")).toEqual([]);
   });
 
+  it("lists every backup a service keeps, not only the newest 40", async () => {
+    const backups = Array.from({ length: 60 }, (_, i) => ({
+      label: `b${String(i).padStart(2, "0")}`,
+      type: "INCREMENTAL",
+      started_at: new Date(Date.UTC(2026, 0, 1) + i * 3_600_000).toISOString(),
+      regions: [],
+    }));
+    mockFetch({ ...base, "GET /projects/rp1pz7uyae/services/kd9w2xp4mz/backups": backups });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
+    const rows = await client.listResources("ts-backup", "acc");
+    expect(rows).toHaveLength(60);
+    expect(rows[0]!.externalId).toBe("rp1pz7uyae/kd9w2xp4mz/b59");
+  });
+
+  it("throws past 10,000 backups for one service instead of dropping the oldest", async () => {
+    const backups = Array.from({ length: 10_001 }, (_, i) => ({
+      label: `b${i}`,
+      type: "INCREMENTAL",
+      started_at: new Date(Date.UTC(2026, 0, 1) + i * 60_000).toISOString(),
+      regions: [],
+    }));
+    mockFetch({ ...base, "GET /projects/rp1pz7uyae/services/kd9w2xp4mz/backups": backups });
+    const client = hostClient(new TimescaleClient({ accessKey: "pub", secretKey: "sec" }));
+    await expect(client.listResources("ts-backup", "acc")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
   it("surfaces a 401 with its status and a readable message", async () => {
     mockFetch({
       "GET /projects": new Response('{"code":"UNAUTHORIZED","message":"Invalid"}', { status: 401 }),

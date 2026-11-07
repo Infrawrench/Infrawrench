@@ -20,6 +20,7 @@ import {
   externalIdOf,
   pathEncode,
   withMetricsCapability,
+  withinListCap,
   type NoSlashString,
 } from "@infrawrench/plugin-base";
 import type { TigerApi } from "./api.js";
@@ -72,8 +73,12 @@ import type {
 
 /** Listings are reused for this long within one client so a sync does not re-list per type. */
 const CACHE_MS = 20_000;
-/** Most recent backups kept per service; a long retention would otherwise flood the inventory. */
-const MAX_BACKUPS_PER_SERVICE = 40;
+/**
+ * Backups listed per service. `GET .../backups` answers every backup inside the retention
+ * window in one unpaged response, so this costs no requests; past it the list throws
+ * rather than drop the oldest, which a sync would read as deleted.
+ */
+const MAX_BACKUPS_PER_SERVICE = 10_000;
 /** Secret-store field holding the tsdbadmin password Infrawrench knows for a service. */
 export const PASSWORD_SECRET = "tsdbadminPassword";
 
@@ -317,12 +322,14 @@ export class TimescaleClient implements PluginClient {
                   (await this.api.get(`${svcPath(s.project_id, s.service_id)}/backups`)) ?? [],
                 [],
               );
-              return backups
+              return withinListCap(backups, MAX_BACKUPS_PER_SERVICE, {
+                vendor: "Tiger Cloud",
+                path: `${svcPath(s.project_id, s.service_id)}/backups`,
+              })
                 .slice()
                 .sort((a, b) =>
                   String(b.started_at ?? "").localeCompare(String(a.started_at ?? "")),
                 )
-                .slice(0, MAX_BACKUPS_PER_SERVICE)
                 .map((b) => mapBackup(accountId, s, b));
             }),
           );
