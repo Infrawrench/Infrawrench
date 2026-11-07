@@ -285,14 +285,20 @@ export class HuggingFaceClient implements PluginClient {
     return repos.filter((r) => r.id).map((r) => mapSpace(accountId, r));
   }
 
-  /** `GET /api/jobs/{namespace}` */
+  /**
+   * `GET /api/jobs/{namespace}`, paginated by Link header. The document gives no page
+   * size and no way to set one, nor an order, so this is not a rolling window: 500
+   * pages reaches 10,000 rows even at 20 a page, and past that the read throws.
+   */
   private async listJobs(accountId: string): Promise<ResourceInstance[]> {
     const ns = await this.namespace();
-    const jobs = await this.api.hub.get(`/api/jobs/${pathEncode(ns)}`).catch((err): Job[] => {
-      if (statusOf(err) === 403) return [];
-      throw err;
-    });
-    return (jobs ?? []).filter((j) => j.id).map((j) => mapJob(accountId, j));
+    const jobs = await this.api.hub
+      .getAll(`/api/jobs/${pathEncode(ns)}`, null, { maxPages: 500 })
+      .catch((err): Job[] => {
+        if (statusOf(err) === 403) return [];
+        throw err;
+      });
+    return jobs.filter((j) => j.id).map((j) => mapJob(accountId, j));
   }
 
   /** `GET /api/scheduled-jobs/{namespace}` */
@@ -330,13 +336,18 @@ export class HuggingFaceClient implements PluginClient {
     }
   }
 
-  /** `GET /api/organizations/{name}/settings/tokens` (Team/Enterprise, org admins). */
+  /** `GET /api/organizations/{name}/settings/tokens` (Team/Enterprise, org admins), paginated by Link header. */
   private async listMemberTokens(accountId: string): Promise<ResourceInstance[]> {
     if (!(await this.isOrgNamespace())) return [];
     const ns = await this.namespace();
     try {
-      const list = await this.api.hub.get(`/api/organizations/${pathEncode(ns)}/settings/tokens`);
-      return (list ?? []).filter((t) => t._id).map((t) => mapMemberToken(accountId, t));
+      // The document's largest page, so 100 pages is 10,000 tokens.
+      const list = await this.api.hub.getAll(
+        `/api/organizations/${pathEncode(ns)}/settings/tokens`,
+        null,
+        { query: { limit: 100 }, maxPages: 100 },
+      );
+      return list.filter((t) => t._id).map((t) => mapMemberToken(accountId, t));
     } catch (err) {
       if ([401, 402, 403, 404].includes(statusOf(err) ?? 0)) return [];
       throw err;

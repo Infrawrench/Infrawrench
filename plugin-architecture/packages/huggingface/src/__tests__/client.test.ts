@@ -169,7 +169,10 @@ describe("listing", () => {
   });
 
   it("reads a namespace without endpoint billing as no endpoints", async () => {
-    const { http } = host(() => ({ status: 401, body: { error: "no billing" } }));
+    const { http } = host((req) => {
+      if (req.url.endsWith("/api/whoami-v2")) return { body: { name: "alice", orgs: [] } };
+      return { status: 401, body: { error: "no billing" } };
+    });
     const client = hostClient(
       new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }),
     );
@@ -197,6 +200,122 @@ describe("listing", () => {
     expect(calls[1]?.url).toContain("/api/spaces?author=alice");
     // A user namespace has no service accounts and makes no org call.
     expect(await client.listResources("hf-service-account", ACCOUNT)).toEqual([]);
+  });
+});
+
+function org(http: HttpHostServices) {
+  return hostClient(new HuggingFaceClient({ apiToken: "hf_x", namespace: "acme" }, { http }));
+}
+
+/** An answer for the token's identity, so `acme` reads as an organization. */
+const WHOAMI = { name: "alice", orgs: [{ name: "acme" }] };
+
+describe("lists that page by Link header", () => {
+  const next = (url: string) => ({ Link: `<${url}>; rel="next"` });
+
+  it("reads every page of a namespace's Jobs", async () => {
+    const { http } = host((req) => {
+      if (req.url === "https://huggingface.co/api/jobs/acme") {
+        return {
+          body: [{ id: "a" }],
+          headers: next("https://huggingface.co/api/jobs/acme?cursor=two"),
+        };
+      }
+      if (req.url === "https://huggingface.co/api/jobs/acme?cursor=two") {
+        return { body: [{ id: "b" }] };
+      }
+      throw new Error(`unrouted ${req.url}`);
+    });
+    const items = await org(http).listResources("hf-job", ACCOUNT);
+    expect(items.map((i) => i.externalId)).toEqual(["a", "b"]);
+  });
+
+  it("reads every page of member tokens, at the largest page size the document allows", async () => {
+    const { http, calls } = host((req) => {
+      if (req.url.endsWith("/api/whoami-v2")) return { body: WHOAMI };
+      if (req.url === "https://huggingface.co/api/organizations/acme/settings/tokens?limit=100") {
+        return {
+          body: [{ _id: "t1" }],
+          headers: next(
+            "https://huggingface.co/api/organizations/acme/settings/tokens?limit=100&cursor=0123456789abcdef01234567",
+          ),
+        };
+      }
+      if (req.url.includes("cursor=0123456789abcdef01234567")) return { body: [{ _id: "t2" }] };
+      throw new Error(`unrouted ${req.url}`);
+    });
+    const items = await org(http).listResources("hf-member-token", ACCOUNT);
+    expect(items.map((i) => i.externalId)).toEqual(["t1", "t2"]);
+    expect(calls.filter((c) => c.url.includes("/settings/tokens"))).toHaveLength(2);
+  });
+
+  it("finds a member token past the first page", async () => {
+    const { http } = host((req) => {
+      if (req.url.endsWith("/api/whoami-v2")) return { body: WHOAMI };
+      if (req.url.includes("cursor=0123456789abcdef01234567")) return { body: [{ _id: "t2" }] };
+      if (req.url.includes("/settings/tokens")) {
+        return {
+          body: [{ _id: "t1" }],
+          headers: next(
+            "https://huggingface.co/api/organizations/acme/settings/tokens?cursor=0123456789abcdef01234567",
+          ),
+        };
+      }
+      throw new Error(`unrouted ${req.url}`);
+    });
+    const found = await org(http).getResource(
+      "hf-member-token",
+      `${ACCOUNT}:hf-member-token:t2`,
+      ACCOUNT,
+    );
+    expect(found.externalId).toBe("t2");
+  });
+
+  it.each([
+    ["hf-job", "/api/jobs/acme", 500],
+    ["hf-member-token", "/settings/tokens", 100],
+    ["hf-model", "/api/models", 20],
+  ])("throws when %s never ends, after its page cap", async (type, path, pages) => {
+    let page = 0;
+    const { http, calls } = host((req) => {
+      if (req.url.endsWith("/api/whoami-v2")) return { body: WHOAMI };
+      page += 1;
+      return {
+        body: [{ id: `r${page}`, _id: `r${page}` }],
+        headers: next(`https://huggingface.co${path}?cursor=${page}`),
+      };
+    });
+    await expect(org(http).listResources(type, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => c.url.includes(path))).toHaveLength(pages);
+  });
+
+  it("keeps reading past an empty page that names another", async () => {
+    const { http } = host((req) => {
+      if (req.url === "https://huggingface.co/api/jobs/acme") {
+        return { body: [], headers: next("https://huggingface.co/api/jobs/acme?cursor=two") };
+      }
+      if (req.url.endsWith("cursor=two")) return { body: [{ id: "b" }] };
+      throw new Error(`unrouted ${req.url}`);
+    });
+    const items = await org(http).listResources("hf-job", ACCOUNT);
+    expect(items.map((i) => i.externalId)).toEqual(["b"]);
+  });
+});
+
+describe("answers that are not a list", () => {
+  it("throws on a later Jobs page that is not a list", async () => {
+    const { http } = host((req) => {
+      if (req.url === "https://huggingface.co/api/jobs/acme") {
+        return {
+          body: [{ id: "a" }],
+          headers: { Link: '<https://huggingface.co/api/jobs/acme?cursor=2>; rel="next"' },
+        };
+      }
+      return { body: { renamed: [] } };
+    });
+    await expect(org(http).listResources("hf-job", ACCOUNT)).rejects.toThrow("is not a list");
   });
 });
 
