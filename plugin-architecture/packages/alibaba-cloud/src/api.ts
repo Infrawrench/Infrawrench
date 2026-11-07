@@ -37,6 +37,23 @@ export function isServiceUnavailable(err: unknown): boolean {
   );
 }
 
+/** A bad credential or clock, whatever status the product sends it with. */
+const CREDENTIAL_PROBLEM =
+  /^(InvalidAccessKey|SignatureDoesNotMatch|IncompleteSignature|InvalidSecurityToken|InvalidTimeStamp|RequestTimeTooSkewed|Forbidden\.AccessKey)/i;
+
+/**
+ * For a per-row detail read during a list: the credential cannot read it, or the row went
+ * since the list, so the row goes without those fields. Anything else throws and fails the
+ * type, or one throttled call would blank the fields on the stored row.
+ */
+export function noDetail(err: unknown): null {
+  if (isPermissionGap(err)) return null;
+  if (err instanceof AliApiError && err.status === 404 && !CREDENTIAL_PROBLEM.test(err.code)) {
+    return null;
+  }
+  throw err;
+}
+
 const MAX_ATTEMPTS = 4;
 
 function sleep(ms: number): Promise<void> {

@@ -4,7 +4,7 @@ import {
   requireListPage,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
-import { isPermissionGap, mapLimit, type AliApi } from "./api.js";
+import { isPermissionGap, mapLimit, noDetail, type AliApi } from "./api.js";
 import { VENDOR, nextTokens, pageNumbers, perRegion, type Inventory } from "./inventory.js";
 import { OSS_REGIONS, ossEndpoint } from "./regions.js";
 
@@ -417,7 +417,7 @@ export async function listSecurityGroups(ctx: ListContext): Promise<ResourceInst
           { RegionId: region, SecurityGroupId: g.SecurityGroupId, Direction: "ingress" },
         )
         .then((r) => r.Permissions?.Permission ?? [])
-        .catch(() => null);
+        .catch(noDetail);
       return { g, region, rules };
     });
   });
@@ -813,7 +813,7 @@ export async function listRds(ctx: ListContext): Promise<ResourceInstance[]> {
     );
     // Storage and port are only on the attribute call.
     return mapLimit(items, 4, async (d) => {
-      const attr = await rdsAttribute(ctx.api, region, d.DBInstanceId).catch(() => undefined);
+      const attr = await rdsAttribute(ctx.api, region, d.DBInstanceId).catch(noDetail);
       return { region, d: { ...d, ...(attr ?? {}) } };
     });
   });
@@ -1010,8 +1010,8 @@ export async function listBuckets(ctx: ListContext): Promise<ResourceInstance[]>
     (b) => !ctx.regionHint || b.region === ctx.regionHint,
   );
   return mapLimit(all, 6, async (b) => {
-    const info = await bucketInfo(ctx.api, b.region, b.name).catch(() => undefined);
-    return mapBucket(ctx.accountId, b, info);
+    const info = await bucketInfo(ctx.api, b.region, b.name).catch(noDetail);
+    return mapBucket(ctx.accountId, b, info ?? undefined);
   });
 }
 
@@ -1359,7 +1359,15 @@ interface RamUser {
   LastLoginDate?: string;
 }
 
-export async function ramUserResource(ctx: ListContext, u: RamUser): Promise<ResourceInstance> {
+/**
+ * `onDetailFailure` is for the sync's list. A single read keeps whatever it could get: it
+ * may be answering a create or an edit that has already happened.
+ */
+export async function ramUserResource(
+  ctx: ListContext,
+  u: RamUser,
+  onDetailFailure: (err: unknown) => null = () => null,
+): Promise<ResourceInstance> {
   const [keys, policies, full] = await Promise.all([
     ctx.api
       .rpc<{ AccessKeys?: { AccessKey?: Array<{ AccessKeyId: string; Status?: string }> } }>(
@@ -1369,7 +1377,7 @@ export async function ramUserResource(ctx: ListContext, u: RamUser): Promise<Res
         { UserName: u.UserName },
       )
       .then((r) => r.AccessKeys?.AccessKey ?? [])
-      .catch(() => null),
+      .catch(onDetailFailure),
     ctx.api
       .rpc<{ Policies?: { Policy?: Array<{ PolicyName: string }> } }>(
         "ram",
@@ -1378,11 +1386,11 @@ export async function ramUserResource(ctx: ListContext, u: RamUser): Promise<Res
         { UserName: u.UserName },
       )
       .then((r) => (r.Policies?.Policy ?? []).map((p) => p.PolicyName))
-      .catch(() => null),
+      .catch(onDetailFailure),
     ctx.api
       .rpc<{ User?: RamUser }>("ram", "", "GetUser", { UserName: u.UserName })
       .then((r) => r.User)
-      .catch(() => undefined),
+      .catch(onDetailFailure),
   ]);
   const user = { ...u, ...(full ?? {}) };
   return makeResource(
@@ -1426,7 +1434,7 @@ export async function listRamUsers(ctx: ListContext): Promise<ResourceInstance[]
       Marker?: string;
     }>("ram", "", "ListUsers", { MaxItems: 1000, Marker: marker });
     users.push(...requireListPage(res.Users?.User, where));
-    if (!res.IsTruncated) return mapLimit(users, 4, (u) => ramUserResource(ctx, u));
+    if (!res.IsTruncated) return mapLimit(users, 4, (u) => ramUserResource(ctx, u, noDetail));
     if (!res.Marker) {
       throw new ListPageError({ ...where, found: undefined, saysMoreWith: "no cursor" });
     }
