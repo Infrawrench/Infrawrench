@@ -6,7 +6,7 @@ import { GrafanaCloudClient, nextCursor } from "../client.js";
 import { stackQueries } from "../metrics.js";
 import { mapComponent } from "../status-feed.js";
 import { grafanaCloudTerraformExport } from "../terraform.js";
-import { fakeToken, makeHttp } from "./helpers.js";
+import { fakeToken, makeHttp, type Reply } from "./helpers.js";
 
 beforeEach(() => resetCachesForTests());
 
@@ -237,5 +237,202 @@ describe("terraform export", () => {
     expect(Object.keys(out?.resource?.attributes ?? {})).toEqual(
       expect.arrayContaining(["name", "slug", "region_slug", "labels", "delete_protection"]),
     );
+  });
+});
+
+describe("reading a list to its end", () => {
+  const SM_URL = "https://synthetic-monitoring-api-us-east-0.grafana.net";
+
+  /** A client on a stack with both tokens stored, over a fixture that 404s anything unlisted. */
+  function connected(route: (url: URL, method: string) => Reply | undefined) {
+    const made = makeHttp(
+      (url, method) => route(url, method) ?? baseRoute(url, method) ?? { status: 404 },
+    );
+    const { secrets, store } = secretsStore();
+    store.set("acct:stack:acme-prod|serviceAccountToken", "glsa_123");
+    store.set("acct:stack:acme-prod|syntheticMonitoringToken", "sm_123");
+    const client = hostClient(
+      new GrafanaCloudClient({ token: fakeToken() }, { http: made.http, secrets }),
+    );
+    return { client, calls: made.calls };
+  }
+
+  const hits = (count: number, from = 0) =>
+    Array.from({ length: count }, (_, i) => ({ uid: `d${from + i}`, title: `D${from + i}` }));
+
+  describe("dashboards", () => {
+    it("asks for the next page after a full one", async () => {
+      const { client, calls } = connected((url) => {
+        if (url.pathname !== "/api/search") return undefined;
+        const page = url.searchParams.get("page");
+        return { body: page === "1" ? hits(5000) : hits(3, 5000) };
+      });
+      expect(await client.listResources("dashboard", "acct")).toHaveLength(5003);
+      const searches = calls.filter((c) => c.url.pathname === "/api/search");
+      expect(searches.map((c) => c.url.searchParams.get("page"))).toEqual(["1", "2"]);
+      expect(searches[0]?.url.searchParams.get("limit")).toBe("5000");
+      expect(searches[0]?.url.searchParams.get("type")).toBe("dash-db");
+    });
+
+    it("refuses a list that never ends, after 10 pages", async () => {
+      const { client, calls } = connected((url) =>
+        url.pathname === "/api/search" ? { body: hits(5000) } : undefined,
+      );
+      await expect(client.listResources("dashboard", "acct")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls.filter((c) => c.url.pathname === "/api/search")).toHaveLength(10);
+    });
+
+    it.each(["1", "2"])("refuses a page %s that is not a list", async (bad) => {
+      const { client } = connected((url) => {
+        if (url.pathname !== "/api/search") return undefined;
+        return url.searchParams.get("page") === bad ? { body: { hits: [] } } : { body: hits(5000) };
+      });
+      await expect(client.listResources("dashboard", "acct")).rejects.toThrow("is not a list");
+    });
+  });
+
+  describe.each([
+    { typeId: "access-policy", route: "/api/v1/accesspolicies" },
+    { typeId: "access-policy-token", route: "/api/v1/tokens" },
+  ])("$typeId", ({ typeId, route }) => {
+    const rows = [{ id: "x1", name: "x", accessPolicyId: "p1" }];
+
+    /** Answers only `route`; the policy names a token listing reads come back empty. */
+    function onRoute(answer: (cursor: string | null) => Reply) {
+      return connected((url) => {
+        if (url.pathname === route) return answer(url.searchParams.get("pageCursor"));
+        if (url.pathname === "/api/v1/accesspolicies") return { body: { items: [] } };
+        return undefined;
+      });
+    }
+
+    it("refuses a list that never ends, after 100 pages", async () => {
+      const { client, calls } = onRoute(() => ({
+        body: { items: rows, metadata: { pagination: { nextPage: `${route}?pageCursor=more` } } },
+      }));
+      await expect(client.listResources(typeId, "acct")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls.filter((c) => c.url.pathname === route)).toHaveLength(100);
+    });
+
+    it("reads on past an empty page", async () => {
+      const { client } = onRoute((cursor) =>
+        cursor
+          ? { body: { items: rows, metadata: { pagination: { nextPage: null } } } }
+          : { body: { items: [], metadata: { pagination: { nextPage: "abc" } } } },
+      );
+      expect(await client.listResources(typeId, "acct")).toHaveLength(1);
+    });
+
+    it.each([null, "more"])("refuses a page that is not a list, after cursor %s", async (bad) => {
+      const { client } = onRoute((cursor) =>
+        cursor === bad
+          ? { body: { policies: rows } }
+          : { body: { items: rows, metadata: { pagination: { nextPage: "more" } } } },
+      );
+      await expect(client.listResources(typeId, "acct")).rejects.toThrow("is not a list");
+    });
+
+    it("fails on a next page it cannot read rather than ending the list", async () => {
+      const { client } = onRoute(() => ({
+        body: { items: rows, metadata: { pagination: { nextPage: `${route}?other=1` } } },
+      }));
+      await expect(client.listResources(typeId, "acct")).rejects.toThrow("is not a list");
+    });
+
+    it.each([400, 404])("reads a %i on the first page as a region with nothing", async (status) => {
+      const { client } = onRoute(() => ({ status }));
+      expect(await client.listResources(typeId, "acct")).toEqual([]);
+    });
+
+    it.each([400, 404])("fails on a %i on a later page", async (status) => {
+      const { client } = onRoute((cursor) =>
+        cursor
+          ? { status }
+          : { body: { items: rows, metadata: { pagination: { nextPage: "more" } } } },
+      );
+      await expect(client.listResources(typeId, "acct")).rejects.toThrow(`error ${status}`);
+    });
+  });
+
+  it("does not read a truncated policy list as no policy names", async () => {
+    const { client } = connected((url) => {
+      if (url.pathname === "/api/v1/tokens") return { body: { items: [] } };
+      if (url.pathname === "/api/v1/accesspolicies") {
+        return { body: { items: [], metadata: { pagination: { nextPage: "more" } } } };
+      }
+      return undefined;
+    });
+    await expect(client.listResources("access-policy-token", "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("does not read a failed stack list as the token's own region alone", async () => {
+    const { http } = makeHttp((url) => {
+      if (url.pathname === "/api/orgs/4242") return { body: { id: 4242, slug: "acme" } };
+      if (url.pathname === "/api/orgs/acme/instances") return { status: 500, body: "down" };
+      return { body: { items: [] } };
+    });
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http }));
+    await expect(client.listResources("access-policy", "acct")).rejects.toThrow("error 500");
+  });
+
+  it("lists the token's own region when the token may not read stacks", async () => {
+    const { http, calls } = makeHttp((url) => {
+      if (url.pathname === "/api/orgs/4242") return { body: { id: 4242, slug: "acme" } };
+      if (url.pathname === "/api/orgs/acme/instances") return { status: 403 };
+      return { body: { items: [{ id: "p1", name: "infra" }] } };
+    });
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http }));
+    expect(await client.listResources("access-policy", "acct")).toHaveLength(1);
+    expect(calls.at(-1)?.url.searchParams.get("region")).toBe("prod-us-east-0");
+  });
+
+  it("refuses a stack listing whose items key is gone", async () => {
+    const { http } = makeHttp((url) => {
+      if (url.pathname === "/api/orgs/4242") return { body: { id: 4242, slug: "acme" } };
+      return { body: { instances: [STACK] } };
+    });
+    const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http }));
+    await expect(client.listResources("stack", "acct")).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    { typeId: "stack-plugin", path: "/api/instances/11/plugins", body: { plugins: [] } },
+    { typeId: "member", path: "/api/orgs/acme/members", body: { members: [] } },
+    { typeId: "alert-rule", path: "/api/v1/provisioning/alert-rules", body: { rules: [] } },
+    { typeId: "contact-point", path: "/api/v1/provisioning/contact-points", body: {} },
+    { typeId: "datasource", path: "/api/datasources", body: { message: "x" } },
+    { typeId: "synthetic-check", path: "/api/v1/check", body: { checks: [] } },
+  ])("refuses a $typeId listing that is not a list", async ({ typeId, path, body }) => {
+    const { client } = connected((url) =>
+      url.pathname === path
+        ? { body }
+        : url.pathname === "/api/v1/probe"
+          ? { body: [] }
+          : undefined,
+    );
+    await expect(client.listResources(typeId, "acct")).rejects.toThrow("is not a list");
+  });
+
+  it("does not read a bad probe page as no probe names", async () => {
+    const { client } = connected((url) => {
+      if (url.origin !== SM_URL) return undefined;
+      if (url.pathname === "/api/v1/check") return { body: [] };
+      if (url.pathname === "/api/v1/probe") return { body: { probes: [] } };
+      return undefined;
+    });
+    await expect(client.listResources("synthetic-check", "acct")).rejects.toThrow("is not a list");
+  });
+
+  it("does not read a bad bill page as an organization with no bill", async () => {
+    const { client } = connected((url) =>
+      url.pathname === "/api/orgs/acme/billed-usage" ? { body: { usage: [] } } : undefined,
+    );
+    await expect(client.listResources("organization", "acct")).rejects.toThrow("is not a list");
   });
 });

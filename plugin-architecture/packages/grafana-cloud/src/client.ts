@@ -15,11 +15,19 @@ import type {
   SecretHostServices,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode, unencodedSegment } from "@infrawrench/plugin-base";
+import {
+  ListPageError,
+  ListTruncatedError,
+  externalIdOf,
+  pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
+  unencodedSegment,
+} from "@infrawrench/plugin-base";
 import type { ApiBody } from "@infrawrench/plugin-base";
 import { invalidateStacks, listStacks, orgSlugOf, policyRegions, resolveOrg } from "./account.js";
 import type { GrafanaContext } from "./api.js";
-import { cloudApi, requestId, smApi, stackApi, statusOf } from "./api.js";
+import { cloudApi, cloudItems, requestId, smApi, stackApi, statusOf } from "./api.js";
 import type { operations as CloudOperations } from "./api-types.cloud.gen.js";
 import type { operations as SmOperations } from "./api-types.sm.gen.js";
 import { fetchBillSummary, fetchGrafanaCostData } from "./cost-data.js";
@@ -64,8 +72,11 @@ export const SA_TOKEN_KEY = "serviceAccountToken";
 export const SM_TOKEN_KEY = "syntheticMonitoringToken";
 
 const SERVICE_ACCOUNT_NAME = "infrawrench";
-const MAX_CURSOR_PAGES = 20;
-const DASHBOARD_PAGE = 5000;
+/** 50,000 rows at the 500 a page the Cloud API documents as its maximum. */
+const MAX_CURSOR_PAGES = 100;
+const CURSOR_PAGE_SIZE = 500;
+const STACK_VENDOR = "Grafana stack";
+const SM_VENDOR = "Grafana Synthetic Monitoring";
 
 /** `a/b/c` → `["a", "b/c"]`: the first segment is the stack slug or the region. */
 function splitScoped(externalId: string): [string, string] {
@@ -217,36 +228,53 @@ export class GrafanaCloudClient implements PluginClient {
   }
 
   /**
-   * A hand loop rather than `getAll`: it runs on past an empty page, and a
-   * `nextPage` it cannot read fails the list rather than ending it.
+   * A hand loop rather than `getAll`: it runs on past an empty page, a `nextPage`
+   * it cannot read fails the list rather than ending it, and only the first
+   * request can say the region has nothing. A region the org has nothing in can
+   * answer 404 or 400; on a later page that is a failure part way through a list.
    */
   private async cursorList<T>(
+    path: string,
     load: (cursor: string | undefined) => Promise<GcCursorPage<T>>,
   ): Promise<T[]> {
     const out: T[] = [];
     let cursor: string | undefined;
     for (let page = 0; page < MAX_CURSOR_PAGES; page++) {
-      const res = await load(cursor);
-      out.push(...(res.items ?? []));
-      cursor = nextCursor(res.metadata?.pagination?.nextPage);
-      if (!cursor) break;
+      const res = await load(cursor).catch((err): undefined => {
+        if (page === 0 && (statusOf(err) === 404 || statusOf(err) === 400)) return undefined;
+        throw err;
+      });
+      if (res === undefined) return out;
+      out.push(...cloudItems(res, path));
+      const nextPage = res.metadata?.pagination?.nextPage;
+      if (!nextPage) return out;
+      cursor = nextCursor(nextPage);
+      if (!cursor) {
+        const key = "metadata.pagination.nextPage";
+        throw new ListPageError({ vendor: "Grafana Cloud", path, key, found: nextPage, page: res });
+      }
     }
-    return out;
+    throw new ListTruncatedError({
+      vendor: "Grafana Cloud",
+      path,
+      items: out.length,
+      maxPages: MAX_CURSOR_PAGES,
+    });
   }
 
   private async policiesByRegion(): Promise<Array<{ region: string; policy: GcAccessPolicy }>> {
     const seen = new Set<string>();
     const out: Array<{ region: string; policy: GcAccessPolicy }> = [];
     for (const region of await policyRegions(this.ctx, this.orgSlug)) {
-      const items = await this.cursorList((cursor) =>
+      const items = await this.cursorList("/v1/accesspolicies", (cursor) =>
         this.cloud.get("/v1/accesspolicies", {
-          query: { region, pageSize: 500, ...(cursor ? { pageCursor: cursor } : {}) },
+          query: {
+            region,
+            pageSize: CURSOR_PAGE_SIZE,
+            ...(cursor ? { pageCursor: cursor } : {}),
+          },
         }),
-      ).catch((err): GcAccessPolicy[] => {
-        // A region the org has nothing in can answer 404.
-        if (statusOf(err) === 404 || statusOf(err) === 400) return [];
-        throw err;
-      });
+      );
       for (const p of items) {
         if (!p.id || seen.has(p.id)) continue;
         seen.add(p.id);
@@ -260,14 +288,15 @@ export class GrafanaCloudClient implements PluginClient {
     const seen = new Set<string>();
     const out: Array<{ region: string; token: GcToken }> = [];
     for (const region of await policyRegions(this.ctx, this.orgSlug)) {
-      const items = await this.cursorList((cursor) =>
+      const items = await this.cursorList("/v1/tokens", (cursor) =>
         this.cloud.get("/v1/tokens", {
-          query: { region, pageSize: 500, ...(cursor ? { pageCursor: cursor } : {}) },
+          query: {
+            region,
+            pageSize: CURSOR_PAGE_SIZE,
+            ...(cursor ? { pageCursor: cursor } : {}),
+          },
         }),
-      ).catch((err): GcToken[] => {
-        if (statusOf(err) === 404 || statusOf(err) === 400) return [];
-        throw err;
-      });
+      );
       for (const t of items) {
         if (!t.id || seen.has(t.id)) continue;
         seen.add(t.id);
@@ -295,10 +324,9 @@ export class GrafanaCloudClient implements PluginClient {
             const stacks = (await this.stacks()).filter((s) => s.id !== undefined && s.slug);
             const lists = await Promise.all(
               stacks.map(async (s) => {
-                const res = await this.cloud.get(
-                  `/instances/${unencodedSegment(String(s.id))}/plugins`,
-                );
-                return (res.items ?? []).map((p) => mapStackPlugin(accountId, s.slug ?? "", p));
+                const path = `/instances/${unencodedSegment(String(s.id))}/plugins` as const;
+                const res = await this.cloud.get(path);
+                return cloudItems(res, path).map((p) => mapStackPlugin(accountId, s.slug ?? "", p));
               }),
             );
             return lists.flat();
@@ -306,7 +334,11 @@ export class GrafanaCloudClient implements PluginClient {
         case "access-policy":
           return this.scoped(async () => {
             const names = new Map<string, string>();
-            for (const s of await this.stacks().catch((): GcStack[] => [])) {
+            const stacks = await this.stacks().catch((err): GcStack[] => {
+              rethrowIncompleteList(err);
+              return [];
+            });
+            for (const s of stacks) {
               if (s.id !== undefined) names.set(String(s.id), s.slug ?? String(s.id));
             }
             return (await this.policiesByRegion()).map(({ region, policy }) =>
@@ -316,7 +348,11 @@ export class GrafanaCloudClient implements PluginClient {
         case "access-policy-token":
           return this.scoped(async () => {
             const policyNames = new Map<string, string>();
-            for (const { policy } of await this.policiesByRegion().catch(() => [])) {
+            const policies = await this.policiesByRegion().catch((err) => {
+              rethrowIncompleteList(err);
+              return [];
+            });
+            for (const { policy } of policies) {
               if (policy.id)
                 policyNames.set(policy.id, policy.displayName || policy.name || policy.id);
             }
@@ -327,47 +363,70 @@ export class GrafanaCloudClient implements PluginClient {
         case "member":
           return this.scoped(async () => {
             const slug = await this.slug();
-            const res = await this.cloud.get(`/orgs/${pathEncode(slug)}/members`);
-            return (res.items ?? []).map((m) => mapMember(accountId, m));
+            const path = `/orgs/${pathEncode(slug)}/members` as const;
+            const res = await this.cloud.get(path);
+            return cloudItems(res, path).map((m) => mapMember(accountId, m));
           });
         case "dashboard":
           return this.perStack(accountId, "sa", async (a) => {
-            const hits = await stackApi(this.ctx, a.url, this.requireSa(a)).get("/search", {
-              query: { type: "dash-db", limit: DASHBOARD_PAGE },
-            });
-            return (hits ?? []).map((d) => mapDashboard(accountId, a, d));
+            const hits = await stackApi(this.ctx, a.url, this.requireSa(a)).getAll(
+              "/search",
+              null,
+              { query: { type: "dash-db" } },
+            );
+            return hits.map((d) => mapDashboard(accountId, a, d));
           });
         case "alert-rule":
           return this.perStack(accountId, "sa", async (a) => {
             const stack = stackApi(this.ctx, a.url, this.requireSa(a));
             const [rules, folders] = await Promise.all([
               stack.get("/v1/provisioning/alert-rules"),
-              stack.get("/folders", { query: { limit: 1000 } }).catch((): GfFolder[] => []),
+              stack.get("/folders", { query: { limit: 1000 } }).catch((err): GfFolder[] => {
+                rethrowIncompleteList(err);
+                return [];
+              }),
             ]);
             const names = new Map<string, string>();
             for (const folder of folders ?? []) {
               if (folder.uid) names.set(folder.uid, folder.title ?? folder.uid);
             }
-            return (rules ?? []).map((r) => mapAlertRule(accountId, a, r, names));
+            return requireListPage(rules, {
+              vendor: STACK_VENDOR,
+              path: "/v1/provisioning/alert-rules",
+              key: null,
+            }).map((r) => mapAlertRule(accountId, a, r, names));
           });
         case "contact-point":
           return this.perStack(accountId, "sa", async (a) => {
             const points = await stackApi(this.ctx, a.url, this.requireSa(a)).get(
               "/v1/provisioning/contact-points",
             );
-            return (points ?? []).filter((c) => c.uid).map((c) => mapContactPoint(accountId, a, c));
+            return requireListPage(points, {
+              vendor: STACK_VENDOR,
+              path: "/v1/provisioning/contact-points",
+              key: null,
+            })
+              .filter((c) => c.uid)
+              .map((c) => mapContactPoint(accountId, a, c));
           });
         case "datasource":
           return this.perStack(accountId, "sa", async (a) => {
             const sources = await stackApi(this.ctx, a.url, this.requireSa(a)).get("/datasources");
-            return (sources ?? []).map((d) => mapDatasource(accountId, a, d));
+            return requireListPage(sources, {
+              vendor: STACK_VENDOR,
+              path: "/datasources",
+              key: null,
+            }).map((d) => mapDatasource(accountId, a, d));
           });
         case "synthetic-check":
           return this.perStack(accountId, "sm", async (a) => {
             const { apiUrl, token } = this.requireSm(a);
             const [checks, probes] = await Promise.all([
               this.smChecks(apiUrl, token),
-              this.smProbes(apiUrl, token).catch((): SmProbe[] => []),
+              this.smProbes(apiUrl, token).catch((err): SmProbe[] => {
+                rethrowIncompleteList(err);
+                return [];
+              }),
             ]);
             const names = new Map<number, string>();
             for (const p of probes) if (p.id !== undefined) names.set(p.id, p.name ?? String(p.id));
@@ -382,29 +441,33 @@ export class GrafanaCloudClient implements PluginClient {
   /** `/api/v1/check` in the current spec; older deployments only answer `/check/list`. */
   private async smChecks(apiUrl: string, token: string): Promise<SmCheck[]> {
     const sm = smApi(this.ctx, apiUrl, token);
-    try {
-      return (await sm.get("/api/v1/check")) ?? [];
-    } catch (err) {
+    const answer = await sm.get("/api/v1/check").catch((err) => {
       if (statusOf(err) !== 404 && statusOf(err) !== 405) throw err;
-      return (await sm.get("/api/v1/check/list")) ?? [];
-    }
+      return sm.get("/api/v1/check/list");
+    });
+    return requireListPage(answer, { vendor: SM_VENDOR, path: "/api/v1/check", key: null });
   }
 
   private async smProbes(apiUrl: string, token: string): Promise<SmProbe[]> {
     const sm = smApi(this.ctx, apiUrl, token);
-    try {
-      return (await sm.get("/api/v1/probe")) ?? [];
-    } catch (err) {
+    const answer = await sm.get("/api/v1/probe").catch((err) => {
       if (statusOf(err) !== 404 && statusOf(err) !== 405) throw err;
-      return (await sm.get("/api/v1/probe/list")) ?? [];
-    }
+      return sm.get("/api/v1/probe/list");
+    });
+    return requireListPage(answer, { vendor: SM_VENDOR, path: "/api/v1/probe", key: null });
   }
 
   private async organization(accountId: string, withBill: boolean): Promise<ResourceInstance> {
     const [org, bill, stacks] = await Promise.all([
       resolveOrg(this.ctx, this.orgSlug),
-      fetchBillSummary(this.ctx, this.orgSlug).catch(() => undefined),
-      this.stacks().catch(() => undefined),
+      fetchBillSummary(this.ctx, this.orgSlug).catch((err) => {
+        rethrowIncompleteList(err);
+        return undefined;
+      }),
+      this.stacks().catch((err) => {
+        rethrowIncompleteList(err);
+        return undefined;
+      }),
     ]);
     const r = mapOrganization(accountId, org, {
       ...(bill ? { monthToDate: bill.total } : {}),

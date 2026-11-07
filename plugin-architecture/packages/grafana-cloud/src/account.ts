@@ -1,6 +1,6 @@
 import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
 import type { GrafanaContext } from "./api.js";
-import { cloudApi, decodeCloudToken, statusOf } from "./api.js";
+import { cloudApi, cloudItems, decodeCloudToken, statusOf } from "./api.js";
 import type { GcOrg, GcStack } from "./types.js";
 
 /**
@@ -90,8 +90,8 @@ export async function orgSlugOf(ctx: GrafanaContext, orgSlug: string): Promise<s
 export function listStacks(ctx: GrafanaContext, orgSlug: string): Promise<GcStack[]> {
   return cached(stackCache, ctx.token, STACKS_TTL_MS, async () => {
     const slug = await orgSlugOf(ctx, orgSlug);
-    const res = await cloudApi(ctx).get(`/orgs/${pathEncode(slug)}/instances`);
-    return res.items ?? [];
+    const path = `/orgs/${pathEncode(slug)}/instances` as const;
+    return cloudItems(await cloudApi(ctx).get(path), path);
   });
 }
 
@@ -105,7 +105,12 @@ export async function policyRegions(ctx: GrafanaContext, orgSlug: string): Promi
   const out = new Set<string>();
   const own = decodeCloudToken(ctx.token).region;
   if (own) out.add(own);
-  const stacks = await listStacks(ctx, orgSlug).catch((): GcStack[] => []);
+  // A token that may not read stacks still lists its own region. Any other failure
+  // has to fail the list: dropping a region would read its policies as deleted.
+  const stacks = await listStacks(ctx, orgSlug).catch((err): GcStack[] => {
+    if (statusOf(err) === 403) return [];
+    throw err;
+  });
   for (const s of stacks) if (s.regionSlug) out.add(s.regionSlug);
   return [...out].sort();
 }

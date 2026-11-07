@@ -1,9 +1,12 @@
 import {
   createApiClient,
+  requireListPage,
   restRequest,
+  withPagination,
   type ApiClient,
   type ApiClientOptions,
   type HttpHostServices,
+  type PaginatedApiClient,
   type ParamValue,
 } from "@infrawrench/plugin-base";
 import type { paths as CloudPaths } from "./api-types.cloud.gen.js";
@@ -12,6 +15,11 @@ import type { paths as StackPaths } from "./api-types.stack.gen.js";
 
 /** The Grafana Cloud API. Every account-level call goes here. */
 export const CLOUD_API_URL = "https://grafana.com/api";
+
+/** Grafana's search reference: "max is 5000", and `limit` acts as the page size. */
+const SEARCH_PAGE_SIZE = 5000;
+/** 50,000 rows. */
+const SEARCH_MAX_PAGES = 10;
 
 /**
  * Everything a Grafana Cloud request needs. Split out of the client so the
@@ -82,6 +90,11 @@ export function cloudApi(ctx: GrafanaContext): ApiClient<CloudPaths> {
   return createApiClient<CloudPaths>(clientOptions(ctx, "Grafana Cloud", CLOUD_API_URL, ctx.token));
 }
 
+/** A Cloud API list's `items`, or a `ListPageError` rather than read a bad page as nothing. */
+export function cloudItems<T>(page: { items?: T[] } | undefined, path: string): T[] {
+  return requireListPage(page?.items, { vendor: "Grafana Cloud", path, key: "items", page });
+}
+
 /**
  * A stack's own Grafana HTTP API with a stack service account token
  * (`glsa_…`). `baseUrl` is the stack's `url`, which may be a custom domain
@@ -91,9 +104,17 @@ export function stackApi(
   ctx: GrafanaContext,
   baseUrl: string,
   saToken: string,
-): ApiClient<StackPaths> {
-  return createApiClient<StackPaths>(
-    clientOptions(ctx, "Grafana stack", `${baseUrl.replace(/\/+$/, "")}/api`, saToken, "/api"),
+): PaginatedApiClient<StackPaths, "page" | "limit"> {
+  return withPagination(
+    createApiClient<StackPaths>(
+      clientOptions(ctx, "Grafana stack", `${baseUrl.replace(/\/+$/, "")}/api`, saToken, "/api"),
+    ),
+    {
+      pageParam: "page",
+      sizeParam: "limit",
+      pageSize: SEARCH_PAGE_SIZE,
+      maxPages: SEARCH_MAX_PAGES,
+    },
   );
 }
 

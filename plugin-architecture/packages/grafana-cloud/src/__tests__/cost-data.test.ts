@@ -151,3 +151,38 @@ describe("fetchBillSummary", () => {
     expect(bill.stacks.map((s) => s.stack)).toEqual(["acme-prod", "acme-dev"]);
   });
 });
+
+describe("billed usage that is not a list", () => {
+  it("fails the month rather than reading it as a month with no bill", async () => {
+    const { http } = makeHttp((url) => {
+      if (url.pathname === "/api/orgs/acme") return { body: { id: 1, slug: "acme" } };
+      if (url.pathname === "/api/orgs/acme/instances") return { body: { items: STACKS } };
+      if (url.pathname === "/api/orgs/acme/billed-usage") return { body: { usage: [] } };
+      return { status: 404 };
+    });
+    await expect(
+      fetchGrafanaCostData(
+        ctxWith(http),
+        "acme",
+        { fromDate: "2026-03-01", toDate: "2026-03-31" },
+        new Date("2026-04-02T00:00:00Z"),
+      ),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("does not read a bad stack page as no stacks", async () => {
+    const { http } = makeHttp((url) => {
+      if (url.pathname === "/api/orgs/acme") return { body: { id: 1, slug: "acme" } };
+      if (url.pathname === "/api/orgs/acme/instances") return { body: { instances: [] } };
+      return { body: { items: [] } };
+    });
+    await expect(
+      fetchGrafanaCostData(
+        ctxWith(http),
+        "acme",
+        { fromDate: "2026-03-01", toDate: "2026-03-31" },
+        new Date("2026-04-02T00:00:00Z"),
+      ),
+    ).rejects.toThrow("is not a list");
+  });
+});

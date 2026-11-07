@@ -23,10 +23,10 @@
  */
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
+import { CostSetupError, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import { listStacks, orgSlugOf } from "./account.js";
 import type { GrafanaContext } from "./api.js";
-import { cloudApi, statusOf } from "./api.js";
+import { cloudApi, cloudItems, statusOf } from "./api.js";
 import type { GcBilledUsage, GcStack } from "./types.js";
 
 const CURRENCY = "USD";
@@ -69,10 +69,11 @@ export async function fetchBilledUsage(
   monthStart: string,
 ): Promise<GcBilledUsage[]> {
   try {
-    const res = await cloudApi(ctx).get(`/orgs/${pathEncode(orgSlug)}/billed-usage`, {
+    const path = `/orgs/${pathEncode(orgSlug)}/billed-usage` as const;
+    const res = await cloudApi(ctx).get(path, {
       query: { month: Number(monthStart.slice(5, 7)), year: Number(monthStart.slice(0, 4)) },
     });
-    return res.items ?? [];
+    return cloudItems(res, path);
   } catch (err) {
     const status = statusOf(err);
     if (status === 401 || status === 403) {
@@ -192,6 +193,14 @@ export function aggregateRows(rows: CostRow[]): CostRow[] {
   return [...byKey.values()];
 }
 
+/** Stacks only name a row's stack and region, so a bill still costs out without them. */
+function stacksOrNone(ctx: GrafanaContext, orgSlugCredential: string): Promise<GcStack[]> {
+  return listStacks(ctx, orgSlugCredential).catch((err): GcStack[] => {
+    rethrowIncompleteList(err);
+    return [];
+  });
+}
+
 export async function fetchGrafanaCostData(
   ctx: GrafanaContext,
   orgSlugCredential: string,
@@ -202,7 +211,7 @@ export async function fetchGrafanaCostData(
   const months = monthStartsInRange(range.fromDate, range.toDate, today);
   if (months.length === 0) return [];
   const slug = await orgSlugOf(ctx, orgSlugCredential);
-  const stacks = stackIndex(await listStacks(ctx, orgSlugCredential).catch(() => []));
+  const stacks = stackIndex(await stacksOrNone(ctx, orgSlugCredential));
   const rows: CostRow[] = [];
   for (const month of months) {
     rows.push(...rowsForMonth(month, await fetchBilledUsage(ctx, slug, month), stacks));
@@ -233,7 +242,7 @@ export async function fetchBillSummary(
   const month = `${now.toISOString().slice(0, 7)}-01`;
   const slug = await orgSlugOf(ctx, orgSlugCredential);
   const items = await fetchBilledUsage(ctx, slug, month);
-  const stacks = stackIndex(await listStacks(ctx, orgSlugCredential).catch(() => []));
+  const stacks = stackIndex(await stacksOrNone(ctx, orgSlugCredential));
   const byStack = new Map<string, number>();
   for (const row of rowsForMonth(month, items, stacks)) {
     if (!row.resourceId) continue;
