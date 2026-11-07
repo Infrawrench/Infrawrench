@@ -22,6 +22,7 @@ import {
   CreditAccessError,
   ListPageError,
   QuotaAccessError,
+  reportUnreadListPart,
   requireListPage,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
@@ -80,6 +81,12 @@ import type {
 const TREE_TTL_MS = 60_000;
 const FAN_OUT = 4;
 /**
+ * Parents a fan-out type (deployments, variables, TCP proxies, shared variables) reads
+ * children for in one poll, one request each. Hobby allows 1,000 requests an hour, and a
+ * poll lists every type, so a workspace with more services reads them over several polls.
+ */
+const MAX_FANOUT_PARENTS = 50;
+/**
  * Rolling window: the newest N. Older rows falling off is what this type means.
  * Railway's own "latest deployment" example reads `deployments(first: 1)`.
  */
@@ -118,6 +125,20 @@ function variableNames(v: unknown, path: string): string[] {
     throw new ListPageError({ vendor: "Railway", path, key: "variables", found: v });
   }
   return Object.keys(v);
+}
+
+/**
+ * The parents to read this poll and the ones left for later. Polls share nothing, so past
+ * the budget the start moves with the clock by the golden ratio, which spreads evenly over
+ * the list however long it is.
+ */
+function fanOutWindow<P>(parents: P[], idOf: (p: P) => string): { now: P[]; later: P[] } {
+  if (parents.length <= MAX_FANOUT_PARENTS) return { now: parents, later: [] };
+  const sorted = [...parents].sort((a, b) => (idOf(a) < idOf(b) ? -1 : 1));
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  return { now: rotated.slice(0, MAX_FANOUT_PARENTS), later: rotated.slice(MAX_FANOUT_PARENTS) };
 }
 
 function notFound(what: string): Error {
@@ -309,151 +330,191 @@ export class RailwayClient implements PluginClient {
     };
   }
 
-  private async perInstance(
-    load: (l: Located) => Promise<ResourceInstance[]>,
+  /**
+   * Children of each parent, one request per parent, for as many parents as one poll's
+   * budget allows. One past the budget, or one the token is refused for, is named so its
+   * stored rows stay; one that has gone has none. `whole` reads every parent, for a
+   * single resource's lookup, where nothing prunes.
+   */
+  private async fanOut<P>(
+    parents: P[],
+    parentId: (p: P) => string,
+    whole: boolean,
+    read: (p: P) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    const lists = await mapLimit(await this.instances(), FAN_OUT, async (l) => {
+    let { now, later } = whole ? { now: parents, later: [] } : fanOutWindow(parents, parentId);
+    // A host that keeps no track (the desktop) runs no poll budget, so it reads them all.
+    if (later.length > 0 && !reportUnreadListPart({ parentResourceIds: later.map(parentId) })) {
+      now = parents;
+      later = [];
+    }
+    let readOne = false;
+    let refused: unknown;
+    const lists = await mapLimit(now, FAN_OUT, async (p) => {
       try {
-        return await load(l);
+        const rows = await read(p);
+        readOne = true;
+        return rows;
       } catch (e) {
-        if (isStatus(e, 403, 404)) return [];
-        throw e;
+        if (isStatus(e, 404)) {
+          readOne = true;
+          return [];
+        }
+        if (!isStatus(e, 403)) throw e;
+        if (!reportUnreadListPart({ parentResourceIds: [parentId(p)] })) refused = e;
+        return [];
       }
     });
+    // Refused throughout on a host that keeps no track (the desktop): a missing scope to show.
+    if (refused !== undefined && !readOne) throw refused;
     return lists.flat();
+  }
+
+  private async perInstance(
+    accountId: string,
+    whole: boolean,
+    load: (l: Located) => Promise<ResourceInstance[]>,
+  ): Promise<ResourceInstance[]> {
+    const parentId = (l: Located) => `${accountId}:service:${l.env.id}/${l.si.serviceId}`;
+    return this.fanOut(await this.instances(), parentId, whole, load);
   }
 
   // ── Listing ──────────────────────────────────────────────────────────
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
-    return attempt(async () => {
-      switch (typeId) {
-        case "workspace": {
-          const refs = await this.workspaces();
-          return mapLimit(refs, FAN_OUT, async (w) => {
-            const [full, customer] = await Promise.all([
-              this.api
-                .gql<{ workspace: RwWorkspace }>(Q_WORKSPACE, { id: w.id })
-                .then((r) => r.workspace)
-                .catch(() => w as RwWorkspace),
-              this.customer(w.id).catch(() => null),
-            ]);
-            return mapWorkspace(full, customer, accountId);
-          });
-        }
-        case "project":
-          return (await this.tree()).projects.map(({ project, workspace }) =>
-            mapProject(project, workspace, accountId),
-          );
-        case "environment":
-          return (await this.tree()).projects.flatMap(({ project }) =>
-            nodes(project.environments).map((e) => mapEnvironment(e, project, accountId)),
-          );
-        case "service":
-          return (await this.instances()).map((l) =>
-            mapServiceInstance(
-              l.si,
-              { projectId: l.project.id, projectName: l.project.name, environmentName: l.env.name },
-              accountId,
-            ),
-          );
-        case "deployment":
-          return this.perInstance(async (l) => {
-            const res = await this.api.gql<{ deployments: Conn<RwDeployment> }>(Q_DEPLOYMENTS, {
-              input: {
-                projectId: l.project.id,
-                environmentId: l.env.id,
-                serviceId: l.si.serviceId,
-              },
-              first: DEPLOYMENTS_PER_SERVICE,
-            });
-            return nodes(res.deployments).map((d) => mapDeployment(d, this.ctxOf(l), accountId));
-          });
-        case "variable":
-          return this.perInstance(async (l) => {
-            const res = await this.api.gql<{ variables: Record<string, string> }>(Q_VARIABLES, {
+    return attempt(() => this.list(typeId, accountId, false));
+  }
+
+  private async list(
+    typeId: string,
+    accountId: string,
+    whole: boolean,
+  ): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "workspace": {
+        const refs = await this.workspaces();
+        return mapLimit(refs, FAN_OUT, async (w) => {
+          const [full, customer] = await Promise.all([
+            this.api
+              .gql<{ workspace: RwWorkspace }>(Q_WORKSPACE, { id: w.id })
+              .then((r) => r.workspace)
+              .catch(() => w as RwWorkspace),
+            this.customer(w.id).catch(() => null),
+          ]);
+          return mapWorkspace(full, customer, accountId);
+        });
+      }
+      case "project":
+        return (await this.tree()).projects.map(({ project, workspace }) =>
+          mapProject(project, workspace, accountId),
+        );
+      case "environment":
+        return (await this.tree()).projects.flatMap(({ project }) =>
+          nodes(project.environments).map((e) => mapEnvironment(e, project, accountId)),
+        );
+      case "service":
+        return (await this.instances()).map((l) =>
+          mapServiceInstance(
+            l.si,
+            { projectId: l.project.id, projectName: l.project.name, environmentName: l.env.name },
+            accountId,
+          ),
+        );
+      case "deployment":
+        return this.perInstance(accountId, whole, async (l) => {
+          const res = await this.api.gql<{ deployments: Conn<RwDeployment> }>(Q_DEPLOYMENTS, {
+            input: {
               projectId: l.project.id,
               environmentId: l.env.id,
               serviceId: l.si.serviceId,
+            },
+            first: DEPLOYMENTS_PER_SERVICE,
+          });
+          return nodes(res.deployments).map((d) => mapDeployment(d, this.ctxOf(l), accountId));
+        });
+      case "variable":
+        return this.perInstance(accountId, whole, async (l) => {
+          const res = await this.api.gql<{ variables: Record<string, string> }>(Q_VARIABLES, {
+            projectId: l.project.id,
+            environmentId: l.env.id,
+            serviceId: l.si.serviceId,
+          });
+          return variableNames(res.variables, "variables").map((k) =>
+            mapVariable(k, this.ctxOf(l), accountId),
+          );
+        });
+      case "shared-variable": {
+        const envs = (await this.tree()).projects.flatMap(({ project }) =>
+          nodes(project.environments).map((env) => ({ project, env })),
+        );
+        return this.fanOut(
+          envs,
+          ({ env }) => `${accountId}:environment:${env.id}`,
+          whole,
+          async ({ project, env }) => {
+            const res = await this.api.gql<{ variables: Record<string, string> }>(Q_VARIABLES, {
+              projectId: project.id,
+              environmentId: env.id,
+              serviceId: null,
             });
             return variableNames(res.variables, "variables").map((k) =>
-              mapVariable(k, this.ctxOf(l), accountId),
+              mapSharedVariable(
+                k,
+                { environmentId: env.id, environmentName: env.name, projectId: project.id },
+                accountId,
+              ),
             );
-          });
-        case "shared-variable": {
-          const envs = (await this.tree()).projects.flatMap(({ project }) =>
-            nodes(project.environments).map((env) => ({ project, env })),
-          );
-          const lists = await mapLimit(envs, FAN_OUT, async ({ project, env }) => {
-            try {
-              const res = await this.api.gql<{ variables: Record<string, string> }>(Q_VARIABLES, {
-                projectId: project.id,
-                environmentId: env.id,
-                serviceId: null,
-              });
-              return variableNames(res.variables, "variables").map((k) =>
-                mapSharedVariable(
-                  k,
-                  { environmentId: env.id, environmentName: env.name, projectId: project.id },
+          },
+        );
+      }
+      case "volume": {
+        const out: ResourceInstance[] = [];
+        for (const { project } of (await this.tree()).projects) {
+          const names = new Map(nodes(project.services).map((s) => [s.id, s.name]));
+          for (const env of nodes(project.environments)) {
+            for (const v of nodes(env.volumeInstances)) {
+              out.push(
+                mapVolume(
+                  v,
+                  {
+                    projectId: project.id,
+                    projectName: project.name,
+                    environmentName: env.name,
+                    serviceName: v.serviceId ? (names.get(v.serviceId) ?? "") : "",
+                  },
                   accountId,
                 ),
               );
-            } catch (e) {
-              if (isStatus(e, 403, 404)) return [];
-              throw e;
-            }
-          });
-          return lists.flat();
-        }
-        case "volume": {
-          const out: ResourceInstance[] = [];
-          for (const { project } of (await this.tree()).projects) {
-            const names = new Map(nodes(project.services).map((s) => [s.id, s.name]));
-            for (const env of nodes(project.environments)) {
-              for (const v of nodes(env.volumeInstances)) {
-                out.push(
-                  mapVolume(
-                    v,
-                    {
-                      projectId: project.id,
-                      projectName: project.name,
-                      environmentName: env.name,
-                      serviceName: v.serviceId ? (names.get(v.serviceId) ?? "") : "",
-                    },
-                    accountId,
-                  ),
-                );
-              }
             }
           }
-          return out;
         }
-        case "domain":
-          return (await this.instances()).flatMap((l) => [
-            ...(l.si.domains?.serviceDomains ?? []).map((d) =>
-              mapDomain({ kind: "railway", domain: d }, this.ctxOf(l), accountId),
-            ),
-            ...(l.si.domains?.customDomains ?? []).map((d) =>
-              mapDomain({ kind: "custom", domain: d }, this.ctxOf(l), accountId),
-            ),
-          ]);
-        case "tcp-proxy":
-          return this.perInstance(async (l) => {
-            const res = await this.api.gql<{ tcpProxies: RwTcpProxy[] }>(Q_TCP_PROXIES, {
-              environmentId: l.env.id,
-              serviceId: l.si.serviceId,
-            });
-            return requireListPage(res.tcpProxies, {
-              vendor: "Railway",
-              path: "tcpProxies",
-              key: "tcpProxies",
-              page: res,
-            }).map((t) => mapTcpProxy(t, l.project.id, accountId));
-          });
-        default:
-          throw new Error(`Railway plugin: unknown resource type "${typeId}"`);
+        return out;
       }
-    });
+      case "domain":
+        return (await this.instances()).flatMap((l) => [
+          ...(l.si.domains?.serviceDomains ?? []).map((d) =>
+            mapDomain({ kind: "railway", domain: d }, this.ctxOf(l), accountId),
+          ),
+          ...(l.si.domains?.customDomains ?? []).map((d) =>
+            mapDomain({ kind: "custom", domain: d }, this.ctxOf(l), accountId),
+          ),
+        ]);
+      case "tcp-proxy":
+        return this.perInstance(accountId, whole, async (l) => {
+          const res = await this.api.gql<{ tcpProxies: RwTcpProxy[] }>(Q_TCP_PROXIES, {
+            environmentId: l.env.id,
+            serviceId: l.si.serviceId,
+          });
+          return requireListPage(res.tcpProxies, {
+            vendor: "Railway",
+            path: "tcpProxies",
+            key: "tcpProxies",
+            page: res,
+          }).map((t) => mapTcpProxy(t, l.project.id, accountId));
+        });
+      default:
+        throw new Error(`Railway plugin: unknown resource type "${typeId}"`);
+    }
   }
 
   private async customer(workspaceId: string): Promise<RwCustomer | null> {
@@ -488,7 +549,7 @@ export class RailwayClient implements PluginClient {
           accountId,
         );
       }
-      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const all = await this.list(typeId, accountId, true);
       const found = all.find((r) => r.id === resourceId || r.externalId === id);
       if (!found) throw notFound(`${typeId} ${id}`);
       return found;
