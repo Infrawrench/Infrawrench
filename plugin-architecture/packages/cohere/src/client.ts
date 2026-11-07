@@ -23,6 +23,7 @@ import {
   formatBytes,
   buildMultipartBody,
   pathEncode,
+  requireListPage,
   type ApiBody,
   type ApiResponse,
   type MultipartPart,
@@ -30,7 +31,9 @@ import {
 import {
   BASE_URL,
   cohereHeaders,
+  cohereLists,
   createCohereApi,
+  FINETUNE_PAGES,
   type CheckApiKeyOperation,
   type CohereApi,
   type CohereBatch,
@@ -175,6 +178,7 @@ export class CohereClient implements PluginClient {
   private readonly services: HostServices | undefined;
   private readonly caCert: string | undefined;
   private readonly api: CohereApi;
+  private readonly lists: ReturnType<typeof cohereLists>;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
@@ -183,6 +187,7 @@ export class CohereClient implements PluginClient {
     this.services = services;
     this.caCert = credentials["caCert"];
     this.api = createCohereApi(apiKey, services?.http, this.caCert);
+    this.lists = cohereLists(this.api);
   }
 
   // ---------------------------------------------------------------------------
@@ -288,28 +293,14 @@ export class CohereClient implements PluginClient {
    *
    * Cursor pagination: `page_size` (default 20, max 1000) / `page_token` →
    * `next_page_token`. ⚠️ The token is an **empty string** rather than absent
-   * at the end of the list, which the falsy check below handles.
+   * at the end of the list.
    *
    * Deprecated models stay in the response; callers building pickers must
-   * filter on `is_deprecated` themselves.
-   *
-   * This and the other lists here stay loops rather than `getAll`, which reads a
-   * list that is not an array as empty. Here that fails the call, and the host
-   * prunes what a sync stops seeing. `String` because a token is not validated.
+   * filter on `is_deprecated` themselves, and pass `partial` because part of the
+   * list is enough to pick from.
    */
-  private async fetchModels(): Promise<CohereModel[]> {
-    const models: CohereModel[] = [];
-    let pageToken: string | undefined;
-    // Bounded so a pathological cursor cannot spin forever.
-    for (let page = 0; page < 20; page += 1) {
-      const data = await this.api.get("/v1/models", {
-        query: { page_size: 1000, ...(pageToken !== undefined ? { page_token: pageToken } : {}) },
-      });
-      models.push(...(data.models ?? []));
-      if (!data.next_page_token) break;
-      pageToken = String(data.next_page_token);
-    }
-    return models;
+  private fetchModels(reading: { partial?: boolean } = {}): Promise<CohereModel[]> {
+    return this.lists.models.getAll("/v1/models", "models", reading);
   }
 
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
@@ -353,16 +344,8 @@ export class CohereClient implements PluginClient {
    * endpoint's query params are camelCase (`datasetType`, `validationStatus`)
    * while its response fields are snake_case.
    */
-  private async fetchDatasets(): Promise<CohereDataset[]> {
-    const datasets: CohereDataset[] = [];
-    const limit = 100;
-    for (let offset = 0; offset < 2000; offset += limit) {
-      const data = await this.api.get("/v1/datasets", { query: { limit, offset } });
-      const page = data.datasets ?? [];
-      datasets.push(...page);
-      if (page.length < limit) break;
-    }
-    return datasets;
+  private fetchDatasets(reading: { partial?: boolean } = {}): Promise<CohereDataset[]> {
+    return this.lists.datasets.getAll("/v1/datasets", "datasets", reading);
   }
 
   /**
@@ -428,18 +411,12 @@ export class CohereClient implements PluginClient {
    * rerank on 2025-09-15. The endpoints still answer, so existing fine-tunes
    * remain listable and deletable, but this plugin does not offer creation.
    */
-  private async fetchFinetunedModels(): Promise<CohereFinetunedModel[]> {
-    const models: CohereFinetunedModel[] = [];
-    let pageToken: string | undefined;
-    for (let page = 0; page < 20; page += 1) {
-      const data = await this.api.get("/v1/finetuning/finetuned-models", {
-        query: { page_size: 100, ...(pageToken !== undefined ? { page_token: pageToken } : {}) },
-      });
-      models.push(...(data.finetuned_models ?? []));
-      if (!data.next_page_token) break;
-      pageToken = String(data.next_page_token);
-    }
-    return models;
+  private fetchFinetunedModels(): Promise<CohereFinetunedModel[]> {
+    return this.lists.tokens.getAll(
+      "/v1/finetuning/finetuned-models",
+      "finetuned_models",
+      FINETUNE_PAGES,
+    );
   }
 
   /** `GET /v1/finetuning/finetuned-models/{id}/events` */
@@ -526,11 +503,18 @@ export class CohereClient implements PluginClient {
    * `GET /v1/embed-jobs`: https://docs.cohere.com/reference/list-embed-jobs
    *
    * ⚠️ This endpoint documents no query parameters whatsoever; there is no
-   * pagination to drive, and the response is the full list.
+   * pagination to drive, and the response is the full list. The document does not
+   * require `embed_jobs`, so a key left out is none, and anything else that is not a
+   * list fails rather than reading as an account with no jobs.
    */
   private async fetchEmbedJobs(): Promise<CohereEmbedJob[]> {
-    const data = await this.api.get("/v1/embed-jobs");
-    return data.embed_jobs ?? [];
+    const path = "/v1/embed-jobs";
+    const data = await this.api.get(path);
+    return requireListPage(data.embed_jobs ?? null, {
+      vendor: "Cohere",
+      path,
+      key: "embed_jobs",
+    });
   }
 
   private async listEmbedJobs(accountId: string): Promise<ResourceInstance[]> {
@@ -574,18 +558,8 @@ export class CohereClient implements PluginClient {
    * One of the few management-shaped surfaces that really is on `/v2/`.
    * Cursor pagination: `page_size` (default 50, max 1000) / `page_token`.
    */
-  private async fetchBatches(): Promise<CohereBatch[]> {
-    const batches: CohereBatch[] = [];
-    let pageToken: string | undefined;
-    for (let page = 0; page < 20; page += 1) {
-      const data = await this.api.get("/v2/batches", {
-        query: { page_size: 1000, ...(pageToken !== undefined ? { page_token: pageToken } : {}) },
-      });
-      batches.push(...(data.batches ?? []));
-      if (!data.next_page_token) break;
-      pageToken = String(data.next_page_token);
-    }
-    return batches;
+  private fetchBatches(): Promise<CohereBatch[]> {
+    return this.lists.tokens.getAll("/v2/batches", "batches");
   }
 
   private async listBatches(accountId: string): Promise<ResourceInstance[]> {
@@ -687,8 +661,8 @@ export class CohereClient implements PluginClient {
     return attempt(async () => {
       if (typeId === "batch") {
         const [models, datasets] = await Promise.all([
-          this.safely<CohereModel[]>(() => this.fetchModels(), []),
-          this.safely<CohereDataset[]>(() => this.fetchDatasets(), []),
+          this.safely<CohereModel[]>(() => this.fetchModels({ partial: true }), []),
+          this.safely<CohereDataset[]>(() => this.fetchDatasets({ partial: true }), []),
         ]);
         return {
           fields: [
@@ -714,8 +688,8 @@ export class CohereClient implements PluginClient {
 
       if (typeId === "embed-job") {
         const [models, datasets] = await Promise.all([
-          this.safely<CohereModel[]>(() => this.fetchModels(), []),
-          this.safely<CohereDataset[]>(() => this.fetchDatasets(), []),
+          this.safely<CohereModel[]>(() => this.fetchModels({ partial: true }), []),
+          this.safely<CohereDataset[]>(() => this.fetchDatasets({ partial: true }), []),
         ]);
         return {
           fields: [
@@ -1594,7 +1568,7 @@ export class CohereClient implements PluginClient {
    * Cohere does not list the model at all.
    */
   private async fetchTranscriptionModelOptions(): Promise<SpeechPanelOption[]> {
-    const models = await this.fetchModels();
+    const models = await this.fetchModels({ partial: true });
     const options = models
       .filter((m) => !m.is_deprecated && m.name?.startsWith("cohere-transcribe"))
       .map<SpeechPanelOption>((m) => ({

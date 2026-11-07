@@ -179,6 +179,120 @@ describe("listResources — pagination styles differ per resource", () => {
   });
 });
 
+describe("list reads the sync prunes from", () => {
+  /** Answers every request with a full page and more to come. */
+  function endless(key: string, rows: number, idField = "id") {
+    let served = 0;
+    installFetch(() => {
+      served += 1;
+      const items = Array.from({ length: rows }, (_, i) => ({
+        [idField]: `r${served}-${i}`,
+      }));
+      return jsonResponse({ [key]: items, next_page_token: `tok${served}` });
+    });
+  }
+
+  it.each([
+    ["model", "models", 1000, "name", 20],
+    ["batch", "batches", 1000, "id", 20],
+    ["finetuned-model", "finetuned_models", 100, "id", 100],
+    ["dataset", "datasets", 100, "id", 100],
+  ])("%s throws once it reaches its cap with more to read", async (type, key, size, id, pages) => {
+    endless(key, size, id);
+    await expect(client().listResources(type, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(pages);
+  });
+
+  it("reads fine-tunes and datasets past the old 2,000 row caps", async () => {
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      const rows = Array.from({ length: 100 }, (_, i) => ({ id: `f${page}-${i}` }));
+      return jsonResponse({
+        finetuned_models: rows,
+        next_page_token: page < 21 ? `tok${page}` : "",
+      });
+    });
+    expect(await client().listResources("finetuned-model", ACCOUNT)).toHaveLength(2100);
+
+    page = 0;
+    calls = [];
+    vi.restoreAllMocks();
+    installFetch(() => {
+      page += 1;
+      const size = page < 21 ? 100 : 1;
+      return jsonResponse({
+        datasets: Array.from({ length: size }, (_, i) => ({ id: `d${page}-${i}` })),
+      });
+    });
+    expect(await client().listResources("dataset", ACCOUNT)).toHaveLength(2001);
+    expect(calls[20]!.url).toContain("offset=2000");
+  });
+
+  it("follows a token past an empty page, because the token is what ends a list", async () => {
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      if (page === 1) return jsonResponse({ batches: [], next_page_token: "tok" });
+      return jsonResponse({ batches: [{ id: "b1" }] });
+    });
+    const batches = await client().listResources("batch", ACCOUNT);
+    expect(batches.map((b) => b.externalId)).toEqual(["b1"]);
+  });
+
+  it("refuses a models answer with no list, the one key the document requires", async () => {
+    installFetch(() => jsonResponse({ data: [{ name: "a" }] }));
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a later page that stops being a list", async () => {
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      return page === 1
+        ? jsonResponse({ models: [{ name: "a" }], next_page_token: "tok" })
+        : jsonResponse({ data: [{ name: "b" }] });
+    });
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["batch", "batches"],
+    ["finetuned-model", "finetuned_models"],
+    ["dataset", "datasets"],
+    ["embed-job", "embed_jobs"],
+  ])(
+    "%s reads a left out key as none, and a key that is not a list as a failure",
+    async (type, key) => {
+      installFetch(() => jsonResponse({}));
+      expect(await client().listResources(type, ACCOUNT)).toEqual([]);
+
+      vi.restoreAllMocks();
+      installFetch(() => jsonResponse({ [key]: { message: "busy" } }));
+      await expect(client().listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    },
+  );
+
+  it("still offers what it read in a picker when a list runs past its cap", async () => {
+    let served = 0;
+    installFetch((url) => {
+      served += 1;
+      if (url.includes("/v1/models")) {
+        return jsonResponse({
+          models: [{ name: `m${served}`, endpoints: ["embed"] }],
+          next_page_token: `tok${served}`,
+        });
+      }
+      return jsonResponse({ datasets: [] });
+    });
+    const config = await client().getCreateConfig("embed-job");
+    const model = config.fields.find((f) => f.key === "model");
+    expect(model?.options?.length).toBe(20);
+  });
+});
+
 describe("field mapping", () => {
   it("sums per-part byte sizes and num_rows onto the dataset", async () => {
     installFetch(() =>
