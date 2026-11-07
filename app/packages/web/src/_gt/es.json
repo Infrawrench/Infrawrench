@@ -23085,5 +23085,19 @@
   "fb04958c5a610172": "ID de suscripción (Azure)",
   "eca23137eaa743e1": "Estado de los destinos",
   "da7baf7d75d582b7": "ID de inquilino (Azure)",
-  "ea534b7be0c3f932": "El último análisis leyó solo una parte de este escáner, así que pueden faltar algunas filtraciones."
+  "ea534b7be0c3f932": "El último análisis leyó solo una parte de este escáner, así que pueden faltar algunas filtraciones.",
+  "48ba2a287930d29b": "Un endpoint de Dedicated Managed Inference (API v2): una ruta con nombre que reparte el tráfico entre despliegues, cada uno un modelo en GPU dedicadas. Al eliminarlo se eliminan primero sus despliegues.",
+  "283b9b51529d5654": "Una concesión (lease) de un secreto dinámico (credenciales de base de datos o de la nube y similares): cuándo se emitió y cuándo caduca. Renuévela o revócala. Listar concesiones requiere un token con capacidad sudo. A partir de 2.000, en cada sondeo se actualiza una parte distinta de la lista.",
+  "2ab257638e800184": "Un trabajo de voz a texto enviado a AssemblyAI. AssemblyAI elimina las transcripciones tras 30 días de forma predeterminada, o antes si hay una retención más corta, y su lista abarca 30 días hacia atrás, por lo que es una ventana móvil y no un inventario completo de todo lo que la cuenta ha transcrito.",
+  "3d32a6602f845f93": "Un token de Vault, identificado por su accessor: políticas, la ruta de autenticación que lo emitió, TTL y caducidad. Renuévelo o revóquelo. Listar tokens requiere un token con capacidad sudo. A partir de 2.000, en cada sondeo se actualiza una parte distinta de la lista.",
+  "3a1324a98a473646": "Dirección de la interfaz web de cualquier nodo o de un balanceador de carga delante del clúster, incluido el puerto (8006 por defecto). Las direcciones privadas funcionan desde la aplicación de escritorio o a través de un túnel SSH de la cuenta.",
+  "7ebf16a806f6e5ad": "Clústeres adicionales de esta cuenta, uno por línea: el endpoint REST, un espacio y su clave de API. Los clústeres conectados desde Infrawrench se añaden aquí, y eliminar una línea desconecta ese clúster. Detrás de un bastión, elija también los autoalojados en Hosts de clústeres autoalojados.",
+  "a37c3881dd2d1213": "Endpoints de clústeres híbridos",
+  "f9118cbf93ce6692": "Solo es necesario detrás de un bastión, para clústeres de nube híbrida cuyo endpoint de base de datos está en su propio host y no en cloud.qdrant.io. Elija esos hosts para que el bastión deje pasar las lecturas y ediciones de colecciones. Solo direcciones públicas.",
+  "6bc151895c6af44d": "Solo es necesario detrás de un bastión, para clústeres autoalojados indicados en Más clústeres, cuyos hosts son suyos y no de weaviate.cloud. Elija esos hosts para que el bastión los deje pasar. Solo direcciones públicas.",
+  "52aab3b9abfa87f4": "Solo es necesario detrás de un bastión, cuando el catálogo de servicios sitúa Nova, Neutron u otros servicios en hosts distintos al de la URL de Keystone. Elija esos hosts para que el bastión los deje pasar. Solo direcciones públicas.",
+  "0881de81d0d72477": "Privado lo limita al proyecto; interno lo comparte con la organización.",
+  "5ee93e8e2091fade": "Hosts de clústeres autoalojados",
+  "afab26d899bf7e18": "Hosts de endpoints de servicio",
+  "12d03674d6b583da": "La dirección de vCenter Server (vCenter 7.0 o posterior; los hosts ESXi independientes no sirven la API REST). Las direcciones privadas funcionan desde la aplicación de escritorio o a través de un túnel SSH de la cuenta."
 }

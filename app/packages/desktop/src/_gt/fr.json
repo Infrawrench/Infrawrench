@@ -22870,5 +22870,19 @@
   "fb04958c5a610172": "ID d'abonnement (Azure)",
   "eca23137eaa743e1": "Santé des cibles",
   "da7baf7d75d582b7": "ID de locataire (Azure)",
-  "ea534b7be0c3f932": "La dernière analyse n'a lu qu'une partie de ce scanner, certaines fuites peuvent donc manquer."
+  "ea534b7be0c3f932": "La dernière analyse n'a lu qu'une partie de ce scanner, certaines fuites peuvent donc manquer.",
+  "48ba2a287930d29b": "Un point de terminaison Dedicated Managed Inference (API v2) : une route nommée qui répartit le trafic entre des déploiements, chacun étant un modèle sur des GPU dédiés. Le supprimer supprime d'abord ses déploiements.",
+  "283b9b51529d5654": "Un bail (lease) sur un secret dynamique (identifiants de base de données, cloud et similaires) : date d'émission et date d'expiration. Renouvelez-le ou révoquez-le. Lister les baux nécessite un jeton capable de sudo. Au-delà de 2 000, une partie différente de la liste est actualisée à chaque interrogation.",
+  "2ab257638e800184": "Une tâche de reconnaissance vocale soumise à AssemblyAI. AssemblyAI supprime les transcriptions après 30 jours par défaut, ou plus tôt avec une rétention plus courte, et sa liste remonte à 30 jours ; il s'agit donc d'une fenêtre glissante plutôt que d'un inventaire complet de tout ce que le compte a jamais transcrit.",
+  "3d32a6602f845f93": "Un jeton Vault, identifié par son accessor : politiques, chemin d'authentification qui l'a émis, TTL et expiration. Renouvelez-le ou révoquez-le. Lister les jetons nécessite un jeton capable de sudo. Au-delà de 2 000, une partie différente de la liste est actualisée à chaque interrogation.",
+  "3a1324a98a473646": "Adresse de l'interface web de n'importe quel nœud ou d'un load balancer placé devant le cluster, port compris (8006 par défaut). Les adresses privées fonctionnent depuis l'application de bureau ou via un tunnel SSH sur le compte.",
+  "7ebf16a806f6e5ad": "Clusters supplémentaires de ce compte, un par ligne : l'endpoint REST, une espace, puis sa clé API. Les clusters connectés depuis Infrawrench sont ajoutés ici, et supprimer une ligne déconnecte ce cluster. Derrière un bastion, choisissez aussi les clusters auto-hébergés sous Hôtes des clusters auto-hébergés.",
+  "a37c3881dd2d1213": "Endpoints des clusters hybrides",
+  "f9118cbf93ce6692": "Nécessaire uniquement derrière un bastion, pour les clusters cloud hybrides dont l'endpoint de base de données se trouve sur votre propre hôte plutôt que sur cloud.qdrant.io. Choisissez ces hôtes pour que le bastion laisse passer la lecture et la modification des collections. Adresses publiques uniquement.",
+  "6bc151895c6af44d": "Nécessaire uniquement derrière un bastion, pour les clusters auto-hébergés listés sous Autres clusters, dont les hôtes vous appartiennent plutôt que weaviate.cloud. Choisissez ces hôtes pour que le bastion les laisse passer. Adresses publiques uniquement.",
+  "52aab3b9abfa87f4": "Nécessaire uniquement derrière un bastion, lorsque le catalogue de services place Nova, Neutron ou d'autres services sur des hôtes différents de celui de l'URL Keystone. Choisissez ces hôtes pour que le bastion les laisse passer. Adresses publiques uniquement.",
+  "0881de81d0d72477": "Privé le limite au projet ; interne le partage avec l'organisation.",
+  "5ee93e8e2091fade": "Hôtes des clusters auto-hébergés",
+  "afab26d899bf7e18": "Hôtes des endpoints de service",
+  "12d03674d6b583da": "L'adresse de vCenter Server (vCenter 7.0 ou ultérieur ; l'API REST n'est pas servie par les hôtes ESXi autonomes). Les adresses privées fonctionnent depuis l'application de bureau ou via un tunnel SSH sur le compte."
 }

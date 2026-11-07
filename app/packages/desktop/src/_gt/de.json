@@ -22869,5 +22869,19 @@
   "fb04958c5a610172": "Abonnement-ID (Azure)",
   "eca23137eaa743e1": "Zielzustand",
   "da7baf7d75d582b7": "Mandanten-ID (Azure)",
-  "ea534b7be0c3f932": "Der letzte Scan hat nur einen Teil dieses Scanners gelesen, daher fehlen möglicherweise einige Lecks."
+  "ea534b7be0c3f932": "Der letzte Scan hat nur einen Teil dieses Scanners gelesen, daher fehlen möglicherweise einige Lecks.",
+  "48ba2a287930d29b": "Ein Dedicated-Managed-Inference-Endpunkt (v2-API): eine benannte Route, die den Traffic auf Deployments aufteilt, jedes davon ein Modell auf dedizierten GPUs. Beim Löschen werden zuerst seine Deployments gelöscht.",
+  "283b9b51529d5654": "Ein Lease auf ein dynamisches Secret (Datenbank- oder Cloud-Zugangsdaten und Ähnliches): wann es ausgestellt wurde und wann es abläuft. Erneuern oder widerrufen Sie es. Zum Auflisten von Leases ist ein sudo-fähiges Token nötig. Ab 2.000 wird bei jeder Abfrage ein anderer Teil der Liste aktualisiert.",
+  "2ab257638e800184": "Ein an AssemblyAI übermittelter Sprache-zu-Text-Job. AssemblyAI löscht Transkripte standardmäßig nach 30 Tagen, bei kürzerer Aufbewahrungseinstellung früher, und die Liste reicht 30 Tage zurück. Sie ist daher ein gleitendes Fenster und kein vollständiges Verzeichnis aller jemals von diesem Konto transkribierten Inhalte.",
+  "3d32a6602f845f93": "Ein Vault-Token, identifiziert über seinen Accessor: Policies, der Auth-Pfad, der es ausgestellt hat, TTL und Ablauf. Erneuern oder widerrufen Sie es. Zum Auflisten von Tokens ist ein sudo-fähiges Token nötig. Ab 2.000 wird bei jeder Abfrage ein anderer Teil der Liste aktualisiert.",
+  "3a1324a98a473646": "Adresse der Weboberfläche eines beliebigen Nodes oder eines Load Balancers vor dem Cluster, einschließlich Port (standardmäßig 8006). Private Adressen funktionieren über die Desktop-App oder über einen SSH-Tunnel am Konto.",
+  "7ebf16a806f6e5ad": "Weitere Cluster dieses Kontos, einer pro Zeile: der REST-Endpunkt, ein Leerzeichen, dann sein API-Schlüssel. Aus Infrawrench verbundene Cluster werden hier hinzugefügt, und das Entfernen einer Zeile trennt diesen Cluster. Hinter einem Bastion wählen Sie selbst gehostete Cluster zusätzlich unter Hosts selbst gehosteter Cluster aus.",
+  "a37c3881dd2d1213": "Endpunkte hybrider Cluster",
+  "f9118cbf93ce6692": "Nur hinter einem Bastion nötig, für Hybrid-Cloud-Cluster, deren Datenbank-Endpunkt auf Ihrem eigenen Host statt auf cloud.qdrant.io liegt. Wählen Sie diese Hosts aus, damit der Bastion das Lesen und Bearbeiten von Collections durchlässt. Nur öffentliche Adressen.",
+  "6bc151895c6af44d": "Nur hinter einem Bastion nötig, für selbst gehostete Cluster unter Weitere Cluster, deren Hosts Ihre eigenen sind statt weaviate.cloud. Wählen Sie diese Hosts aus, damit der Bastion sie durchlässt. Nur öffentliche Adressen.",
+  "52aab3b9abfa87f4": "Nur hinter einem Bastion nötig, wenn der Servicekatalog Nova, Neutron oder andere Dienste auf anderen Hosts als dem der Keystone-URL einträgt. Wählen Sie diese Hosts aus, damit der Bastion sie durchlässt. Nur öffentliche Adressen.",
+  "0881de81d0d72477": "Privat beschränkt es auf das Projekt; intern teilt es mit der Organisation.",
+  "5ee93e8e2091fade": "Hosts selbst gehosteter Cluster",
+  "afab26d899bf7e18": "Hosts der Service-Endpunkte",
+  "12d03674d6b583da": "Die Adresse des vCenter Servers (vCenter 7.0 oder neuer; eigenständige ESXi-Hosts stellen die REST-API nicht bereit). Private Adressen funktionieren über die Desktop-App oder über einen SSH-Tunnel am Konto."
 }
