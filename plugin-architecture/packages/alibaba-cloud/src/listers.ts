@@ -1152,20 +1152,25 @@ export async function nodePoolsOf(
 }
 
 export async function listNodePools(ctx: ListContext): Promise<ResourceInstance[]> {
+  // Thrown after the regions, since `perRegion` reads a refusal in a region as none there.
+  let untracked: unknown;
   const all = await perRegion(ctx.inventory, "cs", ctx.regionHint, async (region) => {
     const clusters = await clustersIn(ctx.api, region);
     const pools = await mapLimit(clusters, 4, (c) =>
       nodePoolsOf(ctx, region, c.cluster_id).catch((err: unknown) => {
         if (!isPermissionGap(err)) throw err;
         // Access can be per cluster, so this one says nothing about its pools being gone.
-        reportUnreadListPart({
+        // A host that keeps no track answers false, and there the list would be short.
+        const tracked = reportUnreadListPart({
           parentResourceIds: [`${ctx.accountId}:ack-cluster:${region}/${c.cluster_id}`],
         });
+        if (!tracked) untracked ??= err;
         return [] as ResourceInstance[];
       }),
     );
     return pools.flat();
   });
+  if (untracked !== undefined) throw untracked;
   return all;
 }
 

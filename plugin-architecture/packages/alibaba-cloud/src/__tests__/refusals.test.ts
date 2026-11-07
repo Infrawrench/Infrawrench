@@ -128,9 +128,21 @@ describe("a refusal on one ACK cluster", () => {
     });
   });
 
-  it("does not stop the other clusters where the host keeps no track", async () => {
+  it("throws where the host keeps no track, rather than list the other clusters' pools alone", async () => {
     Reflect.deleteProperty(globalThis, UNREAD_HOOK);
     const { client } = makeClient(route, { regions: "ap-southeast-1" });
-    expect(await client.listResources("ack-node-pool", "acct")).toHaveLength(1);
+    await expect(client.listResources("ack-node-pool", "acct")).rejects.toThrow("Forbidden.RAM");
+  });
+
+  it("throws where the host keeps no track though another region answered", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const { client } = makeClient(
+      (req) =>
+        req.params["RegionId"] === "eu-central-1" || req.url.hostname.includes("eu-central-1")
+          ? { body: { clusters: [], page_info: { total_count: 0 } } }
+          : route(req),
+      { regions: "ap-southeast-1,eu-central-1" },
+    );
+    await expect(client.listResources("ack-node-pool", "acct")).rejects.toThrow("Forbidden.RAM");
   });
 });
