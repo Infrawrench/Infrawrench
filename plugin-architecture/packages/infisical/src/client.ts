@@ -1382,11 +1382,11 @@ export class InfisicalClient implements PluginClient {
             ],
           };
         case "certificate": {
-          const profiles = await this.api.rest
-            .get("/api/v1/cert-manager/certificate-profiles", {
-              query: { limit: 100, enrollmentType: "api" },
+          const profiles = await this.api.lists
+            .getAll("/api/v1/cert-manager/certificate-profiles", "certificateProfiles", {
+              query: { enrollmentType: "api" },
+              partial: true,
             })
-            .then((b) => b.certificateProfiles ?? [])
             .catch((): InfCertificateProfile[] => []);
           return {
             fields: [
@@ -2097,9 +2097,12 @@ export class InfisicalClient implements PluginClient {
           const projectId = id;
           const type = String(resource.fields["type"] ?? "");
           if (type === "secret-manager" || !type) {
-            const members = await this.api.rest
-              .get(`/api/v1/projects/${pathEncode(projectId)}/identity-memberships`)
-              .then((b) => b.identityMemberships ?? [])
+            const members = await this.api.lists
+              .getAll(
+                `/api/v1/projects/${pathEncode(projectId)}/identity-memberships`,
+                "identityMemberships",
+                { partial: true },
+              )
               .catch((): ProjectIdentity[] => []);
             extra["__identities__"] = JSON.stringify(
               members.map((m) => ({

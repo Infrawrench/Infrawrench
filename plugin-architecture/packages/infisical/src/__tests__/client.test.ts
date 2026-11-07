@@ -428,6 +428,54 @@ describe("incomplete lists", () => {
   });
 });
 
+describe("paged reads for a view", () => {
+  const pages = <T>(rows: T[], call: Call) => {
+    const query = new URL(call.url).searchParams;
+    const offset = Number(query.get("offset"));
+    return rows.slice(offset, offset + Number(query.get("limit")));
+  };
+
+  it("offers every certificate profile in the create form, not the first 100", async () => {
+    const profiles = Array.from({ length: 150 }, (_, i) => ({ id: `p-${i}`, slug: `s-${i}` }));
+    const c = client((call) => ({
+      body: { certificateProfiles: pages(profiles, call), totalCount: profiles.length },
+    }));
+    const config = await c.getCreateConfig("certificate", `${ACCOUNT}:project:proj-1`);
+    const picker = config.fields.find((f) => f.key === "profileId");
+    expect(picker?.options).toHaveLength(150);
+    const requests = calls.filter((x) => x.url.includes("/certificate-profiles"));
+    expect(requests).toHaveLength(2);
+    expect(new URL(requests[0]!.url).searchParams.get("enrollmentType")).toBe("api");
+  });
+
+  it("shows every identity of a project, not the first 100", async () => {
+    const members = Array.from({ length: 120 }, (_, i) => ({
+      identity: { name: `id-${i}` },
+      roles: [{ role: "viewer" }],
+    }));
+    const c = client((call) => ({
+      body: { identityMemberships: pages(members, call), totalCount: members.length },
+    }));
+    const [project] = await c.listResources("project", ACCOUNT);
+    const enriched = await c.enrichDetail!(project!);
+    const shown: unknown[] = JSON.parse(enriched.resolvedOutputs["__identities__"]!);
+    expect(shown).toHaveLength(120);
+  });
+
+  it("keeps what it read of a view's list at the cap rather than show nothing", async () => {
+    const c = client((call) => ({
+      body: {
+        certificateProfiles: Array.from({ length: 100 }, (_, i) => ({
+          id: `p-${new URL(call.url).searchParams.get("offset")}-${i}`,
+          slug: "s",
+        })),
+      },
+    }));
+    const config = await c.getCreateConfig("certificate", `${ACCOUNT}:project:proj-1`);
+    expect(config.fields.find((f) => f.key === "profileId")?.options).toHaveLength(10_000);
+  });
+});
+
 describe("mutations", () => {
   it("renames and re-values a secret through the v4 PATCH", async () => {
     const c = client((call) => {
