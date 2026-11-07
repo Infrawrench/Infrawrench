@@ -190,7 +190,12 @@ export function exportSinkExternalId(namespaceId: string, name: string): string 
 
 export function parseExportSinkId(externalId: string): { namespaceId: string; name: string } {
   const slash = externalId.lastIndexOf("/");
-  return { namespaceId: externalId.slice(0, slash), name: externalId.slice(slash + 1) };
+  const namespaceId = externalId.slice(0, Math.max(slash, 0));
+  const name = externalId.slice(slash + 1);
+  if (!namespaceId || !name) {
+    throw new Error(`Temporal Cloud plugin: "${externalId}" is not an export sink id`);
+  }
+  return { namespaceId, name };
 }
 
 export function mapExportSink(
@@ -201,6 +206,7 @@ export function mapExportSink(
   const name = sink.name ?? sink.spec?.name ?? "";
   const s3 = sink.spec?.s3;
   const gcs = sink.spec?.gcs;
+  const azure = sink.spec?.azureBlob;
   return instance(
     accountId,
     "export-sink",
@@ -210,14 +216,18 @@ export function mapExportSink(
       name,
       namespaceId,
       enabled: sink.spec?.enabled ?? false,
-      destination: s3 ? "S3" : gcs ? "GCS" : sink.spec?.azureBlob ? "Azure Blob" : "",
-      bucketName: s3?.bucketName ?? gcs?.bucketName ?? sink.spec?.azureBlob?.["containerName"],
-      bucketRegion: s3?.region ?? gcs?.region ?? sink.spec?.azureBlob?.["region"],
+      destination: s3 ? "S3" : gcs ? "GCS" : azure ? "Azure Blob" : "",
+      bucketName: s3?.bucketName ?? gcs?.bucketName ?? azure?.containerName,
+      bucketRegion: s3?.region ?? gcs?.region ?? azure?.region,
       roleName: s3?.roleName,
       awsAccountId: s3?.awsAccountId,
       kmsArn: s3?.kmsArn,
       gcpProjectId: gcs?.gcpProjectId,
       serviceAccountId: gcs?.saId,
+      azureTenantId: azure?.tenantId,
+      azureSubscriptionId: azure?.subscriptionId,
+      azureResourceGroup: azure?.resourceGroup,
+      azureStorageAccount: azure?.storageAccount,
       health: stateName(sink.health),
       errorMessage: sink.errorMessage,
       state: stateName(sink.state),

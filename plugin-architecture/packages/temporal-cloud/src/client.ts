@@ -1060,8 +1060,7 @@ export class TemporalCloudClient implements PluginClient {
         case "export-sink": {
           const { namespaceId, name } = parseExportSinkId(id);
           const current = await this.fetchExportSink(namespaceId, name);
-          const merged = { ...exportSinkFields(current), ...fields };
-          const spec = exportSinkSpec(merged, false);
+          const spec = editedExportSinkSpec(current, name, fields);
           const res = await this.ctx.api.post(
             `/cloud/namespaces/${q(namespaceId)}/export-sinks/${q(name)}`,
             { body: { spec, resourceVersion: current.resourceVersion } },
@@ -1578,25 +1577,78 @@ function privateRule(
   return { region, connectionId, gcpProjectId };
 }
 
+type SinkDestination = "s3" | "gcs" | "azure";
+
+/** The form's fields behind each destination. The form shows them all on any sink. */
+const SINK_DESTINATION_FIELDS: Record<SinkDestination, string[]> = {
+  s3: ["bucketName", "bucketRegion", "roleName", "awsAccountId", "kmsArn"],
+  gcs: ["bucketName", "bucketRegion", "gcpProjectId", "serviceAccountId"],
+  azure: [
+    "bucketName",
+    "bucketRegion",
+    "azureTenantId",
+    "azureSubscriptionId",
+    "azureResourceGroup",
+    "azureStorageAccount",
+  ],
+};
+
+/** A destination as a form or the listed field writes it: `gcs`, `GCS`, `Azure Blob`. */
+function sinkDestination(raw: string | undefined): SinkDestination | undefined {
+  const name = (raw ?? "").trim().toLowerCase();
+  if (name === "s3" || name === "gcs") return name;
+  return name === "azure" || name === "azure blob" ? "azure" : undefined;
+}
+
+function destinationOf(sink: TcExportSink): SinkDestination {
+  return sink.spec?.azureBlob ? "azure" : sink.spec?.gcs ? "gcs" : "s3";
+}
+
 function exportSinkFields(sink: TcExportSink): Record<string, string> {
   const s3 = sink.spec?.s3;
   const gcs = sink.spec?.gcs;
-  const out: Record<string, string> = {
-    name: sink.name ?? sink.spec?.name ?? "",
-    enabled: String(sink.spec?.enabled ?? false),
-    destination: gcs ? "gcs" : "s3",
-  };
+  const azure = sink.spec?.azureBlob;
+  const out: Record<string, string> = { enabled: String(sink.spec?.enabled ?? false) };
   const set = (k: string, v: string | undefined) => {
     if (v) out[k] = v;
   };
-  set("bucketName", s3?.bucketName ?? gcs?.bucketName);
-  set("bucketRegion", s3?.region ?? gcs?.region);
+  set("bucketName", s3?.bucketName ?? gcs?.bucketName ?? azure?.containerName);
+  set("bucketRegion", s3?.region ?? gcs?.region ?? azure?.region);
   set("roleName", s3?.roleName);
   set("awsAccountId", s3?.awsAccountId);
   set("kmsArn", s3?.kmsArn);
   set("gcpProjectId", gcs?.gcpProjectId);
   set("serviceAccountId", gcs?.saId);
+  set("azureTenantId", azure?.tenantId);
+  set("azureSubscriptionId", azure?.subscriptionId);
+  set("azureResourceGroup", azure?.resourceGroup);
+  set("azureStorageAccount", azure?.storageAccount);
   return out;
+}
+
+/**
+ * The sink's spec with this edit applied. The update replaces the spec, so all of it
+ * goes back, `filter` included. The destination is only rebuilt, and so only checked,
+ * when the edit touches it: Enable and Disable must work on whatever the sink holds.
+ */
+function editedExportSinkSpec(
+  current: TcExportSink,
+  name: string,
+  fields: Record<string, string>,
+): TcExportSinkSpec {
+  const was = destinationOf(current);
+  const destination = sinkDestination(fields["destination"]) ?? was;
+  const touched =
+    destination !== was || SINK_DESTINATION_FIELDS[destination].some((key) => key in fields);
+  const spec: TcExportSinkSpec = {
+    ...current.spec,
+    name,
+    ...("enabled" in fields ? { enabled: bool(fields["enabled"]) } : {}),
+  };
+  if (!touched) return spec;
+  const { s3: _s3, gcs: _gcs, azureBlob: _azureBlob, ...others } = spec;
+  const merged = { ...exportSinkFields(current), ...fields, name, destination };
+  return { ...others, ...exportSinkSpec(merged, false) };
 }
 
 function exportSinkSpec(
@@ -1609,8 +1661,32 @@ function exportSinkSpec(
   }
   const bucket = (fields["bucketName"] ?? "").trim();
   const region = (fields["bucketRegion"] ?? "").trim();
-  if (!bucket || !region) throw new Error("Enter the destination bucket and its region");
   const enabled = creating ? true : bool(fields["enabled"]);
+  if (fields["destination"] === "azure") {
+    if (!bucket || !region) throw new Error("Enter the destination container and its region");
+    const tenantId = (fields["azureTenantId"] ?? "").trim();
+    const subscriptionId = (fields["azureSubscriptionId"] ?? "").trim();
+    const resourceGroup = (fields["azureResourceGroup"] ?? "").trim();
+    const storageAccount = (fields["azureStorageAccount"] ?? "").trim();
+    if (!tenantId || !subscriptionId || !resourceGroup || !storageAccount) {
+      throw new Error(
+        "Azure Blob sinks need the tenant id, subscription id, resource group and storage account",
+      );
+    }
+    return {
+      name,
+      enabled,
+      azureBlob: {
+        tenantId,
+        subscriptionId,
+        resourceGroup,
+        storageAccount,
+        containerName: bucket,
+        region,
+      },
+    };
+  }
+  if (!bucket || !region) throw new Error("Enter the destination bucket and its region");
   if (fields["destination"] === "gcs") {
     const project = (fields["gcpProjectId"] ?? "").trim();
     const sa = (fields["serviceAccountId"] ?? "").trim();

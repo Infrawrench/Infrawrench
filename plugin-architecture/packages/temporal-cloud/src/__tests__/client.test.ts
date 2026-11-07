@@ -480,3 +480,153 @@ describe("private connectivity rules", () => {
     expect(result?.resource.attributes).not.toHaveProperty("connection_id");
   });
 });
+
+describe("editing an export sink", () => {
+  const FILTER = { disableStandaloneActivityExport: true };
+  const AZURE = {
+    tenantId: "tenant",
+    subscriptionId: "sub",
+    resourceGroup: "rg",
+    storageAccount: "acct",
+    containerName: "history",
+    region: "eastus",
+  };
+  const S3 = {
+    bucketName: "b",
+    region: "us-east-1",
+    roleName: "writer",
+    awsAccountId: "123456789012",
+    kmsArn: "arn:aws:kms:us-east-1:123456789012:key/1",
+  };
+  const ID = "acc:export-sink:prod.a2dd6/hist";
+
+  const sink = (spec: object) => {
+    const updates: Array<{ spec?: unknown; resourceVersion?: unknown }> = [];
+    const { c } = client((url, method, body) => {
+      if (url.pathname !== "/cloud/namespaces/prod.a2dd6/export-sinks/hist") return refuse(url);
+      if (method === "POST") {
+        updates.push(body as { spec?: unknown });
+        return { body: fulfilled };
+      }
+      return { body: { sink: { name: "hist", resourceVersion: "v3", spec } } };
+    });
+    return { c, updates };
+  };
+
+  it.each(["enable", "disable"])(
+    "%ss an Azure sink, keeping its destination and filter",
+    async (action) => {
+      const { c, updates } = sink({
+        name: "hist",
+        enabled: action === "disable",
+        azureBlob: AZURE,
+        filter: FILTER,
+      });
+      await c.invokeAction("export-sink", ID, action ?? "", "acc");
+      expect(updates).toEqual([
+        {
+          resourceVersion: "v3",
+          spec: { name: "hist", enabled: action === "enable", azureBlob: AZURE, filter: FILTER },
+        },
+      ]);
+    },
+  );
+
+  it("edits an Azure sink's container, keeping the rest", async () => {
+    const { c, updates } = sink({ name: "hist", enabled: true, azureBlob: AZURE, filter: FILTER });
+    await c.updateResource("export-sink", ID, "acc", { bucketName: "other" });
+    expect(updates[0]?.spec).toEqual({
+      name: "hist",
+      enabled: true,
+      azureBlob: { ...AZURE, containerName: "other" },
+      filter: FILTER,
+    });
+  });
+
+  it("edits the rest of an Azure sink's destination", async () => {
+    const { c, updates } = sink({ name: "hist", enabled: true, azureBlob: AZURE });
+    await c.updateResource("export-sink", ID, "acc", { azureStorageAccount: "other" });
+    expect(updates[0]?.spec).toMatchObject({ azureBlob: { ...AZURE, storageAccount: "other" } });
+  });
+
+  it("refuses to blank what an Azure sink needs", async () => {
+    const { c, updates } = sink({ name: "hist", enabled: true, azureBlob: AZURE });
+    await expect(c.updateResource("export-sink", ID, "acc", { azureTenantId: "" })).rejects.toThrow(
+      /Azure Blob sinks need/,
+    );
+    expect(updates).toEqual([]);
+  });
+
+  it("keeps an S3 sink's filter on an edit, and still clears its KMS key", async () => {
+    const { c, updates } = sink({ name: "hist", enabled: true, s3: S3, filter: FILTER });
+    await c.updateResource("export-sink", ID, "acc", { kmsArn: "" });
+    const { kmsArn: _kmsArn, ...withoutKms } = S3;
+    expect(updates[0]?.spec).toEqual({
+      name: "hist",
+      enabled: true,
+      s3: withoutKms,
+      filter: FILTER,
+    });
+  });
+
+  it("does not let another destination's fields touch a sink", async () => {
+    const { c, updates } = sink({ name: "hist", enabled: true, azureBlob: AZURE });
+    await c.updateResource("export-sink", ID, "acc", { enabled: "false", roleName: "writer" });
+    expect(updates[0]?.spec).toEqual({ name: "hist", enabled: false, azureBlob: AZURE });
+  });
+
+  it("keeps a GCS sink a GCS sink when the listed destination comes back with an edit", async () => {
+    const GCS = { bucketName: "b", region: "us", gcpProjectId: "p", saId: "sa" };
+    const { c, updates } = sink({ name: "hist", enabled: true, gcs: GCS });
+    await c.updateResource("export-sink", ID, "acc", { destination: "GCS", bucketName: "c" });
+    expect(updates[0]?.spec).toEqual({
+      name: "hist",
+      enabled: true,
+      gcs: { ...GCS, bucketName: "c" },
+    });
+  });
+
+  it("switches destination when asked, dropping the old one and keeping the filter", async () => {
+    const { c, updates } = sink({ name: "hist", enabled: true, s3: S3, filter: FILTER });
+    await c.updateResource("export-sink", ID, "acc", {
+      destination: "gcs",
+      gcpProjectId: "p",
+      serviceAccountId: "sa",
+    });
+    expect(updates[0]?.spec).toEqual({
+      name: "hist",
+      enabled: true,
+      gcs: { bucketName: "b", region: "us-east-1", gcpProjectId: "p", saId: "sa" },
+      filter: FILTER,
+    });
+  });
+
+  it("shows an Azure sink's destination", async () => {
+    const { c } = sink({ name: "hist", enabled: true, azureBlob: AZURE });
+    const made = await c.getResource("export-sink", ID, "acc");
+    expect(made.fields).toMatchObject({
+      destination: "Azure Blob",
+      bucketName: "history",
+      bucketRegion: "eastus",
+      azureTenantId: "tenant",
+      azureSubscriptionId: "sub",
+      azureResourceGroup: "rg",
+      azureStorageAccount: "acct",
+    });
+  });
+
+  it("refuses an export sink id that names no namespace or no sink", async () => {
+    const { c, updates } = sink({ name: "hist", enabled: true, s3: S3 });
+    for (const bad of [
+      "acc:export-sink:hist",
+      "acc:export-sink:prod.a2dd6/",
+      "acc:export-sink:/hist",
+    ]) {
+      await expect(
+        c.updateResource("export-sink", bad, "acc", { enabled: "false" }),
+      ).rejects.toThrow(/export sink id/);
+      await expect(c.deleteResource("export-sink", bad, "acc")).rejects.toThrow(/export sink id/);
+    }
+    expect(updates).toEqual([]);
+  });
+});
