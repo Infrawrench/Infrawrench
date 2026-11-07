@@ -19,9 +19,11 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   base64ToBytes,
+  ListTruncatedError,
   pathEncode,
   requireListPage,
   restRequest,
+  rethrowIncompleteList,
   type ApiResponse,
 } from "@infrawrench/plugin-base";
 import {
@@ -48,18 +50,26 @@ const TRANSCRIPT_TYPE = "transcript";
 const ACCOUNT_TYPE = "account";
 const ACCOUNT_ID = "default";
 
-/**
- * How many transcripts a sync pulls. `limit` is capped at 200 by the API, and
- * the account's history is a rolling 90-day window anyway, so there is no
- * "complete" number to reach for: this is a recent-activity window.
- */
-const LIST_LIMIT = 100;
+/** How many jobs the "Recent activity" counts sample. Nothing is stored or pruned from it. */
+const SAMPLE_LIMIT = 100;
 /** `GET /v2/transcript` caps `limit` at 200. */
 const JOB_PAGE_SIZE = 200;
+/**
+ * 50,000 transcripts. The list only reaches back a bounded time and a sync prunes
+ * what it stops seeing, so a sync reads all of it and fails rather than cut it short.
+ */
+const MAX_TRANSCRIPT_PAGES = 250;
 /** Bounds the metrics walk at 2,000 jobs, so a busy account cannot fan out unboundedly. */
 const MAX_JOB_PAGES = 10;
 /** Bounds the search for one transcript's list row at 1,000 jobs, on every open of a detail view. */
 const MAX_ROW_LOOKUP_PAGES = 5;
+
+/**
+ * How many transcripts a sync hydrates, one request each, newest first. Older ones
+ * keep what the list row says, until they are opened. AssemblyAI documents no rate
+ * limit to size this against, and answers past one by refusing the key.
+ */
+const HYDRATE_LIMIT = 100;
 
 /** Parallelism for the per-transcript hydration pass. Deliberately modest: a
  *  rate-limit violation comes back as a 403 that is indistinguishable from an
@@ -93,6 +103,12 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // AssemblyAI accepts 2.2 GB; our tran
 type TranscriptRecord = Pick<Transcript, "id"> &
   Partial<Omit<Transcript, "error">> &
   Partial<Pick<TranscriptListItem, "created" | "completed" | "resource_url" | "error">>;
+
+const TRANSCRIPT_LIST = {
+  vendor: "AssemblyAI",
+  path: "/v2/transcript",
+  key: "transcripts",
+};
 
 // ---------------------------------------------------------------------------
 // Speech panel option lists
@@ -207,10 +223,27 @@ export class AssemblyAIClient implements PluginClient {
   }
 
   /** Newest first. The one account-wide record there is: see {@link transcriptJobSeries}. */
-  private recentTranscripts() {
-    return annotated(() =>
-      this.api.transcripts.get("/v2/transcript", { query: { limit: LIST_LIMIT } }),
+  private async recentTranscripts(): Promise<TranscriptListItem[]> {
+    const data = await annotated(() =>
+      this.api.transcripts.get("/v2/transcript", { query: { limit: SAMPLE_LIMIT } }),
     );
+    return requireListPage(data.transcripts, TRANSCRIPT_LIST);
+  }
+
+  private async allTranscripts(): Promise<TranscriptListItem[]> {
+    const out: TranscriptListItem[] = [];
+    let before = "";
+    for (let page = 0; page < MAX_TRANSCRIPT_PAGES; page++) {
+      const { rows, next } = await this.transcriptPage(before);
+      out.push(...rows);
+      if (!next) return out;
+      before = next;
+    }
+    throw new ListTruncatedError({
+      ...TRANSCRIPT_LIST,
+      items: out.length,
+      maxPages: MAX_TRANSCRIPT_PAGES,
+    });
   }
 
   private getTranscript(id: string) {
@@ -224,11 +257,7 @@ export class AssemblyAIClient implements PluginClient {
         query: { limit: JOB_PAGE_SIZE, ...(before ? { before_id: before } : {}) },
       }),
     );
-    const rows = requireListPage(data.transcripts, {
-      vendor: "AssemblyAI",
-      path: "/v2/transcript",
-      key: "transcripts",
-    });
+    const rows = requireListPage(data.transcripts, TRANSCRIPT_LIST);
     const last = rows[rows.length - 1];
     // `prev_url` is the documented way on, to older transcripts. A full page without
     // one costs a request that comes back empty; stopping there could lose rows.
@@ -300,15 +329,14 @@ export class AssemblyAIClient implements PluginClient {
       if (typeId !== TRANSCRIPT_TYPE) {
         throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
       }
-      const data = await this.recentTranscripts();
-      const items = data.transcripts ?? [];
+      const items = await this.allTranscripts();
 
       // The list endpoint only returns id/status/created/completed/audio_url/error.
       // Model, duration, language and confidence live on the full record, so
-      // hydrate each one: bounded, and tolerant of individual failures so one
+      // hydrate the newest: bounded, and tolerant of individual failures so one
       // purged transcript doesn't blank the whole listing.
       const hydrated = await mapWithConcurrency(
-        items,
+        items.slice(0, HYDRATE_LIMIT),
         HYDRATE_CONCURRENCY,
         async (item): Promise<TranscriptRecord> => {
           try {
@@ -319,7 +347,9 @@ export class AssemblyAIClient implements PluginClient {
         },
       );
 
-      return hydrated.map((t) => this.mapTranscript(t, accountId));
+      return [...hydrated, ...items.slice(HYDRATE_LIMIT)].map((t) =>
+        this.mapTranscript(t, accountId),
+      );
     });
   }
 
@@ -432,8 +462,7 @@ export class AssemblyAIClient implements PluginClient {
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (resource.resourceTypeId !== TRANSCRIPT_TYPE) return resource;
-      const data = await this.recentTranscripts();
-      const items = data.transcripts ?? [];
+      const items = await this.recentTranscripts();
       // The list endpoint doesn't carry audio_duration, so the only honest
       // cheap number here is how many jobs are in the retention window and how
       // they landed. Anything spend-shaped would need per-transcript fan-out.
@@ -528,21 +557,14 @@ export class AssemblyAIClient implements PluginClient {
     const endMs = timeRange?.endMs ?? Date.now();
     const startMs = timeRange?.startMs ?? endMs - 30 * dayMs;
     const items: TranscriptListItem[] = [];
-    let beforeId = "";
+    let before = "";
     for (let page = 0; page < MAX_JOB_PAGES; page++) {
-      const before = beforeId;
-      const data = await annotated(() =>
-        this.api.transcripts.get("/v2/transcript", {
-          query: { limit: JOB_PAGE_SIZE, ...(before ? { before_id: before } : {}) },
-        }),
-      );
-      const batch = data.transcripts ?? [];
-      items.push(...batch);
-      const last = batch[batch.length - 1];
-      if (!last || batch.length < JOB_PAGE_SIZE) break;
-      const oldest = parseApiTime(last.created);
+      const { rows, next } = await this.transcriptPage(before);
+      items.push(...rows);
+      if (!next) break;
+      const oldest = parseApiTime(rows[rows.length - 1]?.created);
       if (oldest !== undefined && oldest < startMs) break;
-      beforeId = last.id;
+      before = next;
     }
 
     type Day = { jobs: number; failed: number; turnaroundSum: number; turnaroundCount: number };
@@ -957,9 +979,9 @@ export class AssemblyAIClient implements PluginClient {
     // for both auth failures and rate limiting.
     let reachable = true;
     try {
-      const data = await this.recentTranscripts();
-      items = data.transcripts ?? [];
-    } catch {
+      items = await this.recentTranscripts();
+    } catch (err) {
+      rethrowIncompleteList(err);
       items = [];
       reachable = false;
     }

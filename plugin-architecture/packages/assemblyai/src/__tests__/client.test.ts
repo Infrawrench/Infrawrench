@@ -215,6 +215,216 @@ describe("transcript times, which the document only gives to the list row", () =
   });
 });
 
+describe("list completeness", () => {
+  const transcriptRow = (id: string) => ({
+    id,
+    status: "completed",
+    created: "2026-07-20T10:00:00.000Z",
+    completed: "2026-07-20T10:01:00.000Z",
+    audio_url: "https://cdn.assemblyai.com/upload/abc",
+    resource_url: `https://api.assemblyai.com/v2/transcript/${id}`,
+    error: null,
+  });
+  const fullPage = (prefix: string) =>
+    Array.from({ length: 200 }, (_, i) => transcriptRow(`${prefix}-${i}`));
+  const listCalls = (path: string) => calls.filter((c) => c.url.includes(path));
+
+  describe("transcripts", () => {
+    it("reads every page, walking before_id, and keeps rows it does not hydrate", async () => {
+      installFetch((url) => {
+        if (url.includes("before_id=b-199")) {
+          return jsonResponse({ transcripts: [transcriptRow("c-0")] });
+        }
+        if (url.includes("before_id=a-199")) return jsonResponse({ transcripts: fullPage("b") });
+        if (url.includes("/v2/transcript?")) return jsonResponse({ transcripts: fullPage("a") });
+        return jsonResponse(completedTranscript());
+      });
+
+      const resources = await client().listResources("transcript", ACCOUNT);
+
+      expect(resources).toHaveLength(401);
+      expect(listCalls("/v2/transcript?")).toHaveLength(3);
+      expect(listCalls("/v2/transcript?")[0]!.url).toContain("limit=200");
+      // The newest 100 are hydrated; the rest are what the list says about them.
+      expect(calls).toHaveLength(3 + 100);
+      expect(resources[0]!.fields["speechModel"]).toBe("universal-3-5-pro");
+      expect(resources[400]!.fields["speechModel"]).toBe("");
+      expect(resources[400]!.externalId).toBe("c-0");
+      expect(resources[400]!.fields["created"]).toBe("2026-07-20T10:00:00.000Z");
+    });
+
+    it("follows prev_url past a short page", async () => {
+      installFetch((url) => {
+        if (url.includes("before_id=a")) return jsonResponse({ transcripts: [transcriptRow("b")] });
+        if (url.includes("/v2/transcript?")) {
+          return jsonResponse({
+            page_details: { prev_url: "https://api.assemblyai.com/v2/transcript?before_id=a" },
+            transcripts: [transcriptRow("a")],
+          });
+        }
+        return jsonResponse(completedTranscript());
+      });
+
+      await expect(client().listResources("transcript", ACCOUNT)).resolves.toHaveLength(2);
+    });
+
+    it("rejects a list that never ends, after 250 pages (50,000 rows)", async () => {
+      let page = 0;
+      installFetch(() => jsonResponse({ transcripts: fullPage(`p${page++}`) }));
+
+      await expect(client().listResources("transcript", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(250);
+    });
+
+    it("rejects a page with its key renamed, first or later", async () => {
+      installFetch(() => jsonResponse({ items: [] }));
+      await expect(client().listResources("transcript", ACCOUNT)).rejects.toThrow("is not a list");
+
+      calls = [];
+      vi.restoreAllMocks();
+      installFetch((url) =>
+        url.includes("before_id=")
+          ? jsonResponse({ items: [] })
+          : jsonResponse({ transcripts: fullPage("a") }),
+      );
+      await expect(client().listResources("transcript", ACCOUNT)).rejects.toThrow("is not a list");
+      expect(calls).toHaveLength(2);
+    });
+
+    it("does not read a bad page as an empty account", async () => {
+      installFetch(() => jsonResponse({ items: [] }));
+      await expect(client().listResources("account", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+  });
+
+  describe("sessions", () => {
+    const session = (id: string) => ({ id, created_at: "2026-09-01T00:00:00Z" });
+
+    it("keeps the newest 10,000 as a rolling window instead of failing", async () => {
+      let page = 0;
+      installFetch((url) =>
+        url.endsWith("/v1/agents")
+          ? jsonResponse([])
+          : jsonResponse({
+              sessions: Array.from({ length: 200 }, (_, i) => session(`p${page}-${i}`)),
+              has_more: true,
+              response_metadata: { next_cursor: `cursor-${page++}` },
+            }),
+      );
+
+      const resources = await client().listResources("agent-session", ACCOUNT);
+
+      expect(resources).toHaveLength(10_000);
+      expect(listCalls("/sessions")).toHaveLength(50);
+    });
+
+    it("follows the cursor when has_more is left out, and stops when it is false", async () => {
+      installFetch((url) => {
+        if (url.endsWith("/v1/agents")) return jsonResponse([]);
+        if (url.includes("cursor=c1")) {
+          return jsonResponse({
+            sessions: [session("b")],
+            has_more: false,
+            response_metadata: { next_cursor: "c2" },
+          });
+        }
+        return jsonResponse({ sessions: [session("a")], response_metadata: { next_cursor: "c1" } });
+      });
+
+      await expect(client().listResources("agent-session", ACCOUNT)).resolves.toHaveLength(2);
+      expect(listCalls("/sessions")).toHaveLength(2);
+    });
+
+    it("rejects a page with its key renamed", async () => {
+      installFetch((url) =>
+        url.endsWith("/v1/agents") ? jsonResponse([]) : jsonResponse({ rows: [] }),
+      );
+      await expect(client().listResources("agent-session", ACCOUNT)).rejects.toThrow(
+        "is not a list",
+      );
+    });
+
+    it("still lists sessions when the names cannot be read, but not when the answer is wrong", async () => {
+      installFetch((url) =>
+        url.endsWith("/v1/agents")
+          ? jsonResponse("forbidden", 403)
+          : jsonResponse({ sessions: [session("a")], has_more: false }),
+      );
+      await expect(client().listResources("agent-session", ACCOUNT)).resolves.toHaveLength(1);
+
+      vi.restoreAllMocks();
+      installFetch((url) =>
+        url.endsWith("/v1/agents")
+          ? jsonResponse({ agents: [] })
+          : jsonResponse({ sessions: [session("a")], has_more: false }),
+      );
+      await expect(client().listResources("agent-session", ACCOUNT)).rejects.toThrow(
+        "is not a list",
+      );
+    });
+  });
+
+  describe("webhook subscriptions", () => {
+    const sub = (id: string) => ({ id, url: "https://example.com/hook", events: [] });
+
+    it("reads past the old five pages", async () => {
+      let page = 0;
+      installFetch((url) => {
+        if (url.endsWith("/v1/agents")) return jsonResponse([]);
+        page += 1;
+        return jsonResponse({
+          subscriptions: [sub(`s${page}`)],
+          has_more: page < 7,
+          response_metadata: { next_cursor: page < 7 ? `c${page}` : "" },
+        });
+      });
+
+      await expect(client().listResources("webhook-subscription", ACCOUNT)).resolves.toHaveLength(
+        7,
+      );
+    });
+
+    it("rejects a list that never ends, after 100 pages (10,000 rows)", async () => {
+      let page = 0;
+      installFetch((url) =>
+        url.endsWith("/v1/agents")
+          ? jsonResponse([])
+          : jsonResponse({
+              subscriptions: [sub(`s${page}`)],
+              has_more: true,
+              response_metadata: { next_cursor: `c${page++}` },
+            }),
+      );
+
+      await expect(client().listResources("webhook-subscription", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(listCalls("/webhook-subscriptions")).toHaveLength(100);
+    });
+
+    it("rejects a page with its key renamed", async () => {
+      installFetch((url) =>
+        url.endsWith("/v1/agents") ? jsonResponse([]) : jsonResponse({ hooks: [] }),
+      );
+      await expect(client().listResources("webhook-subscription", ACCOUNT)).rejects.toThrow(
+        "is not a list",
+      );
+    });
+  });
+
+  it("rejects an agents answer that is not an array", async () => {
+    installFetch(() => jsonResponse({ agents: [] }));
+    await expect(client().listResources("voice-agent", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a model catalogue with its key renamed", async () => {
+    installFetch(() => jsonResponse({ models: [] }));
+    await expect(client().listResources("llm-model", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+});
+
 describe("speech model", () => {
   const requested = { speech_models: ["universal-3-5-pro", "universal-2"] };
 
@@ -268,7 +478,7 @@ describe("listResources", () => {
 
     const resources = await client().listResources("transcript", ACCOUNT);
 
-    expect(calls[0]!.url).toContain("/v2/transcript?limit=100");
+    expect(calls[0]!.url).toContain("/v2/transcript?limit=200");
     expect(calls[1]!.url).toBe(`https://api.assemblyai.com/v2/transcript/${JOB_ID}`);
     expect(resources).toHaveLength(1);
     const resource = resources[0]!;

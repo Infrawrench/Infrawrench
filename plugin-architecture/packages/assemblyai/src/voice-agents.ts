@@ -7,7 +7,13 @@ import type {
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { pathEncode, type ApiBody } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
+  type ApiBody,
+} from "@infrawrench/plugin-base";
 import type {
   Agent,
   AgentListItem,
@@ -54,10 +60,12 @@ export const VOICE_AGENT_TYPES = new Set([
 
 /** `GET /v1/sessions` caps `limit` at 200. */
 const SESSION_PAGE_SIZE = 200;
-const MAX_SESSION_PAGES = 5;
+/** The newest 10,000: see {@link VoiceAgentSurface.fetchSessions}. */
+const MAX_SESSION_PAGES = 50;
 /** `GET /v1/webhook-subscriptions` caps `limit` at 100. */
 const WEBHOOK_PAGE_SIZE = 100;
-const MAX_WEBHOOK_PAGES = 5;
+/** 10,000 subscriptions. */
+const MAX_WEBHOOK_PAGES = 100;
 
 /**
  * The documented voice ids. There is no voice-listing endpoint, so this is the
@@ -133,24 +141,23 @@ export class VoiceAgentSurface {
         return agents.map((a) => this.mapAgent(accountId, a));
       }
       case AGENT_SESSION_TYPE: {
-        const [sessions, agents] = await Promise.all([
-          this.fetchSessions(),
-          this.fetchAgents().catch((): AgentListItem[] => []),
-        ]);
+        const [sessions, agents] = await Promise.all([this.fetchSessions(), this.agentsForNames()]);
         const names = new Map(agents.map((a) => [a.id, a.name ?? a.id]));
         return sessions.map((s) => this.mapSession(accountId, s, names));
       }
       case WEBHOOK_TYPE: {
-        const [subs, agents] = await Promise.all([
-          this.fetchWebhooks(),
-          this.fetchAgents().catch((): AgentListItem[] => []),
-        ]);
+        const [subs, agents] = await Promise.all([this.fetchWebhooks(), this.agentsForNames()]);
         const names = new Map(agents.map((a) => [a.id, a.name ?? a.id]));
         return subs.map((s) => this.mapWebhook(accountId, s, names));
       }
       case LLM_MODEL_TYPE: {
         const data = await this.api.llm.get("/models");
-        return (data.data ?? []).map((m) => this.mapModel(accountId, m));
+        const models = requireListPage(data.data, {
+          vendor: "AssemblyAI",
+          path: "/models",
+          key: "data",
+        });
+        return models.map((m) => this.mapModel(accountId, m));
       }
       default:
         throw new Error(`AssemblyAI plugin: unknown resource type "${typeId}"`);
@@ -183,10 +190,24 @@ export class VoiceAgentSurface {
   /** `GET /v1/agents`: lightweight records, newest first; soft-deleted ones are skipped. */
   private async fetchAgents(): Promise<AgentListItem[]> {
     const agents = await this.api.agents.get("/agents");
-    return (Array.isArray(agents) ? agents : []).filter((a) => !a.deleted_at);
+    return requireListPage(agents, { vendor: "AssemblyAI", path: "/agents", key: null }).filter(
+      (a) => !a.deleted_at,
+    );
   }
 
-  /** `GET /v1/sessions`, newest first, walking `response_metadata.next_cursor`. */
+  /** Only names other rows after them, which those rows can do without. */
+  private agentsForNames(): Promise<AgentListItem[]> {
+    return this.fetchAgents().catch((err): AgentListItem[] => {
+      rethrowIncompleteList(err);
+      return [];
+    });
+  }
+
+  /**
+   * `GET /v1/sessions`, newest first, walking `response_metadata.next_cursor`.
+   *
+   * Rolling window: the newest 10,000. Older rows falling off is what this type means.
+   */
   private async fetchSessions(agentId?: string, sinceMs?: number): Promise<Session[]> {
     const out: Session[] = [];
     let cursor = "";
@@ -198,12 +219,16 @@ export class VoiceAgentSurface {
           ...(agentId ? { agent_id: agentId } : {}),
         },
       });
-      const batch = data.sessions ?? [];
+      const batch = requireListPage(data.sessions, {
+        vendor: "AssemblyAI",
+        path: "/sessions",
+        key: "sessions",
+      });
       out.push(...batch);
       cursor = data.response_metadata?.next_cursor ?? "";
       const oldest = Date.parse(str(batch[batch.length - 1]?.created_at));
       if (sinceMs !== undefined && Number.isFinite(oldest) && oldest < sinceMs) break;
-      if (!data.has_more || !cursor || batch.length === 0) break;
+      if (data.has_more === false || !cursor) break;
     }
     return out;
   }
@@ -216,11 +241,22 @@ export class VoiceAgentSurface {
       const data = await this.api.webhooks.get("/webhook-subscriptions", {
         query: { limit: WEBHOOK_PAGE_SIZE, ...(cursor ? { cursor } : {}) },
       });
-      out.push(...(data.subscriptions ?? []));
+      out.push(
+        ...requireListPage(data.subscriptions, {
+          vendor: "AssemblyAI",
+          path: "/webhook-subscriptions",
+          key: "subscriptions",
+        }),
+      );
       cursor = data.response_metadata?.next_cursor ?? "";
-      if (!data.has_more || !cursor) break;
+      if (data.has_more === false || !cursor) return out;
     }
-    return out;
+    throw new ListTruncatedError({
+      vendor: "AssemblyAI",
+      path: "/webhook-subscriptions",
+      items: out.length,
+      maxPages: MAX_WEBHOOK_PAGES,
+    });
   }
 
   // -------------------------------------------------------------------------
