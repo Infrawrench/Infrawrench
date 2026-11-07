@@ -349,6 +349,98 @@ describe("Perplexity", () => {
     });
   });
 
+  describe("list reads a sync prunes by", () => {
+    const list = (http: HttpHostServices, typeId: string) =>
+      hostClient(new PerplexityClient({ apiKey: "k" }, { http })).listResources(typeId, ACCOUNT);
+
+    it("walks every page of skills at the largest page size", async () => {
+      const { http, calls } = host((url) =>
+        url.includes("page_token=t2")
+          ? { body: { skills: [{ skill_id: "b" }] } }
+          : { body: { skills: [{ skill_id: "a" }], next_page_token: "t2" } },
+      );
+      const rows = await list(http, "perplexity-skill");
+      expect(rows.map((r) => r.externalId)).toEqual(["a", "b"]);
+      expect(calls.map((c) => c.url)).toEqual([
+        "https://api.perplexity.ai/v1/skills?limit=200",
+        "https://api.perplexity.ai/v1/skills?limit=200&page_token=t2",
+      ]);
+    });
+
+    it("throws on a skill list that outruns 10,000 rows, after exactly 50 requests", async () => {
+      let n = 0;
+      const { http, calls } = host(() => ({
+        body: { skills: [{ skill_id: `s${n++}` }], next_page_token: `t${n}` },
+      }));
+      await expect(list(http, "perplexity-skill")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(50);
+    });
+
+    it.each([
+      ["first", 0],
+      ["later", 1],
+    ])("throws when the %s skill page is not a list", async (_name, bad) => {
+      let page = 0;
+      const { http } = host(() =>
+        page++ === bad
+          ? { body: { items: [{ skill_id: "x" }] } }
+          : { body: { skills: [{ skill_id: "a" }], next_page_token: "t2" } },
+      );
+      await expect(list(http, "perplexity-skill")).rejects.toThrow("is not a list");
+    });
+
+    it.each([
+      ["perplexity-agent-model"],
+      ["perplexity-router-model"],
+      ["perplexity-async-request"],
+    ])("throws when %s answers with something that is not a list", async (typeId) => {
+      const { http } = host(() => ({ body: { error: "try later" } }));
+      await expect(list(http, typeId)).rejects.toThrow("is not a list");
+    });
+
+    it("reads an empty list as empty", async () => {
+      const { http } = host(() => ({ body: { requests: [], next_token: null } }));
+      await expect(list(http, "perplexity-async-request")).resolves.toEqual([]);
+    });
+
+    it("sends next_token back to read every async request", async () => {
+      const { http, calls } = host((url) =>
+        url.includes("next_token=t%2F2")
+          ? { body: { requests: [{ id: "b" }], next_token: null } }
+          : { body: { requests: [{ id: "a" }], next_token: "t/2" } },
+      );
+      const rows = await list(http, "perplexity-async-request");
+      expect(rows.map((r) => r.externalId)).toEqual(["a", "b"]);
+      expect(calls.map((c) => c.url)).toEqual([
+        "https://api.perplexity.ai/v1/async/sonar",
+        "https://api.perplexity.ai/v1/async/sonar?next_token=t%2F2",
+      ]);
+    });
+
+    it("throws, at once, when the API ignores next_token and repeats a page", async () => {
+      const { http, calls } = host(() => ({
+        body: { requests: [{ id: "a" }, { id: "b" }], next_token: "more" },
+      }));
+      await expect(list(http, "perplexity-async-request")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(2);
+    });
+
+    it("throws on an async list that outruns its cap", async () => {
+      let n = 0;
+      const { http, calls } = host(() => ({
+        body: { requests: [{ id: `r${n++}` }], next_token: `t${n}` },
+      }));
+      await expect(list(http, "perplexity-async-request")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(500);
+    });
+  });
+
   it("attaches the HTTP status to errors", async () => {
     const { http } = host(() => ({ status: 401, body: { error: "bad key" } }));
     await expect(

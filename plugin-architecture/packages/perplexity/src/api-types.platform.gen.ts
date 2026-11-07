@@ -1132,7 +1132,9 @@ export interface operations {
     };
     list_async_chat_completions_async_chat_completions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                next_token?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;

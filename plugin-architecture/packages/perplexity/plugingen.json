@@ -7,12 +7,16 @@
       "patches": [
         {
           "pointer": "/components/schemas/ApiChatCompletionsRequest/properties/model",
-          "value": { "type": "string" },
+          "value": {
+            "type": "string"
+          },
           "why": "An enum in the document; the create form's text goes through as typed."
         },
         {
           "pointer": "/components/schemas/ApiChatCompletionsRequest/properties/search_recency_filter",
-          "value": { "type": "string" },
+          "value": {
+            "type": "string"
+          },
           "why": "An enum in the document; the create form's text goes through as typed."
         },
         {
@@ -21,11 +25,30 @@
             "type": "object",
             "required": ["role", "content"],
             "properties": {
-              "role": { "type": "string", "enum": ["user", "assistant", "system", "developer"] },
-              "content": { "type": "string" }
+              "role": {
+                "type": "string",
+                "enum": ["user", "assistant", "system", "developer"]
+              },
+              "content": {
+                "type": "string"
+              }
             }
           },
           "why": "The plugin sends only chat turns, with no `type`. InputItem requires and discriminates on it, though the provider's own function-calling example also leaves it out."
+        },
+        {
+          "pointer": "/paths/~1v1~1async~1sonar/get/parameters",
+          "value": [
+            {
+              "name": "next_token",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "why": "The list answers with a next_token, but the document names no parameter to send it back in. This is the field's own name, and the client refuses a page that does not move on."
         }
       ],
       "paths": {

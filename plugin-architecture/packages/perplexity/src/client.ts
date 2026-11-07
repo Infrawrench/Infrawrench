@@ -17,9 +17,11 @@ import type {
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
 import {
+  ListTruncatedError,
   hostFetch,
   joinSubtitle,
   pathEncode,
+  requireListPage,
   streamOpenAiSseChat,
   unencodedSegment,
 } from "@infrawrench/plugin-base";
@@ -58,6 +60,12 @@ export const SONAR_MODELS: Array<{ id: string; description: string }> = [
  * their own limit.
  */
 const ANTHROPIC_MAX_OUTPUT_TOKENS = 8192;
+
+/**
+ * The document gives no page size, so this holds 10,000 rows at as few as 20 a page.
+ * Requests only live for 7 days, so a list this long is already unusual.
+ */
+const ASYNC_MAX_PAGES = 500;
 
 function s(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
@@ -206,14 +214,24 @@ export class PerplexityClient implements PluginClient {
         case "perplexity-agent-model": {
           // GET /v1/models: models usable with POST /v1/agent.
           const res = await statusErrors(this.api.get("/v1/models"));
-          return (res.data ?? [])
+          return requireListPage(res.data, {
+            vendor: "Perplexity",
+            path: "/v1/models",
+            key: "data",
+            page: res,
+          })
             .filter((m) => m.id)
             .map((m) => this.mapListed(accountId, typeId, m, "/v1/agent"));
         }
         case "perplexity-router-model": {
           // GET /router/v1/models: OpenAI-compatible router catalogue with prices per 1M tokens.
           const res = await statusErrors(this.router.get("/models"));
-          return (res.data ?? [])
+          return requireListPage(res.data, {
+            vendor: "Perplexity",
+            path: "/router/v1/models",
+            key: "data",
+            page: res,
+          })
             .filter((m) => m.id)
             .map((m) => this.mapListed(accountId, typeId, m, "/router/v1/chat/completions"));
         }
@@ -254,12 +272,49 @@ export class PerplexityClient implements PluginClient {
   }
 
   /**
-   * `GET /v1/async/sonar`. The response carries a `next_token`, but the spec
-   * documents no query parameter to send it back with, so one page is read.
+   * `GET /v1/async/sonar`. The response carries a `next_token`, but the document names
+   * no parameter to send it back in, so it goes back under its own name. A page with
+   * nothing new means that was not taken, so the rest cannot be read: an error rather
+   * than the end of the list, because a sync prunes what a list leaves out.
    */
   private async listAsync(accountId: string): Promise<ResourceInstance[]> {
-    const res = await statusErrors(this.api.get("/v1/async/sonar"));
-    return (res.requests ?? []).filter((r) => r.id).map((r) => this.mapAsync(accountId, r));
+    const path = "/v1/async/sonar";
+    const seen = new Set<string>();
+    const out: ResourceInstance[] = [];
+    let token = "";
+    for (let page = 0; page < ASYNC_MAX_PAGES; page++) {
+      const res = await statusErrors(
+        this.api.get(path, token ? { query: { next_token: token } } : {}),
+      );
+      const rows = requireListPage(res.requests, {
+        vendor: "Perplexity",
+        path,
+        key: "requests",
+        page: res,
+      });
+      const before = seen.size;
+      for (const row of rows) {
+        if (!row.id || seen.has(row.id)) continue;
+        seen.add(row.id);
+        out.push(this.mapAsync(accountId, row));
+      }
+      if (!res.next_token || rows.length === 0) return out;
+      if (seen.size === before) {
+        throw new ListTruncatedError({
+          vendor: "Perplexity",
+          path,
+          items: out.length,
+          maxPages: page + 1,
+        });
+      }
+      token = res.next_token;
+    }
+    throw new ListTruncatedError({
+      vendor: "Perplexity",
+      path,
+      items: out.length,
+      maxPages: ASYNC_MAX_PAGES,
+    });
   }
 
   private mapAsync(accountId: string, r: AsyncRequest): ResourceInstance {
@@ -289,22 +344,9 @@ export class PerplexityClient implements PluginClient {
     );
   }
 
-  /** `GET /v1/skills?limit=200&page_token=` */
   private async listSkills(accountId: string): Promise<ResourceInstance[]> {
-    const out: Skill[] = [];
-    let token = "";
-    for (let page = 0; page < 20; page++) {
-      const res = await statusErrors(
-        this.api.get("/v1/skills", {
-          // `String`: a token that is not text has always gone back flattened.
-          query: { limit: 200, ...(token ? { page_token: String(token) } : {}) },
-        }),
-      );
-      out.push(...(res.skills ?? []));
-      if (!res.next_page_token) break;
-      token = res.next_page_token;
-    }
-    return out.filter((k) => k.skill_id).map((k) => this.mapSkill(accountId, k));
+    const skills: Skill[] = await statusErrors(this.api.getAll("/v1/skills", "skills"));
+    return skills.filter((k) => k.skill_id).map((k) => this.mapSkill(accountId, k));
   }
 
   private mapSkill(accountId: string, k: Skill): ResourceInstance {
