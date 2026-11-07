@@ -1,4 +1,5 @@
 import type { LogsFetchParams, LogsFetchResult, MetricSeries } from "@infrawrench/plugin-base";
+import type { AggregationAnswer, AggregationBody, MistralApi, SpanRow, TraceRow } from "./api.js";
 
 /**
  * Mistral Studio Observability (Private Preview, Enterprise organizations):
@@ -23,9 +24,6 @@ import type { LogsFetchParams, LogsFetchResult, MetricSeries } from "@infrawrenc
  * `agent_id`, which is where the per-run tool and LLM call counts live.
  */
 
-/** The data-plane JSON call the client already owns (Bearer, bastion, CA). */
-export type ObservabilityFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
-
 type Aggregation = "count" | "sum" | "p50" | "p95";
 
 interface SeriesSpec {
@@ -37,38 +35,6 @@ interface SeriesSpec {
   where?: string;
   /** Applied to each bucket value (nanoseconds to milliseconds, say). */
   scale?: number;
-}
-
-interface AggregationRow {
-  time_bucket?: string | null;
-  metric_value?: number | null;
-}
-
-interface TraceRow {
-  trace_id?: string;
-  root_span_name?: string;
-  start_time?: string;
-  duration_ns?: number;
-  status_code?: string;
-  input_tokens?: number;
-  output_tokens?: number;
-  tool_call_count?: number;
-  llm_call_count?: number;
-  models_used?: string[];
-}
-
-interface SpanRow {
-  trace_id?: string;
-  span_name?: string;
-  start_time?: string;
-  duration_ns?: number;
-  status_code?: string;
-  status_message?: string;
-  operation_name?: string;
-  agent_name?: string;
-  usage_input_tokens?: number;
-  usage_output_tokens?: number;
-  response_finish_reasons?: string[] | string;
 }
 
 const NS_PER_MS = 1_000_000;
@@ -160,13 +126,8 @@ function agentFilter(agentId: string): string {
   return `agent_id = ${literal(agentId)}`;
 }
 
-function windowQuery(startMs: number, endMs: number, extra?: Record<string, string>): string {
-  const params = new URLSearchParams({
-    from: new Date(startMs).toISOString(),
-    to: new Date(endMs).toISOString(),
-    ...extra,
-  });
-  return params.toString();
+function windowQuery(startMs: number, endMs: number) {
+  return { from: new Date(startMs).toISOString(), to: new Date(endMs).toISOString() };
 }
 
 /**
@@ -177,7 +138,7 @@ function windowQuery(startMs: number, endMs: number, extra?: Record<string, stri
  * Metrics tab rather than an error.
  */
 export async function fetchObservabilitySeries(
-  fetch: ObservabilityFetch,
+  api: MistralApi,
   typeId: string,
   externalId: string,
   timeRange?: { startMs: number; endMs: number },
@@ -186,15 +147,18 @@ export async function fetchObservabilitySeries(
   const endMs = timeRange?.endMs ?? Date.now();
   const startMs = timeRange?.startMs ?? endMs - OBSERVABILITY_WINDOW_MS;
 
-  let path: string;
+  let aggregate: (
+    query: ReturnType<typeof windowQuery>,
+    body: AggregationBody,
+  ) => Promise<AggregationAnswer>;
   let specs: SeriesSpec[];
   let filter: string;
   if (typeId === "mistral-model") {
-    path = "/observability/spans/aggregate";
+    aggregate = (query, body) => api.post("/observability/spans/aggregate", { query, body });
     specs = MODEL_SERIES;
     filter = modelFilter(externalId);
   } else if (typeId === "mistral-agent") {
-    path = "/observability/traces/aggregate";
+    aggregate = (query, body) => api.post("/observability/traces/aggregate", { query, body });
     specs = AGENT_SERIES;
     filter = agentFilter(externalId);
   } else {
@@ -204,14 +168,10 @@ export async function fetchObservabilitySeries(
   const query = windowQuery(startMs, endMs);
   const settled = await Promise.allSettled(
     specs.map(async (spec): Promise<MetricSeries | null> => {
-      const body = await fetch<{ data?: AggregationRow[] }>(`${path}?${query}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          metric: { measure: spec.measure, aggregation: spec.aggregation },
-          time_dimension: { granularity: "auto" },
-          search_expression: spec.where ? `${filter} AND ${spec.where}` : filter,
-        }),
+      const body = await aggregate(query, {
+        metric: { measure: spec.measure, aggregation: spec.aggregation },
+        time_dimension: { granularity: "auto" },
+        search_expression: spec.where ? `${filter} AND ${spec.where}` : filter,
       });
       const points: Array<{ timestamp: number; value: number }> = [];
       for (const row of body.data ?? []) {
@@ -286,7 +246,7 @@ function spanLine(span: SpanRow): string {
  * the tab is the newest.
  */
 export async function fetchObservabilityLogs(
-  fetch: ObservabilityFetch,
+  api: MistralApi,
   typeId: string,
   externalId: string,
   params: LogsFetchParams,
@@ -298,31 +258,24 @@ export async function fetchObservabilityLogs(
   }
   const tail = params.tailLines && params.tailLines > 0 ? params.tailLines : MAX_PAGE_SIZE;
   const endMs = Date.now();
-  const query = windowQuery(endMs - LOG_LOOKBACK_MS, endMs, {
-    page_size: String(Math.min(tail, MAX_PAGE_SIZE)),
-  });
+  const query = {
+    ...windowQuery(endMs - LOG_LOOKBACK_MS, endMs),
+    page_size: Math.min(tail, MAX_PAGE_SIZE),
+  };
 
   let lines: string[];
   try {
     if (isAgent) {
-      const body = await fetch<{ traces?: { results?: TraceRow[] } }>(
-        `/observability/traces/search?${query}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ search_expression: agentFilter(externalId) }),
-        },
-      );
+      const body = await api.post("/observability/traces/search", {
+        query,
+        body: { search_expression: agentFilter(externalId) },
+      });
       lines = [...(body.traces?.results ?? [])].sort(byStart).map(traceLine);
     } else {
-      const body = await fetch<{ spans?: { results?: SpanRow[] } }>(
-        `/observability/spans/search?${query}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ search_expression: modelFilter(externalId) }),
-        },
-      );
+      const body = await api.post("/observability/spans/search", {
+        query,
+        body: { search_expression: modelFilter(externalId) },
+      });
       lines = [...(body.spans?.results ?? [])].sort(byStart).map(spanLine);
     }
   } catch (error) {

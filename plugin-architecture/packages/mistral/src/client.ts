@@ -26,38 +26,41 @@ import {
   base64ToBytes,
   formatBytes,
   joinSubtitle,
-  jsonRestFetch,
+  pathEncode,
   withAiCostTags,
 } from "@infrawrench/plugin-base";
+import { mapAgent, mapLibrary, renderAgentDetail, renderLibraryDetail } from "./agents.js";
 import {
+  BASE,
+  createMistralApis,
+  type AgentCreate,
+  type AgentPage,
+  type AgentUpdate,
+  type ApiKeyPage,
+  type BatchJobCreate,
+  type LibraryCreate,
+  type LibraryPage,
+  type LibraryUpdate,
   type MistralAgent,
+  type MistralApi,
+  type MistralApiKey,
+  type MistralBatchJob,
+  type MistralFile,
+  type MistralFineTuningJob,
   type MistralLibrary,
-  mapAgent,
-  mapLibrary,
-  renderAgentDetail,
-  renderLibraryDetail,
-} from "./agents.js";
+  type MistralModel,
+  type MistralTranscription,
+  type MistralVoice,
+  type ModelList,
+  type UsageReport,
+  type VoiceUpdate,
+} from "./api.js";
 import {
   OBSERVABILITY_LOG_LINES,
   OBSERVABILITY_WINDOW_MS,
   fetchObservabilityLogs,
   fetchObservabilitySeries,
 } from "./observability.js";
-
-/** Data plane. `Authorization: Bearer <apiKey>`. https://docs.mistral.ai/api */
-const BASE = "https://api.mistral.ai/v1";
-
-/**
- * Admin plane: a *different* base and a *different* header. Mistral's own
- * docs are inconsistent about whether it wants `x-api-key` (the Admin API
- * overview) or a bearer token (the endpoint reference), so we send both and
- * let the server pick.
- *
- * Enterprise plans only; on every other plan these calls 401/403 and the
- * plugin degrades to hiding the admin-backed sections.
- * https://docs.mistral.ai/admin/admin-api/overview
- */
-const ADMIN_BASE = "https://api.mistral.ai/v1/admin";
 
 /**
  * Transcription accepts recordings up to three hours per request, but the
@@ -128,107 +131,6 @@ const AUDIO_EXTENSIONS: Record<string, string> = {
   "audio/x-m4a": "m4a",
 };
 
-interface MistralModel {
-  id?: string;
-  name?: string;
-  description?: string;
-  object?: string;
-  created?: number;
-  owned_by?: string;
-  max_context_length?: number;
-  aliases?: string[];
-  archived?: boolean;
-  job?: string | null;
-  type?: string;
-  capabilities?: Record<string, boolean>;
-}
-
-interface MistralVoice {
-  id?: string;
-  name?: string;
-  slug?: string | null;
-  created_at?: string;
-  user_id?: string | null;
-  age?: number | null;
-  gender?: string | null;
-  description?: string | null;
-  languages?: string[];
-  tags?: string[] | null;
-}
-
-interface MistralFile {
-  id?: string;
-  object?: string;
-  bytes?: number;
-  created_at?: number;
-  filename?: string;
-  purpose?: string;
-  sample_type?: string;
-  source?: string;
-  num_lines?: number | null;
-  mimetype?: string | null;
-}
-
-interface MistralFineTuningJob {
-  id?: string;
-  name?: string | null;
-  model?: string;
-  fine_tuned_model?: string | null;
-  status?: string;
-  job_type?: string;
-  suffix?: string | null;
-  auto_start?: boolean;
-  training_files?: Array<string | { file_id?: string }>;
-  validation_files?: string[];
-  trained_tokens?: number | null;
-  created_at?: number;
-  modified_at?: number;
-}
-
-interface MistralBatchJob {
-  id?: string;
-  status?: string;
-  endpoint?: string;
-  model?: string | null;
-  input_files?: string[];
-  output_file?: string | null;
-  error_file?: string | null;
-  total_requests?: number;
-  completed_requests?: number;
-  succeeded_requests?: number;
-  failed_requests?: number;
-  created_at?: number;
-  started_at?: number | null;
-  completed_at?: number | null;
-}
-
-interface MistralApiKey {
-  key_id?: string;
-  name?: string | null;
-  hidden_key?: string;
-  created_at?: string;
-  created_by?: string | null;
-  last_used?: string | null;
-  expiration_date?: string | null;
-  product?: string | null;
-  workspace_id?: string | null;
-  workspace_name?: string | null;
-}
-
-interface MistralTranscription {
-  text?: string;
-  model?: string;
-  language?: string;
-  usage?: { audio_seconds?: number; prompt_tokens?: number; total_tokens?: number };
-  segments?: Array<{
-    text?: string;
-    start?: number;
-    end?: number;
-    speaker?: string | number | null;
-  }>;
-  words?: Array<{ word?: string; text?: string; start?: number; end?: number; speaker?: string }>;
-}
-
 /** Stashed under `__voices__` / `__audioModels__` for the synchronous renderer. */
 interface VoiceStash {
   id: string;
@@ -278,58 +180,36 @@ function isSttModel(id: string): boolean {
 export class MistralClient implements PluginClient {
   private readonly apiKey: string;
   private readonly adminApiKey: string;
-  private readonly caCert: string;
-  private readonly services: HostServices | undefined;
+  private readonly api: MistralApi;
+  private readonly enterpriseApi: MistralApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
     if (!apiKey) throw new Error("Mistral plugin: missing apiKey credential");
     this.apiKey = apiKey;
     this.adminApiKey = credentials["adminApiKey"] ?? "";
-    this.caCert = credentials["caCert"] ?? "";
-    this.services = services;
+    const { data, admin } = createMistralApis({
+      apiKey,
+      adminApiKey: this.adminApiKey,
+      caCert: credentials["caCert"] ?? "",
+      http: services?.http,
+    });
+    this.api = data;
+    this.enterpriseApi = admin;
   }
 
   private get hasAdmin(): boolean {
     return this.adminApiKey.length > 0;
   }
 
-  /** Data-plane JSON call. */
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Mistral",
-      url: `${BASE}${path}`,
-      errorPath: path,
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        Accept: "application/json",
-      },
-      ...(options ? { init: options } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
-    });
-  }
-
-  /** Admin-plane JSON call: different base, different header, Enterprise-only. */
-  private async adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  /** The admin plane, which is Enterprise-only. */
+  private get adminApi(): MistralApi {
     if (!this.hasAdmin) {
       throw new Error(
         "Mistral plugin: this call needs an Admin API key (Enterprise plans only). Add one to the account to enable it.",
       );
     }
-    return jsonRestFetch<T>({
-      vendor: "Mistral",
-      url: `${ADMIN_BASE}${path}`,
-      errorPath: `/admin${path}`,
-      headers: {
-        "x-api-key": this.adminApiKey,
-        Authorization: `Bearer ${this.adminApiKey}`,
-        Accept: "application/json",
-      },
-      ...(options ? { init: options } : {}),
-      ...(this.caCert ? { caCert: this.caCert } : {}),
-      ...(this.services?.http ? { http: this.services.http } : {}),
-    });
+    return this.enterpriseApi;
   }
 
   // ---------------------------------------------------------------- listing
@@ -365,7 +245,7 @@ export class MistralClient implements PluginClient {
    * comes back in one response.
    */
   private async listModels(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<{ data?: MistralModel[] }>("/models");
+    const data = await this.api.get("/models");
     const now = new Date().toISOString();
     return (data.data ?? [])
       .filter((m) => Boolean(m.id))
@@ -418,9 +298,9 @@ export class MistralClient implements PluginClient {
     const pageSize = 100;
     const out: MistralVoice[] = [];
     for (let offset = 0; offset < 10_000; offset += pageSize) {
-      const page = await this.fetch<{ items?: MistralVoice[]; total?: number }>(
-        `/audio/voices?limit=${pageSize}&offset=${offset}&type=all`,
-      );
+      const page = await this.api.get("/audio/voices", {
+        query: { limit: pageSize, offset, type: "all" },
+      });
       const items = page.items ?? [];
       out.push(...items);
       if (items.length < pageSize) break;
@@ -464,9 +344,7 @@ export class MistralClient implements PluginClient {
     const pageSize = 100;
     const out: MistralFile[] = [];
     for (let page = 0; page < 100; page += 1) {
-      const body = await this.fetch<{ data?: MistralFile[] }>(
-        `/files?page=${page}&page_size=${pageSize}`,
-      );
+      const body = await this.api.get("/files", { query: { page, page_size: pageSize } });
       const items = body.data ?? [];
       out.push(...items);
       if (items.length < pageSize) break;
@@ -507,9 +385,9 @@ export class MistralClient implements PluginClient {
     const pageSize = 100;
     const out: MistralFineTuningJob[] = [];
     for (let page = 0; page < 100; page += 1) {
-      const body = await this.fetch<{ data?: MistralFineTuningJob[] }>(
-        `/fine_tuning/jobs?page=${page}&page_size=${pageSize}`,
-      );
+      const body = await this.api.get("/fine_tuning/jobs", {
+        query: { page, page_size: pageSize },
+      });
       const items = body.data ?? [];
       out.push(...items);
       if (items.length < pageSize) break;
@@ -563,9 +441,7 @@ export class MistralClient implements PluginClient {
     const pageSize = 100;
     const out: MistralBatchJob[] = [];
     for (let page = 0; page < 100; page += 1) {
-      const body = await this.fetch<{ data?: MistralBatchJob[] }>(
-        `/batch/jobs?page=${page}&page_size=${pageSize}`,
-      );
+      const body = await this.api.get("/batch/jobs", { query: { page, page_size: pageSize } });
       const items = body.data ?? [];
       out.push(...items);
       if (items.length < pageSize) break;
@@ -618,10 +494,8 @@ export class MistralClient implements PluginClient {
     const limit = 100;
     const out: MistralApiKey[] = [];
     for (let offset = 0; offset < 10_000; offset += limit) {
-      const body = await this.adminFetch<{ keys?: MistralApiKey[] } | MistralApiKey[]>(
-        `/api-keys?limit=${limit}&offset=${offset}`,
-      );
-      const items = Array.isArray(body) ? body : (body.keys ?? []);
+      const body = await this.adminApi.get("/admin/api-keys", { query: { limit, offset } });
+      const items = apiKeyRows(body);
       out.push(...items);
       if (items.length < limit) break;
     }
@@ -665,11 +539,9 @@ export class MistralClient implements PluginClient {
     const out: MistralAgent[] = [];
     let token: string | undefined;
     for (let page = 0; page < 50; page += 1) {
-      const params = new URLSearchParams({ page_size: "100" });
-      if (token) params.set("page_token", token);
-      const body = await this.fetch<{ data?: MistralAgent[]; next_page_token?: string | null }>(
-        `/agents/pages?${params.toString()}`,
-      );
+      const body: AgentPage = await this.api.get("/agents/pages", {
+        query: { page_size: 100, ...(token ? { page_token: token } : {}) },
+      });
       out.push(...(body.data ?? []));
       const next = body.next_page_token || undefined;
       if (!next || next === token) break;
@@ -687,11 +559,9 @@ export class MistralClient implements PluginClient {
     const out: MistralLibrary[] = [];
     let token: string | undefined;
     for (let page = 0; page < 50; page += 1) {
-      const params = new URLSearchParams({ page_size: "100" });
-      if (token) params.set("page_token", token);
-      const body = await this.fetch<{ data?: MistralLibrary[]; next_page_token?: string | null }>(
-        `/libraries?${params.toString()}`,
-      );
+      const body: LibraryPage = await this.api.get("/libraries", {
+        query: { page_size: 100, ...(token ? { page_token: token } : {}) },
+      });
       out.push(...(body.data ?? []));
       const next = body.next_page_token || undefined;
       if (!next || next === token) break;
@@ -720,10 +590,8 @@ export class MistralClient implements PluginClient {
         // in the renderer: the same trick the Cloudflare queue plugin uses for
         // `__consumers__`.
         const [voices, models] = await Promise.all([
-          this.fetchAllVoices().catch(() => [] as MistralVoice[]),
-          this.fetch<{ data?: MistralModel[] }>("/models").catch(() => ({
-            data: [] as MistralModel[],
-          })),
+          this.fetchAllVoices().catch((): MistralVoice[] => []),
+          this.api.get("/models").catch((): ModelList => ({ data: [] })),
         ]);
 
         const voiceStash: VoiceStash[] = voices
@@ -804,7 +672,7 @@ export class MistralClient implements PluginClient {
       if (typeId === "mistral-batch-job") {
         const [models, files] = await Promise.all([
           this.liveModelOptions(() => true),
-          this.listFiles("picker").catch(() => [] as ResourceInstance[]),
+          this.listFiles("picker").catch((): ResourceInstance[] => []),
         ]);
         return {
           fields: [
@@ -851,9 +719,9 @@ export class MistralClient implements PluginClient {
     keep: (model: MistralModel) => boolean,
   ): Promise<Array<{ id: string; label: string; description?: string }>> {
     try {
-      const data = await this.fetch<{ data?: MistralModel[] }>("/models");
+      const data = await this.api.get("/models");
       return (data.data ?? [])
-        .filter((m) => Boolean(m.id) && m.archived !== true && keep(m))
+        .filter((m: MistralModel) => Boolean(m.id) && m.archived !== true && keep(m))
         .map((m) => ({
           id: String(m.id),
           label: String(m.id),
@@ -877,13 +745,10 @@ export class MistralClient implements PluginClient {
         const name = fields["name"]?.trim();
         const model = fields["model"];
         if (!name || !model) throw new Error("Mistral plugin: an agent needs a name and a model");
-        const body: Record<string, unknown> = { name, model };
-        if (fields["description"]) body["description"] = fields["description"];
-        if (fields["instructions"]) body["instructions"] = fields["instructions"];
-        const created = await this.fetch<MistralAgent>("/agents", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+        const body: AgentCreate = { name, model };
+        if (fields["description"]) body.description = fields["description"];
+        if (fields["instructions"]) body.instructions = fields["instructions"];
+        const created = await this.api.post("/agents", { body });
         return mapAgent(accountId, created, now);
       }
 
@@ -891,12 +756,9 @@ export class MistralClient implements PluginClient {
         // POST /v1/libraries
         const name = fields["name"]?.trim();
         if (!name) throw new Error("Mistral plugin: a library needs a name");
-        const body: Record<string, unknown> = { name };
-        if (fields["description"]) body["description"] = fields["description"];
-        const created = await this.fetch<MistralLibrary>("/libraries", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+        const body: LibraryCreate = { name };
+        if (fields["description"]) body.description = fields["description"];
+        const created = await this.api.post("/libraries", { body });
         return mapLibrary(accountId, created, now);
       }
 
@@ -910,13 +772,10 @@ export class MistralClient implements PluginClient {
             "Mistral plugin: a batch job needs an input file, an endpoint and a model",
           );
         }
-        const body: Record<string, unknown> = { input_files: [inputFile], endpoint, model };
+        const body: BatchJobCreate = { input_files: [inputFile], endpoint, model };
         const timeout = Number(fields["timeoutHours"]);
-        if (Number.isFinite(timeout) && timeout > 0) body["timeout_hours"] = Math.round(timeout);
-        const created = await this.fetch<MistralBatchJob>("/batch/jobs", {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+        if (Number.isFinite(timeout) && timeout > 0) body.timeout_hours = Math.round(timeout);
+        const created = await this.api.post("/batch/jobs", { body });
         return this.mapBatchJob(accountId, created, now);
       }
 
@@ -936,37 +795,29 @@ export class MistralClient implements PluginClient {
       if (typeId === "mistral-agent") {
         // PATCH /v1/agents/{agent_id}: every edit mints a new agent version.
         const agentId = resourceId.slice(`${accountId}:${typeId}:`.length);
-        const body: Record<string, unknown> = {};
+        const body: AgentUpdate = {};
         if (fields["name"] !== undefined && fields["name"].trim())
-          body["name"] = fields["name"].trim();
-        if (fields["description"] !== undefined)
-          body["description"] = fields["description"] || null;
+          body.name = fields["name"].trim();
+        if (fields["description"] !== undefined) body.description = fields["description"] || null;
         if (fields["instructions"] !== undefined) {
-          body["instructions"] = fields["instructions"] || null;
+          body.instructions = fields["instructions"] || null;
         }
         if (Object.keys(body).length === 0)
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
-        const updated = await this.fetch<MistralAgent>(`/agents/${encodeURIComponent(agentId)}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-        });
+        const updated = await this.api.patch(`/agents/${pathEncode(agentId)}`, { body });
         return mapAgent(accountId, updated, new Date().toISOString());
       }
 
       if (typeId === "mistral-library") {
         // PATCH /v1/libraries/{library_id}: name and description only.
         const libraryId = resourceId.slice(`${accountId}:${typeId}:`.length);
-        const body: Record<string, unknown> = {};
+        const body: LibraryUpdate = {};
         if (fields["name"] !== undefined && fields["name"].trim())
-          body["name"] = fields["name"].trim();
-        if (fields["description"] !== undefined)
-          body["description"] = fields["description"] || null;
+          body.name = fields["name"].trim();
+        if (fields["description"] !== undefined) body.description = fields["description"] || null;
         if (Object.keys(body).length === 0)
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
-        const updated = await this.fetch<MistralLibrary>(
-          `/libraries/${encodeURIComponent(libraryId)}`,
-          { method: "PATCH", body: JSON.stringify(body) },
-        );
+        const updated = await this.api.patch(`/libraries/${pathEncode(libraryId)}`, { body });
         return mapLibrary(accountId, updated, new Date().toISOString());
       }
 
@@ -976,23 +827,17 @@ export class MistralClient implements PluginClient {
       const voiceId = resourceId.slice(`${accountId}:${typeId}:`.length);
 
       // https://docs.mistral.ai/api/endpoint/audio/voices: PATCH /v1/audio/voices/{voice_id}
-      const body: Record<string, unknown> = {};
-      if (fields["name"] !== undefined) body["name"] = fields["name"];
-      if (fields["gender"] !== undefined) body["gender"] = fields["gender"];
-      if (fields["description"] !== undefined) body["description"] = fields["description"];
-      if (fields["age"] !== undefined) body["age"] = Number(fields["age"]) || null;
+      const body: VoiceUpdate = {};
+      if (fields["name"] !== undefined) body.name = fields["name"];
+      if (fields["gender"] !== undefined) body.gender = fields["gender"];
+      if (fields["description"] !== undefined) body.description = fields["description"];
+      if (fields["age"] !== undefined) body.age = Number(fields["age"]) || null;
       if (fields["languages"] !== undefined) {
-        body["languages"] = splitList(fields["languages"]);
+        body.languages = splitList(fields["languages"]);
       }
-      if (fields["tags"] !== undefined) body["tags"] = splitList(fields["tags"]);
+      if (fields["tags"] !== undefined) body.tags = splitList(fields["tags"]);
 
-      const updated = await this.fetch<MistralVoice>(
-        `/audio/voices/${encodeURIComponent(voiceId)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify(body),
-        },
-      );
+      const updated = await this.api.patch(`/audio/voices/${pathEncode(voiceId)}`, { body });
       return this.mapVoice(accountId, updated, new Date().toISOString());
     });
   }
@@ -1005,40 +850,28 @@ export class MistralClient implements PluginClient {
       switch (typeId) {
         // https://docs.mistral.ai/api/endpoint/files: DELETE /v1/files/{file_id}
         case "mistral-file":
-          await this.fetch<unknown>(`/files/${encodeURIComponent(externalId)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`/files/${pathEncode(externalId)}`);
           return;
         // https://docs.mistral.ai/api/endpoint/batch: DELETE /v1/batch/jobs/{job_id}
         case "mistral-batch-job":
-          await this.fetch<unknown>(`/batch/jobs/${encodeURIComponent(externalId)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`/batch/jobs/${pathEncode(externalId)}`);
           return;
         // https://docs.mistral.ai/api/endpoint/audio/voices: DELETE /v1/audio/voices/{voice_id}
         // Only workspace clones can be removed; presets belong to Mistral.
         case "mistral-voice":
-          await this.fetch<unknown>(`/audio/voices/${encodeURIComponent(externalId)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`/audio/voices/${pathEncode(externalId)}`);
           return;
         // DELETE /v1/agents/{agent_id}
         case "mistral-agent":
-          await this.fetch<unknown>(`/agents/${encodeURIComponent(externalId)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`/agents/${pathEncode(externalId)}`);
           return;
         // DELETE /v1/libraries/{library_id}: deletes its documents too.
         case "mistral-library":
-          await this.fetch<unknown>(`/libraries/${encodeURIComponent(externalId)}`, {
-            method: "DELETE",
-          });
+          await this.api.delete(`/libraries/${pathEncode(externalId)}`);
           return;
         // Admin plane: DELETE /v1/admin/api-keys/{key_id}
         case "mistral-api-key":
-          await this.adminFetch<unknown>(`/api-keys/${encodeURIComponent(externalId)}`, {
-            method: "DELETE",
-          });
+          await this.adminApi.delete(`/admin/api-keys/${pathEncode(externalId)}`);
           return;
         default:
           throw new Error(`Mistral plugin: ${typeId} does not support delete`);
@@ -1064,22 +897,19 @@ export class MistralClient implements PluginClient {
     return attempt(async () => {
       const externalId = resourceId.slice(`${accountId}:${typeId}:`.length);
       if (typeId === "mistral-batch-job" && actionId === "cancel") {
-        await this.fetch<unknown>(`/batch/jobs/${encodeURIComponent(externalId)}/cancel`, {
-          method: "POST",
-        });
+        await this.api.post(`/batch/jobs/${pathEncode(externalId)}/cancel`);
         return;
       }
       if (typeId === "mistral-model" && (actionId === "archive" || actionId === "unarchive")) {
-        await this.fetch<unknown>(`/fine_tuning/models/${encodeURIComponent(externalId)}/archive`, {
-          method: actionId === "archive" ? "POST" : "DELETE",
-        });
+        if (actionId === "archive") {
+          await this.api.post(`/fine_tuning/models/${pathEncode(externalId)}/archive`);
+        } else {
+          await this.api.delete(`/fine_tuning/models/${pathEncode(externalId)}/archive`);
+        }
         return;
       }
       if (typeId === "mistral-model" && actionId === "delete-model") {
-        const result = await this.fetch<{ deleted?: boolean }>(
-          `/models/${encodeURIComponent(externalId)}`,
-          { method: "DELETE" },
-        );
+        const result = await this.api.delete(`/models/${pathEncode(externalId)}`);
         if (result.deleted === false) {
           throw new Error(`Mistral plugin: model ${externalId} was not deleted`);
         }
@@ -1147,10 +977,10 @@ export class MistralClient implements PluginClient {
 
     const rows: CostRow[] = [];
     for (const { year, month, date } of monthStartsInRange(range)) {
-      const body = await this.adminFetch<Record<string, unknown>>(
-        `/usage?year=${year}&month=${month}`,
-      );
-      const currency = typeof body["currency"] === "string" ? (body["currency"] as string) : "USD";
+      const body = await this.adminApi.get("/admin/usage", {
+        query: { year: String(year), month: String(month) },
+      });
+      const currency = typeof body.currency === "string" ? body.currency : "USD";
 
       for (const [service, value] of Object.entries(body)) {
         const amount = costOf(value);
@@ -1176,12 +1006,7 @@ export class MistralClient implements PluginClient {
   ): PluginEffect<MetricSeries[]> {
     return attempt(async () => {
       const externalId = resourceId.slice(`${accountId}:${resourceTypeId}:`.length);
-      return fetchObservabilitySeries(
-        (path, options) => this.fetch(path, options),
-        resourceTypeId,
-        externalId,
-        timeRange,
-      );
+      return fetchObservabilitySeries(this.api, resourceTypeId, externalId, timeRange);
     });
   }
 
@@ -1194,12 +1019,7 @@ export class MistralClient implements PluginClient {
   ): PluginEffect<LogsFetchResult> {
     return attempt(async () => {
       const externalId = resourceId.slice(`${accountId}:${typeId}:`.length);
-      return fetchObservabilityLogs(
-        (path, options) => this.fetch(path, options),
-        typeId,
-        externalId,
-        params,
-      );
+      return fetchObservabilityLogs(this.api, typeId, externalId, params);
     });
   }
 
@@ -1212,7 +1032,7 @@ export class MistralClient implements PluginClient {
    *
    * The non-streaming response is **JSON with base64 audio in `audio_data`**,
    * not raw bytes, so unlike most providers this call can go through
-   * `jsonRestFetch` and keep bastion routing. `response_format: "mp3"` is
+   * the typed client and keep bastion routing. `response_format: "mp3"` is
    * requested explicitly so the browser's `<audio>` element can play it.
    */
   synthesizeSpeech(
@@ -1239,19 +1059,15 @@ export class MistralClient implements PluginClient {
         payload.modelId && isTtsModel(payload.modelId) ? payload.modelId : FALLBACK_TTS_MODEL;
 
       const started = Date.now();
-      const result = await this.fetch<{ audio_data?: string; model?: string; usage?: unknown }>(
-        "/audio/speech",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            model,
-            input: text,
-            voice_id: voiceId,
-            response_format: "mp3",
-            stream: false,
-          }),
+      const result = await this.api.post("/audio/speech", {
+        body: {
+          model,
+          input: text,
+          voice_id: voiceId,
+          response_format: "mp3",
+          stream: false,
         },
-      );
+      });
 
       const audioBase64 = String(result.audio_data ?? "");
       if (!audioBase64) throw new Error("Mistral plugin: /v1/audio/speech returned no audio_data");
@@ -1272,9 +1088,8 @@ export class MistralClient implements PluginClient {
    * https://docs.mistral.ai/api/endpoint/audio/transcriptions:
    * `POST /v1/audio/transcriptions`
    *
-   * Multipart, so this uses global `fetch` with a real `FormData`:
-   * `jsonRestFetch`'s host-http path stringifies `FormData` instead of
-   * encoding it. The trade-off is that this call bypasses bastion routing.
+   * Multipart, so this uses global `fetch` with a real `FormData`: the host-http
+   * path of `restRequest` stringifies `FormData` instead of encoding it. The trade-off is that this call bypasses bastion routing.
    *
    * Diarisation is on, which is what lets `words` carry speaker labels.
    */
@@ -1319,7 +1134,7 @@ export class MistralClient implements PluginClient {
         );
       }
 
-      const result = (await response.json()) as MistralTranscription;
+      const result: MistralTranscription = await response.json();
       const elapsedMs = Date.now() - started;
 
       const words: TranscriptWord[] = (result.words ?? []).map((word) => ({
@@ -1405,7 +1220,10 @@ export class MistralClient implements PluginClient {
    * a usable-but-minimal panel when the stash is missing (cold cache, offline
    * render, contract tests).
    */
-  private speechPanel(resource: ResourceInstance, currentVoiceId?: string) {
+  private speechPanel(
+    resource: ResourceInstance,
+    currentVoiceId?: string,
+  ): NonNullable<DetailViewSchema["speechPanel"]> {
     const voices = parseJson<VoiceStash[]>(resource.resolvedOutputs["__voices__"]) ?? [];
     const audio = parseJson<AudioModelStash>(resource.resolvedOutputs["__audioModels__"]);
 
@@ -1435,7 +1253,7 @@ export class MistralClient implements PluginClient {
         : (currentVoiceId ?? voiceOptions[0]?.id ?? "");
 
     return {
-      modes: ["tts", "stt"] as Array<"tts" | "stt">,
+      modes: ["tts", "stt"],
       subtitle: "Voxtral transcription and speech synthesis",
       helpText:
         "Transcription runs with speaker diarisation on, so the word table carries speaker labels. Synthesis returns base64 mp3.",
@@ -1869,6 +1687,11 @@ function fineTunedModelActions(archived: boolean): ActionNode[] {
   ];
 }
 
+/** The document says `{ keys }`; a bare array has always been accepted too. */
+function apiKeyRows(body: ApiKeyPage | MistralApiKey[]): MistralApiKey[] {
+  return Array.isArray(body) ? body : (body.keys ?? []);
+}
+
 function splitList(value: string): string[] {
   return value
     .split(",")
@@ -1879,7 +1702,8 @@ function splitList(value: string): string[] {
 function parseJson<T>(raw: string | undefined): T | undefined {
   if (!raw) return undefined;
   try {
-    return JSON.parse(raw) as T;
+    const parsed: T = JSON.parse(raw);
+    return parsed;
   } catch {
     return undefined;
   }
@@ -1890,12 +1714,12 @@ function parseJson<T>(raw: string | undefined): T | undefined {
  * a mix of scalars and per-category objects, so this handles both without
  * assuming a fixed schema for every service key.
  */
-function costOf(value: unknown): number | undefined {
+function costOf(value: UsageReport[keyof UsageReport]): number | undefined {
   if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    const record = value as Record<string, unknown>;
+    const record = new Map(Object.entries(value));
     for (const key of ["cost", "total_cost", "amount", "total"]) {
-      const candidate = record[key];
+      const candidate = record.get(key);
       if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
     }
   }

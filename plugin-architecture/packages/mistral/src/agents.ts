@@ -1,5 +1,6 @@
 import type { DetailViewSchema, ResourceInstance } from "@infrawrench/plugin-base";
 import { formatBytes } from "@infrawrench/plugin-base";
+import type { CompletionArgs, MistralAgent, MistralAgentTool, MistralLibrary } from "./api.js";
 import { OBSERVABILITY_LOG_LINES, OBSERVABILITY_WINDOW_MS } from "./observability.js";
 
 /**
@@ -17,53 +18,13 @@ import { OBSERVABILITY_LOG_LINES, OBSERVABILITY_WINDOW_MS } from "./observabilit
 
 const DASH = "—";
 
-export interface MistralAgentTool {
-  type?: string;
-  function?: { name?: string };
-  library_ids?: string[];
-  connector_id?: string;
-  name?: string;
-}
-
-export interface MistralAgent {
-  id?: string;
-  name?: string;
-  description?: string | null;
-  instructions?: string | null;
-  model?: string;
-  tools?: MistralAgentTool[];
-  completion_args?: Record<string, unknown>;
-  handoffs?: string[] | null;
-  version?: number;
-  versions?: number[];
-  version_message?: string | null;
-  owner_id?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  deployment_chat?: boolean;
-  source?: string;
-}
-
-export interface MistralLibrary {
-  id?: string;
-  name?: string;
-  description?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  owner_id?: string | null;
-  owner_type?: string;
-  total_size?: number;
-  nb_documents?: number;
-}
-
 /** One short label per tool: `web_search`, `function:get_weather`, … */
 function toolLabel(tool: MistralAgentTool): string {
-  const type = tool.type ?? "tool";
-  if (type === "function" && tool.function?.name) return `function:${tool.function.name}`;
-  if (type === "connector" && (tool.connector_id || tool.name)) {
+  if (tool.type === "function" && tool.function?.name) return `function:${tool.function.name}`;
+  if (tool.type === "connector" && (tool.connector_id || tool.name)) {
     return `connector:${tool.connector_id || tool.name}`;
   }
-  return type;
+  return tool.type ?? "tool";
 }
 
 export function mapAgent(accountId: string, agent: MistralAgent, now: string): ResourceInstance {
@@ -137,18 +98,20 @@ export function mapLibrary(
   };
 }
 
-function text(value: unknown): string {
+function text(value: ResourceInstance["fields"][string] | undefined): string {
   const s = value === undefined || value === null ? "" : String(value);
   return s || DASH;
 }
 
 export function renderAgentDetail(resource: ResourceInstance): DetailViewSchema {
   const f = resource.fields;
-  let completionArgs: Record<string, unknown> = {};
+  let completionArgs: CompletionArgs = {};
   try {
-    const parsed = JSON.parse(resource.resolvedOutputs["__completionArgs__"] ?? "{}") as unknown;
+    const parsed: CompletionArgs | null = JSON.parse(
+      resource.resolvedOutputs["__completionArgs__"] ?? "{}",
+    );
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      completionArgs = parsed as Record<string, unknown>;
+      completionArgs = parsed;
     }
   } catch {
     completionArgs = {};

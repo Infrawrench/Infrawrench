@@ -1,0 +1,113 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://docs.mistral.ai/openapi.yaml",
+  "pathPrefix": "/v1",
+  "patches": [
+    {
+      "pointer": "/paths/~1fine_tuning~1jobs",
+      "value": {
+        "get": {
+          "operationId": "jobs_api_routes_fine_tuning_get_fine_tuning_jobs",
+          "parameters": [
+            { "name": "page", "in": "query", "required": false, "schema": { "type": "integer" } },
+            {
+              "name": "page_size",
+              "in": "query",
+              "required": false,
+              "schema": { "type": "integer" }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "A page of fine-tuning jobs",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": { "type": "string" },
+                            "name": { "type": ["string", "null"] },
+                            "model": { "type": "string" },
+                            "fine_tuned_model": { "type": ["string", "null"] },
+                            "status": { "type": "string" },
+                            "job_type": { "type": "string" },
+                            "suffix": { "type": ["string", "null"] },
+                            "auto_start": { "type": "boolean" },
+                            "training_files": {
+                              "type": "array",
+                              "items": {
+                                "anyOf": [
+                                  { "type": "string" },
+                                  {
+                                    "type": "object",
+                                    "properties": { "file_id": { "type": "string" } }
+                                  }
+                                ]
+                              }
+                            },
+                            "validation_files": { "type": "array", "items": { "type": "string" } },
+                            "trained_tokens": { "type": ["integer", "null"] },
+                            "created_at": { "type": "integer" },
+                            "modified_at": { "type": "integer" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document no longer lists GET /v1/fine_tuning/jobs, which the plugin still calls; this is the shape the plugin has always read."
+    },
+    {
+      "pointer": "/paths/~1audio~1speech/post/responses/200/content/text~1event-stream/schema",
+      "value": { "type": "object" },
+      "why": "Dangling #/$defs references inside this schema stop generation. The plugin asks for stream: false and never reads this answer."
+    },
+    {
+      "pointer": "/components/schemas/ApiEndpoint",
+      "value": { "type": "string" },
+      "why": "An enum in the document; the create form's value goes through as chosen, and the provider's own validation error is the better message."
+    },
+    {
+      "pointer": "/components/schemas/VoiceUpdateRequest/properties/gender",
+      "value": { "type": ["string", "null"] },
+      "why": "An enum in the document; the edit form's text goes through as typed, and the provider's own validation error is the better message."
+    }
+  ],
+  "paths": {
+    "/admin/api-keys": ["get"],
+    "/admin/api-keys/{key_id}": ["delete"],
+    "/admin/usage": ["get"],
+    "/agents": ["post"],
+    "/agents/pages": ["get"],
+    "/agents/{agent_id}": ["patch", "delete"],
+    "/audio/speech": ["post"],
+    "/audio/transcriptions": ["post"],
+    "/audio/voices": ["get"],
+    "/audio/voices/{voice_id}": ["patch", "delete"],
+    "/batch/jobs": ["get", "post"],
+    "/batch/jobs/{job_id}": ["delete"],
+    "/batch/jobs/{job_id}/cancel": ["post"],
+    "/files": ["get"],
+    "/files/{file_id}": ["delete"],
+    "/fine_tuning/jobs": ["get"],
+    "/fine_tuning/models/{model_id}/archive": ["post", "delete"],
+    "/libraries": ["get", "post"],
+    "/libraries/{library_id}": ["patch", "delete"],
+    "/models": ["get"],
+    "/models/{model_id}": ["delete"],
+    "/observability/spans/aggregate": ["post"],
+    "/observability/spans/search": ["post"],
+    "/observability/traces/aggregate": ["post"],
+    "/observability/traces/search": ["post"]
+  }
+}
