@@ -2,6882 +2,7901 @@
 // Do not edit. Add an operation to plugingen.json and run: pnpm plugingen generate mongodb-atlas
 /* eslint-disable */
 export interface paths {
-    "/groups/{groupId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroup"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["updateGroup"];
-        trace?: never;
+  "/groups/{groupId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/accessList": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupAccessListEntries"];
-        put?: never;
-        post: operations["createGroupAccessListEntry"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroup"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations["updateGroup"];
+    trace?: never;
+  };
+  "/groups/{groupId}/accessList": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/accessList/{entryValue}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupAccessListEntry"];
-        put?: never;
-        post?: never;
-        delete: operations["deleteGroupAccessListEntry"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["listGroupAccessListEntries"];
+    put?: never;
+    post: operations["createGroupAccessListEntry"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/accessList/{entryValue}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/alertConfigs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupAlertConfigs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupAccessListEntry"];
+    put?: never;
+    post?: never;
+    delete: operations["deleteGroupAccessListEntry"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/alertConfigs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/alertConfigs/{alertConfigId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupAlertConfig"];
-        put?: never;
-        post?: never;
-        delete: operations["deleteGroupAlertConfig"];
-        options?: never;
-        head?: never;
-        patch: operations["toggleGroupAlertConfig"];
-        trace?: never;
+    get: operations["listGroupAlertConfigs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/alertConfigs/{alertConfigId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/alerts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupAlerts"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupAlertConfig"];
+    put?: never;
+    post?: never;
+    delete: operations["deleteGroupAlertConfig"];
+    options?: never;
+    head?: never;
+    patch: operations["toggleGroupAlertConfig"];
+    trace?: never;
+  };
+  "/groups/{groupId}/alerts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/alerts/{alertId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupAlert"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["acknowledgeGroupAlert"];
-        trace?: never;
+    get: operations["listGroupAlerts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/alerts/{alertId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/clusters": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupClusters"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupAlert"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations["acknowledgeGroupAlert"];
+    trace?: never;
+  };
+  "/groups/{groupId}/clusters": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/clusters/{clusterName}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupCluster"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["updateGroupCluster"];
-        trace?: never;
+    get: operations["listGroupClusters"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/clusters/{clusterName}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/clusters/{clusterName}/backup/schedule": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupClusterBackupSchedule"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["updateGroupClusterBackupSchedule"];
-        trace?: never;
+    get: operations["getGroupCluster"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations["updateGroupCluster"];
+    trace?: never;
+  };
+  "/groups/{groupId}/clusters/{clusterName}/backup/schedule": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/clusters/{clusterName}/backup/snapshots": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupClusterBackupSnapshots"];
-        put?: never;
-        post: operations["takeGroupClusterBackupSnapshots"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupClusterBackupSchedule"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations["updateGroupClusterBackupSchedule"];
+    trace?: never;
+  };
+  "/groups/{groupId}/clusters/{clusterName}/backup/snapshots": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/clusters/{clusterName}/backup/snapshots/{snapshotId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupClusterBackupSnapshot"];
-        put?: never;
-        post?: never;
-        delete: operations["deleteGroupClusterBackupSnapshot"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["listGroupClusterBackupSnapshots"];
+    put?: never;
+    post: operations["takeGroupClusterBackupSnapshots"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/clusters/{clusterName}/backup/snapshots/{snapshotId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/clusters/{clusterName}/onlineArchives": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupClusterOnlineArchives"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupClusterBackupSnapshot"];
+    put?: never;
+    post?: never;
+    delete: operations["deleteGroupClusterBackupSnapshot"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/clusters/{clusterName}/onlineArchives": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupClusterOnlineArchive"];
-        put?: never;
-        post?: never;
-        delete: operations["deleteGroupClusterOnlineArchive"];
-        options?: never;
-        head?: never;
-        patch: operations["updateGroupClusterOnlineArchive"];
-        trace?: never;
+    get: operations["listGroupClusterOnlineArchives"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/clusters/{clusterName}/onlineArchives/{archiveId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/clusters/{clusterName}/search/indexes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupClusterSearchIndexes"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupClusterOnlineArchive"];
+    put?: never;
+    post?: never;
+    delete: operations["deleteGroupClusterOnlineArchive"];
+    options?: never;
+    head?: never;
+    patch: operations["updateGroupClusterOnlineArchive"];
+    trace?: never;
+  };
+  "/groups/{groupId}/clusters/{clusterName}/search/indexes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/clusters/{clusterName}/search/indexes/{indexId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupClusterSearchIndex"];
-        put?: never;
-        post?: never;
-        delete: operations["deleteGroupClusterSearchIndex"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["listGroupClusterSearchIndexes"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/clusters/{clusterName}/search/indexes/{indexId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/clusters/provider/regions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupClusterProviderRegions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupClusterSearchIndex"];
+    put?: never;
+    post?: never;
+    delete: operations["deleteGroupClusterSearchIndex"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/clusters/provider/regions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/databaseUsers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupDatabaseUsers"];
-        put?: never;
-        post: operations["createGroupDatabaseUser"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["listGroupClusterProviderRegions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/databaseUsers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/databaseUsers/{databaseName}/{username}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupDatabaseUser"];
-        put?: never;
-        post?: never;
-        delete: operations["deleteGroupDatabaseUser"];
-        options?: never;
-        head?: never;
-        patch: operations["updateGroupDatabaseUser"];
-        trace?: never;
+    get: operations["listGroupDatabaseUsers"];
+    put?: never;
+    post: operations["createGroupDatabaseUser"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/databaseUsers/{databaseName}/{username}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/flexClusters": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupFlexClusters"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupDatabaseUser"];
+    put?: never;
+    post?: never;
+    delete: operations["deleteGroupDatabaseUser"];
+    options?: never;
+    head?: never;
+    patch: operations["updateGroupDatabaseUser"];
+    trace?: never;
+  };
+  "/groups/{groupId}/flexClusters": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/flexClusters/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupFlexCluster"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["updateGroupFlexCluster"];
-        trace?: never;
+    get: operations["listGroupFlexClusters"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/flexClusters/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/privateEndpoint/{cloudProvider}/endpointService": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupPrivateEndpointEndpointService"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupFlexCluster"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: operations["updateGroupFlexCluster"];
+    trace?: never;
+  };
+  "/groups/{groupId}/privateEndpoint/{cloudProvider}/endpointService": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/privateEndpoint/{cloudProvider}/endpointService/{endpointServiceId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupPrivateEndpointEndpointService"];
-        put?: never;
-        post?: never;
-        delete: operations["deleteGroupPrivateEndpointEndpointService"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["listGroupPrivateEndpointEndpointService"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/privateEndpoint/{cloudProvider}/endpointService/{endpointServiceId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/processes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listGroupProcesses"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupPrivateEndpointEndpointService"];
+    put?: never;
+    post?: never;
+    delete: operations["deleteGroupPrivateEndpointEndpointService"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/processes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/processes/{processId}/measurements": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getGroupProcessMeasurements"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["listGroupProcesses"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/processes/{processId}/measurements": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/serverless": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @deprecated */
-        get: operations["listGroupServerlessInstances"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getGroupProcessMeasurements"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/serverless": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/groups/{groupId}/serverless/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** @deprecated */
-        get: operations["getGroupServerlessInstance"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** @deprecated */
+    get: operations["listGroupServerlessInstances"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/groups/{groupId}/serverless/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/orgs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listOrgs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** @deprecated */
+    get: operations["getGroupServerlessInstance"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/orgs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/orgs/{orgId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getOrg"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["listOrgs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/orgs/{orgId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/orgs/{orgId}/groups": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getOrgGroups"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getOrg"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/orgs/{orgId}/groups": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/orgs/{orgId}/invoices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listOrgInvoices"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getOrgGroups"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/orgs/{orgId}/invoices": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/orgs/{orgId}/invoices/{invoiceId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getOrgInvoice"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["listOrgInvoices"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/orgs/{orgId}/invoices/{invoiceId}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/orgs/{orgId}/invoices/pending": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["listOrgInvoicePending"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get: operations["getOrgInvoice"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/orgs/{orgId}/invoices/pending": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    get: operations["listOrgInvoicePending"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        AcknowledgeAlert: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            readonly links?: components["schemas"]["Link"][];
-            unacknowledgeAlert?: boolean;
-        };
-        AdvancedAutoScalingSettings: {
-            compute?: components["schemas"]["AdvancedComputeAutoScaling"];
-            diskGB?: components["schemas"]["DiskGBAutoScaling"];
-            storageConfig?: components["schemas"]["StorageConfig"] | null;
-        };
-        AdvancedComputeAutoScaling: {
-            enabled?: boolean;
-            maxInstanceSize?: components["schemas"]["BaseCloudProviderInstanceSize"];
-            minInstanceSize?: components["schemas"]["BaseCloudProviderInstanceSize"];
-            scaleDownEnabled?: boolean;
-        };
-        AdvancedDiskBackupSnapshotSchedulePolicy: {
-            id?: string;
-            policyItems: components["schemas"]["DiskBackupApiPolicyItem"][];
-        };
-        AlertMatcher: {
-            fieldName: string;
-            /** @enum {string} */
-            operator: "EQUALS" | "CONTAINS" | "STARTS_WITH" | "ENDS_WITH" | "NOT_EQUALS" | "NOT_CONTAINS" | "REGEX";
-            value: string;
-        };
-        AlertsNotificationRootForGroup: components["schemas"]["DatadogNotification"] | components["schemas"]["EmailNotification"] | components["schemas"]["GroupNotification"] | components["schemas"]["HipChatNotification"] | components["schemas"]["MicrosoftTeamsNotification"] | components["schemas"]["OperationsContactNotification"] | components["schemas"]["OpsGenieNotification"] | components["schemas"]["OrgNotification"] | components["schemas"]["PagerDutyNotification"] | components["schemas"]["SlackNotification"] | components["schemas"]["SMSNotification"] | components["schemas"]["TeamNotification"] | components["schemas"]["UserNotification"] | components["schemas"]["VictorOpsNotification"] | components["schemas"]["WebhookNotification"];
-        AlertsThresholdInteger: {
-            operator?: components["schemas"]["Operator"];
-            /** Format: int32 */
-            threshold?: number;
-            /** @enum {string} */
-            units?: units_ded7c172;
-        };
-        AlertsToggle: {
-            enabled?: boolean;
-        };
-        AlertViewForNdsGroup: components["schemas"]["AppServiceAlertView"] | components["schemas"]["ClusterAlertViewForNdsGroup"] | components["schemas"]["HostAlertViewForNdsGroup"] | components["schemas"]["FlexMetricAlert"] | components["schemas"]["HostMetricAlert"] | components["schemas"]["ReplicaSetAlertViewForNdsGroup"] | components["schemas"]["StreamProcessorAlertViewForNdsGroup"] | components["schemas"]["DefaultAlertViewForNdsGroup"];
-        ApiAtlasClusterAdvancedConfigurationView: {
-            customOpensslCipherConfigTls12?: ("TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384" | "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")[];
-            customOpensslCipherConfigTls13?: ("TLS_AES_256_GCM_SHA384" | "TLS_CHACHA20_POLY1305_SHA256" | "TLS_AES_128_GCM_SHA256" | "TLS_AES_128_CCM_SHA256")[];
-            /** @enum {string} */
-            minimumEnabledTlsProtocol?: "TLS1_2" | "TLS1_3";
-            /** @enum {string} */
-            tlsCipherConfigMode?: "CUSTOM" | "DEFAULT";
-        };
-        ApiClusterScaleView_Atlas: {
-            readonly docsUrl?: string | null;
-            readonly minimumTier?: string;
-            readonly scaleUrl?: string;
-        };
-        ApiError: {
-            badRequestDetail?: components["schemas"]["BadRequestDetail"];
-            detail?: string | null;
-            /** Format: int32 */
-            readonly error: number;
-            readonly errorCode: string;
-            readonly parameters?: Record<string, never>[];
-            readonly policiesCausingDecision?: components["schemas"]["ResourcePolicyReference"][];
-            readonly reason?: string | null;
-        };
-        ApiHostView_Atlas: {
-            /** Format: date-time */
-            readonly created?: string;
-            readonly groupId?: string;
-            readonly hostname?: string;
-            readonly id?: string;
-            /** Format: date-time */
-            readonly lastPing?: string;
-            readonly links?: components["schemas"]["Link_Atlas"][];
-            /** Format: int32 */
-            readonly port?: number;
-            readonly replicaSetName?: string;
-            readonly shardName?: string;
-            /** @enum {string} */
-            readonly typeName?: "REPLICA_PRIMARY" | "REPLICA_SECONDARY" | "RECOVERING" | "SHARD_MONGOS" | "SHARD_CONFIG" | "SHARD_STANDALONE" | "SHARD_PRIMARY" | "SHARD_SECONDARY" | "NO_DATA";
-            readonly userAlias?: string;
-            readonly version?: string;
-        };
-        ApiMeasurementsGeneralView_Atlas: {
-            readonly databaseName?: string;
-            /** Format: date-time */
-            readonly end?: string;
-            /** @enum {string} */
-            readonly granularity?: "PT1M" | "PT5M" | "PT1H" | "P1D";
-            readonly groupId?: string;
-            readonly hostId?: string;
-            readonly links?: components["schemas"]["Link_Atlas"][];
-            readonly measurements?: components["schemas"]["MetricsMeasurement_Atlas"][];
-            readonly message?: string;
-            readonly partitionName?: string;
-            readonly processId?: string;
-            scale?: components["schemas"]["ApiClusterScaleView_Atlas"];
-            /** Format: date-time */
-            readonly start?: string;
-        };
-        AppServiceAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["AppServiceEventTypeViewAlertableNoThreshold"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AppServiceMetricMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        AppServiceAlertView: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            /** Format: date-time */
-            readonly created: string;
-            eventTypeName: components["schemas"]["AppServiceEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly orgId?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        /** @enum {string} */
-        AppServiceEventTypeViewAlertable: "URL_CONFIRMATION" | "SUCCESSFUL_DEPLOY" | "DEPLOYMENT_FAILURE" | "DEPLOYMENT_MODEL_CHANGE_SUCCESS" | "DEPLOYMENT_MODEL_CHANGE_FAILURE" | "REQUEST_RATE_LIMIT" | "LOG_FORWARDER_FAILURE" | "OUTSIDE_REALM_METRIC_THRESHOLD" | "SYNC_FAILURE" | "TRIGGER_FAILURE" | "TRIGGER_AUTO_RESUMED";
-        /** @enum {string} */
-        AppServiceEventTypeViewAlertableNoThreshold: "URL_CONFIRMATION" | "SUCCESSFUL_DEPLOY" | "DEPLOYMENT_FAILURE" | "REQUEST_RATE_LIMIT" | "LOG_FORWARDER_FAILURE" | "SYNC_FAILURE" | "TRIGGER_FAILURE" | "TRIGGER_AUTO_RESUMED" | "DEPLOYMENT_MODEL_CHANGE_SUCCESS" | "DEPLOYMENT_MODEL_CHANGE_FAILURE";
-        /** @enum {string} */
-        AppServiceEventTypeViewAlertableWithThreshold: "OUTSIDE_REALM_METRIC_THRESHOLD";
-        AppServiceMetricAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["AppServiceEventTypeViewAlertableWithThreshold"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AppServiceMetricMatcher"][];
-            metricThreshold?: components["schemas"]["AppServiceMetricThreshold"];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        AppServiceMetricMatcher: {
-            fieldName: components["schemas"]["AppServiceMetricMatcherField"];
-            /** @enum {string} */
-            operator: "EQUALS" | "CONTAINS" | "STARTS_WITH" | "ENDS_WITH" | "NOT_EQUALS" | "NOT_CONTAINS" | "REGEX";
-            value: string;
-        };
-        /** @enum {string} */
-        AppServiceMetricMatcherField: "APPLICATION_ID";
-        AppServiceMetricThreshold: Shared_49612667 & (components["schemas"]["RawMetricThresholdView"] | components["schemas"]["DataMetricThresholdView"] | components["schemas"]["TimeMetricThresholdView"]);
-        AssertMsgRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "ASSERT_MSG";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        AssertRegularRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "ASSERT_REGULAR";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        AssertUserRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "ASSERT_USER";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        AssertWarningRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "ASSERT_WARNING";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        AtlasOrganization: {
-            readonly id?: string;
-            readonly isDeleted?: boolean;
-            readonly links?: components["schemas"]["Link"][];
-            name: string;
-            /** @default false */
-            skipDefaultAlertsSettings?: boolean;
-        };
-        AtlasSearchAnalyzer: {
-            charFilters?: components["schemas"]["BasicDBObject"][];
-            name: string;
-            tokenFilters?: components["schemas"]["BasicDBObject"][];
-            tokenizer: {
-                [key: string]: Record<string, never>;
-            };
-        };
-        AutoExportPolicyView: {
-            exportBucketId?: string;
-            /** @enum {string} */
-            frequencyType?: "monthly" | "yearly";
-        };
-        AvailableCloudProviderRegion: {
-            readonly default?: boolean;
-            readonly name?: string;
-        };
-        AvgCommandExecutionTimeTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "AVG_COMMAND_EXECUTION_TIME";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        AvgReadExecutionTimeTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "AVG_READ_EXECUTION_TIME";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        AvgWriteExecutionTimeTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "AVG_WRITE_EXECUTION_TIME";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        AWSDataProcessRegionView: Omit<components["schemas"]["DataProcessRegionView"], "cloudProvider"> & {
-            /** @enum {string} */
-            readonly region?: "US_EAST_1" | "US_WEST_2" | "SA_EAST_1" | "EU_WEST_1" | "EU_WEST_2" | "EU_CENTRAL_1" | "AP_SOUTH_1" | "AP_SOUTHEAST_1" | "AP_SOUTHEAST_2" | "AP_NORTHEAST_2";
-        } & {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            cloudProvider: "AWS";
-        };
-        AWSPrivateLinkConnection: {
-            /** @enum {string} */
-            readonly cloudProvider: "AWS" | "AZURE" | "GCP";
-            readonly endpointServiceName?: string;
-            readonly errorMessage?: string;
-            readonly id?: string;
-            readonly interfaceEndpoints: string[];
-            readonly regionName?: string;
-            /** @enum {string} */
-            readonly status?: "INITIATING" | "AVAILABLE" | "WAITING_FOR_USER" | "FAILED" | "DELETING";
-            supportedRemoteRegions?: string[] | null;
-        };
-        AzureDataProcessRegionView: Omit<components["schemas"]["DataProcessRegionView"], "cloudProvider"> & {
-            /** @enum {string} */
-            readonly region?: "US_EAST_2" | "EUROPE_WEST" | "BRAZIL_SOUTH";
-        } & {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            cloudProvider: "AZURE";
-        };
-        AzurePrivateLinkConnection: {
-            /** @enum {string} */
-            readonly cloudProvider: "AWS" | "AZURE" | "GCP";
-            readonly errorMessage?: string;
-            readonly id?: string;
-            readonly privateEndpoints?: string[];
-            readonly privateLinkServiceName?: string;
-            readonly privateLinkServiceResourceId?: string;
-            readonly regionName?: string;
-            /** @enum {string} */
-            readonly status?: "INITIATING" | "AVAILABLE" | "WAITING_FOR_USER" | "FAILED" | "DELETING";
-        };
-        BackupOnlineArchive: {
-            readonly _id?: string;
-            readonly clusterName?: string;
-            /**
-             * @default STANDARD
-             * @enum {string}
-             */
-            readonly collectionType?: "TIMESERIES" | "STANDARD";
-            readonly collName?: string;
-            criteria?: components["schemas"]["DateCriteriaView"] | components["schemas"]["CustomCriteriaView"];
-            dataExpirationRule?: components["schemas"]["DataExpirationRuleView"];
-            dataProcessRegion?: components["schemas"]["DataProcessRegionView"];
-            readonly dataSetName?: string;
-            readonly dbName?: string;
-            readonly groupId?: string;
-            readonly partitionFields?: components["schemas"]["PartitionFieldView"][];
-            paused?: boolean;
-            schedule?: components["schemas"]["OnlineArchiveSchedule"];
-            /** @enum {string} */
-            readonly state?: "PENDING" | "ACTIVE" | "PAUSING" | "PAUSED" | "DELETED" | "ORPHANED";
-        };
-        BadRequestDetail: {
-            fields?: components["schemas"]["FieldViolation"][];
-        };
-        BaseCloudProviderInstanceSize: string;
-        BasicDBObject: {
-            [key: string]: Record<string, never>;
-        };
-        BiConnector: {
-            enabled?: boolean;
-            /** @enum {string} */
-            readPreference?: "PRIMARY" | "SECONDARY" | "ANALYTICS";
-        };
-        /** @enum {string} */
-        BillingEventTypeViewAlertableWithThreshold: "PENDING_INVOICE_OVER_THRESHOLD" | "DAILY_BILL_OVER_THRESHOLD" | "DAILY_BILLING_CHANGE_OVER_THRESHOLD" | "WEEKLY_BILLING_CHANGE_OVER_THRESHOLD" | "MONTHLY_BILLING_CHANGE_OVER_THRESHOLD";
-        BillingInvoice: {
-            /** Format: int64 */
-            readonly amountBilledCents?: number;
-            /** Format: int64 */
-            readonly amountPaidCents?: number;
-            /** Format: date-time */
-            readonly created?: string;
-            /** Format: int64 */
-            readonly creditsCents?: number;
-            /** Format: date-time */
-            readonly endDate?: string;
-            readonly id?: string;
-            readonly lineItems?: components["schemas"]["InvoiceLineItem"][];
-            readonly linkedInvoices?: components["schemas"]["BillingInvoice"][];
-            readonly links?: components["schemas"]["Link"][];
-            readonly orgId?: string;
-            readonly payments?: components["schemas"]["BillingPayment"][];
-            readonly refunds?: components["schemas"]["BillingRefund"][];
-            /** Format: int64 */
-            readonly salesTaxCents?: number;
-            /** Format: date-time */
-            readonly startDate?: string;
-            /** Format: int64 */
-            readonly startingBalanceCents?: number;
-            /** @enum {string} */
-            statusName?: "PENDING" | "CLOSED" | "FORGIVEN" | "FAILED" | "PAID" | "FREE" | "PREPAID" | "INVOICED";
-            /** Format: int64 */
-            readonly subtotalCents?: number;
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        BillingInvoiceMetadata: {
-            /** Format: int64 */
-            readonly amountBilledCents?: number;
-            /** Format: int64 */
-            readonly amountPaidCents?: number;
-            /** Format: date-time */
-            readonly created?: string;
-            /** Format: int64 */
-            readonly creditsCents?: number;
-            /** Format: date-time */
-            readonly endDate?: string;
-            readonly id?: string;
-            readonly linkedInvoices?: components["schemas"]["BillingInvoiceMetadata"][];
-            readonly links?: components["schemas"]["Link"][];
-            readonly orgId?: string;
-            /** Format: int64 */
-            readonly salesTaxCents?: number;
-            /** Format: date-time */
-            readonly startDate?: string;
-            /** Format: int64 */
-            readonly startingBalanceCents?: number;
-            /** @enum {string} */
-            statusName?: "PENDING" | "CLOSED" | "FORGIVEN" | "FAILED" | "PAID" | "FREE" | "PREPAID" | "INVOICED";
-            /** Format: int64 */
-            readonly subtotalCents?: number;
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        BillingPayment: {
-            /** Format: int64 */
-            readonly amountBilledCents?: number;
-            /** Format: int64 */
-            readonly amountPaidCents?: number;
-            /** Format: date-time */
-            readonly created?: string;
-            readonly currency?: string;
-            readonly id?: string;
-            /** Format: int64 */
-            readonly salesTaxCents?: number;
-            /** @enum {string} */
-            statusName?: "NEW" | "FORGIVEN" | "FAILED" | "PAID" | "PARTIAL_PAID" | "CANCELLED" | "INVOICED" | "FAILED_AUTHENTICATION" | "PROCESSING" | "PENDING_REVERSAL" | "REFUNDED";
-            /** Format: int64 */
-            readonly subtotalCents?: number;
-            readonly unitPrice?: string;
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        BillingRefund: {
-            /** Format: int64 */
-            readonly amountCents?: number;
-            /** Format: date-time */
-            readonly created?: string;
-            readonly paymentId?: string;
-            readonly reason?: string;
-        };
-        BillingThresholdAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["BillingEventTypeViewAlertableWithThreshold"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AlertMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            threshold?: components["schemas"]["GreaterThanRawThreshold"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        CacheBytesReadIntoDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CACHE_BYTES_READ_INTO";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        CacheBytesWrittenFromDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CACHE_BYTES_WRITTEN_FROM";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        CacheUsageDirtyDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CACHE_USAGE_DIRTY";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        CacheUsageUsedDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CACHE_USAGE_USED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        CloudDatabaseUser: {
-            /**
-             * @default NONE
-             * @enum {string}
-             */
-            awsIAMType?: "NONE" | "USER" | "ROLE";
-            /**
-             * @default admin
-             * @enum {string}
-             */
-            databaseName: "admin" | "$external";
-            /** Format: date-time */
-            deleteAfterDate?: string;
-            description?: string;
-            groupId: string;
-            labels?: components["schemas"]["ComponentLabel"][];
-            /**
-             * @default NONE
-             * @enum {string}
-             */
-            ldapAuthType?: "NONE" | "GROUP" | "USER";
-            readonly links?: components["schemas"]["Link"][];
-            /**
-             * @default NONE
-             * @enum {string}
-             */
-            oidcAuthType?: "NONE" | "IDP_GROUP" | "USER";
-            password?: string;
-            roles: components["schemas"]["DatabaseUserRole"][];
-            scopes?: components["schemas"]["UserScope"][];
-            username: string;
-            /**
-             * @default NONE
-             * @enum {string}
-             */
-            x509Type?: "NONE" | "CUSTOMER" | "MANAGED";
-        };
-        CloudProviderRegions: {
-            readonly instanceSizes?: components["schemas"]["ClusterCloudProviderInstanceSize"][];
-            /** @enum {string} */
-            provider?: "AWS" | "GCP" | "AZURE";
-        };
-        CloudRegionConfig20240805: {
-            analyticsAutoScaling?: components["schemas"]["AdvancedAutoScalingSettings"];
-            analyticsSpecs?: components["schemas"]["DedicatedHardwareSpec20240805"];
-            autoScaling?: components["schemas"]["AdvancedAutoScalingSettings"];
-            /** @enum {string} */
-            backingProviderName?: "AWS" | "GCP" | "AZURE";
-            effectiveAnalyticsSpecs?: components["schemas"]["DedicatedHardwareSpec20240805"];
-            effectiveElectableSpecs?: components["schemas"]["DedicatedHardwareSpec20240805"];
-            effectiveReadOnlySpecs?: components["schemas"]["DedicatedHardwareSpec20240805"];
-            electableSpecs?: components["schemas"]["HardwareSpec20240805"];
-            /** Format: int32 */
-            priority?: number;
-            providerName?: string;
-            readOnlySpecs?: components["schemas"]["DedicatedHardwareSpec20240805"];
-            regionName?: string;
-        };
-        ClusterAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["ClusterEventTypeViewForNdsGroupAlertable"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["ClusterMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        ClusterAlertViewForNdsGroup: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            readonly clusterName?: string;
-            /** Format: date-time */
-            readonly created: string;
-            eventTypeName: components["schemas"]["ClusterEventTypeViewForNdsGroupAlertable"];
-            readonly groupId?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly orgId?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        ClusterCloudProviderInstanceSize: {
-            readonly availableRegions?: components["schemas"]["AvailableCloudProviderRegion"][];
-            readonly name?: string;
-        };
-        ClusterConnectionStrings: {
-            /** @deprecated */
-            readonly awsPrivateLink?: {
-                [key: string]: string;
-            };
-            /** @deprecated */
-            readonly awsPrivateLinkSrv?: {
-                [key: string]: string;
-            };
-            readonly private?: string;
-            /** @deprecated */
-            readonly privateEndpoint?: components["schemas"]["ClusterDescriptionConnectionStringsPrivateEndpoint"][];
-            readonly privateSrv?: string;
-            readonly standard?: string;
-            readonly standardSrv?: string;
-        };
-        ClusterDescription20240805: {
-            /** Format: date-time */
-            acceptDataRisksAndForceReplicaSetReconfig?: string;
-            /** @enum {string|null} */
-            adaptiveCapacity?: "ENABLED" | "DISABLED" | null;
-            advancedConfiguration?: components["schemas"]["ApiAtlasClusterAdvancedConfigurationView"];
-            backupEnabled?: boolean;
-            biConnector?: components["schemas"]["BiConnector"];
-            /** @enum {string} */
-            clusterType?: "REPLICASET" | "SHARDED" | "GEOSHARDED";
-            /**
-             * @default ATLAS_MANAGED
-             * @enum {string}
-             */
-            configServerManagementMode?: "ATLAS_MANAGED" | "FIXED_TO_DEDICATED";
-            /** @enum {string} */
-            readonly configServerType?: "DEDICATED" | "EMBEDDED";
-            connectionStrings?: components["schemas"]["ClusterConnectionStrings"];
-            /** Format: date-time */
-            readonly createDate?: string;
-            /** @enum {string} */
-            databaseEdition?: "CORE" | "INFINITE";
-            /**
-             * @default FULLY_WARMED
-             * @enum {string}
-             */
-            diskWarmingMode?: "FULLY_WARMED" | "VISIBLE_EARLIER";
-            /** @enum {string} */
-            readonly effectiveDatabaseEdition?: "CORE" | "INFINITE";
-            readonly effectiveReplicationSpecs?: components["schemas"]["ReplicationSpec20240805"][];
-            /** @enum {string} */
-            encryptionAtRestProvider?: "NONE" | "AWS" | "AZURE" | "GCP";
-            readonly featureCompatibilityVersion?: string;
-            /** Format: date-time */
-            readonly featureCompatibilityVersionExpirationDate?: string;
-            globalClusterSelfManagedSharding?: boolean;
-            readonly groupId?: string;
-            readonly id?: string;
-            /** @enum {string} */
-            readonly internalClusterRole?: "NONE" | "SYSTEM_CLUSTER" | "INTERNAL_SHADOW_CLUSTER";
-            /** @deprecated */
-            labels?: components["schemas"]["ComponentLabel"][];
-            readonly links?: components["schemas"]["Link"][];
-            mongoDBEmployeeAccessGrant?: components["schemas"]["EmployeeAccessGrantView"];
-            mongoDBMajorVersion?: string;
-            readonly mongoDBVersion?: string;
-            name?: string;
-            paused?: boolean;
-            pitEnabled?: boolean;
-            redactClientLogData?: boolean;
-            /**
-             * @default WORKLOAD_TYPE
-             * @enum {string}
-             */
-            replicaSetScalingStrategy?: "SEQUENTIAL" | "WORKLOAD_TYPE" | "NODE_TYPE";
-            replicationSpecs?: components["schemas"]["ReplicationSpec20240805"][];
-            /** @default false */
-            retainBackups?: boolean;
-            /**
-             * @default ISRGROOTX1
-             * @enum {string}
-             */
-            rootCertType?: "ISRGROOTX1";
-            searchAutoMigration?: components["schemas"]["SearchAutoMigration"];
-            /** @enum {string} */
-            readonly stateName?: "IDLE" | "CREATING" | "UPDATING" | "DELETING" | "REPAIRING";
-            tags?: components["schemas"]["ResourceTag"][];
-            /** @default false */
-            terminationProtectionEnabled?: boolean;
-            /** @default false */
-            useAwsTimeBasedSnapshotCopyForFastInitialSync?: boolean;
-            /**
-             * @default LTS
-             * @enum {string}
-             */
-            versionReleaseSystem?: "LTS" | "CONTINUOUS";
-        };
-        ClusterDescriptionConnectionStringsPrivateEndpoint: {
-            readonly connectionString?: string;
-            readonly endpoints?: components["schemas"]["ClusterDescriptionConnectionStringsPrivateEndpointEndpoint"][];
-            readonly srvConnectionString?: string;
-            readonly srvShardOptimizedConnectionString?: string;
-            /** @enum {string} */
-            readonly type?: "MONGOD" | "MONGOS";
-        };
-        ClusterDescriptionConnectionStringsPrivateEndpointEndpoint: {
-            readonly endpointId?: string;
-            /** @enum {string} */
-            readonly providerName?: "AWS" | "AZURE" | "GCP";
-            readonly region?: string;
-        };
-        /** @enum {string} */
-        ClusterEventTypeViewForNdsGroupAlertable: "CLUSTER_MONGOS_IS_MISSING";
-        ClusterMatcher: {
-            fieldName: components["schemas"]["ClusterMatcherField"];
-            /** @enum {string} */
-            operator: "EQUALS" | "CONTAINS" | "STARTS_WITH" | "ENDS_WITH" | "NOT_EQUALS" | "NOT_CONTAINS" | "REGEX";
-            value: string;
-        };
-        /** @enum {string} */
-        ClusterMatcherField: "CLUSTER_NAME";
-        ClusterServerlessBackupOptions: {
-            /** @default true */
-            serverlessContinuousBackupEnabled?: boolean;
-        };
-        ComponentLabel: {
-            key?: string;
-            value?: string;
-        };
-        ComputedMemoryDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "COMPUTED_MEMORY";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        ConnectionsEstablishmentRateLimitRejectedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CONNECTIONS_ESTABLISHMENT_RATE_LIMIT_REJECTED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ConnectionsMaxRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CONNECTIONS_MAX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ConnectionsPercentRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CONNECTIONS_PERCENT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ConnectionsRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CONNECTIONS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        /** @enum {string} */
-        CpsBackupEventTypeViewForNdsGroupAlertableWithThreshold: "CPS_SNAPSHOT_BEHIND" | "CPS_PREV_SNAPSHOT_OLD" | "CPS_OPLOG_BEHIND";
-        CpsBackupThresholdAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["CpsBackupEventTypeViewForNdsGroupAlertableWithThreshold"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AlertMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            threshold?: components["schemas"]["GreaterThanTimeThreshold"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        CriteriaView: {
-            /** @enum {string} */
-            type?: "DATE" | "CUSTOM";
-        };
-        CursorsTotalClientCursorsSizeRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CURSORS_TOTAL_CLIENT_CURSORS_SIZE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        CursorsTotalOpenRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CURSORS_TOTAL_OPEN";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        CursorsTotalTimedOutRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "CURSORS_TOTAL_TIMED_OUT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        CustomCriteriaView: Omit<components["schemas"]["CriteriaView"], "type"> & {
-            query: string;
-        } & {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "CUSTOM";
-        };
-        DatabaseUserRole: {
-            collectionName?: string;
-            databaseName: string;
-            roleName: string;
-        };
-        DatadogNotification: {
-            datadogApiKey?: string;
-            /**
-             * @default US
-             * @enum {string}
-             */
-            datadogRegion?: "US" | "EU" | "US3" | "US5" | "AP1" | "AP2" | "US1_FED";
-            /** Format: int32 */
-            delayMin?: number;
-            integrationId?: string;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            /** @enum {string} */
-            typeName: "DATADOG";
-        };
-        DataExpirationRuleView: {
-            /** Format: int32 */
-            expireAfterDays?: number;
-        };
-        DataMetricAlertView: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            readonly clusterName?: string;
-            /** Format: date-time */
-            readonly created: string;
-            currentValue?: components["schemas"]["DataMetricValueView"];
-            eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly hostnameAndPort?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly metricName?: string;
-            readonly orgId?: string;
-            readonly replicaSetName?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        DataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "REALM_ENDPOINTS_EGRESS_BYTES" | "REALM_GQL_EGRESS_BYTES" | "REALM_OVERALL_EGRESS_BYTES" | "REALM_SDK_FUNCTIONS_EGRESS_BYTES" | "REALM_SDK_MQL_EGRESS_BYTES" | "REALM_SYNC_CLIENT_CHANGESETS_INVALID" | "REALM_SYNC_CLIENT_READS_FAILED" | "REALM_SYNC_CLIENT_UPLOADS_FAILED" | "REALM_SYNC_EGRESS_BYTES" | "REALM_SYNC_FAILED_REQUESTS" | "REALM_SYNC_SESSIONS_ENDED" | "REALM_TRIGGERS_EGRESS_BYTES";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        /** @enum {string} */
-        DataMetricUnits: "BITS" | "KILOBITS" | "MEGABITS" | "GIGABITS" | "BYTES" | "KILOBYTES" | "MEGABYTES" | "GIGABYTES" | "TERABYTES" | "PETABYTES";
-        DataMetricValueView: {
-            /** Format: double */
-            readonly number?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        DataProcessRegionView: {
-            /** @enum {string} */
-            readonly cloudProvider?: "AWS" | "AZURE" | "GCP";
-        };
-        DateCriteriaView: Omit<components["schemas"]["CriteriaView"], "type"> & {
-            dateField?: string;
-            /**
-             * @default ISODATE
-             * @enum {string}
-             */
-            dateFormat?: "ISODATE" | "EPOCH_SECONDS" | "EPOCH_MILLIS" | "EPOCH_NANOSECONDS" | "OBJECT_ID";
-            /** Format: int32 */
-            expireAfterDays?: number;
-        } & {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "DATE";
-        };
-        DbDataSizeTotalDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DB_DATA_SIZE_TOTAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        DbDataSizeTotalWoSystemDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DB_DATA_SIZE_TOTAL_WO_SYSTEM";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        DbIndexSizeTotalDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DB_INDEX_SIZE_TOTAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        DbStorageTotalDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DB_STORAGE_TOTAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        DedicatedHardwareSpec20240805: {
-            diskIOPS?: number;
-            diskSizeGB?: number;
-            readonly diskThroughput?: number;
-            /**
-             * @default STANDARD
-             * @enum {string}
-             */
-            ebsVolumeType?: "STANDARD" | "PROVISIONED" | "HIGH_PERFORMANCE";
-            instanceSize?: string;
-            nodeCount?: number;
-        };
-        DefaultAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: "CREDIT_CARD_ABOUT_TO_EXPIRE" | ("CPS_SNAPSHOT_STARTED" | "CPS_SNAPSHOT_SUCCESSFUL" | "CPS_SNAPSHOT_FAILED" | "CPS_CONCURRENT_SNAPSHOT_FAILED_WILL_RETRY" | "CPS_SNAPSHOT_FALLBACK_SUCCESSFUL" | "CPS_SNAPSHOT_FALLBACK_FAILED" | "CPS_COPY_SNAPSHOT_STARTED" | "CPS_COPY_SNAPSHOT_FAILED" | "CPS_COPY_SNAPSHOT_FAILED_WILL_RETRY" | "CPS_COPY_SNAPSHOT_SUCCESSFUL" | "CPS_RESTORE_SUCCESSFUL" | "CPS_EXPORT_SUCCESSFUL" | "CPS_RESTORE_FAILED" | "CPS_EXPORT_FAILED" | "CPS_COLLECTION_RESTORE_SUCCESSFUL" | "CPS_COLLECTION_RESTORE_FAILED" | "CPS_COLLECTION_RESTORE_PARTIAL_SUCCESS" | "CPS_COLLECTION_RESTORE_CANCELED" | "CPS_AUTO_EXPORT_FAILED" | "CPS_SNAPSHOT_DOWNLOAD_REQUEST_FAILED" | "CPS_OPLOG_CAUGHT_UP") | (Shared_f4c3a9ed) | ("FTS_INDEX_DELETION_FAILED" | "FTS_INDEX_BUILD_COMPLETE" | "FTS_INDEX_BUILD_FAILED" | "FTS_INDEX_CLEANED_UP" | "FTS_INDEX_STALE" | "FTS_INDEXES_RESTORE_FAILED" | "FTS_INDEXES_SYNONYM_MAPPING_INVALID") | (Shared_70dbebcc) | "MONGOTUNE_ALERT" | (Shared_63f480bb) | ("MAINTENANCE_IN_ADVANCED" | "MAINTENANCE_AUTO_DEFERRED" | "MAINTENANCE_STARTED" | "MAINTENANCE_COMPLETED" | "MAINTENANCE_NO_LONGER_NEEDED") | ("ONLINE_ARCHIVE_INSUFFICIENT_INDEXES_CHECK" | "ONLINE_ARCHIVE_MAX_CONSECUTIVE_OFFLOAD_WINDOWS_CHECK") | ("JOINED_GROUP" | "REMOVED_FROM_GROUP" | "USER_ROLES_CHANGED_AUDIT") | ("TAGS_MODIFIED" | "CLUSTER_TAGS_MODIFIED" | "GROUP_TAGS_MODIFIED") | ("STREAM_PROCESSOR_STATE_IS_FAILED" | "STREAM_PROCESSOR_AUTOSCALE_INITIATED" | "OUTSIDE_STREAM_PROCESSOR_METRIC_THRESHOLD") | (Shared_452a8ee1) | "RESOURCE_POLICY_VIOLATED" | (Shared_01a6d608) | "PROACTIVE_REMEDIATION_NEEDED" | ("STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_FIRST_WARNING" | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_SECOND_WARNING" | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_DELETED");
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AlertMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        DefaultAlertViewForNdsGroup: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            /** Format: date-time */
-            readonly created: string;
-            readonly eventTypeName: ("CREDIT_CARD_ABOUT_TO_EXPIRE" | "PENDING_INVOICE_OVER_THRESHOLD" | "DAILY_BILL_OVER_THRESHOLD" | "DAILY_BILLING_CHANGE_OVER_THRESHOLD" | "WEEKLY_BILLING_CHANGE_OVER_THRESHOLD" | "MONTHLY_BILLING_CHANGE_OVER_THRESHOLD") | ("CPS_SNAPSHOT_STARTED" | "CPS_SNAPSHOT_SUCCESSFUL" | "CPS_SNAPSHOT_FAILED" | "CPS_CONCURRENT_SNAPSHOT_FAILED_WILL_RETRY" | "CPS_SNAPSHOT_BEHIND" | "CPS_COPY_SNAPSHOT_STARTED" | "CPS_COPY_SNAPSHOT_FAILED" | "CPS_COPY_SNAPSHOT_FAILED_WILL_RETRY" | "CPS_COPY_SNAPSHOT_SUCCESSFUL" | "CPS_PREV_SNAPSHOT_OLD" | "CPS_SNAPSHOT_FALLBACK_SUCCESSFUL" | "CPS_SNAPSHOT_FALLBACK_FAILED" | "CPS_RESTORE_SUCCESSFUL" | "CPS_EXPORT_SUCCESSFUL" | "CPS_RESTORE_FAILED" | "CPS_EXPORT_FAILED" | "CPS_COLLECTION_RESTORE_SUCCESSFUL" | "CPS_COLLECTION_RESTORE_FAILED" | "CPS_COLLECTION_RESTORE_PARTIAL_SUCCESS" | "CPS_COLLECTION_RESTORE_CANCELED" | "CPS_AUTO_EXPORT_FAILED" | "CPS_SNAPSHOT_DOWNLOAD_REQUEST_FAILED" | "CPS_OPLOG_BEHIND" | "CPS_OPLOG_CAUGHT_UP") | ("AWS_ENCRYPTION_KEY_NEEDS_ROTATION" | "AZURE_ENCRYPTION_KEY_NEEDS_ROTATION" | "GCP_ENCRYPTION_KEY_NEEDS_ROTATION" | "AWS_ENCRYPTION_KEY_INVALID" | "AZURE_ENCRYPTION_KEY_INVALID" | "GCP_ENCRYPTION_KEY_INVALID") | ("FTS_INDEX_DELETION_FAILED" | "FTS_INDEX_BUILD_COMPLETE" | "FTS_INDEX_BUILD_FAILED" | "FTS_INDEX_CLEANED_UP" | "FTS_INDEX_STALE" | "FTS_INDEXES_RESTORE_FAILED" | "FTS_INDEXES_SYNONYM_MAPPING_INVALID") | (Shared_70dbebcc) | "MONGOTUNE_ALERT" | (Shared_63f480bb) | ("MAINTENANCE_IN_ADVANCED" | "MAINTENANCE_AUTO_DEFERRED" | "MAINTENANCE_STARTED" | "MAINTENANCE_COMPLETED" | "MAINTENANCE_NO_LONGER_NEEDED") | ("NDS_X509_USER_AUTHENTICATION_CUSTOMER_CA_EXPIRATION_CHECK" | "NDS_X509_USER_AUTHENTICATION_CUSTOMER_CRL_EXPIRATION_CHECK" | "NDS_X509_USER_AUTHENTICATION_MANAGED_USER_CERTS_EXPIRATION_CHECK") | ("ONLINE_ARCHIVE_INSUFFICIENT_INDEXES_CHECK" | "ONLINE_ARCHIVE_MAX_CONSECUTIVE_OFFLOAD_WINDOWS_CHECK") | "OUTSIDE_SERVERLESS_METRIC_THRESHOLD" | "OUTSIDE_FLEX_METRIC_THRESHOLD" | ("JOINED_GROUP" | "REMOVED_FROM_GROUP" | "USER_ROLES_CHANGED_AUDIT") | ("TAGS_MODIFIED" | "CLUSTER_TAGS_MODIFIED" | "GROUP_TAGS_MODIFIED") | ("STREAM_PROCESSOR_STATE_IS_FAILED" | "STREAM_PROCESSOR_AUTOSCALE_INITIATED" | "OUTSIDE_STREAM_PROCESSOR_METRIC_THRESHOLD") | ("COMPUTE_AUTO_SCALE_INITIATED_BASE" | "COMPUTE_AUTO_SCALE_INITIATED_ANALYTICS" | "COMPUTE_AUTO_SCALE_SCALE_DOWN_FAIL_BASE" | "COMPUTE_AUTO_SCALE_SCALE_DOWN_FAIL_ANALYTICS" | "COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_BASE" | "COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_ANALYTICS" | "COMPUTE_AUTO_SCALE_OPLOG_FAIL_BASE" | "COMPUTE_AUTO_SCALE_OPLOG_FAIL_ANALYTICS" | "COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_BASE" | "COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_ANALYTICS" | "DISK_AUTO_SCALE_INITIATED" | "DISK_AUTO_SCALE_MAX_DISK_SIZE_FAIL" | "DISK_AUTO_SCALE_OPLOG_FAIL" | "COMPUTE_AUTO_SCALE_DOWNSCALE_SKIPPED_FALLBACK_BASE" | "COMPUTE_AUTO_SCALE_DOWNSCALE_SKIPPED_FALLBACK_ANALYTICS" | "CLUSTER_AUTO_SHARDING_INITIATED" | "CLUSTER_RESHARDING_COMPLETED" | "PREDICTIVE_COMPUTE_AUTO_SCALE_INITIATED_BASE" | "PREDICTIVE_COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_BASE" | "PREDICTIVE_COMPUTE_AUTO_SCALE_OPLOG_FAIL_BASE" | "PREDICTIVE_COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_BASE") | (Shared_f4c3a9ed) | "RESOURCE_POLICY_VIOLATED" | (Shared_01a6d608) | "PROACTIVE_REMEDIATION_NEEDED" | ("STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_FIRST_WARNING" | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_SECOND_WARNING" | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_DELETED");
-            readonly groupId?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly orgId?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        DeleteCopiedBackups20240805: {
-            /** @enum {string} */
-            cloudProvider?: "AWS" | "AZURE" | "GCP";
-            regionName?: string;
-            zoneId?: string;
-        };
-        DiskBackupApiPolicyItem: {
-            /**
-             * Format: int32
-             * @enum {integer}
-             */
-            frequencyInterval: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 40;
-            /** @enum {string} */
-            frequencyType: "daily" | "hourly" | "weekly" | "monthly" | "yearly" | "ondemand";
-            readonly id?: string;
-            /** @enum {string} */
-            retentionUnit: "days" | "weeks" | "months" | "years";
-            /** Format: int32 */
-            retentionValue: number;
-        };
-        DiskBackupCopyPolicyItem: {
-            /** @enum {string} */
-            frequencyType: "daily" | "hourly" | "weekly" | "monthly" | "yearly" | "ondemand";
-            readonly id?: string;
-        };
-        DiskBackupCopySetting20240805: {
-            /** @enum {string} */
-            cloudProvider?: "AWS" | "AZURE" | "GCP";
-            copyPolicyItems?: components["schemas"]["DiskBackupCopyPolicyItem"][];
-            /** @deprecated */
-            frequencies?: ("HOURLY" | "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY" | "ON_DEMAND")[];
-            /** Format: int32 */
-            lastNumberOfSnapshots?: number;
-            regionName?: string;
-            shouldCopyOplogs?: boolean;
-            zoneId: string;
-        };
-        DiskBackupOnDemandSnapshotRequest: {
-            description?: string;
-            readonly links?: components["schemas"]["Link"][];
-            /** Format: int32 */
-            retentionInDays?: number;
-        };
-        DiskBackupReplicaSet: {
-            /** @enum {string} */
-            readonly cloudProvider?: "AWS" | "AZURE" | "GCP";
-            readonly copyRegions?: string[];
-            /** Format: date-time */
-            readonly createdAt?: string;
-            readonly description?: string;
-            /** Format: date-time */
-            readonly expiresAt?: string;
-            /** @enum {string} */
-            readonly frequencyType?: "hourly" | "daily" | "weekly" | "monthly" | "yearly";
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            /** Format: uuid */
-            readonly masterKeyUUID?: string;
-            readonly mongodVersion?: string;
-            readonly policyItems?: string[];
-            readonly replicaSetName?: string;
-            /** @enum {string} */
-            readonly snapshotType?: "onDemand" | "scheduled" | "fallback";
-            /** @enum {string} */
-            readonly status?: "queued" | "inProgress" | "completed" | "failed";
-            /** Format: int64 */
-            readonly storageSizeBytes?: number;
-            /** @enum {string} */
-            readonly type?: "replicaSet" | "shardedCluster";
-        };
-        DiskBackupShardedClusterSnapshot: {
-            /** @enum {string} */
-            readonly configServerType?: "EMBEDDED" | "DEDICATED";
-            /** Format: date-time */
-            readonly createdAt?: string;
-            readonly description?: string;
-            /** Format: date-time */
-            readonly expiresAt?: string;
-            /** @enum {string} */
-            readonly frequencyType?: "hourly" | "daily" | "weekly" | "monthly" | "yearly";
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            /** Format: uuid */
-            readonly masterKeyUUID?: string;
-            readonly members?: components["schemas"]["DiskBackupShardedClusterSnapshotMember"][];
-            readonly mongodVersion?: string;
-            readonly policyItems?: string[];
-            readonly snapshotIds?: string[];
-            /** @enum {string} */
-            readonly snapshotType?: "onDemand" | "scheduled" | "fallback";
-            /** @enum {string} */
-            readonly status?: "queued" | "inProgress" | "completed" | "failed";
-            /** Format: int64 */
-            readonly storageSizeBytes?: number;
-            /** @enum {string} */
-            readonly type?: "replicaSet" | "shardedCluster";
-        };
-        DiskBackupShardedClusterSnapshotMember: {
-            /** @enum {string} */
-            readonly cloudProvider: "AWS" | "AZURE" | "GCP";
-            readonly id: string;
-            readonly replicaSetName: string;
-        };
-        DiskBackupSnapshot: {
-            /** Format: date-time */
-            readonly createdAt?: string;
-            readonly description?: string;
-            /** Format: date-time */
-            readonly expiresAt?: string;
-            /** @enum {string} */
-            readonly frequencyType?: "hourly" | "daily" | "weekly" | "monthly" | "yearly";
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            /** Format: uuid */
-            readonly masterKeyUUID?: string;
-            readonly mongodVersion?: string;
-            readonly policyItems?: string[];
-            /** @enum {string} */
-            readonly snapshotType?: "onDemand" | "scheduled" | "fallback";
-            /** @enum {string} */
-            readonly status?: "queued" | "inProgress" | "completed" | "failed";
-            /** Format: int64 */
-            readonly storageSizeBytes?: number;
-            /** @enum {string} */
-            readonly type?: "replicaSet" | "shardedCluster";
-        };
-        DiskBackupSnapshotSchedule20240805: {
-            autoCopySettingsEnabled?: boolean;
-            autoExportEnabled?: boolean;
-            readonly clusterId?: string;
-            readonly clusterName?: string;
-            copyPolicyItemsEnabled?: boolean;
-            copySettings?: components["schemas"]["DiskBackupCopySetting20240805"][];
-            deleteCopiedBackups?: components["schemas"]["DeleteCopiedBackups20240805"][];
-            deleteCopySnapshots?: boolean;
-            deleteSnapshots?: boolean;
-            export?: components["schemas"]["AutoExportPolicyView"];
-            extraRetentionSettings?: components["schemas"]["ExtraRetentionSetting"][];
-            readonly links?: components["schemas"]["Link"][];
-            /** Format: date-time */
-            readonly nextSnapshot?: string;
-            policies: components["schemas"]["AdvancedDiskBackupSnapshotSchedulePolicy"][];
-            /** Format: int32 */
-            referenceHourOfDay?: number;
-            /** Format: int32 */
-            referenceMinuteOfHour?: number;
-            /** Format: int32 */
-            restoreWindowDays?: number;
-            updateCopySnapshots?: boolean;
-            updateSnapshots?: boolean;
-            useOrgAndGroupNamesInExportPrefix?: boolean;
-        };
-        DiskGBAutoScaling: {
-            enabled?: boolean;
-        };
-        DiskPartitionQueueDepthDataRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_QUEUE_DEPTH_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionQueueDepthIndexRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_QUEUE_DEPTH_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionQueueDepthJournalRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_QUEUE_DEPTH_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionReadIopsDataRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_READ_IOPS_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionReadIopsIndexRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_READ_IOPS_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionReadIopsJournalRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_READ_IOPS_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionReadLatencyDataTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_READ_LATENCY_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        DiskPartitionReadLatencyIndexTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_READ_LATENCY_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        DiskPartitionReadLatencyJournalTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_READ_LATENCY_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        DiskPartitionSpaceUsedDataRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_SPACE_USED_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionSpaceUsedIndexRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_SPACE_USED_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionSpaceUsedJournalRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_SPACE_USED_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionWriteIopsDataRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_WRITE_IOPS_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionWriteIopsIndexRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_WRITE_IOPS_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionWriteIopsJournalRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_WRITE_IOPS_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DiskPartitionWriteLatencyDataTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_WRITE_LATENCY_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        DiskPartitionWriteLatencyIndexTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_WRITE_LATENCY_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        DiskPartitionWriteLatencyJournalTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DISK_PARTITION_WRITE_LATENCY_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        DLQRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "STREAM_PROCESSOR_DLQ_MESSAGE_COUNT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DocumentDeletedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DOCUMENT_DELETED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DocumentInsertedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DOCUMENT_INSERTED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DocumentReturnedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DOCUMENT_RETURNED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        DocumentUpdatedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "DOCUMENT_UPDATED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        EmailNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            /** Format: email */
-            emailAddress?: string;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            /** @enum {string} */
-            typeName: "EMAIL";
-        };
-        EmployeeAccessGrantView: {
-            /** Format: date-time */
-            expirationTime: string;
-            /** @enum {string} */
-            grantType: "CLUSTER_DATABASE_LOGS" | "CLUSTER_INFRASTRUCTURE" | "CLUSTER_INFRASTRUCTURE_AND_APP_SERVICES_SYNC_DATA";
-            readonly links?: components["schemas"]["Link"][];
-        };
-        EncryptionAtRestConfigUpdateStalledAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["GroupEventTypeViewForNdsGroupAlertableEncryptionAtRestConfigUpdateStalled"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AlertMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            threshold?: components["schemas"]["GreaterThanTimeThreshold"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        EncryptionKeyAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["EncryptionKeyEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AlertMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            threshold?: components["schemas"]["GreaterThanDaysThresholdView"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        /** @enum {string} */
-        EncryptionKeyEventTypeViewAlertable: "AWS_ENCRYPTION_KEY_NEEDS_ROTATION" | "AZURE_ENCRYPTION_KEY_NEEDS_ROTATION" | "GCP_ENCRYPTION_KEY_NEEDS_ROTATION" | "AWS_ENCRYPTION_KEY_INVALID" | "AZURE_ENCRYPTION_KEY_INVALID" | "GCP_ENCRYPTION_KEY_INVALID";
-        EndpointService: {
-            /** @enum {string} */
-            readonly cloudProvider: "AWS" | "AZURE" | "GCP";
-            readonly errorMessage?: string;
-            readonly id?: string;
-            readonly regionName?: string;
-            /** @enum {string} */
-            readonly status?: "INITIATING" | "AVAILABLE" | "WAITING_FOR_USER" | "FAILED" | "DELETING";
-        };
-        /** @enum {string} */
-        EventSeverity: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-        ExtraInfoPageFaultsRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "EXTRA_INFO_PAGE_FAULTS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ExtraRetentionSetting: {
-            /** @enum {string} */
-            frequencyType?: "HOURLY" | "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY" | "ON_DEMAND";
-            /** Format: int32 */
-            retentionDays?: number;
-        };
-        Fields: Record<string, never>;
-        FieldViolation: {
-            description: string;
-            field: string;
-        };
-        FlexAVGCommandExecutionTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_AVG_COMMAND_EXECUTION_TIME";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        FlexAVGWriteExecutionTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_AVG_WRITE_EXECUTION_TIME";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        FlexBackupSettings20241113: {
-            /** @default true */
-            readonly enabled?: boolean;
-        };
-        FlexClusterDescription20241113: {
-            backupSettings?: components["schemas"]["FlexBackupSettings20241113"];
-            /**
-             * @default REPLICASET
-             * @enum {string}
-             */
-            readonly clusterType?: "REPLICASET";
-            connectionStrings?: components["schemas"]["FlexConnectionStrings20241113"];
-            /** Format: date-time */
-            readonly createDate?: string;
-            /** @enum {string} */
-            databaseEdition?: "CORE" | "INFINITE";
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly mongoDBVersion?: string;
-            readonly name?: string;
-            providerSettings: components["schemas"]["FlexProviderSettings20241113"];
-            /** @enum {string} */
-            readonly stateName?: "IDLE" | "CREATING" | "UPDATING" | "DELETING" | "REPAIRING";
-            tags?: components["schemas"]["ResourceTag"][];
-            /** @default false */
-            terminationProtectionEnabled?: boolean;
-            /**
-             * @default LTS
-             * @enum {string}
-             */
-            readonly versionReleaseSystem?: "LTS";
-        };
-        FlexClusterDescriptionUpdate20241113: {
-            /** @enum {string} */
-            databaseEdition?: "CORE" | "INFINITE";
-            readonly links?: components["schemas"]["Link"][];
-            tags?: components["schemas"]["ResourceTag"][];
-            /** @default false */
-            terminationProtectionEnabled?: boolean;
-        };
-        FlexClusterMetricThreshold: Shared_49612667 & (components["schemas"]["RawMetricThresholdView"] | components["schemas"]["FlexConnectionPercentRawMetricThresholdView"] | components["schemas"]["DataMetricThresholdView"] | components["schemas"]["FlexNetworkBytesInDataMetricThresholdView"] | components["schemas"]["FlexNetworkBytesOutDataMetricThresholdView"] | components["schemas"]["FlexNetworkNumRequestsRawMetricThresholdView"] | components["schemas"]["FlexOpCounterCMDRawMetricThresholdView"] | components["schemas"]["FlexOpCounterDeleteRawMetricThresholdView"] | components["schemas"]["FlexOpCounterInsertRawMetricThresholdView"] | components["schemas"]["FlexOpCounterQueryRawMetricThresholdView"] | components["schemas"]["FlexOpCounterUpdateRawMetricThresholdView"] | components["schemas"]["FlexOpCounterGetMoreRawMetricThresholdView"] | components["schemas"]["TimeMetricThresholdView"] | components["schemas"]["FlexAVGWriteExecutionTimeMetricThresholdView"] | components["schemas"]["FlexAVGCommandExecutionTimeMetricThresholdView"]);
-        FlexConnectionPercentRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_CONNECTIONS_PERCENT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        FlexConnectionStrings20241113: {
-            readonly standard?: string;
-            readonly standardSrv?: string;
-        };
-        FlexMetricAlert: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            readonly clusterName: string;
-            /** Format: date-time */
-            readonly created: string;
-            currentValue?: components["schemas"]["HostMetricValue"];
-            eventTypeName: components["schemas"]["FlexMetricEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly metricName?: string;
-            readonly orgId?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        FlexMetricAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["FlexMetricEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AlertMatcher"][];
-            metricThreshold?: components["schemas"]["FlexClusterMetricThreshold"];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        /** @enum {string} */
-        FlexMetricEventTypeViewAlertable: "OUTSIDE_FLEX_METRIC_THRESHOLD";
-        FlexNetworkBytesInDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_NETWORK_BYTES_IN";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        FlexNetworkBytesOutDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_NETWORK_BYTES_OUT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        FlexNetworkNumRequestsRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_NETWORK_NUM_REQUESTS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        FlexOpCounterCMDRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_OPCOUNTER_CMD";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        FlexOpCounterDeleteRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_OPCOUNTER_DELETE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        FlexOpCounterGetMoreRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_OPCOUNTER_GETMORE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        FlexOpCounterInsertRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_OPCOUNTER_INSERT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        FlexOpCounterQueryRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_OPCOUNTER_QUERY";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        FlexOpCounterUpdateRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FLEX_OPCOUNTER_UPDATE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        FlexProviderSettings20241113: {
-            /** @enum {string} */
-            readonly backingProviderName?: "AWS" | "AZURE" | "GCP";
-            /** Format: double */
-            readonly diskSizeGB?: number;
-            /**
-             * @default FLEX
-             * @enum {string}
-             */
-            readonly providerName?: "FLEX";
-            readonly regionName?: string;
-        };
-        FtsDiskUtilizationDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FTS_DISK_UTILIZATION";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        FtsJvmCurrentMemoryDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FTS_JVM_CURRENT_MEMORY";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        FtsJvmMaxMemoryDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FTS_JVM_MAX_MEMORY";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        FtsMemoryMappedDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FTS_MEMORY_MAPPED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        FtsMemoryResidentDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FTS_MEMORY_RESIDENT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        FtsMemoryVirtualDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FTS_MEMORY_VIRTUAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        FtsProcessCpuKernelRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FTS_PROCESS_CPU_KERNEL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        FtsProcessCpuUserRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "FTS_PROCESS_CPU_USER";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        GCPDataProcessRegionView: Omit<components["schemas"]["DataProcessRegionView"], "cloudProvider"> & {
-            /** @enum {string} */
-            readonly region?: "CENTRAL_US" | "WESTERN_EUROPE";
-        } & {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            cloudProvider: "GCP";
-        };
-        GCPEndpointService: {
-            /** @enum {string} */
-            readonly cloudProvider: "AWS" | "AZURE" | "GCP";
-            endpointGroupNames?: string[];
-            readonly errorMessage?: string;
-            readonly id?: string;
-            portMappingEnabled?: boolean;
-            readonly regionName?: string;
-            serviceAttachmentNames?: string[];
-            /** @enum {string} */
-            readonly status?: "INITIATING" | "AVAILABLE" | "WAITING_FOR_USER" | "FAILED" | "DELETING";
-        };
-        GlobalAccessesNotInMemoryRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "GLOBAL_ACCESSES_NOT_IN_MEMORY";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        GlobalLockCurrentQueueReadersRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "GLOBAL_LOCK_CURRENT_QUEUE_READERS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        GlobalLockCurrentQueueTotalRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "GLOBAL_LOCK_CURRENT_QUEUE_TOTAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        GlobalLockCurrentQueueWritersRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "GLOBAL_LOCK_CURRENT_QUEUE_WRITERS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        GlobalLockPercentageRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "GLOBAL_LOCK_PERCENTAGE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        GlobalPageFaultExceptionsThrownRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "GLOBAL_PAGE_FAULT_EXCEPTIONS_THROWN";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        GreaterThanDaysThresholdView: {
-            /** @enum {string} */
-            operator?: "GREATER_THAN";
-            /** Format: int32 */
-            threshold?: number;
-            /** @enum {string} */
-            units?: "DAYS";
-        };
-        GreaterThanRawThreshold: {
-            /** @enum {string} */
-            operator?: "GREATER_THAN";
-            /** Format: int32 */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        GreaterThanRawThresholdAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["ReplicaSetEventTypeViewForNdsGroupAlertableWithThreshold"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["ReplicaSetMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            threshold?: components["schemas"]["GreaterThanRawThreshold"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        GreaterThanTimeThreshold: {
-            /** @enum {string} */
-            operator?: "GREATER_THAN";
-            /** Format: int32 */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        Group: {
-            /** Format: int64 */
-            readonly clusterCount: number;
-            /** Format: date-time */
-            readonly created: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            name: string;
-            orgId: string;
-            /**
-             * @default COMMERCIAL_FEDRAMP_REGIONS_ONLY
-             * @enum {string}
-             */
-            regionUsageRestrictions?: "COMMERCIAL_FEDRAMP_REGIONS_ONLY" | "GOV_REGIONS_ONLY";
-            tags?: components["schemas"]["ResourceTag"][];
-            /** @default true */
-            withDefaultAlertsSettings?: boolean;
-        };
-        GroupAlertsConfig: components["schemas"]["DefaultAlertConfigViewForNdsGroup"] | components["schemas"]["AppServiceAlertConfigViewForNdsGroup"] | components["schemas"]["AppServiceMetricAlertConfigViewForNdsGroup"] | components["schemas"]["BillingThresholdAlertConfigViewForNdsGroup"] | components["schemas"]["ClusterAlertConfigViewForNdsGroup"] | components["schemas"]["CpsBackupThresholdAlertConfigViewForNdsGroup"] | components["schemas"]["EncryptionAtRestConfigUpdateStalledAlertConfigViewForNdsGroup"] | components["schemas"]["EncryptionKeyAlertConfigViewForNdsGroup"] | components["schemas"]["HostAlertConfigViewForNdsGroup"] | components["schemas"]["HostMetricAlertConfigViewForNdsGroup"] | components["schemas"]["MongotuneAlertConfigViewForNdsGroup"] | components["schemas"]["NDSAutoscalingAlertConfigViewForNdsGroup"] | components["schemas"]["NDSX509UserAuthenticationAlertConfigViewForNdsGroup"] | components["schemas"]["ReplicaSetAlertConfigViewForNdsGroup"] | components["schemas"]["ReplicaSetThresholdAlertConfigViewForNdsGroup"] | components["schemas"]["ServerlessMetricAlertConfigViewForNdsGroup"] | components["schemas"]["FlexMetricAlertConfigViewForNdsGroup"] | components["schemas"]["StreamProcessorAlertConfigViewForNdsGroup"] | components["schemas"]["StreamProcessorMetricAlertConfigViewForNdsGroup"] | components["schemas"]["StreamsPrivateLinkEndpointAlertConfigViewForNdsGroup"];
-        /** @enum {string} */
-        GroupEventTypeViewForNdsGroupAlertableEncryptionAtRestConfigUpdateStalled: "ENCRYPTION_AT_REST_CONFIG_UPDATE_STALLED";
-        GroupNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            emailEnabled?: boolean;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            roles?: string[];
-            smsEnabled?: boolean;
-            /** @enum {string} */
-            typeName: "GROUP";
-        };
-        GroupUpdate: {
-            name?: string;
-            tags?: components["schemas"]["ResourceTag"][];
-            withDefaultAlertsSettings?: boolean;
-        };
-        HardwareSpec20240805: {
-            diskIOPS?: number;
-            diskSizeGB?: number;
-            readonly diskThroughput?: number;
-            /**
-             * @default STANDARD
-             * @enum {string}
-             */
-            ebsVolumeType?: "STANDARD" | "PROVISIONED" | "HIGH_PERFORMANCE";
-            readonly effectiveInstanceSize?: string;
-            instanceSize?: string;
-            nodeCount?: number;
-        };
-        HipChatNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            integrationId?: string;
-            /** Format: int32 */
-            intervalMin?: number;
-            notificationToken?: string;
-            notifierId?: string;
-            roomName?: string;
-            /** @enum {string} */
-            typeName: "HIP_CHAT";
-        };
-        HostAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["HostEventTypeViewForNdsGroupAlertable"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["HostMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        HostAlertViewForNdsGroup: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            readonly clusterName?: string;
-            /** Format: date-time */
-            readonly created: string;
-            eventTypeName: components["schemas"]["HostEventTypeViewForNdsGroupAlertable"];
-            readonly groupId?: string;
-            readonly hostnameAndPort?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly orgId?: string;
-            readonly replicaSetName?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        /** @enum {string} */
-        HostEventTypeViewForNdsGroupAlertable: Shared_01a6d608;
-        HostMatcher: {
-            fieldName: components["schemas"]["HostMatcherField"];
-            /** @enum {string} */
-            operator: "EQUALS" | "CONTAINS" | "STARTS_WITH" | "ENDS_WITH" | "NOT_EQUALS" | "NOT_CONTAINS" | "REGEX";
-            value?: components["schemas"]["MatcherHostType"];
-        };
-        /** @enum {string} */
-        HostMatcherField: "TYPE_NAME" | "HOSTNAME" | "PORT" | "HOSTNAME_AND_PORT" | "REPLICA_SET_NAME" | "ATLAS_NODE_TYPE";
-        HostMetricAlert: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            readonly clusterName?: string;
-            /** Format: date-time */
-            readonly created: string;
-            currentValue?: components["schemas"]["HostMetricValue"];
-            eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly hostnameAndPort?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly metricName?: string;
-            readonly orgId?: string;
-            readonly replicaSetName?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        HostMetricAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["HostMatcher"][];
-            metricThreshold?: components["schemas"]["HostMetricThreshold"];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        /** @enum {string} */
-        HostMetricEventTypeViewAlertable: "OUTSIDE_METRIC_THRESHOLD";
-        HostMetricThreshold: Shared_49612667 & (components["schemas"]["AssertRegularRawMetricThresholdView"] | components["schemas"]["AssertWarningRawMetricThresholdView"] | components["schemas"]["AssertMsgRawMetricThresholdView"] | components["schemas"]["AssertUserRawMetricThresholdView"] | components["schemas"]["OpCounterCmdRawMetricThresholdView"] | components["schemas"]["OpCounterQueryRawMetricThresholdView"] | components["schemas"]["OpCounterUpdateRawMetricThresholdView"] | components["schemas"]["OpCounterDeleteRawMetricThresholdView"] | components["schemas"]["OpCounterTtlDeletedRawMetricThresholdView"] | components["schemas"]["OpCounterInsertRawMetricThresholdView"] | components["schemas"]["OpCounterGetMoreRawMetricThresholdView"] | components["schemas"]["OpCounterReplCmdRawMetricThresholdView"] | components["schemas"]["OpCounterReplUpdateRawMetricThresholdView"] | components["schemas"]["OpCounterReplDeleteRawMetricThresholdView"] | components["schemas"]["OpCounterReplInsertRawMetricThresholdView"] | components["schemas"]["FtsMemoryResidentDataMetricThresholdView"] | components["schemas"]["FtsMemoryVirtualDataMetricThresholdView"] | components["schemas"]["FtsMemoryMappedDataMetricThresholdView"] | components["schemas"]["FtsProcessCpuUserRawMetricThresholdView"] | components["schemas"]["FtsProcessCpuKernelRawMetricThresholdView"] | components["schemas"]["NormalizedFtsProcessCpuUserRawMetricThresholdView"] | components["schemas"]["NormalizedFtsProcessCpuKernelRawMetricThresholdView"] | components["schemas"]["SystemMemoryPercentUsedRawMetricThresholdView"] | components["schemas"]["MemoryResidentDataMetricThresholdView"] | components["schemas"]["MemoryVirtualDataMetricThresholdView"] | components["schemas"]["MemoryMappedDataMetricThresholdView"] | components["schemas"]["ComputedMemoryDataMetricThresholdView"] | components["schemas"]["IndexCountersBtreeAccessesRawMetricThresholdView"] | components["schemas"]["IndexCountersBtreeHitsRawMetricThresholdView"] | components["schemas"]["IndexCountersBtreeMissesRawMetricThresholdView"] | components["schemas"]["IndexCountersBtreeMissRatioRawMetricThresholdView"] | components["schemas"]["GlobalLockPercentageRawMetricThresholdView"] | components["schemas"]["TimeMetricThresholdView"] | components["schemas"]["ConnectionsRawMetricThresholdView"] | components["schemas"]["ConnectionsEstablishmentRateLimitRejectedRawMetricThresholdView"] | components["schemas"]["ConnectionsMaxRawMetricThresholdView"] | components["schemas"]["ConnectionsPercentRawMetricThresholdView"] | components["schemas"]["GlobalAccessesNotInMemoryRawMetricThresholdView"] | components["schemas"]["GlobalPageFaultExceptionsThrownRawMetricThresholdView"] | components["schemas"]["GlobalLockCurrentQueueTotalRawMetricThresholdView"] | components["schemas"]["GlobalLockCurrentQueueReadersRawMetricThresholdView"] | components["schemas"]["GlobalLockCurrentQueueWritersRawMetricThresholdView"] | components["schemas"]["CursorsTotalOpenRawMetricThresholdView"] | components["schemas"]["CursorsTotalTimedOutRawMetricThresholdView"] | components["schemas"]["CursorsTotalClientCursorsSizeRawMetricThresholdView"] | components["schemas"]["NetworkBytesInDataMetricThresholdView"] | components["schemas"]["NetworkBytesOutDataMetricThresholdView"] | components["schemas"]["NetworkNumRequestsRawMetricThresholdView"] | components["schemas"]["OplogMasterTimeTimeMetricThresholdView"] | components["schemas"]["OplogMasterTimeEstimatedTtlTimeMetricThresholdView"] | components["schemas"]["OplogSlaveLagMasterTimeTimeMetricThresholdView"] | components["schemas"]["OplogMasterLagTimeDiffTimeMetricThresholdView"] | components["schemas"]["OplogRateGbPerHourDataMetricThresholdView"] | components["schemas"]["ExtraInfoPageFaultsRawMetricThresholdView"] | components["schemas"]["DbStorageTotalDataMetricThresholdView"] | components["schemas"]["DbDataSizeTotalDataMetricThresholdView"] | components["schemas"]["DbDataSizeTotalWoSystemDataMetricThresholdView"] | components["schemas"]["DbIndexSizeTotalDataMetricThresholdView"] | components["schemas"]["JournalingCommitsInWriteLockRawMetricThresholdView"] | components["schemas"]["JournalingMbDataMetricThresholdView"] | components["schemas"]["JournalingWriteDataFilesMbDataMetricThresholdView"] | components["schemas"]["TicketsAvailableReadsRawMetricThresholdView"] | components["schemas"]["TicketsAvailableWritesRawMetricThresholdView"] | components["schemas"]["CacheUsageDirtyDataMetricThresholdView"] | components["schemas"]["CacheUsageUsedDataMetricThresholdView"] | components["schemas"]["CacheBytesReadIntoDataMetricThresholdView"] | components["schemas"]["CacheBytesWrittenFromDataMetricThresholdView"] | components["schemas"]["NormalizedSystemCpuUserRawMetricThresholdView"] | components["schemas"]["NormalizedSystemCpuUserSearchPrimaryContributorRawMetricThresholdView"] | components["schemas"]["NormalizedSystemCpuStealRawMetricThresholdView"] | components["schemas"]["DiskPartitionSpaceUsedDataRawMetricThresholdView"] | components["schemas"]["DiskPartitionSpaceUsedIndexRawMetricThresholdView"] | components["schemas"]["DiskPartitionSpaceUsedJournalRawMetricThresholdView"] | components["schemas"]["DiskPartitionReadIopsDataRawMetricThresholdView"] | components["schemas"]["DiskPartitionReadIopsIndexRawMetricThresholdView"] | components["schemas"]["DiskPartitionReadIopsJournalRawMetricThresholdView"] | components["schemas"]["DiskPartitionWriteIopsDataRawMetricThresholdView"] | components["schemas"]["DiskPartitionWriteIopsIndexRawMetricThresholdView"] | components["schemas"]["DiskPartitionWriteIopsJournalRawMetricThresholdView"] | components["schemas"]["DiskPartitionReadLatencyDataTimeMetricThresholdView"] | components["schemas"]["DiskPartitionReadLatencyIndexTimeMetricThresholdView"] | components["schemas"]["DiskPartitionReadLatencyJournalTimeMetricThresholdView"] | components["schemas"]["DiskPartitionWriteLatencyDataTimeMetricThresholdView"] | components["schemas"]["DiskPartitionWriteLatencyIndexTimeMetricThresholdView"] | components["schemas"]["DiskPartitionWriteLatencyJournalTimeMetricThresholdView"] | components["schemas"]["DiskPartitionQueueDepthDataRawMetricThresholdView"] | components["schemas"]["DiskPartitionQueueDepthIndexRawMetricThresholdView"] | components["schemas"]["DiskPartitionQueueDepthJournalRawMetricThresholdView"] | components["schemas"]["FtsDiskUtilizationDataMetricThresholdView"] | components["schemas"]["MuninCpuUserRawMetricThresholdView"] | components["schemas"]["MuninCpuNiceRawMetricThresholdView"] | components["schemas"]["MuninCpuSystemRawMetricThresholdView"] | components["schemas"]["MuninCpuIowaitRawMetricThresholdView"] | components["schemas"]["MuninCpuIrqRawMetricThresholdView"] | components["schemas"]["MuninCpuSoftirqRawMetricThresholdView"] | components["schemas"]["MuninCpuStealRawMetricThresholdView"] | components["schemas"]["DocumentReturnedRawMetricThresholdView"] | components["schemas"]["DocumentInsertedRawMetricThresholdView"] | components["schemas"]["DocumentUpdatedRawMetricThresholdView"] | components["schemas"]["DocumentDeletedRawMetricThresholdView"] | components["schemas"]["OperationsScanAndOrderRawMetricThresholdView"] | components["schemas"]["QueryExecutorScannedRawMetricThresholdView"] | components["schemas"]["QueryExecutorScannedObjectsRawMetricThresholdView"] | components["schemas"]["OperationThrottlingRejectedOperationsRawMetricThresholdView"] | components["schemas"]["QuerySpillToDiskDuringSortRawMetricThresholdView"] | components["schemas"]["OperationsQueriesKilledRawMetricThresholdView"] | components["schemas"]["QueryTargetingScannedPerReturnedRawMetricThresholdView"] | components["schemas"]["QueryTargetingScannedObjectsPerReturnedRawMetricThresholdView"] | components["schemas"]["AvgReadExecutionTimeTimeMetricThresholdView"] | components["schemas"]["AvgWriteExecutionTimeTimeMetricThresholdView"] | components["schemas"]["AvgCommandExecutionTimeTimeMetricThresholdView"] | components["schemas"]["LogicalSizeDataMetricThresholdView"] | components["schemas"]["RestartsInLastHourRawMetricThresholdView"] | components["schemas"]["SystemMemoryUsedDataMetricThresholdView"] | components["schemas"]["SystemMemoryAvailableDataMetricThresholdView"] | components["schemas"]["SwapUsageUsedDataMetricThresholdView"] | components["schemas"]["SwapUsageFreeDataMetricThresholdView"] | components["schemas"]["SystemNetworkInDataMetricThresholdView"] | components["schemas"]["SystemNetworkOutDataMetricThresholdView"] | components["schemas"]["MaxNormalizedSystemCpuUserRawMetricThresholdView"] | components["schemas"]["MaxNormalizedSystemCpuStealRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionSpaceUsedDataRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionSpaceUsedIndexRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionSpaceUsedJournalRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionReadIopsDataRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionReadIopsIndexRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionReadIopsJournalRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionWriteIopsDataRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionWriteIopsIndexRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionWriteIopsJournalRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionReadLatencyDataTimeMetricThresholdView"] | components["schemas"]["MaxDiskPartitionReadLatencyIndexTimeMetricThresholdView"] | components["schemas"]["MaxDiskPartitionReadLatencyJournalTimeMetricThresholdView"] | components["schemas"]["MaxDiskPartitionWriteLatencyDataTimeMetricThresholdView"] | components["schemas"]["MaxDiskPartitionWriteLatencyIndexTimeMetricThresholdView"] | components["schemas"]["MaxDiskPartitionWriteLatencyJournalTimeMetricThresholdView"] | components["schemas"]["MaxDiskPartitionQueueDepthDataRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionQueueDepthIndexRawMetricThresholdView"] | components["schemas"]["MaxDiskPartitionQueueDepthJournalRawMetricThresholdView"] | components["schemas"]["MaxSystemMemoryPercentUsedRawMetricThresholdView"] | components["schemas"]["MaxSystemMemoryUsedDataMetricThresholdView"] | components["schemas"]["MaxSystemMemoryAvailableDataMetricThresholdView"] | components["schemas"]["MaxSwapUsageUsedDataMetricThresholdView"] | components["schemas"]["MaxSwapUsageFreeDataMetricThresholdView"] | components["schemas"]["MaxSystemNetworkInDataMetricThresholdView"] | components["schemas"]["MaxSystemNetworkOutDataMetricThresholdView"] | components["schemas"]["SearchIndexSizeDataMetricThresholdView"] | components["schemas"]["SearchMaxFieldsIndexedRawMetricThresholdView"] | components["schemas"]["SearchProcessThrottlingRawMetricThresholdView"] | components["schemas"]["SearchNumberOfFieldsInIndexRawMetricThresholdView"] | components["schemas"]["SearchMaxNgramFieldsIndexedRawMetricThresholdView"] | components["schemas"]["SearchReplicationLagTimeMetricThresholdView"] | components["schemas"]["NumberMetricThresholdView"] | components["schemas"]["SearchOpCounterInsertRawMetricThresholdView"] | components["schemas"]["SearchOpCounterDeleteRawMetricThresholdView"] | components["schemas"]["SearchOpCounterUpdateRawMetricThresholdView"] | components["schemas"]["SearchOpCounterGetMoreRawMetricThresholdView"] | components["schemas"]["SearchNumberOfQueriesTotalRawMetricThresholdView"] | components["schemas"]["SearchNumberOfQueriesErrorRawMetricThresholdView"] | components["schemas"]["SearchNumberOfQueriesSuccessRawMetricThresholdView"] | components["schemas"]["FtsJvmMaxMemoryDataMetricThresholdView"] | components["schemas"]["FtsJvmCurrentMemoryDataMetricThresholdView"]);
-        HostMetricValue: {
-            /** Format: double */
-            readonly number?: number;
-            /** @enum {string} */
-            readonly units?: units_ded7c172;
-        };
-        IndexCountersBtreeAccessesRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "INDEX_COUNTERS_BTREE_ACCESSES";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        IndexCountersBtreeHitsRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "INDEX_COUNTERS_BTREE_HITS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        IndexCountersBtreeMissesRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "INDEX_COUNTERS_BTREE_MISSES";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        IndexCountersBtreeMissRatioRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "INDEX_COUNTERS_BTREE_MISS_RATIO";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        InvoiceLineItem: {
-            /** @enum {string} */
-            readonly cloudProvider?: "AWS" | "GCP" | "AZURE" | "ATLAS";
-            readonly clusterName?: string;
-            /** Format: date-time */
-            readonly created?: string;
-            /** Format: int64 */
-            readonly discountCents?: number;
-            /** Format: date-time */
-            readonly endDate?: string;
-            readonly groupId?: string;
-            groupName?: string;
-            readonly note?: string;
-            /** Format: float */
-            readonly percentDiscount?: number;
-            /** Format: double */
-            readonly quantity?: number;
-            readonly sku?: string;
-            /** Format: date-time */
-            readonly startDate?: string;
-            readonly stitchAppName?: string;
-            readonly tags?: {
-                [key: string]: string | number | string[];
-            };
-            /** Format: double */
-            readonly tierLowerBound?: number;
-            /** Format: double */
-            readonly tierUpperBound?: number;
-            /** Format: int64 */
-            readonly totalPriceCents?: number;
-            readonly unit?: string;
-            /** Format: double */
-            readonly unitPriceDollars?: number;
-        };
-        JournalingCommitsInWriteLockRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "JOURNALING_COMMITS_IN_WRITE_LOCK";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        JournalingMbDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "JOURNALING_MB";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        JournalingWriteDataFilesMbDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "JOURNALING_WRITE_DATA_FILES_MB";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        KafkaRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "STREAM_PROCESSOR_KAFKA_LAG";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        LessThanDaysThresholdView: {
-            /** @enum {string} */
-            operator?: "LESS_THAN";
-            /** Format: int32 */
-            threshold?: number;
-            /** @enum {string} */
-            units?: "DAYS";
-        };
-        LessThanTimeThreshold: {
-            /** @enum {string} */
-            operator?: "LESS_THAN";
-            /** Format: int32 */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        LessThanTimeThresholdAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["ReplicaSetEventTypeViewForNdsGroupAlertableWithThreshold"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["ReplicaSetMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            threshold?: components["schemas"]["LessThanTimeThreshold"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        Link: {
-            href?: string;
-            rel?: string;
-        };
-        Link_Atlas: {
-            href?: string;
-            rel?: string;
-        };
-        LogicalSizeDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "LOGICAL_SIZE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        /** @enum {string} */
-        MatcherHostType: "STANDALONE" | "PRIMARY" | "SECONDARY" | "ARBITER" | "MONGOS" | "CONFIG" | "MONGOT";
-        MaxDiskPartitionQueueDepthDataRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_QUEUE_DEPTH_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionQueueDepthIndexRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_QUEUE_DEPTH_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionQueueDepthJournalRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_QUEUE_DEPTH_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionReadIopsDataRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_READ_IOPS_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionReadIopsIndexRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_READ_IOPS_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionReadIopsJournalRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_READ_IOPS_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionReadLatencyDataTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_READ_LATENCY_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        MaxDiskPartitionReadLatencyIndexTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_READ_LATENCY_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        MaxDiskPartitionReadLatencyJournalTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_READ_LATENCY_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        MaxDiskPartitionSpaceUsedDataRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_SPACE_USED_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionSpaceUsedIndexRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_SPACE_USED_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionSpaceUsedJournalRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_SPACE_USED_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionWriteIopsDataRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_WRITE_IOPS_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionWriteIopsIndexRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_WRITE_IOPS_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionWriteIopsJournalRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_WRITE_IOPS_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxDiskPartitionWriteLatencyDataTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_WRITE_LATENCY_DATA";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        MaxDiskPartitionWriteLatencyIndexTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_WRITE_LATENCY_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        MaxDiskPartitionWriteLatencyJournalTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_DISK_PARTITION_WRITE_LATENCY_JOURNAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        MaxNormalizedSystemCpuStealRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_NORMALIZED_SYSTEM_CPU_STEAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxNormalizedSystemCpuUserRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_NORMALIZED_SYSTEM_CPU_USER";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxSwapUsageFreeDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_SWAP_USAGE_FREE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        MaxSwapUsageUsedDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_SWAP_USAGE_USED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        MaxSystemMemoryAvailableDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_SYSTEM_MEMORY_AVAILABLE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        MaxSystemMemoryPercentUsedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_SYSTEM_MEMORY_PERCENT_USED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MaxSystemMemoryUsedDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_SYSTEM_MEMORY_USED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        MaxSystemNetworkInDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_SYSTEM_NETWORK_IN";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        MaxSystemNetworkOutDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MAX_SYSTEM_NETWORK_OUT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        MemoryMappedDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MEMORY_MAPPED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        MemoryResidentDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MEMORY_RESIDENT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        MemoryVirtualDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MEMORY_VIRTUAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        MetricDataPoint_Atlas: {
-            /** Format: date-time */
-            readonly timestamp?: string;
-            readonly value?: number;
-        };
-        MetricsMeasurement_Atlas: {
-            readonly dataPoints?: components["schemas"]["MetricDataPoint_Atlas"][];
-            readonly name?: string;
-            /** @enum {string} */
-            readonly units?: "BYTES" | "BYTES_PER_SECOND" | "GIGABYTES" | "GIGABYTES_PER_HOUR" | "MEGABYTES_PER_SECOND" | "MICROSECONDS" | "MILLISECONDS" | "PERCENT" | "SCALAR" | "SCALAR_PER_SECOND";
-        };
-        MicrosoftTeamsNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            integrationId?: string;
-            /** Format: int32 */
-            intervalMin?: number;
-            microsoftTeamsWebhookUrl?: string;
-            notifierId?: string;
-            /** @enum {string} */
-            typeName: "MICROSOFT_TEAMS";
-        };
-        MongotuneAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["MongotuneEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AlertMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        /** @enum {string} */
-        MongotuneEventTypeViewAlertable: "MONGOTUNE_ALERT";
-        MuninCpuIowaitRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MUNIN_CPU_IOWAIT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MuninCpuIrqRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MUNIN_CPU_IRQ";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MuninCpuNiceRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MUNIN_CPU_NICE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MuninCpuSoftirqRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MUNIN_CPU_SOFTIRQ";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MuninCpuStealRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MUNIN_CPU_STEAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MuninCpuSystemRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MUNIN_CPU_SYSTEM";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        MuninCpuUserRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "MUNIN_CPU_USER";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        NDSAutoscalingAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["NDSAutoScalingAuditTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["NDSAutoscalingMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        /** @enum {string} */
-        NDSAutoScalingAuditTypeViewAlertable: Shared_452a8ee1;
-        NDSAutoscalingMatcher: {
-            fieldName: components["schemas"]["NDSAutoscalingMatcherField"];
-            /** @enum {string} */
-            operator: "EQUALS" | "CONTAINS" | "STARTS_WITH" | "ENDS_WITH" | "NOT_EQUALS" | "NOT_CONTAINS" | "REGEX";
-            value: string;
-        };
-        /** @enum {string} */
-        NDSAutoscalingMatcherField: "CLUSTER_NAME";
-        NDSX509UserAuthenticationAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["NDSX509UserAuthenticationEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AlertMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            threshold?: components["schemas"]["LessThanDaysThresholdView"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        /** @enum {string} */
-        NDSX509UserAuthenticationEventTypeViewAlertable: "NDS_X509_USER_AUTHENTICATION_CUSTOMER_CA_EXPIRATION_CHECK" | "NDS_X509_USER_AUTHENTICATION_CUSTOMER_CRL_EXPIRATION_CHECK" | "NDS_X509_USER_AUTHENTICATION_MANAGED_USER_CERTS_EXPIRATION_CHECK";
-        NetworkBytesInDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "NETWORK_BYTES_IN";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        NetworkBytesOutDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "NETWORK_BYTES_OUT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        NetworkNumRequestsRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "NETWORK_NUM_REQUESTS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        NetworkPermissionEntry: {
-            awsSecurityGroup?: string;
-            cidrBlock?: string;
-            comment?: string;
-            /** Format: date-time */
-            deleteAfterDate?: string;
-            readonly groupId?: string;
-            ipAddress?: string;
-            readonly links?: components["schemas"]["Link"][];
-        };
-        NormalizedFtsProcessCpuKernelRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "NORMALIZED_FTS_PROCESS_CPU_KERNEL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        NormalizedFtsProcessCpuUserRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "NORMALIZED_FTS_PROCESS_CPU_USER";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        NormalizedSystemCpuStealRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "NORMALIZED_SYSTEM_CPU_STEAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        NormalizedSystemCpuUserRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "NORMALIZED_SYSTEM_CPU_USER";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        NormalizedSystemCpuUserSearchPrimaryContributorRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "NORMALIZED_SYSTEM_CPU_USER_SEARCH_PRIMARY_CONTRIBUTOR";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        NumberMetricAlertView: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            readonly clusterName?: string;
-            /** Format: date-time */
-            readonly created: string;
-            currentValue?: components["schemas"]["NumberMetricValueView"];
-            eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly hostnameAndPort?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly metricName?: string;
-            readonly orgId?: string;
-            readonly replicaSetName?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        NumberMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_MAX_NUMBER_OF_LUCENE_DOCS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["NumberMetricUnits"];
-        };
-        /** @enum {string} */
-        NumberMetricUnits: "COUNT" | "THOUSAND" | "MILLION" | "BILLION";
-        NumberMetricValueView: {
-            /** Format: double */
-            readonly number?: number;
-            units?: components["schemas"]["NumberMetricUnits"];
-        };
-        OnlineArchiveSchedule: {
-            /** @enum {string} */
-            type: "DEFAULT" | "DAILY" | "WEEKLY" | "MONTHLY";
-        };
-        OpCounterCmdRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_CMD";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OpCounterDeleteRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_DELETE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OpCounterGetMoreRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_GETMORE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OpCounterInsertRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_INSERT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OpCounterQueryRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_QUERY";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OpCounterReplCmdRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_REPL_CMD";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OpCounterReplDeleteRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_REPL_DELETE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OpCounterReplInsertRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_REPL_INSERT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OpCounterReplUpdateRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_REPL_UPDATE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OpCounterTtlDeletedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_TTL_DELETED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OpCounterUpdateRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPCOUNTER_UPDATE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OperationsContactNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            /** @enum {string} */
-            typeName: "OPERATIONS_CONTACT";
-        };
-        OperationsQueriesKilledRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPERATIONS_QUERIES_KILLED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OperationsScanAndOrderRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPERATIONS_SCAN_AND_ORDER";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        OperationThrottlingRejectedOperationsRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPERATION_THROTTLING_REJECTED_OPERATIONS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        /** @enum {string} */
-        Operator: "<" | ">";
-        OplogMasterLagTimeDiffTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPLOG_MASTER_LAG_TIME_DIFF";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        OplogMasterTimeEstimatedTtlTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPLOG_MASTER_TIME_ESTIMATED_TTL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        OplogMasterTimeTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPLOG_MASTER_TIME";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        OplogRateGbPerHourDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPLOG_RATE_GB_PER_HOUR";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        OplogSlaveLagMasterTimeTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "OPLOG_SLAVE_LAG_MASTER_TIME";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        OpsGenieNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            integrationId?: string;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            opsGenieApiKey?: string;
-            /**
-             * @default US
-             * @enum {string}
-             */
-            opsGenieRegion?: "US" | "EU";
-            /** @enum {string} */
-            typeName: "OPS_GENIE";
-        };
-        OrgNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            emailEnabled?: boolean;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            roles?: ("ORG_OWNER" | "ORG_MEMBER" | "ORG_GROUP_CREATOR" | "ORG_BILLING_ADMIN" | "ORG_BILLING_READ_ONLY" | "ORG_READ_ONLY")[];
-            smsEnabled?: boolean;
-            /** @enum {string} */
-            typeName: "ORG";
-        };
-        PagerDutyNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            integrationId?: string;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            /**
-             * @default US
-             * @enum {string}
-             */
-            region?: "US" | "EU";
-            serviceKey?: string;
-            /** @enum {string} */
-            typeName: "PAGER_DUTY";
-        };
-        PaginatedAlertConfigView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["GroupAlertsConfig"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedAlertView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["AlertViewForNdsGroup"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedApiAtlasDatabaseUserView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["CloudDatabaseUser"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedApiAtlasProviderRegionsView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["CloudProviderRegions"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedApiInvoiceMetadataView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["BillingInvoiceMetadata"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedApiInvoiceView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["BillingInvoice"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedAtlasGroupView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["Group"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedCloudBackupReplicaSetView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["DiskBackupReplicaSet"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedClusterDescription20240805: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["ClusterDescription20240805"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedFlexClusters20241113: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["FlexClusterDescription20241113"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedHostView_Atlas: {
-            readonly links?: components["schemas"]["Link_Atlas"][];
-            readonly results: components["schemas"]["ApiHostView_Atlas"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedNetworkAccessView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["NetworkPermissionEntry"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedOnlineArchiveView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["BackupOnlineArchive"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedOrganizationView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["AtlasOrganization"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PaginatedServerlessInstanceDescriptionView: {
-            readonly links?: components["schemas"]["Link"][];
-            readonly results: components["schemas"]["ServerlessInstanceDescription"][];
-            /** Format: int32 */
-            readonly totalCount?: number;
-        };
-        PartitionFieldView: {
-            fieldName: string;
-            /** @enum {string} */
-            readonly fieldType?: "date" | "int" | "long" | "objectId" | "string" | "uuid";
-            /**
-             * Format: int32
-             * @default 0
-             */
-            order: number;
-        };
-        QueryExecutorScannedObjectsRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "QUERY_EXECUTOR_SCANNED_OBJECTS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        QueryExecutorScannedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "QUERY_EXECUTOR_SCANNED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        QuerySpillToDiskDuringSortRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "QUERY_SPILL_TO_DISK_DURING_SORT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        QueryTargetingScannedObjectsPerReturnedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "QUERY_TARGETING_SCANNED_OBJECTS_PER_RETURNED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        QueryTargetingScannedPerReturnedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "QUERY_TARGETING_SCANNED_PER_RETURNED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        RawMetricAlertView: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            readonly clusterName?: string;
-            /** Format: date-time */
-            readonly created: string;
-            currentValue?: components["schemas"]["RawMetricValueView"];
-            eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly hostnameAndPort?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly metricName?: string;
-            readonly orgId?: string;
-            readonly replicaSetName?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        RawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "REALM_AUTH_LOGIN_FAIL" | "REALM_ENDPOINTS_FAILED_REQUESTS" | "REALM_GQL_FAILED_REQUESTS" | "REALM_OVERALL_FAILED_REQUESTS" | "REALM_SDKFNS_FAILED_REQUESTS" | "REALM_SYNC_NUM_UNSYNCABLE_DOCS_PERCENT" | "REALM_TRIGGERS_FAILED_REQUESTS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        /**
-         * @default RAW
-         * @enum {string}
-         */
-        RawMetricUnits: "RAW";
-        RawMetricValueView: {
-            /** Format: double */
-            readonly number?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ReplicaSetAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["ReplicaSetEventTypeViewForNdsGroupAlertableNoThreshold"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["ReplicaSetMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            threshold?: components["schemas"]["AlertsThresholdInteger"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        ReplicaSetAlertViewForNdsGroup: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            readonly clusterName?: string;
-            /** Format: date-time */
-            readonly created: string;
-            eventTypeName: components["schemas"]["ReplicaSetEventTypeViewForNdsGroupAlertable"];
-            readonly groupId?: string;
-            readonly hostnameAndPort?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly nonRunningHostIds?: string[];
-            readonly orgId?: string;
-            readonly parentClusterId?: string;
-            readonly replicaSetName?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        /** @enum {string} */
-        ReplicaSetEventTypeViewForNdsGroupAlertable: "REPLICATION_OPLOG_WINDOW_RUNNING_OUT" | "NO_PRIMARY" | "PRIMARY_ELECTED" | "TOO_MANY_ELECTIONS" | "TOO_FEW_HEALTHY_MEMBERS" | "TOO_MANY_UNHEALTHY_MEMBERS";
-        /** @enum {string} */
-        ReplicaSetEventTypeViewForNdsGroupAlertableNoThreshold: "NO_PRIMARY" | "PRIMARY_ELECTED";
-        /** @enum {string} */
-        ReplicaSetEventTypeViewForNdsGroupAlertableWithThreshold: "TOO_MANY_ELECTIONS" | "REPLICATION_OPLOG_WINDOW_RUNNING_OUT" | "TOO_FEW_HEALTHY_MEMBERS" | "TOO_MANY_UNHEALTHY_MEMBERS";
-        ReplicaSetMatcher: {
-            fieldName: components["schemas"]["ReplicaSetMatcherField"];
-            /** @enum {string} */
-            operator: "EQUALS" | "CONTAINS" | "STARTS_WITH" | "ENDS_WITH" | "NOT_EQUALS" | "NOT_CONTAINS" | "REGEX";
-            value: string;
-        };
-        /** @enum {string} */
-        ReplicaSetMatcherField: "REPLICA_SET_NAME" | "SHARD_NAME" | "CLUSTER_NAME";
-        ReplicaSetThresholdAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["ReplicaSetEventTypeViewForNdsGroupAlertableWithThreshold"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["ReplicaSetMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            threshold?: components["schemas"]["AlertsThresholdInteger"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        ReplicationSpec20240805: {
-            readonly id?: string;
-            regionConfigs?: components["schemas"]["CloudRegionConfig20240805"][];
-            readonly zoneId?: string;
-            zoneName?: string;
-        };
-        ResourcePolicyReference: {
-            readonly id: string;
-            readonly name: string;
-        };
-        ResourceTag: {
-            key: string;
-            value: string;
-        };
-        RestartsInLastHourRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "RESTARTS_IN_LAST_HOUR";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        RPUMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_TOTAL_READ_UNITS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["ServerlessMetricUnits"];
-        };
-        SearchAutoMigration: {
-            /** @default false */
-            disabled?: boolean;
-        };
-        SearchHostStatusDetail: {
-            hostname?: string;
-            mainIndex?: components["schemas"]["SearchMainIndexStatusDetail"];
-            queryable?: boolean;
-            stagedIndex?: components["schemas"]["SearchStagedIndexStatusDetail"];
-            /** @enum {string} */
-            status?: "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
-        };
-        SearchIndexDefinition: {
-            /**
-             * Format: int32
-             * @default 1
-             */
-            numPartitions?: number;
-            storedSource?: Record<string, never>;
-        };
-        SearchIndexDefinitionVersion: {
-            /** Format: date-time */
-            createdAt?: string;
-            /** Format: int64 */
-            version?: number;
-        };
-        SearchIndexResponse: {
-            collectionName?: string;
-            database?: string;
-            indexID?: string;
-            latestDefinition?: components["schemas"]["SearchIndexDefinition"];
-            latestDefinitionVersion?: components["schemas"]["SearchIndexDefinitionVersion"];
-            name?: string;
-            queryable?: boolean;
-            /** @enum {string} */
-            status?: "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
-            statusDetail?: components["schemas"]["SearchHostStatusDetail"][];
-            /** @enum {string} */
-            type?: "search" | "vectorSearch";
-        };
-        SearchIndexSizeDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_INDEX_SIZE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        SearchMainIndexStatusDetail: SearchMainIndexStatusDetail_3954bba8;
-        SearchMappings: {
-            dynamic?: Record<string, never>;
-            fields?: {
-                [key: string]: components["schemas"]["Fields"];
-            };
-        };
-        SearchMaxFieldsIndexedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_MAX_FIELDS_INDEXED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchMaxNgramFieldsIndexedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_MAX_NGRAM_FIELDS_INDEXED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchNumberOfFieldsInIndexRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_NUMBER_OF_FIELDS_IN_INDEX";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchNumberOfQueriesErrorRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_NUMBER_OF_QUERIES_ERROR";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchNumberOfQueriesSuccessRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_NUMBER_OF_QUERIES_SUCCESS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchNumberOfQueriesTotalRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_NUMBER_OF_QUERIES_TOTAL";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchOpCounterDeleteRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_OPCOUNTER_DELETE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchOpCounterGetMoreRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_OPCOUNTER_GETMORE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchOpCounterInsertRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_OPCOUNTER_INSERT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchOpCounterUpdateRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_OPCOUNTER_UPDATE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchProcessThrottlingRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_PROCESS_THROTTLING";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SearchReplicationLagTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SEARCH_REPLICATION_LAG";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        SearchStagedIndexStatusDetail: SearchMainIndexStatusDetail_3954bba8;
-        SearchSynonymMappingDefinition: {
-            /** @enum {string} */
-            analyzer: analyzer_f12f57c6;
-            name: string;
-            source: components["schemas"]["SynonymSource"];
-        };
-        SearchTypeSets: {
-            name: string;
-            types: components["schemas"]["BasicDBObject"][];
-        };
-        ServerlessAVGCommandExecutionTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_AVG_COMMAND_EXECUTION_TIME";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        ServerlessAVGWriteExecutionTimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_AVG_WRITE_EXECUTION_TIME";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        ServerlessConnectionPercentageRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_CONNECTIONS_PERCENT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ServerlessConnectionStringsPrivateEndpointItem: {
-            readonly endpointId?: string;
-            /** @enum {string} */
-            readonly providerName?: "AWS" | "AZURE";
-            readonly region?: string;
-        };
-        ServerlessConnectionStringsPrivateEndpointList: {
-            readonly endpoints?: components["schemas"]["ServerlessConnectionStringsPrivateEndpointItem"][];
-            readonly srvConnectionString?: string;
-            /** @enum {string} */
-            readonly type?: "MONGOS";
-        };
-        /** @enum {string} */
-        ServerlessEventTypeViewAlertable: "OUTSIDE_SERVERLESS_METRIC_THRESHOLD";
-        ServerlessInstanceDescription: {
-            connectionStrings?: components["schemas"]["ServerlessInstanceDescriptionConnectionStrings"];
-            /** Format: date-time */
-            readonly createDate?: string;
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly mongoDBVersion?: string;
-            name?: string;
-            providerSettings: components["schemas"]["ServerlessProviderSettings"];
-            serverlessBackupOptions?: components["schemas"]["ClusterServerlessBackupOptions"];
-            /** @enum {string} */
-            readonly stateName?: "IDLE" | "CREATING" | "UPDATING" | "DELETING" | "REPAIRING";
-            tags?: components["schemas"]["ResourceTag"][];
-            /** @default false */
-            terminationProtectionEnabled?: boolean;
-        };
-        ServerlessInstanceDescriptionConnectionStrings: {
-            readonly privateEndpoint?: components["schemas"]["ServerlessConnectionStringsPrivateEndpointList"][];
-            readonly standardSrv?: string;
-        };
-        ServerlessMetricAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["ServerlessEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["AlertMatcher"][];
-            metricThreshold?: components["schemas"]["ServerlessMetricThreshold"];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        ServerlessMetricThreshold: Shared_49612667 & (components["schemas"]["ServerlessAVGCommandExecutionTimeMetricThresholdView"] | components["schemas"]["ServerlessAVGWriteExecutionTimeMetricThresholdView"] | components["schemas"]["TimeMetricThresholdView"] | components["schemas"]["ServerlessTotalWriteUnitsRPUMetricThresholdView"] | components["schemas"]["RPUMetricThresholdView"] | components["schemas"]["ServerlessOpCounterUpdateRawMetricThresholdView"] | components["schemas"]["ServerlessOpCounterQueryRawMetricThresholdView"] | components["schemas"]["ServerlessOpCounterInsertRawMetricThresholdView"] | components["schemas"]["ServerlessOpCounterGetMoreRawMetricThresholdView"] | components["schemas"]["ServerlessOpCounterDeleteRawMetricThresholdView"] | components["schemas"]["ServerlessOpCounterCDMRawMetricThresholdView"] | components["schemas"]["ServerlessNetworkNumRequestRawMetricThresholdView"] | components["schemas"]["ServerlessNetworkBytesOutDataMetricThresholdView"] | components["schemas"]["ServerlessNetworkBytesInDataMetricThresholdView"] | components["schemas"]["DataMetricThresholdView"] | components["schemas"]["ServerlessConnectionPercentageRawMetricThresholdView"] | components["schemas"]["RawMetricThresholdView"]);
-        /** @enum {string} */
-        ServerlessMetricUnits: "RPU" | "THOUSAND_RPU" | "MILLION_RPU" | "WPU" | "THOUSAND_WPU" | "MILLION_WPU";
-        ServerlessNetworkBytesInDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_NETWORK_BYTES_IN";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        ServerlessNetworkBytesOutDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_NETWORK_BYTES_OUT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        ServerlessNetworkNumRequestRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_NETWORK_NUM_REQUESTS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ServerlessOpCounterCDMRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_OPCOUNTER_CMD";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ServerlessOpCounterDeleteRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_OPCOUNTER_DELETE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ServerlessOpCounterGetMoreRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_OPCOUNTER_GETMORE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ServerlessOpCounterInsertRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_OPCOUNTER_INSERT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ServerlessOpCounterQueryRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_OPCOUNTER_QUERY";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ServerlessOpCounterUpdateRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_OPCOUNTER_UPDATE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        ServerlessProviderSettings: {
-            /** @enum {string} */
-            backingProviderName: "AWS" | "AZURE" | "GCP";
-            /** Format: int32 */
-            readonly effectiveDiskSizeGBLimit?: number;
-            effectiveInstanceSizeName?: components["schemas"]["BaseCloudProviderInstanceSize"];
-            readonly effectiveProviderName?: string;
-            /**
-             * @default SERVERLESS
-             * @enum {string}
-             */
-            providerName?: "SERVERLESS";
-            regionName: string;
-        };
-        ServerlessTotalWriteUnitsRPUMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SERVERLESS_TOTAL_WRITE_UNITS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["ServerlessMetricUnits"];
-        };
-        SlackNotification: {
-            apiToken?: string;
-            channelName?: string;
-            /** Format: int32 */
-            delayMin?: number;
-            integrationId?: string;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            /** @enum {string} */
-            typeName: "SLACK";
-        };
-        SMSNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            /** Format: int32 */
-            intervalMin?: number;
-            mobileNumber?: string;
-            notifierId?: string;
-            /** @enum {string} */
-            typeName: "SMS";
-        };
-        StorageConfig: {
-            /** Format: int32 */
-            shardSizeLimitGB?: number | null;
-        } | null;
-        StreamProcessorAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["StreamProcessorEventTypeViewAlertableNoThreshold"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["StreamsMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        StreamProcessorAlertViewForNdsGroup: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            /** Format: date-time */
-            readonly created: string;
-            eventTypeName: components["schemas"]["HostEventTypeViewForNdsGroupAlertable"];
-            readonly groupId?: string;
-            readonly id: string;
-            readonly instanceName?: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly orgId?: string;
-            readonly processorErrorMsg?: string;
-            readonly processorName?: string;
-            readonly processorState?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        /** @enum {string} */
-        StreamProcessorEventTypeViewAlertableNoThreshold: "STREAM_PROCESSOR_STATE_IS_FAILED" | "STREAM_PROCESSOR_AUTOSCALE_INITIATED";
-        /** @enum {string} */
-        StreamProcessorEventTypeViewAlertableWithThreshold: "OUTSIDE_STREAM_PROCESSOR_METRIC_THRESHOLD";
-        StreamProcessorMetricAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["StreamProcessorEventTypeViewAlertableWithThreshold"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["StreamsMatcher"][];
-            metricThreshold?: components["schemas"]["StreamProcessorMetricThreshold"];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            threshold?: components["schemas"]["StreamProcessorMetricThreshold"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        StreamProcessorMetricThreshold: Shared_49612667 & (components["schemas"]["KafkaRawMetricThresholdView"] | components["schemas"]["TimeMetricThresholdView"] | components["schemas"]["DLQRawMetricThresholdView"] | components["schemas"]["RawMetricThresholdView"]);
-        StreamsMatcher: {
-            fieldName: components["schemas"]["StreamsMatcherField"];
-            /** @enum {string} */
-            operator: "EQUALS" | "CONTAINS" | "STARTS_WITH" | "ENDS_WITH" | "NOT_EQUALS" | "NOT_CONTAINS" | "REGEX";
-            value: string;
-        };
-        /** @enum {string} */
-        StreamsMatcherField: "INSTANCE_NAME" | "PROCESSOR_NAME";
-        StreamsPrivateLinkEndpointAlertConfigViewForNdsGroup: {
-            /** Format: date-time */
-            readonly created?: string;
-            /** @default false */
-            enabled?: boolean;
-            eventTypeName: components["schemas"]["StreamsPrivateLinkEndpointEventTypeViewForNdsGroupAlertable"];
-            readonly groupId?: string;
-            readonly id?: string;
-            readonly links?: components["schemas"]["Link"][];
-            matchers?: components["schemas"]["StreamsPrivateLinkEndpointMatcher"][];
-            notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
-            severityOverride?: components["schemas"]["EventSeverity"];
-            /** Format: date-time */
-            readonly updated?: string;
-        };
-        /** @enum {string} */
-        StreamsPrivateLinkEndpointEventTypeViewForNdsGroupAlertable: "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_FIRST_WARNING" | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_SECOND_WARNING" | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_DELETED";
-        StreamsPrivateLinkEndpointMatcher: {
-            fieldName: components["schemas"]["StreamsPrivateLinkEndpointMatcherField"];
-            /** @enum {string} */
-            operator: "EQUALS" | "CONTAINS" | "STARTS_WITH" | "ENDS_WITH" | "NOT_EQUALS" | "NOT_CONTAINS" | "REGEX";
-            value: string;
-        };
-        /** @enum {string} */
-        StreamsPrivateLinkEndpointMatcherField: "ENDPOINT_ID";
-        SwapUsageFreeDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SWAP_USAGE_FREE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        SwapUsageUsedDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SWAP_USAGE_USED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        SynonymMappingStatusDetail: {
-            message?: string;
-            queryable?: boolean;
-            /** @enum {string} */
-            status?: "FAILED" | "BUILDING" | "READY";
-        };
-        SynonymMappingStatusDetailMap: {
-            [key: string]: components["schemas"]["SynonymMappingStatusDetail"];
-        };
-        SynonymSource: {
-            collection: string;
-        };
-        SystemMemoryAvailableDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SYSTEM_MEMORY_AVAILABLE";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        SystemMemoryPercentUsedRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SYSTEM_MEMORY_PERCENT_USED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        SystemMemoryUsedDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SYSTEM_MEMORY_USED";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        SystemNetworkInDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SYSTEM_NETWORK_IN";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        SystemNetworkOutDataMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "SYSTEM_NETWORK_OUT";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["DataMetricUnits"];
-        };
-        TeamNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            emailEnabled?: boolean;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            smsEnabled?: boolean;
-            teamId?: string;
-            teamName?: string;
-            /** @enum {string} */
-            typeName: "TEAM";
-        };
-        TextSearchHostStatusDetail: {
-            hostname?: string;
-            mainIndex?: components["schemas"]["TextSearchIndexStatusDetail"];
-            queryable?: boolean;
-            stagedIndex?: components["schemas"]["TextSearchIndexStatusDetail"];
-            /** @enum {string} */
-            status?: "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
-        };
-        TextSearchIndexDefinition: {
-            /**
-             * @default lucene.standard
-             * @enum {string}
-             */
-            analyzer?: analyzer_f12f57c6;
-            analyzers?: components["schemas"]["AtlasSearchAnalyzer"][];
-            mappings: components["schemas"]["SearchMappings"];
-            /**
-             * Format: int32
-             * @default 1
-             */
-            numPartitions?: number;
-            /**
-             * @default lucene.standard
-             * @enum {string}
-             */
-            searchAnalyzer?: analyzer_f12f57c6;
-            sort?: Record<string, never>;
-            storedSource?: Record<string, never>;
-            synonyms?: components["schemas"]["SearchSynonymMappingDefinition"][];
-            typeSets?: components["schemas"]["SearchTypeSets"][];
-        };
-        TextSearchIndexResponse: Omit<components["schemas"]["SearchIndexResponse"], "type"> & {
-            latestDefinition?: components["schemas"]["TextSearchIndexDefinition"];
-            statusDetail?: components["schemas"]["TextSearchHostStatusDetail"][];
-            /** @enum {string} */
-            synonymMappingStatus?: "FAILED" | "BUILDING" | "READY";
-            synonymMappingStatusDetail?: {
-                [key: string]: components["schemas"]["SynonymMappingStatusDetail"];
-            }[];
-        } & {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "search";
-        };
-        TextSearchIndexStatusDetail: {
-            definition?: components["schemas"]["TextSearchIndexDefinition"];
-            definitionVersion?: components["schemas"]["SearchIndexDefinitionVersion"];
-            message?: string;
-            queryable?: boolean;
-            /** @enum {string} */
-            status?: "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
-            /** @enum {string} */
-            synonymMappingStatus?: "FAILED" | "BUILDING" | "READY";
-            synonymMappingStatusDetail?: components["schemas"]["SynonymMappingStatusDetailMap"][];
-        };
-        TicketsAvailableReadsRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "TICKETS_AVAILABLE_READS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        TicketsAvailableWritesRawMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "TICKETS_AVAILABLE_WRITES";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["RawMetricUnits"];
-        };
-        TimeMetricAlertView: {
-            /** Format: date-time */
-            acknowledgedUntil?: string;
-            acknowledgementComment?: string;
-            /** Format: email */
-            readonly acknowledgingUsername?: string;
-            readonly alertConfigId: string;
-            readonly clusterName?: string;
-            /** Format: date-time */
-            readonly created: string;
-            currentValue?: components["schemas"]["TimeMetricValueView"];
-            eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
-            readonly groupId?: string;
-            readonly hostnameAndPort?: string;
-            readonly id: string;
-            /** Format: date-time */
-            readonly lastNotified?: string;
-            readonly links?: components["schemas"]["Link"][];
-            readonly metricName?: string;
-            readonly orgId?: string;
-            readonly replicaSetName?: string;
-            /** Format: date-time */
-            readonly resolved?: string;
-            /** @enum {string} */
-            readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
-            /** @enum {string} */
-            readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
-            /** Format: date-time */
-            readonly updated: string;
-        };
-        TimeMetricThresholdView: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            metricName: "REALM_ENDPOINTS_COMPUTE_MS" | "REALM_ENDPOINTS_RESPONSE_MS" | "REALM_GQL_COMPUTE_MS" | "REALM_GQL_RESPONSE_MS" | "REALM_OVERALL_COMPUTE_MS" | "REALM_SDK_FNS_RESPONSE_MS" | "REALM_SDK_FUNCTIONS_COMPUTE_MS" | "REALM_SDK_MQL_COMPUTE_MS" | "REALM_SDK_MQL_RESPONSE_MS" | "REALM_SYNC_CLIENT_BOOTSTRAP_MS" | "REALM_SYNC_CURRENT_OPLOG_LAG_MS_SUM" | "REALM_TRIGGERS_COMPUTE_MS" | "REALM_TRIGGERS_CURRENT_OPLOG_LAG_MS_SUM" | "REALM_TRIGGERS_RESPONSE_MS";
-            /** @enum {string} */
-            mode?: "AVERAGE";
-            /** @enum {string} */
-            operator?: "LESS_THAN" | "GREATER_THAN";
-            /** Format: double */
-            threshold?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        /**
-         * @default HOURS
-         * @enum {string}
-         */
-        TimeMetricUnits: "NANOSECONDS" | "MILLISECONDS" | "MILLION_MINUTES" | "SECONDS" | "MINUTES" | "HOURS" | "DAYS";
-        TimeMetricValueView: {
-            /** Format: double */
-            readonly number?: number;
-            units?: components["schemas"]["TimeMetricUnits"];
-        };
-        UserNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            emailEnabled?: boolean;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            smsEnabled?: boolean;
-            /** @enum {string} */
-            typeName: "USER";
-            /** Format: email */
-            username?: string;
-        };
-        UserScope: {
-            name: string;
-            /** @enum {string} */
-            type: "CLUSTER" | "DATA_LAKE" | "STREAM";
-        };
-        VectorSearchHostStatusDetail: {
-            hostname?: string;
-            mainIndex?: components["schemas"]["VectorSearchIndexStatusDetail"];
-            queryable?: boolean;
-            stagedIndex?: components["schemas"]["VectorSearchIndexStatusDetail"];
-            /** @enum {string} */
-            status?: "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
-        };
-        VectorSearchIndexDefinition: {
-            fields: components["schemas"]["BasicDBObject"][];
-            nestedRoot?: string;
-            /**
-             * Format: int32
-             * @default 1
-             */
-            numPartitions?: number;
-            storedSource?: Record<string, never>;
-        };
-        VectorSearchIndexResponse: Omit<components["schemas"]["SearchIndexResponse"], "type"> & {
-            latestDefinition?: components["schemas"]["VectorSearchIndexDefinition"];
-            statusDetail?: components["schemas"]["VectorSearchHostStatusDetail"][];
-        } & {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "vectorSearch";
-        };
-        VectorSearchIndexStatusDetail: {
-            definition?: components["schemas"]["VectorSearchIndexDefinition"];
-            definitionVersion?: components["schemas"]["SearchIndexDefinitionVersion"];
-            message?: string;
-            queryable?: boolean;
-            /** @enum {string} */
-            status?: "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
-        };
-        VictorOpsNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            integrationId?: string;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            /** @enum {string} */
-            typeName: "VICTOR_OPS";
-            victorOpsApiKey?: string;
-            victorOpsRoutingKey?: string;
-        };
-        WebhookNotification: {
-            /** Format: int32 */
-            delayMin?: number;
-            integrationId?: string;
-            /** Format: int32 */
-            intervalMin?: number;
-            notifierId?: string;
-            /** @enum {string} */
-            typeName: "WEBHOOK";
-            /** Format: password */
-            webhookBodyTemplate?: string;
-            /** Format: password */
-            webhookHeadersTemplate?: string;
-            /** Format: password */
-            webhookSecret?: string;
-            webhookUrl?: string;
-        };
+  schemas: {
+    AcknowledgeAlert: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      readonly links?: components["schemas"]["Link"][];
+      unacknowledgeAlert?: boolean;
     };
-    responses: {
-        badRequest: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
-        conflict: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
-        forbidden: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
-        forbiddenOrResourcePolicyViolation: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
-        internalServerError: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
-        notFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
-        paymentRequired: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
-        serviceUnavailable: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
-        tooManyRequests: {
-            headers: {
-                "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                "Retry-After": components["headers"]["HeaderRetryAfter"];
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
-        unauthorized: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
+    AdvancedAutoScalingSettings: {
+      compute?: components["schemas"]["AdvancedComputeAutoScaling"];
+      diskGB?: components["schemas"]["DiskGBAutoScaling"];
+      storageConfig?: components["schemas"]["StorageConfig"] | null;
     };
-    parameters: {
-        end: string;
-        envelope: boolean;
-        granularity: string;
-        groupId: string;
-        includeCount: boolean;
-        itemsPerPage: number;
-        orgId: string;
-        pageNum: number;
-        period: string;
-        pretty: boolean;
-        start: string;
+    AdvancedComputeAutoScaling: {
+      enabled?: boolean;
+      maxInstanceSize?: components["schemas"]["BaseCloudProviderInstanceSize"];
+      minInstanceSize?: components["schemas"]["BaseCloudProviderInstanceSize"];
+      scaleDownEnabled?: boolean;
     };
-    requestBodies: never;
-    headers: {
-        HeaderRateLimitLimit: number;
-        HeaderRateLimitRemaining: number;
-        HeaderRetryAfter: number;
+    AdvancedDiskBackupSnapshotSchedulePolicy: {
+      id?: string;
+      policyItems: components["schemas"]["DiskBackupApiPolicyItem"][];
     };
-    pathItems: never;
+    AlertMatcher: {
+      fieldName: string;
+      /** @enum {string} */
+      operator:
+        | "EQUALS"
+        | "CONTAINS"
+        | "STARTS_WITH"
+        | "ENDS_WITH"
+        | "NOT_EQUALS"
+        | "NOT_CONTAINS"
+        | "REGEX";
+      value: string;
+    };
+    AlertsNotificationRootForGroup:
+      | components["schemas"]["DatadogNotification"]
+      | components["schemas"]["EmailNotification"]
+      | components["schemas"]["GroupNotification"]
+      | components["schemas"]["HipChatNotification"]
+      | components["schemas"]["MicrosoftTeamsNotification"]
+      | components["schemas"]["OperationsContactNotification"]
+      | components["schemas"]["OpsGenieNotification"]
+      | components["schemas"]["OrgNotification"]
+      | components["schemas"]["PagerDutyNotification"]
+      | components["schemas"]["SlackNotification"]
+      | components["schemas"]["SMSNotification"]
+      | components["schemas"]["TeamNotification"]
+      | components["schemas"]["UserNotification"]
+      | components["schemas"]["VictorOpsNotification"]
+      | components["schemas"]["WebhookNotification"];
+    AlertsThresholdInteger: {
+      operator?: components["schemas"]["Operator"];
+      /** Format: int32 */
+      threshold?: number;
+      /** @enum {string} */
+      units?: units_ded7c172;
+    };
+    AlertsToggle: {
+      enabled?: boolean;
+    };
+    AlertViewForNdsGroup:
+      | components["schemas"]["AppServiceAlertView"]
+      | components["schemas"]["ClusterAlertViewForNdsGroup"]
+      | components["schemas"]["HostAlertViewForNdsGroup"]
+      | components["schemas"]["FlexMetricAlert"]
+      | components["schemas"]["HostMetricAlert"]
+      | components["schemas"]["ReplicaSetAlertViewForNdsGroup"]
+      | components["schemas"]["StreamProcessorAlertViewForNdsGroup"]
+      | components["schemas"]["DefaultAlertViewForNdsGroup"];
+    ApiAtlasClusterAdvancedConfigurationView: {
+      customOpensslCipherConfigTls12?: (
+        "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384" | "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+      )[];
+      customOpensslCipherConfigTls13?: (
+        | "TLS_AES_256_GCM_SHA384"
+        | "TLS_CHACHA20_POLY1305_SHA256"
+        | "TLS_AES_128_GCM_SHA256"
+        | "TLS_AES_128_CCM_SHA256"
+      )[];
+      /** @enum {string} */
+      minimumEnabledTlsProtocol?: "TLS1_2" | "TLS1_3";
+      /** @enum {string} */
+      tlsCipherConfigMode?: "CUSTOM" | "DEFAULT";
+    };
+    ApiClusterScaleView_Atlas: {
+      readonly docsUrl?: string | null;
+      readonly minimumTier?: string;
+      readonly scaleUrl?: string;
+    };
+    ApiError: {
+      badRequestDetail?: components["schemas"]["BadRequestDetail"];
+      detail?: string | null;
+      /** Format: int32 */
+      readonly error: number;
+      readonly errorCode: string;
+      readonly parameters?: Record<string, never>[];
+      readonly policiesCausingDecision?: components["schemas"]["ResourcePolicyReference"][];
+      readonly reason?: string | null;
+    };
+    ApiHostView_Atlas: {
+      /** Format: date-time */
+      readonly created?: string;
+      readonly groupId?: string;
+      readonly hostname?: string;
+      readonly id?: string;
+      /** Format: date-time */
+      readonly lastPing?: string;
+      readonly links?: components["schemas"]["Link_Atlas"][];
+      /** Format: int32 */
+      readonly port?: number;
+      readonly replicaSetName?: string;
+      readonly shardName?: string;
+      /** @enum {string} */
+      readonly typeName?:
+        | "REPLICA_PRIMARY"
+        | "REPLICA_SECONDARY"
+        | "RECOVERING"
+        | "SHARD_MONGOS"
+        | "SHARD_CONFIG"
+        | "SHARD_STANDALONE"
+        | "SHARD_PRIMARY"
+        | "SHARD_SECONDARY"
+        | "NO_DATA";
+      readonly userAlias?: string;
+      readonly version?: string;
+    };
+    ApiMeasurementsGeneralView_Atlas: {
+      readonly databaseName?: string;
+      /** Format: date-time */
+      readonly end?: string;
+      /** @enum {string} */
+      readonly granularity?: "PT1M" | "PT5M" | "PT1H" | "P1D";
+      readonly groupId?: string;
+      readonly hostId?: string;
+      readonly links?: components["schemas"]["Link_Atlas"][];
+      readonly measurements?: components["schemas"]["MetricsMeasurement_Atlas"][];
+      readonly message?: string;
+      readonly partitionName?: string;
+      readonly processId?: string;
+      scale?: components["schemas"]["ApiClusterScaleView_Atlas"];
+      /** Format: date-time */
+      readonly start?: string;
+    };
+    AppServiceAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["AppServiceEventTypeViewAlertableNoThreshold"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AppServiceMetricMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    AppServiceAlertView: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      /** Format: date-time */
+      readonly created: string;
+      eventTypeName: components["schemas"]["AppServiceEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly orgId?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    /** @enum {string} */
+    AppServiceEventTypeViewAlertable:
+      | "URL_CONFIRMATION"
+      | "SUCCESSFUL_DEPLOY"
+      | "DEPLOYMENT_FAILURE"
+      | "DEPLOYMENT_MODEL_CHANGE_SUCCESS"
+      | "DEPLOYMENT_MODEL_CHANGE_FAILURE"
+      | "REQUEST_RATE_LIMIT"
+      | "LOG_FORWARDER_FAILURE"
+      | "OUTSIDE_REALM_METRIC_THRESHOLD"
+      | "SYNC_FAILURE"
+      | "TRIGGER_FAILURE"
+      | "TRIGGER_AUTO_RESUMED";
+    /** @enum {string} */
+    AppServiceEventTypeViewAlertableNoThreshold:
+      | "URL_CONFIRMATION"
+      | "SUCCESSFUL_DEPLOY"
+      | "DEPLOYMENT_FAILURE"
+      | "REQUEST_RATE_LIMIT"
+      | "LOG_FORWARDER_FAILURE"
+      | "SYNC_FAILURE"
+      | "TRIGGER_FAILURE"
+      | "TRIGGER_AUTO_RESUMED"
+      | "DEPLOYMENT_MODEL_CHANGE_SUCCESS"
+      | "DEPLOYMENT_MODEL_CHANGE_FAILURE";
+    /** @enum {string} */
+    AppServiceEventTypeViewAlertableWithThreshold: "OUTSIDE_REALM_METRIC_THRESHOLD";
+    AppServiceMetricAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["AppServiceEventTypeViewAlertableWithThreshold"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AppServiceMetricMatcher"][];
+      metricThreshold?: components["schemas"]["AppServiceMetricThreshold"];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    AppServiceMetricMatcher: {
+      fieldName: components["schemas"]["AppServiceMetricMatcherField"];
+      /** @enum {string} */
+      operator:
+        | "EQUALS"
+        | "CONTAINS"
+        | "STARTS_WITH"
+        | "ENDS_WITH"
+        | "NOT_EQUALS"
+        | "NOT_CONTAINS"
+        | "REGEX";
+      value: string;
+    };
+    /** @enum {string} */
+    AppServiceMetricMatcherField: "APPLICATION_ID";
+    AppServiceMetricThreshold: Shared_49612667 &
+      (
+        | components["schemas"]["RawMetricThresholdView"]
+        | components["schemas"]["DataMetricThresholdView"]
+        | components["schemas"]["TimeMetricThresholdView"]
+      );
+    AssertMsgRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "ASSERT_MSG";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    AssertRegularRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "ASSERT_REGULAR";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    AssertUserRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "ASSERT_USER";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    AssertWarningRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "ASSERT_WARNING";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    AtlasOrganization: {
+      readonly id?: string;
+      readonly isDeleted?: boolean;
+      readonly links?: components["schemas"]["Link"][];
+      name: string;
+      /** @default false */
+      skipDefaultAlertsSettings?: boolean;
+    };
+    AtlasSearchAnalyzer: {
+      charFilters?: components["schemas"]["BasicDBObject"][];
+      name: string;
+      tokenFilters?: components["schemas"]["BasicDBObject"][];
+      tokenizer: {
+        [key: string]: Record<string, never>;
+      };
+    };
+    AutoExportPolicyView: {
+      exportBucketId?: string;
+      /** @enum {string} */
+      frequencyType?: "monthly" | "yearly";
+    };
+    AvailableCloudProviderRegion: {
+      readonly default?: boolean;
+      readonly name?: string;
+    };
+    AvgCommandExecutionTimeTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "AVG_COMMAND_EXECUTION_TIME";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    AvgReadExecutionTimeTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "AVG_READ_EXECUTION_TIME";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    AvgWriteExecutionTimeTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "AVG_WRITE_EXECUTION_TIME";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    AWSDataProcessRegionView: Omit<
+      components["schemas"]["DataProcessRegionView"],
+      "cloudProvider"
+    > & {
+      /** @enum {string} */
+      readonly region?:
+        | "US_EAST_1"
+        | "US_WEST_2"
+        | "SA_EAST_1"
+        | "EU_WEST_1"
+        | "EU_WEST_2"
+        | "EU_CENTRAL_1"
+        | "AP_SOUTH_1"
+        | "AP_SOUTHEAST_1"
+        | "AP_SOUTHEAST_2"
+        | "AP_NORTHEAST_2";
+    } & {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      cloudProvider: "AWS";
+    };
+    AWSPrivateLinkConnection: {
+      /** @enum {string} */
+      readonly cloudProvider: "AWS" | "AZURE" | "GCP";
+      readonly endpointServiceName?: string;
+      readonly errorMessage?: string;
+      readonly id?: string;
+      readonly interfaceEndpoints: string[];
+      readonly regionName?: string;
+      /** @enum {string} */
+      readonly status?: "INITIATING" | "AVAILABLE" | "WAITING_FOR_USER" | "FAILED" | "DELETING";
+      supportedRemoteRegions?: string[] | null;
+    };
+    AzureDataProcessRegionView: Omit<
+      components["schemas"]["DataProcessRegionView"],
+      "cloudProvider"
+    > & {
+      /** @enum {string} */
+      readonly region?: "US_EAST_2" | "EUROPE_WEST" | "BRAZIL_SOUTH";
+    } & {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      cloudProvider: "AZURE";
+    };
+    AzurePrivateLinkConnection: {
+      /** @enum {string} */
+      readonly cloudProvider: "AWS" | "AZURE" | "GCP";
+      readonly errorMessage?: string;
+      readonly id?: string;
+      readonly privateEndpoints?: string[];
+      readonly privateLinkServiceName?: string;
+      readonly privateLinkServiceResourceId?: string;
+      readonly regionName?: string;
+      /** @enum {string} */
+      readonly status?: "INITIATING" | "AVAILABLE" | "WAITING_FOR_USER" | "FAILED" | "DELETING";
+    };
+    BackupOnlineArchive: {
+      readonly _id?: string;
+      readonly clusterName?: string;
+      /**
+       * @default STANDARD
+       * @enum {string}
+       */
+      readonly collectionType?: "TIMESERIES" | "STANDARD";
+      readonly collName?: string;
+      criteria?:
+        components["schemas"]["DateCriteriaView"] | components["schemas"]["CustomCriteriaView"];
+      dataExpirationRule?: components["schemas"]["DataExpirationRuleView"];
+      dataProcessRegion?: components["schemas"]["DataProcessRegionView"];
+      readonly dataSetName?: string;
+      readonly dbName?: string;
+      readonly groupId?: string;
+      readonly partitionFields?: components["schemas"]["PartitionFieldView"][];
+      paused?: boolean;
+      schedule?: components["schemas"]["OnlineArchiveSchedule"];
+      /** @enum {string} */
+      readonly state?: "PENDING" | "ACTIVE" | "PAUSING" | "PAUSED" | "DELETED" | "ORPHANED";
+    };
+    BadRequestDetail: {
+      fields?: components["schemas"]["FieldViolation"][];
+    };
+    BaseCloudProviderInstanceSize: string;
+    BasicDBObject: {
+      [key: string]: Record<string, never>;
+    };
+    BiConnector: {
+      enabled?: boolean;
+      /** @enum {string} */
+      readPreference?: "PRIMARY" | "SECONDARY" | "ANALYTICS";
+    };
+    /** @enum {string} */
+    BillingEventTypeViewAlertableWithThreshold:
+      | "PENDING_INVOICE_OVER_THRESHOLD"
+      | "DAILY_BILL_OVER_THRESHOLD"
+      | "DAILY_BILLING_CHANGE_OVER_THRESHOLD"
+      | "WEEKLY_BILLING_CHANGE_OVER_THRESHOLD"
+      | "MONTHLY_BILLING_CHANGE_OVER_THRESHOLD";
+    BillingInvoice: {
+      /** Format: int64 */
+      readonly amountBilledCents?: number;
+      /** Format: int64 */
+      readonly amountPaidCents?: number;
+      /** Format: date-time */
+      readonly created?: string;
+      /** Format: int64 */
+      readonly creditsCents?: number;
+      /** Format: date-time */
+      readonly endDate?: string;
+      readonly id?: string;
+      readonly lineItems?: components["schemas"]["InvoiceLineItem"][];
+      readonly linkedInvoices?: components["schemas"]["BillingInvoice"][];
+      readonly links?: components["schemas"]["Link"][];
+      readonly orgId?: string;
+      readonly payments?: components["schemas"]["BillingPayment"][];
+      readonly refunds?: components["schemas"]["BillingRefund"][];
+      /** Format: int64 */
+      readonly salesTaxCents?: number;
+      /** Format: date-time */
+      readonly startDate?: string;
+      /** Format: int64 */
+      readonly startingBalanceCents?: number;
+      /** @enum {string} */
+      statusName?:
+        "PENDING" | "CLOSED" | "FORGIVEN" | "FAILED" | "PAID" | "FREE" | "PREPAID" | "INVOICED";
+      /** Format: int64 */
+      readonly subtotalCents?: number;
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    BillingInvoiceMetadata: {
+      /** Format: int64 */
+      readonly amountBilledCents?: number;
+      /** Format: int64 */
+      readonly amountPaidCents?: number;
+      /** Format: date-time */
+      readonly created?: string;
+      /** Format: int64 */
+      readonly creditsCents?: number;
+      /** Format: date-time */
+      readonly endDate?: string;
+      readonly id?: string;
+      readonly linkedInvoices?: components["schemas"]["BillingInvoiceMetadata"][];
+      readonly links?: components["schemas"]["Link"][];
+      readonly orgId?: string;
+      /** Format: int64 */
+      readonly salesTaxCents?: number;
+      /** Format: date-time */
+      readonly startDate?: string;
+      /** Format: int64 */
+      readonly startingBalanceCents?: number;
+      /** @enum {string} */
+      statusName?:
+        "PENDING" | "CLOSED" | "FORGIVEN" | "FAILED" | "PAID" | "FREE" | "PREPAID" | "INVOICED";
+      /** Format: int64 */
+      readonly subtotalCents?: number;
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    BillingPayment: {
+      /** Format: int64 */
+      readonly amountBilledCents?: number;
+      /** Format: int64 */
+      readonly amountPaidCents?: number;
+      /** Format: date-time */
+      readonly created?: string;
+      readonly currency?: string;
+      readonly id?: string;
+      /** Format: int64 */
+      readonly salesTaxCents?: number;
+      /** @enum {string} */
+      statusName?:
+        | "NEW"
+        | "FORGIVEN"
+        | "FAILED"
+        | "PAID"
+        | "PARTIAL_PAID"
+        | "CANCELLED"
+        | "INVOICED"
+        | "FAILED_AUTHENTICATION"
+        | "PROCESSING"
+        | "PENDING_REVERSAL"
+        | "REFUNDED";
+      /** Format: int64 */
+      readonly subtotalCents?: number;
+      readonly unitPrice?: string;
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    BillingRefund: {
+      /** Format: int64 */
+      readonly amountCents?: number;
+      /** Format: date-time */
+      readonly created?: string;
+      readonly paymentId?: string;
+      readonly reason?: string;
+    };
+    BillingThresholdAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["BillingEventTypeViewAlertableWithThreshold"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AlertMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      threshold?: components["schemas"]["GreaterThanRawThreshold"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    CacheBytesReadIntoDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CACHE_BYTES_READ_INTO";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    CacheBytesWrittenFromDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CACHE_BYTES_WRITTEN_FROM";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    CacheUsageDirtyDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CACHE_USAGE_DIRTY";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    CacheUsageUsedDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CACHE_USAGE_USED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    CloudDatabaseUser: {
+      /**
+       * @default NONE
+       * @enum {string}
+       */
+      awsIAMType?: "NONE" | "USER" | "ROLE";
+      /**
+       * @default admin
+       * @enum {string}
+       */
+      databaseName: "admin" | "$external";
+      /** Format: date-time */
+      deleteAfterDate?: string;
+      description?: string;
+      groupId: string;
+      labels?: components["schemas"]["ComponentLabel"][];
+      /**
+       * @default NONE
+       * @enum {string}
+       */
+      ldapAuthType?: "NONE" | "GROUP" | "USER";
+      readonly links?: components["schemas"]["Link"][];
+      /**
+       * @default NONE
+       * @enum {string}
+       */
+      oidcAuthType?: "NONE" | "IDP_GROUP" | "USER";
+      password?: string;
+      roles: components["schemas"]["DatabaseUserRole"][];
+      scopes?: components["schemas"]["UserScope"][];
+      username: string;
+      /**
+       * @default NONE
+       * @enum {string}
+       */
+      x509Type?: "NONE" | "CUSTOMER" | "MANAGED";
+    };
+    CloudProviderRegions: {
+      readonly instanceSizes?: components["schemas"]["ClusterCloudProviderInstanceSize"][];
+      /** @enum {string} */
+      provider?: "AWS" | "GCP" | "AZURE";
+    };
+    CloudRegionConfig20240805: {
+      analyticsAutoScaling?: components["schemas"]["AdvancedAutoScalingSettings"];
+      analyticsSpecs?: components["schemas"]["DedicatedHardwareSpec20240805"];
+      autoScaling?: components["schemas"]["AdvancedAutoScalingSettings"];
+      /** @enum {string} */
+      backingProviderName?: "AWS" | "GCP" | "AZURE";
+      effectiveAnalyticsSpecs?: components["schemas"]["DedicatedHardwareSpec20240805"];
+      effectiveElectableSpecs?: components["schemas"]["DedicatedHardwareSpec20240805"];
+      effectiveReadOnlySpecs?: components["schemas"]["DedicatedHardwareSpec20240805"];
+      electableSpecs?: components["schemas"]["HardwareSpec20240805"];
+      /** Format: int32 */
+      priority?: number;
+      providerName?: string;
+      readOnlySpecs?: components["schemas"]["DedicatedHardwareSpec20240805"];
+      regionName?: string;
+    };
+    ClusterAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["ClusterEventTypeViewForNdsGroupAlertable"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["ClusterMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    ClusterAlertViewForNdsGroup: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      readonly clusterName?: string;
+      /** Format: date-time */
+      readonly created: string;
+      eventTypeName: components["schemas"]["ClusterEventTypeViewForNdsGroupAlertable"];
+      readonly groupId?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly orgId?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    ClusterCloudProviderInstanceSize: {
+      readonly availableRegions?: components["schemas"]["AvailableCloudProviderRegion"][];
+      readonly name?: string;
+    };
+    ClusterConnectionStrings: {
+      /** @deprecated */
+      readonly awsPrivateLink?: {
+        [key: string]: string;
+      };
+      /** @deprecated */
+      readonly awsPrivateLinkSrv?: {
+        [key: string]: string;
+      };
+      readonly private?: string;
+      /** @deprecated */
+      readonly privateEndpoint?: components["schemas"]["ClusterDescriptionConnectionStringsPrivateEndpoint"][];
+      readonly privateSrv?: string;
+      readonly standard?: string;
+      readonly standardSrv?: string;
+    };
+    ClusterDescription20240805: {
+      /** Format: date-time */
+      acceptDataRisksAndForceReplicaSetReconfig?: string;
+      /** @enum {string|null} */
+      adaptiveCapacity?: "ENABLED" | "DISABLED" | null;
+      advancedConfiguration?: components["schemas"]["ApiAtlasClusterAdvancedConfigurationView"];
+      backupEnabled?: boolean;
+      biConnector?: components["schemas"]["BiConnector"];
+      /** @enum {string} */
+      clusterType?: "REPLICASET" | "SHARDED" | "GEOSHARDED";
+      /**
+       * @default ATLAS_MANAGED
+       * @enum {string}
+       */
+      configServerManagementMode?: "ATLAS_MANAGED" | "FIXED_TO_DEDICATED";
+      /** @enum {string} */
+      readonly configServerType?: "DEDICATED" | "EMBEDDED";
+      connectionStrings?: components["schemas"]["ClusterConnectionStrings"];
+      /** Format: date-time */
+      readonly createDate?: string;
+      /** @enum {string} */
+      databaseEdition?: "CORE" | "INFINITE";
+      /**
+       * @default FULLY_WARMED
+       * @enum {string}
+       */
+      diskWarmingMode?: "FULLY_WARMED" | "VISIBLE_EARLIER";
+      /** @enum {string} */
+      readonly effectiveDatabaseEdition?: "CORE" | "INFINITE";
+      readonly effectiveReplicationSpecs?: components["schemas"]["ReplicationSpec20240805"][];
+      /** @enum {string} */
+      encryptionAtRestProvider?: "NONE" | "AWS" | "AZURE" | "GCP";
+      readonly featureCompatibilityVersion?: string;
+      /** Format: date-time */
+      readonly featureCompatibilityVersionExpirationDate?: string;
+      globalClusterSelfManagedSharding?: boolean;
+      readonly groupId?: string;
+      readonly id?: string;
+      /** @enum {string} */
+      readonly internalClusterRole?: "NONE" | "SYSTEM_CLUSTER" | "INTERNAL_SHADOW_CLUSTER";
+      /** @deprecated */
+      labels?: components["schemas"]["ComponentLabel"][];
+      readonly links?: components["schemas"]["Link"][];
+      mongoDBEmployeeAccessGrant?: components["schemas"]["EmployeeAccessGrantView"];
+      mongoDBMajorVersion?: string;
+      readonly mongoDBVersion?: string;
+      name?: string;
+      paused?: boolean;
+      pitEnabled?: boolean;
+      redactClientLogData?: boolean;
+      /**
+       * @default WORKLOAD_TYPE
+       * @enum {string}
+       */
+      replicaSetScalingStrategy?: "SEQUENTIAL" | "WORKLOAD_TYPE" | "NODE_TYPE";
+      replicationSpecs?: components["schemas"]["ReplicationSpec20240805"][];
+      /** @default false */
+      retainBackups?: boolean;
+      /**
+       * @default ISRGROOTX1
+       * @enum {string}
+       */
+      rootCertType?: "ISRGROOTX1";
+      searchAutoMigration?: components["schemas"]["SearchAutoMigration"];
+      /** @enum {string} */
+      readonly stateName?: "IDLE" | "CREATING" | "UPDATING" | "DELETING" | "REPAIRING";
+      tags?: components["schemas"]["ResourceTag"][];
+      /** @default false */
+      terminationProtectionEnabled?: boolean;
+      /** @default false */
+      useAwsTimeBasedSnapshotCopyForFastInitialSync?: boolean;
+      /**
+       * @default LTS
+       * @enum {string}
+       */
+      versionReleaseSystem?: "LTS" | "CONTINUOUS";
+    };
+    ClusterDescriptionConnectionStringsPrivateEndpoint: {
+      readonly connectionString?: string;
+      readonly endpoints?: components["schemas"]["ClusterDescriptionConnectionStringsPrivateEndpointEndpoint"][];
+      readonly srvConnectionString?: string;
+      readonly srvShardOptimizedConnectionString?: string;
+      /** @enum {string} */
+      readonly type?: "MONGOD" | "MONGOS";
+    };
+    ClusterDescriptionConnectionStringsPrivateEndpointEndpoint: {
+      readonly endpointId?: string;
+      /** @enum {string} */
+      readonly providerName?: "AWS" | "AZURE" | "GCP";
+      readonly region?: string;
+    };
+    /** @enum {string} */
+    ClusterEventTypeViewForNdsGroupAlertable: "CLUSTER_MONGOS_IS_MISSING";
+    ClusterMatcher: {
+      fieldName: components["schemas"]["ClusterMatcherField"];
+      /** @enum {string} */
+      operator:
+        | "EQUALS"
+        | "CONTAINS"
+        | "STARTS_WITH"
+        | "ENDS_WITH"
+        | "NOT_EQUALS"
+        | "NOT_CONTAINS"
+        | "REGEX";
+      value: string;
+    };
+    /** @enum {string} */
+    ClusterMatcherField: "CLUSTER_NAME";
+    ClusterServerlessBackupOptions: {
+      /** @default true */
+      serverlessContinuousBackupEnabled?: boolean;
+    };
+    ComponentLabel: {
+      key?: string;
+      value?: string;
+    };
+    ComputedMemoryDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "COMPUTED_MEMORY";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    ConnectionsEstablishmentRateLimitRejectedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CONNECTIONS_ESTABLISHMENT_RATE_LIMIT_REJECTED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ConnectionsMaxRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CONNECTIONS_MAX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ConnectionsPercentRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CONNECTIONS_PERCENT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ConnectionsRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CONNECTIONS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    /** @enum {string} */
+    CpsBackupEventTypeViewForNdsGroupAlertableWithThreshold:
+      "CPS_SNAPSHOT_BEHIND" | "CPS_PREV_SNAPSHOT_OLD" | "CPS_OPLOG_BEHIND";
+    CpsBackupThresholdAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["CpsBackupEventTypeViewForNdsGroupAlertableWithThreshold"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AlertMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      threshold?: components["schemas"]["GreaterThanTimeThreshold"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    CriteriaView: {
+      /** @enum {string} */
+      type?: "DATE" | "CUSTOM";
+    };
+    CursorsTotalClientCursorsSizeRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CURSORS_TOTAL_CLIENT_CURSORS_SIZE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    CursorsTotalOpenRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CURSORS_TOTAL_OPEN";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    CursorsTotalTimedOutRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "CURSORS_TOTAL_TIMED_OUT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    CustomCriteriaView: Omit<components["schemas"]["CriteriaView"], "type"> & {
+      query: string;
+    } & {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "CUSTOM";
+    };
+    DatabaseUserRole: {
+      collectionName?: string;
+      databaseName: string;
+      roleName: string;
+    };
+    DatadogNotification: {
+      datadogApiKey?: string;
+      /**
+       * @default US
+       * @enum {string}
+       */
+      datadogRegion?: "US" | "EU" | "US3" | "US5" | "AP1" | "AP2" | "US1_FED";
+      /** Format: int32 */
+      delayMin?: number;
+      integrationId?: string;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      /** @enum {string} */
+      typeName: "DATADOG";
+    };
+    DataExpirationRuleView: {
+      /** Format: int32 */
+      expireAfterDays?: number;
+    };
+    DataMetricAlertView: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      readonly clusterName?: string;
+      /** Format: date-time */
+      readonly created: string;
+      currentValue?: components["schemas"]["DataMetricValueView"];
+      eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly hostnameAndPort?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly metricName?: string;
+      readonly orgId?: string;
+      readonly replicaSetName?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    DataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName:
+        | "REALM_ENDPOINTS_EGRESS_BYTES"
+        | "REALM_GQL_EGRESS_BYTES"
+        | "REALM_OVERALL_EGRESS_BYTES"
+        | "REALM_SDK_FUNCTIONS_EGRESS_BYTES"
+        | "REALM_SDK_MQL_EGRESS_BYTES"
+        | "REALM_SYNC_CLIENT_CHANGESETS_INVALID"
+        | "REALM_SYNC_CLIENT_READS_FAILED"
+        | "REALM_SYNC_CLIENT_UPLOADS_FAILED"
+        | "REALM_SYNC_EGRESS_BYTES"
+        | "REALM_SYNC_FAILED_REQUESTS"
+        | "REALM_SYNC_SESSIONS_ENDED"
+        | "REALM_TRIGGERS_EGRESS_BYTES";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    /** @enum {string} */
+    DataMetricUnits:
+      | "BITS"
+      | "KILOBITS"
+      | "MEGABITS"
+      | "GIGABITS"
+      | "BYTES"
+      | "KILOBYTES"
+      | "MEGABYTES"
+      | "GIGABYTES"
+      | "TERABYTES"
+      | "PETABYTES";
+    DataMetricValueView: {
+      /** Format: double */
+      readonly number?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    DataProcessRegionView: {
+      /** @enum {string} */
+      readonly cloudProvider?: "AWS" | "AZURE" | "GCP";
+    };
+    DateCriteriaView: Omit<components["schemas"]["CriteriaView"], "type"> & {
+      dateField?: string;
+      /**
+       * @default ISODATE
+       * @enum {string}
+       */
+      dateFormat?: "ISODATE" | "EPOCH_SECONDS" | "EPOCH_MILLIS" | "EPOCH_NANOSECONDS" | "OBJECT_ID";
+      /** Format: int32 */
+      expireAfterDays?: number;
+    } & {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "DATE";
+    };
+    DbDataSizeTotalDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DB_DATA_SIZE_TOTAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    DbDataSizeTotalWoSystemDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DB_DATA_SIZE_TOTAL_WO_SYSTEM";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    DbIndexSizeTotalDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DB_INDEX_SIZE_TOTAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    DbStorageTotalDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DB_STORAGE_TOTAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    DedicatedHardwareSpec20240805: {
+      diskIOPS?: number;
+      diskSizeGB?: number;
+      readonly diskThroughput?: number;
+      /**
+       * @default STANDARD
+       * @enum {string}
+       */
+      ebsVolumeType?: "STANDARD" | "PROVISIONED" | "HIGH_PERFORMANCE";
+      instanceSize?: string;
+      nodeCount?: number;
+    };
+    DefaultAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName:
+        | "CREDIT_CARD_ABOUT_TO_EXPIRE"
+        | (
+            | "CPS_SNAPSHOT_STARTED"
+            | "CPS_SNAPSHOT_SUCCESSFUL"
+            | "CPS_SNAPSHOT_FAILED"
+            | "CPS_CONCURRENT_SNAPSHOT_FAILED_WILL_RETRY"
+            | "CPS_SNAPSHOT_FALLBACK_SUCCESSFUL"
+            | "CPS_SNAPSHOT_FALLBACK_FAILED"
+            | "CPS_COPY_SNAPSHOT_STARTED"
+            | "CPS_COPY_SNAPSHOT_FAILED"
+            | "CPS_COPY_SNAPSHOT_FAILED_WILL_RETRY"
+            | "CPS_COPY_SNAPSHOT_SUCCESSFUL"
+            | "CPS_RESTORE_SUCCESSFUL"
+            | "CPS_EXPORT_SUCCESSFUL"
+            | "CPS_RESTORE_FAILED"
+            | "CPS_EXPORT_FAILED"
+            | "CPS_COLLECTION_RESTORE_SUCCESSFUL"
+            | "CPS_COLLECTION_RESTORE_FAILED"
+            | "CPS_COLLECTION_RESTORE_PARTIAL_SUCCESS"
+            | "CPS_COLLECTION_RESTORE_CANCELED"
+            | "CPS_AUTO_EXPORT_FAILED"
+            | "CPS_SNAPSHOT_DOWNLOAD_REQUEST_FAILED"
+            | "CPS_OPLOG_CAUGHT_UP"
+          )
+        | Shared_f4c3a9ed
+        | (
+            | "FTS_INDEX_DELETION_FAILED"
+            | "FTS_INDEX_BUILD_COMPLETE"
+            | "FTS_INDEX_BUILD_FAILED"
+            | "FTS_INDEX_CLEANED_UP"
+            | "FTS_INDEX_STALE"
+            | "FTS_INDEXES_RESTORE_FAILED"
+            | "FTS_INDEXES_SYNONYM_MAPPING_INVALID"
+          )
+        | Shared_70dbebcc
+        | "MONGOTUNE_ALERT"
+        | Shared_63f480bb
+        | (
+            | "MAINTENANCE_IN_ADVANCED"
+            | "MAINTENANCE_AUTO_DEFERRED"
+            | "MAINTENANCE_STARTED"
+            | "MAINTENANCE_COMPLETED"
+            | "MAINTENANCE_NO_LONGER_NEEDED"
+          )
+        | (
+            | "ONLINE_ARCHIVE_INSUFFICIENT_INDEXES_CHECK"
+            | "ONLINE_ARCHIVE_MAX_CONSECUTIVE_OFFLOAD_WINDOWS_CHECK"
+          )
+        | ("JOINED_GROUP" | "REMOVED_FROM_GROUP" | "USER_ROLES_CHANGED_AUDIT")
+        | ("TAGS_MODIFIED" | "CLUSTER_TAGS_MODIFIED" | "GROUP_TAGS_MODIFIED")
+        | (
+            | "STREAM_PROCESSOR_STATE_IS_FAILED"
+            | "STREAM_PROCESSOR_AUTOSCALE_INITIATED"
+            | "OUTSIDE_STREAM_PROCESSOR_METRIC_THRESHOLD"
+          )
+        | Shared_452a8ee1
+        | "RESOURCE_POLICY_VIOLATED"
+        | Shared_01a6d608
+        | "PROACTIVE_REMEDIATION_NEEDED"
+        | (
+            | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_FIRST_WARNING"
+            | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_SECOND_WARNING"
+            | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_DELETED"
+          );
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AlertMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    DefaultAlertViewForNdsGroup: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      /** Format: date-time */
+      readonly created: string;
+      readonly eventTypeName:
+        | (
+            | "CREDIT_CARD_ABOUT_TO_EXPIRE"
+            | "PENDING_INVOICE_OVER_THRESHOLD"
+            | "DAILY_BILL_OVER_THRESHOLD"
+            | "DAILY_BILLING_CHANGE_OVER_THRESHOLD"
+            | "WEEKLY_BILLING_CHANGE_OVER_THRESHOLD"
+            | "MONTHLY_BILLING_CHANGE_OVER_THRESHOLD"
+          )
+        | (
+            | "CPS_SNAPSHOT_STARTED"
+            | "CPS_SNAPSHOT_SUCCESSFUL"
+            | "CPS_SNAPSHOT_FAILED"
+            | "CPS_CONCURRENT_SNAPSHOT_FAILED_WILL_RETRY"
+            | "CPS_SNAPSHOT_BEHIND"
+            | "CPS_COPY_SNAPSHOT_STARTED"
+            | "CPS_COPY_SNAPSHOT_FAILED"
+            | "CPS_COPY_SNAPSHOT_FAILED_WILL_RETRY"
+            | "CPS_COPY_SNAPSHOT_SUCCESSFUL"
+            | "CPS_PREV_SNAPSHOT_OLD"
+            | "CPS_SNAPSHOT_FALLBACK_SUCCESSFUL"
+            | "CPS_SNAPSHOT_FALLBACK_FAILED"
+            | "CPS_RESTORE_SUCCESSFUL"
+            | "CPS_EXPORT_SUCCESSFUL"
+            | "CPS_RESTORE_FAILED"
+            | "CPS_EXPORT_FAILED"
+            | "CPS_COLLECTION_RESTORE_SUCCESSFUL"
+            | "CPS_COLLECTION_RESTORE_FAILED"
+            | "CPS_COLLECTION_RESTORE_PARTIAL_SUCCESS"
+            | "CPS_COLLECTION_RESTORE_CANCELED"
+            | "CPS_AUTO_EXPORT_FAILED"
+            | "CPS_SNAPSHOT_DOWNLOAD_REQUEST_FAILED"
+            | "CPS_OPLOG_BEHIND"
+            | "CPS_OPLOG_CAUGHT_UP"
+          )
+        | (
+            | "AWS_ENCRYPTION_KEY_NEEDS_ROTATION"
+            | "AZURE_ENCRYPTION_KEY_NEEDS_ROTATION"
+            | "GCP_ENCRYPTION_KEY_NEEDS_ROTATION"
+            | "AWS_ENCRYPTION_KEY_INVALID"
+            | "AZURE_ENCRYPTION_KEY_INVALID"
+            | "GCP_ENCRYPTION_KEY_INVALID"
+          )
+        | (
+            | "FTS_INDEX_DELETION_FAILED"
+            | "FTS_INDEX_BUILD_COMPLETE"
+            | "FTS_INDEX_BUILD_FAILED"
+            | "FTS_INDEX_CLEANED_UP"
+            | "FTS_INDEX_STALE"
+            | "FTS_INDEXES_RESTORE_FAILED"
+            | "FTS_INDEXES_SYNONYM_MAPPING_INVALID"
+          )
+        | Shared_70dbebcc
+        | "MONGOTUNE_ALERT"
+        | Shared_63f480bb
+        | (
+            | "MAINTENANCE_IN_ADVANCED"
+            | "MAINTENANCE_AUTO_DEFERRED"
+            | "MAINTENANCE_STARTED"
+            | "MAINTENANCE_COMPLETED"
+            | "MAINTENANCE_NO_LONGER_NEEDED"
+          )
+        | (
+            | "NDS_X509_USER_AUTHENTICATION_CUSTOMER_CA_EXPIRATION_CHECK"
+            | "NDS_X509_USER_AUTHENTICATION_CUSTOMER_CRL_EXPIRATION_CHECK"
+            | "NDS_X509_USER_AUTHENTICATION_MANAGED_USER_CERTS_EXPIRATION_CHECK"
+          )
+        | (
+            | "ONLINE_ARCHIVE_INSUFFICIENT_INDEXES_CHECK"
+            | "ONLINE_ARCHIVE_MAX_CONSECUTIVE_OFFLOAD_WINDOWS_CHECK"
+          )
+        | "OUTSIDE_SERVERLESS_METRIC_THRESHOLD"
+        | "OUTSIDE_FLEX_METRIC_THRESHOLD"
+        | ("JOINED_GROUP" | "REMOVED_FROM_GROUP" | "USER_ROLES_CHANGED_AUDIT")
+        | ("TAGS_MODIFIED" | "CLUSTER_TAGS_MODIFIED" | "GROUP_TAGS_MODIFIED")
+        | (
+            | "STREAM_PROCESSOR_STATE_IS_FAILED"
+            | "STREAM_PROCESSOR_AUTOSCALE_INITIATED"
+            | "OUTSIDE_STREAM_PROCESSOR_METRIC_THRESHOLD"
+          )
+        | (
+            | "COMPUTE_AUTO_SCALE_INITIATED_BASE"
+            | "COMPUTE_AUTO_SCALE_INITIATED_ANALYTICS"
+            | "COMPUTE_AUTO_SCALE_SCALE_DOWN_FAIL_BASE"
+            | "COMPUTE_AUTO_SCALE_SCALE_DOWN_FAIL_ANALYTICS"
+            | "COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_BASE"
+            | "COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_ANALYTICS"
+            | "COMPUTE_AUTO_SCALE_OPLOG_FAIL_BASE"
+            | "COMPUTE_AUTO_SCALE_OPLOG_FAIL_ANALYTICS"
+            | "COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_BASE"
+            | "COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_ANALYTICS"
+            | "DISK_AUTO_SCALE_INITIATED"
+            | "DISK_AUTO_SCALE_MAX_DISK_SIZE_FAIL"
+            | "DISK_AUTO_SCALE_OPLOG_FAIL"
+            | "COMPUTE_AUTO_SCALE_DOWNSCALE_SKIPPED_FALLBACK_BASE"
+            | "COMPUTE_AUTO_SCALE_DOWNSCALE_SKIPPED_FALLBACK_ANALYTICS"
+            | "CLUSTER_AUTO_SHARDING_INITIATED"
+            | "CLUSTER_RESHARDING_COMPLETED"
+            | "PREDICTIVE_COMPUTE_AUTO_SCALE_INITIATED_BASE"
+            | "PREDICTIVE_COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_BASE"
+            | "PREDICTIVE_COMPUTE_AUTO_SCALE_OPLOG_FAIL_BASE"
+            | "PREDICTIVE_COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_BASE"
+          )
+        | Shared_f4c3a9ed
+        | "RESOURCE_POLICY_VIOLATED"
+        | Shared_01a6d608
+        | "PROACTIVE_REMEDIATION_NEEDED"
+        | (
+            | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_FIRST_WARNING"
+            | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_SECOND_WARNING"
+            | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_DELETED"
+          );
+      readonly groupId?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly orgId?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    DeleteCopiedBackups20240805: {
+      /** @enum {string} */
+      cloudProvider?: "AWS" | "AZURE" | "GCP";
+      regionName?: string;
+      zoneId?: string;
+    };
+    DiskBackupApiPolicyItem: {
+      /**
+       * Format: int32
+       * @enum {integer}
+       */
+      frequencyInterval:
+        | 1
+        | 2
+        | 3
+        | 4
+        | 5
+        | 6
+        | 7
+        | 8
+        | 9
+        | 10
+        | 11
+        | 12
+        | 13
+        | 14
+        | 15
+        | 16
+        | 17
+        | 18
+        | 19
+        | 20
+        | 21
+        | 22
+        | 23
+        | 24
+        | 25
+        | 26
+        | 27
+        | 28
+        | 40;
+      /** @enum {string} */
+      frequencyType: "daily" | "hourly" | "weekly" | "monthly" | "yearly" | "ondemand";
+      readonly id?: string;
+      /** @enum {string} */
+      retentionUnit: "days" | "weeks" | "months" | "years";
+      /** Format: int32 */
+      retentionValue: number;
+    };
+    DiskBackupCopyPolicyItem: {
+      /** @enum {string} */
+      frequencyType: "daily" | "hourly" | "weekly" | "monthly" | "yearly" | "ondemand";
+      readonly id?: string;
+    };
+    DiskBackupCopySetting20240805: {
+      /** @enum {string} */
+      cloudProvider?: "AWS" | "AZURE" | "GCP";
+      copyPolicyItems?: components["schemas"]["DiskBackupCopyPolicyItem"][];
+      /** @deprecated */
+      frequencies?: ("HOURLY" | "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY" | "ON_DEMAND")[];
+      /** Format: int32 */
+      lastNumberOfSnapshots?: number;
+      regionName?: string;
+      shouldCopyOplogs?: boolean;
+      zoneId: string;
+    };
+    DiskBackupOnDemandSnapshotRequest: {
+      description?: string;
+      readonly links?: components["schemas"]["Link"][];
+      /** Format: int32 */
+      retentionInDays?: number;
+    };
+    DiskBackupReplicaSet: {
+      /** @enum {string} */
+      readonly cloudProvider?: "AWS" | "AZURE" | "GCP";
+      readonly copyRegions?: string[];
+      /** Format: date-time */
+      readonly createdAt?: string;
+      readonly description?: string;
+      /** Format: date-time */
+      readonly expiresAt?: string;
+      /** @enum {string} */
+      readonly frequencyType?: "hourly" | "daily" | "weekly" | "monthly" | "yearly";
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      /** Format: uuid */
+      readonly masterKeyUUID?: string;
+      readonly mongodVersion?: string;
+      readonly policyItems?: string[];
+      readonly replicaSetName?: string;
+      /** @enum {string} */
+      readonly snapshotType?: "onDemand" | "scheduled" | "fallback";
+      /** @enum {string} */
+      readonly status?: "queued" | "inProgress" | "completed" | "failed";
+      /** Format: int64 */
+      readonly storageSizeBytes?: number;
+      /** @enum {string} */
+      readonly type?: "replicaSet" | "shardedCluster";
+    };
+    DiskBackupShardedClusterSnapshot: {
+      /** @enum {string} */
+      readonly configServerType?: "EMBEDDED" | "DEDICATED";
+      /** Format: date-time */
+      readonly createdAt?: string;
+      readonly description?: string;
+      /** Format: date-time */
+      readonly expiresAt?: string;
+      /** @enum {string} */
+      readonly frequencyType?: "hourly" | "daily" | "weekly" | "monthly" | "yearly";
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      /** Format: uuid */
+      readonly masterKeyUUID?: string;
+      readonly members?: components["schemas"]["DiskBackupShardedClusterSnapshotMember"][];
+      readonly mongodVersion?: string;
+      readonly policyItems?: string[];
+      readonly snapshotIds?: string[];
+      /** @enum {string} */
+      readonly snapshotType?: "onDemand" | "scheduled" | "fallback";
+      /** @enum {string} */
+      readonly status?: "queued" | "inProgress" | "completed" | "failed";
+      /** Format: int64 */
+      readonly storageSizeBytes?: number;
+      /** @enum {string} */
+      readonly type?: "replicaSet" | "shardedCluster";
+    };
+    DiskBackupShardedClusterSnapshotMember: {
+      /** @enum {string} */
+      readonly cloudProvider: "AWS" | "AZURE" | "GCP";
+      readonly id: string;
+      readonly replicaSetName: string;
+    };
+    DiskBackupSnapshot: {
+      /** Format: date-time */
+      readonly createdAt?: string;
+      readonly description?: string;
+      /** Format: date-time */
+      readonly expiresAt?: string;
+      /** @enum {string} */
+      readonly frequencyType?: "hourly" | "daily" | "weekly" | "monthly" | "yearly";
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      /** Format: uuid */
+      readonly masterKeyUUID?: string;
+      readonly mongodVersion?: string;
+      readonly policyItems?: string[];
+      /** @enum {string} */
+      readonly snapshotType?: "onDemand" | "scheduled" | "fallback";
+      /** @enum {string} */
+      readonly status?: "queued" | "inProgress" | "completed" | "failed";
+      /** Format: int64 */
+      readonly storageSizeBytes?: number;
+      /** @enum {string} */
+      readonly type?: "replicaSet" | "shardedCluster";
+    };
+    DiskBackupSnapshotSchedule20240805: {
+      autoCopySettingsEnabled?: boolean;
+      autoExportEnabled?: boolean;
+      readonly clusterId?: string;
+      readonly clusterName?: string;
+      copyPolicyItemsEnabled?: boolean;
+      copySettings?: components["schemas"]["DiskBackupCopySetting20240805"][];
+      deleteCopiedBackups?: components["schemas"]["DeleteCopiedBackups20240805"][];
+      deleteCopySnapshots?: boolean;
+      deleteSnapshots?: boolean;
+      export?: components["schemas"]["AutoExportPolicyView"];
+      extraRetentionSettings?: components["schemas"]["ExtraRetentionSetting"][];
+      readonly links?: components["schemas"]["Link"][];
+      /** Format: date-time */
+      readonly nextSnapshot?: string;
+      policies: components["schemas"]["AdvancedDiskBackupSnapshotSchedulePolicy"][];
+      /** Format: int32 */
+      referenceHourOfDay?: number;
+      /** Format: int32 */
+      referenceMinuteOfHour?: number;
+      /** Format: int32 */
+      restoreWindowDays?: number;
+      updateCopySnapshots?: boolean;
+      updateSnapshots?: boolean;
+      useOrgAndGroupNamesInExportPrefix?: boolean;
+    };
+    DiskGBAutoScaling: {
+      enabled?: boolean;
+    };
+    DiskPartitionQueueDepthDataRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_QUEUE_DEPTH_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionQueueDepthIndexRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_QUEUE_DEPTH_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionQueueDepthJournalRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_QUEUE_DEPTH_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionReadIopsDataRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_READ_IOPS_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionReadIopsIndexRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_READ_IOPS_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionReadIopsJournalRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_READ_IOPS_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionReadLatencyDataTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_READ_LATENCY_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    DiskPartitionReadLatencyIndexTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_READ_LATENCY_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    DiskPartitionReadLatencyJournalTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_READ_LATENCY_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    DiskPartitionSpaceUsedDataRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_SPACE_USED_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionSpaceUsedIndexRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_SPACE_USED_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionSpaceUsedJournalRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_SPACE_USED_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionWriteIopsDataRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_WRITE_IOPS_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionWriteIopsIndexRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_WRITE_IOPS_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionWriteIopsJournalRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_WRITE_IOPS_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DiskPartitionWriteLatencyDataTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_WRITE_LATENCY_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    DiskPartitionWriteLatencyIndexTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_WRITE_LATENCY_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    DiskPartitionWriteLatencyJournalTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DISK_PARTITION_WRITE_LATENCY_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    DLQRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "STREAM_PROCESSOR_DLQ_MESSAGE_COUNT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DocumentDeletedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DOCUMENT_DELETED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DocumentInsertedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DOCUMENT_INSERTED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DocumentReturnedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DOCUMENT_RETURNED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    DocumentUpdatedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "DOCUMENT_UPDATED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    EmailNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      /** Format: email */
+      emailAddress?: string;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      /** @enum {string} */
+      typeName: "EMAIL";
+    };
+    EmployeeAccessGrantView: {
+      /** Format: date-time */
+      expirationTime: string;
+      /** @enum {string} */
+      grantType:
+        | "CLUSTER_DATABASE_LOGS"
+        | "CLUSTER_INFRASTRUCTURE"
+        | "CLUSTER_INFRASTRUCTURE_AND_APP_SERVICES_SYNC_DATA";
+      readonly links?: components["schemas"]["Link"][];
+    };
+    EncryptionAtRestConfigUpdateStalledAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["GroupEventTypeViewForNdsGroupAlertableEncryptionAtRestConfigUpdateStalled"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AlertMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      threshold?: components["schemas"]["GreaterThanTimeThreshold"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    EncryptionKeyAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["EncryptionKeyEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AlertMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      threshold?: components["schemas"]["GreaterThanDaysThresholdView"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    /** @enum {string} */
+    EncryptionKeyEventTypeViewAlertable:
+      | "AWS_ENCRYPTION_KEY_NEEDS_ROTATION"
+      | "AZURE_ENCRYPTION_KEY_NEEDS_ROTATION"
+      | "GCP_ENCRYPTION_KEY_NEEDS_ROTATION"
+      | "AWS_ENCRYPTION_KEY_INVALID"
+      | "AZURE_ENCRYPTION_KEY_INVALID"
+      | "GCP_ENCRYPTION_KEY_INVALID";
+    EndpointService: {
+      /** @enum {string} */
+      readonly cloudProvider: "AWS" | "AZURE" | "GCP";
+      readonly errorMessage?: string;
+      readonly id?: string;
+      readonly regionName?: string;
+      /** @enum {string} */
+      readonly status?: "INITIATING" | "AVAILABLE" | "WAITING_FOR_USER" | "FAILED" | "DELETING";
+    };
+    /** @enum {string} */
+    EventSeverity: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+    ExtraInfoPageFaultsRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "EXTRA_INFO_PAGE_FAULTS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ExtraRetentionSetting: {
+      /** @enum {string} */
+      frequencyType?: "HOURLY" | "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY" | "ON_DEMAND";
+      /** Format: int32 */
+      retentionDays?: number;
+    };
+    Fields: Record<string, never>;
+    FieldViolation: {
+      description: string;
+      field: string;
+    };
+    FlexAVGCommandExecutionTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_AVG_COMMAND_EXECUTION_TIME";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    FlexAVGWriteExecutionTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_AVG_WRITE_EXECUTION_TIME";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    FlexBackupSettings20241113: {
+      /** @default true */
+      readonly enabled?: boolean;
+    };
+    FlexClusterDescription20241113: {
+      backupSettings?: components["schemas"]["FlexBackupSettings20241113"];
+      /**
+       * @default REPLICASET
+       * @enum {string}
+       */
+      readonly clusterType?: "REPLICASET";
+      connectionStrings?: components["schemas"]["FlexConnectionStrings20241113"];
+      /** Format: date-time */
+      readonly createDate?: string;
+      /** @enum {string} */
+      databaseEdition?: "CORE" | "INFINITE";
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly mongoDBVersion?: string;
+      readonly name?: string;
+      providerSettings: components["schemas"]["FlexProviderSettings20241113"];
+      /** @enum {string} */
+      readonly stateName?: "IDLE" | "CREATING" | "UPDATING" | "DELETING" | "REPAIRING";
+      tags?: components["schemas"]["ResourceTag"][];
+      /** @default false */
+      terminationProtectionEnabled?: boolean;
+      /**
+       * @default LTS
+       * @enum {string}
+       */
+      readonly versionReleaseSystem?: "LTS";
+    };
+    FlexClusterDescriptionUpdate20241113: {
+      /** @enum {string} */
+      databaseEdition?: "CORE" | "INFINITE";
+      readonly links?: components["schemas"]["Link"][];
+      tags?: components["schemas"]["ResourceTag"][];
+      /** @default false */
+      terminationProtectionEnabled?: boolean;
+    };
+    FlexClusterMetricThreshold: Shared_49612667 &
+      (
+        | components["schemas"]["RawMetricThresholdView"]
+        | components["schemas"]["FlexConnectionPercentRawMetricThresholdView"]
+        | components["schemas"]["DataMetricThresholdView"]
+        | components["schemas"]["FlexNetworkBytesInDataMetricThresholdView"]
+        | components["schemas"]["FlexNetworkBytesOutDataMetricThresholdView"]
+        | components["schemas"]["FlexNetworkNumRequestsRawMetricThresholdView"]
+        | components["schemas"]["FlexOpCounterCMDRawMetricThresholdView"]
+        | components["schemas"]["FlexOpCounterDeleteRawMetricThresholdView"]
+        | components["schemas"]["FlexOpCounterInsertRawMetricThresholdView"]
+        | components["schemas"]["FlexOpCounterQueryRawMetricThresholdView"]
+        | components["schemas"]["FlexOpCounterUpdateRawMetricThresholdView"]
+        | components["schemas"]["FlexOpCounterGetMoreRawMetricThresholdView"]
+        | components["schemas"]["TimeMetricThresholdView"]
+        | components["schemas"]["FlexAVGWriteExecutionTimeMetricThresholdView"]
+        | components["schemas"]["FlexAVGCommandExecutionTimeMetricThresholdView"]
+      );
+    FlexConnectionPercentRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_CONNECTIONS_PERCENT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    FlexConnectionStrings20241113: {
+      readonly standard?: string;
+      readonly standardSrv?: string;
+    };
+    FlexMetricAlert: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      readonly clusterName: string;
+      /** Format: date-time */
+      readonly created: string;
+      currentValue?: components["schemas"]["HostMetricValue"];
+      eventTypeName: components["schemas"]["FlexMetricEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly metricName?: string;
+      readonly orgId?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    FlexMetricAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["FlexMetricEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AlertMatcher"][];
+      metricThreshold?: components["schemas"]["FlexClusterMetricThreshold"];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    /** @enum {string} */
+    FlexMetricEventTypeViewAlertable: "OUTSIDE_FLEX_METRIC_THRESHOLD";
+    FlexNetworkBytesInDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_NETWORK_BYTES_IN";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    FlexNetworkBytesOutDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_NETWORK_BYTES_OUT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    FlexNetworkNumRequestsRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_NETWORK_NUM_REQUESTS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    FlexOpCounterCMDRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_OPCOUNTER_CMD";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    FlexOpCounterDeleteRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_OPCOUNTER_DELETE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    FlexOpCounterGetMoreRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_OPCOUNTER_GETMORE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    FlexOpCounterInsertRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_OPCOUNTER_INSERT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    FlexOpCounterQueryRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_OPCOUNTER_QUERY";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    FlexOpCounterUpdateRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FLEX_OPCOUNTER_UPDATE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    FlexProviderSettings20241113: {
+      /** @enum {string} */
+      readonly backingProviderName?: "AWS" | "AZURE" | "GCP";
+      /** Format: double */
+      readonly diskSizeGB?: number;
+      /**
+       * @default FLEX
+       * @enum {string}
+       */
+      readonly providerName?: "FLEX";
+      readonly regionName?: string;
+    };
+    FtsDiskUtilizationDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FTS_DISK_UTILIZATION";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    FtsJvmCurrentMemoryDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FTS_JVM_CURRENT_MEMORY";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    FtsJvmMaxMemoryDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FTS_JVM_MAX_MEMORY";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    FtsMemoryMappedDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FTS_MEMORY_MAPPED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    FtsMemoryResidentDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FTS_MEMORY_RESIDENT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    FtsMemoryVirtualDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FTS_MEMORY_VIRTUAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    FtsProcessCpuKernelRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FTS_PROCESS_CPU_KERNEL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    FtsProcessCpuUserRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "FTS_PROCESS_CPU_USER";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    GCPDataProcessRegionView: Omit<
+      components["schemas"]["DataProcessRegionView"],
+      "cloudProvider"
+    > & {
+      /** @enum {string} */
+      readonly region?: "CENTRAL_US" | "WESTERN_EUROPE";
+    } & {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      cloudProvider: "GCP";
+    };
+    GCPEndpointService: {
+      /** @enum {string} */
+      readonly cloudProvider: "AWS" | "AZURE" | "GCP";
+      endpointGroupNames?: string[];
+      readonly errorMessage?: string;
+      readonly id?: string;
+      portMappingEnabled?: boolean;
+      readonly regionName?: string;
+      serviceAttachmentNames?: string[];
+      /** @enum {string} */
+      readonly status?: "INITIATING" | "AVAILABLE" | "WAITING_FOR_USER" | "FAILED" | "DELETING";
+    };
+    GlobalAccessesNotInMemoryRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "GLOBAL_ACCESSES_NOT_IN_MEMORY";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    GlobalLockCurrentQueueReadersRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "GLOBAL_LOCK_CURRENT_QUEUE_READERS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    GlobalLockCurrentQueueTotalRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "GLOBAL_LOCK_CURRENT_QUEUE_TOTAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    GlobalLockCurrentQueueWritersRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "GLOBAL_LOCK_CURRENT_QUEUE_WRITERS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    GlobalLockPercentageRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "GLOBAL_LOCK_PERCENTAGE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    GlobalPageFaultExceptionsThrownRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "GLOBAL_PAGE_FAULT_EXCEPTIONS_THROWN";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    GreaterThanDaysThresholdView: {
+      /** @enum {string} */
+      operator?: "GREATER_THAN";
+      /** Format: int32 */
+      threshold?: number;
+      /** @enum {string} */
+      units?: "DAYS";
+    };
+    GreaterThanRawThreshold: {
+      /** @enum {string} */
+      operator?: "GREATER_THAN";
+      /** Format: int32 */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    GreaterThanRawThresholdAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["ReplicaSetEventTypeViewForNdsGroupAlertableWithThreshold"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["ReplicaSetMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      threshold?: components["schemas"]["GreaterThanRawThreshold"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    GreaterThanTimeThreshold: {
+      /** @enum {string} */
+      operator?: "GREATER_THAN";
+      /** Format: int32 */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    Group: {
+      /** Format: int64 */
+      readonly clusterCount: number;
+      /** Format: date-time */
+      readonly created: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      name: string;
+      orgId: string;
+      /**
+       * @default COMMERCIAL_FEDRAMP_REGIONS_ONLY
+       * @enum {string}
+       */
+      regionUsageRestrictions?: "COMMERCIAL_FEDRAMP_REGIONS_ONLY" | "GOV_REGIONS_ONLY";
+      tags?: components["schemas"]["ResourceTag"][];
+      /** @default true */
+      withDefaultAlertsSettings?: boolean;
+    };
+    GroupAlertsConfig:
+      | components["schemas"]["DefaultAlertConfigViewForNdsGroup"]
+      | components["schemas"]["AppServiceAlertConfigViewForNdsGroup"]
+      | components["schemas"]["AppServiceMetricAlertConfigViewForNdsGroup"]
+      | components["schemas"]["BillingThresholdAlertConfigViewForNdsGroup"]
+      | components["schemas"]["ClusterAlertConfigViewForNdsGroup"]
+      | components["schemas"]["CpsBackupThresholdAlertConfigViewForNdsGroup"]
+      | components["schemas"]["EncryptionAtRestConfigUpdateStalledAlertConfigViewForNdsGroup"]
+      | components["schemas"]["EncryptionKeyAlertConfigViewForNdsGroup"]
+      | components["schemas"]["HostAlertConfigViewForNdsGroup"]
+      | components["schemas"]["HostMetricAlertConfigViewForNdsGroup"]
+      | components["schemas"]["MongotuneAlertConfigViewForNdsGroup"]
+      | components["schemas"]["NDSAutoscalingAlertConfigViewForNdsGroup"]
+      | components["schemas"]["NDSX509UserAuthenticationAlertConfigViewForNdsGroup"]
+      | components["schemas"]["ReplicaSetAlertConfigViewForNdsGroup"]
+      | components["schemas"]["ReplicaSetThresholdAlertConfigViewForNdsGroup"]
+      | components["schemas"]["ServerlessMetricAlertConfigViewForNdsGroup"]
+      | components["schemas"]["FlexMetricAlertConfigViewForNdsGroup"]
+      | components["schemas"]["StreamProcessorAlertConfigViewForNdsGroup"]
+      | components["schemas"]["StreamProcessorMetricAlertConfigViewForNdsGroup"]
+      | components["schemas"]["StreamsPrivateLinkEndpointAlertConfigViewForNdsGroup"];
+    /** @enum {string} */
+    GroupEventTypeViewForNdsGroupAlertableEncryptionAtRestConfigUpdateStalled: "ENCRYPTION_AT_REST_CONFIG_UPDATE_STALLED";
+    GroupNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      emailEnabled?: boolean;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      roles?: string[];
+      smsEnabled?: boolean;
+      /** @enum {string} */
+      typeName: "GROUP";
+    };
+    GroupUpdate: {
+      name?: string;
+      tags?: components["schemas"]["ResourceTag"][];
+      withDefaultAlertsSettings?: boolean;
+    };
+    HardwareSpec20240805: {
+      diskIOPS?: number;
+      diskSizeGB?: number;
+      readonly diskThroughput?: number;
+      /**
+       * @default STANDARD
+       * @enum {string}
+       */
+      ebsVolumeType?: "STANDARD" | "PROVISIONED" | "HIGH_PERFORMANCE";
+      readonly effectiveInstanceSize?: string;
+      instanceSize?: string;
+      nodeCount?: number;
+    };
+    HipChatNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      integrationId?: string;
+      /** Format: int32 */
+      intervalMin?: number;
+      notificationToken?: string;
+      notifierId?: string;
+      roomName?: string;
+      /** @enum {string} */
+      typeName: "HIP_CHAT";
+    };
+    HostAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["HostEventTypeViewForNdsGroupAlertable"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["HostMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    HostAlertViewForNdsGroup: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      readonly clusterName?: string;
+      /** Format: date-time */
+      readonly created: string;
+      eventTypeName: components["schemas"]["HostEventTypeViewForNdsGroupAlertable"];
+      readonly groupId?: string;
+      readonly hostnameAndPort?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly orgId?: string;
+      readonly replicaSetName?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    /** @enum {string} */
+    HostEventTypeViewForNdsGroupAlertable: Shared_01a6d608;
+    HostMatcher: {
+      fieldName: components["schemas"]["HostMatcherField"];
+      /** @enum {string} */
+      operator:
+        | "EQUALS"
+        | "CONTAINS"
+        | "STARTS_WITH"
+        | "ENDS_WITH"
+        | "NOT_EQUALS"
+        | "NOT_CONTAINS"
+        | "REGEX";
+      value?: components["schemas"]["MatcherHostType"];
+    };
+    /** @enum {string} */
+    HostMatcherField:
+      | "TYPE_NAME"
+      | "HOSTNAME"
+      | "PORT"
+      | "HOSTNAME_AND_PORT"
+      | "REPLICA_SET_NAME"
+      | "ATLAS_NODE_TYPE";
+    HostMetricAlert: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      readonly clusterName?: string;
+      /** Format: date-time */
+      readonly created: string;
+      currentValue?: components["schemas"]["HostMetricValue"];
+      eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly hostnameAndPort?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly metricName?: string;
+      readonly orgId?: string;
+      readonly replicaSetName?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    HostMetricAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["HostMatcher"][];
+      metricThreshold?: components["schemas"]["HostMetricThreshold"];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    /** @enum {string} */
+    HostMetricEventTypeViewAlertable: "OUTSIDE_METRIC_THRESHOLD";
+    HostMetricThreshold: Shared_49612667 &
+      (
+        | components["schemas"]["AssertRegularRawMetricThresholdView"]
+        | components["schemas"]["AssertWarningRawMetricThresholdView"]
+        | components["schemas"]["AssertMsgRawMetricThresholdView"]
+        | components["schemas"]["AssertUserRawMetricThresholdView"]
+        | components["schemas"]["OpCounterCmdRawMetricThresholdView"]
+        | components["schemas"]["OpCounterQueryRawMetricThresholdView"]
+        | components["schemas"]["OpCounterUpdateRawMetricThresholdView"]
+        | components["schemas"]["OpCounterDeleteRawMetricThresholdView"]
+        | components["schemas"]["OpCounterTtlDeletedRawMetricThresholdView"]
+        | components["schemas"]["OpCounterInsertRawMetricThresholdView"]
+        | components["schemas"]["OpCounterGetMoreRawMetricThresholdView"]
+        | components["schemas"]["OpCounterReplCmdRawMetricThresholdView"]
+        | components["schemas"]["OpCounterReplUpdateRawMetricThresholdView"]
+        | components["schemas"]["OpCounterReplDeleteRawMetricThresholdView"]
+        | components["schemas"]["OpCounterReplInsertRawMetricThresholdView"]
+        | components["schemas"]["FtsMemoryResidentDataMetricThresholdView"]
+        | components["schemas"]["FtsMemoryVirtualDataMetricThresholdView"]
+        | components["schemas"]["FtsMemoryMappedDataMetricThresholdView"]
+        | components["schemas"]["FtsProcessCpuUserRawMetricThresholdView"]
+        | components["schemas"]["FtsProcessCpuKernelRawMetricThresholdView"]
+        | components["schemas"]["NormalizedFtsProcessCpuUserRawMetricThresholdView"]
+        | components["schemas"]["NormalizedFtsProcessCpuKernelRawMetricThresholdView"]
+        | components["schemas"]["SystemMemoryPercentUsedRawMetricThresholdView"]
+        | components["schemas"]["MemoryResidentDataMetricThresholdView"]
+        | components["schemas"]["MemoryVirtualDataMetricThresholdView"]
+        | components["schemas"]["MemoryMappedDataMetricThresholdView"]
+        | components["schemas"]["ComputedMemoryDataMetricThresholdView"]
+        | components["schemas"]["IndexCountersBtreeAccessesRawMetricThresholdView"]
+        | components["schemas"]["IndexCountersBtreeHitsRawMetricThresholdView"]
+        | components["schemas"]["IndexCountersBtreeMissesRawMetricThresholdView"]
+        | components["schemas"]["IndexCountersBtreeMissRatioRawMetricThresholdView"]
+        | components["schemas"]["GlobalLockPercentageRawMetricThresholdView"]
+        | components["schemas"]["TimeMetricThresholdView"]
+        | components["schemas"]["ConnectionsRawMetricThresholdView"]
+        | components["schemas"]["ConnectionsEstablishmentRateLimitRejectedRawMetricThresholdView"]
+        | components["schemas"]["ConnectionsMaxRawMetricThresholdView"]
+        | components["schemas"]["ConnectionsPercentRawMetricThresholdView"]
+        | components["schemas"]["GlobalAccessesNotInMemoryRawMetricThresholdView"]
+        | components["schemas"]["GlobalPageFaultExceptionsThrownRawMetricThresholdView"]
+        | components["schemas"]["GlobalLockCurrentQueueTotalRawMetricThresholdView"]
+        | components["schemas"]["GlobalLockCurrentQueueReadersRawMetricThresholdView"]
+        | components["schemas"]["GlobalLockCurrentQueueWritersRawMetricThresholdView"]
+        | components["schemas"]["CursorsTotalOpenRawMetricThresholdView"]
+        | components["schemas"]["CursorsTotalTimedOutRawMetricThresholdView"]
+        | components["schemas"]["CursorsTotalClientCursorsSizeRawMetricThresholdView"]
+        | components["schemas"]["NetworkBytesInDataMetricThresholdView"]
+        | components["schemas"]["NetworkBytesOutDataMetricThresholdView"]
+        | components["schemas"]["NetworkNumRequestsRawMetricThresholdView"]
+        | components["schemas"]["OplogMasterTimeTimeMetricThresholdView"]
+        | components["schemas"]["OplogMasterTimeEstimatedTtlTimeMetricThresholdView"]
+        | components["schemas"]["OplogSlaveLagMasterTimeTimeMetricThresholdView"]
+        | components["schemas"]["OplogMasterLagTimeDiffTimeMetricThresholdView"]
+        | components["schemas"]["OplogRateGbPerHourDataMetricThresholdView"]
+        | components["schemas"]["ExtraInfoPageFaultsRawMetricThresholdView"]
+        | components["schemas"]["DbStorageTotalDataMetricThresholdView"]
+        | components["schemas"]["DbDataSizeTotalDataMetricThresholdView"]
+        | components["schemas"]["DbDataSizeTotalWoSystemDataMetricThresholdView"]
+        | components["schemas"]["DbIndexSizeTotalDataMetricThresholdView"]
+        | components["schemas"]["JournalingCommitsInWriteLockRawMetricThresholdView"]
+        | components["schemas"]["JournalingMbDataMetricThresholdView"]
+        | components["schemas"]["JournalingWriteDataFilesMbDataMetricThresholdView"]
+        | components["schemas"]["TicketsAvailableReadsRawMetricThresholdView"]
+        | components["schemas"]["TicketsAvailableWritesRawMetricThresholdView"]
+        | components["schemas"]["CacheUsageDirtyDataMetricThresholdView"]
+        | components["schemas"]["CacheUsageUsedDataMetricThresholdView"]
+        | components["schemas"]["CacheBytesReadIntoDataMetricThresholdView"]
+        | components["schemas"]["CacheBytesWrittenFromDataMetricThresholdView"]
+        | components["schemas"]["NormalizedSystemCpuUserRawMetricThresholdView"]
+        | components["schemas"]["NormalizedSystemCpuUserSearchPrimaryContributorRawMetricThresholdView"]
+        | components["schemas"]["NormalizedSystemCpuStealRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionSpaceUsedDataRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionSpaceUsedIndexRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionSpaceUsedJournalRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionReadIopsDataRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionReadIopsIndexRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionReadIopsJournalRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionWriteIopsDataRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionWriteIopsIndexRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionWriteIopsJournalRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionReadLatencyDataTimeMetricThresholdView"]
+        | components["schemas"]["DiskPartitionReadLatencyIndexTimeMetricThresholdView"]
+        | components["schemas"]["DiskPartitionReadLatencyJournalTimeMetricThresholdView"]
+        | components["schemas"]["DiskPartitionWriteLatencyDataTimeMetricThresholdView"]
+        | components["schemas"]["DiskPartitionWriteLatencyIndexTimeMetricThresholdView"]
+        | components["schemas"]["DiskPartitionWriteLatencyJournalTimeMetricThresholdView"]
+        | components["schemas"]["DiskPartitionQueueDepthDataRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionQueueDepthIndexRawMetricThresholdView"]
+        | components["schemas"]["DiskPartitionQueueDepthJournalRawMetricThresholdView"]
+        | components["schemas"]["FtsDiskUtilizationDataMetricThresholdView"]
+        | components["schemas"]["MuninCpuUserRawMetricThresholdView"]
+        | components["schemas"]["MuninCpuNiceRawMetricThresholdView"]
+        | components["schemas"]["MuninCpuSystemRawMetricThresholdView"]
+        | components["schemas"]["MuninCpuIowaitRawMetricThresholdView"]
+        | components["schemas"]["MuninCpuIrqRawMetricThresholdView"]
+        | components["schemas"]["MuninCpuSoftirqRawMetricThresholdView"]
+        | components["schemas"]["MuninCpuStealRawMetricThresholdView"]
+        | components["schemas"]["DocumentReturnedRawMetricThresholdView"]
+        | components["schemas"]["DocumentInsertedRawMetricThresholdView"]
+        | components["schemas"]["DocumentUpdatedRawMetricThresholdView"]
+        | components["schemas"]["DocumentDeletedRawMetricThresholdView"]
+        | components["schemas"]["OperationsScanAndOrderRawMetricThresholdView"]
+        | components["schemas"]["QueryExecutorScannedRawMetricThresholdView"]
+        | components["schemas"]["QueryExecutorScannedObjectsRawMetricThresholdView"]
+        | components["schemas"]["OperationThrottlingRejectedOperationsRawMetricThresholdView"]
+        | components["schemas"]["QuerySpillToDiskDuringSortRawMetricThresholdView"]
+        | components["schemas"]["OperationsQueriesKilledRawMetricThresholdView"]
+        | components["schemas"]["QueryTargetingScannedPerReturnedRawMetricThresholdView"]
+        | components["schemas"]["QueryTargetingScannedObjectsPerReturnedRawMetricThresholdView"]
+        | components["schemas"]["AvgReadExecutionTimeTimeMetricThresholdView"]
+        | components["schemas"]["AvgWriteExecutionTimeTimeMetricThresholdView"]
+        | components["schemas"]["AvgCommandExecutionTimeTimeMetricThresholdView"]
+        | components["schemas"]["LogicalSizeDataMetricThresholdView"]
+        | components["schemas"]["RestartsInLastHourRawMetricThresholdView"]
+        | components["schemas"]["SystemMemoryUsedDataMetricThresholdView"]
+        | components["schemas"]["SystemMemoryAvailableDataMetricThresholdView"]
+        | components["schemas"]["SwapUsageUsedDataMetricThresholdView"]
+        | components["schemas"]["SwapUsageFreeDataMetricThresholdView"]
+        | components["schemas"]["SystemNetworkInDataMetricThresholdView"]
+        | components["schemas"]["SystemNetworkOutDataMetricThresholdView"]
+        | components["schemas"]["MaxNormalizedSystemCpuUserRawMetricThresholdView"]
+        | components["schemas"]["MaxNormalizedSystemCpuStealRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionSpaceUsedDataRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionSpaceUsedIndexRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionSpaceUsedJournalRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionReadIopsDataRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionReadIopsIndexRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionReadIopsJournalRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionWriteIopsDataRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionWriteIopsIndexRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionWriteIopsJournalRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionReadLatencyDataTimeMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionReadLatencyIndexTimeMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionReadLatencyJournalTimeMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionWriteLatencyDataTimeMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionWriteLatencyIndexTimeMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionWriteLatencyJournalTimeMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionQueueDepthDataRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionQueueDepthIndexRawMetricThresholdView"]
+        | components["schemas"]["MaxDiskPartitionQueueDepthJournalRawMetricThresholdView"]
+        | components["schemas"]["MaxSystemMemoryPercentUsedRawMetricThresholdView"]
+        | components["schemas"]["MaxSystemMemoryUsedDataMetricThresholdView"]
+        | components["schemas"]["MaxSystemMemoryAvailableDataMetricThresholdView"]
+        | components["schemas"]["MaxSwapUsageUsedDataMetricThresholdView"]
+        | components["schemas"]["MaxSwapUsageFreeDataMetricThresholdView"]
+        | components["schemas"]["MaxSystemNetworkInDataMetricThresholdView"]
+        | components["schemas"]["MaxSystemNetworkOutDataMetricThresholdView"]
+        | components["schemas"]["SearchIndexSizeDataMetricThresholdView"]
+        | components["schemas"]["SearchMaxFieldsIndexedRawMetricThresholdView"]
+        | components["schemas"]["SearchProcessThrottlingRawMetricThresholdView"]
+        | components["schemas"]["SearchNumberOfFieldsInIndexRawMetricThresholdView"]
+        | components["schemas"]["SearchMaxNgramFieldsIndexedRawMetricThresholdView"]
+        | components["schemas"]["SearchReplicationLagTimeMetricThresholdView"]
+        | components["schemas"]["NumberMetricThresholdView"]
+        | components["schemas"]["SearchOpCounterInsertRawMetricThresholdView"]
+        | components["schemas"]["SearchOpCounterDeleteRawMetricThresholdView"]
+        | components["schemas"]["SearchOpCounterUpdateRawMetricThresholdView"]
+        | components["schemas"]["SearchOpCounterGetMoreRawMetricThresholdView"]
+        | components["schemas"]["SearchNumberOfQueriesTotalRawMetricThresholdView"]
+        | components["schemas"]["SearchNumberOfQueriesErrorRawMetricThresholdView"]
+        | components["schemas"]["SearchNumberOfQueriesSuccessRawMetricThresholdView"]
+        | components["schemas"]["FtsJvmMaxMemoryDataMetricThresholdView"]
+        | components["schemas"]["FtsJvmCurrentMemoryDataMetricThresholdView"]
+      );
+    HostMetricValue: {
+      /** Format: double */
+      readonly number?: number;
+      /** @enum {string} */
+      readonly units?: units_ded7c172;
+    };
+    IndexCountersBtreeAccessesRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "INDEX_COUNTERS_BTREE_ACCESSES";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    IndexCountersBtreeHitsRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "INDEX_COUNTERS_BTREE_HITS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    IndexCountersBtreeMissesRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "INDEX_COUNTERS_BTREE_MISSES";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    IndexCountersBtreeMissRatioRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "INDEX_COUNTERS_BTREE_MISS_RATIO";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    InvoiceLineItem: {
+      /** @enum {string} */
+      readonly cloudProvider?: "AWS" | "GCP" | "AZURE" | "ATLAS";
+      readonly clusterName?: string;
+      /** Format: date-time */
+      readonly created?: string;
+      /** Format: int64 */
+      readonly discountCents?: number;
+      /** Format: date-time */
+      readonly endDate?: string;
+      readonly groupId?: string;
+      groupName?: string;
+      readonly note?: string;
+      /** Format: float */
+      readonly percentDiscount?: number;
+      /** Format: double */
+      readonly quantity?: number;
+      readonly sku?: string;
+      /** Format: date-time */
+      readonly startDate?: string;
+      readonly stitchAppName?: string;
+      readonly tags?: {
+        [key: string]: string | number | string[];
+      };
+      /** Format: double */
+      readonly tierLowerBound?: number;
+      /** Format: double */
+      readonly tierUpperBound?: number;
+      /** Format: int64 */
+      readonly totalPriceCents?: number;
+      readonly unit?: string;
+      /** Format: double */
+      readonly unitPriceDollars?: number;
+    };
+    JournalingCommitsInWriteLockRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "JOURNALING_COMMITS_IN_WRITE_LOCK";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    JournalingMbDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "JOURNALING_MB";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    JournalingWriteDataFilesMbDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "JOURNALING_WRITE_DATA_FILES_MB";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    KafkaRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "STREAM_PROCESSOR_KAFKA_LAG";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    LessThanDaysThresholdView: {
+      /** @enum {string} */
+      operator?: "LESS_THAN";
+      /** Format: int32 */
+      threshold?: number;
+      /** @enum {string} */
+      units?: "DAYS";
+    };
+    LessThanTimeThreshold: {
+      /** @enum {string} */
+      operator?: "LESS_THAN";
+      /** Format: int32 */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    LessThanTimeThresholdAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["ReplicaSetEventTypeViewForNdsGroupAlertableWithThreshold"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["ReplicaSetMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      threshold?: components["schemas"]["LessThanTimeThreshold"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    Link: {
+      href?: string;
+      rel?: string;
+    };
+    Link_Atlas: {
+      href?: string;
+      rel?: string;
+    };
+    LogicalSizeDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "LOGICAL_SIZE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    /** @enum {string} */
+    MatcherHostType:
+      "STANDALONE" | "PRIMARY" | "SECONDARY" | "ARBITER" | "MONGOS" | "CONFIG" | "MONGOT";
+    MaxDiskPartitionQueueDepthDataRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_QUEUE_DEPTH_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionQueueDepthIndexRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_QUEUE_DEPTH_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionQueueDepthJournalRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_QUEUE_DEPTH_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionReadIopsDataRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_READ_IOPS_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionReadIopsIndexRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_READ_IOPS_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionReadIopsJournalRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_READ_IOPS_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionReadLatencyDataTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_READ_LATENCY_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    MaxDiskPartitionReadLatencyIndexTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_READ_LATENCY_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    MaxDiskPartitionReadLatencyJournalTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_READ_LATENCY_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    MaxDiskPartitionSpaceUsedDataRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_SPACE_USED_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionSpaceUsedIndexRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_SPACE_USED_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionSpaceUsedJournalRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_SPACE_USED_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionWriteIopsDataRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_WRITE_IOPS_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionWriteIopsIndexRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_WRITE_IOPS_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionWriteIopsJournalRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_WRITE_IOPS_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxDiskPartitionWriteLatencyDataTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_WRITE_LATENCY_DATA";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    MaxDiskPartitionWriteLatencyIndexTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_WRITE_LATENCY_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    MaxDiskPartitionWriteLatencyJournalTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_DISK_PARTITION_WRITE_LATENCY_JOURNAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    MaxNormalizedSystemCpuStealRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_NORMALIZED_SYSTEM_CPU_STEAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxNormalizedSystemCpuUserRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_NORMALIZED_SYSTEM_CPU_USER";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxSwapUsageFreeDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_SWAP_USAGE_FREE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    MaxSwapUsageUsedDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_SWAP_USAGE_USED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    MaxSystemMemoryAvailableDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_SYSTEM_MEMORY_AVAILABLE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    MaxSystemMemoryPercentUsedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_SYSTEM_MEMORY_PERCENT_USED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MaxSystemMemoryUsedDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_SYSTEM_MEMORY_USED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    MaxSystemNetworkInDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_SYSTEM_NETWORK_IN";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    MaxSystemNetworkOutDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MAX_SYSTEM_NETWORK_OUT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    MemoryMappedDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MEMORY_MAPPED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    MemoryResidentDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MEMORY_RESIDENT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    MemoryVirtualDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MEMORY_VIRTUAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    MetricDataPoint_Atlas: {
+      /** Format: date-time */
+      readonly timestamp?: string;
+      readonly value?: number;
+    };
+    MetricsMeasurement_Atlas: {
+      readonly dataPoints?: components["schemas"]["MetricDataPoint_Atlas"][];
+      readonly name?: string;
+      /** @enum {string} */
+      readonly units?:
+        | "BYTES"
+        | "BYTES_PER_SECOND"
+        | "GIGABYTES"
+        | "GIGABYTES_PER_HOUR"
+        | "MEGABYTES_PER_SECOND"
+        | "MICROSECONDS"
+        | "MILLISECONDS"
+        | "PERCENT"
+        | "SCALAR"
+        | "SCALAR_PER_SECOND";
+    };
+    MicrosoftTeamsNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      integrationId?: string;
+      /** Format: int32 */
+      intervalMin?: number;
+      microsoftTeamsWebhookUrl?: string;
+      notifierId?: string;
+      /** @enum {string} */
+      typeName: "MICROSOFT_TEAMS";
+    };
+    MongotuneAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["MongotuneEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AlertMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    /** @enum {string} */
+    MongotuneEventTypeViewAlertable: "MONGOTUNE_ALERT";
+    MuninCpuIowaitRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MUNIN_CPU_IOWAIT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MuninCpuIrqRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MUNIN_CPU_IRQ";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MuninCpuNiceRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MUNIN_CPU_NICE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MuninCpuSoftirqRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MUNIN_CPU_SOFTIRQ";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MuninCpuStealRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MUNIN_CPU_STEAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MuninCpuSystemRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MUNIN_CPU_SYSTEM";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    MuninCpuUserRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "MUNIN_CPU_USER";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    NDSAutoscalingAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["NDSAutoScalingAuditTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["NDSAutoscalingMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    /** @enum {string} */
+    NDSAutoScalingAuditTypeViewAlertable: Shared_452a8ee1;
+    NDSAutoscalingMatcher: {
+      fieldName: components["schemas"]["NDSAutoscalingMatcherField"];
+      /** @enum {string} */
+      operator:
+        | "EQUALS"
+        | "CONTAINS"
+        | "STARTS_WITH"
+        | "ENDS_WITH"
+        | "NOT_EQUALS"
+        | "NOT_CONTAINS"
+        | "REGEX";
+      value: string;
+    };
+    /** @enum {string} */
+    NDSAutoscalingMatcherField: "CLUSTER_NAME";
+    NDSX509UserAuthenticationAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["NDSX509UserAuthenticationEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AlertMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      threshold?: components["schemas"]["LessThanDaysThresholdView"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    /** @enum {string} */
+    NDSX509UserAuthenticationEventTypeViewAlertable:
+      | "NDS_X509_USER_AUTHENTICATION_CUSTOMER_CA_EXPIRATION_CHECK"
+      | "NDS_X509_USER_AUTHENTICATION_CUSTOMER_CRL_EXPIRATION_CHECK"
+      | "NDS_X509_USER_AUTHENTICATION_MANAGED_USER_CERTS_EXPIRATION_CHECK";
+    NetworkBytesInDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "NETWORK_BYTES_IN";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    NetworkBytesOutDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "NETWORK_BYTES_OUT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    NetworkNumRequestsRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "NETWORK_NUM_REQUESTS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    NetworkPermissionEntry: {
+      awsSecurityGroup?: string;
+      cidrBlock?: string;
+      comment?: string;
+      /** Format: date-time */
+      deleteAfterDate?: string;
+      readonly groupId?: string;
+      ipAddress?: string;
+      readonly links?: components["schemas"]["Link"][];
+    };
+    NormalizedFtsProcessCpuKernelRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "NORMALIZED_FTS_PROCESS_CPU_KERNEL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    NormalizedFtsProcessCpuUserRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "NORMALIZED_FTS_PROCESS_CPU_USER";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    NormalizedSystemCpuStealRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "NORMALIZED_SYSTEM_CPU_STEAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    NormalizedSystemCpuUserRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "NORMALIZED_SYSTEM_CPU_USER";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    NormalizedSystemCpuUserSearchPrimaryContributorRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "NORMALIZED_SYSTEM_CPU_USER_SEARCH_PRIMARY_CONTRIBUTOR";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    NumberMetricAlertView: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      readonly clusterName?: string;
+      /** Format: date-time */
+      readonly created: string;
+      currentValue?: components["schemas"]["NumberMetricValueView"];
+      eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly hostnameAndPort?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly metricName?: string;
+      readonly orgId?: string;
+      readonly replicaSetName?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    NumberMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_MAX_NUMBER_OF_LUCENE_DOCS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["NumberMetricUnits"];
+    };
+    /** @enum {string} */
+    NumberMetricUnits: "COUNT" | "THOUSAND" | "MILLION" | "BILLION";
+    NumberMetricValueView: {
+      /** Format: double */
+      readonly number?: number;
+      units?: components["schemas"]["NumberMetricUnits"];
+    };
+    OnlineArchiveSchedule: {
+      /** @enum {string} */
+      type: "DEFAULT" | "DAILY" | "WEEKLY" | "MONTHLY";
+    };
+    OpCounterCmdRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_CMD";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OpCounterDeleteRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_DELETE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OpCounterGetMoreRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_GETMORE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OpCounterInsertRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_INSERT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OpCounterQueryRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_QUERY";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OpCounterReplCmdRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_REPL_CMD";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OpCounterReplDeleteRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_REPL_DELETE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OpCounterReplInsertRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_REPL_INSERT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OpCounterReplUpdateRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_REPL_UPDATE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OpCounterTtlDeletedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_TTL_DELETED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OpCounterUpdateRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPCOUNTER_UPDATE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OperationsContactNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      /** @enum {string} */
+      typeName: "OPERATIONS_CONTACT";
+    };
+    OperationsQueriesKilledRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPERATIONS_QUERIES_KILLED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OperationsScanAndOrderRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPERATIONS_SCAN_AND_ORDER";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    OperationThrottlingRejectedOperationsRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPERATION_THROTTLING_REJECTED_OPERATIONS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    /** @enum {string} */
+    Operator: "<" | ">";
+    OplogMasterLagTimeDiffTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPLOG_MASTER_LAG_TIME_DIFF";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    OplogMasterTimeEstimatedTtlTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPLOG_MASTER_TIME_ESTIMATED_TTL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    OplogMasterTimeTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPLOG_MASTER_TIME";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    OplogRateGbPerHourDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPLOG_RATE_GB_PER_HOUR";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    OplogSlaveLagMasterTimeTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "OPLOG_SLAVE_LAG_MASTER_TIME";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    OpsGenieNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      integrationId?: string;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      opsGenieApiKey?: string;
+      /**
+       * @default US
+       * @enum {string}
+       */
+      opsGenieRegion?: "US" | "EU";
+      /** @enum {string} */
+      typeName: "OPS_GENIE";
+    };
+    OrgNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      emailEnabled?: boolean;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      roles?: (
+        | "ORG_OWNER"
+        | "ORG_MEMBER"
+        | "ORG_GROUP_CREATOR"
+        | "ORG_BILLING_ADMIN"
+        | "ORG_BILLING_READ_ONLY"
+        | "ORG_READ_ONLY"
+      )[];
+      smsEnabled?: boolean;
+      /** @enum {string} */
+      typeName: "ORG";
+    };
+    PagerDutyNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      integrationId?: string;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      /**
+       * @default US
+       * @enum {string}
+       */
+      region?: "US" | "EU";
+      serviceKey?: string;
+      /** @enum {string} */
+      typeName: "PAGER_DUTY";
+    };
+    PaginatedAlertConfigView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["GroupAlertsConfig"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedAlertView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["AlertViewForNdsGroup"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedApiAtlasDatabaseUserView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["CloudDatabaseUser"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedApiAtlasProviderRegionsView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["CloudProviderRegions"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedApiInvoiceMetadataView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["BillingInvoiceMetadata"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedApiInvoiceView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["BillingInvoice"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedAtlasGroupView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["Group"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedCloudBackupReplicaSetView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["DiskBackupReplicaSet"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedClusterDescription20240805: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["ClusterDescription20240805"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedFlexClusters20241113: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["FlexClusterDescription20241113"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedHostView_Atlas: {
+      readonly links?: components["schemas"]["Link_Atlas"][];
+      readonly results: components["schemas"]["ApiHostView_Atlas"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedNetworkAccessView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["NetworkPermissionEntry"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedOnlineArchiveView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["BackupOnlineArchive"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedOrganizationView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["AtlasOrganization"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PaginatedServerlessInstanceDescriptionView: {
+      readonly links?: components["schemas"]["Link"][];
+      readonly results: components["schemas"]["ServerlessInstanceDescription"][];
+      /** Format: int32 */
+      readonly totalCount?: number;
+    };
+    PartitionFieldView: {
+      fieldName: string;
+      /** @enum {string} */
+      readonly fieldType?: "date" | "int" | "long" | "objectId" | "string" | "uuid";
+      /**
+       * Format: int32
+       * @default 0
+       */
+      order: number;
+    };
+    QueryExecutorScannedObjectsRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "QUERY_EXECUTOR_SCANNED_OBJECTS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    QueryExecutorScannedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "QUERY_EXECUTOR_SCANNED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    QuerySpillToDiskDuringSortRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "QUERY_SPILL_TO_DISK_DURING_SORT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    QueryTargetingScannedObjectsPerReturnedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "QUERY_TARGETING_SCANNED_OBJECTS_PER_RETURNED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    QueryTargetingScannedPerReturnedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "QUERY_TARGETING_SCANNED_PER_RETURNED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    RawMetricAlertView: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      readonly clusterName?: string;
+      /** Format: date-time */
+      readonly created: string;
+      currentValue?: components["schemas"]["RawMetricValueView"];
+      eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly hostnameAndPort?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly metricName?: string;
+      readonly orgId?: string;
+      readonly replicaSetName?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    RawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName:
+        | "REALM_AUTH_LOGIN_FAIL"
+        | "REALM_ENDPOINTS_FAILED_REQUESTS"
+        | "REALM_GQL_FAILED_REQUESTS"
+        | "REALM_OVERALL_FAILED_REQUESTS"
+        | "REALM_SDKFNS_FAILED_REQUESTS"
+        | "REALM_SYNC_NUM_UNSYNCABLE_DOCS_PERCENT"
+        | "REALM_TRIGGERS_FAILED_REQUESTS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    /**
+     * @default RAW
+     * @enum {string}
+     */
+    RawMetricUnits: "RAW";
+    RawMetricValueView: {
+      /** Format: double */
+      readonly number?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ReplicaSetAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["ReplicaSetEventTypeViewForNdsGroupAlertableNoThreshold"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["ReplicaSetMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      threshold?: components["schemas"]["AlertsThresholdInteger"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    ReplicaSetAlertViewForNdsGroup: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      readonly clusterName?: string;
+      /** Format: date-time */
+      readonly created: string;
+      eventTypeName: components["schemas"]["ReplicaSetEventTypeViewForNdsGroupAlertable"];
+      readonly groupId?: string;
+      readonly hostnameAndPort?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly nonRunningHostIds?: string[];
+      readonly orgId?: string;
+      readonly parentClusterId?: string;
+      readonly replicaSetName?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    /** @enum {string} */
+    ReplicaSetEventTypeViewForNdsGroupAlertable:
+      | "REPLICATION_OPLOG_WINDOW_RUNNING_OUT"
+      | "NO_PRIMARY"
+      | "PRIMARY_ELECTED"
+      | "TOO_MANY_ELECTIONS"
+      | "TOO_FEW_HEALTHY_MEMBERS"
+      | "TOO_MANY_UNHEALTHY_MEMBERS";
+    /** @enum {string} */
+    ReplicaSetEventTypeViewForNdsGroupAlertableNoThreshold: "NO_PRIMARY" | "PRIMARY_ELECTED";
+    /** @enum {string} */
+    ReplicaSetEventTypeViewForNdsGroupAlertableWithThreshold:
+      | "TOO_MANY_ELECTIONS"
+      | "REPLICATION_OPLOG_WINDOW_RUNNING_OUT"
+      | "TOO_FEW_HEALTHY_MEMBERS"
+      | "TOO_MANY_UNHEALTHY_MEMBERS";
+    ReplicaSetMatcher: {
+      fieldName: components["schemas"]["ReplicaSetMatcherField"];
+      /** @enum {string} */
+      operator:
+        | "EQUALS"
+        | "CONTAINS"
+        | "STARTS_WITH"
+        | "ENDS_WITH"
+        | "NOT_EQUALS"
+        | "NOT_CONTAINS"
+        | "REGEX";
+      value: string;
+    };
+    /** @enum {string} */
+    ReplicaSetMatcherField: "REPLICA_SET_NAME" | "SHARD_NAME" | "CLUSTER_NAME";
+    ReplicaSetThresholdAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["ReplicaSetEventTypeViewForNdsGroupAlertableWithThreshold"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["ReplicaSetMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      threshold?: components["schemas"]["AlertsThresholdInteger"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    ReplicationSpec20240805: {
+      readonly id?: string;
+      regionConfigs?: components["schemas"]["CloudRegionConfig20240805"][];
+      readonly zoneId?: string;
+      zoneName?: string;
+    };
+    ResourcePolicyReference: {
+      readonly id: string;
+      readonly name: string;
+    };
+    ResourceTag: {
+      key: string;
+      value: string;
+    };
+    RestartsInLastHourRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "RESTARTS_IN_LAST_HOUR";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    RPUMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_TOTAL_READ_UNITS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["ServerlessMetricUnits"];
+    };
+    SearchAutoMigration: {
+      /** @default false */
+      disabled?: boolean;
+    };
+    SearchHostStatusDetail: {
+      hostname?: string;
+      mainIndex?: components["schemas"]["SearchMainIndexStatusDetail"];
+      queryable?: boolean;
+      stagedIndex?: components["schemas"]["SearchStagedIndexStatusDetail"];
+      /** @enum {string} */
+      status?:
+        "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
+    };
+    SearchIndexDefinition: {
+      /**
+       * Format: int32
+       * @default 1
+       */
+      numPartitions?: number;
+      storedSource?: Record<string, never>;
+    };
+    SearchIndexDefinitionVersion: {
+      /** Format: date-time */
+      createdAt?: string;
+      /** Format: int64 */
+      version?: number;
+    };
+    SearchIndexResponse: {
+      collectionName?: string;
+      database?: string;
+      indexID?: string;
+      latestDefinition?: components["schemas"]["SearchIndexDefinition"];
+      latestDefinitionVersion?: components["schemas"]["SearchIndexDefinitionVersion"];
+      name?: string;
+      queryable?: boolean;
+      /** @enum {string} */
+      status?:
+        "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
+      statusDetail?: components["schemas"]["SearchHostStatusDetail"][];
+      /** @enum {string} */
+      type?: "search" | "vectorSearch";
+    };
+    SearchIndexSizeDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_INDEX_SIZE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    SearchMainIndexStatusDetail: SearchMainIndexStatusDetail_3954bba8;
+    SearchMappings: {
+      dynamic?: Record<string, never>;
+      fields?: {
+        [key: string]: components["schemas"]["Fields"];
+      };
+    };
+    SearchMaxFieldsIndexedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_MAX_FIELDS_INDEXED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchMaxNgramFieldsIndexedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_MAX_NGRAM_FIELDS_INDEXED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchNumberOfFieldsInIndexRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_NUMBER_OF_FIELDS_IN_INDEX";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchNumberOfQueriesErrorRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_NUMBER_OF_QUERIES_ERROR";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchNumberOfQueriesSuccessRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_NUMBER_OF_QUERIES_SUCCESS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchNumberOfQueriesTotalRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_NUMBER_OF_QUERIES_TOTAL";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchOpCounterDeleteRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_OPCOUNTER_DELETE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchOpCounterGetMoreRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_OPCOUNTER_GETMORE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchOpCounterInsertRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_OPCOUNTER_INSERT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchOpCounterUpdateRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_OPCOUNTER_UPDATE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchProcessThrottlingRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_PROCESS_THROTTLING";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SearchReplicationLagTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SEARCH_REPLICATION_LAG";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    SearchStagedIndexStatusDetail: SearchMainIndexStatusDetail_3954bba8;
+    SearchSynonymMappingDefinition: {
+      /** @enum {string} */
+      analyzer: analyzer_f12f57c6;
+      name: string;
+      source: components["schemas"]["SynonymSource"];
+    };
+    SearchTypeSets: {
+      name: string;
+      types: components["schemas"]["BasicDBObject"][];
+    };
+    ServerlessAVGCommandExecutionTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_AVG_COMMAND_EXECUTION_TIME";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    ServerlessAVGWriteExecutionTimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_AVG_WRITE_EXECUTION_TIME";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    ServerlessConnectionPercentageRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_CONNECTIONS_PERCENT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ServerlessConnectionStringsPrivateEndpointItem: {
+      readonly endpointId?: string;
+      /** @enum {string} */
+      readonly providerName?: "AWS" | "AZURE";
+      readonly region?: string;
+    };
+    ServerlessConnectionStringsPrivateEndpointList: {
+      readonly endpoints?: components["schemas"]["ServerlessConnectionStringsPrivateEndpointItem"][];
+      readonly srvConnectionString?: string;
+      /** @enum {string} */
+      readonly type?: "MONGOS";
+    };
+    /** @enum {string} */
+    ServerlessEventTypeViewAlertable: "OUTSIDE_SERVERLESS_METRIC_THRESHOLD";
+    ServerlessInstanceDescription: {
+      connectionStrings?: components["schemas"]["ServerlessInstanceDescriptionConnectionStrings"];
+      /** Format: date-time */
+      readonly createDate?: string;
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly mongoDBVersion?: string;
+      name?: string;
+      providerSettings: components["schemas"]["ServerlessProviderSettings"];
+      serverlessBackupOptions?: components["schemas"]["ClusterServerlessBackupOptions"];
+      /** @enum {string} */
+      readonly stateName?: "IDLE" | "CREATING" | "UPDATING" | "DELETING" | "REPAIRING";
+      tags?: components["schemas"]["ResourceTag"][];
+      /** @default false */
+      terminationProtectionEnabled?: boolean;
+    };
+    ServerlessInstanceDescriptionConnectionStrings: {
+      readonly privateEndpoint?: components["schemas"]["ServerlessConnectionStringsPrivateEndpointList"][];
+      readonly standardSrv?: string;
+    };
+    ServerlessMetricAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["ServerlessEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["AlertMatcher"][];
+      metricThreshold?: components["schemas"]["ServerlessMetricThreshold"];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    ServerlessMetricThreshold: Shared_49612667 &
+      (
+        | components["schemas"]["ServerlessAVGCommandExecutionTimeMetricThresholdView"]
+        | components["schemas"]["ServerlessAVGWriteExecutionTimeMetricThresholdView"]
+        | components["schemas"]["TimeMetricThresholdView"]
+        | components["schemas"]["ServerlessTotalWriteUnitsRPUMetricThresholdView"]
+        | components["schemas"]["RPUMetricThresholdView"]
+        | components["schemas"]["ServerlessOpCounterUpdateRawMetricThresholdView"]
+        | components["schemas"]["ServerlessOpCounterQueryRawMetricThresholdView"]
+        | components["schemas"]["ServerlessOpCounterInsertRawMetricThresholdView"]
+        | components["schemas"]["ServerlessOpCounterGetMoreRawMetricThresholdView"]
+        | components["schemas"]["ServerlessOpCounterDeleteRawMetricThresholdView"]
+        | components["schemas"]["ServerlessOpCounterCDMRawMetricThresholdView"]
+        | components["schemas"]["ServerlessNetworkNumRequestRawMetricThresholdView"]
+        | components["schemas"]["ServerlessNetworkBytesOutDataMetricThresholdView"]
+        | components["schemas"]["ServerlessNetworkBytesInDataMetricThresholdView"]
+        | components["schemas"]["DataMetricThresholdView"]
+        | components["schemas"]["ServerlessConnectionPercentageRawMetricThresholdView"]
+        | components["schemas"]["RawMetricThresholdView"]
+      );
+    /** @enum {string} */
+    ServerlessMetricUnits:
+      "RPU" | "THOUSAND_RPU" | "MILLION_RPU" | "WPU" | "THOUSAND_WPU" | "MILLION_WPU";
+    ServerlessNetworkBytesInDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_NETWORK_BYTES_IN";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    ServerlessNetworkBytesOutDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_NETWORK_BYTES_OUT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    ServerlessNetworkNumRequestRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_NETWORK_NUM_REQUESTS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ServerlessOpCounterCDMRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_OPCOUNTER_CMD";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ServerlessOpCounterDeleteRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_OPCOUNTER_DELETE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ServerlessOpCounterGetMoreRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_OPCOUNTER_GETMORE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ServerlessOpCounterInsertRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_OPCOUNTER_INSERT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ServerlessOpCounterQueryRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_OPCOUNTER_QUERY";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ServerlessOpCounterUpdateRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_OPCOUNTER_UPDATE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    ServerlessProviderSettings: {
+      /** @enum {string} */
+      backingProviderName: "AWS" | "AZURE" | "GCP";
+      /** Format: int32 */
+      readonly effectiveDiskSizeGBLimit?: number;
+      effectiveInstanceSizeName?: components["schemas"]["BaseCloudProviderInstanceSize"];
+      readonly effectiveProviderName?: string;
+      /**
+       * @default SERVERLESS
+       * @enum {string}
+       */
+      providerName?: "SERVERLESS";
+      regionName: string;
+    };
+    ServerlessTotalWriteUnitsRPUMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SERVERLESS_TOTAL_WRITE_UNITS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["ServerlessMetricUnits"];
+    };
+    SlackNotification: {
+      apiToken?: string;
+      channelName?: string;
+      /** Format: int32 */
+      delayMin?: number;
+      integrationId?: string;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      /** @enum {string} */
+      typeName: "SLACK";
+    };
+    SMSNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      /** Format: int32 */
+      intervalMin?: number;
+      mobileNumber?: string;
+      notifierId?: string;
+      /** @enum {string} */
+      typeName: "SMS";
+    };
+    StorageConfig: {
+      /** Format: int32 */
+      shardSizeLimitGB?: number | null;
+    } | null;
+    StreamProcessorAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["StreamProcessorEventTypeViewAlertableNoThreshold"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["StreamsMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    StreamProcessorAlertViewForNdsGroup: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      /** Format: date-time */
+      readonly created: string;
+      eventTypeName: components["schemas"]["HostEventTypeViewForNdsGroupAlertable"];
+      readonly groupId?: string;
+      readonly id: string;
+      readonly instanceName?: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly orgId?: string;
+      readonly processorErrorMsg?: string;
+      readonly processorName?: string;
+      readonly processorState?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    /** @enum {string} */
+    StreamProcessorEventTypeViewAlertableNoThreshold:
+      "STREAM_PROCESSOR_STATE_IS_FAILED" | "STREAM_PROCESSOR_AUTOSCALE_INITIATED";
+    /** @enum {string} */
+    StreamProcessorEventTypeViewAlertableWithThreshold: "OUTSIDE_STREAM_PROCESSOR_METRIC_THRESHOLD";
+    StreamProcessorMetricAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["StreamProcessorEventTypeViewAlertableWithThreshold"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["StreamsMatcher"][];
+      metricThreshold?: components["schemas"]["StreamProcessorMetricThreshold"];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      threshold?: components["schemas"]["StreamProcessorMetricThreshold"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    StreamProcessorMetricThreshold: Shared_49612667 &
+      (
+        | components["schemas"]["KafkaRawMetricThresholdView"]
+        | components["schemas"]["TimeMetricThresholdView"]
+        | components["schemas"]["DLQRawMetricThresholdView"]
+        | components["schemas"]["RawMetricThresholdView"]
+      );
+    StreamsMatcher: {
+      fieldName: components["schemas"]["StreamsMatcherField"];
+      /** @enum {string} */
+      operator:
+        | "EQUALS"
+        | "CONTAINS"
+        | "STARTS_WITH"
+        | "ENDS_WITH"
+        | "NOT_EQUALS"
+        | "NOT_CONTAINS"
+        | "REGEX";
+      value: string;
+    };
+    /** @enum {string} */
+    StreamsMatcherField: "INSTANCE_NAME" | "PROCESSOR_NAME";
+    StreamsPrivateLinkEndpointAlertConfigViewForNdsGroup: {
+      /** Format: date-time */
+      readonly created?: string;
+      /** @default false */
+      enabled?: boolean;
+      eventTypeName: components["schemas"]["StreamsPrivateLinkEndpointEventTypeViewForNdsGroupAlertable"];
+      readonly groupId?: string;
+      readonly id?: string;
+      readonly links?: components["schemas"]["Link"][];
+      matchers?: components["schemas"]["StreamsPrivateLinkEndpointMatcher"][];
+      notifications: components["schemas"]["AlertsNotificationRootForGroup"][];
+      severityOverride?: components["schemas"]["EventSeverity"];
+      /** Format: date-time */
+      readonly updated?: string;
+    };
+    /** @enum {string} */
+    StreamsPrivateLinkEndpointEventTypeViewForNdsGroupAlertable:
+      | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_FIRST_WARNING"
+      | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_SECOND_WARNING"
+      | "STREAMS_PRIVATE_LINK_ENDPOINT_UNUSED_DELETED";
+    StreamsPrivateLinkEndpointMatcher: {
+      fieldName: components["schemas"]["StreamsPrivateLinkEndpointMatcherField"];
+      /** @enum {string} */
+      operator:
+        | "EQUALS"
+        | "CONTAINS"
+        | "STARTS_WITH"
+        | "ENDS_WITH"
+        | "NOT_EQUALS"
+        | "NOT_CONTAINS"
+        | "REGEX";
+      value: string;
+    };
+    /** @enum {string} */
+    StreamsPrivateLinkEndpointMatcherField: "ENDPOINT_ID";
+    SwapUsageFreeDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SWAP_USAGE_FREE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    SwapUsageUsedDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SWAP_USAGE_USED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    SynonymMappingStatusDetail: {
+      message?: string;
+      queryable?: boolean;
+      /** @enum {string} */
+      status?: "FAILED" | "BUILDING" | "READY";
+    };
+    SynonymMappingStatusDetailMap: {
+      [key: string]: components["schemas"]["SynonymMappingStatusDetail"];
+    };
+    SynonymSource: {
+      collection: string;
+    };
+    SystemMemoryAvailableDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SYSTEM_MEMORY_AVAILABLE";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    SystemMemoryPercentUsedRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SYSTEM_MEMORY_PERCENT_USED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    SystemMemoryUsedDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SYSTEM_MEMORY_USED";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    SystemNetworkInDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SYSTEM_NETWORK_IN";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    SystemNetworkOutDataMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "SYSTEM_NETWORK_OUT";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["DataMetricUnits"];
+    };
+    TeamNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      emailEnabled?: boolean;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      smsEnabled?: boolean;
+      teamId?: string;
+      teamName?: string;
+      /** @enum {string} */
+      typeName: "TEAM";
+    };
+    TextSearchHostStatusDetail: {
+      hostname?: string;
+      mainIndex?: components["schemas"]["TextSearchIndexStatusDetail"];
+      queryable?: boolean;
+      stagedIndex?: components["schemas"]["TextSearchIndexStatusDetail"];
+      /** @enum {string} */
+      status?:
+        "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
+    };
+    TextSearchIndexDefinition: {
+      /**
+       * @default lucene.standard
+       * @enum {string}
+       */
+      analyzer?: analyzer_f12f57c6;
+      analyzers?: components["schemas"]["AtlasSearchAnalyzer"][];
+      mappings: components["schemas"]["SearchMappings"];
+      /**
+       * Format: int32
+       * @default 1
+       */
+      numPartitions?: number;
+      /**
+       * @default lucene.standard
+       * @enum {string}
+       */
+      searchAnalyzer?: analyzer_f12f57c6;
+      sort?: Record<string, never>;
+      storedSource?: Record<string, never>;
+      synonyms?: components["schemas"]["SearchSynonymMappingDefinition"][];
+      typeSets?: components["schemas"]["SearchTypeSets"][];
+    };
+    TextSearchIndexResponse: Omit<components["schemas"]["SearchIndexResponse"], "type"> & {
+      latestDefinition?: components["schemas"]["TextSearchIndexDefinition"];
+      statusDetail?: components["schemas"]["TextSearchHostStatusDetail"][];
+      /** @enum {string} */
+      synonymMappingStatus?: "FAILED" | "BUILDING" | "READY";
+      synonymMappingStatusDetail?: {
+        [key: string]: components["schemas"]["SynonymMappingStatusDetail"];
+      }[];
+    } & {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "search";
+    };
+    TextSearchIndexStatusDetail: {
+      definition?: components["schemas"]["TextSearchIndexDefinition"];
+      definitionVersion?: components["schemas"]["SearchIndexDefinitionVersion"];
+      message?: string;
+      queryable?: boolean;
+      /** @enum {string} */
+      status?:
+        "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
+      /** @enum {string} */
+      synonymMappingStatus?: "FAILED" | "BUILDING" | "READY";
+      synonymMappingStatusDetail?: components["schemas"]["SynonymMappingStatusDetailMap"][];
+    };
+    TicketsAvailableReadsRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "TICKETS_AVAILABLE_READS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    TicketsAvailableWritesRawMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName: "TICKETS_AVAILABLE_WRITES";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["RawMetricUnits"];
+    };
+    TimeMetricAlertView: {
+      /** Format: date-time */
+      acknowledgedUntil?: string;
+      acknowledgementComment?: string;
+      /** Format: email */
+      readonly acknowledgingUsername?: string;
+      readonly alertConfigId: string;
+      readonly clusterName?: string;
+      /** Format: date-time */
+      readonly created: string;
+      currentValue?: components["schemas"]["TimeMetricValueView"];
+      eventTypeName: components["schemas"]["HostMetricEventTypeViewAlertable"];
+      readonly groupId?: string;
+      readonly hostnameAndPort?: string;
+      readonly id: string;
+      /** Format: date-time */
+      readonly lastNotified?: string;
+      readonly links?: components["schemas"]["Link"][];
+      readonly metricName?: string;
+      readonly orgId?: string;
+      readonly replicaSetName?: string;
+      /** Format: date-time */
+      readonly resolved?: string;
+      /** @enum {string} */
+      readonly severity?: "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+      /** @enum {string} */
+      readonly status: "CANCELLED" | "CLOSED" | "OPEN" | "TRACKING";
+      /** Format: date-time */
+      readonly updated: string;
+    };
+    TimeMetricThresholdView: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      metricName:
+        | "REALM_ENDPOINTS_COMPUTE_MS"
+        | "REALM_ENDPOINTS_RESPONSE_MS"
+        | "REALM_GQL_COMPUTE_MS"
+        | "REALM_GQL_RESPONSE_MS"
+        | "REALM_OVERALL_COMPUTE_MS"
+        | "REALM_SDK_FNS_RESPONSE_MS"
+        | "REALM_SDK_FUNCTIONS_COMPUTE_MS"
+        | "REALM_SDK_MQL_COMPUTE_MS"
+        | "REALM_SDK_MQL_RESPONSE_MS"
+        | "REALM_SYNC_CLIENT_BOOTSTRAP_MS"
+        | "REALM_SYNC_CURRENT_OPLOG_LAG_MS_SUM"
+        | "REALM_TRIGGERS_COMPUTE_MS"
+        | "REALM_TRIGGERS_CURRENT_OPLOG_LAG_MS_SUM"
+        | "REALM_TRIGGERS_RESPONSE_MS";
+      /** @enum {string} */
+      mode?: "AVERAGE";
+      /** @enum {string} */
+      operator?: "LESS_THAN" | "GREATER_THAN";
+      /** Format: double */
+      threshold?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    /**
+     * @default HOURS
+     * @enum {string}
+     */
+    TimeMetricUnits:
+      "NANOSECONDS" | "MILLISECONDS" | "MILLION_MINUTES" | "SECONDS" | "MINUTES" | "HOURS" | "DAYS";
+    TimeMetricValueView: {
+      /** Format: double */
+      readonly number?: number;
+      units?: components["schemas"]["TimeMetricUnits"];
+    };
+    UserNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      emailEnabled?: boolean;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      smsEnabled?: boolean;
+      /** @enum {string} */
+      typeName: "USER";
+      /** Format: email */
+      username?: string;
+    };
+    UserScope: {
+      name: string;
+      /** @enum {string} */
+      type: "CLUSTER" | "DATA_LAKE" | "STREAM";
+    };
+    VectorSearchHostStatusDetail: {
+      hostname?: string;
+      mainIndex?: components["schemas"]["VectorSearchIndexStatusDetail"];
+      queryable?: boolean;
+      stagedIndex?: components["schemas"]["VectorSearchIndexStatusDetail"];
+      /** @enum {string} */
+      status?:
+        "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
+    };
+    VectorSearchIndexDefinition: {
+      fields: components["schemas"]["BasicDBObject"][];
+      nestedRoot?: string;
+      /**
+       * Format: int32
+       * @default 1
+       */
+      numPartitions?: number;
+      storedSource?: Record<string, never>;
+    };
+    VectorSearchIndexResponse: Omit<components["schemas"]["SearchIndexResponse"], "type"> & {
+      latestDefinition?: components["schemas"]["VectorSearchIndexDefinition"];
+      statusDetail?: components["schemas"]["VectorSearchHostStatusDetail"][];
+    } & {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "vectorSearch";
+    };
+    VectorSearchIndexStatusDetail: {
+      definition?: components["schemas"]["VectorSearchIndexDefinition"];
+      definitionVersion?: components["schemas"]["SearchIndexDefinitionVersion"];
+      message?: string;
+      queryable?: boolean;
+      /** @enum {string} */
+      status?:
+        "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
+    };
+    VictorOpsNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      integrationId?: string;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      /** @enum {string} */
+      typeName: "VICTOR_OPS";
+      victorOpsApiKey?: string;
+      victorOpsRoutingKey?: string;
+    };
+    WebhookNotification: {
+      /** Format: int32 */
+      delayMin?: number;
+      integrationId?: string;
+      /** Format: int32 */
+      intervalMin?: number;
+      notifierId?: string;
+      /** @enum {string} */
+      typeName: "WEBHOOK";
+      /** Format: password */
+      webhookBodyTemplate?: string;
+      /** Format: password */
+      webhookHeadersTemplate?: string;
+      /** Format: password */
+      webhookSecret?: string;
+      webhookUrl?: string;
+    };
+  };
+  responses: {
+    badRequest: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["ApiError"];
+      };
+    };
+    conflict: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["ApiError"];
+      };
+    };
+    forbidden: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["ApiError"];
+      };
+    };
+    forbiddenOrResourcePolicyViolation: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["ApiError"];
+      };
+    };
+    internalServerError: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["ApiError"];
+      };
+    };
+    notFound: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["ApiError"];
+      };
+    };
+    paymentRequired: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["ApiError"];
+      };
+    };
+    serviceUnavailable: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["ApiError"];
+      };
+    };
+    tooManyRequests: {
+      headers: {
+        "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+        "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+        "Retry-After": components["headers"]["HeaderRetryAfter"];
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["ApiError"];
+      };
+    };
+    unauthorized: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        "application/json": components["schemas"]["ApiError"];
+      };
+    };
+  };
+  parameters: {
+    end: string;
+    envelope: boolean;
+    granularity: string;
+    groupId: string;
+    includeCount: boolean;
+    itemsPerPage: number;
+    orgId: string;
+    pageNum: number;
+    period: string;
+    pretty: boolean;
+    start: string;
+  };
+  requestBodies: never;
+  headers: {
+    HeaderRateLimitLimit: number;
+    HeaderRateLimitRemaining: number;
+    HeaderRetryAfter: number;
+  };
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    getGroup: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_5d78fe45;
-    };
-    updateGroup: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2023-01-01+json": components["schemas"]["GroupUpdate"];
-            };
-        };
-        responses: responses_5d78fe45;
-    };
-    listGroupAccessListEntries: {
-        parameters: parameters_ff43d5ef;
-        requestBody?: never;
-        responses: responses_4224de0a;
-    };
-    createGroupAccessListEntry: {
-        parameters: parameters_ff43d5ef;
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2023-01-01+json": components["schemas"]["NetworkPermissionEntry"][];
-            };
-        };
-        responses: responses_4224de0a;
-    };
-    getGroupAccessListEntry: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                entryValue: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["NetworkPermissionEntry"];
-                };
-            };
-        };
-    };
-    deleteGroupAccessListEntry: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                entryValue: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_78de8446;
-    };
-    listGroupAlertConfigs: {
-        parameters: parameters_ff43d5ef;
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedAlertConfigView"];
-                };
-            };
-        };
-    };
-    getGroupAlertConfig: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                alertConfigId: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_9bec8f4c;
-    };
-    deleteGroupAlertConfig: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                alertConfigId: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_78de8446;
-    };
-    toggleGroupAlertConfig: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                alertConfigId: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2023-01-01+json": components["schemas"]["AlertsToggle"];
-            };
-        };
-        responses: responses_9bec8f4c;
-    };
-    listGroupAlerts: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                includeCount?: components["parameters"]["includeCount"];
-                itemsPerPage?: components["parameters"]["itemsPerPage"];
-                pageNum?: components["parameters"]["pageNum"];
-                pretty?: components["parameters"]["pretty"];
-                status?: "OPEN" | "TRACKING" | "CLOSED";
-            };
-            header?: never;
-            path: {
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedAlertView"];
-                };
-            };
-        };
-    };
-    getGroupAlert: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                alertId: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["AlertViewForNdsGroup"];
-                };
-            };
-        };
-    };
-    acknowledgeGroupAlert: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                alertId: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2024-05-30+json": components["schemas"]["AcknowledgeAlert"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2024-05-30+json": components["schemas"]["AlertViewForNdsGroup"];
-                };
-            };
-        };
-    };
-    listGroupClusters: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                includeCount?: components["parameters"]["includeCount"];
-                includeDeletedWithRetainedBackups?: boolean;
-                itemsPerPage?: components["parameters"]["itemsPerPage"];
-                pageNum?: components["parameters"]["pageNum"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: {
-                "Use-Effective-Instance-Fields"?: boolean;
-            };
-            path: {
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2024-08-05+json": components["schemas"]["PaginatedClusterDescription20240805"];
-                };
-            };
-        };
-    };
-    getGroupCluster: {
-        parameters: parameters_f3b25376;
-        requestBody?: never;
-        responses: responses_1254cb71;
-    };
-    updateGroupCluster: {
-        parameters: parameters_f3b25376;
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2024-08-05+json": components["schemas"]["ClusterDescription20240805"];
-            };
-        };
-        responses: responses_1254cb71;
-    };
-    getGroupClusterBackupSchedule: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_a838fd7f;
-    };
-    updateGroupClusterBackupSchedule: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2024-08-05+json": {
-                    referenceHourOfDay?: number;
-                    referenceMinuteOfHour?: number;
-                    restoreWindowDays?: number;
-                };
-            };
-        };
-        responses: responses_a838fd7f;
-    };
-    listGroupClusterBackupSnapshots: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                includeCount?: components["parameters"]["includeCount"];
-                itemsPerPage?: components["parameters"]["itemsPerPage"];
-                oplogInc?: number;
-                oplogTs?: number;
-                pageNum?: components["parameters"]["pageNum"];
-                pointInTimeUtcSeconds?: number;
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedCloudBackupReplicaSetView"];
-                };
-            };
-        };
-    };
-    takeGroupClusterBackupSnapshots: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2023-01-01+json": components["schemas"]["DiskBackupOnDemandSnapshotRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["DiskBackupSnapshot"];
-                };
-            };
-        };
-    };
-    getGroupClusterBackupSnapshot: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-                snapshotId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["DiskBackupReplicaSet"];
-                };
-            };
-        };
-    };
-    deleteGroupClusterBackupSnapshot: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-                snapshotId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_78de8446;
-    };
-    listGroupClusterOnlineArchives: {
-        parameters: {
-            query?: query_461117dd;
-            header?: never;
-            path: {
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedOnlineArchiveView"];
-                };
-            };
-        };
-    };
-    getGroupClusterOnlineArchive: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                archiveId: string;
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_a2c7ec02;
-    };
-    deleteGroupClusterOnlineArchive: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                archiveId: string;
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_78de8446;
-    };
-    updateGroupClusterOnlineArchive: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                archiveId: string;
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2023-01-01+json": components["schemas"]["BackupOnlineArchive"];
-            };
-        };
-        responses: responses_a2c7ec02;
-    };
-    listGroupClusterSearchIndexes: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2024-05-30+json": components["schemas"]["SearchIndexResponse"][];
-                };
-            };
-        };
-    };
-    getGroupClusterSearchIndex: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-                indexId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2024-05-30+json": components["schemas"]["SearchIndexResponse"];
-                };
-            };
-        };
-    };
-    deleteGroupClusterSearchIndex: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                clusterName: string;
-                groupId: components["parameters"]["groupId"];
-                indexId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2024-05-30+json": unknown;
-                };
-            };
-        };
-    };
-    listGroupClusterProviderRegions: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                includeCount?: components["parameters"]["includeCount"];
-                itemsPerPage?: components["parameters"]["itemsPerPage"];
-                pageNum?: components["parameters"]["pageNum"];
-                pretty?: components["parameters"]["pretty"];
-                providers?: string[];
-                tier?: string;
-            };
-            header?: never;
-            path: {
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedApiAtlasProviderRegionsView"];
-                };
-            };
-        };
-    };
-    listGroupDatabaseUsers: {
-        parameters: parameters_ff43d5ef;
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedApiAtlasDatabaseUserView"];
-                };
-            };
-        };
-    };
-    createGroupDatabaseUser: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2023-01-01+json": components["schemas"]["CloudDatabaseUser"];
-            };
-        };
-        responses: {
-            201: Shared_bc71e261;
-        };
-    };
-    getGroupDatabaseUser: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                databaseName: string;
-                groupId: components["parameters"]["groupId"];
-                username: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_407fe7a6;
-    };
-    deleteGroupDatabaseUser: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                databaseName: string;
-                groupId: components["parameters"]["groupId"];
-                username: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_78de8446;
-    };
-    updateGroupDatabaseUser: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                databaseName: string;
-                groupId: components["parameters"]["groupId"];
-                username: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2023-01-01+json": {
-                    description?: string;
-                    roles?: components["schemas"]["DatabaseUserRole"][];
-                };
-            };
-        };
-        responses: responses_407fe7a6;
-    };
-    listGroupFlexClusters: {
-        parameters: parameters_ff43d5ef;
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2024-11-13+json": components["schemas"]["PaginatedFlexClusters20241113"];
-                };
-            };
-        };
-    };
-    getGroupFlexCluster: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                groupId: components["parameters"]["groupId"];
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: responses_57562edb;
-    };
-    updateGroupFlexCluster: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                groupId: components["parameters"]["groupId"];
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/vnd.atlas.2024-11-13+json": components["schemas"]["FlexClusterDescriptionUpdate20241113"];
-            };
-        };
-        responses: responses_57562edb;
-    };
-    listGroupPrivateEndpointEndpointService: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                cloudProvider: "AWS" | "AZURE" | "GCP";
-                groupId: components["parameters"]["groupId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["EndpointService"][];
-                };
-            };
-        };
-    };
-    getGroupPrivateEndpointEndpointService: {
-        parameters: parameters_98d36cfa;
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["EndpointService"];
-                };
-            };
-        };
-    };
-    deleteGroupPrivateEndpointEndpointService: {
-        parameters: parameters_98d36cfa;
-        requestBody?: never;
-        responses: responses_78de8446;
-    };
-    listGroupProcesses: {
-        parameters: parameters_ff43d5ef;
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedHostView_Atlas"];
-                };
-            };
-        };
-    };
-    getGroupProcessMeasurements: {
-        parameters: {
-            query: {
-                end?: components["parameters"]["end"];
-                envelope?: components["parameters"]["envelope"];
-                granularity: components["parameters"]["granularity"];
-                m?: ("ASSERT_MSG" | "ASSERT_REGULAR" | "ASSERT_USER" | "ASSERT_WARNING" | "BACKGROUND_FLUSH_AVG" | "CACHE_BYTES_READ_INTO" | "CACHE_BYTES_WRITTEN_FROM" | "CACHE_DIRTY_BYTES" | "CACHE_USED_BYTES" | "CACHE_FILL_RATIO" | "DIRTY_FILL_RATIO" | "COMPUTED_MEMORY" | "CONNECTIONS" | "CURSORS_TOTAL_OPEN" | "CURSORS_TOTAL_TIMED_OUT" | "DB_DATA_SIZE_TOTAL" | "DB_STORAGE_TOTAL" | "DOCUMENT_METRICS_DELETED" | "DOCUMENT_METRICS_INSERTED" | "DOCUMENT_METRICS_RETURNED" | "DOCUMENT_METRICS_UPDATED" | "EXTRA_INFO_PAGE_FAULTS" | "FTS_DISK_UTILIZATION" | "FTS_MEMORY_MAPPED" | "FTS_MEMORY_RESIDENT" | "FTS_MEMORY_VIRTUAL" | "FTS_PROCESS_CPU_KERNEL" | "FTS_PROCESS_CPU_USER" | "FTS_PROCESS_NORMALIZED_CPU_KERNEL" | "FTS_PROCESS_NORMALIZED_CPU_USER" | "GLOBAL_ACCESSES_NOT_IN_MEMORY" | "GLOBAL_LOCK_CURRENT_QUEUE_READERS" | "GLOBAL_LOCK_CURRENT_QUEUE_TOTAL" | "GLOBAL_LOCK_CURRENT_QUEUE_WRITERS" | "GLOBAL_PAGE_FAULT_EXCEPTIONS_THROWN" | "INDEX_COUNTERS_BTREE_ACCESSES" | "INDEX_COUNTERS_BTREE_HITS" | "INDEX_COUNTERS_BTREE_MISS_RATIO" | "INDEX_COUNTERS_BTREE_MISSES" | "JOURNALING_COMMITS_IN_WRITE_LOCK" | "JOURNALING_MB" | "JOURNALING_WRITE_DATA_FILES_MB" | "MAX_PROCESS_CPU_CHILDREN_KERNEL" | "MAX_PROCESS_CPU_CHILDREN_USER" | "MAX_PROCESS_CPU_KERNEL" | "MAX_PROCESS_CPU_USER" | "MAX_PROCESS_NORMALIZED_CPU_CHILDREN_KERNEL" | "MAX_PROCESS_NORMALIZED_CPU_CHILDREN_USER" | "MAX_PROCESS_NORMALIZED_CPU_KERNEL" | "MAX_PROCESS_NORMALIZED_CPU_USER" | "MAX_SWAP_USAGE_FREE" | "MAX_SWAP_USAGE_USED" | "MAX_SYSTEM_CPU_GUEST" | "MAX_SYSTEM_CPU_IOWAIT" | "MAX_SYSTEM_CPU_IRQ" | "MAX_SYSTEM_CPU_KERNEL" | "MAX_SYSTEM_CPU_SOFTIRQ" | "MAX_SYSTEM_CPU_STEAL" | "MAX_SYSTEM_CPU_USER" | "MAX_SYSTEM_MEMORY_AVAILABLE" | "MAX_SYSTEM_MEMORY_FREE" | "MAX_SYSTEM_MEMORY_USED" | "MAX_SYSTEM_NETWORK_IN" | "MAX_SYSTEM_NETWORK_OUT" | "MAX_SYSTEM_NORMALIZED_CPU_GUEST" | "MAX_SYSTEM_NORMALIZED_CPU_IOWAIT" | "MAX_SYSTEM_NORMALIZED_CPU_IRQ" | "MAX_SYSTEM_NORMALIZED_CPU_KERNEL" | "MAX_SYSTEM_NORMALIZED_CPU_NICE" | "MAX_SYSTEM_NORMALIZED_CPU_SOFTIRQ" | "MAX_SYSTEM_NORMALIZED_CPU_STEAL" | "MAX_SYSTEM_NORMALIZED_CPU_USER" | "MEMORY_MAPPED" | "MEMORY_RESIDENT" | "MEMORY_VIRTUAL" | "NETWORK_BYTES_IN" | "NETWORK_BYTES_OUT" | "NETWORK_NUM_REQUESTS" | "OP_EXECUTION_TIME_COMMANDS" | "OP_EXECUTION_TIME_READS" | "OP_EXECUTION_TIME_WRITES" | "OPCOUNTER_CMD" | "OPCOUNTER_DELETE" | "OPCOUNTER_TTL_DELETED" | "OPCOUNTER_GETMORE" | "OPCOUNTER_INSERT" | "OPCOUNTER_QUERY" | "OPCOUNTER_REPL_CMD" | "OPCOUNTER_REPL_DELETE" | "OPCOUNTER_REPL_INSERT" | "OPCOUNTER_REPL_UPDATE" | "OPCOUNTER_UPDATE" | "OPERATIONS_SCAN_AND_ORDER" | "OPERATIONS_QUERIES_KILLED" | "OPLOG_MASTER_LAG_TIME_DIFF" | "OPLOG_MASTER_TIME" | "OPLOG_RATE_GB_PER_HOUR" | "OPLOG_SLAVE_LAG_MASTER_TIME" | "OPLOG_REPLICATION_LAG_TIME" | "PROCESS_CPU_CHILDREN_KERNEL" | "PROCESS_CPU_CHILDREN_USER" | "PROCESS_CPU_KERNEL" | "PROCESS_CPU_USER" | "PROCESS_NORMALIZED_CPU_CHILDREN_KERNEL" | "PROCESS_NORMALIZED_CPU_CHILDREN_USER" | "PROCESS_NORMALIZED_CPU_KERNEL" | "PROCESS_NORMALIZED_CPU_USER" | "QUERY_EXECUTOR_SCANNED" | "QUERY_EXECUTOR_SCANNED_OBJECTS" | "QUERY_TARGETING_SCANNED_OBJECTS_PER_RETURNED" | "QUERY_TARGETING_SCANNED_PER_RETURNED" | "RESTARTS_IN_LAST_HOUR" | "SWAP_USAGE_FREE" | "SWAP_USAGE_USED" | "SYSTEM_CPU_GUEST" | "SYSTEM_CPU_IOWAIT" | "SYSTEM_CPU_IRQ" | "SYSTEM_CPU_KERNEL" | "SYSTEM_CPU_NICE" | "SYSTEM_CPU_SOFTIRQ" | "SYSTEM_CPU_STEAL" | "SYSTEM_CPU_USER" | "SYSTEM_MEMORY_AVAILABLE" | "SYSTEM_MEMORY_FREE" | "SYSTEM_MEMORY_USED" | "SYSTEM_NETWORK_IN" | "SYSTEM_NETWORK_OUT" | "SYSTEM_NORMALIZED_CPU_GUEST" | "SYSTEM_NORMALIZED_CPU_IOWAIT" | "SYSTEM_NORMALIZED_CPU_IRQ" | "SYSTEM_NORMALIZED_CPU_KERNEL" | "SYSTEM_NORMALIZED_CPU_NICE" | "SYSTEM_NORMALIZED_CPU_SOFTIRQ" | "SYSTEM_NORMALIZED_CPU_STEAL" | "SYSTEM_NORMALIZED_CPU_USER" | "TICKETS_AVAILABLE_READS" | "TICKETS_AVAILABLE_WRITE" | "OPERATION_THROTTLING_REJECTED_OPERATIONS" | "QUERY_SPILL_TO_DISK_DURING_SORT" | "STORAGE_READ_IOPS" | "STORAGE_WRITE_IOPS" | "STORAGE_READ_LATENCY" | "STORAGE_WRITE_LATENCY" | "STORAGE_BYTES_READ" | "STORAGE_BYTES_WRITTEN" | "STORAGE_THROUGHPUT_UTILIZATION" | "STORAGE_SPACE_USED" | "STORAGE_SPACE_FREE" | "STORAGE_SPACE_PERCENT_FREE" | "STORAGE_SPACE_PERCENT_USED" | "CATALOG_ACTIVE_COLLECTIONS_AND_INDEXES" | "QUERY_SPILL_FILE_SPILLED_SIZE" | "AVG_MAJORITY_WRITE_CONCERN_WRITE_TIME" | "TRANSACTIONS_CURRENT_ACTIVE" | "TRANSACTIONS_CURRENT_INACTIVE" | "TRANSACTIONS_CURRENT_OPEN" | "TRANSACTIONS_ABORTED" | "TRANSACTIONS_COMMITTED" | "TRANSACTIONS_STARTED" | "CACHE_PRESSURE_PERCENTAGE" | "INGRESS_QUEUE_WAIT_TIME" | "CONNECTION_RATE_LIMITING_OFFERED_CONNECTIONS" | "CONNECTION_RATE_LIMITING_SUCCESSFUL_CONNECTIONS" | "CONNECTION_RATE_LIMITING_REJECTED_CONNECTIONS" | "CONNECTION_RATE_LIMITING_INTERRUPTED_IN_QUEUE" | "CONNECTION_RATE_LIMITING_AVERAGE_TIME_QUEUED" | "OPERATION_RATE_LIMITING_OFFERED_OPERATIONS" | "OPERATION_RATE_LIMITING_SUCCESSFUL_OPERATIONS" | "OPERATION_RATE_LIMITING_REJECTED_OPERATIONS" | "OPERATION_RATE_LIMITING_QUEUED_OPERATIONS" | "OPERATION_RATE_LIMITING_CURRENT_QUEUE_DEPTH" | "OPERATION_RATE_LIMITING_QUEUE_TIME_AVG")[];
-                period?: components["parameters"]["period"];
-                pretty?: components["parameters"]["pretty"];
-                start?: components["parameters"]["start"];
-            };
-            header?: never;
-            path: {
-                groupId: components["parameters"]["groupId"];
-                processId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["ApiMeasurementsGeneralView_Atlas"];
-                };
-            };
-        };
-    };
-    listGroupServerlessInstances: {
-        parameters: parameters_ff43d5ef;
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedServerlessInstanceDescriptionView"];
-                };
-            };
-        };
-    };
-    getGroupServerlessInstance: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                groupId: components["parameters"]["groupId"];
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["ServerlessInstanceDescription"];
-                };
-            };
-        };
-    };
-    listOrgs: {
-        parameters: {
-            query?: query_1eb094ab;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedOrganizationView"];
-                };
-            };
-        };
-    };
-    getOrg: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                orgId: components["parameters"]["orgId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["AtlasOrganization"];
-                };
-            };
-        };
-    };
-    getOrgGroups: {
-        parameters: {
-            query?: query_1eb094ab;
-            header?: never;
-            path: {
-                orgId: components["parameters"]["orgId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedAtlasGroupView"];
-                };
-            };
-        };
-    };
-    listOrgInvoices: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                fromDate?: string;
-                includeCount?: components["parameters"]["includeCount"];
-                itemsPerPage?: components["parameters"]["itemsPerPage"];
-                orderBy?: "desc" | "asc";
-                pageNum?: components["parameters"]["pageNum"];
-                pretty?: components["parameters"]["pretty"];
-                sortBy?: "START_DATE" | "END_DATE";
-                statusNames?: ("PENDING" | "CLOSED" | "FORGIVEN" | "FAILED" | "PAID" | "FREE" | "PREPAID" | "INVOICED")[];
-                toDate?: string;
-                viewLinkedInvoices?: boolean;
-            };
-            header?: never;
-            path: {
-                orgId: components["parameters"]["orgId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedApiInvoiceMetadataView"];
-                };
-            };
-        };
-    };
-    getOrgInvoice: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                invoiceId: string;
-                orgId: components["parameters"]["orgId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+csv": string;
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["BillingInvoice"];
-                };
-            };
-        };
-    };
-    listOrgInvoicePending: {
-        parameters: {
-            query?: {
-                envelope?: components["parameters"]["envelope"];
-                pretty?: components["parameters"]["pretty"];
-            };
-            header?: never;
-            path: {
-                orgId: components["parameters"]["orgId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-                    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedApiInvoiceView"];
-                };
-            };
-        };
-    };
-}
-type analyzer_f12f57c6 = "lucene.standard" | "lucene.simple" | "lucene.whitespace" | "lucene.keyword" | "lucene.arabic" | "lucene.armenian" | "lucene.basque" | "lucene.bengali" | "lucene.brazilian" | "lucene.bulgarian" | "lucene.catalan" | "lucene.chinese" | "lucene.cjk" | "lucene.czech" | "lucene.danish" | "lucene.dutch" | "lucene.english" | "lucene.finnish" | "lucene.french" | "lucene.galician" | "lucene.german" | "lucene.greek" | "lucene.hindi" | "lucene.hungarian" | "lucene.indonesian" | "lucene.irish" | "lucene.italian" | "lucene.japanese" | "lucene.korean" | "lucene.kuromoji" | "lucene.latvian" | "lucene.lithuanian" | "lucene.morfologik" | "lucene.nori" | "lucene.norwegian" | "lucene.persian" | "lucene.portuguese" | "lucene.romanian" | "lucene.russian" | "lucene.smartcn" | "lucene.sorani" | "lucene.spanish" | "lucene.swedish" | "lucene.thai" | "lucene.turkish" | "lucene.ukrainian";
-type parameters_98d36cfa = {
-    query?: {
+  getGroup: {
+    parameters: {
+      query?: {
         envelope?: components["parameters"]["envelope"];
         pretty?: components["parameters"]["pretty"];
-    };
-    header?: never;
-    path: {
-        cloudProvider: "AWS" | "AZURE" | "GCP";
-        endpointServiceId: string;
+      };
+      header?: never;
+      path: {
         groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
     };
-    cookie?: never;
-};
-type parameters_f3b25376 = {
-    query?: {
+    requestBody?: never;
+    responses: responses_5d78fe45;
+  };
+  updateGroup: {
+    parameters: {
+      query?: {
         envelope?: components["parameters"]["envelope"];
         pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
     };
-    header?: {
-        "Use-Effective-Fields-Replication-Specs"?: boolean;
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2023-01-01+json": components["schemas"]["GroupUpdate"];
+      };
+    };
+    responses: responses_5d78fe45;
+  };
+  listGroupAccessListEntries: {
+    parameters: parameters_ff43d5ef;
+    requestBody?: never;
+    responses: responses_4224de0a;
+  };
+  createGroupAccessListEntry: {
+    parameters: parameters_ff43d5ef;
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2023-01-01+json": components["schemas"]["NetworkPermissionEntry"][];
+      };
+    };
+    responses: responses_4224de0a;
+  };
+  getGroupAccessListEntry: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        entryValue: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["NetworkPermissionEntry"];
+        };
+      };
+    };
+  };
+  deleteGroupAccessListEntry: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        entryValue: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_78de8446;
+  };
+  listGroupAlertConfigs: {
+    parameters: parameters_ff43d5ef;
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedAlertConfigView"];
+        };
+      };
+    };
+  };
+  getGroupAlertConfig: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        alertConfigId: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_9bec8f4c;
+  };
+  deleteGroupAlertConfig: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        alertConfigId: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_78de8446;
+  };
+  toggleGroupAlertConfig: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        alertConfigId: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2023-01-01+json": components["schemas"]["AlertsToggle"];
+      };
+    };
+    responses: responses_9bec8f4c;
+  };
+  listGroupAlerts: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        includeCount?: components["parameters"]["includeCount"];
+        itemsPerPage?: components["parameters"]["itemsPerPage"];
+        pageNum?: components["parameters"]["pageNum"];
+        pretty?: components["parameters"]["pretty"];
+        status?: "OPEN" | "TRACKING" | "CLOSED";
+      };
+      header?: never;
+      path: {
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedAlertView"];
+        };
+      };
+    };
+  };
+  getGroupAlert: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        alertId: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["AlertViewForNdsGroup"];
+        };
+      };
+    };
+  };
+  acknowledgeGroupAlert: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        alertId: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2024-05-30+json": components["schemas"]["AcknowledgeAlert"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2024-05-30+json": components["schemas"]["AlertViewForNdsGroup"];
+        };
+      };
+    };
+  };
+  listGroupClusters: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        includeCount?: components["parameters"]["includeCount"];
+        includeDeletedWithRetainedBackups?: boolean;
+        itemsPerPage?: components["parameters"]["itemsPerPage"];
+        pageNum?: components["parameters"]["pageNum"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: {
         "Use-Effective-Instance-Fields"?: boolean;
+      };
+      path: {
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
     };
-    path: {
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2024-08-05+json": components["schemas"]["PaginatedClusterDescription20240805"];
+        };
+      };
+    };
+  };
+  getGroupCluster: {
+    parameters: parameters_f3b25376;
+    requestBody?: never;
+    responses: responses_1254cb71;
+  };
+  updateGroupCluster: {
+    parameters: parameters_f3b25376;
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2024-08-05+json": components["schemas"]["ClusterDescription20240805"];
+      };
+    };
+    responses: responses_1254cb71;
+  };
+  getGroupClusterBackupSchedule: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
         clusterName: string;
         groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
     };
-    cookie?: never;
+    requestBody?: never;
+    responses: responses_a838fd7f;
+  };
+  updateGroupClusterBackupSchedule: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2024-08-05+json": {
+          referenceHourOfDay?: number;
+          referenceMinuteOfHour?: number;
+          restoreWindowDays?: number;
+        };
+      };
+    };
+    responses: responses_a838fd7f;
+  };
+  listGroupClusterBackupSnapshots: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        includeCount?: components["parameters"]["includeCount"];
+        itemsPerPage?: components["parameters"]["itemsPerPage"];
+        oplogInc?: number;
+        oplogTs?: number;
+        pageNum?: components["parameters"]["pageNum"];
+        pointInTimeUtcSeconds?: number;
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedCloudBackupReplicaSetView"];
+        };
+      };
+    };
+  };
+  takeGroupClusterBackupSnapshots: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2023-01-01+json": components["schemas"]["DiskBackupOnDemandSnapshotRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["DiskBackupSnapshot"];
+        };
+      };
+    };
+  };
+  getGroupClusterBackupSnapshot: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+        snapshotId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["DiskBackupReplicaSet"];
+        };
+      };
+    };
+  };
+  deleteGroupClusterBackupSnapshot: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+        snapshotId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_78de8446;
+  };
+  listGroupClusterOnlineArchives: {
+    parameters: {
+      query?: query_461117dd;
+      header?: never;
+      path: {
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedOnlineArchiveView"];
+        };
+      };
+    };
+  };
+  getGroupClusterOnlineArchive: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        archiveId: string;
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_a2c7ec02;
+  };
+  deleteGroupClusterOnlineArchive: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        archiveId: string;
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_78de8446;
+  };
+  updateGroupClusterOnlineArchive: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        archiveId: string;
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2023-01-01+json": components["schemas"]["BackupOnlineArchive"];
+      };
+    };
+    responses: responses_a2c7ec02;
+  };
+  listGroupClusterSearchIndexes: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2024-05-30+json": components["schemas"]["SearchIndexResponse"][];
+        };
+      };
+    };
+  };
+  getGroupClusterSearchIndex: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+        indexId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2024-05-30+json": components["schemas"]["SearchIndexResponse"];
+        };
+      };
+    };
+  };
+  deleteGroupClusterSearchIndex: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        clusterName: string;
+        groupId: components["parameters"]["groupId"];
+        indexId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      204: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2024-05-30+json": unknown;
+        };
+      };
+    };
+  };
+  listGroupClusterProviderRegions: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        includeCount?: components["parameters"]["includeCount"];
+        itemsPerPage?: components["parameters"]["itemsPerPage"];
+        pageNum?: components["parameters"]["pageNum"];
+        pretty?: components["parameters"]["pretty"];
+        providers?: string[];
+        tier?: string;
+      };
+      header?: never;
+      path: {
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedApiAtlasProviderRegionsView"];
+        };
+      };
+    };
+  };
+  listGroupDatabaseUsers: {
+    parameters: parameters_ff43d5ef;
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedApiAtlasDatabaseUserView"];
+        };
+      };
+    };
+  };
+  createGroupDatabaseUser: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2023-01-01+json": components["schemas"]["CloudDatabaseUser"];
+      };
+    };
+    responses: {
+      201: Shared_bc71e261;
+    };
+  };
+  getGroupDatabaseUser: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        databaseName: string;
+        groupId: components["parameters"]["groupId"];
+        username: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_407fe7a6;
+  };
+  deleteGroupDatabaseUser: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        databaseName: string;
+        groupId: components["parameters"]["groupId"];
+        username: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_78de8446;
+  };
+  updateGroupDatabaseUser: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        databaseName: string;
+        groupId: components["parameters"]["groupId"];
+        username: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2023-01-01+json": {
+          description?: string;
+          roles?: components["schemas"]["DatabaseUserRole"][];
+        };
+      };
+    };
+    responses: responses_407fe7a6;
+  };
+  listGroupFlexClusters: {
+    parameters: parameters_ff43d5ef;
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2024-11-13+json": components["schemas"]["PaginatedFlexClusters20241113"];
+        };
+      };
+    };
+  };
+  getGroupFlexCluster: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        groupId: components["parameters"]["groupId"];
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_57562edb;
+  };
+  updateGroupFlexCluster: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        groupId: components["parameters"]["groupId"];
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/vnd.atlas.2024-11-13+json": components["schemas"]["FlexClusterDescriptionUpdate20241113"];
+      };
+    };
+    responses: responses_57562edb;
+  };
+  listGroupPrivateEndpointEndpointService: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        cloudProvider: "AWS" | "AZURE" | "GCP";
+        groupId: components["parameters"]["groupId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["EndpointService"][];
+        };
+      };
+    };
+  };
+  getGroupPrivateEndpointEndpointService: {
+    parameters: parameters_98d36cfa;
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["EndpointService"];
+        };
+      };
+    };
+  };
+  deleteGroupPrivateEndpointEndpointService: {
+    parameters: parameters_98d36cfa;
+    requestBody?: never;
+    responses: responses_78de8446;
+  };
+  listGroupProcesses: {
+    parameters: parameters_ff43d5ef;
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedHostView_Atlas"];
+        };
+      };
+    };
+  };
+  getGroupProcessMeasurements: {
+    parameters: {
+      query: {
+        end?: components["parameters"]["end"];
+        envelope?: components["parameters"]["envelope"];
+        granularity: components["parameters"]["granularity"];
+        m?: (
+          | "ASSERT_MSG"
+          | "ASSERT_REGULAR"
+          | "ASSERT_USER"
+          | "ASSERT_WARNING"
+          | "BACKGROUND_FLUSH_AVG"
+          | "CACHE_BYTES_READ_INTO"
+          | "CACHE_BYTES_WRITTEN_FROM"
+          | "CACHE_DIRTY_BYTES"
+          | "CACHE_USED_BYTES"
+          | "CACHE_FILL_RATIO"
+          | "DIRTY_FILL_RATIO"
+          | "COMPUTED_MEMORY"
+          | "CONNECTIONS"
+          | "CURSORS_TOTAL_OPEN"
+          | "CURSORS_TOTAL_TIMED_OUT"
+          | "DB_DATA_SIZE_TOTAL"
+          | "DB_STORAGE_TOTAL"
+          | "DOCUMENT_METRICS_DELETED"
+          | "DOCUMENT_METRICS_INSERTED"
+          | "DOCUMENT_METRICS_RETURNED"
+          | "DOCUMENT_METRICS_UPDATED"
+          | "EXTRA_INFO_PAGE_FAULTS"
+          | "FTS_DISK_UTILIZATION"
+          | "FTS_MEMORY_MAPPED"
+          | "FTS_MEMORY_RESIDENT"
+          | "FTS_MEMORY_VIRTUAL"
+          | "FTS_PROCESS_CPU_KERNEL"
+          | "FTS_PROCESS_CPU_USER"
+          | "FTS_PROCESS_NORMALIZED_CPU_KERNEL"
+          | "FTS_PROCESS_NORMALIZED_CPU_USER"
+          | "GLOBAL_ACCESSES_NOT_IN_MEMORY"
+          | "GLOBAL_LOCK_CURRENT_QUEUE_READERS"
+          | "GLOBAL_LOCK_CURRENT_QUEUE_TOTAL"
+          | "GLOBAL_LOCK_CURRENT_QUEUE_WRITERS"
+          | "GLOBAL_PAGE_FAULT_EXCEPTIONS_THROWN"
+          | "INDEX_COUNTERS_BTREE_ACCESSES"
+          | "INDEX_COUNTERS_BTREE_HITS"
+          | "INDEX_COUNTERS_BTREE_MISS_RATIO"
+          | "INDEX_COUNTERS_BTREE_MISSES"
+          | "JOURNALING_COMMITS_IN_WRITE_LOCK"
+          | "JOURNALING_MB"
+          | "JOURNALING_WRITE_DATA_FILES_MB"
+          | "MAX_PROCESS_CPU_CHILDREN_KERNEL"
+          | "MAX_PROCESS_CPU_CHILDREN_USER"
+          | "MAX_PROCESS_CPU_KERNEL"
+          | "MAX_PROCESS_CPU_USER"
+          | "MAX_PROCESS_NORMALIZED_CPU_CHILDREN_KERNEL"
+          | "MAX_PROCESS_NORMALIZED_CPU_CHILDREN_USER"
+          | "MAX_PROCESS_NORMALIZED_CPU_KERNEL"
+          | "MAX_PROCESS_NORMALIZED_CPU_USER"
+          | "MAX_SWAP_USAGE_FREE"
+          | "MAX_SWAP_USAGE_USED"
+          | "MAX_SYSTEM_CPU_GUEST"
+          | "MAX_SYSTEM_CPU_IOWAIT"
+          | "MAX_SYSTEM_CPU_IRQ"
+          | "MAX_SYSTEM_CPU_KERNEL"
+          | "MAX_SYSTEM_CPU_SOFTIRQ"
+          | "MAX_SYSTEM_CPU_STEAL"
+          | "MAX_SYSTEM_CPU_USER"
+          | "MAX_SYSTEM_MEMORY_AVAILABLE"
+          | "MAX_SYSTEM_MEMORY_FREE"
+          | "MAX_SYSTEM_MEMORY_USED"
+          | "MAX_SYSTEM_NETWORK_IN"
+          | "MAX_SYSTEM_NETWORK_OUT"
+          | "MAX_SYSTEM_NORMALIZED_CPU_GUEST"
+          | "MAX_SYSTEM_NORMALIZED_CPU_IOWAIT"
+          | "MAX_SYSTEM_NORMALIZED_CPU_IRQ"
+          | "MAX_SYSTEM_NORMALIZED_CPU_KERNEL"
+          | "MAX_SYSTEM_NORMALIZED_CPU_NICE"
+          | "MAX_SYSTEM_NORMALIZED_CPU_SOFTIRQ"
+          | "MAX_SYSTEM_NORMALIZED_CPU_STEAL"
+          | "MAX_SYSTEM_NORMALIZED_CPU_USER"
+          | "MEMORY_MAPPED"
+          | "MEMORY_RESIDENT"
+          | "MEMORY_VIRTUAL"
+          | "NETWORK_BYTES_IN"
+          | "NETWORK_BYTES_OUT"
+          | "NETWORK_NUM_REQUESTS"
+          | "OP_EXECUTION_TIME_COMMANDS"
+          | "OP_EXECUTION_TIME_READS"
+          | "OP_EXECUTION_TIME_WRITES"
+          | "OPCOUNTER_CMD"
+          | "OPCOUNTER_DELETE"
+          | "OPCOUNTER_TTL_DELETED"
+          | "OPCOUNTER_GETMORE"
+          | "OPCOUNTER_INSERT"
+          | "OPCOUNTER_QUERY"
+          | "OPCOUNTER_REPL_CMD"
+          | "OPCOUNTER_REPL_DELETE"
+          | "OPCOUNTER_REPL_INSERT"
+          | "OPCOUNTER_REPL_UPDATE"
+          | "OPCOUNTER_UPDATE"
+          | "OPERATIONS_SCAN_AND_ORDER"
+          | "OPERATIONS_QUERIES_KILLED"
+          | "OPLOG_MASTER_LAG_TIME_DIFF"
+          | "OPLOG_MASTER_TIME"
+          | "OPLOG_RATE_GB_PER_HOUR"
+          | "OPLOG_SLAVE_LAG_MASTER_TIME"
+          | "OPLOG_REPLICATION_LAG_TIME"
+          | "PROCESS_CPU_CHILDREN_KERNEL"
+          | "PROCESS_CPU_CHILDREN_USER"
+          | "PROCESS_CPU_KERNEL"
+          | "PROCESS_CPU_USER"
+          | "PROCESS_NORMALIZED_CPU_CHILDREN_KERNEL"
+          | "PROCESS_NORMALIZED_CPU_CHILDREN_USER"
+          | "PROCESS_NORMALIZED_CPU_KERNEL"
+          | "PROCESS_NORMALIZED_CPU_USER"
+          | "QUERY_EXECUTOR_SCANNED"
+          | "QUERY_EXECUTOR_SCANNED_OBJECTS"
+          | "QUERY_TARGETING_SCANNED_OBJECTS_PER_RETURNED"
+          | "QUERY_TARGETING_SCANNED_PER_RETURNED"
+          | "RESTARTS_IN_LAST_HOUR"
+          | "SWAP_USAGE_FREE"
+          | "SWAP_USAGE_USED"
+          | "SYSTEM_CPU_GUEST"
+          | "SYSTEM_CPU_IOWAIT"
+          | "SYSTEM_CPU_IRQ"
+          | "SYSTEM_CPU_KERNEL"
+          | "SYSTEM_CPU_NICE"
+          | "SYSTEM_CPU_SOFTIRQ"
+          | "SYSTEM_CPU_STEAL"
+          | "SYSTEM_CPU_USER"
+          | "SYSTEM_MEMORY_AVAILABLE"
+          | "SYSTEM_MEMORY_FREE"
+          | "SYSTEM_MEMORY_USED"
+          | "SYSTEM_NETWORK_IN"
+          | "SYSTEM_NETWORK_OUT"
+          | "SYSTEM_NORMALIZED_CPU_GUEST"
+          | "SYSTEM_NORMALIZED_CPU_IOWAIT"
+          | "SYSTEM_NORMALIZED_CPU_IRQ"
+          | "SYSTEM_NORMALIZED_CPU_KERNEL"
+          | "SYSTEM_NORMALIZED_CPU_NICE"
+          | "SYSTEM_NORMALIZED_CPU_SOFTIRQ"
+          | "SYSTEM_NORMALIZED_CPU_STEAL"
+          | "SYSTEM_NORMALIZED_CPU_USER"
+          | "TICKETS_AVAILABLE_READS"
+          | "TICKETS_AVAILABLE_WRITE"
+          | "OPERATION_THROTTLING_REJECTED_OPERATIONS"
+          | "QUERY_SPILL_TO_DISK_DURING_SORT"
+          | "STORAGE_READ_IOPS"
+          | "STORAGE_WRITE_IOPS"
+          | "STORAGE_READ_LATENCY"
+          | "STORAGE_WRITE_LATENCY"
+          | "STORAGE_BYTES_READ"
+          | "STORAGE_BYTES_WRITTEN"
+          | "STORAGE_THROUGHPUT_UTILIZATION"
+          | "STORAGE_SPACE_USED"
+          | "STORAGE_SPACE_FREE"
+          | "STORAGE_SPACE_PERCENT_FREE"
+          | "STORAGE_SPACE_PERCENT_USED"
+          | "CATALOG_ACTIVE_COLLECTIONS_AND_INDEXES"
+          | "QUERY_SPILL_FILE_SPILLED_SIZE"
+          | "AVG_MAJORITY_WRITE_CONCERN_WRITE_TIME"
+          | "TRANSACTIONS_CURRENT_ACTIVE"
+          | "TRANSACTIONS_CURRENT_INACTIVE"
+          | "TRANSACTIONS_CURRENT_OPEN"
+          | "TRANSACTIONS_ABORTED"
+          | "TRANSACTIONS_COMMITTED"
+          | "TRANSACTIONS_STARTED"
+          | "CACHE_PRESSURE_PERCENTAGE"
+          | "INGRESS_QUEUE_WAIT_TIME"
+          | "CONNECTION_RATE_LIMITING_OFFERED_CONNECTIONS"
+          | "CONNECTION_RATE_LIMITING_SUCCESSFUL_CONNECTIONS"
+          | "CONNECTION_RATE_LIMITING_REJECTED_CONNECTIONS"
+          | "CONNECTION_RATE_LIMITING_INTERRUPTED_IN_QUEUE"
+          | "CONNECTION_RATE_LIMITING_AVERAGE_TIME_QUEUED"
+          | "OPERATION_RATE_LIMITING_OFFERED_OPERATIONS"
+          | "OPERATION_RATE_LIMITING_SUCCESSFUL_OPERATIONS"
+          | "OPERATION_RATE_LIMITING_REJECTED_OPERATIONS"
+          | "OPERATION_RATE_LIMITING_QUEUED_OPERATIONS"
+          | "OPERATION_RATE_LIMITING_CURRENT_QUEUE_DEPTH"
+          | "OPERATION_RATE_LIMITING_QUEUE_TIME_AVG"
+        )[];
+        period?: components["parameters"]["period"];
+        pretty?: components["parameters"]["pretty"];
+        start?: components["parameters"]["start"];
+      };
+      header?: never;
+      path: {
+        groupId: components["parameters"]["groupId"];
+        processId: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["ApiMeasurementsGeneralView_Atlas"];
+        };
+      };
+    };
+  };
+  listGroupServerlessInstances: {
+    parameters: parameters_ff43d5ef;
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedServerlessInstanceDescriptionView"];
+        };
+      };
+    };
+  };
+  getGroupServerlessInstance: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        groupId: components["parameters"]["groupId"];
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["ServerlessInstanceDescription"];
+        };
+      };
+    };
+  };
+  listOrgs: {
+    parameters: {
+      query?: query_1eb094ab;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedOrganizationView"];
+        };
+      };
+    };
+  };
+  getOrg: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        orgId: components["parameters"]["orgId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["AtlasOrganization"];
+        };
+      };
+    };
+  };
+  getOrgGroups: {
+    parameters: {
+      query?: query_1eb094ab;
+      header?: never;
+      path: {
+        orgId: components["parameters"]["orgId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedAtlasGroupView"];
+        };
+      };
+    };
+  };
+  listOrgInvoices: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        fromDate?: string;
+        includeCount?: components["parameters"]["includeCount"];
+        itemsPerPage?: components["parameters"]["itemsPerPage"];
+        orderBy?: "desc" | "asc";
+        pageNum?: components["parameters"]["pageNum"];
+        pretty?: components["parameters"]["pretty"];
+        sortBy?: "START_DATE" | "END_DATE";
+        statusNames?: (
+          "PENDING" | "CLOSED" | "FORGIVEN" | "FAILED" | "PAID" | "FREE" | "PREPAID" | "INVOICED"
+        )[];
+        toDate?: string;
+        viewLinkedInvoices?: boolean;
+      };
+      header?: never;
+      path: {
+        orgId: components["parameters"]["orgId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedApiInvoiceMetadataView"];
+        };
+      };
+    };
+  };
+  getOrgInvoice: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        invoiceId: string;
+        orgId: components["parameters"]["orgId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+csv": string;
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["BillingInvoice"];
+        };
+      };
+    };
+  };
+  listOrgInvoicePending: {
+    parameters: {
+      query?: {
+        envelope?: components["parameters"]["envelope"];
+        pretty?: components["parameters"]["pretty"];
+      };
+      header?: never;
+      path: {
+        orgId: components["parameters"]["orgId"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+          "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+          [name: string]: unknown;
+        };
+        content: {
+          "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedApiInvoiceView"];
+        };
+      };
+    };
+  };
+}
+type analyzer_f12f57c6 =
+  | "lucene.standard"
+  | "lucene.simple"
+  | "lucene.whitespace"
+  | "lucene.keyword"
+  | "lucene.arabic"
+  | "lucene.armenian"
+  | "lucene.basque"
+  | "lucene.bengali"
+  | "lucene.brazilian"
+  | "lucene.bulgarian"
+  | "lucene.catalan"
+  | "lucene.chinese"
+  | "lucene.cjk"
+  | "lucene.czech"
+  | "lucene.danish"
+  | "lucene.dutch"
+  | "lucene.english"
+  | "lucene.finnish"
+  | "lucene.french"
+  | "lucene.galician"
+  | "lucene.german"
+  | "lucene.greek"
+  | "lucene.hindi"
+  | "lucene.hungarian"
+  | "lucene.indonesian"
+  | "lucene.irish"
+  | "lucene.italian"
+  | "lucene.japanese"
+  | "lucene.korean"
+  | "lucene.kuromoji"
+  | "lucene.latvian"
+  | "lucene.lithuanian"
+  | "lucene.morfologik"
+  | "lucene.nori"
+  | "lucene.norwegian"
+  | "lucene.persian"
+  | "lucene.portuguese"
+  | "lucene.romanian"
+  | "lucene.russian"
+  | "lucene.smartcn"
+  | "lucene.sorani"
+  | "lucene.spanish"
+  | "lucene.swedish"
+  | "lucene.thai"
+  | "lucene.turkish"
+  | "lucene.ukrainian";
+type parameters_98d36cfa = {
+  query?: {
+    envelope?: components["parameters"]["envelope"];
+    pretty?: components["parameters"]["pretty"];
+  };
+  header?: never;
+  path: {
+    cloudProvider: "AWS" | "AZURE" | "GCP";
+    endpointServiceId: string;
+    groupId: components["parameters"]["groupId"];
+  };
+  cookie?: never;
+};
+type parameters_f3b25376 = {
+  query?: {
+    envelope?: components["parameters"]["envelope"];
+    pretty?: components["parameters"]["pretty"];
+  };
+  header?: {
+    "Use-Effective-Fields-Replication-Specs"?: boolean;
+    "Use-Effective-Instance-Fields"?: boolean;
+  };
+  path: {
+    clusterName: string;
+    groupId: components["parameters"]["groupId"];
+  };
+  cookie?: never;
 };
 type parameters_ff43d5ef = {
-    query?: query_461117dd;
-    header?: never;
-    path: {
-        groupId: components["parameters"]["groupId"];
-    };
-    cookie?: never;
+  query?: query_461117dd;
+  header?: never;
+  path: {
+    groupId: components["parameters"]["groupId"];
+  };
+  cookie?: never;
 };
 type query_1eb094ab = {
-    envelope?: components["parameters"]["envelope"];
-    includeCount?: components["parameters"]["includeCount"];
-    itemsPerPage?: components["parameters"]["itemsPerPage"];
-    name?: string;
-    pageNum?: components["parameters"]["pageNum"];
-    pretty?: components["parameters"]["pretty"];
+  envelope?: components["parameters"]["envelope"];
+  includeCount?: components["parameters"]["includeCount"];
+  itemsPerPage?: components["parameters"]["itemsPerPage"];
+  name?: string;
+  pageNum?: components["parameters"]["pageNum"];
+  pretty?: components["parameters"]["pretty"];
 };
 type query_461117dd = {
-    envelope?: components["parameters"]["envelope"];
-    includeCount?: components["parameters"]["includeCount"];
-    itemsPerPage?: components["parameters"]["itemsPerPage"];
-    pageNum?: components["parameters"]["pageNum"];
-    pretty?: components["parameters"]["pretty"];
+  envelope?: components["parameters"]["envelope"];
+  includeCount?: components["parameters"]["includeCount"];
+  itemsPerPage?: components["parameters"]["itemsPerPage"];
+  pageNum?: components["parameters"]["pageNum"];
+  pretty?: components["parameters"]["pretty"];
 };
 type responses_1254cb71 = {
-    200: {
-        headers: {
-            "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-            "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-            [name: string]: unknown;
-        };
-        content: {
-            "application/vnd.atlas.2024-08-05+json": components["schemas"]["ClusterDescription20240805"];
-        };
-    };
-};
-type responses_407fe7a6 = {
-    200: Shared_bc71e261;
-};
-type responses_4224de0a = {
-    200: {
-        headers: {
-            "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-            "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-            [name: string]: unknown;
-        };
-        content: {
-            "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedNetworkAccessView"];
-        };
-    };
-};
-type responses_57562edb = {
-    200: {
-        headers: {
-            "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-            "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-            [name: string]: unknown;
-        };
-        content: {
-            "application/vnd.atlas.2024-11-13+json": components["schemas"]["FlexClusterDescription20241113"];
-        };
-    };
-};
-type responses_5d78fe45 = {
-    200: {
-        headers: {
-            "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-            "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-            [name: string]: unknown;
-        };
-        content: {
-            "application/vnd.atlas.2023-01-01+json": components["schemas"]["Group"];
-        };
-    };
-};
-type responses_78de8446 = {
-    204: {
-        headers: {
-            "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-            "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-            [name: string]: unknown;
-        };
-        content: {
-            "application/vnd.atlas.2023-01-01+json": unknown;
-        };
-    };
-};
-type responses_9bec8f4c = {
-    200: {
-        headers: {
-            "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-            "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-            [name: string]: unknown;
-        };
-        content: {
-            "application/vnd.atlas.2023-01-01+json": components["schemas"]["GroupAlertsConfig"];
-        };
-    };
-};
-type responses_a2c7ec02 = {
-    200: {
-        headers: {
-            "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-            "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-            [name: string]: unknown;
-        };
-        content: {
-            "application/vnd.atlas.2023-01-01+json": components["schemas"]["BackupOnlineArchive"];
-        };
-    };
-};
-type responses_a838fd7f = {
-    200: {
-        headers: {
-            "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-            "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-            [name: string]: unknown;
-        };
-        content: {
-            "application/vnd.atlas.2024-08-05+json": components["schemas"]["DiskBackupSnapshotSchedule20240805"];
-        };
-    };
-};
-type SearchMainIndexStatusDetail_3954bba8 = {
-    definition?: components["schemas"]["SearchIndexDefinition"];
-    definitionVersion?: components["schemas"]["SearchIndexDefinitionVersion"];
-    message?: string;
-    queryable?: boolean;
-    /** @enum {string} */
-    status?: "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
-};
-type Shared_01a6d608 = "HOST_DOWN" | "HOST_HAS_INDEX_SUGGESTIONS" | "HOST_MONGOT_CRASHING_OOM" | "HOST_MONGOT_STOP_REPLICATION" | "HOST_MONGOT_APPROACHING_STOP_REPLICATION" | "HOST_MONGOT_PAUSE_INITIAL_SYNC" | "HOST_SEARCH_NODE_INDEX_FAILED" | "HOST_SEARCH_PROCESS_THROTTLING" | "HOST_EXTERNAL_LOG_SINK_EXPORT_DOWN" | "HOST_NOT_ENOUGH_DISK_SPACE" | "SSH_KEY_NDS_HOST_ACCESS_REQUESTED" | "SSH_KEY_NDS_HOST_ACCESS_REFRESHED" | "PUSH_BASED_LOG_EXPORT_STOPPED" | "PUSH_BASED_LOG_EXPORT_DROPPED_LOG" | "HOST_VERSION_BEHIND" | "VERSION_BEHIND" | "HOST_EXPOSED" | "HOST_SSL_CERTIFICATE_STALE" | "HOST_SECURITY_CHECKUP_NOT_MET" | "ALERT_HOST_SSH_SESSION_STARTED" | "PROFILER_CONFIGURED_TOO_WIDELY";
-type Shared_452a8ee1 = "COMPUTE_AUTO_SCALE_INITIATED_BASE" | "COMPUTE_AUTO_SCALE_INITIATED_ANALYTICS" | "COMPUTE_AUTO_SCALE_SCALE_DOWN_FAIL_BASE" | "COMPUTE_AUTO_SCALE_SCALE_DOWN_FAIL_ANALYTICS" | "COMPUTE_AUTO_SCALE_DOWNSCALE_SKIPPED_FALLBACK_BASE" | "COMPUTE_AUTO_SCALE_DOWNSCALE_SKIPPED_FALLBACK_ANALYTICS" | "COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_BASE" | "COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_ANALYTICS" | "COMPUTE_AUTO_SCALE_OPLOG_FAIL_BASE" | "COMPUTE_AUTO_SCALE_OPLOG_FAIL_ANALYTICS" | "COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_BASE" | "COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_ANALYTICS" | "DISK_AUTO_SCALE_INITIATED" | "DISK_AUTO_SCALE_MAX_DISK_SIZE_FAIL" | "DISK_AUTO_SCALE_OPLOG_FAIL" | "CLUSTER_AUTO_SHARDING_INITIATED" | "CLUSTER_RESHARDING_COMPLETED" | "PREDICTIVE_COMPUTE_AUTO_SCALE_INITIATED_BASE" | "PREDICTIVE_COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_BASE" | "PREDICTIVE_COMPUTE_AUTO_SCALE_OPLOG_FAIL_BASE" | "PREDICTIVE_COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_BASE";
-type Shared_49612667 = {
-    metricName: string;
-    /** @enum {string} */
-    mode?: "AVERAGE";
-    /** @enum {string} */
-    operator?: "LESS_THAN" | "GREATER_THAN";
-    /** Format: double */
-    threshold?: number;
-    /** @enum {string} */
-    units?: units_ded7c172;
-};
-type Shared_63f480bb = "CLUSTER_INSTANCE_STOP_START" | "CLUSTER_INSTANCE_RESYNC_REQUESTED" | "CLUSTER_INSTANCE_UPDATE_REQUESTED" | "SAMPLE_DATASET_LOAD_REQUESTED" | "TENANT_UPGRADE_TO_SERVERLESS_SUCCESSFUL" | "TENANT_UPGRADE_TO_SERVERLESS_FAILED" | "NETWORK_PERMISSION_ENTRY_ADDED" | "NETWORK_PERMISSION_ENTRY_REMOVED" | "NETWORK_PERMISSION_ENTRY_UPDATED" | "CLUSTER_BLOCK_WRITE" | "CLUSTER_UNBLOCK_WRITE" | "LOG_STREAMING_EXPORT_FAILED_NONRETRYABLE" | "LOG_STREAMING_EXPORT_FAILED_RETRIES_EXHAUSTED" | "LOG_STREAMING_REPLAY_FAILED";
-type Shared_70dbebcc = "USERS_WITHOUT_MULTI_FACTOR_AUTH" | "ENCRYPTION_AT_REST_KMS_NETWORK_ACCESS_DENIED" | "ENCRYPTION_AT_REST_CONFIG_NO_LONGER_VALID" | "GROUP_SERVICE_ACCOUNT_SECRETS_EXPIRING" | "GROUP_SERVICE_ACCOUNT_SECRETS_EXPIRED" | "ACTIVE_LEGACY_TLS_CONNECTIONS" | "WEBHOOK_TEMPLATE_RENDER_FAILED" | "ENCRYPTION_AT_REST_CONFIG_UPDATE_STALLED";
-type Shared_bc71e261 = {
+  200: {
     headers: {
-        "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
-        "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
-        [name: string]: unknown;
+      "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+      "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+      [name: string]: unknown;
     };
     content: {
-        "application/vnd.atlas.2023-01-01+json": components["schemas"]["CloudDatabaseUser"];
+      "application/vnd.atlas.2024-08-05+json": components["schemas"]["ClusterDescription20240805"];
     };
+  };
 };
-type Shared_f4c3a9ed = "CPS_DATA_PROTECTION_ENABLE_REQUESTED" | "CPS_DATA_PROTECTION_ENABLED" | "CPS_DATA_PROTECTION_UPDATE_REQUESTED" | "CPS_DATA_PROTECTION_UPDATED" | "CPS_DATA_PROTECTION_DISABLE_REQUESTED" | "CPS_DATA_PROTECTION_DISABLED" | "CPS_DATA_PROTECTION_APPROVED_FOR_DISABLEMENT";
-type units_ded7c172 = "bits" | "Kbits" | "Mbits" | "Gbits" | "bytes" | "KB" | "MB" | "GB" | "TB" | "PB" | "nsec" | "msec" | "sec" | "min" | "hours" | "million minutes" | "days" | "requests" | "1000 requests" | "tokens" | "million tokens" | "pixels" | "billion pixels" | "GB seconds" | "GB hours" | "GB days" | "RPU" | "thousand RPU" | "million RPU" | "WPU" | "thousand WPU" | "million WPU" | "count" | "thousand" | "million" | "billion";
+type responses_407fe7a6 = {
+  200: Shared_bc71e261;
+};
+type responses_4224de0a = {
+  200: {
+    headers: {
+      "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+      "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+      [name: string]: unknown;
+    };
+    content: {
+      "application/vnd.atlas.2023-01-01+json": components["schemas"]["PaginatedNetworkAccessView"];
+    };
+  };
+};
+type responses_57562edb = {
+  200: {
+    headers: {
+      "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+      "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+      [name: string]: unknown;
+    };
+    content: {
+      "application/vnd.atlas.2024-11-13+json": components["schemas"]["FlexClusterDescription20241113"];
+    };
+  };
+};
+type responses_5d78fe45 = {
+  200: {
+    headers: {
+      "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+      "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+      [name: string]: unknown;
+    };
+    content: {
+      "application/vnd.atlas.2023-01-01+json": components["schemas"]["Group"];
+    };
+  };
+};
+type responses_78de8446 = {
+  204: {
+    headers: {
+      "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+      "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+      [name: string]: unknown;
+    };
+    content: {
+      "application/vnd.atlas.2023-01-01+json": unknown;
+    };
+  };
+};
+type responses_9bec8f4c = {
+  200: {
+    headers: {
+      "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+      "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+      [name: string]: unknown;
+    };
+    content: {
+      "application/vnd.atlas.2023-01-01+json": components["schemas"]["GroupAlertsConfig"];
+    };
+  };
+};
+type responses_a2c7ec02 = {
+  200: {
+    headers: {
+      "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+      "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+      [name: string]: unknown;
+    };
+    content: {
+      "application/vnd.atlas.2023-01-01+json": components["schemas"]["BackupOnlineArchive"];
+    };
+  };
+};
+type responses_a838fd7f = {
+  200: {
+    headers: {
+      "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+      "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+      [name: string]: unknown;
+    };
+    content: {
+      "application/vnd.atlas.2024-08-05+json": components["schemas"]["DiskBackupSnapshotSchedule20240805"];
+    };
+  };
+};
+type SearchMainIndexStatusDetail_3954bba8 = {
+  definition?: components["schemas"]["SearchIndexDefinition"];
+  definitionVersion?: components["schemas"]["SearchIndexDefinitionVersion"];
+  message?: string;
+  queryable?: boolean;
+  /** @enum {string} */
+  status?: "DELETING" | "FAILED" | "STALE" | "PENDING" | "BUILDING" | "READY" | "DOES_NOT_EXIST";
+};
+type Shared_01a6d608 =
+  | "HOST_DOWN"
+  | "HOST_HAS_INDEX_SUGGESTIONS"
+  | "HOST_MONGOT_CRASHING_OOM"
+  | "HOST_MONGOT_STOP_REPLICATION"
+  | "HOST_MONGOT_APPROACHING_STOP_REPLICATION"
+  | "HOST_MONGOT_PAUSE_INITIAL_SYNC"
+  | "HOST_SEARCH_NODE_INDEX_FAILED"
+  | "HOST_SEARCH_PROCESS_THROTTLING"
+  | "HOST_EXTERNAL_LOG_SINK_EXPORT_DOWN"
+  | "HOST_NOT_ENOUGH_DISK_SPACE"
+  | "SSH_KEY_NDS_HOST_ACCESS_REQUESTED"
+  | "SSH_KEY_NDS_HOST_ACCESS_REFRESHED"
+  | "PUSH_BASED_LOG_EXPORT_STOPPED"
+  | "PUSH_BASED_LOG_EXPORT_DROPPED_LOG"
+  | "HOST_VERSION_BEHIND"
+  | "VERSION_BEHIND"
+  | "HOST_EXPOSED"
+  | "HOST_SSL_CERTIFICATE_STALE"
+  | "HOST_SECURITY_CHECKUP_NOT_MET"
+  | "ALERT_HOST_SSH_SESSION_STARTED"
+  | "PROFILER_CONFIGURED_TOO_WIDELY";
+type Shared_452a8ee1 =
+  | "COMPUTE_AUTO_SCALE_INITIATED_BASE"
+  | "COMPUTE_AUTO_SCALE_INITIATED_ANALYTICS"
+  | "COMPUTE_AUTO_SCALE_SCALE_DOWN_FAIL_BASE"
+  | "COMPUTE_AUTO_SCALE_SCALE_DOWN_FAIL_ANALYTICS"
+  | "COMPUTE_AUTO_SCALE_DOWNSCALE_SKIPPED_FALLBACK_BASE"
+  | "COMPUTE_AUTO_SCALE_DOWNSCALE_SKIPPED_FALLBACK_ANALYTICS"
+  | "COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_BASE"
+  | "COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_ANALYTICS"
+  | "COMPUTE_AUTO_SCALE_OPLOG_FAIL_BASE"
+  | "COMPUTE_AUTO_SCALE_OPLOG_FAIL_ANALYTICS"
+  | "COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_BASE"
+  | "COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_ANALYTICS"
+  | "DISK_AUTO_SCALE_INITIATED"
+  | "DISK_AUTO_SCALE_MAX_DISK_SIZE_FAIL"
+  | "DISK_AUTO_SCALE_OPLOG_FAIL"
+  | "CLUSTER_AUTO_SHARDING_INITIATED"
+  | "CLUSTER_RESHARDING_COMPLETED"
+  | "PREDICTIVE_COMPUTE_AUTO_SCALE_INITIATED_BASE"
+  | "PREDICTIVE_COMPUTE_AUTO_SCALE_MAX_INSTANCE_SIZE_FAIL_BASE"
+  | "PREDICTIVE_COMPUTE_AUTO_SCALE_OPLOG_FAIL_BASE"
+  | "PREDICTIVE_COMPUTE_AUTO_SCALE_CAPACITY_CONSTRAINT_FAIL_BASE";
+type Shared_49612667 = {
+  metricName: string;
+  /** @enum {string} */
+  mode?: "AVERAGE";
+  /** @enum {string} */
+  operator?: "LESS_THAN" | "GREATER_THAN";
+  /** Format: double */
+  threshold?: number;
+  /** @enum {string} */
+  units?: units_ded7c172;
+};
+type Shared_63f480bb =
+  | "CLUSTER_INSTANCE_STOP_START"
+  | "CLUSTER_INSTANCE_RESYNC_REQUESTED"
+  | "CLUSTER_INSTANCE_UPDATE_REQUESTED"
+  | "SAMPLE_DATASET_LOAD_REQUESTED"
+  | "TENANT_UPGRADE_TO_SERVERLESS_SUCCESSFUL"
+  | "TENANT_UPGRADE_TO_SERVERLESS_FAILED"
+  | "NETWORK_PERMISSION_ENTRY_ADDED"
+  | "NETWORK_PERMISSION_ENTRY_REMOVED"
+  | "NETWORK_PERMISSION_ENTRY_UPDATED"
+  | "CLUSTER_BLOCK_WRITE"
+  | "CLUSTER_UNBLOCK_WRITE"
+  | "LOG_STREAMING_EXPORT_FAILED_NONRETRYABLE"
+  | "LOG_STREAMING_EXPORT_FAILED_RETRIES_EXHAUSTED"
+  | "LOG_STREAMING_REPLAY_FAILED";
+type Shared_70dbebcc =
+  | "USERS_WITHOUT_MULTI_FACTOR_AUTH"
+  | "ENCRYPTION_AT_REST_KMS_NETWORK_ACCESS_DENIED"
+  | "ENCRYPTION_AT_REST_CONFIG_NO_LONGER_VALID"
+  | "GROUP_SERVICE_ACCOUNT_SECRETS_EXPIRING"
+  | "GROUP_SERVICE_ACCOUNT_SECRETS_EXPIRED"
+  | "ACTIVE_LEGACY_TLS_CONNECTIONS"
+  | "WEBHOOK_TEMPLATE_RENDER_FAILED"
+  | "ENCRYPTION_AT_REST_CONFIG_UPDATE_STALLED";
+type Shared_bc71e261 = {
+  headers: {
+    "RateLimit-Limit": components["headers"]["HeaderRateLimitLimit"];
+    "RateLimit-Remaining": components["headers"]["HeaderRateLimitRemaining"];
+    [name: string]: unknown;
+  };
+  content: {
+    "application/vnd.atlas.2023-01-01+json": components["schemas"]["CloudDatabaseUser"];
+  };
+};
+type Shared_f4c3a9ed =
+  | "CPS_DATA_PROTECTION_ENABLE_REQUESTED"
+  | "CPS_DATA_PROTECTION_ENABLED"
+  | "CPS_DATA_PROTECTION_UPDATE_REQUESTED"
+  | "CPS_DATA_PROTECTION_UPDATED"
+  | "CPS_DATA_PROTECTION_DISABLE_REQUESTED"
+  | "CPS_DATA_PROTECTION_DISABLED"
+  | "CPS_DATA_PROTECTION_APPROVED_FOR_DISABLEMENT";
+type units_ded7c172 =
+  | "bits"
+  | "Kbits"
+  | "Mbits"
+  | "Gbits"
+  | "bytes"
+  | "KB"
+  | "MB"
+  | "GB"
+  | "TB"
+  | "PB"
+  | "nsec"
+  | "msec"
+  | "sec"
+  | "min"
+  | "hours"
+  | "million minutes"
+  | "days"
+  | "requests"
+  | "1000 requests"
+  | "tokens"
+  | "million tokens"
+  | "pixels"
+  | "billion pixels"
+  | "GB seconds"
+  | "GB hours"
+  | "GB days"
+  | "RPU"
+  | "thousand RPU"
+  | "million RPU"
+  | "WPU"
+  | "thousand WPU"
+  | "million WPU"
+  | "count"
+  | "thousand"
+  | "million"
+  | "billion";

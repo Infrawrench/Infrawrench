@@ -7,7 +7,6 @@ import {
   atlasVersion,
   authFromCredentials,
   digestAuthorization,
-  listAll,
   parseDigestChallenge,
   resetAuthCaches,
 } from "../api.js";
@@ -109,10 +108,7 @@ describe("auth", () => {
       const page = Number(new URL(call.url).searchParams.get("pageNum"));
       return { results: page === 1 ? Array.from({ length: 500 }, (_, i) => i) : [1, 2] };
     });
-    const api = atlasApi(ctxWith(http));
-    const all = await listAll((paging) =>
-      api.get(`/orgs/${pathEncode("o")}/groups`, { query: paging }),
-    );
+    const all = await atlasApi(ctxWith(http)).getAll(`/orgs/${pathEncode("o")}/groups`, "results");
     expect(all).toHaveLength(502);
     expect(calls).toHaveLength(2);
   });

@@ -165,6 +165,80 @@ describe("listing", () => {
   });
 });
 
+describe("a list that cannot be read whole", () => {
+  const GROUPS = "/api/atlas/v2/orgs/org1/groups";
+  const USERS = "/api/atlas/v2/groups/g1/databaseUsers";
+  const fullPage = { results: Array.from({ length: 500 }, (_, i) => ({ id: `g${i}` })) };
+  const listing = (http: ReturnType<typeof atlas>["http"], type: string) =>
+    hostClient(new MongoDBAtlasClient(CREDS, { http })).listResources(type, ACCOUNT);
+
+  it("throws at the page cap, after exactly 100 full pages of the largest size", async () => {
+    const { http, calls } = atlas((call) => (call.path.startsWith(GROUPS) ? fullPage : undefined));
+    await expect(listing(http, "project")).rejects.toThrow("has more than Infrawrench reads");
+    const pages = calls.filter((c) => c.path.startsWith(GROUPS));
+    expect(pages).toHaveLength(100);
+    expect(new URL(pages[0]!.url).searchParams.get("itemsPerPage")).toBe("500");
+  });
+
+  it("refuses a page whose list key was renamed, on the first page and on a later one", async () => {
+    const first = atlas((call) => (call.path.startsWith(USERS) ? { items: [] } : undefined));
+    await expect(listing(first.http, "database-user")).rejects.toThrow("is not a list");
+
+    const later = atlas((call) => {
+      if (!call.path.startsWith(USERS)) return undefined;
+      return new URL(call.url).searchParams.get("pageNum") === "1" ? fullPage : { items: [] };
+    });
+    await expect(listing(later.http, "database-user")).rejects.toThrow("is not a list");
+  });
+
+  it("refuses an empty answer where a list belongs", async () => {
+    const { http } = atlas((call) => (call.path.startsWith(USERS) ? reply({}) : undefined));
+    await expect(listing(http, "database-user")).rejects.toThrow("is not a list");
+  });
+
+  it("refuses an answer that is not an array on the lists with no paging", async () => {
+    const endpoints = atlas((call) =>
+      call.path.endsWith("/privateEndpoint/AWS/endpointService")
+        ? { detail: "not what the document says" }
+        : call.path.includes("/endpointService")
+          ? []
+          : undefined,
+    );
+    await expect(listing(endpoints.http, "private-endpoint-service")).rejects.toThrow(
+      "is not a list",
+    );
+
+    const indexes = atlas((call) =>
+      call.path.endsWith("/search/indexes") ? { detail: "not what the document says" } : undefined,
+    );
+    await expect(listing(indexes.http, "search-index")).rejects.toThrow("is not a list");
+  });
+
+  it("still lists those two when Atlas answers with the documented array", async () => {
+    const { http } = atlas((call) =>
+      call.path.endsWith("/search/indexes")
+        ? [{ indexID: "i1", name: "default", database: "app", collectionName: "c" }]
+        : call.path.includes("/endpointService")
+          ? []
+          : undefined,
+    );
+    expect(await listing(http, "search-index")).toHaveLength(1);
+    expect(await listing(http, "private-endpoint-service")).toEqual([]);
+  });
+
+  it("does not hide a cut-off project list behind the organization's project count", async () => {
+    const { http } = atlas((call) => (call.path.startsWith(GROUPS) ? fullPage : undefined));
+    await expect(listing(http, "organization")).rejects.toThrow("has more than Infrawrench reads");
+  });
+
+  it("does not read a backup schedule answered with no body as a cluster with no policy", async () => {
+    const { http } = atlas((call) =>
+      call.path.endsWith("/backup/schedule") ? reply({}) : undefined,
+    );
+    await expect(listing(http, "backup-policy")).rejects.toThrow(/schedule/);
+  });
+});
+
 describe("cluster detail", () => {
   it("offers only the tiers Atlas sells in the cluster's region", async () => {
     const { http } = atlas();

@@ -4,9 +4,9 @@ import type {
   CostFetchRange,
   CostRow,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
+import { CostSetupError, pathEncode, requireListPage } from "@infrawrench/plugin-base";
 import type { AtlasContext } from "./api.js";
-import { atlasApi, isPermissionError } from "./api.js";
+import { VENDOR, atlasApi, isPermissionError } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 
 /**
@@ -206,28 +206,31 @@ export async function fetchInvoices(
   const pending = await api.get(`/orgs/${org}/invoices/pending`);
   const out: Invoice[] = [];
   const seen = new Set<string>();
-  for (const inv of pending?.results ?? []) {
+  for (const inv of requireListPage(pending?.results, {
+    vendor: VENDOR,
+    path: `/orgs/${orgId}/invoices/pending`,
+    key: "results",
+  })) {
     if (inv.id) seen.add(inv.id);
     if (overlaps(inv, range)) out.push(inv);
   }
 
   // Newest first; stop paging once invoices end before the range starts.
-  const metadata: Invoice[] = [];
-  for (let page = 1; page <= 20; page++) {
-    const res = await api.get(`/orgs/${org}/invoices`, {
-      query: { itemsPerPage: 100, pageNum: page, sortBy: "START_DATE", orderBy: "desc" },
-    });
-    const results = res?.results ?? [];
-    metadata.push(...results);
-    const oldest = results[results.length - 1]?.endDate?.slice(0, 10) ?? "";
-    if (results.length < 100 || (oldest && oldest < range.fromDate)) break;
-  }
+  const metadata = await api.getAll(`/orgs/${org}/invoices`, "results", {
+    query: { sortBy: "START_DATE", orderBy: "desc" },
+    stopWhen: (page) => {
+      const oldest = page[page.length - 1]?.endDate?.slice(0, 10) ?? "";
+      return oldest !== "" && oldest < range.fromDate;
+    },
+  });
 
   for (const meta of metadata) {
     if (!meta.id || seen.has(meta.id) || !overlaps(meta, range)) continue;
     seen.add(meta.id);
     const full = await api.get(`/orgs/${org}/invoices/${pathEncode(meta.id)}`);
-    out.push(full ?? meta);
+    // The list's rows have no line items, so costing one would read the month as free.
+    if (!full) throw new Error(`Atlas sent nothing for invoice ${meta.id}`);
+    out.push(full);
   }
   return out;
 }

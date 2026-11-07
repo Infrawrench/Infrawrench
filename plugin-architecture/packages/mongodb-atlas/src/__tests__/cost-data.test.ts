@@ -209,6 +209,62 @@ describe("fetchAtlasCostData", () => {
     ]);
   });
 
+  it("throws rather than return part of the invoice list", async () => {
+    const page = {
+      results: Array.from({ length: 500 }, (_, i) => ({
+        id: `seen-${i}`,
+        startDate: "2027-01-01T00:00:00Z",
+        endDate: "2027-02-01T00:00:00Z",
+      })),
+    };
+    const { http, calls } = makeHttp((call) =>
+      call.path.endsWith("/invoices/pending") ? { results: [] } : page,
+    );
+    await expect(fetchAtlasCostData(ctxWith(http), "org1", range)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    const pages = calls.filter((c) => c.path.includes("/invoices?"));
+    expect(pages).toHaveLength(100);
+    expect(new URL(pages[0]!.url).searchParams.get("itemsPerPage")).toBe("500");
+  });
+
+  it("stops paging once invoices end before the range", async () => {
+    const old = { id: "old", startDate: "2020-01-01T00:00:00Z", endDate: "2020-02-01T00:00:00Z" };
+    const { http, calls } = makeHttp((call) =>
+      call.path.endsWith("/invoices/pending")
+        ? { results: [] }
+        : { results: Array.from({ length: 500 }, () => old) },
+    );
+    expect(await fetchAtlasCostData(ctxWith(http), "org1", range)).toEqual([]);
+    expect(calls.filter((c) => c.path.includes("/invoices?"))).toHaveLength(1);
+  });
+
+  it("refuses a pending invoice answer or an invoice page that is not a list", async () => {
+    const badPending = makeHttp(() => ({ invoices: [] }));
+    await expect(fetchAtlasCostData(ctxWith(badPending.http), "org1", range)).rejects.toThrow(
+      "is not a list",
+    );
+    const badPage = makeHttp((call) =>
+      call.path.endsWith("/invoices/pending") ? { results: [] } : { invoices: [] },
+    );
+    await expect(fetchAtlasCostData(ctxWith(badPage.http), "org1", range)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("does not cost an invoice from its metadata when reading the invoice comes back empty", async () => {
+    const { http } = makeHttp((call) => {
+      if (call.path.endsWith("/invoices/pending")) return { results: [] };
+      if (call.path.includes("/invoices?")) {
+        return {
+          results: [{ id: "inv-oct", startDate: pending.startDate, endDate: pending.endDate }],
+        };
+      }
+      return reply({});
+    });
+    await expect(fetchAtlasCostData(ctxWith(http), "org1", range)).rejects.toThrow(/inv-oct/);
+  });
+
   it("turns a permission error into a setup error naming the billing role", async () => {
     const { http } = makeHttp(() => reply({ status: 403, body: {} }));
     const err = (await fetchAtlasCostData(ctxWith(http), "org1", range).catch(

@@ -7,7 +7,7 @@ import {
   type MetricSeriesPoint,
 } from "@infrawrench/plugin-base";
 import type { AtlasContext } from "./api.js";
-import { atlasApi, listAll, statusOf } from "./api.js";
+import { atlasApi, statusOf } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 
 /**
@@ -191,9 +191,7 @@ export async function clusterSeries(
 ): Promise<MetricSeries[]> {
   if (!standardSrv) return [];
   const api = atlasApi(ctx);
-  const all = await listAll((paging) =>
-    api.get(`/groups/${pathEncode(groupId)}/processes`, { query: paging }),
-  );
+  const all = await api.getAll(`/groups/${pathEncode(groupId)}/processes`, "results");
   const procs = processesForCluster(all, standardSrv).filter((p) => p.id);
   if (procs.length === 0) return [];
   const perProcess = await Promise.all(

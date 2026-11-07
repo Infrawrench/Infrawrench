@@ -15,15 +15,21 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  externalIdOf,
+  pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import type { AtlasContext, AtlasOrg } from "./api.js";
 import type { components, operations } from "./api-types.gen.js";
 import {
+  VENDOR,
   atlasApi,
   atlasVersion,
   contextFromCredentials,
   isPermissionError,
-  listAll,
   listOrgs,
   statusOf,
 } from "./api.js";
@@ -215,9 +221,7 @@ export class MongoDBAtlasClient implements PluginClient {
   private projects(): Promise<AtlasGroup[]> {
     this.projectsCache ??= (async () => {
       const org = await this.org();
-      return listAll((paging) =>
-        this.api.get(`/orgs/${pathEncode(org.id)}/groups`, { query: paging }),
-      );
+      return this.api.getAll(`/orgs/${pathEncode(org.id)}/groups`, "results");
     })().catch((err: unknown) => {
       this.projectsCache = undefined;
       throw err;
@@ -245,11 +249,12 @@ export class MongoDBAtlasClient implements PluginClient {
 
   private clusters(): Promise<Array<{ project: ProjectRef; cluster: AtlasCluster }>> {
     this.clustersCache ??= this.perProject(async (p) => {
-      const clusters = await listAll((paging) =>
-        this.api.get(`/groups/${pathEncode(p.groupId)}/clusters`, {
+      const clusters = await this.api.getAll(
+        `/groups/${pathEncode(p.groupId)}/clusters`,
+        "results",
+        {
           headers: atlasVersion(CLUSTER_VERSION),
-          query: paging,
-        }),
+        },
       );
       return clusters
         .filter((c) => !isListedElsewhere(c))
@@ -284,7 +289,10 @@ export class MongoDBAtlasClient implements PluginClient {
       switch (typeId) {
         case "organization": {
           const org = await this.org();
-          const projects = await this.projects().catch((): AtlasGroup[] => []);
+          const projects = await this.projects().catch((err: unknown): AtlasGroup[] => {
+            rethrowIncompleteList(err);
+            return [];
+          });
           return [mapOrganization(accountId, org, { projectCount: projects.length })];
         }
         case "project":
@@ -296,66 +304,58 @@ export class MongoDBAtlasClient implements PluginClient {
         case "flex-cluster":
           return this.perProject(async (p) =>
             (
-              await listAll((paging) =>
-                this.api.get(`/groups/${pathEncode(p.groupId)}/flexClusters`, {
-                  headers: atlasVersion(FLEX_VERSION),
-                  query: paging,
-                }),
-              )
+              await this.api.getAll(`/groups/${pathEncode(p.groupId)}/flexClusters`, "results", {
+                headers: atlasVersion(FLEX_VERSION),
+              })
             ).map((c) => mapFlexCluster(accountId, c, p)),
           );
         case "serverless-instance":
           return this.perProject(async (p) =>
-            (
-              await listAll((paging) =>
-                this.api.get(`/groups/${pathEncode(p.groupId)}/serverless`, { query: paging }),
-              )
-            ).map((s) => mapServerless(accountId, s, p)),
+            (await this.api.getAll(`/groups/${pathEncode(p.groupId)}/serverless`, "results")).map(
+              (s) => mapServerless(accountId, s, p),
+            ),
           );
         case "database-user":
           return this.perProject(async (p) =>
             (
-              await listAll((paging) =>
-                this.api.get(`/groups/${pathEncode(p.groupId)}/databaseUsers`, { query: paging }),
-              )
+              await this.api.getAll(`/groups/${pathEncode(p.groupId)}/databaseUsers`, "results")
             ).map((u) => mapDatabaseUser(accountId, u, p)),
           );
         case "ip-access-entry":
           return this.perProject(async (p) =>
-            (
-              await listAll((paging) =>
-                this.api.get(`/groups/${pathEncode(p.groupId)}/accessList`, { query: paging }),
-              )
-            ).map((e) => mapAccessEntry(accountId, e, p)),
+            (await this.api.getAll(`/groups/${pathEncode(p.groupId)}/accessList`, "results")).map(
+              (e) => mapAccessEntry(accountId, e, p),
+            ),
           );
         case "alert":
           return this.perProject(async (p) =>
             (
-              await listAll((paging) =>
-                this.api.get(`/groups/${pathEncode(p.groupId)}/alerts`, {
-                  query: { status: "OPEN", ...paging },
-                }),
-              )
+              await this.api.getAll(`/groups/${pathEncode(p.groupId)}/alerts`, "results", {
+                query: { status: "OPEN" },
+              })
             ).map((a) => mapAlert(accountId, a, p)),
           );
         case "alert-configuration":
           return this.perProject(async (p) =>
-            (
-              await listAll((paging) =>
-                this.api.get(`/groups/${pathEncode(p.groupId)}/alertConfigs`, { query: paging }),
-              )
-            ).map((c) => mapAlertConfig(accountId, c, p)),
+            (await this.api.getAll(`/groups/${pathEncode(p.groupId)}/alertConfigs`, "results")).map(
+              (c) => mapAlertConfig(accountId, c, p),
+            ),
           );
         case "private-endpoint-service":
           return this.perProject(async (p) => {
             const per = await Promise.all(
               ["AWS", "AZURE", "GCP"].map((provider) =>
-                tolerant(() =>
-                  this.api
-                    .get(
+                tolerant(async () =>
+                  requireListPage(
+                    await this.api.get(
                       `/groups/${pathEncode(p.groupId)}/privateEndpoint/${pathEncode(provider)}/endpointService`,
-                    )
-                    .then((r) => (Array.isArray(r) ? r : [])),
+                    ),
+                    {
+                      vendor: VENDOR,
+                      path: `/groups/${p.groupId}/privateEndpoint/${provider}/endpointService`,
+                      key: null,
+                    },
+                  ),
                 ),
               ),
             );
@@ -366,11 +366,9 @@ export class MongoDBAtlasClient implements PluginClient {
             (c) => dedicated(c) && c.backupEnabled === true,
             async (p, name) =>
               (
-                await listAll((paging) =>
-                  this.api.get(
-                    `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/backup/snapshots`,
-                    { query: paging },
-                  ),
+                await this.api.getAll(
+                  `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/backup/snapshots`,
+                  "results",
                 )
               ).map((s) => mapSnapshot(accountId, s, p, name)),
           );
@@ -382,7 +380,8 @@ export class MongoDBAtlasClient implements PluginClient {
                 `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/backup/schedule`,
                 { headers: atlasVersion(CLUSTER_VERSION) },
               );
-              return schedule ? [mapBackupPolicy(accountId, schedule, p, name)] : [];
+              if (!schedule) throw new Error(`Atlas sent no backup schedule for ${name}`);
+              return [mapBackupPolicy(accountId, schedule, p, name)];
             },
           );
         case "search-index":
@@ -393,19 +392,19 @@ export class MongoDBAtlasClient implements PluginClient {
                 `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/search/indexes`,
                 { headers: atlasVersion(SEARCH_VERSION) },
               );
-              return (Array.isArray(res) ? res : []).map((s) =>
-                mapSearchIndex(accountId, s, p, name),
-              );
+              return requireListPage(res, {
+                vendor: VENDOR,
+                path: `/groups/${p.groupId}/clusters/${name}/search/indexes`,
+                key: null,
+              }).map((s) => mapSearchIndex(accountId, s, p, name));
             },
           );
         case "online-archive":
           return this.perCluster(dedicated, async (p, name) =>
             (
-              await listAll((paging) =>
-                this.api.get(
-                  `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/onlineArchives`,
-                  { query: paging },
-                ),
+              await this.api.getAll(
+                `/groups/${pathEncode(p.groupId)}/clusters/${pathEncode(name)}/onlineArchives`,
+                "results",
               )
             ).map((a) => mapOnlineArchive(accountId, a, p, name)),
           );

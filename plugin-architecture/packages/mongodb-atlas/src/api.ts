@@ -1,4 +1,9 @@
-import { createApiClient, type ApiClient, type HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  withPagination,
+  type ApiClient,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
 import type { paths } from "./api-types.gen.js";
 import { md5Hex } from "./md5.js";
 
@@ -29,6 +34,7 @@ import { md5Hex } from "./md5.js";
 
 export const DEFAULT_BASE_URL = "https://cloud.mongodb.com";
 export const DEFAULT_API_VERSION = "2023-01-01";
+export const VENDOR = "MongoDB Atlas";
 
 /** Every operation in `plugingen.json` lives under this. */
 const API_PREFIX = "/api/atlas/v2";
@@ -362,14 +368,9 @@ async function authorizedSend(
   return exchange();
 }
 
-/**
- * A typed client for the Admin API. Paths are written without `/api/atlas/v2`. A call
- * on anything but {@link DEFAULT_API_VERSION} names its version with
- * `headers: atlasVersion(...)`, and `plugingen.json` keeps that version's types.
- */
-export function atlasApi(ctx: AtlasContext): ApiClient<paths> {
+function atlasClient(ctx: AtlasContext): ApiClient<paths> {
   return createApiClient<paths>({
-    vendor: "MongoDB Atlas",
+    vendor: VENDOR,
     baseUrl: `${ctx.baseUrl}${API_PREFIX}`,
     headers: atlasVersion(DEFAULT_API_VERSION),
     contentType: "with-body",
@@ -383,33 +384,27 @@ export function atlasApi(ctx: AtlasContext): ApiClient<paths> {
   });
 }
 
+/** The document's largest `itemsPerPage`. */
 const PAGE_SIZE = 500;
-const MAX_PAGES = 40;
-
-/** What {@link listAll} puts in each page's query, after the call's own parameters. */
-export interface AtlasPaging {
-  itemsPerPage: number;
-  pageNum: number;
-}
+/** 50,000 rows, as many as the host can prune for one account. */
+const MAX_PAGES = 100;
 
 /**
- * Walk a paginated list (`{ results, totalCount }`, `pageNum` from 1). Stops on a
- * short page, at `totalCount`, or after {@link MAX_PAGES} pages. A loop rather than
- * the client's `getAll`, which reads a `results` that is not a list as the end of
- * one, where this has always failed.
+ * A typed client for the Admin API. Paths are written without `/api/atlas/v2`. A call
+ * on anything but {@link DEFAULT_API_VERSION} names its version with
+ * `headers: atlasVersion(...)`, and `plugingen.json` keeps that version's types.
  */
-export async function listAll<T>(
-  fetchPage: (paging: AtlasPaging) => Promise<{ results?: T[]; totalCount?: number } | undefined>,
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const res = await fetchPage({ itemsPerPage: PAGE_SIZE, pageNum: page });
-    const results = res?.results ?? [];
-    out.push(...results);
-    if (results.length < PAGE_SIZE) break;
-    if (typeof res?.totalCount === "number" && out.length >= res.totalCount) break;
-  }
-  return out;
+export function atlasApi(ctx: AtlasContext) {
+  return withPagination<paths, "pageNum", "itemsPerPage", { totalCount?: number }>(
+    atlasClient(ctx),
+    {
+      pageParam: "pageNum",
+      sizeParam: "itemsPerPage",
+      pageSize: PAGE_SIZE,
+      maxPages: MAX_PAGES,
+      total: (page) => page.totalCount,
+    },
+  );
 }
 
 export interface AtlasOrg {
@@ -419,8 +414,7 @@ export interface AtlasOrg {
 
 /** Every organization the credential can see (a service account sees its own). */
 export async function listOrgs(ctx: AtlasContext): Promise<AtlasOrg[]> {
-  const api = atlasApi(ctx);
-  const orgs = await listAll((paging) => api.get(`/orgs`, { query: paging }));
+  const orgs = await atlasApi(ctx).getAll(`/orgs`, "results");
   return orgs
     .filter((o): o is typeof o & { id: string } => typeof o.id === "string" && !o.isDeleted)
     .map((o) => ({ id: o.id, name: o.name ?? o.id }))
