@@ -17,32 +17,22 @@ import type {
   SecretHostServices,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
-import type { PuContext } from "./api.js";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import type { ApiBody, NoSlashString } from "@infrawrench/plugin-base";
+import type { EnvironmentPath, PuContext, PulumiApi, StackPath } from "./api.js";
 import {
   PulumiApiError,
   consoleUrl,
+  createPulumiApi,
   enc,
+  environmentPath,
   isSecretValue,
   normaliseApiUrl,
-  puFetch,
-  puPaged,
-  puRaw,
   stackPath,
   statusOf,
 } from "./api.js";
-import type {
-  PuDeployment,
-  PuEnvironment,
-  PuPolicyGroup,
-  PuPolicyPack,
-  PuStack,
-  PuStackSummary,
-  PuTeam,
-  PuToken,
-  PuUpdate,
-  PuWebhook,
-} from "./mappers.js";
+import type { operations } from "./api-types.gen.js";
+import type { PuDeployment, PuEnvironment, PuStackSummary, PuUpdate } from "./mappers.js";
 import {
   mapDeployment,
   mapEnvironment,
@@ -66,6 +56,7 @@ import type { PlanRates } from "./usage.js";
 import { fetchSummary, fetchUsageCost, ratesFor, usageSeries } from "./usage.js";
 
 const DEPLOYMENT_LIMIT = 50;
+const YAML_ACCEPT = { Accept: "application/x-yaml" };
 const MAX_LOG_PAGES = 40;
 const bool = (v: string | undefined) => v === "true" || v === "1";
 
@@ -78,7 +69,7 @@ function stash(r: ResourceInstance, data: Record<string, unknown>): ResourceInst
 function parseFormArg(raw: string | number | undefined): Record<string, string> {
   if (typeof raw !== "string") return {};
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const parsed: Record<string, unknown> = JSON.parse(raw);
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(parsed)) out[k] = String(v ?? "");
     return out;
@@ -106,15 +97,14 @@ export function tailLines(text: string, n: number): string {
 export function unwrapEscValue(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(unwrapEscValue);
   if (!v || typeof v !== "object") return v;
-  const o = v as Record<string, unknown>;
   if (
-    "value" in o &&
-    ("trace" in o || "secret" in o || "unknown" in o || Object.keys(o).length === 1)
+    "value" in v &&
+    ("trace" in v || "secret" in v || "unknown" in v || Object.keys(v).length === 1)
   ) {
-    return unwrapEscValue(o["value"]);
+    return unwrapEscValue(v.value);
   }
   const out: Record<string, unknown> = {};
-  for (const [k, x] of Object.entries(o)) out[k] = unwrapEscValue(x);
+  for (const [k, x] of Object.entries(v)) out[k] = unwrapEscValue(x);
   return out;
 }
 
@@ -135,7 +125,9 @@ export function decodePlaintext(b64: string): unknown {
 
 export class PulumiCloudClient implements PluginClient {
   private readonly ctx: PuContext;
+  private readonly api: PulumiApi;
   private readonly org: string;
+  private readonly orgSegment: NoSlashString;
   private readonly rates: PlanRates;
   private readonly secrets: SecretHostServices | undefined;
   private stacksCache: Promise<PuStackSummary[]> | undefined;
@@ -152,6 +144,8 @@ export class PulumiCloudClient implements PluginClient {
       ...(services?.http ? { http: services.http } : {}),
       ...(caCert ? { caCert } : {}),
     };
+    this.api = createPulumiApi(this.ctx);
+    this.orgSegment = pathEncode(this.org);
     this.rates = ratesFor(credentials["plan"], credentials["rateOverrides"]);
     this.secrets = services?.secrets;
   }
@@ -161,18 +155,23 @@ export class PulumiCloudClient implements PluginClient {
   }
 
   private stacks(): Promise<PuStackSummary[]> {
-    this.stacksCache ??= puPaged<PuStackSummary>(this.ctx, "/api/user/stacks", "stacks", {
-      organization: this.org,
-      maxResults: 500,
-    }).catch((err: unknown) => {
-      this.stacksCache = undefined;
-      throw err;
-    });
+    this.stacksCache ??= this.api
+      .getAll("/api/user/stacks", "stacks", {
+        query: { organization: this.org, maxResults: 500 },
+      })
+      .catch((err: unknown) => {
+        this.stacksCache = undefined;
+        throw err;
+      });
     return this.stacksCache;
   }
 
-  private sp(project: string, stack: string): string {
+  private sp(project: string, stack: string): StackPath {
     return stackPath(this.org, project, stack);
+  }
+
+  private ep(project: string, name: string): EnvironmentPath {
+    return environmentPath(this.org, project, name);
   }
 
   private stackUrl(project: string, stack: string): string {
@@ -180,14 +179,9 @@ export class PulumiCloudClient implements PluginClient {
   }
 
   private async envList(): Promise<PuEnvironment[]> {
-    return puPaged<PuEnvironment>(
-      this.ctx,
-      `/api/esc/environments/${enc(this.org)}`,
+    return this.api.environmentPages.getAll(
+      `/api/esc/environments/${this.orgSegment}`,
       "environments",
-      {},
-      20,
-      "continuationToken",
-      "nextToken",
     );
   }
 
@@ -218,10 +212,9 @@ export class PulumiCloudClient implements PluginClient {
           const out: ResourceInstance[] = [];
           for (const s of await this.stacks()) {
             if (!s.resourceCount) continue;
-            const res = await puFetch<{ outputs?: Record<string, unknown> }>(
-              this.ctx,
-              `${this.sp(s.projectName, s.stackName)}/outputs`,
-            ).catch(() => undefined);
+            const res = await this.api
+              .get(`${this.sp(s.projectName, s.stackName)}/outputs`)
+              .catch(() => undefined);
             for (const [name, value] of Object.entries(res?.outputs ?? {})) {
               out.push(
                 mapOutput(
@@ -239,13 +232,9 @@ export class PulumiCloudClient implements PluginClient {
         }
         case "deployment": {
           try {
-            const res = await puFetch<{ deployments?: PuDeployment[] }>(
-              this.ctx,
-              `/api/orgs/${enc(this.org)}/deployments`,
-              {
-                query: { pageSize: DEPLOYMENT_LIMIT, page: 1 },
-              },
-            );
+            const res = await this.api.get(`/api/orgs/${this.orgSegment}/deployments`, {
+              query: { pageSize: DEPLOYMENT_LIMIT, page: 1 },
+            });
             return (res?.deployments ?? []).map((d) =>
               mapDeployment(accountId, d, this.deploymentUrl(d)),
             );
@@ -262,43 +251,32 @@ export class PulumiCloudClient implements PluginClient {
             );
         case "access-token":
           return this.optional(async () =>
-            (await puPaged<PuToken>(this.ctx, `/api/orgs/${enc(this.org)}/tokens`, "tokens")).map(
-              (t) => mapToken(accountId, this.org, t),
+            (await this.api.getAll(`/api/orgs/${this.orgSegment}/tokens`, "tokens")).map((t) =>
+              mapToken(accountId, this.org, t),
             ),
           );
         case "team":
           return this.optional(async () =>
-            (
-              (await puFetch<{ teams?: PuTeam[] }>(this.ctx, `/api/orgs/${enc(this.org)}/teams`))
-                ?.teams ?? []
-            ).map((t) => mapTeam(accountId, this.org, t)),
+            ((await this.api.get(`/api/orgs/${this.orgSegment}/teams`))?.teams ?? []).map((t) =>
+              mapTeam(accountId, this.org, t),
+            ),
           );
         case "webhook":
           return this.optional(async () =>
-            ((await puFetch<PuWebhook[]>(this.ctx, `/api/orgs/${enc(this.org)}/hooks`)) ?? []).map(
-              (w) => mapWebhook(accountId, this.org, w),
+            ((await this.api.get(`/api/orgs/${this.orgSegment}/hooks`)) ?? []).map((w) =>
+              mapWebhook(accountId, this.org, w),
             ),
           );
         case "policy-pack":
           return this.optional(async () =>
             (
-              (
-                await puFetch<{ policyPacks?: PuPolicyPack[] }>(
-                  this.ctx,
-                  `/api/orgs/${enc(this.org)}/policypacks`,
-                )
-              )?.policyPacks ?? []
+              (await this.api.get(`/api/orgs/${this.orgSegment}/policypacks`))?.policyPacks ?? []
             ).map((p) => mapPolicyPack(accountId, this.org, p)),
           );
         case "policy-group":
           return this.optional(async () =>
             (
-              (
-                await puFetch<{ policyGroups?: PuPolicyGroup[] }>(
-                  this.ctx,
-                  `/api/orgs/${enc(this.org)}/policygroups`,
-                )
-              )?.policyGroups ?? []
+              (await this.api.get(`/api/orgs/${this.orgSegment}/policygroups`))?.policyGroups ?? []
             ).map((g) => mapPolicyGroup(accountId, this.org, g)),
           );
         default:
@@ -331,18 +309,13 @@ export class PulumiCloudClient implements PluginClient {
   ): Promise<ResourceInstance> {
     const since = Date.now() - 30 * 86_400_000;
     const [user, stacks, members, envs, resources, deployments, secrets] = await Promise.all([
-      puFetch<{ organizations?: Array<{ githubLogin?: string; role?: string }> }>(
-        this.ctx,
-        "/api/user",
-      ).catch(() => undefined),
+      this.api.get("/api/user").catch(() => undefined),
       this.stacks().catch(() => undefined),
-      puPaged<unknown>(this.ctx, `/api/orgs/${enc(this.org)}/members`, "members").catch(
-        () => undefined,
-      ),
+      this.api.getAll(`/api/orgs/${this.orgSegment}/members`, "members").catch(() => undefined),
       this.envList().catch(() => undefined),
-      fetchSummary(this.ctx, this.org, "resources", since).catch(() => undefined),
-      fetchSummary(this.ctx, this.org, "deployments", since).catch(() => undefined),
-      fetchSummary(this.ctx, this.org, "secrets", since).catch(() => undefined),
+      fetchSummary(this.api, this.org, "resources", since).catch(() => undefined),
+      fetchSummary(this.api, this.org, "deployments", since).catch(() => undefined),
+      fetchSummary(this.api, this.org, "secrets", since).catch(() => undefined),
     ]);
     const sum = (d: Array<{ value: number }> | undefined) =>
       d ? d.reduce((s, x) => s + x.value, 0) : undefined;
@@ -369,11 +342,11 @@ export class PulumiCloudClient implements PluginClient {
       },
     );
     if (!detail) return r;
-    const search = await puFetch<{
-      aggregations?: Record<string, { results?: Array<{ name?: string; count?: number }> }>;
-    }>(this.ctx, `/api/orgs/${enc(this.org)}/search/resourcesv2`, {
-      query: { size: 1, top: 15 },
-    }).catch(() => undefined);
+    const search = await this.api
+      .get(`/api/orgs/${this.orgSegment}/search/resourcesv2`, {
+        query: { size: 1, top: 15 },
+      })
+      .catch(() => undefined);
     const aggs: Record<string, Array<{ name: string; count: number }>> = {};
     for (const key of ["type", "package", "project", "stack"]) {
       const buckets = search?.aggregations?.[key]?.results;
@@ -405,10 +378,7 @@ export class PulumiCloudClient implements PluginClient {
         case "stack":
           return this.stackDetail(accountId, a!, b!);
         case "stack-output": {
-          const res = await puFetch<{ outputs?: Record<string, unknown> }>(
-            this.ctx,
-            `${this.sp(a!, b!)}/outputs`,
-          );
+          const res = await this.api.get(`${this.sp(a!, b!)}/outputs`);
           const value = res?.outputs?.[c ?? ""];
           if (value === undefined)
             throw new PulumiApiError(
@@ -425,10 +395,7 @@ export class PulumiCloudClient implements PluginClient {
           );
         }
         case "deployment": {
-          const d = await puFetch<PuDeployment>(
-            this.ctx,
-            `${this.sp(a!, b!)}/deployments/${enc(c!)}`,
-          );
+          const d = await this.api.get(`${this.sp(a!, b!)}/deployments/${pathEncode(c!)}`);
           return mapDeployment(
             accountId,
             { ...d, projectName: a!, stackName: b! },
@@ -439,18 +406,11 @@ export class PulumiCloudClient implements PluginClient {
           const envs = await this.envList();
           const e = envs.find((x) => (x.project || "default") === a && x.name === b);
           if (!e) throw new PulumiApiError(404, `Pulumi Cloud plugin: environment ${id} not found`);
-          const revs = await puFetch<
-            Array<{
-              number: number;
-              created: string;
-              creatorName?: string;
-              creatorLogin?: string;
-              tags?: string[];
-              retracted?: unknown;
-            }>
-          >(this.ctx, `/api/esc/environments/${enc(this.org)}/${enc(a!)}/${enc(b!)}/versions`, {
-            query: { count: 20 },
-          }).catch(() => undefined);
+          const revs = await this.api
+            .get(`${this.ep(a!, b!)}/versions`, {
+              query: { count: 20 },
+            })
+            .catch(() => undefined);
           const rows: RevisionRow[] = (revs ?? []).map((v) => ({
             number: v.number,
             created: v.created,
@@ -463,9 +423,9 @@ export class PulumiCloudClient implements PluginClient {
           });
         }
         case "access-token": {
-          const t = (
-            await puPaged<PuToken>(this.ctx, `/api/orgs/${enc(this.org)}/tokens`, "tokens")
-          ).find((x) => x.id === id);
+          const t = (await this.api.getAll(`/api/orgs/${this.orgSegment}/tokens`, "tokens")).find(
+            (x) => x.id === id,
+          );
           if (!t) throw new PulumiApiError(404, `Pulumi Cloud plugin: token ${id} not found`);
           return mapToken(accountId, this.org, t);
         }
@@ -473,33 +433,24 @@ export class PulumiCloudClient implements PluginClient {
           return mapTeam(
             accountId,
             this.org,
-            await puFetch<PuTeam>(this.ctx, `/api/orgs/${enc(this.org)}/teams/${enc(id)}`),
+            await this.api.get(`/api/orgs/${this.orgSegment}/teams/${pathEncode(id)}`),
           );
         case "webhook": {
-          const w = await puFetch<PuWebhook>(
-            this.ctx,
-            `/api/orgs/${enc(this.org)}/hooks/${enc(id)}`,
-          );
+          const w = await this.api.get(`/api/orgs/${this.orgSegment}/hooks/${pathEncode(id)}`);
           return mapWebhook(accountId, this.org, { ...w, name: w.name || id });
         }
         case "policy-pack": {
-          const res = await puFetch<{ policyPacks?: PuPolicyPack[] }>(
-            this.ctx,
-            `/api/orgs/${enc(this.org)}/policypacks`,
-          );
+          const res = await this.api.get(`/api/orgs/${this.orgSegment}/policypacks`);
           const p = res?.policyPacks?.find((x) => x.name === id);
           if (!p) throw new PulumiApiError(404, `Pulumi Cloud plugin: policy pack ${id} not found`);
           return mapPolicyPack(accountId, this.org, p);
         }
         case "policy-group": {
-          const res = await puFetch<{ policyGroups?: PuPolicyGroup[] }>(
-            this.ctx,
-            `/api/orgs/${enc(this.org)}/policygroups`,
-          );
+          const res = await this.api.get(`/api/orgs/${this.orgSegment}/policygroups`);
           const g = res?.policyGroups?.find((x) => x.name === id);
           if (!g)
             throw new PulumiApiError(404, `Pulumi Cloud plugin: policy group ${id} not found`);
-          const stacks = (await this.stacks().catch(() => [] as PuStackSummary[])).map((s) => ({
+          const stacks = (await this.stacks().catch((): PuStackSummary[] => [])).map((s) => ({
             id: `${s.projectName}/${s.stackName}`,
             name: `${s.projectName}/${s.stackName}`,
           }));
@@ -518,24 +469,17 @@ export class PulumiCloudClient implements PluginClient {
   ): Promise<ResourceInstance> {
     const path = this.sp(project, stack);
     const [s, count, drift, outputs, history, schedules, settings] = await Promise.all([
-      puFetch<PuStack>(this.ctx, path),
-      puFetch<{ resourceCount?: number }>(this.ctx, `${path}/resources/count`).catch(
-        () => undefined,
-      ),
-      puFetch<{ driftDetected?: boolean }>(this.ctx, `${path}/drift/status`).catch(() => undefined),
-      puFetch<{ outputs?: Record<string, unknown> }>(this.ctx, `${path}/outputs`).catch(
-        () => undefined,
-      ),
-      puFetch<{ updates?: PuUpdate[] }>(this.ctx, `${path}/updates`, {
-        query: { page: 1, pageSize: 15, "output-type": "service" },
-      }).catch(() => undefined),
-      puFetch<{ schedules?: Array<Record<string, unknown>> }>(
-        this.ctx,
-        `${path}/deployments/schedules`,
-      ).catch(() => undefined),
-      puFetch<Record<string, unknown>>(this.ctx, `${path}/deployments/settings`).catch(
-        () => undefined,
-      ),
+      this.api.get(path),
+      this.api.get(`${path}/resources/count`).catch(() => undefined),
+      this.api.get(`${path}/drift/status`).catch(() => undefined),
+      this.api.get(`${path}/outputs`).catch(() => undefined),
+      this.api
+        .get(`${path}/updates`, {
+          query: { page: 1, pageSize: 15, "output-type": "service" },
+        })
+        .catch(() => undefined),
+      this.api.get(`${path}/deployments/schedules`).catch(() => undefined),
+      this.api.get(`${path}/deployments/settings`).catch(() => undefined),
     ]);
     const updates: UpdateRow[] = (history?.updates ?? []).map((u) => {
       const ch = u.resourceChanges ?? {};
@@ -554,20 +498,19 @@ export class PulumiCloudClient implements PluginClient {
       };
     });
     const scheduleRows: ScheduleRow[] = (schedules?.schedules ?? []).map((x) => {
-      const def = (x["definition"] ?? {}) as { request?: { operation?: string } };
+      const operation = x.definition?.request?.operation;
       return {
-        id: String(x["id"]),
-        ...(x["scheduleCron"] ? { cron: String(x["scheduleCron"]) } : {}),
-        ...(x["scheduleOnce"] ? { once: String(x["scheduleOnce"]) } : {}),
-        ...(def.request?.operation ? { operation: def.request.operation } : {}),
-        paused: x["paused"] === true,
-        ...(x["nextExecution"] ? { next: String(x["nextExecution"]) } : {}),
-        ...(x["lastExecuted"] ? { last: String(x["lastExecuted"]) } : {}),
+        id: String(x.id),
+        ...(x.scheduleCron ? { cron: String(x.scheduleCron) } : {}),
+        ...(x.scheduleOnce ? { once: String(x.scheduleOnce) } : {}),
+        ...(operation ? { operation } : {}),
+        paused: x.paused === true,
+        ...(x.nextExecution ? { next: String(x.nextExecution) } : {}),
+        ...(x.lastExecuted ? { last: String(x.lastExecuted) } : {}),
       };
     });
-    const sc = settings?.["sourceContext"] as
-      { git?: { repoURL?: string; branch?: string; repoDir?: string } } | undefined;
-    const op = (settings?.["operationContext"] as { operation?: string } | undefined)?.operation;
+    const sc = settings?.sourceContext;
+    const op = settings?.operationContext?.operation;
     const latest = history?.updates?.[0];
     const r = mapStack(
       accountId,
@@ -575,7 +518,7 @@ export class PulumiCloudClient implements PluginClient {
         ...s,
         resourceCount: count?.resourceCount ?? latest?.resourceCount,
         lastUpdate: latest?.endTime ?? latest?.startTime,
-      } as PuStackSummary & Partial<PuStack>,
+      },
       this.stackUrl(project, stack),
       {
         driftDetected: drift?.driftDetected,
@@ -603,10 +546,7 @@ export class PulumiCloudClient implements PluginClient {
       const [a, b, c] = parts(id);
       if (typeId === "stack-output" && outputKey === "value") {
         const path = this.sp(a!, b!);
-        const res = await puFetch<{
-          outputs?: Record<string, unknown>;
-          secretsProviders?: { type?: string };
-        }>(this.ctx, `${path}/outputs`);
+        const res = await this.api.get(`${path}/outputs`);
         const value = res?.outputs?.[c ?? ""];
         if (value === undefined)
           throw new Error(`Pulumi Cloud plugin: output "${c}" is not in the stack's latest update`);
@@ -619,8 +559,7 @@ export class PulumiCloudClient implements PluginClient {
             `This secret is encrypted with the stack's "${provider}" secrets provider, which Pulumi Cloud cannot decrypt. Only stacks using Pulumi Cloud's own secrets provider can be read here.`,
           );
         }
-        const dec = await puFetch<{ plaintext?: string | string[] }>(this.ctx, `${path}/decrypt`, {
-          method: "POST",
+        const dec = await this.api.post(`${path}/decrypt`, {
           body: { ciphertext: value.ciphertext },
         });
         const plain = Array.isArray(dec?.plaintext) ? dec.plaintext[0] : dec?.plaintext;
@@ -632,20 +571,17 @@ export class PulumiCloudClient implements PluginClient {
         typeId === "environment" &&
         (outputKey === "values" || outputKey === "environmentVariables")
       ) {
-        const base = `/api/esc/environments/${enc(this.org)}/${enc(a!)}/${enc(b!)}`;
-        const open = await puFetch<{ id?: string }>(this.ctx, `${base}/open`, {
-          method: "POST",
-          query: { duration: "5m" },
-        });
+        const base = this.ep(a!, b!);
+        const open = await this.api.post(`${base}/open`, { query: { duration: "5m" } });
         if (!open?.id) throw new Error("Pulumi Cloud did not open the environment");
-        const env = await puFetch<{ properties?: Record<string, unknown> }>(
-          this.ctx,
-          `${base}/open/${enc(open.id)}`,
-        );
-        const values = unwrapEscValue(env?.properties ?? env) as Record<string, unknown>;
+        const env = await this.api.get(`${base}/open/${pathEncode(open.id)}`);
+        const values = unwrapEscValue(env?.properties ?? env);
         if (outputKey === "values") return JSON.stringify(values);
-        const vars = (values?.["environmentVariables"] ?? {}) as Record<string, unknown>;
-        return Object.entries(vars)
+        const vars =
+          typeof values === "object" && values !== null && "environmentVariables" in values
+            ? values.environmentVariables
+            : undefined;
+        return Object.entries(vars ?? {})
           .map(([k, v]) => `${k}=${outputText(v)}`)
           .join("\n");
       }
@@ -706,18 +642,14 @@ export class PulumiCloudClient implements PluginClient {
     return attempt(async () => {
       const range = rangeOrDefault(timeRange, DEFAULT_METRICS_WINDOW_MS);
       if (resourceTypeId === "organization")
-        return usageSeries(this.ctx, this.org, range.startMs, range.endMs);
+        return usageSeries(this.api, this.org, range.startMs, range.endMs);
       if (resourceTypeId === "stack") {
         const [p, s] = parts(externalIdOf(resourceId));
         const updates: PuUpdate[] = [];
         for (let page = 1; page <= 5; page++) {
-          const res = await puFetch<{ updates?: PuUpdate[] }>(
-            this.ctx,
-            `${this.sp(p!, s!)}/updates`,
-            {
-              query: { page, pageSize: 100 },
-            },
-          );
+          const res = await this.api.get(`${this.sp(p!, s!)}/updates`, {
+            query: { page, pageSize: 100 },
+          });
           const batch = res?.updates ?? [];
           updates.push(...batch);
           if (batch.length < 100 || batch.some((u) => (u.startTime ?? 0) * 1000 < range.startMs))
@@ -741,10 +673,7 @@ export class PulumiCloudClient implements PluginClient {
       const lines: string[] = [];
       let token: string | undefined;
       for (let i = 0; i < MAX_LOG_PAGES; i++) {
-        const res = await puFetch<{
-          lines?: Array<{ header?: string; line?: string }>;
-          nextToken?: string;
-        }>(this.ctx, `${this.sp(p!, s!)}/deployments/${enc(id!)}/logs`, {
+        const res = await this.api.get(`${this.sp(p!, s!)}/deployments/${pathEncode(id!)}/logs`, {
           query: token ? { continuationToken: token } : {},
         });
         for (const l of res?.lines ?? []) {
@@ -765,7 +694,7 @@ export class PulumiCloudClient implements PluginClient {
 
   fetchCostData(_accountId: string, range: CostFetchRange): PluginEffect<CostRow[]> {
     return attempt(async () => {
-      return fetchUsageCost(this.ctx, this.org, this.rates, range);
+      return fetchUsageCost(this.api, this.org, this.rates, range);
     });
   }
 
@@ -778,16 +707,11 @@ export class PulumiCloudClient implements PluginClient {
       const typeId = resourceId.split(":")[1];
       const [a, b] = parts(externalIdOf(resourceId));
       if (typeId === "environment") {
-        return puRaw(this.ctx, `/api/esc/environments/${enc(this.org)}/${enc(a!)}/${enc(b!)}`, {
-          accept: "application/x-yaml",
-        });
+        return (await this.api.getText(this.ep(a!, b!), { headers: YAML_ACCEPT })).body;
       }
       if (typeId === "stack") {
         try {
-          const settings = await puFetch<Record<string, unknown>>(
-            this.ctx,
-            `${this.sp(a!, b!)}/deployments/settings`,
-          );
+          const settings = await this.api.get(`${this.sp(a!, b!)}/deployments/settings`);
           return `${JSON.stringify(settings, null, 2)}\n`;
         } catch (err) {
           if (statusOf(err) !== 404) throw err;
@@ -820,11 +744,7 @@ export class PulumiCloudClient implements PluginClient {
       const typeId = resourceId.split(":")[1];
       const [a, b] = parts(externalIdOf(resourceId));
       if (typeId === "environment") {
-        const res = await puFetch<{ diagnostics?: Array<{ summary?: string; path?: string }> }>(
-          this.ctx,
-          `/api/esc/environments/${enc(this.org)}/${enc(a!)}/${enc(b!)}`,
-          { method: "PATCH", body: manifest, yaml: true },
-        );
+        const res = await this.api.patchEnvironmentYaml(this.ep(a!, b!), manifest);
         const diags = res?.diagnostics ?? [];
         if (diags.length > 0) {
           throw new Error(
@@ -836,13 +756,13 @@ export class PulumiCloudClient implements PluginClient {
       if (typeId === "stack") {
         let body: Record<string, unknown>;
         try {
-          body = JSON.parse(manifest) as Record<string, unknown>;
+          body = JSON.parse(manifest);
         } catch {
           throw new Error("Pulumi Cloud plugin: deployment settings must be JSON");
         }
         delete body["version"];
         delete body["source"];
-        await puFetch(this.ctx, `${this.sp(a!, b!)}/deployments/settings`, { method: "PUT", body });
+        await this.api.put(`${this.sp(a!, b!)}/deployments/settings`, { body });
         return;
       }
       throw new Error(`Pulumi Cloud plugin: nothing to edit for "${typeId}"`);
@@ -854,7 +774,7 @@ export class PulumiCloudClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async stackOptions(): Promise<Array<{ id: string; label: string }>> {
-    return (await this.stacks().catch(() => [] as PuStackSummary[]))
+    return (await this.stacks().catch((): PuStackSummary[] => []))
       .map((s) => ({
         id: `${s.projectName}/${s.stackName}`,
         label: `${s.projectName}/${s.stackName}`,
@@ -868,7 +788,7 @@ export class PulumiCloudClient implements PluginClient {
         case "stack": {
           const projects = [
             ...new Set(
-              (await this.stacks().catch(() => [] as PuStackSummary[])).map((s) => s.projectName),
+              (await this.stacks().catch((): PuStackSummary[] => [])).map((s) => s.projectName),
             ),
           ].sort();
           return {
@@ -1071,8 +991,7 @@ export class PulumiCloudClient implements PluginClient {
         case "stack": {
           const project = opt("project") || parent || need("project", "Project");
           const stackName = need("stackName", "Stack name");
-          await puFetch(this.ctx, `/api/stacks/${enc(this.org)}/${enc(project)}`, {
-            method: "POST",
+          await this.api.post(`/api/stacks/${this.orgSegment}/${pathEncode(project)}`, {
             body: { stackName },
           });
           this.stacksCache = undefined;
@@ -1084,14 +1003,9 @@ export class PulumiCloudClient implements PluginClient {
         }
         case "deployment": {
           const [project, stack] = parts(opt("stack") || parent || need("stack", "Stack"));
-          const res = await puFetch<{ id?: string; version?: number }>(
-            this.ctx,
-            `${this.sp(project!, stack!)}/deployments`,
-            {
-              method: "POST",
-              body: { operation: opt("operation") || "update", inheritSettings: true },
-            },
-          );
+          const res = await this.api.post(`${this.sp(project!, stack!)}/deployments`, {
+            body: { operation: opt("operation") || "update", inheritSettings: true },
+          });
           if (!res?.id) throw new Error("Pulumi Cloud did not start a deployment");
           return mapDeployment(
             accountId,
@@ -1110,8 +1024,7 @@ export class PulumiCloudClient implements PluginClient {
         case "environment": {
           const project = need("project", "Project");
           const name = need("name", "Name");
-          await puFetch(this.ctx, `/api/esc/environments/${enc(this.org)}`, {
-            method: "POST",
+          await this.api.post(`/api/esc/environments/${this.orgSegment}`, {
             body: { project, name },
           });
           return mapEnvironment(accountId, this.org, { name, project }, this.envUrl(project, name));
@@ -1120,19 +1033,14 @@ export class PulumiCloudClient implements PluginClient {
           const days = Number(opt("expiresDays") || "0");
           if (!Number.isFinite(days) || days < 0)
             throw new Error("Pulumi Cloud plugin: expiry must be a number of days");
-          const res = await puFetch<{ id?: string; tokenValue?: string }>(
-            this.ctx,
-            `/api/orgs/${enc(this.org)}/tokens`,
-            {
-              method: "POST",
-              body: {
-                name: need("name", "Name"),
-                description: opt("description"),
-                admin: bool(fields["admin"]),
-                expires: days > 0 ? Math.floor(Date.now() / 1000) + Math.round(days * 86400) : 0,
-              },
+          const res = await this.api.post(`/api/orgs/${this.orgSegment}/tokens`, {
+            body: {
+              name: need("name", "Name"),
+              description: opt("description"),
+              admin: bool(fields["admin"]),
+              expires: days > 0 ? Math.floor(Date.now() / 1000) + Math.round(days * 86400) : 0,
             },
-          );
+          });
           if (!res?.id) throw new Error("Pulumi Cloud did not create the token");
           const resource = mapToken(accountId, this.org, {
             id: res.id,
@@ -1158,8 +1066,7 @@ export class PulumiCloudClient implements PluginClient {
           return { resource, warnings };
         }
         case "team": {
-          const t = await puFetch<PuTeam>(this.ctx, `/api/orgs/${enc(this.org)}/teams/pulumi`, {
-            method: "POST",
+          const t = await this.api.post(`/api/orgs/${this.orgSegment}/teams/pulumi`, {
             body: {
               name: need("name", "Name"),
               displayName: need("displayName", "Display name"),
@@ -1174,8 +1081,7 @@ export class PulumiCloudClient implements PluginClient {
         }
         case "webhook": {
           const displayName = need("displayName", "Name");
-          const w = await puFetch<PuWebhook>(this.ctx, `/api/orgs/${enc(this.org)}/hooks`, {
-            method: "POST",
+          const w = await this.api.post(`/api/orgs/${this.orgSegment}/hooks`, {
             body: {
               organizationName: this.org,
               displayName,
@@ -1194,8 +1100,7 @@ export class PulumiCloudClient implements PluginClient {
         }
         case "policy-group": {
           const name = need("name", "Name");
-          await puFetch(this.ctx, `/api/orgs/${enc(this.org)}/policygroups`, {
-            method: "POST",
+          await this.api.post(`/api/orgs/${this.orgSegment}/policygroups`, {
             body: { name, entityType: "stacks", mode: opt("mode") || "preventative" },
           });
           return mapPolicyGroup(accountId, this.org, {
@@ -1220,25 +1125,18 @@ export class PulumiCloudClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "team": {
-          const body: Record<string, unknown> = {};
-          if ("displayName" in fields)
-            body["newDisplayName"] = (fields["displayName"] ?? "").trim();
-          if ("description" in fields)
-            body["newDescription"] = (fields["description"] ?? "").trim();
+          const body: ApiBody<operations["UpdateTeam"]> = {};
+          if ("displayName" in fields) body.newDisplayName = (fields["displayName"] ?? "").trim();
+          if ("description" in fields) body.newDescription = (fields["description"] ?? "").trim();
           if (Object.keys(body).length > 0) {
-            await puFetch(this.ctx, `/api/orgs/${enc(this.org)}/teams/${enc(id)}`, {
-              method: "PATCH",
-              body,
-            });
+            await this.api.patch(`/api/orgs/${this.orgSegment}/teams/${pathEncode(id)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "webhook": {
-          const current = await puFetch<PuWebhook>(
-            this.ctx,
-            `/api/orgs/${enc(this.org)}/hooks/${enc(id)}`,
-          );
-          const body: Record<string, unknown> = {
+          const hook = `/api/orgs/${this.orgSegment}/hooks/${pathEncode(id)}` as const;
+          const current = await this.api.get(hook);
+          const body: ApiBody<operations["UpdateOrganizationWebhook"]> = {
             organizationName: this.org,
             name: id,
             displayName:
@@ -1251,17 +1149,13 @@ export class PulumiCloudClient implements PluginClient {
             filters: "filters" in fields ? list(fields["filters"]) : (current.filters ?? []),
             ...(fields["secret"] ? { secret: fields["secret"] } : {}),
           };
-          await puFetch(this.ctx, `/api/orgs/${enc(this.org)}/hooks/${enc(id)}`, {
-            method: "PATCH",
-            body,
-          });
+          await this.api.patch(hook, { body });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "policy-group": {
           const newName = (fields["name"] ?? "").trim();
           if (newName && newName !== id) {
-            await puFetch(this.ctx, `/api/orgs/${enc(this.org)}/policygroups/${enc(id)}`, {
-              method: "PATCH",
+            await this.api.patch(`/api/orgs/${this.orgSegment}/policygroups/${pathEncode(id)}`, {
               body: { newName },
             });
             return runPluginEffect(
@@ -1280,30 +1174,29 @@ export class PulumiCloudClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       const [a, b] = parts(id);
-      const del = (path: string) => puFetch(this.ctx, path, { method: "DELETE" });
       switch (typeId) {
         case "stack":
           // No `force`: Pulumi refuses to delete a stack that still has resources.
-          await del(this.sp(a!, b!));
+          await this.api.delete(this.sp(a!, b!));
           this.stacksCache = undefined;
           return;
         case "environment":
-          await del(`/api/esc/environments/${enc(this.org)}/${enc(a!)}/${enc(b!)}`);
+          await this.api.delete(this.ep(a!, b!));
           return;
         case "access-token":
-          await del(`/api/orgs/${enc(this.org)}/tokens/${enc(id)}`);
+          await this.api.delete(`/api/orgs/${this.orgSegment}/tokens/${pathEncode(id)}`);
           return;
         case "team":
-          await del(`/api/orgs/${enc(this.org)}/teams/${enc(id)}`);
+          await this.api.delete(`/api/orgs/${this.orgSegment}/teams/${pathEncode(id)}`);
           return;
         case "webhook":
-          await del(`/api/orgs/${enc(this.org)}/hooks/${enc(id)}`);
+          await this.api.delete(`/api/orgs/${this.orgSegment}/hooks/${pathEncode(id)}`);
           return;
         case "policy-pack":
-          await del(`/api/orgs/${enc(this.org)}/policypacks/${enc(id)}`);
+          await this.api.delete(`/api/orgs/${this.orgSegment}/policypacks/${pathEncode(id)}`);
           return;
         case "policy-group":
-          await del(`/api/orgs/${enc(this.org)}/policygroups/${enc(id)}`);
+          await this.api.delete(`/api/orgs/${this.orgSegment}/policygroups/${pathEncode(id)}`);
           return;
         default:
           throw new Error(`Pulumi Cloud plugin: cannot delete "${typeId}" from Infrawrench`);
@@ -1325,55 +1218,44 @@ export class PulumiCloudClient implements PluginClient {
       const id = externalIdOf(resourceId);
       const [a, b, c] = parts(id);
       if (typeId === "deployment" && actionId === "cancel") {
-        await puFetch(this.ctx, `${this.sp(a!, b!)}/deployments/${enc(c!)}/cancel`, {
-          method: "POST",
-        });
+        await this.api.post(`${this.sp(a!, b!)}/deployments/${pathEncode(c!)}/cancel`);
         return;
       }
       if (typeId === "stack") {
         const [verb, scheduleId] = actionId.split(":");
-        const base = `${this.sp(a!, b!)}/deployments/schedules/${enc(scheduleId ?? "")}`;
-        if (verb === "schedule-pause" || verb === "schedule-resume") {
-          await puFetch(this.ctx, `${base}/${verb === "schedule-pause" ? "pause" : "resume"}`, {
-            method: "POST",
-          });
+        const base =
+          `${this.sp(a!, b!)}/deployments/schedules/${pathEncode(scheduleId ?? "")}` as const;
+        if (verb === "schedule-pause") {
+          await this.api.post(`${base}/pause`);
+          return;
+        }
+        if (verb === "schedule-resume") {
+          await this.api.post(`${base}/resume`);
           return;
         }
         if (verb === "schedule-delete") {
-          await puFetch(this.ctx, base, { method: "DELETE" });
+          await this.api.delete(base);
           return;
         }
       }
       if (typeId === "environment" && actionId.startsWith("rollback:")) {
         const version = actionId.split(":")[1];
-        const yaml = await puRaw(
-          this.ctx,
-          `/api/esc/environments/${enc(this.org)}/${enc(a!)}/${enc(b!)}/versions/${enc(version ?? "")}`,
-          {
-            accept: "application/x-yaml",
-          },
-        );
-        await puFetch(this.ctx, `/api/esc/environments/${enc(this.org)}/${enc(a!)}/${enc(b!)}`, {
-          method: "PATCH",
-          body: yaml,
-          yaml: true,
+        const env = this.ep(a!, b!);
+        const yaml = await this.api.getText(`${env}/versions/${pathEncode(version ?? "")}`, {
+          headers: YAML_ACCEPT,
         });
+        await this.api.patchEnvironmentYaml(env, yaml.body);
         return;
       }
       if (typeId === "webhook") {
         if (actionId === "ping") {
-          await puFetch(this.ctx, `/api/orgs/${enc(this.org)}/hooks/${enc(id)}/ping`, {
-            method: "POST",
-          });
+          await this.api.post(`/api/orgs/${this.orgSegment}/hooks/${pathEncode(id)}/ping`);
           return;
         }
         if (actionId === "enable" || actionId === "disable") {
-          const current = await puFetch<PuWebhook>(
-            this.ctx,
-            `/api/orgs/${enc(this.org)}/hooks/${enc(id)}`,
-          );
-          await puFetch(this.ctx, `/api/orgs/${enc(this.org)}/hooks/${enc(id)}`, {
-            method: "PATCH",
+          const hook = `/api/orgs/${this.orgSegment}/hooks/${pathEncode(id)}` as const;
+          const current = await this.api.get(hook);
+          await this.api.patch(hook, {
             body: {
               organizationName: this.org,
               name: id,
@@ -1406,8 +1288,7 @@ export class PulumiCloudClient implements PluginClient {
       switch (command) {
         case "deploy":
           if (typeId !== "stack") break;
-          await puFetch(this.ctx, `${this.sp(a!, b!)}/deployments`, {
-            method: "POST",
+          await this.api.post(`${this.sp(a!, b!)}/deployments`, {
             body: { operation: vals["operation"] || "update", inheritSettings: true },
           });
           return null;
@@ -1417,8 +1298,7 @@ export class PulumiCloudClient implements PluginClient {
           const once = (vals["once"] ?? "").trim();
           if (!cron && !once)
             throw new Error("Pulumi Cloud plugin: give a cron schedule or a time");
-          await puFetch(this.ctx, `${this.sp(a!, b!)}/deployments/schedules`, {
-            method: "POST",
+          await this.api.post(`${this.sp(a!, b!)}/deployments/schedules`, {
             body: {
               request: { operation: vals["operation"] || "detect-drift", inheritSettings: true },
               ...(cron ? { scheduleCron: cron } : { scheduleOnce: new Date(once).toISOString() }),
@@ -1431,8 +1311,7 @@ export class PulumiCloudClient implements PluginClient {
           const newName = (vals["newName"] ?? "").trim();
           const newProject = (vals["newProject"] ?? "").trim() || a!;
           if (!newName) throw new Error("Pulumi Cloud plugin: give the new stack name");
-          await puFetch(this.ctx, `${this.sp(a!, b!)}/rename`, {
-            method: "POST",
+          await this.api.post(`${this.sp(a!, b!)}/rename`, {
             body: { newName, newProject },
           });
           this.stacksCache = undefined;
@@ -1444,12 +1323,12 @@ export class PulumiCloudClient implements PluginClient {
           const revision = Number(vals["revision"]);
           if (!tag || !Number.isInteger(revision))
             throw new Error("Pulumi Cloud plugin: give a tag and a revision");
-          const base = `/api/esc/environments/${enc(this.org)}/${enc(a!)}/${enc(b!)}/versions/tags`;
+          const base = `${this.ep(a!, b!)}/versions/tags` as const;
           try {
-            await puFetch(this.ctx, base, { method: "POST", body: { name: tag, revision } });
+            await this.api.post(base, { body: { name: tag, revision } });
           } catch (err) {
             if (statusOf(err) !== 409) throw err;
-            await puFetch(this.ctx, `${base}/${enc(tag)}`, { method: "PATCH", body: { revision } });
+            await this.api.patch(`${base}/${pathEncode(tag)}`, { body: { revision } });
           }
           return null;
         }
@@ -1458,8 +1337,7 @@ export class PulumiCloudClient implements PluginClient {
           const [project, stack] = parts(vals["stack"] ?? "");
           if (!project || !stack) throw new Error("Pulumi Cloud plugin: choose a stack");
           const ref = { name: stack, routingProject: project };
-          await puFetch(this.ctx, `/api/orgs/${enc(this.org)}/policygroups/${enc(id)}`, {
-            method: "PATCH",
+          await this.api.patch(`/api/orgs/${this.orgSegment}/policygroups/${pathEncode(id)}`, {
             body: vals["op"] === "remove" ? { removeStack: ref } : { addStack: ref },
           });
           return null;

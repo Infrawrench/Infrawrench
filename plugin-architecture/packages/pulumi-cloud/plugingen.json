@@ -1,0 +1,210 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://api.pulumi.com/api/openapi/pulumi-spec.json",
+  "patches": [
+    {
+      "pointer": "/components/schemas/StackOutputsResponse/properties/outputs/additionalProperties",
+      "value": {},
+      "why": "The document says each output is an object. Outputs are any JSON: strings, numbers, lists, null."
+    },
+    {
+      "pointer": "/components/schemas/AppDecryptValueRequest/properties/ciphertext",
+      "value": {
+        "type": "string"
+      },
+      "why": "The document writes a byte slice as an array of strings. On the wire it is one base64 string, which is what the plugin sends."
+    },
+    {
+      "pointer": "/components/schemas/AppDecryptValueResponse/properties/plaintext",
+      "value": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "why": "The same byte slice as the request. The plugin accepts a base64 string and the documented array."
+    },
+    {
+      "pointer": "/paths/~1api~1stacks~1{orgName}~1{projectName}~1{stackName}~1updates/get/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "updates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "startTime": {
+                  "type": "integer"
+                },
+                "endTime": {
+                  "type": "integer"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "result": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer"
+                },
+                "resourceChanges": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
+                },
+                "resourceCount": {
+                  "type": "integer"
+                },
+                "environment": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document types this response as a bare object. These are the fields the plugin reads, taken from AppUpdateInfo and all optional."
+    },
+    {
+      "pointer": "/paths/~1api~1esc~1environments~1{orgName}~1{projectName}~1{envName}~1open~1{openSessionID}/get/responses/200/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "properties": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        }
+      },
+      "why": "The document types this response as a bare object, but it carries the opened environment's properties."
+    },
+    {
+      "pointer": "/paths/~1api~1stacks~1{orgName}~1{projectName}~1{stackName}~1deployments~1{deploymentId}~1logs/get/responses/200/content/application~1json/schema",
+      "value": {
+        "$ref": "#/components/schemas/DeploymentLogs"
+      },
+      "why": "The document answers with the discriminator's base type. A request naming no step gets the DeploymentLogs variant, whose lines and nextToken the plugin reads."
+    },
+    {
+      "pointer": "/components/schemas/ScheduledAction/properties/definition",
+      "value": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "why": "The document types each value of a schedule's definition as an empty object. The plugin reads the operation of its request."
+    },
+    {
+      "pointer": "/components/schemas/CreateDeploymentRequest/allOf/1/properties/operation",
+      "value": {
+        "type": "string"
+      },
+      "why": "The operation is form text that goes through as typed, so the provider's own validation error reaches the user."
+    },
+    {
+      "pointer": "/components/schemas/NewPolicyGroupRequest/properties/mode",
+      "value": {
+        "type": "string"
+      },
+      "why": "The mode is form text that goes through as typed, so the provider's own validation error reaches the user."
+    },
+    {
+      "pointer": "/components/schemas/SourceContextGit/properties/repoURL",
+      "value": {
+        "type": "string"
+      },
+      "why": "The document spells this repoUrl, and the plugin has always read repoURL: see #443. Remove this with that fix."
+    },
+    {
+      "pointer": "/components/schemas/EnvironmentReferrerMetadata/properties/stackReferrers",
+      "value": {
+        "type": "integer"
+      },
+      "why": "The document has no such field, and the plugin has always read it: see #444. Remove this with that fix."
+    },
+    {
+      "pointer": "/components/schemas/EnvironmentReferrerMetadata/properties/environmentReferrers",
+      "value": {
+        "type": "integer"
+      },
+      "why": "The document has no such field, and the plugin has always read it: see #444. Remove this with that fix."
+    }
+  ],
+  "paths": {
+    "/api/user": ["get"],
+    "/api/user/stacks": ["get"],
+    "/api/stacks/{orgName}/{projectName}": ["post"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}": ["get", "delete"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/outputs": ["get"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/resources/count": ["get"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/drift/status": ["get"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/updates": ["get"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/decrypt": ["post"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/rename": ["post"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/deployments": ["post"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/deployments/settings": ["get", "put"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/deployments/schedules": ["get", "post"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/deployments/schedules/{scheduleID}": [
+      "delete"
+    ],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/deployments/schedules/{scheduleID}/pause": [
+      "post"
+    ],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/deployments/schedules/{scheduleID}/resume": [
+      "post"
+    ],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/deployments/{deploymentId}": ["get"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/deployments/{deploymentId}/cancel": ["post"],
+    "/api/stacks/{orgName}/{projectName}/{stackName}/deployments/{deploymentId}/logs": ["get"],
+    "/api/orgs/{orgName}/deployments": ["get"],
+    "/api/orgs/{orgName}/resources/summary": ["get"],
+    "/api/orgs/{orgName}/deployments/summary": ["get"],
+    "/api/orgs/{orgName}/secrets/summary": ["get"],
+    "/api/orgs/{orgName}/search/resourcesv2": ["get"],
+    "/api/orgs/{orgName}/members": ["get"],
+    "/api/orgs/{orgName}/tokens": ["get", "post"],
+    "/api/orgs/{orgName}/tokens/{tokenId}": ["delete"],
+    "/api/orgs/{orgName}/teams": ["get"],
+    "/api/orgs/{orgName}/teams/pulumi": ["post"],
+    "/api/orgs/{orgName}/teams/{teamName}": ["get", "patch", "delete"],
+    "/api/orgs/{orgName}/hooks": ["get", "post"],
+    "/api/orgs/{orgName}/hooks/{hookName}": ["get", "patch", "delete"],
+    "/api/orgs/{orgName}/hooks/{hookName}/ping": ["post"],
+    "/api/orgs/{orgName}/policypacks": ["get"],
+    "/api/orgs/{orgName}/policypacks/{policyPackName}": ["delete"],
+    "/api/orgs/{orgName}/policygroups": ["get", "post"],
+    "/api/orgs/{orgName}/policygroups/{policyGroup}": ["patch", "delete"],
+    "/api/esc/environments/{orgName}": ["get", "post"],
+    "/api/esc/environments/{orgName}/{projectName}/{envName}": ["get", "patch", "delete"],
+    "/api/esc/environments/{orgName}/{projectName}/{envName}/open": ["post"],
+    "/api/esc/environments/{orgName}/{projectName}/{envName}/open/{openSessionID}": ["get"],
+    "/api/esc/environments/{orgName}/{projectName}/{envName}/versions": ["get"],
+    "/api/esc/environments/{orgName}/{projectName}/{envName}/versions/{version}": ["get"],
+    "/api/esc/environments/{orgName}/{projectName}/{envName}/versions/tags": ["post"],
+    "/api/esc/environments/{orgName}/{projectName}/{envName}/versions/tags/{tagName}": ["patch"]
+  }
+}

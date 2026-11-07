@@ -8,7 +8,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import type { PuContext } from "./api.js";
-import { DEFAULT_API_URL, isPermissionError, normaliseApiUrl, puFetch } from "./api.js";
+import { DEFAULT_API_URL, createPulumiApi, isPermissionError, normaliseApiUrl } from "./api.js";
 import { PulumiCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { pulumiCloudRemediationCommands } from "./remediation.js";
@@ -109,10 +109,7 @@ async function listCredentialOptions(
     ...(caCert ? { caCert } : {}),
   };
   try {
-    const user = await puFetch<{
-      organizations?: Array<{ githubLogin: string; name?: string; role?: string }>;
-      tokenInfo?: { organization?: string };
-    }>(ctx, "/api/user");
+    const user = await createPulumiApi(ctx).get("/api/user");
     const orgs = (user?.organizations ?? []).map((o) => ({
       id: o.githubLogin,
       label: o.name || o.githubLogin,
