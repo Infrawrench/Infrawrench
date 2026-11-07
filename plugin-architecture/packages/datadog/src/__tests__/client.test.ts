@@ -300,6 +300,65 @@ describe("DatadogClient", () => {
   });
 });
 
+describe("list limits", () => {
+  const LISTS: Array<[string, string, string | null, number, number]> = [
+    ["monitor", "page_size", null, 1000, 50],
+    ["host", "count", "host_list", 1000, 50],
+    ["slo", "limit", "data", 1000, 50],
+    ["dashboard", "count", "dashboards", 100, 500],
+    ["synthetics-test", "page_size", "tests", 100, 500],
+    ["user", "page[size]", "data", 100, 500],
+    ["api-key", "page[size]", "data", 100, 500],
+    ["application-key", "page[size]", "data", 100, 500],
+  ];
+
+  const page = (key: string | null, rows: object[]) => (key === null ? rows : { [key]: rows });
+  const fullPage = (size: number) => Array.from({ length: size }, (_, i) => ({ id: `r${i}` }));
+
+  it.each(LISTS)(
+    "%s: a list that never ends throws after its cap",
+    async (typeId, sizeParam, key, size, maxPages) => {
+      const { c, calls } = client(() => ({ body: page(key, fullPage(size)) }));
+      await expect(c.listResources(typeId, ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls).toHaveLength(maxPages);
+      expect(calls[0]!.url.searchParams.get(sizeParam)).toBe(String(size));
+    },
+  );
+
+  it.each(LISTS)("%s: a first page that is not a list throws", async (typeId, _sizeParam, key) => {
+    const { c } = client(() => ({ body: { renamed: [], ...(key ? {} : { errors: ["bad"] }) } }));
+    await expect(c.listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each(LISTS)(
+    "%s: a later page that is not a list throws",
+    async (typeId, _sizeParam, key, size) => {
+      let reads = 0;
+      const { c } = client(() =>
+        ++reads === 1 ? { body: page(key, fullPage(size)) } : { body: { renamed: [] } },
+      );
+      await expect(c.listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+      expect(reads).toBe(2);
+    },
+  );
+
+  it("offers the first pages of monitors in the downtime picker rather than none", async () => {
+    let reads = 0;
+    const { c } = client(() => {
+      reads += 1;
+      return {
+        body: Array.from({ length: 1000 }, (_, i) => ({ id: reads * 1000 + i, name: `m${i}` })),
+      };
+    });
+    const config = await c.getCreateConfig!("downtime");
+    const picker = config.fields.find((f) => f.key === "monitorId");
+    expect(reads).toBe(50);
+    expect(picker?.options).toHaveLength(50_001);
+  });
+});
+
 describe("current downtimes", () => {
   const downtime = (id: string, monitorId: number) => ({
     id,

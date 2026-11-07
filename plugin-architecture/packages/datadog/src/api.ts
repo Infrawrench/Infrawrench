@@ -134,25 +134,20 @@ export interface JsonApiPage {
   "page[number]": number;
 }
 
+/** The document's maximum for `page[size]` on these routes. */
+const JSON_API_PAGE_SIZE = 100;
+const JSON_API_MAX_PAGES = 500;
+
 /**
- * Page through a JSON:API style list (`page[size]` / `page[number]`), the
- * shape the v2 users, API key and application key endpoints share. Stops on a
- * short page, and hard-stops at `maxPages` so a misbehaving cursor cannot
- * spin forever. A hand loop because `included` is collected beside `data`.
+ * Every page of a JSON:API style list (`page[size]` / `page[number]`), the shape the
+ * v2 users, API key and application key endpoints share.
  */
-export async function ddPaged<Item, Included>(
+export function ddPaged<Item, Included>(
+  path: string,
   fetchPage: (page: JsonApiPage) => Promise<{ data?: Item[]; included?: Included[] }>,
-  pageSize = 100,
-  maxPages = 50,
 ): Promise<{ data: Item[]; included: Included[] }> {
-  const data: Item[] = [];
-  const included: Included[] = [];
-  for (let page = 0; page < maxPages; page++) {
-    const res = await fetchPage({ "page[size]": pageSize, "page[number]": page });
-    const batch = res.data ?? [];
-    data.push(...batch);
-    included.push(...(res.included ?? []));
-    if (batch.length < pageSize) break;
-  }
-  return { data, included };
+  return readJsonApiPages(
+    { path, pageSize: JSON_API_PAGE_SIZE, maxPages: JSON_API_MAX_PAGES },
+    (page) => fetchPage({ "page[size]": JSON_API_PAGE_SIZE, "page[number]": page }),
+  );
 }

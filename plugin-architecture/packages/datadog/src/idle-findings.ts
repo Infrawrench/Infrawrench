@@ -29,7 +29,11 @@ import type {
   IdleFindingsCapabilityDeclaration,
   IdleScanRequest,
 } from "@infrawrench/plugin-base";
-import { IdleFindingAccessError } from "@infrawrench/plugin-base";
+import {
+  IdleFindingAccessError,
+  ListTruncatedError,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 
 import { statusOf, type DatadogContext } from "./api.js";
 import type { components, operations } from "./api-types.v2.gen.js";
@@ -40,6 +44,7 @@ export const CUSTOM_METRIC_MONTHLY_USD = 0.05;
 export const MAX_UNUSED_METRIC_FINDINGS = 100;
 const PAGE_SIZE = 10_000;
 const MAX_PAGES = 20;
+const METRICS_PATH = "/api/v2/metrics";
 
 export const DATADOG_IDLE_FINDINGS: IdleFindingsCapabilityDeclaration = {
   rules: [
@@ -86,7 +91,10 @@ export interface MetricVolume {
 /** Seam for tests: one page of `GET /api/v2/metrics`. */
 export type MetricListFetch = (query: MetricListQuery) => Promise<MetricListPage>;
 
-/** Every metric a filter set matches, with volumes, following the cursor. */
+/**
+ * Every metric a filter set matches, with volumes, following the cursor. Throws when
+ * it cannot read them all: a metric missing from the second read looks unused.
+ */
 export async function listMetrics(
   fetchPage: MetricListFetch,
   filters: MetricListQuery,
@@ -105,7 +113,12 @@ export async function listMetrics(
         .filter((i) => i.type === "metric_volumes" && i.id)
         .map((i) => [i.id!, i.attributes ?? {}]),
     );
-    for (const item of body.data ?? []) {
+    const items = requireListPage(body.data, {
+      vendor: "Datadog",
+      path: METRICS_PATH,
+      key: "data",
+    });
+    for (const item of items) {
       if (!item.id) continue;
       const v = volumes.get(item.id);
       out.set(item.id, {
@@ -115,15 +128,20 @@ export async function listMetrics(
       });
     }
     cursor = body.meta?.pagination?.next_cursor ?? undefined;
-    if (!cursor) break;
+    if (!cursor) return out;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: "Datadog",
+    path: METRICS_PATH,
+    items: out.size,
+    maxPages: MAX_PAGES,
+  });
 }
 
 export function datadogMetricListFetch(ctx: DatadogContext): MetricListFetch {
   return async (query) => {
     try {
-      return await ctx.v2.get("/api/v2/metrics", { query });
+      return await ctx.v2.get(METRICS_PATH, { query });
     } catch (err) {
       if (statusOf(err) === 403) {
         throw new IdleFindingAccessError(

@@ -130,6 +130,29 @@ describe("unused custom metrics", () => {
     expect(none).toEqual(["unqueried"]);
   });
 
+  it("fails rather than judging from part of a list that never ends", async () => {
+    let reads = 0;
+    await expect(
+      fetchDatadogIdleFindings(request(), {
+        apiUrl: "https://api.datadoghq.com",
+        fetchPage: async () => {
+          reads += 1;
+          return page([[`m${reads}`, 5]], `next-${reads}`);
+        },
+      }),
+    ).rejects.toThrow("has more than Infrawrench reads");
+    expect(reads).toBe(20);
+  });
+
+  it("fails on a page that is not a list", async () => {
+    await expect(
+      fetchDatadogIdleFindings(request(), {
+        apiUrl: "https://api.datadoghq.com",
+        fetchPage: async () => ({ meta: { pagination: { next_cursor: null } } }),
+      }),
+    ).rejects.toThrow("is not a list");
+  });
+
   it("does nothing when the rule is off", async () => {
     const { c, calls } = client(() => page([["x", 1]]));
     expect(await c.fetchIdleFindings("acct", { ...request(), rules: {} })).toEqual([]);

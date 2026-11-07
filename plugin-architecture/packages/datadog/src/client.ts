@@ -21,7 +21,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
-import { createDatadogContext, ddPaged, readJsonApiPages, statusOf } from "./api.js";
+import { createDatadogContext, ddPaged, readJsonApiPages, readPages, statusOf } from "./api.js";
 import { fetchCostAttribution } from "./attribution.js";
 import {
   listDatadogMetricSourceOptions,
@@ -75,15 +75,15 @@ import type { DatadogSite } from "./sites.js";
 import { resolveSite } from "./sites.js";
 
 const MONITOR_PAGE = 1000;
-const MAX_MONITOR_PAGES = 20;
+const MAX_MONITOR_PAGES = 50;
 const HOST_PAGE = 1000;
-const MAX_HOST_PAGES = 20;
+const MAX_HOST_PAGES = 50;
 const DASHBOARD_PAGE = 100;
-const MAX_DASHBOARD_PAGES = 50;
+const MAX_DASHBOARD_PAGES = 500;
 const SLO_PAGE = 1000;
-const MAX_SLO_PAGES = 20;
+const MAX_SLO_PAGES = 50;
 const SYNTHETICS_PAGE = 100;
-const MAX_SYNTHETICS_PAGES = 50;
+const MAX_SYNTHETICS_PAGES = 500;
 // The document's default; it states no maximum.
 const DOWNTIME_PAGE = 30;
 const MAX_DOWNTIME_PAGES = 334;
@@ -163,7 +163,7 @@ export class DatadogClient implements PluginClient {
           return this.scoped(() => this.listUsers(accountId));
         case "api-key":
           return this.scoped(async () => {
-            const { data, included } = await ddPaged((page) =>
+            const { data, included } = await ddPaged("/api/v2/api_keys", (page) =>
               this.ctx.v2.get("/api/v2/api_keys", {
                 query: { include: "created_by", ...page },
               }),
@@ -173,7 +173,7 @@ export class DatadogClient implements PluginClient {
           });
         case "application-key":
           return this.scoped(async () => {
-            const { data, included } = await ddPaged((page) =>
+            const { data, included } = await ddPaged("/api/v2/application_keys", (page) =>
               this.ctx.v2.get("/api/v2/application_keys", {
                 query: { include: "owned_by", ...page },
               }),
@@ -187,16 +187,20 @@ export class DatadogClient implements PluginClient {
     });
   }
 
-  private async fetchMonitors(): Promise<DdMonitor[]> {
-    const out: DdMonitor[] = [];
-    for (let page = 0; page < MAX_MONITOR_PAGES; page++) {
-      const batch = await this.ctx.v1.get("/api/v1/monitor", {
-        query: { page, page_size: MONITOR_PAGE, with_downtimes: true },
-      });
-      out.push(...(batch ?? []));
-      if (!batch || batch.length < MONITOR_PAGE) break;
-    }
-    return out;
+  private fetchMonitors(options: { partial?: boolean } = {}): Promise<DdMonitor[]> {
+    return readPages(
+      {
+        path: "/api/v1/monitor",
+        key: null,
+        pageSize: MONITOR_PAGE,
+        maxPages: MAX_MONITOR_PAGES,
+        ...options,
+      },
+      (page) =>
+        this.ctx.v1.get("/api/v1/monitor", {
+          query: { page, page_size: MONITOR_PAGE, with_downtimes: true },
+        }),
+    );
   }
 
   private fetchCurrentDowntimes(query: { include?: string } = {}) {
@@ -225,66 +229,72 @@ export class DatadogClient implements PluginClient {
     return data.map((d) => mapDowntime(accountId, d, names));
   }
 
-  private async fetchDashboards(): Promise<DdDashboardSummary[]> {
-    const out: DdDashboardSummary[] = [];
-    for (let page = 0; page < MAX_DASHBOARD_PAGES; page++) {
-      const res = await this.ctx.v1.get("/api/v1/dashboard", {
-        query: { count: DASHBOARD_PAGE, start: page * DASHBOARD_PAGE },
-      });
-      const batch = res.dashboards ?? [];
-      out.push(...batch);
-      if (batch.length < DASHBOARD_PAGE) break;
-    }
-    return out;
+  private fetchDashboards(): Promise<DdDashboardSummary[]> {
+    return readPages(
+      {
+        path: "/api/v1/dashboard",
+        key: "dashboards",
+        pageSize: DASHBOARD_PAGE,
+        maxPages: MAX_DASHBOARD_PAGES,
+      },
+      async (page) =>
+        (
+          await this.ctx.v1.get("/api/v1/dashboard", {
+            query: { count: DASHBOARD_PAGE, start: page * DASHBOARD_PAGE },
+          })
+        ).dashboards,
+    );
   }
 
-  private async fetchSlos(): Promise<DdSloListItem[]> {
-    const out: DdSloListItem[] = [];
-    for (let page = 0; page < MAX_SLO_PAGES; page++) {
-      const res = await this.ctx.v1.get("/api/v1/slo", {
-        query: { limit: SLO_PAGE, offset: page * SLO_PAGE },
-      });
-      const batch = res.data ?? [];
-      out.push(...batch);
-      if (batch.length < SLO_PAGE) break;
-    }
-    return out;
+  private fetchSlos(): Promise<DdSloListItem[]> {
+    return readPages(
+      { path: "/api/v1/slo", key: "data", pageSize: SLO_PAGE, maxPages: MAX_SLO_PAGES },
+      async (page) =>
+        (
+          await this.ctx.v1.get("/api/v1/slo", {
+            query: { limit: SLO_PAGE, offset: page * SLO_PAGE },
+          })
+        ).data,
+    );
   }
 
-  private async fetchSyntheticsTests(): Promise<DdSyntheticsTest[]> {
-    const out: DdSyntheticsTest[] = [];
-    for (let page = 0; page < MAX_SYNTHETICS_PAGES; page++) {
-      const res = await this.ctx.v1.get("/api/v1/synthetics/tests", {
-        query: { page_size: SYNTHETICS_PAGE, page_number: page },
-      });
-      const batch = res.tests ?? [];
-      out.push(...batch);
-      if (batch.length < SYNTHETICS_PAGE) break;
-    }
-    return out;
+  private fetchSyntheticsTests(): Promise<DdSyntheticsTest[]> {
+    return readPages(
+      {
+        path: "/api/v1/synthetics/tests",
+        key: "tests",
+        pageSize: SYNTHETICS_PAGE,
+        maxPages: MAX_SYNTHETICS_PAGES,
+      },
+      async (page) =>
+        (
+          await this.ctx.v1.get("/api/v1/synthetics/tests", {
+            query: { page_size: SYNTHETICS_PAGE, page_number: page },
+          })
+        ).tests,
+    );
   }
 
-  private async fetchHosts(filter?: string): Promise<DdHost[]> {
-    const out: DdHost[] = [];
-    for (let page = 0; page < MAX_HOST_PAGES; page++) {
-      const res = await this.ctx.v1.get("/api/v1/hosts", {
-        query: {
-          count: HOST_PAGE,
-          start: page * HOST_PAGE,
-          include_muted_hosts_data: true,
-          include_hosts_metadata: true,
-          ...(filter ? { filter } : {}),
-        },
-      });
-      const batch = res.host_list ?? [];
-      out.push(...batch);
-      if (batch.length < HOST_PAGE) break;
-    }
-    return out;
+  private fetchHosts(filter?: string): Promise<DdHost[]> {
+    return readPages(
+      { path: "/api/v1/hosts", key: "host_list", pageSize: HOST_PAGE, maxPages: MAX_HOST_PAGES },
+      async (page) =>
+        (
+          await this.ctx.v1.get("/api/v1/hosts", {
+            query: {
+              count: HOST_PAGE,
+              start: page * HOST_PAGE,
+              include_muted_hosts_data: true,
+              include_hosts_metadata: true,
+              ...(filter ? { filter } : {}),
+            },
+          })
+        ).host_list,
+    );
   }
 
   private async listUsers(accountId: string): Promise<ResourceInstance[]> {
-    const { data, included } = await ddPaged((page) =>
+    const { data, included } = await ddPaged("/api/v2/users", (page) =>
       this.ctx.v2.get("/api/v2/users", { query: { include: "roles", ...page } }),
     );
     const roles = includedRoles(included);
@@ -591,7 +601,7 @@ export class DatadogClient implements PluginClient {
       if (typeId !== "downtime") {
         throw new Error(`Datadog plugin: cannot create "${typeId}" from Infrawrench`);
       }
-      const monitors = await this.fetchMonitors().catch((): DdMonitor[] => []);
+      const monitors = await this.fetchMonitors({ partial: true }).catch((): DdMonitor[] => []);
       return {
         fields: [
           {
