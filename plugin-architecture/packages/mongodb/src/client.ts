@@ -14,7 +14,21 @@ import type {
   PeerPaneResource,
   CreateResourceConfig,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle } from "@infrawrench/plugin-base";
+import { joinSubtitle, reportUnreadListPart } from "@infrawrench/plugin-base";
+
+/**
+ * Whether this login may not run `listDatabases`, as opposed to a failed read: code 13,
+ * or Atlas's wording, which comes with its catch-all code 8000. Current servers narrow
+ * the list for a login without the action, so this is an anonymous login or an old
+ * server. The desktop's IPC keeps only the message, so `code` is not always there.
+ */
+function isListDatabasesRefused(err: unknown): boolean {
+  const code = typeof err === "object" && err !== null && "code" in err ? err.code : undefined;
+  return (
+    code === 13 ||
+    /not authorized on|requires authentication|is not allowed to do action/i.test(String(err))
+  );
+}
 
 /**
  * MongoDB plugin client.
@@ -353,12 +367,14 @@ export class MongoDBClient implements PluginClient {
             createdAt: now,
             updatedAt: now,
           }));
-      } catch {
-        // Fall through to URL parsing
+      } catch (err) {
+        if (!isListDatabasesRefused(err)) throw err;
+        // Shows only the database the login connects to, which says nothing about the rest.
+        reportUnreadListPart({ idPrefixes: [""] });
       }
     }
 
-    // Fallback: parse DB name from connection string
+    // No host KV service, or refused: parse DB name from connection string
     let dbName = "test";
     try {
       const url = new URL(this.connectionString);

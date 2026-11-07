@@ -1,9 +1,22 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { HostServices, ResourceInstance, KvHostServices } from "@infrawrench/plugin-base";
+import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
+import type {
+  HostServices,
+  ResourceInstance,
+  KvHostServices,
+  UnreadListPart,
+} from "@infrawrench/plugin-base";
 import { MongoDBClient } from "../client.js";
 
 const CS = "mongodb://user:pass@db.example.com:27017/appdb";
+
+const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+
+function trackUnread(): UnreadListPart[] {
+  const seen: UnreadListPart[] = [];
+  Reflect.set(globalThis, UNREAD_HOOK, (part: UnreadListPart) => seen.push(part));
+  return seen;
+}
 
 function makeKv() {
   return { command: vi.fn() };
@@ -62,13 +75,6 @@ describe("MongoDBClient", () => {
       expect(kv.command).toHaveBeenCalledWith("listDatabases", "admin");
     });
 
-    it("falls back to URL parsing on kv error", async () => {
-      kv.command.mockRejectedValue(new Error("boom"));
-      const c = hostClient(new MongoDBClient({ connectionString: CS }, services(kv)));
-      const res = await c.listResources("mongodb-database", "acct");
-      expect(res[0]!.displayName).toBe("appdb");
-    });
-
     it("falls back without kv service", async () => {
       const c = hostClient(new MongoDBClient({ connectionString: CS }));
       const res = await c.listResources("mongodb-database", "acct");
@@ -91,6 +97,75 @@ describe("MongoDBClient", () => {
     it("throws on unknown type", async () => {
       const c = hostClient(new MongoDBClient({ connectionString: CS }));
       await expect(c.listResources("nope", "acct")).rejects.toThrow(/unknown resource type/);
+    });
+
+    describe("a failed read of the database list", () => {
+      afterEach(() => {
+        Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      });
+
+      const client = () => hostClient(new MongoDBClient({ connectionString: CS }, services(kv)));
+
+      it.each([
+        [
+          "a dropped connection",
+          Object.assign(new Error("connection closed"), { name: "MongoNetworkError" }),
+        ],
+        [
+          "a failed login",
+          Object.assign(new Error("Authentication failed."), {
+            code: 18,
+            codeName: "AuthenticationFailed",
+          }),
+        ],
+        [
+          "a failed login on Atlas",
+          Object.assign(new Error("bad auth : authentication failed"), {
+            code: 8000,
+            codeName: "AtlasError",
+          }),
+        ],
+        ["any other failure", new Error("boom")],
+      ])("throws on %s, so no stored row is pruned", async (_name, error) => {
+        const unread = trackUnread();
+        kv.command.mockRejectedValue(error);
+        await expect(client().listResources("mongodb-database", "acct")).rejects.toBe(error);
+        expect(unread).toEqual([]);
+      });
+
+      it("throws when the answer is not a list", async () => {
+        kv.command.mockResolvedValue(null);
+        await expect(client().listResources("mongodb-database", "acct")).rejects.toThrow();
+      });
+
+      it.each([
+        [
+          "the driver's error",
+          Object.assign(new Error("not authorized on admin to execute command"), {
+            code: 13,
+            codeName: "Unauthorized",
+          }),
+        ],
+        [
+          "the message alone, which is all the desktop's IPC keeps",
+          new Error(
+            "Error invoking remote method 'plugin_kv_command': MongoServerError: Command listDatabases requires authentication",
+          ),
+        ],
+        [
+          "the message alone on Atlas",
+          new Error(
+            "Error invoking remote method 'plugin_kv_command': MongoServerError: user is not allowed to do action [listDatabases] on [admin.]",
+          ),
+        ],
+      ])("keeps the stored rows when refused, read from %s", async (_name, error) => {
+        const unread = trackUnread();
+        kv.command.mockRejectedValue(error);
+        const res = await client().listResources("mongodb-database", "acct");
+        expect(res.map((r) => r.displayName)).toEqual(["appdb"]);
+        expect(res[0]!.fields["host"]).toBe("db.example.com");
+        expect(unread).toEqual([{ idPrefixes: [""] }]);
+      });
     });
   });
 
