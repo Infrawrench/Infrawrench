@@ -39,7 +39,7 @@ Connect a Consul datacenter through any agent's HTTP API. You can see what is re
 ## Tips & limits
 
 - **Private clusters**: the desktop app connects directly. The cloud app reaches a private cluster through an [SSH tunnel](../features/ssh-tunnels.md) on the account. Through a tunnel the connection goes to `127.0.0.1`, so an HTTPS certificate must also cover that address.
-- Up to 3,000 health checks are listed.
+- Every health check is listed, up to 100,000. Past that the list fails rather than showing part of it. Every ACL policy is listed, with rules read for the first 1,000.
 - KV values are read and written as text. A write to a key locked by a session is refused.
 - Metrics are point-in-time readings, so the charts fill in over time.
 - Prepared queries, the Connect CA, auth methods and binding rules, and snapshots aren't managed here.

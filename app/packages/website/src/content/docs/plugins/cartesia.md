@@ -19,7 +19,7 @@ Cartesia keeps some features behind a separate admin key, so you can enter two k
 
 **API Key** (required): in the Cartesia console, open **API Keys**. It starts with `sk_car_`. This covers voices, pronunciation dictionaries, text to speech and transcription.
 
-**Admin API Key** (optional): create it in the same console with the **Admin** key type, at **play.cartesia.ai/keys/admin**. Only an organization admin can create one. It starts with `sk_car_admin_` and is **not** interchangeable with the key above. Without it, you won't see the **API Keys** and **Organization members** lists, credit usage figures and charts, or costs (see [Cost](#cost)). Voices, dictionaries, synthesis and transcription all keep working.
+**Admin API Key** (optional): create it in the same console with the **Admin** key type, at **play.cartesia.ai/keys/admin**. Only an organization admin can create one. It starts with `sk_car_admin_` and is **not** interchangeable with the key above. Without it, you won't see the **API Keys** and **Organization members** lists, credit usage figures and charts, or costs (see [Cost](#cost)). Voices, dictionaries, synthesis and transcription all keep working. If you remove the admin key from an account later, the keys and members already listed stay as they were last read rather than disappearing, and stop updating.
 
 ![Cartesia Add-account form showing the required API key and the optional admin API key with its sk_car_admin_ placeholder](https://agent-assets.infrawrench.com/docs-screenshots/plugins/cartesia/add-account.png)
 

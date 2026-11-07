@@ -8,8 +8,8 @@ Together AI runs open models as serverless inference, as dedicated GPU endpoints
 
 ## What you can manage
 
-- **Dedicated endpoints**: create, start, stop, rescale and delete a model pinned to reserved GPU hardware
-- **Managed endpoints**: the newer Dedicated Managed Inference (v2) endpoints, with their deployments, the last 24 hours of traffic, latency, utilization and token totals, a Metrics tab, and a Logs tab of lifecycle events
+- **Dedicated endpoints**: the original (v1) endpoints, a model pinned to reserved GPU hardware. Together no longer creates or restarts them, so you can rename, rescale, stop and delete them, and serve new models from a managed endpoint instead.
+- **Managed endpoints**: the newer Dedicated Managed Inference (v2) endpoints. Create one, rename it, change its visibility, add, edit and delete its deployments, set how traffic is split between them, or delete it. Each shows the last 24 hours of traffic, latency, utilization and token totals, with a Metrics tab and a Logs tab of lifecycle events.
 - **Models**: the serverless catalogue, with context length and Together's list pricing
 - **Fine-tunes**: job status, hyperparameters, tokens processed, the model each one produced, its checkpoints and its event log
 - **Files**: uploaded JSONL datasets, with line counts and validation errors
@@ -23,7 +23,7 @@ Together AI runs open models as serverless inference, as dedicated GPU endpoints
 
 Together AI has one kind of key. Create one at [api.together.ai/settings/api-keys](https://api.together.ai/settings/api-keys) and paste it as **API Key**.
 
-You don't need an admin key or a project id. Infrawrench finds the project from the key.
+You don't need an admin key or a project id. Infrawrench finds the project from the key. Creating a managed endpoint needs a key made in the project you deploy to, not an organization key.
 
 ![The Together AI Add-account form with the single API key field](https://agent-assets.infrawrench.com/docs-screenshots/plugins/together/add-account.png)
 
@@ -82,10 +82,11 @@ Kubernetes clusters have a **Kubernetes** tab.
 
 ## Things you can do
 
-- **Create a dedicated endpoint** by picking a model and hardware (GPU count and per-minute price shown), with no SKU strings to look up.
-- **Start or stop an endpoint** from the detail page. Stopping releases the reserved GPUs, so the next request pays a cold start.
+- **Create a managed endpoint** by picking a model and one of its certified configurations, which fixes the GPUs (GPU count, type and price shown where Together gives one), plus the replica range and an optional idle timeout. Infrawrench creates the endpoint and its first deployment and sends all traffic to it.
+- **Edit a deployment** from the managed endpoint's Deployments table: its replica range, idle timeout and concurrent requests per replica. Set both replica bounds to 0 to stop it and end its billing, and raise them again to restart it. **Add deployment** and **Set traffic split** change how requests are shared between deployments.
+- **Stop a dedicated endpoint** from its detail page. Together won't start a v1 endpoint again once it has stopped, so move its traffic to a managed endpoint first.
 - **Cancel a fine-tune or a batch job** while it's still running.
-- **Delete a managed endpoint**. Its deployments are removed first, as Together requires.
+- **Delete a managed endpoint**. Its deployments are taken out of the traffic split and removed first, as Together requires.
 - **Grow a shared volume** by editing its size in TiB. Together won't delete a volume while a cluster still uses it.
 
 ## Tips & limits
@@ -93,5 +94,5 @@ Kubernetes clusters have a **Kubernetes** tab.
 - **Model pricing is list pricing.** The model detail page shows Together's published rates. What you actually paid is in Costs.
 - **You can't manage API keys here.** Create and revoke them in the Together dashboard.
 - **Hardware availability depends on the model.** The standalone Hardware list leaves availability blank.
-- **A dedicated endpoint's model and hardware are fixed at creation.** You can rename, rescale, start and stop it, but changing the model means creating a new endpoint.
+- **A dedicated endpoint's model and hardware are fixed.** You can rename, rescale and stop it, but changing the model means creating a managed endpoint.
 - **Transcription uploads are capped at 25 MB in the Speech tab**, well under Together's own 500 MB limit. Send long recordings through Together's batch transcription instead.

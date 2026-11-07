@@ -61,7 +61,7 @@ Alerting profiles and SLOs export to the `dynatrace-oss/dynatrace` provider (`dy
 
 ## Limits
 
-- Hosts, services and other entities are those seen in the last 72 hours, up to 5,000 per type.
+- Hosts, services and other entities are those seen in the last 72 hours, up to 100,000 per type. Past that the list fails rather than showing part of it. SLOs are listed up to 10,000.
 - SLOs come from the SLO API classic, which Dynatrace still supports. Platform SLOs from the new SLO app aren't listed yet.
 - Alerting profile event filters and per-rule tag filters are kept when you edit a profile, but you can't edit them here.
 - You can list, toggle and delete synthetic browser monitors, but not create them, since their scripts are recorded in the Dynatrace UI.

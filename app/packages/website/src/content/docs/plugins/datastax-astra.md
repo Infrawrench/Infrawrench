@@ -14,7 +14,7 @@ Connect DataStax Astra with one application token to manage your Astra DB databa
   - **Secure connect bundle**: download links for CQL drivers, for the primary region or every region.
 - **Regions**: add a region to a database (same cloud), terminate one, **assign or move it to a PCU group**, remove it from one, and set the **private link principals** allowed to connect.
 - **Keyspaces**: create and drop. You can't drop the default keyspace.
-- **Collections**: list with vector dimension, similarity metric, embedding provider, lexical search and reranking settings and an estimated document count. Create or delete them. Collections are only shown for active databases, so a hibernated database isn't woken up just to list them.
+- **Collections**: list with vector dimension, similarity metric, embedding provider, lexical search and reranking settings and an estimated document count. Create or delete them. Collections are only read from active databases, so a hibernated database isn't woken up just to list them. A database that isn't running keeps the collections it last showed, unchanged until it runs again.
 - **Access list entries**: add an address or CIDR, enable or disable it, change its description, delete it.
 - **CDC tables**: stream a table's changes into an Astra Streaming tenant in the same region, and turn it off again.
 - **Private endpoints**: register an endpoint you created in your cloud account against a region's private link service, edit its description, delete it.

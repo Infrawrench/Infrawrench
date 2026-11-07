@@ -52,7 +52,7 @@ Connect Heroku to scale and roll back apps, manage config vars, add-ons, domains
 
 ## Tips and limits
 
-- Heroku allows 4,500 API requests an hour per user, so accounts with many apps update dynos, releases, config vars, domains and drains more slowly.
+- Heroku allows 4,500 API requests an hour per user. Infrawrench leaves 1,000 of them for your own tools, so on an account with many apps each sync reads process types, dynos, releases, config vars, domains, certificates, log drains, pipeline stages and review apps for as many apps and pipelines as fit, starting somewhere different each time. The rest keep their last values until their turn comes. The desktop app reads them all each time.
 - There's no Metrics tab, because Heroku's API doesn't share dyno metrics. Use a log drain or Heroku's own metrics.
 - Changing a config var restarts the app's dynos, just like in the dashboard.
 - Review apps are created by Heroku from your pipeline settings, not from Infrawrench.

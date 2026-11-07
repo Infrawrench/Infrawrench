@@ -36,7 +36,7 @@ Connect a Doppler workplace to manage its secrets and who can reach them.
 
 ## Tips and limits
 
-- Secrets are listed for up to 100 configs (3,000 secrets in all). Each config's Keys tab still shows all of its secrets.
+- Each sync reads secrets and service tokens for 100 configs, starting from a different config each time, and up to 100,000 secrets. In a workplace with more configs, the rest keep their last values until their turn comes. Each config's Keys tab still shows all of its secrets.
 - Restricted secrets can't be read back. The Keys tab and the secret's value output refuse them, just like Doppler does.
 - The Keys tab shows raw values, with `${OTHER_SECRET}` references not expanded. The secret's value output gives the computed value.
 - Creating integrations and syncs needs credentials for the target service, so do that in Doppler.

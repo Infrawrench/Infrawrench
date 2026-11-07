@@ -52,7 +52,7 @@ A read-only token works too. The matching actions then fail with a permission er
 ## Tips & limits
 
 - Buildkite has no billing API, so Buildkite accounts don't appear in cost graphs. The organization page shows monthly active users, which is what user-based plans are billed on.
-- Buildkite's REST API allows 50 requests a minute per user and 200 per organization, so a large organization takes a few minutes to load fully. Give Infrawrench its own token so it doesn't compete with your other tools.
+- Buildkite's REST API allows 50 requests a minute per user and 200 per organization. To stay inside that, each sync in the cloud app reads at most 40 parents for each of these, starting somewhere different each time: schedules (per pipeline), queues, agent tokens and cluster secrets (per cluster), and flaky tests (per test suite). In a larger organization the rest keep their last values until their turn comes, so they fill in over several syncs. The desktop app reads them all each time. Give Infrawrench its own token so it doesn't compete with your other tools.
 - Metrics are calculated from builds. Each chart reads up to 500 builds in the selected window.
 - Buildkite only shows an agent token's value when it is created. Tokens created from Infrawrench keep it as an output. For other tokens, use **Get credentials** on the cluster to create a new one.
 - Pipelines that still use visual steps show their steps read-only. Convert them to YAML steps in Buildkite to edit them here.
