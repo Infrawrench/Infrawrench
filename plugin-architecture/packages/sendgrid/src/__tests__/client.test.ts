@@ -600,6 +600,41 @@ describe("SendGrid client", () => {
     });
   });
 
+  describe("a blank id", () => {
+    // By the document, these webhook routes act on the oldest webhook when no id is given.
+    const blank = "no-separators";
+
+    it("is refused before any write", async () => {
+      const { c, calls } = client(() => ({ body: { url: "https://e.example" } }));
+      const refused = /no id/i;
+      await expect(
+        c.updateResource("sendgrid-event-webhook", blank, "a", { enabled: "false" }),
+      ).rejects.toThrow(refused);
+      await expect(
+        c.updateResource("sendgrid-event-webhook", blank, "a", { signed: "true" }),
+      ).rejects.toThrow(refused);
+      await expect(c.deleteResource("sendgrid-event-webhook", blank, "a")).rejects.toThrow(refused);
+      await expect(c.deleteResource("sendgrid-api-key", "a:t:", "a")).rejects.toThrow(refused);
+      await expect(c.invokeAction("sendgrid-event-webhook", blank, "test", "a")).rejects.toThrow(
+        refused,
+      );
+      await expect(
+        c.executeNoSqlCommand("sendgrid-ip-pool", blank, "a", "add-pool-ip", [
+          JSON.stringify({ ip: "1.2.3.4" }),
+        ]),
+      ).rejects.toThrow(refused);
+      expect(calls).toEqual([]);
+    });
+
+    it("does not stand in the way of an account-wide command", async () => {
+      const { c, calls } = client(() => ({ body: {} }));
+      await c.executeNoSqlCommand("sendgrid-account", blank, "a", "add-global-unsubscribes", [
+        JSON.stringify({ emails: "a@example.com" }),
+      ]);
+      expect(calls).toHaveLength(1);
+    });
+  });
+
   it("synthesises DNS records and reads the key id", () => {
     const recs = domainDnsRecords("a", {
       id: 5,

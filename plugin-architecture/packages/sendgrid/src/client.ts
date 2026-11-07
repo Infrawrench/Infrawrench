@@ -199,6 +199,13 @@ type ValidationAnswer =
     }
   | undefined;
 
+/** For a write. By the document, a webhook route given no id acts on the oldest webhook. */
+function requireExternalId(typeId: string, resourceId: string): string {
+  const id = externalIdOf(resourceId);
+  if (!id) throw new Error(`SendGrid plugin: ${typeId} "${resourceId}" has no id`);
+  return id;
+}
+
 function notFound(typeId: string, resourceId: string): Error {
   return Object.assign(new Error(`SendGrid plugin: ${typeId} ${resourceId} not found`), {
     status: 404,
@@ -1195,7 +1202,7 @@ export class SendGridClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = requireExternalId(typeId, resourceId);
       const enc = pathEncode(id);
       switch (typeId) {
         case "sendgrid-api-key": {
@@ -1337,7 +1344,7 @@ export class SendGridClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = requireExternalId(typeId, resourceId);
       const enc = pathEncode(id);
       const { api, parent } = this;
       const deletes: Record<string, () => Promise<undefined>> = {
@@ -1372,7 +1379,7 @@ export class SendGridClient implements PluginClient {
     accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = requireExternalId(typeId, resourceId);
       const enc = pathEncode(id);
       const validate = async (answer: Promise<ValidationAnswer>) => {
         const res = await answer;
@@ -1431,8 +1438,6 @@ export class SendGridClient implements PluginClient {
   ): PluginEffect<unknown> {
     return attempt(async () => {
       const values = parsePromptValues(args);
-      const id = externalIdOf(resourceId);
-      const enc = pathEncode(id);
       const emails = () => {
         const list = parseAddresses(values["emails"] ?? "");
         if (list.length === 0) throw new Error("Enter at least one email address.");
@@ -1456,6 +1461,7 @@ export class SendGridClient implements PluginClient {
           body: { recipient_emails: emails() },
         });
       }
+      const enc = pathEncode(requireExternalId(typeId, resourceId));
       if (
         typeId === "sendgrid-ip-pool" &&
         (command === COMMANDS.addPoolIp || command === COMMANDS.removePoolIp)
