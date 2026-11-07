@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { joinIds, type ListerContext } from "../resource-listers.js";
 import { collectPages, queryString, tokenParam } from "../paginate.js";
+import { rethrowUnlessRowUnreadable, UnreadableRows } from "../aws-errors.js";
 
 export async function listKinesisStreams(
   ctx: ListerContext,
@@ -16,6 +17,7 @@ export async function listKinesisStreams(
     return { items: data.StreamNames ?? [], next: data.NextToken };
   });
   const results: ResourceInstance[] = [];
+  const unreadable = new UnreadableRows();
 
   for (const streamName of streamNames) {
     try {
@@ -51,10 +53,12 @@ export async function listKinesisStreams(
         createdAt: String(s["StreamCreationTimestamp"] ?? ctx.now()),
         updatedAt: ctx.now(),
       });
-    } catch {
+    } catch (err) {
+      unreadable.note(err);
       // Skip streams we can't describe
     }
   }
+  unreadable.throwIfEveryRowRefused(streamNames.length);
   return results;
 }
 
@@ -245,7 +249,10 @@ export async function listStepFunctions(
         createdAt: String(detail["creationDate"] ?? ctx.now()),
         updatedAt: ctx.now(),
       });
-    } catch {
+    } catch (err) {
+      // Refused: keep the row with what the list gave. Anything else throws, or
+      // a throttle would overwrite its stored role with this blank.
+      rethrowUnlessRowUnreadable(err);
       results.push({
         id: ctx.id(accountId, "step-function", name),
         pluginId: "aws",

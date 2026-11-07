@@ -691,11 +691,12 @@ describe("fetchAwsCostData degradation", () => {
   });
 
   it("propagates failures that are not a rejected request shape", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ __type: "LimitExceededException" }), { status: 400 }),
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ __type: "ServiceUnavailableException" }), { status: 503 }),
     );
 
-    await expect(fetchAwsCostData(creds, RANGE)).rejects.toThrow(/LimitExceededException/);
+    await expect(fetchAwsCostData(creds, RANGE)).rejects.toThrow(/ServiceUnavailableException/);
   });
 });
 

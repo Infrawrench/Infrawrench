@@ -68,6 +68,7 @@ import {
 } from "../resource-listers-extended.js";
 import { collectPages, queryString } from "../paginate.js";
 import { parseXml } from "../xml.js";
+import { isRegionUnavailable, ListInterruptedError } from "../aws-errors.js";
 
 type Method = "ec2" | "json" | "jsonGet" | "restJson" | "ec2Query" | "xmlGet";
 type Args = unknown[];
@@ -1183,6 +1184,7 @@ const CASES: PageCase[] = [
     lister: listACMCertificates,
     method: "json",
     isList: (a) => a[1] === "CertificateManager.ListCertificates",
+    detail: () => ({ Certificate: {} }),
     token: param("NextToken", 2),
     pageSize: param("MaxItems", 2),
     expectedPageSize: "1000",
@@ -1221,6 +1223,7 @@ const CASES: PageCase[] = [
     lister: listWAFWebACLs,
     method: "json",
     isList: (a) => a[1] === "AWSWAF_20190729.ListWebACLs",
+    detail: () => ({ WebACL: {} }),
     token: param("NextMarker", 2),
     pageSize: param("Limit", 2),
     expectedPageSize: "100",
@@ -1257,6 +1260,7 @@ const CASES: PageCase[] = [
     lister: listCognitoUserPools,
     method: "json",
     isList: (a) => a[1] === "AWSCognitoIdentityProviderService.ListUserPools",
+    detail: () => ({ UserPool: {} }),
     token: param("NextToken", 2),
     pageSize: param("MaxResults", 2),
     expectedPageSize: "60",
@@ -1601,13 +1605,39 @@ describe("collectPages", () => {
     expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
-  it("stops at the page cap and says so", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("throws at the page cap rather than return part of the list", async () => {
     let n = 0;
-    const out = await collectPages(async () => ({ items: [n], next: `t${++n}` }), 3);
-    expect(out).toEqual([0, 1, 2]);
-    expect(warn).toHaveBeenCalledOnce();
-    warn.mockRestore();
+    const fetchPage = vi.fn(async () => ({ items: [n], next: `t${++n}` }));
+    await expect(collectPages(fetchPage, { maxPages: 3 })).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(fetchPage).toHaveBeenCalledTimes(3);
+  });
+
+  it("throws at the row cap", async () => {
+    let n = 0;
+    const fetchPage = vi.fn(async () => ({ items: [1, 2, 3, 4], next: `t${++n}` }));
+    await expect(collectPages(fetchPage, { maxItems: 8 })).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not mistake a last page landing on the row cap for more", async () => {
+    const out = await collectPages(async () => ({ items: [1, 2] }), { maxItems: 2 });
+    expect(out).toEqual([1, 2]);
+  });
+
+  it("marks a failure after the first page as interrupted, so it cannot read as a closed region", async () => {
+    const denied = new Error("AccessDenied: denied");
+    const fetchPage = vi
+      .fn()
+      .mockResolvedValueOnce({ items: [1], next: "t" })
+      .mockRejectedValueOnce(denied);
+    const failure = await collectPages(fetchPage).catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(ListInterruptedError);
+    expect(isRegionUnavailable(failure)).toBe(false);
+    await expect(collectPages(vi.fn().mockRejectedValue(denied))).rejects.toBe(denied);
   });
 
   it("treats null, empty and absent tokens as the end", async () => {

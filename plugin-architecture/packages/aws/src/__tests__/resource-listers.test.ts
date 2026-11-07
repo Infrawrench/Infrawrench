@@ -124,8 +124,8 @@ describe("listEC2Instances", () => {
               },
             },
           };
-        if (action === "DescribeImages") throw new Error("denied");
-        if (action === "DescribeSecurityGroups") throw new Error("denied");
+        if (action === "DescribeImages") throw new Error("AccessDenied: denied");
+        if (action === "DescribeSecurityGroups") throw new Error("AccessDenied: denied");
         return {};
       },
     });
@@ -256,8 +256,9 @@ describe("listEKSClusters", () => {
         if (path === "/clusters?maxResults=100") return { clusters: ["good", "bad"] };
         if (path === "/clusters/good")
           return { cluster: { status: "ACTIVE", endpoint: "e", certificateAuthority: {} } };
-        if (path === "/clusters/good/node-groups?maxResults=100") throw new Error("denied");
-        if (path === "/clusters/bad") throw new Error("denied");
+        if (path === "/clusters/good/node-groups?maxResults=100")
+          throw new Error("AccessDenied: denied");
+        if (path === "/clusters/bad") throw new Error("AccessDenied: denied");
         return {};
       },
     });
@@ -420,7 +421,7 @@ describe("listECSServices", () => {
         if (target.endsWith("ListClusters"))
           return { clusterArns: ["arn:cluster/c1", "arn:cluster/c2"] };
         if (target.endsWith("ListServices")) {
-          if (body["cluster"] === "arn:cluster/c2") throw new Error("denied");
+          if (body["cluster"] === "arn:cluster/c2") throw new Error("AccessDenied: denied");
           return { serviceArns: ["arn:svc/s1"] };
         }
         if (target.endsWith("DescribeServices"))
@@ -492,13 +493,13 @@ describe("listDynamoDBTables", () => {
   it("skips tables that fail describe", async () => {
     const ctx = makeCtx({
       json: (_s, target, body) => {
-        if (target.endsWith("ListTables")) return { TableNames: ["A"] };
+        if (target.endsWith("ListTables")) return { TableNames: ["A", "B"] };
         if (target.endsWith("DescribeTable") && body["TableName"] === "A")
-          throw new Error("denied");
-        return {};
+          throw new Error("AccessDenied: denied");
+        return { Table: {} };
       },
     });
-    expect(await listDynamoDBTables(ctx, "acct")).toHaveLength(0);
+    expect((await listDynamoDBTables(ctx, "acct")).map((r) => r.externalId)).toEqual(["B"]);
   });
 });
 
@@ -552,7 +553,7 @@ describe("listSQSQueues", () => {
         if (target.endsWith("ListQueues"))
           return { QueueUrls: ["https://sqs/acct/q1.fifo", "https://sqs/acct/bad"] };
         if (target.endsWith("GetQueueAttributes")) {
-          if (String(body["QueueUrl"]).endsWith("bad")) throw new Error("denied");
+          if (String(body["QueueUrl"]).endsWith("bad")) throw new Error("AccessDenied: denied");
           return {
             Attributes: {
               ApproximateNumberOfMessages: "3",
@@ -587,7 +588,7 @@ describe("listSNSTopics", () => {
             },
           };
         if (action === "GetTopicAttributes") {
-          throw new Error("denied");
+          throw new Error("AccessDenied: denied");
         }
         return {};
       },

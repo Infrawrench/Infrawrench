@@ -1,4 +1,4 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { rethrowIncompleteList, type ResourceInstance } from "@infrawrench/plugin-base";
 import { Sha256 } from "@aws-crypto/sha256-js";
 import { HttpRequest } from "@smithy/protocol-http";
 import { SignatureV4 } from "@smithy/signature-v4";
@@ -8,6 +8,7 @@ import { EC2_SSH_WORLD_OPEN } from "./constants.js";
 import type { AwsCredentials } from "./auth.js";
 import { ec2SshUsernameFromImageName } from "./ssh-username.js";
 import { rdsInstanceClassVcpus } from "./extended-support.js";
+import { rethrowUnlessRowUnreadable, UnreadableRows } from "./aws-errors.js";
 
 export interface ListerContext {
   ec2<T>(action: string, params?: Record<string, string>): Promise<T>;
@@ -134,7 +135,8 @@ export async function listEC2Instances(
           if (id) amiNameByImageId.set(id, name);
         }
       }
-    } catch {
+    } catch (err) {
+      rethrowIncompleteList(err);
       // DescribeImages permission missing or rate-limited: proceed without
       // username resolution. The empty fallback path is harmless.
     }
@@ -181,7 +183,8 @@ export async function listEC2Instances(
       }
       sshCidrsByGroupId.set(gid, cidrs);
     }
-  } catch {
+  } catch (err) {
+    rethrowIncompleteList(err);
     // SG describe failed (permission, throttle, …); SSH summary just won't
     // include the rule context.
   }
@@ -448,6 +451,7 @@ export async function listEKSClusters(
     return { items: page.clusters ?? [], next: page.nextToken };
   });
   const results: ResourceInstance[] = [];
+  const unreadable = new UnreadableRows();
 
   for (const name of clusterNames) {
     try {
@@ -491,11 +495,13 @@ export async function listEKSClusters(
             const types = (ng["instanceTypes"] as string[] | undefined) ?? [];
             for (const t of types) instanceTypesSet.add(t);
             if (!diskSizeGb) diskSizeGb = Number(ng["diskSize"] ?? 0);
-          } catch {
+          } catch (err) {
+            rethrowUnlessRowUnreadable(err);
             // Skip node groups we can't describe
           }
         }
-      } catch {
+      } catch (err) {
+        rethrowUnlessRowUnreadable(err);
         // No permission to list node groups: leave fields empty
       }
 
@@ -547,12 +553,14 @@ export async function listEKSClusters(
         updatedAt: ctx.now(),
       });
     } catch (err) {
+      unreadable.note(err);
       // Skip clusters we can't describe (permission issues), but log so the
       // operator can tell the difference between "no cluster" and "described
       // but threw downstream".
       console.error(`[eks] failed to describe cluster ${name}:`, err);
     }
   }
+  unreadable.throwIfEveryRowRefused(clusterNames.length);
   return results;
 }
 
@@ -698,22 +706,21 @@ export async function listLambdaFunctions(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  // ListFunctions pages at 50 by default; follow NextMarker so accounts with
+  // ListFunctions returns at most 50 a page; follow NextMarker so accounts with
   // more functions than one page still list all of them.
-  const functions: Record<string, unknown>[] = [];
-  let marker: string | undefined;
-  for (let page = 0; page < 100; page++) {
-    const path = marker
-      ? `/2015-03-31/functions?MaxItems=50&Marker=${encodeURIComponent(marker)}`
-      : "/2015-03-31/functions?MaxItems=50";
-    const data = await ctx.jsonGet<{
-      Functions?: Record<string, unknown>[];
-      NextMarker?: string | null;
-    }>("lambda", path);
-    functions.push(...(data.Functions ?? []));
-    marker = data.NextMarker ?? undefined;
-    if (!marker) break;
-  }
+  const functions = await collectPages(
+    async (marker) => {
+      const path = marker
+        ? `/2015-03-31/functions?MaxItems=50&Marker=${encodeURIComponent(marker)}`
+        : "/2015-03-31/functions?MaxItems=50";
+      const data = await ctx.jsonGet<{
+        Functions?: Record<string, unknown>[];
+        NextMarker?: string | null;
+      }>("lambda", path);
+      return { items: data.Functions ?? [], next: data.NextMarker };
+    },
+    { path: `/2015-03-31/functions in ${ctx.region}` },
+  );
   return functions.map((fn) => {
     const name = String(fn["FunctionName"] ?? "");
     // ListFunctions returns the full FunctionConfiguration, VPC attachment
@@ -786,6 +793,7 @@ export async function listECSServices(
     return { items: page.clusterArns ?? [], next: page.nextToken };
   });
   const results: ResourceInstance[] = [];
+  const unreadable = new UnreadableRows();
 
   for (const clusterArn of clusterArns) {
     const clusterName = clusterArn.split("/").pop() ?? clusterArn;
@@ -841,10 +849,12 @@ export async function listECSServices(
           updatedAt: ctx.now(),
         });
       }
-    } catch {
+    } catch (err) {
+      unreadable.note(err);
       // Skip clusters we can't access
     }
   }
+  unreadable.throwIfEveryRowRefused(clusterArns.length);
   return results;
 }
 
@@ -863,6 +873,7 @@ export async function listDynamoDBTables(
     return { items: page.TableNames ?? [], next: page.LastEvaluatedTableName };
   });
   const results: ResourceInstance[] = [];
+  const unreadable = new UnreadableRows();
 
   for (const tableName of tableNames) {
     try {
@@ -921,10 +932,12 @@ export async function listDynamoDBTables(
         createdAt: String(t["CreationDateTime"] ?? ctx.now()),
         updatedAt: ctx.now(),
       });
-    } catch {
+    } catch (err) {
+      unreadable.note(err);
       // Skip tables we can't describe
     }
   }
+  unreadable.throwIfEveryRowRefused(tableNames.length);
   return results;
 }
 
@@ -1010,6 +1023,7 @@ export async function listSQSQueues(
     return { items: page.QueueUrls ?? [], next: page.NextToken };
   });
   const results: ResourceInstance[] = [];
+  const unreadable = new UnreadableRows();
 
   for (const queueUrl of queueUrls) {
     try {
@@ -1051,10 +1065,12 @@ export async function listSQSQueues(
         ),
         updatedAt: ctx.now(),
       });
-    } catch {
+    } catch (err) {
+      unreadable.note(err);
       // Skip queues we can't describe
     }
   }
+  unreadable.throwIfEveryRowRefused(queueUrls.length);
   return results;
 }
 
@@ -1119,7 +1135,10 @@ export async function listSNSTopics(
         createdAt: ctx.now(),
         updatedAt: ctx.now(),
       });
-    } catch {
+    } catch (err) {
+      // Refused: keep the row with what the list gave. Anything else throws,
+      // or a throttle would overwrite its stored counts with these blanks.
+      rethrowUnlessRowUnreadable(err);
       results.push({
         id: ctx.id(accountId, "sns-topic", topicName),
         pluginId: "aws",

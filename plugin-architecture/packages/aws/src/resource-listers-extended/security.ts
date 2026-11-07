@@ -2,6 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../xml.js";
 import { joinIds, type ListerContext } from "../resource-listers.js";
 import { collectPages, tokenParam } from "../paginate.js";
+import { rethrowUnlessRowUnreadable } from "../aws-errors.js";
 
 export async function listIAMRoles(
   ctx: ListerContext,
@@ -102,7 +103,10 @@ export async function listACMCertificates(
         createdAt: String(c["CreatedAt"] ?? ctx.now()),
         updatedAt: ctx.now(),
       });
-    } catch {
+    } catch (err) {
+      // Refused: keep the row with what the list gave. Anything else throws, or
+      // a throttle would overwrite its stored details with these blanks.
+      rethrowUnlessRowUnreadable(err);
       results.push({
         id: ctx.id(accountId, "acm-certificate", arn),
         pluginId: "aws",
@@ -187,7 +191,10 @@ export async function listWAFWebACLs(
         createdAt: ctx.now(),
         updatedAt: ctx.now(),
       });
-    } catch {
+    } catch (err) {
+      // Refused: keep the row with what the list gave. Anything else throws, or
+      // a throttle would overwrite its stored rules with these blanks.
+      rethrowUnlessRowUnreadable(err);
       results.push({
         id: ctx.id(accountId, "waf-web-acl", name),
         pluginId: "aws",
@@ -307,7 +314,10 @@ export async function listCognitoUserPools(
         createdAt: String(up["CreationDate"] ?? ctx.now()),
         updatedAt: ctx.now(),
       });
-    } catch {
+    } catch (err) {
+      // Refused: keep the row with what the list gave. Anything else throws, or
+      // a throttle would overwrite its stored details with these blanks.
+      rethrowUnlessRowUnreadable(err);
       results.push({
         id: ctx.id(accountId, "cognito-user-pool", poolId),
         pluginId: "aws",

@@ -632,8 +632,16 @@ export async function fetchAwsNetworkFlows(
 ): Promise<NetworkFlowFetchResult> {
   if (signal?.aborted) throw new FlowAuthorizationWithdrawnError(day);
   const ec2 = getAwsClients(creds).ec2;
-  const described = await ec2.send(new DescribeFlowLogsCommand({ MaxResults: 100 }));
-  const discovered = discover(described.FlowLogs ?? [], creds.region);
+  const flowLogs: FlowLog[] = [];
+  let flowLogToken: string | undefined;
+  do {
+    const page = await ec2.send(
+      new DescribeFlowLogsCommand({ MaxResults: 100, NextToken: flowLogToken }),
+    );
+    flowLogs.push(...(page.FlowLogs ?? []));
+    flowLogToken = page.NextToken;
+  } while (flowLogToken);
+  const discovered = discover(flowLogs, creds.region);
   const sources = discovered.map((d) => d.source);
   const usable = discovered.filter((d) => d.source.usable);
 

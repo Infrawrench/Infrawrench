@@ -114,6 +114,47 @@ beforeEach(() => {
  * row's bytes were counted in, and the totals query, by design, has no
  * addresses in it, so it is the classifier with less to go on.
  */
+describe("fetchAwsNetworkFlows flow log discovery", () => {
+  it("follows DescribeFlowLogs past its first page", async () => {
+    const FORMAT =
+      "${version} ${srcaddr} ${dstaddr} ${bytes} ${packets} ${flow-direction} ${az-id} ${log-status}";
+    const flowLog = (id: string) => ({
+      FlowLogId: id,
+      ResourceId: `vpc-${id}`,
+      LogDestinationType: "cloud-watch-logs",
+      LogGroupName: `/aws/vpc/${id}`,
+      LogFormat: FORMAT,
+    });
+    const queried: unknown[] = [];
+    getAwsClients.mockReturnValue({
+      ec2: {
+        send: async (command: { constructor: { name: string }; input: { NextToken?: string } }) => {
+          if (command.constructor.name !== "DescribeFlowLogsCommand") {
+            return { NetworkInterfaces: INTERFACES };
+          }
+          return command.input.NextToken
+            ? { FlowLogs: [flowLog("fl-2")] }
+            : { FlowLogs: [flowLog("fl-1")], NextToken: "page-2" };
+        },
+      },
+      cloudWatchLogs: {
+        send: async (command: {
+          constructor: { name: string };
+          input: Record<string, unknown>;
+        }) => {
+          if (command.constructor.name === "StartQueryCommand") {
+            queried.push(command.input["logGroupName"]);
+            return { queryId: "q" };
+          }
+          return { status: "Complete", results: [], statistics: { bytesScanned: 0 } };
+        },
+      },
+    });
+    await fetchAwsNetworkFlows(creds, DAY);
+    expect(new Set(queried)).toEqual(new Set(["/aws/vpc/fl-1", "/aws/vpc/fl-2"]));
+  });
+});
+
 describe("fetchAwsNetworkFlows — totals against pairs", () => {
   /**
    * A format with the four required fields plus `az-id`: no `next-hop-az-id`

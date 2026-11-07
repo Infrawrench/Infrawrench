@@ -89,77 +89,74 @@ export async function listClassicELBs(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const out: ResourceInstance[] = [];
-  let marker: string | undefined;
-  for (let page = 0; page < 50; page += 1) {
+  const lbs = await collectPages(async (marker) => {
     const data = await ctx.ec2Query<Record<string, unknown>>(
       "elasticloadbalancing",
       "DescribeLoadBalancers",
       "2012-06-01",
-      { PageSize: "400", ...(marker ? { Marker: marker } : {}) },
+      { PageSize: "400", ...tokenParam("Marker", marker) },
     );
     const result = (data["DescribeLoadBalancersResult"] ?? data) as Record<string, unknown>;
-    const lbs = ensureArray(
-      (result["LoadBalancerDescriptions"] as Record<string, unknown> | undefined)?.["member"],
+    return {
+      items: ensureArray(
+        (result["LoadBalancerDescriptions"] as Record<string, unknown> | undefined)?.["member"],
+      ) as Record<string, unknown>[],
+      next: result["NextMarker"],
+    };
+  });
+  const out: ResourceInstance[] = [];
+  for (const lb of lbs) {
+    const name = String(lb["LoadBalancerName"] ?? "");
+    if (!name) continue;
+    const instances = ensureArray(
+      (lb["Instances"] as Record<string, unknown> | undefined)?.["member"],
     ) as Record<string, unknown>[];
-    for (const lb of lbs) {
-      const name = String(lb["LoadBalancerName"] ?? "");
-      if (!name) continue;
-      const instances = ensureArray(
-        (lb["Instances"] as Record<string, unknown> | undefined)?.["member"],
-      ) as Record<string, unknown>[];
-      const listeners = (
-        ensureArray(
-          (lb["ListenerDescriptions"] as Record<string, unknown> | undefined)?.["member"],
-        ) as Record<string, unknown>[]
+    const listeners = (
+      ensureArray(
+        (lb["ListenerDescriptions"] as Record<string, unknown> | undefined)?.["member"],
+      ) as Record<string, unknown>[]
+    )
+      .map((d) => d["Listener"] as Record<string, unknown> | undefined)
+      .filter((l): l is Record<string, unknown> => Boolean(l))
+      .map(
+        (l) =>
+          `${String(l["Protocol"] ?? "")}:${String(l["LoadBalancerPort"] ?? "")}` +
+          ` → ${String(l["InstanceProtocol"] ?? "")}:${String(l["InstancePort"] ?? "")}`,
       )
-        .map((d) => d["Listener"] as Record<string, unknown> | undefined)
-        .filter((l): l is Record<string, unknown> => Boolean(l))
-        .map(
-          (l) =>
-            `${String(l["Protocol"] ?? "")}:${String(l["LoadBalancerPort"] ?? "")}` +
-            ` → ${String(l["InstanceProtocol"] ?? "")}:${String(l["InstancePort"] ?? "")}`,
-        )
-        .join(", ");
-      out.push({
-        id: ctx.id(accountId, "classic-elb", name),
-        pluginId: "aws",
-        resourceTypeId: "classic-elb",
-        accountId,
-        displayName: name,
-        fields: {
-          name,
-          region: ctx.region,
-          scheme: String(lb["Scheme"] ?? ""),
-          vpcId: String(lb["VPCId"] ?? ""),
-          availabilityZones: joinIds(
-            ensureArray(
-              (lb["AvailabilityZones"] as Record<string, unknown> | undefined)?.["member"],
-            ),
-          ),
-          subnetIds: joinIds(
-            ensureArray((lb["Subnets"] as Record<string, unknown> | undefined)?.["member"]),
-          ),
-          securityGroupIds: joinIds(
-            ensureArray((lb["SecurityGroups"] as Record<string, unknown> | undefined)?.["member"]),
-          ),
-          instanceCount: instances.length,
-          listeners,
-          createdTime: String(lb["CreatedTime"] ?? ""),
-        },
-        resolvedOutputs: {
-          dnsName: String(lb["DNSName"] ?? ""),
-          canonicalHostedZoneId: String(lb["CanonicalHostedZoneNameID"] ?? ""),
-        },
-        secretStates: [],
-        externalId: name,
-        createdAt: String(lb["CreatedTime"] ?? ctx.now()),
-        updatedAt: ctx.now(),
-      });
-    }
-    const next = String(result["NextMarker"] ?? "");
-    if (!next) break;
-    marker = next;
+      .join(", ");
+    out.push({
+      id: ctx.id(accountId, "classic-elb", name),
+      pluginId: "aws",
+      resourceTypeId: "classic-elb",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        region: ctx.region,
+        scheme: String(lb["Scheme"] ?? ""),
+        vpcId: String(lb["VPCId"] ?? ""),
+        availabilityZones: joinIds(
+          ensureArray((lb["AvailabilityZones"] as Record<string, unknown> | undefined)?.["member"]),
+        ),
+        subnetIds: joinIds(
+          ensureArray((lb["Subnets"] as Record<string, unknown> | undefined)?.["member"]),
+        ),
+        securityGroupIds: joinIds(
+          ensureArray((lb["SecurityGroups"] as Record<string, unknown> | undefined)?.["member"]),
+        ),
+        instanceCount: instances.length,
+        listeners,
+        createdTime: String(lb["CreatedTime"] ?? ""),
+      },
+      resolvedOutputs: {
+        dnsName: String(lb["DNSName"] ?? ""),
+        canonicalHostedZoneId: String(lb["CanonicalHostedZoneNameID"] ?? ""),
+      },
+      secretStates: [],
+      externalId: name,
+      createdAt: String(lb["CreatedTime"] ?? ctx.now()),
+      updatedAt: ctx.now(),
+    });
   }
   return out;
 }

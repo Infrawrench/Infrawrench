@@ -3,6 +3,7 @@ import { ensureArray } from "../xml.js";
 import { joinIds, type ListerContext } from "../resource-listers.js";
 import { fetchSigned } from "../signed-request.js";
 import { collectPages, tokenParam } from "../paginate.js";
+import { rethrowUnlessRowUnreadable } from "../aws-errors.js";
 
 export async function listAutoScalingGroups(
   ctx: ListerContext,
@@ -12,24 +13,21 @@ export async function listAutoScalingGroups(
   // `DescribeAutoScalingGroupsResult`; reading `AutoScalingGroups` off the
   // root found nothing and no Auto Scaling group was ever listed. The call
   // pages at 50 by default (100 max) with `NextToken` on the Result element.
-  const groups: Record<string, unknown>[] = [];
-  let nextToken: string | undefined;
-  for (let page = 0; page < 50; page += 1) {
+  const groups = await collectPages(async (nextToken) => {
     const data = await ctx.ec2Query<Record<string, unknown>>(
       "autoscaling",
       "DescribeAutoScalingGroups",
       "2011-01-01",
-      { MaxRecords: "100", ...(nextToken ? { NextToken: nextToken } : {}) },
+      { MaxRecords: "100", ...tokenParam("NextToken", nextToken) },
     );
     const result = (data["DescribeAutoScalingGroupsResult"] ?? data) as Record<string, unknown>;
-    groups.push(
-      ...(ensureArray(
+    return {
+      items: ensureArray(
         (result["AutoScalingGroups"] as Record<string, unknown> | undefined)?.["member"],
-      ) as Record<string, unknown>[]),
-    );
-    nextToken = result["NextToken"] ? String(result["NextToken"]) : undefined;
-    if (!nextToken) break;
-  }
+      ) as Record<string, unknown>[],
+      next: result["NextToken"],
+    };
+  });
 
   return groups.map((asg) => {
     const name = String(asg["AutoScalingGroupName"] ?? "");
@@ -274,27 +272,25 @@ async function fetchInferenceProfiles(
   ctx: ListerContext,
   host: string,
 ): Promise<Array<Record<string, unknown>>> {
-  const out: Array<Record<string, unknown>> = [];
-  let nextToken: string | undefined;
-  for (let page = 0; page < 20; page++) {
-    const query = new URLSearchParams({ maxResults: "1000" });
-    if (nextToken) query.set("nextToken", nextToken);
-    const res = await fetchSigned({
-      method: "GET",
-      url: `https://${host}/inference-profiles?${query}`,
-      headers: { Host: host },
-      service: "bedrock",
-      credentials: ctx.creds,
-    });
-    const data = (await res.json()) as {
-      inferenceProfileSummaries?: Array<Record<string, unknown>>;
-      nextToken?: string;
-    };
-    out.push(...(data.inferenceProfileSummaries ?? []));
-    nextToken = data.nextToken || undefined;
-    if (!nextToken) break;
-  }
-  return out;
+  return collectPages(
+    async (nextToken) => {
+      const query = new URLSearchParams({ maxResults: "1000" });
+      if (nextToken) query.set("nextToken", nextToken);
+      const res = await fetchSigned({
+        method: "GET",
+        url: `https://${host}/inference-profiles?${query}`,
+        headers: { Host: host },
+        service: "bedrock",
+        credentials: ctx.creds,
+      });
+      const data = (await res.json()) as {
+        inferenceProfileSummaries?: Array<Record<string, unknown>>;
+        nextToken?: string;
+      };
+      return { items: data.inferenceProfileSummaries ?? [], next: data.nextToken };
+    },
+    { path: `/inference-profiles in ${ctx.region}` },
+  );
 }
 
 export async function listBedrockModels(
@@ -362,7 +358,8 @@ export async function listBedrockModels(
   let profiles: Array<Record<string, unknown>> = [];
   try {
     profiles = await fetchInferenceProfiles(ctx, host);
-  } catch {
+  } catch (err) {
+    rethrowUnlessRowUnreadable(err);
     // Missing bedrock:ListInferenceProfiles: keep the on-demand models.
   }
   for (const p of profiles) {

@@ -3,6 +3,7 @@ import { ensureArray } from "../xml.js";
 import { joinIds, rdsSecurityGroupIds, type ListerContext } from "../resource-listers.js";
 import { openSearchNormalizedUnits } from "../extended-support.js";
 import { collectPages, queryString, tokenParam } from "../paginate.js";
+import { UnreadableRows } from "../aws-errors.js";
 
 /**
  * Every page of an RDS-control-plane `DescribeDBClusters` (RDS, Neptune and
@@ -38,24 +39,21 @@ export async function listRedshiftClusters(
   // only the response root, so `Clusters` sits under `DescribeClustersResult`,
   // and Redshift names its list items `<Cluster>`, not `<member>`. The call
   // pages at 100 with `Marker` on the Result element.
-  const clusters: Record<string, unknown>[] = [];
-  let marker: string | undefined;
-  for (let page = 0; page < 50; page += 1) {
+  const clusters = await collectPages(async (marker) => {
     const data = await ctx.ec2Query<Record<string, unknown>>(
       "redshift",
       "DescribeClusters",
       "2012-12-01",
-      { MaxRecords: "100", ...(marker ? { Marker: marker } : {}) },
+      { MaxRecords: "100", ...tokenParam("Marker", marker) },
     );
     const result = (data["DescribeClustersResult"] ?? data) as Record<string, unknown>;
-    clusters.push(
-      ...(ensureArray(
+    return {
+      items: ensureArray(
         (result["Clusters"] as Record<string, unknown> | undefined)?.["Cluster"],
-      ) as Record<string, unknown>[]),
-    );
-    marker = result["Marker"] ? String(result["Marker"]) : undefined;
-    if (!marker) break;
-  }
+      ) as Record<string, unknown>[],
+      next: result["Marker"],
+    };
+  });
 
   return clusters.map((c) => {
     const clusterId = String(c["ClusterIdentifier"] ?? "");
@@ -161,6 +159,7 @@ export async function listOpenSearchDomains(
   }>("es", "/2021-01-01/domain");
   const domainNames = listData.DomainNames ?? [];
   const results: ResourceInstance[] = [];
+  const unreadable = new UnreadableRows();
 
   for (const d of domainNames) {
     const domainName = d.DomainName;
@@ -212,10 +211,12 @@ export async function listOpenSearchDomains(
         createdAt: ctx.now(),
         updatedAt: ctx.now(),
       });
-    } catch {
+    } catch (err) {
+      unreadable.note(err);
       // Skip domains we can't describe
     }
   }
+  unreadable.throwIfEveryRowRefused(domainNames.length);
   return results;
 }
 
@@ -466,26 +467,23 @@ export async function listElastiCacheServerlessCaches(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const caches: Record<string, unknown>[] = [];
-  let nextToken: string | undefined;
-  for (let page = 0; page < 50; page++) {
+  const caches = await collectPages(async (nextToken) => {
     const data = await ctx.ec2Query<Record<string, unknown>>(
       "elasticache",
       "DescribeServerlessCaches",
       "2015-02-02",
-      { MaxResults: "100", ...(nextToken ? { NextToken: nextToken } : {}) },
+      { MaxResults: "100", ...tokenParam("NextToken", nextToken) },
     );
     const result = (data["DescribeServerlessCachesResult"] ?? data) as Record<string, unknown>;
     const container = result["ServerlessCaches"] as Record<string, unknown> | undefined;
-    caches.push(
-      ...(ensureArray(container?.["member"] ?? container?.["ServerlessCache"]) as Record<
+    return {
+      items: ensureArray(container?.["member"] ?? container?.["ServerlessCache"]) as Record<
         string,
         unknown
-      >[]),
-    );
-    nextToken = result["NextToken"] ? String(result["NextToken"]) : undefined;
-    if (!nextToken) break;
-  }
+      >[],
+      next: result["NextToken"],
+    };
+  });
 
   return caches.map((c) => {
     const name = String(c["ServerlessCacheName"] ?? "");

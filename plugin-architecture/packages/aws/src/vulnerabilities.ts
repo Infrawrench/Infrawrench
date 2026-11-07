@@ -37,6 +37,8 @@ import {
   type VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
 
+import { isRegionUnavailable } from "./aws-errors.js";
+
 export const INSPECTOR_CONSOLE_URL = "https://console.aws.amazon.com/inspector/v2/home";
 
 const INSPECTOR_HELP = {
@@ -329,23 +331,6 @@ function isIdentityDenied(message: string): boolean {
   );
 }
 
-/**
- * A region this account cannot use Inspector in: an SCP that denies the
- * region, a region not opted in, Inspector not activated there, or an
- * endpoint that does not exist in that region. None of these is a transient
- * failure; the region has no findings we are allowed to see.
- */
-function isRegionUnavailable(message: string): boolean {
-  // A bad or expired credential is also a 403, and it is not about the region.
-  if (/ExpiredToken|UnrecognizedClient|InvalidClientTokenId|SignatureDoesNotMatch/i.test(message)) {
-    return false;
-  }
-  return (
-    /\b403\b|AccessDenied|OptInRequired/i.test(message) ||
-    /ENOTFOUND|ERR_NAME_NOT_RESOLVED/i.test(message)
-  );
-}
-
 async function readRegion(ctx: AwsVulnerabilityContext, region: string): Promise<RegionOutcome> {
   const out: VulnerabilityFinding[] = [];
   let nextToken: string | undefined;
@@ -364,7 +349,7 @@ async function readRegion(ctx: AwsVulnerabilityContext, region: string): Promise
       }
       // Only the first page decides that a region is unavailable. A failure
       // after findings started arriving is a partial read, which must throw.
-      if (page === 0 && isRegionUnavailable(message)) {
+      if (page === 0 && isRegionUnavailable(e)) {
         return { kind: "skipped", reason: message };
       }
       throw e;

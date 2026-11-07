@@ -144,6 +144,7 @@ const credMap = { accessKeyId: "AKIA", secretAccessKey: "secret", region: "us-ea
 beforeEach(() => {
   vi.clearAllMocks();
   listEC2Instances.mockResolvedValue([]);
+  ec2Call.mockResolvedValue({ regionInfo: { item: [{ regionName: "us-east-1" }] } });
 });
 
 describe("AWSClient construction", () => {
@@ -185,17 +186,19 @@ describe("AWSClient.listResources", () => {
     expect(out.length).toBe(1);
     expect(ec2Call).not.toHaveBeenCalled();
   });
-  it("fans out across enabled regions, swallowing per-region failures", async () => {
+  it("fans out across enabled regions, reading a region the credential cannot use as none", async () => {
     ec2Call.mockResolvedValue({
       regionInfo: { item: [{ regionName: "us-east-1" }, { regionName: "eu-west-1" }] },
     });
-    listEC2Instances.mockResolvedValueOnce([inst()]).mockRejectedValueOnce(new Error("bad region"));
+    listEC2Instances
+      .mockResolvedValueOnce([inst()])
+      .mockRejectedValueOnce(new Error("AccessDenied: explicit deny in a service control policy"));
     const c = hostClient(new AWSClient(credMap));
     const out = await c.listResources("ec2-instance", "acct");
     expect(out.length).toBe(1);
   });
-  it("falls back to home region when DescribeRegions fails", async () => {
-    ec2Call.mockRejectedValue(new Error("denied"));
+  it("falls back to home region when DescribeRegions is denied", async () => {
+    ec2Call.mockRejectedValue(new Error("UnauthorizedOperation: not authorized"));
     listEC2Instances.mockResolvedValue([inst()]);
     const c = hostClient(new AWSClient(credMap));
     const out = await c.listResources("ec2-instance", "acct");

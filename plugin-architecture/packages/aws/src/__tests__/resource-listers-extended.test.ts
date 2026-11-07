@@ -578,12 +578,13 @@ describe("messaging extended listers", () => {
   });
   it("listKinesisStreams skips undescribable streams", async () => {
     const ctx = makeCtx({
-      json: (_s, target) => {
-        if (target.endsWith("ListStreams")) return { StreamNames: ["bad"] };
-        throw new Error("denied");
+      json: (_s, target, body) => {
+        if (target.endsWith("ListStreams")) return { StreamNames: ["bad", "good"] };
+        if (body["StreamName"] === "good") return { StreamDescription: {} };
+        throw new Error("AccessDenied: denied");
       },
     });
-    expect(await listKinesisStreams(ctx, "acct")).toEqual([]);
+    expect((await listKinesisStreams(ctx, "acct")).map((r) => r.externalId)).toEqual(["good"]);
   });
   it("listMSKClusters reads the camelCase wire shape", async () => {
     // The MSK REST API reference's ListClustersResponse is camelCase.
@@ -667,7 +668,7 @@ describe("messaging extended listers", () => {
             first = false;
             return { status: "ACTIVE", type: "STANDARD", creationDate: "2020" };
           }
-          throw new Error("denied");
+          throw new Error("AccessDenied: denied");
         }
         return {};
       },
@@ -907,11 +908,13 @@ describe("database extended listers", () => {
   it("listOpenSearchDomains skips undescribable", async () => {
     const ctx = makeCtx({
       jsonGet: (_s, path) => {
-        if (path === "/2021-01-01/domain") return { DomainNames: [{ DomainName: "d1" }] };
-        throw new Error("denied");
+        if (path === "/2021-01-01/domain")
+          return { DomainNames: [{ DomainName: "d1" }, { DomainName: "d2" }] };
+        if (path?.endsWith("/d2")) return { DomainStatus: {} };
+        throw new Error("AccessDenied: denied");
       },
     });
-    expect(await listOpenSearchDomains(ctx, "acct")).toEqual([]);
+    expect((await listOpenSearchDomains(ctx, "acct")).map((r) => r.externalId)).toEqual(["d2"]);
   });
   it("listNeptuneClusters filters by engine", async () => {
     const ctx = makeCtx({
@@ -1037,7 +1040,7 @@ describe("security extended listers", () => {
               },
             };
           }
-          throw new Error("denied");
+          throw new Error("AccessDenied: denied");
         }
         return {};
       },
@@ -1064,7 +1067,7 @@ describe("security extended listers", () => {
               WebACL: { Description: "d", Rules: [{}], DefaultAction: { Allow: {} }, Capacity: 10 },
             };
           }
-          throw new Error("denied");
+          throw new Error("AccessDenied: denied");
         }
         return {};
       },
@@ -1098,7 +1101,7 @@ describe("security extended listers", () => {
               UserPool: { MfaConfiguration: "ON", EstimatedNumberOfUsers: 5, Arn: "arn:p" },
             };
           }
-          throw new Error("denied");
+          throw new Error("AccessDenied: denied");
         }
         return {};
       },

@@ -2,6 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { ListerContext } from "../resource-listers.js";
 import { ensureArray } from "../xml.js";
 import { collectPages, queryString } from "../paginate.js";
+import { UnreadableRows } from "../aws-errors.js";
 
 /**
  * Route 53 is a REST-**XML** API: every response here is XML, so these
@@ -66,6 +67,7 @@ export async function listRoute53RecordSets(
   // First list hosted zones, then records in each
   const zones = await listRoute53HostedZones(ctx, accountId);
   const results: ResourceInstance[] = [];
+  const unreadable = new UnreadableRows();
 
   for (const zone of zones) {
     const zoneId = zone.externalId ?? "";
@@ -132,10 +134,12 @@ export async function listRoute53RecordSets(
           updatedAt: ctx.now(),
         });
       }
-    } catch {
+    } catch (err) {
+      unreadable.note(err);
       // Skip zones we can't list records for
     }
   }
+  unreadable.throwIfEveryRowRefused(zones.length);
   return results;
 }
 

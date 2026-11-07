@@ -8,8 +8,16 @@
  * next token lives.
  */
 
-/** Safety cap: at the usual 100 items a page this is 10,000 resources per region. */
-export const MAX_LIST_PAGES = 100;
+import { ListTruncatedError } from "@infrawrench/plugin-base";
+
+import { ListInterruptedError } from "./aws-errors.js";
+
+/**
+ * What one list may read per region before refusing: the most a poll can read
+ * and write inside its 300 seconds, about 200 seconds at 200 ms a page.
+ */
+export const MAX_LIST_PAGES = 1000;
+export const MAX_LIST_ITEMS = 100_000;
 
 export interface Page<T> {
   items: T[];
@@ -17,26 +25,42 @@ export interface Page<T> {
   next?: unknown;
 }
 
+export interface CollectPagesOptions {
+  maxPages?: number;
+  maxItems?: number;
+  /** Named in the error past a cap. The host already says which resource type it was. */
+  path?: string;
+}
+
 /**
  * Fetch pages until the service stops returning a token (or returns the same
  * token twice, which would otherwise loop until the cap), concatenating each
- * page's items in order.
+ * page's items in order. Past a cap it throws: a sync would read the rows it
+ * did not get to as deleted.
  */
 export async function collectPages<T>(
   fetchPage: (token: string | undefined) => Promise<Page<T>>,
-  maxPages: number = MAX_LIST_PAGES,
+  options: CollectPagesOptions = {},
 ): Promise<T[]> {
+  const { maxPages = MAX_LIST_PAGES, maxItems = MAX_LIST_ITEMS, path = "a list" } = options;
   const items: T[] = [];
   let token: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const result = await fetchPage(token);
+    let result: Page<T>;
+    try {
+      result = await fetchPage(token);
+    } catch (err) {
+      throw page === 0 ? err : new ListInterruptedError(err);
+    }
     items.push(...result.items);
     const next = result.next == null ? "" : String(result.next);
     if (!next || next === token) return items;
+    if (items.length >= maxItems) {
+      throw new ListTruncatedError({ vendor: "AWS", path, items: items.length, maxItems });
+    }
     token = next;
   }
-  console.warn(`[aws] stopped paging after ${maxPages} pages; the list may be incomplete`);
-  return items;
+  throw new ListTruncatedError({ vendor: "AWS", path, items: items.length, maxPages });
 }
 
 /**

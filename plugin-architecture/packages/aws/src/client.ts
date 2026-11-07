@@ -205,6 +205,7 @@ import {
   type AwsJitContext,
 } from "./jit-access.js";
 import { AWS_LOG_TYPES, getAwsLogs } from "./logs.js";
+import { AwsRegionsRefusedError, classifyAwsFailure, isRegionUnavailable } from "./aws-errors.js";
 
 export class AWSClient implements PluginClient {
   private readonly creds: AwsCredentials;
@@ -363,13 +364,19 @@ export class AWSClient implements PluginClient {
         const names = items
           .map((r) => String(r["regionName"] ?? ""))
           .filter((n): n is string => Boolean(n));
-        const result = names.length > 0 ? names : [this.creds.region];
-        this.enabledRegionsCache = result;
-        return result;
-      } catch {
-        // If DescribeRegions fails (lacking ec2:DescribeRegions permission,
-        // restricted partition, …), fall back to just the home region so the
-        // app keeps working in a degraded but predictable mode.
+        // Every account has at least one region. An answer naming none is a bad
+        // answer, and reading it as the home region would prune every other one.
+        if (names.length === 0) {
+          throw new Error("AWS DescribeRegions answered without naming a region");
+        }
+        this.enabledRegionsCache = names;
+        return names;
+      } catch (err) {
+        // A credential without ec2:DescribeRegions runs in a degraded but
+        // predictable mode, on just the home region. Anything else (a throttle,
+        // a 5xx, an expired key) has to fail, uncached, or this sync would
+        // prune every other region.
+        if (classifyAwsFailure(err) !== "refused") throw err;
         const result = [this.creds.region];
         this.enabledRegionsCache = result;
         return result;
@@ -476,25 +483,58 @@ export class AWSClient implements PluginClient {
         return lister(this.ctxFor(opts.regionHint), accountId);
       }
 
-      // Regional resources fan out across every enabled region. We process the
-      // regions in bounded-concurrency batches so a single refresh of a sparsely
-      // populated account doesn't open 30 sockets at once. Per-region failures
-      // are swallowed: an opt-in region with bad credentials should not make
-      // every other region's listing disappear.
-      const regions = await this.getEnabledRegions();
-      const results: ResourceInstance[] = [];
-      const concurrency = AWSClient.REGION_FANOUT_CONCURRENCY;
-      for (let i = 0; i < regions.length; i += concurrency) {
-        const batch = regions.slice(i, i + concurrency);
-        const settled = await Promise.allSettled(
-          batch.map((region) => lister(this.ctxFor(region), accountId)),
-        );
-        for (const s of settled) {
-          if (s.status === "fulfilled") results.push(...s.value);
+      const { rows, failure } = await this.listAcrossRegions(lister, typeId, accountId, {
+        stopAtFailure: true,
+      });
+      if (failure !== undefined) throw failure;
+      return rows;
+    });
+  }
+
+  /**
+   * Fan a regional lister out across every enabled region, in bounded-concurrency
+   * batches so a single refresh of a sparsely populated account doesn't open 30
+   * sockets at once.
+   *
+   * A region this credential cannot use (an SCP deny, no endpoint for the service
+   * there) holds no rows it may see, so it reads as none. Any other failure is the
+   * `failure`, because the rows it did not return are not gone; and so is every
+   * region refusing, which is a credential that may not read this at all rather
+   * than an empty account.
+   */
+  private async listAcrossRegions(
+    lister: (ctx: ListerContext, accountId: string) => Promise<ResourceInstance[]>,
+    typeId: string,
+    accountId: string,
+    options: { stopAtFailure: boolean },
+  ): Promise<{ rows: ResourceInstance[]; failure?: unknown }> {
+    const regions = await this.getEnabledRegions();
+    const rows: ResourceInstance[] = [];
+    const concurrency = AWSClient.REGION_FANOUT_CONCURRENCY;
+    let answered = 0;
+    let refusal: unknown;
+    let failure: unknown;
+    for (let i = 0; i < regions.length; i += concurrency) {
+      const batch = regions.slice(i, i + concurrency);
+      const settled = await Promise.allSettled(
+        batch.map((region) => lister(this.ctxFor(region), accountId)),
+      );
+      for (const s of settled) {
+        if (s.status === "fulfilled") {
+          answered++;
+          for (const row of s.value) rows.push(row);
+        } else if (isRegionUnavailable(s.reason)) {
+          refusal = s.reason;
+        } else {
+          failure ??= s.reason;
         }
       }
-      return results;
-    });
+      if (failure !== undefined && options.stopAtFailure) return { rows, failure };
+    }
+    if (failure === undefined && answered === 0) {
+      failure = new AwsRegionsRefusedError(typeId, regions.length, refusal);
+    }
+    return failure === undefined ? { rows } : { rows, failure };
   }
 
   getResource(
@@ -503,10 +543,26 @@ export class AWSClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const all = await runPluginEffect(this.listResources(typeId, accountId));
-      const found = all.find((r) => r.id === resourceId);
-      if (!found) throw new Error(`AWS plugin: resource ${typeId}/${resourceId} not found`);
-      return found;
+      const lister = AWSClient.LISTERS[typeId];
+      if (
+        !lister ||
+        AWSClient.GLOBAL_TYPES.has(typeId) ||
+        AWSClient.HOME_REGION_TYPES.has(typeId)
+      ) {
+        const all = await runPluginEffect(this.listResources(typeId, accountId));
+        const found = all.find((r) => r.id === resourceId);
+        if (!found) throw new Error(`AWS plugin: resource ${typeId}/${resourceId} not found`);
+        return found;
+      }
+      // One row is wanted, so a throttle in some other region does not matter
+      // unless the row was not found: then it may be what hid it.
+      const { rows, failure } = await this.listAcrossRegions(lister, typeId, accountId, {
+        stopAtFailure: false,
+      });
+      const found = rows.find((r) => r.id === resourceId);
+      if (found) return found;
+      if (failure !== undefined) throw failure;
+      throw new Error(`AWS plugin: resource ${typeId}/${resourceId} not found`);
     });
   }
 
