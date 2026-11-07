@@ -1,4 +1,19 @@
-import { reportUnreadListPart, type UnreadListPart } from "@infrawrench/plugin-base";
+import {
+  ListPageError,
+  ListTruncatedError,
+  reportUnreadListPart,
+  type UnreadListPart,
+} from "@infrawrench/plugin-base";
+
+const VENDOR = "Google Cloud";
+
+/** What one poll can read and write of a list before its lease runs out. */
+const MAX_LIST_PAGES = 1000;
+const MAX_LIST_ROWS = 100_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 export interface ListerContext {
   get: <T>(url: string) => Promise<T>;
@@ -41,22 +56,87 @@ export async function paginateAggregated<T>(
   baseUrl: string,
   innerKey: string,
 ): Promise<T[]> {
+  const path = new URL(baseUrl).pathname;
   const results: T[] = [];
   let pageToken: string | undefined;
-  do {
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
     const url = new URL(baseUrl);
     if (pageToken) url.searchParams.set("pageToken", pageToken);
-    const page = await ctx.get<{
+    const body = await ctx.get<{
       items?: Record<string, Record<string, unknown>>;
       nextPageToken?: string;
     }>(url.toString());
-    for (const scopeData of Object.values(page.items ?? {})) {
+    // `items` is keyed by scope and left out when there are none.
+    if (body.items !== undefined && !isRecord(body.items)) {
+      throw new ListPageError({
+        vendor: VENDOR,
+        path,
+        key: "items",
+        found: body.items,
+        page: body,
+      });
+    }
+    for (const scopeData of Object.values(body.items ?? {})) {
       const scopeItems = scopeData[innerKey];
       if (Array.isArray(scopeItems)) results.push(...(scopeItems as T[]));
     }
-    pageToken = page.nextPageToken;
-  } while (pageToken);
-  return results;
+    pageToken = body.nextPageToken;
+    if (!pageToken) return results;
+    throwPastRowCap(path, results.length);
+  }
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path,
+    items: results.length,
+    maxPages: MAX_LIST_PAGES,
+  });
+}
+
+/**
+ * Follow `nextPageToken` until it runs out, collecting `key` from each page. A key left
+ * out is an empty page: Google's APIs answer in proto3 JSON, which omits an empty
+ * repeated field. Anything else that is not an array is not a list, and reading it as
+ * empty would prune whatever it should have held.
+ */
+export async function readPages<T>(
+  get: <R>(url: string) => Promise<R>,
+  baseUrl: string,
+  key: string,
+  params: Record<string, string> = {},
+): Promise<T[]> {
+  const path = new URL(baseUrl).pathname;
+  const results: T[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
+    const url = new URL(baseUrl);
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const body = await get<unknown>(url.toString());
+    if (!isRecord(body)) throw new ListPageError({ vendor: VENDOR, path, key, found: body });
+    const items = body[key];
+    if (items !== undefined && items !== null) {
+      if (!Array.isArray(items)) {
+        throw new ListPageError({ vendor: VENDOR, path, key, found: items, page: body });
+      }
+      for (const row of items) results.push(row);
+    }
+    const next = body["nextPageToken"];
+    pageToken = typeof next === "string" && next ? next : undefined;
+    if (!pageToken) return results;
+    throwPastRowCap(path, results.length);
+  }
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path,
+    items: results.length,
+    maxPages: MAX_LIST_PAGES,
+  });
+}
+
+function throwPastRowCap(path: string, items: number): void {
+  if (items >= MAX_LIST_ROWS) {
+    throw new ListTruncatedError({ vendor: VENDOR, path, items, maxItems: MAX_LIST_ROWS });
+  }
 }
 
 function statusOf(err: unknown): number | undefined {

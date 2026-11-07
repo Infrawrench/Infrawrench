@@ -115,6 +115,7 @@ function gceDiskLine(
 }
 import type { ListerContext } from "./resource-listers.js";
 import * as listers from "./resource-listers.js";
+import { readPages } from "./resource-listers/shared.js";
 import type { FirestoreContext } from "./firestore-handlers.js";
 import { executeFirestoreCommand } from "./firestore-handlers.js";
 import type { BigQuerySpannerContext } from "./bigquery-spanner-handlers.js";
@@ -252,24 +253,12 @@ export class GcpClient implements PluginClient {
     return res.json() as Promise<T>;
   }
 
-  /** Follow nextPageToken until exhausted, collecting `key` array from each page. */
-  private async paginate<T>(
+  private paginate<T>(
     baseUrl: string,
     key: string,
     params: Record<string, string> = {},
   ): Promise<T[]> {
-    const results: T[] = [];
-    let pageToken: string | undefined;
-    do {
-      const url = new URL(baseUrl);
-      for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-      if (pageToken) url.searchParams.set("pageToken", pageToken);
-      const page = await this.get<Record<string, unknown>>(url.toString());
-      const items = page[key];
-      if (Array.isArray(items)) results.push(...(items as T[]));
-      pageToken = page["nextPageToken"] as string | undefined;
-    } while (pageToken);
-    return results;
+    return readPages<T>(this.get.bind(this), baseUrl, key, params);
   }
 
   /**
