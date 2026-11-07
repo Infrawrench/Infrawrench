@@ -99,6 +99,10 @@ interface SwiftContainer {
 // Swift's account listing, in 1,000-name pages: 50,000 containers.
 const CONTAINER_PAGE = 1000;
 const MAX_CONTAINER_PAGES = 50;
+// A folder delete lists its objects in pages of 10,000, up to 1,000,000.
+const OBJECT_PAGE = 10_000;
+const MAX_OBJECT_PAGES = 100;
+const isNotFound = (err: unknown) => err instanceof OpenStackApiError && err.status === 404;
 // One HEAD per container per poll for its read ACL, against the manifest's 10 a second.
 const MAX_CONTAINER_HEADS = 1000;
 
@@ -1176,16 +1180,48 @@ export class OpenStackClient implements PluginClient {
         await this.api.request("object-store", "DELETE", path(key));
         return;
       }
-      const all = await this.api.get<Array<{ name: string }>>(
+      const names = await this.objectNames(bucket, key);
+      const failed: unknown[] = [];
+      await mapLimit(names, 6, (name) =>
+        this.api.request("object-store", "DELETE", path(name)).catch((err: unknown) => {
+          if (!isNotFound(err)) failed.push(err);
+          return undefined;
+        }),
+      );
+      if (failed.length) {
+        const first = failed[0];
+        throw new OpenStackApiError(
+          `${failed.length} of ${names.length} objects under ${key} could not be deleted, so the folder was kept: ${first instanceof Error ? first.message : String(first)}`,
+          first instanceof OpenStackApiError ? first.status : 502,
+        );
+      }
+      // The folder's own marker object, when there is one.
+      await this.api.request("object-store", "DELETE", path(key)).catch((err: unknown) => {
+        if (!isNotFound(err)) throw err;
+        return undefined;
+      });
+    });
+  }
+
+  /** Every object name under `prefix`, for a write that must reach all of them. */
+  private async objectNames(bucket: string, prefix: string): Promise<string[]> {
+    const where = { vendor: "OpenStack", path: "/v1/{account}/{container}", key: null };
+    const names: string[] = [];
+    let marker = "";
+    for (let page = 0; page < MAX_OBJECT_PAGES; page++) {
+      const list = await this.api.get<Array<{ name: string }> | undefined>(
         "object-store",
         `/${encodeURIComponent(bucket)}`,
-        { format: "json", prefix: key, limit: 10000 },
+        { format: "json", prefix, limit: OBJECT_PAGE, ...(marker ? { marker } : {}) },
       );
-      await mapLimit(all ?? [], 6, (o) =>
-        this.api.request("object-store", "DELETE", path(o.name)).catch(() => undefined),
-      );
-      await this.api.request("object-store", "DELETE", path(key)).catch(() => undefined);
-    });
+      // An empty container listing is documented as a 204.
+      if (list === undefined) return names;
+      const rows = requireListPage(list, where);
+      names.push(...rows.map((o) => o.name));
+      if (rows.length < OBJECT_PAGE) return names;
+      marker = rows[rows.length - 1]!.name;
+    }
+    throw new ListTruncatedError({ ...where, items: names.length, maxPages: MAX_OBJECT_PAGES });
   }
 
   // ---------------------------------------------------------------------------
