@@ -27,18 +27,21 @@ import {
   getS3BucketPolicy,
   hostFetch,
   joinSubtitle,
+  ListPageError,
   jsonRestFetch,
   labeledFieldItems,
   listS3Objects,
   makeS3Folder,
   pathStyleUrl,
   putS3BucketPolicy,
+  restRequest,
   signedS3Fetch,
   uploadS3Object,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import { fetchScalewayCostData } from "./cost-data.js";
+import { everyPage, fanOut, isRefusal, PAGE_SIZE, ScalewayHttpError } from "./lists.js";
 import * as products from "./products.js";
 import type { ScwRest } from "./products.js";
 import type { Client, Region, Zone } from "@scaleway/sdk-client";
@@ -212,15 +215,20 @@ export class ScalewayClient implements PluginClient {
   private get rest(): ScwRest {
     return {
       projectId: this.defaultProjectId,
-      fetch: <T>(path: string, init?: RequestInit) =>
-        jsonRestFetch<T>({
+      fetch: async <T>(path: string, init?: RequestInit) => {
+        const route = path.split("?")[0] ?? path;
+        const { body } = await restRequest<T>({
           vendor: "Scaleway",
           url: `https://api.scaleway.com${path}`,
-          errorPath: path.split("?")[0] ?? path,
+          errorPath: route,
           headers: { "X-Auth-Token": this.secretKey },
           ...(init ? { init } : {}),
           ...(this.services?.http ? { http: this.services.http } : {}),
-        }),
+          httpError: ({ status, body: text }) =>
+            new ScalewayHttpError(status, `Scaleway API error ${status} for ${route}: ${text}`),
+        });
+        return body;
+      },
     };
   }
 
@@ -283,7 +291,10 @@ export class ScalewayClient implements PluginClient {
     });
 
     if (!res.ok) {
-      throw new Error(`Scaleway S3 error ${res.status} for ${method} ${url}: ${await res.text()}`);
+      throw new ScalewayHttpError(
+        res.status,
+        `Scaleway S3 error ${res.status} for ${method} ${url}: ${await res.text()}`,
+      );
     }
     return res;
   }
@@ -1682,20 +1693,17 @@ export class ScalewayClient implements PluginClient {
 
   private async listFlexibleIps(accountId: string): Promise<ResourceInstance[]> {
     const api = this.instanceApi();
-    const results = await Promise.all(
-      (this.zones() as Zone[]).map(async (zone) => {
-        try {
-          const data = await api.listIps({
-            zone,
-            ...(this.defaultProjectId ? { project: this.defaultProjectId } : {}),
-          });
-          return data.ips.map((ip) => this.mapFlexibleIp(ip, zone, accountId));
-        } catch {
-          return [];
-        }
-      }),
-    );
-    return results.flat();
+    return fanOut(this.zones() as Zone[], "flexible IPs", async (zone) => {
+      const ips = await everyPage(
+        api.listIps({
+          zone,
+          perPage: PAGE_SIZE,
+          ...(this.defaultProjectId ? { project: this.defaultProjectId } : {}),
+        }),
+        `/instance/v1/zones/${zone}/ips`,
+      );
+      return ips.map((ip) => this.mapFlexibleIp(ip, zone, accountId));
+    });
   }
 
   private mapFlexibleIp(
@@ -1867,7 +1875,7 @@ export class ScalewayClient implements PluginClient {
     }
     if (fields["nodeCount"]) {
       try {
-        const pools = (await api.listPools({ region, clusterId: id })).pools;
+        const pools = await this.listAllPools(region, id);
         const first = pools[0];
         if (!first) throw new Error("the cluster has no node pool");
         const others = pools.slice(1).reduce((sum, p) => sum + p.size, 0);
@@ -1895,67 +1903,60 @@ export class ScalewayClient implements PluginClient {
   private async listBlockVolumes(accountId: string): Promise<ResourceInstance[]> {
     const zones = Object.keys(ScalewayClient.ZONE_INFO) as Zone[];
     const api = this.blockApi();
-    const fetches = zones.map(async (zone) => {
-      try {
-        const data = await api.listVolumes({
+    return fanOut(zones, "block volumes", async (zone) => {
+      const volumes = await everyPage(
+        api.listVolumes({
           zone,
+          pageSize: PAGE_SIZE,
           ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
           includeDeleted: false,
-        });
-        return data.volumes.map<ResourceInstance>((v) => {
-          const attached =
-            v.references.find((r) => r.productResourceType === "instance_server")
-              ?.productResourceId ?? "";
-          const createdAt = v.createdAt ? v.createdAt.toISOString() : new Date().toISOString();
-          const updatedAt = v.updatedAt ? v.updatedAt.toISOString() : createdAt;
-          return {
-            id: `${accountId}:block-volume:${zone}/${v.id}`,
-            pluginId: "scaleway",
-            resourceTypeId: "block-volume",
-            accountId,
-            displayName: v.name || v.id,
-            fields: {
-              name: v.name ?? "",
-              zone,
-              sizeGb: Math.round(v.size / 1_000_000_000),
-              perfIops: String(v.specs?.perfIops ?? ""),
-              status: v.status ?? "",
-              attachedInstanceId: attached,
-            },
-            resolvedOutputs: {},
-            secretStates: [],
-            externalId: `${zone}/${v.id}`,
-            createdAt,
-            updatedAt,
-          };
-        });
-      } catch {
-        return [];
-      }
+        }),
+        `/block/v1/zones/${zone}/volumes`,
+      );
+      return volumes.map<ResourceInstance>((v) => {
+        const attached =
+          v.references.find((r) => r.productResourceType === "instance_server")
+            ?.productResourceId ?? "";
+        const createdAt = v.createdAt ? v.createdAt.toISOString() : new Date().toISOString();
+        const updatedAt = v.updatedAt ? v.updatedAt.toISOString() : createdAt;
+        return {
+          id: `${accountId}:block-volume:${zone}/${v.id}`,
+          pluginId: "scaleway",
+          resourceTypeId: "block-volume",
+          accountId,
+          displayName: v.name || v.id,
+          fields: {
+            name: v.name ?? "",
+            zone,
+            sizeGb: Math.round(v.size / 1_000_000_000),
+            perfIops: String(v.specs?.perfIops ?? ""),
+            status: v.status ?? "",
+            attachedInstanceId: attached,
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: `${zone}/${v.id}`,
+          createdAt,
+          updatedAt,
+        };
+      });
     });
-    const allResults = await Promise.all(fetches);
-    return allResults.flat();
   }
 
   private async listInstances(accountId: string): Promise<ResourceInstance[]> {
     const zones = Object.keys(ScalewayClient.ZONE_INFO) as Zone[];
     const api = this.instanceApi();
-
-    const fetches = zones.map(async (zone) => {
-      try {
-        const data = await api.listServers({
+    return fanOut(zones, "instances", async (zone) => {
+      const servers = await everyPage(
+        api.listServers({
           zone,
+          perPage: PAGE_SIZE,
           ...(this.defaultProjectId ? { project: this.defaultProjectId } : {}),
-        });
-        return data.servers.map((s) => this.mapInstance(s, zone, accountId));
-      } catch {
-        // Zone may not be available: skip silently
-        return [];
-      }
+        }),
+        `/instance/v1/zones/${zone}/servers`,
+      );
+      return servers.map((s) => this.mapInstance(s, zone, accountId));
     });
-
-    const allResults = await Promise.all(fetches);
-    return allResults.flat();
   }
 
   private mapInstance(
@@ -2311,39 +2312,40 @@ export class ScalewayClient implements PluginClient {
     };
   }
 
+  private listAllPools(region: Region, clusterId: string) {
+    return everyPage(
+      this.k8sApi().listPools({ region, clusterId, pageSize: PAGE_SIZE }),
+      `/k8s/v1/regions/${region}/clusters/${clusterId}/pools`,
+    );
+  }
+
   private async listKapsuleClusters(accountId: string): Promise<ResourceInstance[]> {
     const regions = Object.keys(ScalewayClient.REGION_INFO) as Region[];
     const api = this.k8sApi();
-
-    const fetches = regions.map(async (region) => {
-      try {
-        const data = await api.listClusters({
+    return fanOut(regions, "Kapsule clusters", async (region) => {
+      const clusters = await everyPage(
+        api.listClusters({
           region,
+          pageSize: PAGE_SIZE,
           ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
-        });
-        return Promise.all(
-          data.clusters.map(async (c) => {
-            let firstPool: import("@scaleway/sdk-k8s").K8Sv1.Pool | undefined;
-            let totalNodes = 0;
-            let poolCount = 0;
-            try {
-              const poolsResp = await api.listPools({ region, clusterId: c.id });
-              firstPool = poolsResp.pools[0];
-              poolCount = poolsResp.pools.length;
-              for (const p of poolsResp.pools) totalNodes += p.size;
-            } catch {
-              // Skip pools we can't list
-            }
-            return this.mapKapsuleCluster(c, region, accountId, firstPool, totalNodes, poolCount);
-          }),
-        );
-      } catch {
-        return [];
-      }
+        }),
+        `/k8s/v1/regions/${region}/clusters`,
+      );
+      return Promise.all(
+        clusters.map(async (c) => {
+          let pools: Awaited<ReturnType<ScalewayClient["listAllPools"]>> = [];
+          try {
+            pools = await this.listAllPools(region, c.id);
+          } catch (err) {
+            // A cluster deleted since the list above has no pools to count. Any other
+            // failure would show a running cluster with no nodes.
+            if (!isRefusal(err)) throw err;
+          }
+          const totalNodes = pools.reduce((sum, p) => sum + p.size, 0);
+          return this.mapKapsuleCluster(c, region, accountId, pools[0], totalNodes, pools.length);
+        }),
+      );
     });
-
-    const allResults = await Promise.all(fetches);
-    return allResults.flat();
   }
 
   private mapKapsuleCluster(
@@ -2559,21 +2561,17 @@ export class ScalewayClient implements PluginClient {
   private async listManagedDatabases(accountId: string): Promise<ResourceInstance[]> {
     const regions = Object.keys(ScalewayClient.REGION_INFO) as Region[];
     const api = this.rdbApi();
-
-    const fetches = regions.map(async (region) => {
-      try {
-        const data = await api.listInstances({
+    return fanOut(regions, "managed databases", async (region) => {
+      const instances = await everyPage(
+        api.listInstances({
           region,
+          pageSize: PAGE_SIZE,
           ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
-        });
-        return data.instances.map((db) => this.mapManagedDatabase(db, region, accountId));
-      } catch {
-        return [];
-      }
+        }),
+        `/rdb/v1/regions/${region}/instances`,
+      );
+      return instances.map((db) => this.mapManagedDatabase(db, region, accountId));
     });
-
-    const allResults = await Promise.all(fetches);
-    return allResults.flat();
   }
 
   private mapManagedDatabase(
@@ -2616,49 +2614,47 @@ export class ScalewayClient implements PluginClient {
   }
 
   private async listObjectStorageBuckets(accountId: string): Promise<ResourceInstance[]> {
+    this.assertS3Credentials();
     // Scaleway Object Storage uses the S3-compatible API with AWS SigV4 auth.
     // We query each region's S3 endpoint and parse the XML ListBuckets response.
     const regions = Object.keys(ScalewayClient.REGION_INFO);
-    const results: ResourceInstance[] = [];
-
-    for (const region of regions) {
-      try {
-        const res = await this.objectStorageFetch("GET", `s3.${region}.scw.cloud`, "/", region);
-        const xml = await res.text();
-        // Minimal XML parsing for <Bucket><Name>…</Name><CreationDate>…</CreationDate></Bucket>
-        const buckets: Array<{ name: string; creationDate: string }> = [];
-        const bucketRegex =
-          /<Bucket>\s*<Name>([^<]+)<\/Name>\s*<CreationDate>([^<]+)<\/CreationDate>\s*<\/Bucket>/g;
-        let m: RegExpExecArray | null;
-        while ((m = bucketRegex.exec(xml)) !== null) {
-          buckets.push({ name: m[1]!, creationDate: m[2]! });
-        }
-        for (const b of buckets) {
-          this.objectStorageBucketRegions.set(b.name, region);
-          results.push({
-            id: `${accountId}:object-storage-bucket:${region}/${b.name}`,
-            pluginId: "scaleway",
-            resourceTypeId: "object-storage-bucket",
-            accountId,
-            displayName: b.name,
-            fields: {
-              name: b.name,
-              region,
-            },
-            resolvedOutputs: {
-              endpoint: `https://s3.${region}.scw.cloud`,
-            },
-            secretStates: [],
-            externalId: `${region}/${b.name}`,
-            createdAt: b.creationDate,
-            updatedAt: b.creationDate,
-          });
-        }
-      } catch {
-        // Region may not have Object Storage or credentials may lack access: skip
+    return fanOut(regions, "Object Storage buckets", async (region) => {
+      const res = await this.objectStorageFetch("GET", `s3.${region}.scw.cloud`, "/", region);
+      const xml = await res.text();
+      if (!/<(ListAllMyBucketsResult|Buckets)\b/.test(xml)) {
+        throw new ListPageError({
+          vendor: "Scaleway",
+          path: `s3.${region}.scw.cloud/`,
+          key: "ListAllMyBucketsResult",
+          found: undefined,
+          page: xml,
+        });
       }
-    }
-    return results;
+      // Minimal XML parsing for <Bucket><Name>…</Name><CreationDate>…</CreationDate></Bucket>
+      const bucketRegex =
+        /<Bucket>\s*<Name>([^<]+)<\/Name>\s*<CreationDate>([^<]+)<\/CreationDate>\s*<\/Bucket>/g;
+      return Array.from(xml.matchAll(bucketRegex), ([, name, creationDate]): ResourceInstance => {
+        this.objectStorageBucketRegions.set(name!, region);
+        return {
+          id: `${accountId}:object-storage-bucket:${region}/${name!}`,
+          pluginId: "scaleway",
+          resourceTypeId: "object-storage-bucket",
+          accountId,
+          displayName: name!,
+          fields: {
+            name: name!,
+            region,
+          },
+          resolvedOutputs: {
+            endpoint: `https://s3.${region}.scw.cloud`,
+          },
+          secretStates: [],
+          externalId: `${region}/${name!}`,
+          createdAt: creationDate!,
+          updatedAt: creationDate!,
+        };
+      });
+    });
   }
 
   // ── Object Storage (S3-compatible) storage browser ──────────────────────

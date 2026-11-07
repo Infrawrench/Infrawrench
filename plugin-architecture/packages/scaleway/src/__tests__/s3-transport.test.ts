@@ -2,11 +2,21 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ScalewayClient } from "../client.js";
 
-const request = vi.fn(async ({ method }: { url: string; method: string }) => ({
-  status: 200,
-  headers: {},
-  body: method === "HEAD" ? "" : "<ListBucketResult></ListBucketResult>",
-}));
+function answer({ url, method }: { url: string; method: string }) {
+  const bucketList = new URL(url).pathname === "/";
+  return {
+    status: 200,
+    headers: {},
+    body:
+      method === "HEAD"
+        ? ""
+        : bucketList
+          ? "<ListAllMyBucketsResult></ListAllMyBucketsResult>"
+          : "<ListBucketResult></ListBucketResult>",
+  };
+}
+
+const request = vi.fn(async (call: { url: string; method: string }) => answer(call));
 
 function client() {
   return hostClient(
@@ -50,10 +60,6 @@ describe("Object Storage (#370)", () => {
     request.mockRejectedValue(refused);
     await expect(client().listStorageObjects("b", "")).rejects.toThrow(refused.message);
     request.mockReset();
-    request.mockImplementation(async ({ method }: { url: string; method: string }) => ({
-      status: 200,
-      headers: {},
-      body: method === "HEAD" ? "" : "<ListBucketResult></ListBucketResult>",
-    }));
+    request.mockImplementation(async (call: { url: string; method: string }) => answer(call));
   });
 });

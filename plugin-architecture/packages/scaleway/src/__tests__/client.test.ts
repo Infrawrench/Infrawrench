@@ -11,8 +11,24 @@ import type { Blockv1 } from "@scaleway/sdk-block";
 // constructed with the shared client. We replace each `.API` with a stub class
 // that delegates to per-test method spies stored on module-level objects.
 
-const { sdkMocks, instanceMethods, k8sMethods, rdbMethods, blockMethods, s3Mocks } = vi.hoisted(
-  () => ({
+const { sdkMocks, instanceMethods, k8sMethods, rdbMethods, blockMethods, s3Mocks, paginated } =
+  vi.hoisted(() => ({
+    // The SDK's paginated lists answer a promise with `.all()` on it. Every page here
+    // is the only page; list-completeness.test.ts runs the real paginator.
+    paginated: <M extends object>(methods: M, keys: Record<string, string>): M =>
+      new Proxy(methods, {
+        get(target, name) {
+          const method: unknown = Reflect.get(target, name);
+          const key = typeof name === "string" ? keys[name] : undefined;
+          if (!key || typeof method !== "function") return method;
+          return (request: unknown) => {
+            const first = Promise.resolve(method(request));
+            return Object.assign(first, {
+              all: () => first.then((page) => Reflect.get(page, key)),
+            });
+          };
+        },
+      }),
     sdkMocks: {
       createClient: vi.fn(() => ({ __fakeClient: true })),
       createAdvancedClient: vi.fn(() => ({ __fakeClient: true })),
@@ -76,8 +92,7 @@ const { sdkMocks, instanceMethods, k8sMethods, rdbMethods, blockMethods, s3Mocks
       getS3BucketPolicy: vi.fn(),
       putS3BucketPolicy: vi.fn(),
     },
-  }),
-);
+  }));
 
 vi.mock("@scaleway/sdk-client", () => ({
   createClient: sdkMocks.createClient,
@@ -89,7 +104,7 @@ vi.mock("@scaleway/sdk-instance", () => ({
   Instancev1: {
     API: class {
       constructor() {
-        return instanceMethods;
+        return paginated(instanceMethods, { listServers: "servers", listIps: "ips" });
       }
     },
   },
@@ -98,7 +113,7 @@ vi.mock("@scaleway/sdk-k8s", () => ({
   K8Sv1: {
     API: class {
       constructor() {
-        return k8sMethods;
+        return paginated(k8sMethods, { listClusters: "clusters", listPools: "pools" });
       }
     },
   },
@@ -107,7 +122,7 @@ vi.mock("@scaleway/sdk-rdb", () => ({
   Rdbv1: {
     API: class {
       constructor() {
-        return rdbMethods;
+        return paginated(rdbMethods, { listInstances: "instances" });
       }
     },
   },
@@ -116,7 +131,7 @@ vi.mock("@scaleway/sdk-block", () => ({
   Blockv1: {
     API: class {
       constructor() {
-        return blockMethods;
+        return paginated(blockMethods, { listVolumes: "volumes" });
       }
     },
   },
@@ -149,6 +164,11 @@ function s3Response(status: number, text: string): Response {
     status,
     text: async () => text,
   } as unknown as Response;
+}
+
+/** What the SDK throws for a non-2xx answer: an `Error` with its `status`. */
+function httpFailure(status: number): Error {
+  return Object.assign(new Error(`http error ${status}`), { status });
 }
 
 let fetchMock: MockInstance<typeof fetch>;
@@ -279,11 +299,19 @@ describe("listResources instance", () => {
     expect(typeof res[0]!.createdAt).toBe("string");
   });
 
-  it("ignores zones that throw", async () => {
+  it("fails rather than read a failed zone as empty", async () => {
     const c = makeClient();
     instanceMethods.listServers.mockRejectedValue(new Error("zone down"));
-    const res = await c.listResources("instance", ACCOUNT);
-    expect(res).toEqual([]);
+    await expect(c.listResources("instance", ACCOUNT)).rejects.toThrow("zone down");
+  });
+
+  it("reads a zone that refuses as empty", async () => {
+    const c = makeClient();
+    instanceMethods.listServers.mockImplementation(async ({ zone }: { zone: string }) => {
+      if (zone === "it-mil-1") throw httpFailure(404);
+      return { servers: [] };
+    });
+    expect(await c.listResources("instance", ACCOUNT)).toEqual([]);
   });
 
   it("passes project filter when defaultProjectId set", async () => {
@@ -347,16 +375,16 @@ describe("listResources kapsule-cluster", () => {
     k8sMethods.listClusters.mockImplementation(async ({ region }: { region: string }) =>
       region === "fr-par" ? { clusters: [{ id: "cl1", name: "k8s" }] } : { clusters: [] },
     );
-    k8sMethods.listPools.mockRejectedValue(new Error("no perm"));
+    k8sMethods.listPools.mockRejectedValue(httpFailure(403));
     const res = await c.listResources("kapsule-cluster", ACCOUNT);
     expect(res[0]!.fields["nodeCount"]).toBe(0);
     expect(res[0]!.fields["diskSizeGb"]).toBe(0);
   });
 
-  it("ignores regions that throw", async () => {
+  it("fails rather than read a failed region as empty", async () => {
     const c = makeClient();
     k8sMethods.listClusters.mockRejectedValue(new Error("down"));
-    expect(await c.listResources("kapsule-cluster", ACCOUNT)).toEqual([]);
+    await expect(c.listResources("kapsule-cluster", ACCOUNT)).rejects.toThrow("down");
   });
 });
 
@@ -418,10 +446,10 @@ describe("listResources block-volume", () => {
     expect(res[1]!.fields["attachedInstanceId"]).toBe("");
   });
 
-  it("ignores zones that throw", async () => {
+  it("fails rather than read a failed zone as empty", async () => {
     const c = makeClient();
     blockMethods.listVolumes.mockRejectedValue(new Error("down"));
-    expect(await c.listResources("block-volume", ACCOUNT)).toEqual([]);
+    await expect(c.listResources("block-volume", ACCOUNT)).rejects.toThrow("down");
   });
 });
 
@@ -443,17 +471,29 @@ describe("listResources object-storage-bucket", () => {
     expect(res[0]!.resolvedOutputs["endpoint"]).toBe("https://s3.fr-par.scw.cloud");
   });
 
-  it("skips region on S3 error", async () => {
+  it("skips a region that refuses, while another answers", async () => {
+    const c = makeClient();
+    s3Mocks.signedS3Fetch.mockImplementation(async ({ url }: { url: string }) =>
+      url.includes("s3.it-mil.scw.cloud")
+        ? s3Response(403, "denied")
+        : s3Response(200, "<ListAllMyBucketsResult></ListAllMyBucketsResult>"),
+    );
+    expect(await c.listResources("object-storage-bucket", ACCOUNT)).toEqual([]);
+  });
+
+  it("throws when every region refuses", async () => {
     const c = makeClient();
     s3Mocks.signedS3Fetch.mockResolvedValue(s3Response(403, "denied"));
-    expect(await c.listResources("object-storage-bucket", ACCOUNT)).toEqual([]);
+    await expect(c.listResources("object-storage-bucket", ACCOUNT)).rejects.toThrow(
+      "refused Object Storage buckets",
+    );
   });
 
   it("throws when S3 credentials missing (no accessKey)", async () => {
     const c = makeClient({ secretKey: "sk" });
-    // objectStorageFetch asserts credentials; the per-region try/catch swallows
-    // it, so the result is just empty.
-    expect(await c.listResources("object-storage-bucket", ACCOUNT)).toEqual([]);
+    await expect(c.listResources("object-storage-bucket", ACCOUNT)).rejects.toThrow(
+      "require an Access Key",
+    );
   });
 });
 
@@ -547,9 +587,9 @@ describe("resolveOutput", () => {
       url.includes("s3.fr-par.scw.cloud")
         ? s3Response(
             200,
-            "<r><Bucket><Name>b</Name><CreationDate>2024-01-01T00:00:00Z</CreationDate></Bucket></r>",
+            "<ListAllMyBucketsResult><Bucket><Name>b</Name><CreationDate>2024-01-01T00:00:00Z</CreationDate></Bucket></ListAllMyBucketsResult>",
           )
-        : s3Response(200, "<r></r>"),
+        : s3Response(200, "<ListAllMyBucketsResult></ListAllMyBucketsResult>"),
     );
     const id = `${ACCOUNT}:object-storage-bucket:fr-par/b`;
     expect(await c.resolveOutput("object-storage-bucket", id, "endpoint", ACCOUNT)).toBe(
@@ -1113,9 +1153,9 @@ describe("fetchDashboardStats", () => {
       url.includes("s3.fr-par.scw.cloud")
         ? s3Response(
             200,
-            "<r><Bucket><Name>b</Name><CreationDate>2024-01-01T00:00:00Z</CreationDate></Bucket></r>",
+            "<ListAllMyBucketsResult><Bucket><Name>b</Name><CreationDate>2024-01-01T00:00:00Z</CreationDate></Bucket></ListAllMyBucketsResult>",
           )
-        : s3Response(200, "<r></r>"),
+        : s3Response(200, "<ListAllMyBucketsResult></ListAllMyBucketsResult>"),
     );
     const stats = await c.fetchDashboardStats(
       "object-storage-bucket",
@@ -1559,9 +1599,9 @@ describe("storage browser verbs", () => {
       url.includes("s3.fr-par.scw.cloud")
         ? s3Response(
             200,
-            "<r><Bucket><Name>cached</Name><CreationDate>2024-01-01T00:00:00Z</CreationDate></Bucket></r>",
+            "<ListAllMyBucketsResult><Bucket><Name>cached</Name><CreationDate>2024-01-01T00:00:00Z</CreationDate></Bucket></ListAllMyBucketsResult>",
           )
-        : s3Response(200, "<r></r>"),
+        : s3Response(200, "<ListAllMyBucketsResult></ListAllMyBucketsResult>"),
     );
     await c.listResources("object-storage-bucket", ACCOUNT);
     s3Mocks.signedS3Fetch.mockClear();

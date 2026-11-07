@@ -19,10 +19,13 @@
  */
 
 import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { jsonRestFetch, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 
 const CONSUMPTIONS_URL = "https://api.scaleway.com/billing/v2beta1/consumptions";
+const CONSUMPTIONS_PATH = "/billing/v2beta1/consumptions";
 const PAGE_SIZE = 100;
+/** A month of 100,000 consumption lines. Past it, throw rather than undercount. */
+const MAX_PAGES = 1000;
 
 /** google.type.Money as serialized by the Scaleway API. */
 interface ScwMoney {
@@ -117,8 +120,15 @@ export async function fetchScalewayCostData(
 
   for (const periodStart of periodStartsInRange(range)) {
     const billingPeriod = periodStart.slice(0, 7); // YYYY-MM
-    let page = 1;
-    for (;;) {
+    for (let page = 1; ; page++) {
+      if (page > MAX_PAGES) {
+        throw new ListTruncatedError({
+          vendor: "Scaleway",
+          path: CONSUMPTIONS_PATH,
+          items: MAX_PAGES * PAGE_SIZE,
+          maxPages: MAX_PAGES,
+        });
+      }
       const params = new URLSearchParams({
         project_id: creds.projectId,
         billing_period: billingPeriod,
@@ -128,11 +138,16 @@ export async function fetchScalewayCostData(
       const res = await jsonRestFetch<ScwConsumptionsResponse>({
         vendor: "Scaleway",
         url: `${CONSUMPTIONS_URL}?${params.toString()}`,
-        errorPath: "/billing/v2beta1/consumptions",
+        errorPath: CONSUMPTIONS_PATH,
         headers: { "X-Auth-Token": creds.secretKey },
         ...(creds.http ? { http: creds.http } : {}),
       });
-      const batch = res.consumptions ?? [];
+      const batch = requireListPage(res.consumptions, {
+        vendor: "Scaleway",
+        path: CONSUMPTIONS_PATH,
+        key: "consumptions",
+        page: res,
+      });
       for (const consumption of batch) {
         add(
           periodStart,
@@ -144,7 +159,6 @@ export async function fetchScalewayCostData(
         );
       }
       if (batch.length < PAGE_SIZE) break;
-      page += 1;
     }
   }
 

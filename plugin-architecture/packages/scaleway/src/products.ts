@@ -1,4 +1,6 @@
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
+import { fanOut, MAX_PAGES, PAGE_SIZE } from "./lists.js";
 
 /**
  * Scaleway products the plugin reaches over plain REST rather than an
@@ -8,9 +10,9 @@ import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin
  * (`domain/v2beta1`) and Secret Manager (`secret-manager/v1beta1`). Paths and
  * JSON field names follow scaleway-sdk-go's generated `*_sdk.go` sources.
  *
- * Every lister fans out across the regions/zones it is given and drops the
- * ones that fail (a product not offered in a region answers 404/501), the
- * same tolerance the SDK-backed listers have.
+ * Every lister fans out across the regions/zones it is given through `fanOut`,
+ * the same one the SDK-backed listers use: a location that refuses has none, and
+ * any other failure fails the list.
  */
 
 export interface ScwRest {
@@ -19,34 +21,39 @@ export interface ScwRest {
   projectId: string;
 }
 
-const PAGE_SIZE = 100;
-
 /** Every page of a Scaleway list endpoint (`page`/`page_size`, `total_count`). */
 export async function listAll<T>(api: ScwRest, path: string, rootKey: string): Promise<T[]> {
+  const route = path.split("?")[0] ?? path;
   const out: T[] = [];
-  for (let page = 1; ; page++) {
+  for (let page = 1; page <= MAX_PAGES; page++) {
     const sep = path.includes("?") ? "&" : "?";
-    const data = await api.fetch<Record<string, unknown>>(
+    const data = await api.fetch<Record<string, T[] | undefined>>(
       `${path}${sep}page=${page}&page_size=${PAGE_SIZE}`,
     );
-    const batch = (data[rootKey] as T[] | undefined) ?? [];
-    out.push(...batch);
     const total = Number(data["total_count"] ?? 0);
-    if (batch.length < PAGE_SIZE || (total > 0 && out.length >= total)) break;
+    // An answer that counts nothing is empty whether or not it spells out the key.
+    const countsNone = data[rootKey] === undefined && "total_count" in data && total === 0;
+    const batch = requireListPage(countsNone ? [] : data[rootKey], {
+      vendor: "Scaleway",
+      path: route,
+      key: rootKey,
+      page: data,
+    });
+    out.push(...batch);
+    // The total outranks a short page: a server may page smaller than it was asked.
+    const done = total > 0 ? out.length >= total : batch.length < PAGE_SIZE;
+    if (batch.length === 0 || done) return out;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: "Scaleway",
+    path: route,
+    items: out.length,
+    maxPages: MAX_PAGES,
+  });
 }
 
 function projectQuery(api: ScwRest): string {
   return api.projectId ? `?project_id=${encodeURIComponent(api.projectId)}` : "";
-}
-
-async function fanOut<T>(
-  locations: string[],
-  fn: (location: string) => Promise<T[]>,
-): Promise<T[]> {
-  const results = await Promise.all(locations.map((l) => fn(l).catch(() => [] as T[])));
-  return results.flat();
 }
 
 function iso(value: string | null | undefined): string {
@@ -148,7 +155,7 @@ export function listLoadBalancers(
   zones: string[],
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  return fanOut(zones, async (zone) => {
+  return fanOut(zones, "load balancers", async (zone) => {
     const lbs = await listAll<ScwLb>(api, `/lb/v1/zones/${zone}/lbs${projectQuery(api)}`, "lbs");
     return lbs.map((lb) => mapLb(lb, zone, accountId));
   });
@@ -312,7 +319,7 @@ export function listPrivateNetworks(
   regions: string[],
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  return fanOut(regions, async (region) => {
+  return fanOut(regions, "private networks", async (region) => {
     const pns = await listAll<ScwPrivateNetwork>(
       api,
       `/vpc/v2/regions/${region}/private-networks${projectQuery(api)}`,
@@ -420,7 +427,7 @@ export function listContainers(
   regions: string[],
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  return fanOut(regions, async (region) => {
+  return fanOut(regions, "serverless containers", async (region) => {
     const cs = await listAll<ScwContainer>(
       api,
       `/containers/v1/regions/${region}/containers${projectQuery(api)}`,
@@ -524,7 +531,7 @@ export function listFunctions(
   regions: string[],
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  return fanOut(regions, async (region) => {
+  return fanOut(regions, "serverless functions", async (region) => {
     const fns = await listAll<ScwFunction>(
       api,
       `/functions/v1beta1/regions/${region}/functions${projectQuery(api)}`,
@@ -621,7 +628,7 @@ export function listRegistryNamespaces(
   regions: string[],
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  return fanOut(regions, async (region) => {
+  return fanOut(regions, "registry namespaces", async (region) => {
     const nss = await listAll<ScwRegistryNamespace>(
       api,
       `/registry/v1/regions/${region}/namespaces${projectQuery(api)}`,
@@ -715,7 +722,7 @@ export function listSecrets(
   regions: string[],
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  return fanOut(regions, async (region) => {
+  return fanOut(regions, "secrets", async (region) => {
     const secrets = await listAll<ScwSecret>(
       api,
       `/secret-manager/v1beta1/regions/${region}/secrets${projectQuery(api)}`,
@@ -805,7 +812,7 @@ export async function listDnsZones(api: ScwRest, accountId: string): Promise<Res
 
 export async function listDnsRecords(api: ScwRest, accountId: string): Promise<ResourceInstance[]> {
   const zones = await listZonesRaw(api);
-  return fanOut(zones.map(zoneFqdn), async (zone) => {
+  return fanOut(zones.map(zoneFqdn), "DNS records", async (zone) => {
     const records = await listAll<ScwDnsRecord>(
       api,
       `/domain/v2beta1/dns-zones/${encodeURIComponent(zone)}/records`,
