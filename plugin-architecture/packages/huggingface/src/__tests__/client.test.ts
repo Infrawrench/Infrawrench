@@ -350,6 +350,42 @@ describe("answers that are not a list", () => {
     });
     await expect(org(http).listResources("hf-job", ACCOUNT)).rejects.toThrow("is not a list");
   });
+
+  it("throws when the endpoint list loses its key, on the first page or a later one", async () => {
+    const first = host((req) => {
+      if (req.url.includes("/v2/endpoint/acme")) return { body: { endpoints: [] } };
+      return { body: VENDORS };
+    });
+    await expect(org(first.http).listResources("hf-inference-endpoint", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+    const later = host((req) => {
+      if (req.url.includes("cursor=2")) return { body: { endpoints: [] } };
+      if (req.url.includes("/v2/endpoint/acme")) {
+        return { body: { items: [{ name: "one" }], nextCursor: "2" } };
+      }
+      return { body: VENDORS };
+    });
+    await expect(org(later.http).listResources("hf-inference-endpoint", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+});
+
+describe("the endpoint list", () => {
+  it("reads 10,000 rows, then throws rather than stop short", async () => {
+    let page = 0;
+    const { http, calls } = host((req) => {
+      if (req.url.includes("/v2/provider/")) return { body: VENDORS };
+      page += 1;
+      return { body: { items: [{ name: `e${page}` }], nextCursor: String(page) } };
+    });
+    await expect(org(http).listResources("hf-inference-endpoint", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((c) => c.url.includes("/v2/endpoint/"))).toHaveLength(100);
+    expect(calls[0]?.url).toContain("limit=100");
+  });
 });
 
 describe("mutations", () => {

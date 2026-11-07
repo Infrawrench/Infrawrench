@@ -239,18 +239,9 @@ export class HuggingFaceClient implements PluginClient {
    */
   private async listEndpoints(accountId: string): Promise<ResourceInstance[]> {
     const ns = await this.namespace();
-    const items: Endpoint[] = [];
-    let cursor: string | undefined;
+    let items: Endpoint[];
     try {
-      for (let page = 0; page < 50; page++) {
-        const res = await this.api.endpoints.get(`/v2/endpoint/${pathEncode(ns)}`, {
-          // `String`: a cursor is opaque and not validated, and an object must not expand.
-          query: { limit: 100, ...(cursor ? { cursor: String(cursor) } : {}) },
-        });
-        items.push(...(res.items ?? []));
-        cursor = res.nextCursor ?? undefined;
-        if (!cursor || (res.items ?? []).length === 0) break;
-      }
+      items = await this.api.endpoints.getAll(`/v2/endpoint/${pathEncode(ns)}`, "items");
     } catch (err) {
       if (statusOf(err) === 401 || statusOf(err) === 403) return [];
       throw err;

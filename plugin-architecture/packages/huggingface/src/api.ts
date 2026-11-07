@@ -7,6 +7,7 @@ import {
   createApiClient,
   nextLinkHeader,
   unencodedSegment,
+  withCursorPagination,
   withLinkPagination,
   type NoSlashString,
   type ParamValue,
@@ -76,7 +77,17 @@ export function createHfApis(ctx: HfContext) {
       createApiClient<HubApiPaths>({ ...hub, serializeQuery: repoQuery }),
       links,
     ),
-    endpoints: createApiClient<EndpointsPaths>({ ...shared, baseUrl: ENDPOINTS_BASE }),
+    // The document sets no largest `limit`, so this keeps the size always sent: 10,000 rows.
+    endpoints: withCursorPagination(
+      createApiClient<EndpointsPaths>({ ...shared, baseUrl: ENDPOINTS_BASE }),
+      {
+        cursorParam: "cursor",
+        sizeParam: "limit",
+        pageSize: 100,
+        maxPages: 100,
+        next: "nextCursor",
+      },
+    ),
   };
 }
 
