@@ -193,6 +193,18 @@ describe("monitoringReader", () => {
     );
   });
 
+  it("refuses at its page cap: a series left unread could be what keeps a resource busy", async () => {
+    const get = vi.fn(async () => ({ timeSeries: [], nextPageToken: "more" }));
+    const read = monitoringReader("p", get as never);
+    await expect(
+      read(
+        { metricType: "m", filters: [], aligner: "ALIGN_RATE", reducer: "REDUCE_SUM" },
+        { start: new Date("2026-10-02T00:00:00Z"), end: new Date("2026-10-16T00:00:00Z") },
+      ),
+    ).rejects.toThrow("has more than Infrawrench reads");
+    expect(get).toHaveBeenCalledTimes(20);
+  });
+
   it("turns a permission denial into an access error, but not a disabled API", async () => {
     const denied = monitoringReader("p", (async () => {
       throw new Error("GCP API error 403: PERMISSION_DENIED");

@@ -21,7 +21,7 @@
  * question this feature asks. It would be an addition, never a replacement.
  */
 
-import { QuotaAccessError, type QuotaUsage } from "@infrawrench/plugin-base";
+import { ListTruncatedError, QuotaAccessError, type QuotaUsage } from "@infrawrench/plugin-base";
 
 /** One entry of a `Region.quotas` / `Project.quotas` array. */
 export interface GcpQuota {
@@ -202,6 +202,14 @@ export async function fetchGcpQuotas(ctx: GcpQuotaContext): Promise<QuotaUsage[]
     }
     pageToken = response.nextPageToken;
     if (!pageToken) break;
+    if (page === MAX_REGION_PAGES - 1) {
+      throw new ListTruncatedError({
+        vendor: "Compute Engine",
+        path: `/compute/v1/projects/${ctx.project}/regions`,
+        items: readings.length,
+        maxPages: MAX_REGION_PAGES,
+      });
+    }
   }
 
   if (readings.length === 0 && (project.quotas ?? []).length === 0) {

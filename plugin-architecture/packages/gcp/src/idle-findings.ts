@@ -21,6 +21,7 @@
  */
 import {
   IdleFindingAccessError,
+  ListTruncatedError,
   type CostEstimate,
   type IdleFindingRecord,
   type IdleFindingsCapabilityDeclaration,
@@ -30,6 +31,7 @@ import {
 } from "@infrawrench/plugin-base";
 
 const DAY_SECONDS = 86_400;
+const MAX_SERIES_PAGES = 20;
 const MB = 1_000_000;
 
 /**
@@ -147,7 +149,7 @@ export function monitoringReader(
   return async (query, window) => {
     const out: DailySeries[] = [];
     let pageToken: string | undefined;
-    for (let page = 0; page < 20; page += 1) {
+    for (let page = 0; page < MAX_SERIES_PAGES; page += 1) {
       const url = new URL(`https://monitoring.googleapis.com/v3/projects/${project}/timeSeries`);
       url.searchParams.set(
         "filter",
@@ -195,9 +197,15 @@ export function monitoringReader(
         });
       }
       pageToken = resp.nextPageToken || undefined;
-      if (!pageToken) break;
+      if (!pageToken) return out;
     }
-    return out;
+    // A series left unread could be the workload that keeps a resource from being idle.
+    throw new ListTruncatedError({
+      vendor: "Cloud Monitoring",
+      path: `/v3/projects/${project}/timeSeries`,
+      items: out.length,
+      maxPages: MAX_SERIES_PAGES,
+    });
   };
 }
 

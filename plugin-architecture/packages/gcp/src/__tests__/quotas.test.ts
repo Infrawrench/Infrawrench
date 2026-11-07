@@ -138,6 +138,17 @@ describe("fetchGcpQuotas", () => {
     expect(readings.map((r) => r.region)).toContain("europe-west1");
   });
 
+  it("refuses at its page cap rather than returning some regions", async () => {
+    const { ctx, listRegions } = makeCtx({
+      pages: Array.from({ length: 15 }, () => ({
+        items: [REGION_FIXTURE],
+        nextPageToken: "more",
+      })),
+    });
+    await expect(fetchGcpQuotas(ctx as never)).rejects.toThrow("has more than Infrawrench reads");
+    expect(listRegions).toHaveBeenCalledTimes(10);
+  });
+
   // A region the project has been cut off from reports stale quotas nobody
   // can act on. `UP` is the only status that means "you can provision here".
   it("skips a region that is not UP", async () => {
