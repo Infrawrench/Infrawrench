@@ -225,6 +225,54 @@ describe("reading a whole list", () => {
     expect(reads[0]!.query.get("limit")).toBe(limit);
   });
 
+  it("refuses a group whose answer has no variables rather than read it as none", async () => {
+    route("GET", "/env-groups", groups(1));
+    route("GET", "/env-groups/evg-0", { id: "evg-0", name: "group-0" });
+    await expect(client().listResources("env-group-var", ACCOUNT)).rejects.toThrow("is not a list");
+    route("GET", "/env-groups/evg-0", () => new Response("", { status: 200 }));
+    await expect(client().listResources("env-group-var", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a maintenance answer that is not a list", async () => {
+    route("GET", "/services", []);
+    route("GET", "/postgres", []);
+    route("GET", "/key-value", []);
+    route("GET", "/maintenance", { message: "nope" });
+    await expect(client().listResources("maintenance", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("keeps a maintenance list when only the names behind it fail", async () => {
+    route("GET", "/services", () => new Response("{}", { status: 403 }));
+    route("GET", "/postgres", []);
+    route("GET", "/key-value", []);
+    route("GET", "/maintenance", [
+      {
+        id: "mrn-1",
+        resourceId: "srv-web",
+        type: "t",
+        state: "scheduled",
+        scheduledAt: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    expect(await client().listResources("maintenance", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("lets an incomplete name lookup fail the maintenance and disk lists", async () => {
+    const endless = () =>
+      Array.from({ length: 100 }, (_, i) => ({ service: { ...WEB, id: `srv-${i}` } }));
+    route("GET", "/services", endless);
+    route("GET", "/postgres", []);
+    route("GET", "/key-value", []);
+    route("GET", "/maintenance", []);
+    route("GET", "/disks", []);
+    await expect(client().listResources("maintenance", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    await expect(client().listResources("disk", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
   it("uses the host transport with no CA and never the global fetch", async () => {
     const stubbed = vi.fn(() => Promise.reject(new Error("unexpected fetch")));
     vi.stubGlobal("fetch", stubbed);

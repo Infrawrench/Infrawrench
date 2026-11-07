@@ -15,7 +15,12 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { pathEncode, withMetricsCapability } from "@infrawrench/plugin-base";
+import {
+  pathEncode,
+  requireListPage,
+  rethrowIncompleteList,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
 import type { operations } from "./api-types.gen.js";
 import {
   createRenderApi,
@@ -88,6 +93,12 @@ const LIST_TTL_MS = 30_000;
 const FAN_OUT = 6;
 const DEPLOYS_PER_SERVICE = 10;
 const JOBS_PER_SERVICE = 20;
+
+/** For a list read only to label rows: no names is fine, a list cut short is not. */
+const namesUnavailable = <T>(err: unknown): T[] => {
+  rethrowIncompleteList(err);
+  return [];
+};
 
 /** Service types that run instances (and so take disks, scaling and jobs). */
 const RUNTIME_TYPES = new Set(["web_service", "private_service", "background_worker"]);
@@ -217,7 +228,7 @@ export class RenderClient implements PluginClient {
         case "disk": {
           const [disks, services] = await Promise.all([
             listDisks(this.api, this.ownerQuery()),
-            this.services().catch((): RenderService[] => []),
+            this.services().catch(namesUnavailable<RenderService>),
           ]);
           const names = new Map(services.map((s) => [s.id, s.name]));
           return disks.map((d) => mapDisk(d, names, accountId));
@@ -238,7 +249,13 @@ export class RenderClient implements PluginClient {
           const groups = await listEnvGroups(this.api, this.ownerQuery());
           const lists = await mapLimit(groups, FAN_OUT, async (g) => {
             const full = await this.api.get(`/env-groups/${pathEncode(g.id)}`);
-            return (full?.envVars ?? []).map((v) => mapEnvGroupVar(v, g, accountId));
+            const vars = requireListPage(full?.envVars, {
+              vendor: "Render",
+              path: "/env-groups/{envGroupId}",
+              key: "envVars",
+              page: full,
+            });
+            return vars.map((v) => mapEnvGroupVar(v, g, accountId));
           });
           return lists.flat();
         }
@@ -263,13 +280,16 @@ export class RenderClient implements PluginClient {
   private async listMaintenance(accountId: string): Promise<ResourceInstance[]> {
     const [runs, services, pgs, kvs] = await Promise.all([
       this.api.get("/maintenance", { query: this.ownerQuery() }),
-      this.services().catch((): RenderService[] => []),
-      listPostgres(this.api, this.ownerQuery()).catch((): RenderPostgres[] => []),
-      listKeyValues(this.api, this.ownerQuery()).catch((): RenderKeyValue[] => []),
+      this.services().catch(namesUnavailable<RenderService>),
+      listPostgres(this.api, this.ownerQuery()).catch(namesUnavailable<RenderPostgres>),
+      listKeyValues(this.api, this.ownerQuery()).catch(namesUnavailable<RenderKeyValue>),
     ]);
     const names = new Map<string, string>();
     for (const r of [...services, ...pgs, ...kvs]) names.set(r.id, r.name);
-    return (Array.isArray(runs) ? runs : []).map((m) => mapMaintenance(m, names, accountId));
+    // The document gives this route no paging: the answer is the whole list.
+    return requireListPage(runs, { vendor: "Render", path: "/maintenance", key: null }).map((m) =>
+      mapMaintenance(m, names, accountId),
+    );
   }
 
   getResource(
