@@ -23,7 +23,12 @@ import type {
   WarehouseLoadResult,
   WarehouseSetupGuide,
 } from "@infrawrench/plugin-base";
-import { CostSetupError, decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  ListTruncatedError,
+  decodePromptArgs,
+  externalIdOf,
+} from "@infrawrench/plugin-base";
 import type { SnowflakeAccount } from "./account.js";
 import { parseAccount, snowsightUrl } from "./account.js";
 import type { QueryResult, SnowflakeContext, StatementOptions } from "./api.js";
@@ -108,6 +113,12 @@ function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   return value;
 }
 
+/**
+ * SHOW WAREHOUSES and SHOW PIPES document that "any records above the ten thousand
+ * records limit aren't returned", with no error, so an answer this long may be missing rows.
+ */
+const SHOW_RECORD_LIMIT = 10_000;
+
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /** `snowflake-task` etc. carry `DB.SCHEMA.NAME` external ids. */
@@ -149,7 +160,16 @@ export class SnowflakeClient implements PluginClient {
   }
 
   private async rows(statement: string): Promise<Record<string, unknown>[]> {
-    return (await this.sql(statement, { everyRow: true })).rows;
+    const { rows } = await this.sql(statement, { everyRow: true });
+    if (rows.length >= SHOW_RECORD_LIMIT) {
+      throw new ListTruncatedError({
+        vendor: "Snowflake",
+        path: statement,
+        items: rows.length,
+        maxItems: SHOW_RECORD_LIMIT,
+      });
+    }
+    return rows;
   }
 
   // -------------------------------------------------------------------------

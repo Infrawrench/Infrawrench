@@ -121,6 +121,28 @@ describe("a read that fails while listing", () => {
 });
 
 describe("a list read that cannot say it has every row", () => {
+  const namedRows = (count: number) =>
+    jsonResponse(
+      200,
+      resultSet(
+        [{ name: "name" }],
+        Array.from({ length: count }, (_, i) => [`W_${i}`]),
+      ),
+    );
+
+  it("throws at SHOW's 10,000 records, past which Snowflake drops the rest without an error", async () => {
+    mockSnowflake(() => namedRows(10_000));
+    await expect(
+      hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.warehouse, "acc"),
+    ).rejects.toThrow("Snowflake: SHOW WAREHOUSES has more than Infrawrench reads");
+  });
+
+  it("reads a list just under SHOW's limit", async () => {
+    mockSnowflake(() => namedRows(9_999));
+    const list = await hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.warehouse, "acc");
+    expect(list).toHaveLength(9_999);
+  });
+
   it.each([TYPE.warehouse, TYPE.database, TYPE.schema, TYPE.role, TYPE.pipe, TYPE.account])(
     "fails %s on a 200 that is not a ResultSet, rather than pruning them",
     async (typeId) => {
