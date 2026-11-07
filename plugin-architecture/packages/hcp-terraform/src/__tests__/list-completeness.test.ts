@@ -179,6 +179,16 @@ describe("listResources", () => {
       expect(unread).toEqual([{ parentResourceIds: [`${ACC}:${parentType}:p-1`] }]);
     });
 
+    it(`${typeId}: a parent that refuses fails the type where the host keeps no track`, async () => {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      const { c } = client((call) => {
+        if (call.url.pathname.endsWith(parentPath)) return parents;
+        if (call.url.pathname.includes("/p-1")) return REFUSED;
+        return { data: [doc("child", "children", { key: "k", name: "n" })] };
+      });
+      await expect(c.listResources(typeId, ACC)).rejects.toThrow("404");
+    });
+
     it(`${typeId}: any other failure fails the type`, async () => {
       const { c } = client((call) => {
         if (call.url.pathname.endsWith(parentPath)) return parents;
@@ -231,6 +241,17 @@ describe("listResources", () => {
     expect(read(next.calls)).toContain("/api/v2/workspaces/ws-00799/vars");
     expect(read(next.calls)).not.toContain("/api/v2/workspaces/ws-00800/vars");
     expect(unread[0]!.parentResourceIds![0]).toBe(`${ACC}:workspace:ws-00800`);
+  });
+
+  it("reads every workspace's children where the host keeps no track of the rest", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const { c, calls } = client((call) =>
+      call.url.pathname.endsWith("/organizations/acme/workspaces")
+        ? workspacePage(call, 1200)
+        : { data: [doc(`v-${call.url.pathname}`, "vars", { key: "k" })] },
+    );
+    expect(await c.listResources("variable", ACC)).toHaveLength(1200);
+    expect(calls.filter((call) => call.url.pathname.endsWith("/vars"))).toHaveLength(1200);
   });
 
   it("names nobody when every parent fits", async () => {

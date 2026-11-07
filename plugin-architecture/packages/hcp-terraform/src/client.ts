@@ -347,22 +347,26 @@ export class HcpTerraformClient implements PluginClient {
     fn: (parent: Doc<A>) => Promise<ResourceInstance[]>,
     isUnread: (err: unknown) => boolean = isRefusal,
   ): Promise<ResourceInstance[]> {
+    const named = (ids: string[]) => ({
+      parentResourceIds: ids.map((id) => `${accountId}:${parentTypeId}:${id}`),
+    });
     const { read, later } = fanOutWindow(parents);
-    const unread = later.map((p) => p.id);
+    // A host that keeps no track (the desktop) answers false. It has no poll to outlast, so
+    // it reads every parent, and a parent it could not read shows rather than go missing.
+    const tracked = later.length === 0 || reportUnreadListPart(named(later.map((p) => p.id)));
+    const unread: string[] = [];
+    let failure: unknown;
     const out: ResourceInstance[] = [];
-    for (const parent of read) {
+    for (const parent of tracked ? read : parents) {
       try {
         out.push(...(await fn(parent)));
       } catch (err) {
         if (!isUnread(err)) throw err;
         unread.push(parent.id);
+        failure ??= err;
       }
     }
-    if (unread.length > 0) {
-      reportUnreadListPart({
-        parentResourceIds: unread.map((id) => `${accountId}:${parentTypeId}:${id}`),
-      });
-    }
+    if (unread.length > 0 && !reportUnreadListPart(named(unread))) throw failure;
     return out;
   }
 
