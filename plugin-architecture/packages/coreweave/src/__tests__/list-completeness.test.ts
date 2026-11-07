@@ -307,3 +307,58 @@ describe("Node Pools across clusters", () => {
     await expect(client.listResources("instance-type", "acc")).rejects.toThrow("is not a list");
   });
 });
+
+describe("a zone the Cloud API could not query", () => {
+  const CLUSTER = { id: "c-1", name: "train", zone: "US-EAST-04A" };
+  const VPC = { id: "v-1", name: "main", zone: "US-EAST-04A" };
+  const clustersAnswer = (body: object) =>
+    stubFetch((url) => (url.pathname === "/v1beta1/cks/clusters" ? { body } : { body: {} }));
+  const vpcsAnswer = (body: object) =>
+    stubFetch((url) => (url.pathname === "/v1beta1/networking/vpcs" ? { body } : { body: {} }));
+  const client = () => hostClient(new CoreWeaveClient({ apiToken: "t" }));
+
+  it.each(["cks-cluster", "node-pool"])("keeps the stored %s rows", async (typeId) => {
+    clustersAnswer({ items: [CLUSTER], unreachable: ["US-WEST-01A"] });
+    const parts = trackUnread();
+    await client().listResources(typeId, "acc");
+    expect(parts).toContainEqual({ idPrefixes: [""] });
+  });
+
+  it("keeps the stored clusters when the only answer is that a zone was unreachable", async () => {
+    clustersAnswer({ unreachable: ["US-WEST-01A"] });
+    const parts = trackUnread();
+    await expect(client().listResources("cks-cluster", "acc")).resolves.toEqual([]);
+    expect(parts).toEqual([{ idPrefixes: [""] }]);
+  });
+
+  it("keeps the stored VPCs on a per-zone warning", async () => {
+    vpcsAnswer({ items: [VPC], warnings: [{ zone: "US-WEST-01A" }] });
+    const parts = trackUnread();
+    await expect(client().listResources("vpc", "acc")).resolves.toHaveLength(1);
+    expect(parts).toEqual([{ idPrefixes: [""] }]);
+  });
+
+  it("reports nothing when every zone answered", async () => {
+    clustersAnswer({ items: [CLUSTER], unreachable: [] });
+    const parts = trackUnread();
+    await expect(client().listResources("cks-cluster", "acc")).resolves.toHaveLength(1);
+    vpcsAnswer({ items: [VPC], warnings: [] });
+    await expect(client().listResources("vpc", "acc")).resolves.toHaveLength(1);
+    expect(parts).toEqual([]);
+  });
+
+  it("reads an account with no clusters or VPCs as empty", async () => {
+    stubFetch(() => ({ body: {} }));
+    const parts = trackUnread();
+    await expect(client().listResources("cks-cluster", "acc")).resolves.toEqual([]);
+    await expect(client().listResources("vpc", "acc")).resolves.toEqual([]);
+    expect(parts).toEqual([]);
+  });
+
+  it("refuses a renamed list key", async () => {
+    clustersAnswer({ clusters: [CLUSTER] });
+    await expect(client().listResources("cks-cluster", "acc")).rejects.toThrow("is not a list");
+    vpcsAnswer({ vpcs: [VPC] });
+    await expect(client().listResources("vpc", "acc")).rejects.toThrow("is not a list");
+  });
+});

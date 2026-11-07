@@ -26,7 +26,7 @@ import {
   uploadS3Object,
 } from "@infrawrench/plugin-base";
 import type { CoreWeaveContext } from "./api.js";
-import { apiServerOrigin, cwFetch, statusOf } from "./api.js";
+import { apiServerOrigin, cloudList, cwFetch, statusOf } from "./api.js";
 import {
   INSTANCE_TYPES,
   KUBERNETES_VERSIONS,
@@ -133,6 +133,18 @@ async function mapPooled<T, R>(
   return out;
 }
 
+/** A list across every zone, which the API answers with what the reachable zones returned. */
+interface ZonedList<T> {
+  items: T[];
+  /** Some zone could not be queried, so what is missing here may still exist. */
+  missedZones: boolean;
+}
+
+/** Rows carry no zone in their ids, so a missed zone keeps all of the type's stored rows. */
+function keepRowsThroughMissedZone(list: { missedZones: boolean }): void {
+  if (list.missedZones) reportUnreadListPart({ idPrefixes: [""] });
+}
+
 interface PoolsByCluster {
   pools: Map<string, CwNodePool[]>;
   /** Clusters whose pools could not be read, so nothing can be said about them. */
@@ -177,8 +189,8 @@ export class CoreWeaveClient implements PluginClient {
   private readonly ctx: CoreWeaveContext;
   private readonly rates: NegotiatedRates;
   private readonly s3: TemporaryS3Credentials;
-  private clustersCache: Cached<CwCluster[]> | undefined;
-  private vpcsCache: Cached<CwVpc[]> | undefined;
+  private clustersCache: Cached<ZonedList<CwCluster>> | undefined;
+  private vpcsCache: Cached<ZonedList<CwVpc>> | undefined;
   private poolsCache: Cached<PoolsByCluster> | undefined;
   private readonly bucketZones = new Map<string, string>();
 
@@ -206,22 +218,43 @@ export class CoreWeaveClient implements PluginClient {
     return { at: Date.now(), value };
   }
 
-  private clusters(): Promise<CwCluster[]> {
+  private clusterList(): Promise<ZonedList<CwCluster>> {
     this.clustersCache = this.cached(this.clustersCache, async () => {
-      const res = await cwFetch<{ items?: CwCluster[] }>(this.ctx, "/v1beta1/cks/clusters", {
-        query: { returnPartialSuccess: true },
-      });
-      return res?.items ?? [];
+      const path = "/v1beta1/cks/clusters";
+      const res = await cwFetch<{ items?: CwCluster[] | null; unreachable?: string[] | null }>(
+        this.ctx,
+        path,
+        { query: { returnPartialSuccess: true } },
+      );
+      return {
+        items: cloudList(res, res?.items, { path, key: "items", siblings: ["unreachable"] }),
+        missedZones: (res?.unreachable?.length ?? 0) > 0,
+      };
     });
     return this.clustersCache.value;
   }
 
-  private vpcs(): Promise<CwVpc[]> {
+  private async clusters(): Promise<CwCluster[]> {
+    return (await this.clusterList()).items;
+  }
+
+  private vpcList(): Promise<ZonedList<CwVpc>> {
     this.vpcsCache = this.cached(this.vpcsCache, async () => {
-      const res = await cwFetch<{ items?: CwVpc[] }>(this.ctx, "/v1beta1/networking/vpcs");
-      return res?.items ?? [];
+      const path = "/v1beta1/networking/vpcs";
+      const res = await cwFetch<{ items?: CwVpc[] | null; warnings?: object[] | null }>(
+        this.ctx,
+        path,
+      );
+      return {
+        items: cloudList(res, res?.items, { path, key: "items", siblings: ["warnings"] }),
+        missedZones: (res?.warnings?.length ?? 0) > 0,
+      };
     });
     return this.vpcsCache.value;
+  }
+
+  private async vpcs(): Promise<CwVpc[]> {
+    return (await this.vpcList()).items;
   }
 
   /**
@@ -349,19 +382,24 @@ export class CoreWeaveClient implements PluginClient {
         case "organization":
           return [this.organizationRow(accountId)];
         case "cks-cluster":
-          return this.scoped(async () => this.mapClusters(accountId, await this.clusters()));
+          return this.scoped(async () => {
+            const list = await this.clusterList();
+            keepRowsThroughMissedZone(list);
+            return this.mapClusters(accountId, list.items);
+          });
         case "node-pool":
           return this.scoped(async () => {
-            const [clusters, { pools, unread }] = await Promise.all([
-              this.clusters(),
+            const [list, { pools, unread }] = await Promise.all([
+              this.clusterList(),
               this.allPools(),
             ]);
+            keepRowsThroughMissedZone(list);
             if (unread.length > 0) {
               reportUnreadListPart({
                 parentResourceIds: unread.map((id) => `${accountId}:cks-cluster:${id}`),
               });
             }
-            return clusters.flatMap((c) =>
+            return list.items.flatMap((c) =>
               (pools.get(c.id ?? "") ?? []).map((p) =>
                 mapNodePool(accountId, { id: c.id ?? "", name: c.name ?? "" }, p, this.rates),
               ),
@@ -381,7 +419,11 @@ export class CoreWeaveClient implements PluginClient {
           );
         }
         case "vpc":
-          return this.scoped(async () => (await this.vpcs()).map((v) => mapVpc(accountId, v)));
+          return this.scoped(async () => {
+            const list = await this.vpcList();
+            keepRowsThroughMissedZone(list);
+            return list.items.map((v) => mapVpc(accountId, v));
+          });
         case "bucket":
           return this.scoped(async () => {
             const buckets = await listBuckets(this.ctx);
