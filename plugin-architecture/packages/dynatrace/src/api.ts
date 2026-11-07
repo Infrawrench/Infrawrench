@@ -1,5 +1,5 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { jsonRestFetch, ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 
 /**
  * Everything a Dynatrace request needs. Split out of the client so the cost
@@ -196,12 +196,16 @@ export function statusOf(err: unknown): number {
   return 0;
 }
 
-const MAX_PAGES = 20;
+/** 100,000 rows at the 500 a page the lists ask for, the most one poll can read and store. */
+const MAX_PAGES = 200;
 
 /**
  * Walk a `nextPageKey` list. Dynatrace rejects any other query parameter
  * alongside `nextPageKey` (the key already encodes the original query), so
  * follow-up pages send the key and nothing else.
+ *
+ * Throws past `maxPages`, and on a page whose list is not a list: a sync deletes
+ * whatever a list stops returning, so part of a list must never read as all of it.
  */
 export async function pagedList<T>(
   ctx: DynatraceContext,
@@ -216,10 +220,11 @@ export async function pagedList<T>(
     const res = await envFetch<Record<string, unknown>>(ctx, path, {
       query: next ? { nextPageKey: next } : query,
     });
-    const items = res?.[itemsKey];
-    if (Array.isArray(items)) out.push(...(items as T[]));
-    next = typeof res?.["nextPageKey"] === "string" ? (res["nextPageKey"] as string) : undefined;
-    if (!next) break;
+    const items = res?.[itemsKey] as T[] | null | undefined;
+    out.push(...requireListPage(items, { vendor: "Dynatrace", path, key: itemsKey }));
+    const key = res?.["nextPageKey"];
+    next = typeof key === "string" && key ? key : undefined;
+    if (!next) return out;
   }
-  return out;
+  throw new ListTruncatedError({ vendor: "Dynatrace", path, items: out.length, maxPages });
 }

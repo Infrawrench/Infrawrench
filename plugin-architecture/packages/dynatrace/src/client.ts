@@ -17,7 +17,7 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, requireListPage } from "@infrawrench/plugin-base";
 import type { DynatraceContext } from "./api.js";
 import { DynatraceApiError, envFetch, pagedList, resolveUrls, statusOf } from "./api.js";
 import type { DpsCredentials } from "./cost-data.js";
@@ -57,7 +57,11 @@ import {
 import { ENTITY_TYPES, SETTINGS_SCHEMAS } from "./resource-types.js";
 
 const ENTITY_PAGE = 500;
-const ENTITY_MAX_PAGES = 10;
+/** 10,000 SLOs: `evaluate=true` holds a page to 25. */
+const SLO_MAX_PAGES = 400;
+/** The access token list documents pages of up to 10,000, so 10 reach 100,000 rows. */
+const TOKEN_PAGE = 10_000;
+const TOKEN_MAX_PAGES = 10;
 /** Problems are listed for this far back; open ones are always included. */
 const PROBLEM_WINDOW = "now-7d";
 
@@ -159,18 +163,12 @@ export class DynatraceClient implements PluginClient {
   private async entities(typeId: string): Promise<DtEntity[]> {
     const type = ENTITY_TYPES[typeId];
     if (!type) return [];
-    return pagedList<DtEntity>(
-      this.ctx,
-      "/api/v2/entities",
-      "entities",
-      {
-        entitySelector: `type("${type}")`,
-        fields: this.entityFields(typeId),
-        pageSize: ENTITY_PAGE,
-        from: "now-72h",
-      },
-      ENTITY_MAX_PAGES,
-    );
+    return pagedList<DtEntity>(this.ctx, "/api/v2/entities", "entities", {
+      entitySelector: `type("${type}")`,
+      fields: this.entityFields(typeId),
+      pageSize: ENTITY_PAGE,
+      from: "now-72h",
+    });
   }
 
   private async locationNames(): Promise<Map<string, string>> {
@@ -229,7 +227,11 @@ export class DynatraceClient implements PluginClient {
               envFetch<{ monitors?: DtMonitorStub[] }>(this.ctx, "/api/v1/synthetic/monitors"),
               this.locationNames(),
             ]);
-            const stubs = (list.monitors ?? []).filter((m) => m.entityId);
+            const stubs = requireListPage(list?.monitors, {
+              vendor: "Dynatrace",
+              path: "/api/v1/synthetic/monitors",
+              key: "monitors",
+            }).filter((m) => m.entityId);
             // The list carries name/type/enabled only; detail reads are bounded.
             const details = await Promise.all(
               stubs
@@ -258,11 +260,17 @@ export class DynatraceClient implements PluginClient {
           );
         case "api-token":
           return this.scoped(async () => {
-            const tokens = await pagedList<DtApiToken>(this.ctx, "/api/v2/apiTokens", "apiTokens", {
-              pageSize: 500,
-              fields:
-                "+lastUsedDate,+lastUsedIpAddress,+expirationDate,+scopes,+personalAccessToken,+creationDate,+owner,+enabled,+name",
-            });
+            const tokens = await pagedList<DtApiToken>(
+              this.ctx,
+              "/api/v2/apiTokens",
+              "apiTokens",
+              {
+                pageSize: TOKEN_PAGE,
+                fields:
+                  "+lastUsedDate,+lastUsedIpAddress,+expirationDate,+scopes,+personalAccessToken,+creationDate,+owner,+enabled,+name",
+              },
+              TOKEN_MAX_PAGES,
+            );
             return tokens.filter((t) => t.id).map((t) => mapApiToken(accountId, t));
           });
         default:
@@ -281,7 +289,7 @@ export class DynatraceClient implements PluginClient {
       "/api/v2/slo",
       "slo",
       { pageSize: 25, evaluate: "true", enabledSlos: "all", timeFrame: "CURRENT", sort: "name" },
-      40,
+      SLO_MAX_PAGES,
     );
   }
 

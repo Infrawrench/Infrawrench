@@ -1,5 +1,10 @@
 import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
-import { CostSetupError, jsonRestFetch } from "@infrawrench/plugin-base";
+import {
+  CostSetupError,
+  jsonRestFetch,
+  ListTruncatedError,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import { DynatraceApiError, statusOf, withQuery } from "./api.js";
 
 /**
@@ -20,6 +25,8 @@ import { DynatraceApiError, statusOf, withQuery } from "./api.js";
 
 export const SSO_TOKEN_URL = "https://sso.dynatrace.com/sso/oauth2/token";
 export const ACCOUNT_API_URL = "https://api.dynatrace.com";
+/** Per chunk of days. The API documents no page size, so this leaves room for a small one. */
+const COST_MAX_PAGES = 1000;
 
 export interface DpsCredentials {
   accountUuid: string;
@@ -47,8 +54,13 @@ interface DpsCostRecord {
   bookingDate?: string;
 }
 
+interface DpsEnvCost {
+  environmentId?: string;
+  cost?: DpsCostRecord[];
+}
+
 interface DpsEnvCostResponse {
-  data?: Array<{ environmentId?: string; cost?: DpsCostRecord[] }>;
+  data?: DpsEnvCost[];
   nextPageKey?: string;
 }
 
@@ -126,10 +138,10 @@ async function accountFetch<T>(c: DpsCredentials, path: string, query?: Record<s
 }
 
 export function listSubscriptions(c: DpsCredentials): Promise<DpsSubscription[]> {
-  return accountFetch<{ data?: DpsSubscription[] }>(
-    c,
-    `/sub/v2/accounts/${encodeURIComponent(c.accountUuid)}/subscriptions`,
-  ).then((r) => r?.data ?? []);
+  const path = `/sub/v2/accounts/${encodeURIComponent(c.accountUuid)}/subscriptions`;
+  return accountFetch<{ data?: DpsSubscription[] }>(c, path).then((r) =>
+    requireListPage(r?.data, { vendor: "Dynatrace Account", path, key: "data" }),
+  );
 }
 
 function addDays(date: string, days: number): string {
@@ -154,6 +166,32 @@ function overlaps(s: DpsSubscription, from: string, to: string): boolean {
   const start = (s.startTime ?? "").slice(0, 10) || "0000-01-01";
   const end = (s.endTime ?? "").slice(0, 10) || "9999-12-31";
   return start <= to && end >= from;
+}
+
+/** Every page of one chunk of days. Throws past the cap: a cost read is reconciled like a sync. */
+async function readCostPages(
+  c: DpsCredentials,
+  path: string,
+  query: Record<string, string>,
+): Promise<DpsEnvCost[]> {
+  const out: DpsEnvCost[] = [];
+  let next: string | undefined;
+  for (let page = 0; page < COST_MAX_PAGES; page++) {
+    const res: DpsEnvCostResponse = await accountFetch<DpsEnvCostResponse>(
+      c,
+      path,
+      next ? { nextPageKey: next } : query,
+    );
+    out.push(...requireListPage(res?.data, { vendor: "Dynatrace Account", path, key: "data" }));
+    next = res?.nextPageKey || undefined;
+    if (!next) return out;
+  }
+  throw new ListTruncatedError({
+    vendor: "Dynatrace Account",
+    path,
+    items: out.length,
+    maxPages: COST_MAX_PAGES,
+  });
 }
 
 export async function fetchDpsCostData(
@@ -181,45 +219,35 @@ export async function fetchDpsCostData(
   const merged = new Map<string, CostRow>();
   for (const sub of subs.filter((s) => s.uuid && overlaps(s, range.fromDate, range.toDate))) {
     for (const [from, to] of chunkRange(range.fromDate, range.toDate)) {
-      let next: string | undefined;
-      for (let page = 0; page < 50; page++) {
-        const res: DpsEnvCostResponse = await accountFetch<DpsEnvCostResponse>(
-          c,
-          `/sub/v2/accounts/${encodeURIComponent(c.accountUuid)}/subscriptions/${encodeURIComponent(sub.uuid ?? "")}/environments/cost`,
-          next
-            ? { nextPageKey: next }
-            : {
-                startTime: `${from}T00:00:00Z`,
-                endTime: `${addDays(to, 1)}T00:00:00Z`,
-                ...(c.environmentId ? { environmentIds: c.environmentId } : {}),
-              },
-        );
-        for (const env of res?.data ?? []) {
-          if (c.environmentId && env.environmentId && env.environmentId !== c.environmentId) {
-            continue;
-          }
-          for (const rec of env.cost ?? []) {
-            const date = (rec.startTime ?? "").slice(0, 10);
-            if (!date || date < range.fromDate || date > range.toDate) continue;
-            const value = typeof rec.value === "number" ? rec.value : Number(rec.value);
-            if (!Number.isFinite(value)) continue;
-            const service = rec.capabilityName || rec.capabilityKey || "Dynatrace";
-            const currency = rec.currencyCode || "USD";
-            const key = `${date}|${service}|${currency}|${sub.uuid}`;
-            const prev = merged.get(key);
-            if (prev) prev.amount += value;
-            else
-              merged.set(key, {
-                date,
-                service,
-                currency,
-                amount: value,
-                tags: { subscription: sub.name || sub.uuid || "" },
-              });
-          }
+      const path = `/sub/v2/accounts/${encodeURIComponent(c.accountUuid)}/subscriptions/${encodeURIComponent(sub.uuid ?? "")}/environments/cost`;
+      const envs = await readCostPages(c, path, {
+        startTime: `${from}T00:00:00Z`,
+        endTime: `${addDays(to, 1)}T00:00:00Z`,
+        ...(c.environmentId ? { environmentIds: c.environmentId } : {}),
+      });
+      for (const env of envs) {
+        if (c.environmentId && env.environmentId && env.environmentId !== c.environmentId) {
+          continue;
         }
-        next = res?.nextPageKey || undefined;
-        if (!next) break;
+        for (const rec of env.cost ?? []) {
+          const date = (rec.startTime ?? "").slice(0, 10);
+          if (!date || date < range.fromDate || date > range.toDate) continue;
+          const value = typeof rec.value === "number" ? rec.value : Number(rec.value);
+          if (!Number.isFinite(value)) continue;
+          const service = rec.capabilityName || rec.capabilityKey || "Dynatrace";
+          const currency = rec.currencyCode || "USD";
+          const key = `${date}|${service}|${currency}|${sub.uuid}`;
+          const prev = merged.get(key);
+          if (prev) prev.amount += value;
+          else
+            merged.set(key, {
+              date,
+              service,
+              currency,
+              amount: value,
+              tags: { subscription: sub.name || sub.uuid || "" },
+            });
+        }
       }
     }
   }
