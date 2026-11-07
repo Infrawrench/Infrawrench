@@ -2,10 +2,12 @@ import { showcaseFields } from "@infrawrench/plugin-base";
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SentryClient } from "../client.js";
+import { fetchSentryCostData } from "../cost-data.js";
 import { plugin } from "../plugin.js";
+import { parseRates } from "../rates.js";
 import { ProjectResourceType } from "../resource-types.js";
 import type { Call } from "./helpers.js";
-import { makeHttp, stats } from "./helpers.js";
+import { ctxWith, makeHttp, stats } from "./helpers.js";
 
 const creds = { region: "us", authToken: "sntryi_TEST", organization: "acme" };
 const ACCOUNT = "acct";
@@ -308,6 +310,20 @@ describe("a failed read behind a list", () => {
     });
     await expect(c.fetchCostData!(ACCOUNT, range)).rejects.toThrow(
       "has more than Infrawrench reads",
+    );
+  });
+
+  it("fails cost collection on usage stats with no groups, and a series with no days", async () => {
+    const rates = parseRates({ errorPrice: "0.01" });
+    const inputs = { org: "acme", rates, projectSlugs: new Map<string, string>() };
+    const noGroups = makeHttp(() => ({ start: "x", end: "y", intervals: [] }));
+    await expect(fetchSentryCostData(ctxWith(noGroups.http), inputs, range)).rejects.toThrow(
+      "is not a list",
+    );
+    const series = stats(range.fromDate, 1, [{ by: { category: "error" }, series: [5] }]);
+    const noDays = makeHttp(() => ({ ...series, intervals: undefined }));
+    await expect(fetchSentryCostData(ctxWith(noDays.http), inputs, range)).rejects.toThrow(
+      "is not a list",
     );
   });
 });

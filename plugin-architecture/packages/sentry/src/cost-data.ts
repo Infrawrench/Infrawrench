@@ -24,7 +24,7 @@
  */
 
 import type { ApiResponse, CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
+import { CostSetupError, pathEncode, requireListPage } from "@infrawrench/plugin-base";
 import type { SentryContext } from "./api.js";
 import { isPermissionError, sentryApi, statusOf } from "./api.js";
 import type { operations } from "./api-types.gen.js";
@@ -34,6 +34,8 @@ import { SERVICES, USAGE_CATEGORIES, usageCategoryOf } from "./rates.js";
 const DAY_MS = 86_400_000;
 /** stats_v2 answers at most 90 days back. */
 export const MAX_STATS_DAYS = 90;
+
+const STATS_PATH = "/organizations/{org}/stats_v2/";
 
 type ListStats = operations["listOrganizationStatsV2"];
 
@@ -46,8 +48,12 @@ export type StatsQuery = Pick<
 > & { start: string; end: string };
 
 /** One stats_v2 call. Dates are ISO timestamps; `end` is inclusive. */
-export function fetchStats(ctx: SentryContext, org: string, q: StatsQuery): Promise<StatsResponse> {
-  return sentryApi(ctx).get(`/organizations/${pathEncode(org)}/stats_v2/`, {
+export async function fetchStats(
+  ctx: SentryContext,
+  org: string,
+  q: StatsQuery,
+): Promise<StatsResponse> {
+  const res = await sentryApi(ctx).get(`/organizations/${pathEncode(org)}/stats_v2/`, {
     query: {
       field: "sum(quantity)",
       groupBy: q.groupBy,
@@ -59,6 +65,9 @@ export function fetchStats(ctx: SentryContext, org: string, q: StatsQuery): Prom
       project: q.project ?? ["-1"],
     },
   });
+  // Always in the answer, so one without it is broken rather than no usage.
+  requireListPage(res.groups, { vendor: "Sentry", path: STATS_PATH, key: "groups" });
+  return res;
 }
 
 const QTY = "sum(quantity)";
@@ -128,8 +137,13 @@ async function mapLimit<T, R>(
  */
 export function dailyByCategory(res: StatsResponse): Map<string, Map<string, number>> {
   const out = new Map<string, Map<string, number>>();
-  const intervals = res.intervals ?? [];
-  for (const g of res.groups ?? []) {
+  const groups = res.groups ?? [];
+  // Sent only with a time series, which this is. The values are positions in it.
+  const intervals =
+    groups.length > 0
+      ? requireListPage(res.intervals, { vendor: "Sentry", path: STATS_PATH, key: "intervals" })
+      : [];
+  for (const g of groups) {
     const cat = usageCategoryOf(String(g.by["category"] ?? ""));
     if (!cat) continue;
     const series = g.series?.[QTY] ?? [];
