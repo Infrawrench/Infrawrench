@@ -94,7 +94,7 @@ export function mapRedis(accountId: string, db: UpRedis): ResourceInstance {
         : undefined,
     maxCommandsPerSecond: db.db_max_commands_per_second,
     maxClients: db.db_max_clients,
-    owner: db.customer_id,
+    owner: db.user_email || db.customer_id,
     createdAt: iso(db.creation_time),
   });
 }

@@ -257,6 +257,25 @@ describe("QStash", () => {
   });
 });
 
+describe("Redis owner", () => {
+  const listed = async (db: object) => {
+    mockFetch({ [`GET ${API}/redis/databases`]: [{ database_id: "db1", ...db }] });
+    const [r] = await hostClient(new UpstashClient(creds)).listResources("upstash-redis", ACC);
+    return r!.fields["owner"];
+  };
+
+  it("reads the documented user_email", async () => {
+    expect(await listed({ user_email: "owner@example.com" })).toBe("owner@example.com");
+  });
+
+  it("prefers user_email and still reads an undocumented customer_id", async () => {
+    expect(await listed({ user_email: "owner@example.com", customer_id: "old" })).toBe(
+      "owner@example.com",
+    );
+    expect(await listed({ user_email: "", customer_id: "old" })).toBe("old");
+  });
+});
+
 describe("helpers", () => {
   it("parses Go timestamps", () => {
     expect(parseUpstashTime("2025-09-04 15:12:52.76649148 +0000 UTC")).toBe(

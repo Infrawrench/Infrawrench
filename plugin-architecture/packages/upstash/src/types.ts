@@ -4,7 +4,7 @@ import type { components as QStash, paths as QStashPaths } from "./api-types.qst
 
 export type Point = Developer["schemas"]["TimeSeriesData"];
 
-/** `customer_id` is not in the document, which has `user_email` instead: #532. */
+/** `customer_id` is what this read before the document's `user_email`, kept as a fallback. */
 export type UpRedis = Developer["schemas"]["Database"] & { customer_id?: string };
 export type UpVector = Developer["schemas"]["VectorIndex"];
 export type UpSearch = Developer["schemas"]["SearchIndex"];
