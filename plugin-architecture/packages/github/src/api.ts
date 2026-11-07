@@ -220,30 +220,6 @@ export function byOwner<OrgAnswer, EnterpriseAnswer>(
 }
 
 /**
- * A request no document lists, which stays hand-written. These are the shared
- * create, edit and delete paths, which do not check the owner, as they run for
- * the kind of owner GitHub has no such route for.
- */
-export async function ghUnlisted<T>(
-  ctx: GitHubConnection,
-  method: "GET" | "POST" | "PATCH" | "DELETE",
-  path: string,
-  body?: object,
-): Promise<T> {
-  const answer = await restRequest<T>({
-    vendor: "GitHub",
-    url: `${ctx.host.apiUrl}${path}`,
-    errorPath: path,
-    headers: headers(ctx.token),
-    init: { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) },
-    ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    ...(ctx.http ? { http: ctx.http } : {}),
-    httpError: ({ status, body: text }) => failure(status, path, text),
-  });
-  return answer.body;
-}
-
-/**
  * For the list endpoints that paginate by cursor in the `Link` header
  * (`after`/`before`), where page numbers are refused. These never sent a
  * `Content-Type`, and a failure is always a {@link GitHubApiError}.

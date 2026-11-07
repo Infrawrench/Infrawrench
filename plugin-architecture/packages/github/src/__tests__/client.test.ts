@@ -378,6 +378,17 @@ describe("removeSeat", () => {
 });
 
 describe("org-only and enterprise-only types", () => {
+  it("refuses a codespace write on an enterprise account, before calling GitHub", async () => {
+    const { c, calls } = client(() => {
+      throw new Error("no request should be made");
+    }, "enterprise:big");
+    const id = "acc:codespace:mona/space";
+    const refused = /only managed on organization accounts/;
+    await expect(c.deleteResource!("codespace", id, "acc")).rejects.toThrow(refused);
+    await expect(c.invokeAction!("codespace", id, "stop", "acc")).rejects.toThrow(refused);
+    expect(calls).toHaveLength(0);
+  });
+
   it("lists nothing (and calls nothing) where the owner kind has no such thing", async () => {
     const ent = client(() => ({ body: {} }), "enterprise:big");
     expect(await ent.c.listResources("codespace", "acc")).toEqual([]);

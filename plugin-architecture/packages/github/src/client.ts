@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { NoSlashString, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   LeakedSecretPage,
   LeakedSecretQuery,
@@ -31,7 +31,6 @@ import {
   byOwner,
   dotcomApi,
   ghPaged,
-  ghUnlisted,
   ownerSegment,
   parseOwner,
   repoApi,
@@ -148,6 +147,16 @@ export class GitHubClient implements PluginClient {
 
   private get isOrg(): boolean {
     return this.ctx.owner.kind === "org";
+  }
+
+  /** The organization holding a codespace: GitHub has no such route for an enterprise. */
+  private codespaceOrg(): NoSlashString {
+    if (!this.isOrg) {
+      throw new Error(
+        "Codespaces are only managed on organization accounts. Connect the organization that owns this one to manage it.",
+      );
+    }
+    return ownerSegment(this.ctx.owner);
   }
 
   private cached<K extends keyof Memoized>(
@@ -1195,20 +1204,13 @@ export class GitHubClient implements PluginClient {
           });
           return;
         case "codespace": {
+          const org = this.codespaceOrg();
           const { user, name } = splitCodespaceId(id);
           const member = pathEncode(user);
           const codespace = pathEncode(name);
-          // Codespaces are only listed for organizations, and no document has this route
-          // for an enterprise, but the call has never checked the owner.
-          await byOwner(this.ctx, {
-            org: (api, org) => api.delete(`/orgs/${org}/members/${member}/codespaces/${codespace}`),
-            enterprise: (_api, enterprise) =>
-              ghUnlisted<object>(
-                this.ctx,
-                "DELETE",
-                `/enterprises/${enterprise}/members/${member}/codespaces/${codespace}`,
-              ),
-          });
+          await dotcomApi(this.ctx).delete(
+            `/orgs/${org}/members/${member}/codespaces/${codespace}`,
+          );
           return;
         }
         case "budget":
@@ -1300,20 +1302,13 @@ export class GitHubClient implements PluginClient {
         }
       }
       if (typeId === "codespace" && actionId === "stop") {
+        const org = this.codespaceOrg();
         const { user, name } = splitCodespaceId(id);
         const member = pathEncode(user);
         const codespace = pathEncode(name);
-        // As for deleting one: no document has this route for an enterprise.
-        await byOwner(this.ctx, {
-          org: (api, org) =>
-            api.post(`/orgs/${org}/members/${member}/codespaces/${codespace}/stop`),
-          enterprise: (_api, enterprise) =>
-            ghUnlisted<object>(
-              this.ctx,
-              "POST",
-              `/enterprises/${enterprise}/members/${member}/codespaces/${codespace}/stop`,
-            ),
-        });
+        await dotcomApi(this.ctx).post(
+          `/orgs/${org}/members/${member}/codespaces/${codespace}/stop`,
+        );
         return;
       }
       throw new Error(`GitHub plugin: unknown action "${actionId}" for "${typeId}"`);
