@@ -621,6 +621,9 @@ export class CrusoeClient implements PluginClient {
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (typeId === "project") {
+        if (fields["name"] === undefined) {
+          return runPluginEffect(this.getResource(typeId, resourceId, accountId));
+        }
         const id = requireId(externalOf(resourceId));
         await this.api.put("/organizations/projects", {
           query: { project_id: id },

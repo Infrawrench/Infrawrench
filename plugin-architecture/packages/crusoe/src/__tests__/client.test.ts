@@ -355,6 +355,11 @@ describe("create, update, delete", () => {
     });
   });
 
+  it("does not rename a project when no name was given", async () => {
+    await client().updateResource("project", "acct:project:p-1", "acct", {});
+    expect(calls.some((x) => x.method === "PUT")).toBe(false);
+  });
+
   describe("a VPC subnet", () => {
     const subnets = () => {
       route("GET", "/projects/p-1/networking/vpc-subnets", {
