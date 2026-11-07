@@ -7099,7 +7099,6 @@
           "serverless-container",
           "serverless-endpoint",
           "serverless-function",
-          "serverless-instance",
           "serverless-traffic-filter",
           "service",
           "service-account",
