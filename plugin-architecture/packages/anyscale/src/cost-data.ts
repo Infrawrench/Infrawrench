@@ -1,7 +1,7 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError } from "@infrawrench/plugin-base";
 import type { AnyscaleApi, AsCloud, AsUsageByCluster, PageQuery } from "./api.js";
-import { isPermissionError, listPages } from "./api.js";
+import { isPermissionError, listClouds, listPages } from "./api.js";
 
 /**
  * Anyscale's own charges, read from the usage dashboard's data
@@ -27,6 +27,8 @@ import { isPermissionError, listPages } from "./api.js";
 
 const PAGE = 1000;
 const MAX_PAGES = 200;
+/** A detail view's totals: past this it shows none rather than a sum of part of the rows. */
+const DETAIL_PAGES = 10;
 export const CREDIT_UNIT = "Anyscale credits";
 
 const HELP = {
@@ -54,9 +56,13 @@ export interface CloudInfo {
 
 /** Cloud id → region and hosting model, for the region dimension and the tag. */
 export async function cloudDirectory(api: AnyscaleApi): Promise<Map<string, CloudInfo>> {
-  const clouds = await listPages(5, 1000, (query) => api.get("/api/v2/clouds/", { query })).catch(
-    (): AsCloud[] => [],
-  );
+  // Region and hosting model only label the rows, so a key that may not read clouds
+  // still gets its costs. An outage throws: a restated window would otherwise be stored
+  // without them.
+  const clouds = await listClouds(api).catch((err): AsCloud[] => {
+    if (isPermissionError(err)) return [];
+    throw err;
+  });
   const out = new Map<string, CloudInfo>();
   for (const c of clouds) {
     if (!c.id) continue;
@@ -140,16 +146,18 @@ export async function fetchAnyscaleCostData(
 ): Promise<CostRow[]> {
   let usage: AsUsageByCluster[];
   try {
-    usage = await listPages(MAX_PAGES, PAGE, (query) =>
-      api.post("/api/v2/aggregated_instance_usage/cluster", {
-        query,
-        body: {
-          start_date: range.fromDate,
-          end_date: range.toDate,
-          group_by_date: true,
-          asc: true,
-        },
-      }),
+    usage = await listPages(
+      { path: "/api/v2/aggregated_instance_usage/cluster", count: PAGE, maxPages: MAX_PAGES },
+      (query) =>
+        api.post("/api/v2/aggregated_instance_usage/cluster", {
+          query,
+          body: {
+            start_date: range.fromDate,
+            end_date: range.toDate,
+            group_by_date: true,
+            asc: true,
+          },
+        }),
     );
   } catch (err) {
     rethrow(err);
@@ -187,16 +195,17 @@ async function labelledUsage(
     query,
     body: { start_date: fromDate, end_date: toDate, group_by_date: false },
   });
+  const plan = (path: string) => ({ path, count: PAGE, maxPages: DETAIL_PAGES });
   switch (group) {
     case "cluster_type":
       return (
-        await listPages(5, PAGE, (query) =>
+        await listPages(plan("/api/v2/aggregated_instance_usage/cluster_type"), (query) =>
           api.post("/api/v2/aggregated_instance_usage/cluster_type", page(query)),
         )
       ).map((r) => ({ ...r, label: r.cluster_type ?? "Other" }));
     case "project":
       return (
-        await listPages(5, PAGE, (query) =>
+        await listPages(plan("/api/v2/aggregated_instance_usage/project"), (query) =>
           api.post("/api/v2/aggregated_instance_usage/project", page(query)),
         )
       ).map((r) => ({
@@ -205,7 +214,7 @@ async function labelledUsage(
       }));
     case "user":
       return (
-        await listPages(5, PAGE, (query) =>
+        await listPages(plan("/api/v2/aggregated_instance_usage/user"), (query) =>
           api.post("/api/v2/aggregated_instance_usage/user", page(query)),
         )
       ).map((r) => ({ ...r, label: r.user_email ?? r.user_name ?? "Unknown user" }));
@@ -252,16 +261,18 @@ export async function fetchWorkloadSpend(
   fromDate: string,
   toDate: string,
 ): Promise<AsUsageByCluster[]> {
-  return listPages(10, PAGE, (query) =>
-    api.post("/api/v2/aggregated_instance_usage/cluster", {
-      query,
-      body: {
-        start_date: fromDate,
-        end_date: toDate,
-        group_by_date: true,
-        asc: true,
-        ...(nameContains ? { name_contains: nameContains } : {}),
-      },
-    }),
+  return listPages(
+    { path: "/api/v2/aggregated_instance_usage/cluster", count: PAGE, maxPages: DETAIL_PAGES },
+    (query) =>
+      api.post("/api/v2/aggregated_instance_usage/cluster", {
+        query,
+        body: {
+          start_date: fromDate,
+          end_date: toDate,
+          group_by_date: true,
+          asc: true,
+          ...(nameContains ? { name_contains: nameContains } : {}),
+        },
+      }),
   );
 }

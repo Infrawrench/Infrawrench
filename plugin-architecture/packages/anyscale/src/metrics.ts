@@ -130,16 +130,23 @@ export async function dailySpendSeries(
   api: AnyscaleApi,
   range: { startMs: number; endMs: number },
 ): Promise<MetricSeries[]> {
-  const rows = await listPages(10, 1000, (query) =>
-    api.post("/api/v2/aggregated_instance_usage/cluster_type", {
-      query,
-      body: {
-        start_date: isoDay(range.startMs),
-        end_date: isoDay(range.endMs),
-        group_by_date: true,
-        asc: true,
-      },
-    }),
+  const rows = await listPages(
+    {
+      path: "/api/v2/aggregated_instance_usage/cluster_type",
+      count: 1000,
+      maxPages: 10,
+      partial: true,
+    },
+    (query) =>
+      api.post("/api/v2/aggregated_instance_usage/cluster_type", {
+        query,
+        body: {
+          start_date: isoDay(range.startMs),
+          end_date: isoDay(range.endMs),
+          group_by_date: true,
+          asc: true,
+        },
+      }),
   );
   const byType = new Map<string, Map<number, number>>();
   for (const r of rows) {

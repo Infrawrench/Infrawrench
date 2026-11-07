@@ -14,7 +14,7 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type {
   AnyscaleApi,
   AsBudget,
@@ -30,7 +30,7 @@ import type {
   AsUserInfo,
   AsWorkspace,
 } from "./api.js";
-import { createAnyscaleApi, listPages, statusOf } from "./api.js";
+import { createAnyscaleApi, listClouds, listPages, statusOf } from "./api.js";
 import {
   fetchAnyscaleCostData,
   fetchTotalUsage,
@@ -72,7 +72,22 @@ const RUNNING_CLUSTER_STATES: AsSessionState[] = [
   "AwaitingStartup",
 ];
 
+/** The route's largest page, and enough of them for 10,000 rows. */
+const SMALL_PAGES = { count: 50, maxPages: 200 };
+const LARGE_PAGES = { count: 1000, maxPages: 10 };
+
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * A read that only adds detail to rows listed elsewhere: if it simply fails the rows
+ * go without it, but part of a list must not pass for all of it.
+ */
+function unlessIncomplete<T>(read: Promise<T>): Promise<T | undefined> {
+  return read.catch((err) => {
+    rethrowIncompleteList(err);
+    return undefined;
+  });
+}
 
 function monthStart(now = new Date()): string {
   return `${now.toISOString().slice(0, 7)}-01`;
@@ -95,19 +110,19 @@ export class AnyscaleClient implements PluginClient {
     return this.api.get("/api/v2/userinfo/").then((r) => r.result ?? {});
   }
 
-  private clouds(): Promise<AsCloud[]> {
-    return listPages(5, 1000, (query) => this.api.get("/api/v2/clouds/", { query }));
+  private clouds(partial = false): Promise<AsCloud[]> {
+    return listClouds(this.api, partial);
   }
 
-  private projects(): Promise<AsProject[]> {
-    return listPages(40, 50, (query) =>
+  private projects(partial = false): Promise<AsProject[]> {
+    return listPages({ path: "/api/v2/projects/", ...SMALL_PAGES, partial }, (query) =>
       this.api.get("/api/v2/projects/", { query: { include_defaults: true, ...query } }),
     );
   }
 
   /** Clusters that are up (or coming up), user-visible ones only. */
   private async runningClusters(): Promise<AsCluster[]> {
-    const all = await listPages(40, 50, (query) =>
+    const all = await listPages({ path: "/api/v2/decorated_sessions/", ...SMALL_PAGES }, (query) =>
       this.api.get("/api/v2/decorated_sessions/", {
         query: { state_filter: RUNNING_CLUSTER_STATES, ...query },
       }),
@@ -116,27 +131,39 @@ export class AnyscaleClient implements PluginClient {
   }
 
   private workspaces(): Promise<AsWorkspace[]> {
-    return listPages(40, 50, (query) =>
+    return listPages({ path: "/api/v2/experimental_workspaces/", ...SMALL_PAGES }, (query) =>
       this.api.get("/api/v2/experimental_workspaces/", { query }),
     );
   }
 
   /** Batch jobs only (services are listed from their own route), newest first. */
   private jobs(): Promise<AsJob[]> {
-    return listPages(10, 100, (query) =>
-      this.api.get("/api/v2/decorated_ha_jobs/", {
-        query: { type_filter: "BATCH_JOB", ...query },
-      }),
+    // Rolling window: the newest 10,000. Older rows falling off is what this type means.
+    return listPages(
+      { path: "/api/v2/decorated_ha_jobs/", ...LARGE_PAGES, partial: true },
+      (query) =>
+        this.api.get("/api/v2/decorated_ha_jobs/", {
+          // Without a sort the document leaves the order to the server, and the window
+          // is only right if it really does start from the newest.
+          query: {
+            type_filter: "BATCH_JOB",
+            sort_field: "CREATED_AT",
+            sort_order: "DESC",
+            ...query,
+          },
+        }),
     );
   }
 
   private services(): Promise<AsService[]> {
-    return listPages(20, 50, (query) => this.api.get("/api/v2/services-v2/", { query }));
+    return listPages({ path: "/api/v2/services-v2/", ...SMALL_PAGES }, (query) =>
+      this.api.get("/api/v2/services-v2/", { query }),
+    );
   }
 
   /** Latest version of every named, unarchived compute config. */
   private computeConfigs(): Promise<AsComputeConfig[]> {
-    return listPages(20, 100, (query) =>
+    return listPages({ path: "/api/v2/compute_templates/search", ...LARGE_PAGES }, (query) =>
       this.api.post("/api/v2/compute_templates/search", {
         query,
         body: { include_anonymous: false, archive_status: "NOT_ARCHIVED" },
@@ -145,7 +172,9 @@ export class AnyscaleClient implements PluginClient {
   }
 
   private budgets(): Promise<AsBudget[]> {
-    return listPages(20, 50, (query) => this.api.get("/api/v2/instance_usage_budgets/", { query }));
+    return listPages({ path: "/api/v2/instance_usage_budgets/", ...SMALL_PAGES }, (query) =>
+      this.api.get("/api/v2/instance_usage_budgets/", { query }),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -175,7 +204,7 @@ export class AnyscaleClient implements PluginClient {
           return this.scoped(async () => {
             const [clouds, running] = await Promise.all([
               this.clouds(),
-              this.runningClusters().catch(() => undefined),
+              unlessIncomplete(this.runningClusters()),
             ]);
             return clouds.map((c) =>
               mapCloud(
@@ -191,20 +220,20 @@ export class AnyscaleClient implements PluginClient {
           return this.scoped(async () => {
             const [projects, clouds] = await Promise.all([
               this.projects(),
-              this.clouds().catch((): AsCloud[] => []),
+              unlessIncomplete(this.clouds()),
             ]);
-            const names = new Map(clouds.map((c) => [c.id ?? "", c.name ?? ""]));
+            const names = new Map((clouds ?? []).map((c) => [c.id ?? "", c.name ?? ""]));
             return projects.map((p) => mapProject(accountId, p, names));
           });
         case "workspace":
           return this.scoped(async () => {
             const [workspaces, running, projects] = await Promise.all([
               this.workspaces(),
-              this.runningClusters().catch((): AsCluster[] => []),
-              this.projects().catch((): AsProject[] => []),
+              unlessIncomplete(this.runningClusters()),
+              unlessIncomplete(this.projects()),
             ]);
-            const clusters = new Map(running.map((c) => [c.id ?? "", c]));
-            const projectNames = new Map(projects.map((p) => [p.id ?? "", p.name ?? ""]));
+            const clusters = new Map((running ?? []).map((c) => [c.id ?? "", c]));
+            const projectNames = new Map((projects ?? []).map((p) => [p.id ?? "", p.name ?? ""]));
             return workspaces
               .filter((w) => !w.is_deleted)
               .map((w) =>
@@ -518,7 +547,7 @@ export class AnyscaleClient implements PluginClient {
   getCreateConfig(typeId: string): PluginEffect<CreateResourceConfig> {
     return attempt(async () => {
       if (typeId === "project") {
-        const clouds = await this.clouds().catch((): AsCloud[] => []);
+        const clouds = await this.clouds(true).catch((): AsCloud[] => []);
         const def = clouds.find((c) => c.is_default) ?? clouds[0];
         return {
           fields: [
@@ -552,8 +581,8 @@ export class AnyscaleClient implements PluginClient {
       }
       if (typeId === "budget") {
         const [clouds, projects] = await Promise.all([
-          this.clouds().catch((): AsCloud[] => []),
-          this.projects().catch((): AsProject[] => []),
+          this.clouds(true).catch((): AsCloud[] => []),
+          this.projects(true).catch((): AsProject[] => []),
         ]);
         const cloudName = new Map(clouds.map((c) => [c.id ?? "", c.name ?? c.id ?? ""]));
         return {
@@ -652,7 +681,7 @@ export class AnyscaleClient implements PluginClient {
             .get(`/api/v2/projects/${pathEncode(id)}`)
             .then((r) => r.result)
             .catch(() => undefined),
-          cloudId ? this.clouds().catch((): AsCloud[] => []) : Promise.resolve<AsCloud[]>([]),
+          cloudId ? this.clouds(true).catch((): AsCloud[] => []) : Promise.resolve<AsCloud[]>([]),
         ]);
         return mapProject(
           accountId,

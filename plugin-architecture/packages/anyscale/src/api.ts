@@ -1,5 +1,7 @@
 import {
   createApiClient,
+  ListTruncatedError,
+  requireListPage,
   type ApiClient,
   type HttpHostServices,
   type ParamValue,
@@ -103,7 +105,7 @@ export function isPermissionError(err: unknown): boolean {
 }
 
 interface ListPage<T> {
-  results?: T[];
+  results?: T[] | null;
   metadata?: { next_paging_token?: string | null };
 }
 
@@ -113,25 +115,44 @@ export interface PageQuery {
   paging_token?: string;
 }
 
+/** One list's route, for the errors, and how far to read it. */
+export interface ListPlan {
+  path: string;
+  /** The route's page size, at the largest its document allows. */
+  count: number;
+  maxPages: number;
+  /** Stop quietly at `maxPages`, for a read where part of the list is fine. */
+  partial?: boolean;
+}
+
 /**
- * Walk a `paging_token` list to the end, or to `maxPages`. Every Anyscale list
- * route shares the `{ results, metadata.next_paging_token }` envelope; GET
- * routes take the token as a query parameter and POST search routes as well.
- * A hand loop because half of them page by POST, and an empty page with a token
+ * Walk a `paging_token` list to the end. Past `maxPages` it throws, because a sync
+ * reads a short list as the rest having been deleted, unless the plan says `partial`.
+ * Every Anyscale list route shares the `{ results, metadata.next_paging_token }`
+ * envelope; GET routes take the token as a query parameter and POST search routes as
+ * well. A hand loop because half of them page by POST, and an empty page with a token
  * still goes on.
  */
 export async function listPages<T>(
-  maxPages: number,
-  count: number,
+  plan: ListPlan,
   fetchPage: (query: PageQuery) => Promise<ListPage<T>>,
 ): Promise<T[]> {
+  const { path, count, maxPages, partial } = plan;
   const out: T[] = [];
   let token: string | undefined;
   for (let page = 0; page < maxPages; page++) {
     const res = await fetchPage({ count, ...(token ? { paging_token: token } : {}) });
-    out.push(...(res.results ?? []));
+    out.push(...requireListPage(res.results, { vendor: "Anyscale", path, key: "results" }));
     token = res.metadata?.next_paging_token ?? undefined;
-    if (!token) break;
+    if (!token) return out;
   }
-  return out;
+  if (partial) return out;
+  throw new ListTruncatedError({ vendor: "Anyscale", path, items: out.length, maxPages });
+}
+
+/** Every cloud, or the first 10,000 when `partial`. */
+export function listClouds(api: AnyscaleApi, partial = false): Promise<AsCloud[]> {
+  return listPages({ path: "/api/v2/clouds/", count: 1000, maxPages: 10, partial }, (query) =>
+    api.get("/api/v2/clouds/", { query }),
+  );
 }
