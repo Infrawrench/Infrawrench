@@ -272,7 +272,8 @@ function renderBase(r: ResourceInstance): DetailViewSchema {
                 ["Open Tracking", yesNo(r.fields["openTracking"])],
                 ["Click Tracking", yesNo(r.fields["clickTracking"])],
                 ["Tracking Subdomain", s(r, "trackingSubdomain")],
-                ["TLS", s(r, "tls")],
+                // No answer in Resend's document carries the mode a domain is on.
+                ["TLS", s(r, "tls") || "Not reported by Resend"],
                 ["Domain ID", s(r, "domainId")],
                 ["Created", s(r, "createdAt")],
               ],

@@ -87,7 +87,8 @@ export const DomainResourceType = rt({
       kind: "enum",
       enumValues: ["opportunistic", "enforced"],
       required: false,
-      description: "Enforced refuses to deliver to servers without TLS.",
+      description:
+        "Enforced refuses to deliver to servers without TLS. Resend does not report the current mode, so this can read blank whichever one is on. Choosing one here sets it.",
     }),
     f("recordsVerified", "Records Verified", { ...ro, kind: "number" }),
     f("recordsTotal", "Records", { ...ro, kind: "number" }),

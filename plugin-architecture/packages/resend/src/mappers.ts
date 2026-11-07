@@ -26,7 +26,7 @@ import {
  */
 type Answer<Op extends keyof operations> = ApiResponse<operations[Op]>;
 
-/** `tls` is on a domain's requests and missing from every answer in the document. */
+/** `tls` is on a domain's requests and missing from every answer in the document, so it is read only in case Resend sends it. */
 export type ResendDomain = Answer<"domains/get"> & { tls?: string };
 export type ResendApiKey = ApiListItem<operations["api-keys/list"], "data">;
 export type ResendWebhook = Answer<"webhooks/get">;

@@ -185,6 +185,37 @@ describe("domains and DNS records", () => {
   });
 });
 
+describe("domain TLS, which Resend's answers leave out", () => {
+  const row = (extra: object) => ({ id: "d1", name: "x.test", ...extra });
+
+  it("says the mode is not reported rather than show a blank", async () => {
+    const { c } = client(() => row({}));
+    const domain = await c.getResource("resend-domain", "acc:resend-domain:d1", ACC);
+    expect(domain.fields["tls"]).toBe("");
+    expect(JSON.stringify(c.renderDetail(domain))).toContain("Not reported by Resend");
+  });
+
+  it("shows the mode if Resend does send it", async () => {
+    const { c } = client(() => row({ tls: "enforced" }));
+    const domain = await c.getResource("resend-domain", "acc:resend-domain:d1", ACC);
+    expect(domain.fields["tls"]).toBe("enforced");
+    expect(JSON.stringify(c.renderDetail(domain))).not.toContain("Not reported by Resend");
+  });
+
+  it("sends a chosen mode, and never a blank one", async () => {
+    const { c, calls } = client(() => row({}));
+    await c.updateResource("resend-domain", "acc:resend-domain:d1", ACC, { tls: "enforced" });
+    expect(calls.find((x) => x.method === "PATCH")?.body).toEqual({ tls: "enforced" });
+
+    const blank = client(() => row({}));
+    await blank.c.updateResource("resend-domain", "acc:resend-domain:d1", ACC, {
+      tls: "",
+      openTracking: "true",
+    });
+    expect(blank.calls.find((x) => x.method === "PATCH")?.body).toEqual({ open_tracking: true });
+  });
+});
+
 describe("API keys", () => {
   it("keeps the one-time token and scopes a sending key to a domain", async () => {
     const stored: Record<string, string> = {};

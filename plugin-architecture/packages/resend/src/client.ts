@@ -987,7 +987,7 @@ export class ResendClient implements PluginClient {
         case DOMAIN: {
           const body: ApiBody<operations["domains/update"]> = {
             tracking_subdomain: sent("trackingSubdomain"),
-            tls: sent("tls"),
+            tls: opt(sent("tls")),
             open_tracking: flag("openTracking"),
             click_tracking: flag("clickTracking"),
           };
