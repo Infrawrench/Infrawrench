@@ -538,6 +538,44 @@ describe("SendGrid client", () => {
     }
   });
 
+  describe("subuser credits", () => {
+    const CREDITS = "/v3/subusers/sub1/credits";
+    const puts = (calls: Array<{ method: string; body?: string }>) =>
+      calls.filter((x) => x.method === "PUT").map((x) => JSON.parse(x.body ?? "{}") as object);
+
+    it("writes nothing when the current allocation cannot be read", async () => {
+      const { c, calls } = client((url, method) =>
+        url.pathname === CREDITS && method === "GET"
+          ? { status: 500, body: { errors: [{ message: "down" }] } }
+          : { body: {} },
+      );
+      await expect(
+        c.updateResource("sendgrid-subuser", "a:t:sub1", "a", { creditTotal: "5000" }),
+      ).rejects.toThrow(/500/);
+      expect(puts(calls)).toEqual([]);
+    });
+
+    it("keeps the current allocation when only the amount changes", async () => {
+      const { c, calls } = client((url, method) => {
+        if (url.pathname === CREDITS && method === "GET") {
+          return { body: { type: "recurring", total: 100, reset_frequency: "weekly" } };
+        }
+        if (url.pathname === "/v3/subusers") return { body: [{ username: "sub1" }] };
+        return { body: method === "GET" ? [] : {} };
+      });
+      await c.updateResource("sendgrid-subuser", "a:t:sub1", "a", { creditTotal: "5000" });
+      expect(puts(calls)).toEqual([{ type: "recurring", total: 5000, reset_frequency: "weekly" }]);
+    });
+
+    it("refuses a limited allocation with no amount, rather than writing zero", async () => {
+      const { c, calls } = client(() => ({ body: { type: "unlimited" } }));
+      await expect(
+        c.updateResource("sendgrid-subuser", "a:t:sub1", "a", { creditType: "nonrecurring" }),
+      ).rejects.toThrow(/credits/i);
+      expect(puts(calls)).toEqual([]);
+    });
+  });
+
   it("synthesises DNS records and reads the key id", () => {
     const recs = domainDnsRecords("a", {
       id: 5,

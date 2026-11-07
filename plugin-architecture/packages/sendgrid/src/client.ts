@@ -34,7 +34,6 @@ import type {
   SgDomain,
   SgEventWebhook,
   SgIp,
-  SgSubuserCredits,
   SgVerifiedSender,
 } from "./mappers.js";
 import {
@@ -1241,14 +1240,14 @@ export class SendGridClient implements PluginClient {
             "creditTotal" in fields ||
             "creditResetFrequency" in fields
           ) {
-            const current = await this.parent
-              .get(`/v3/subusers/${enc}/credits`)
-              .catch((): SgSubuserCredits => ({}));
+            // A failed read has to stop the edit: the fallback below would write unlimited.
+            const current = await this.parent.get(`/v3/subusers/${enc}/credits`);
             const type = trimmed(fields, "creditType") || current.type || "unlimited";
             const body: ApiBody<SubuserOperations["UpdateSubuserCredit"]> = { type };
             if (type !== "unlimited") {
-              const total = Number(trimmed(fields, "creditTotal") || String(current.total ?? ""));
-              if (!Number.isFinite(total) || total < 0)
+              const amount = trimmed(fields, "creditTotal") || String(current.total ?? "");
+              const total = Number(amount);
+              if (!amount || !Number.isFinite(total) || total < 0)
                 throw new Error("SendGrid plugin: credits must be a number of zero or more");
               body.total = total;
             }
