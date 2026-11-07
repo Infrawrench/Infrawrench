@@ -161,6 +161,20 @@ function addresses(value: string | undefined): Schemas["NetworkZoneAddress"][] {
   }));
 }
 
+/**
+ * Turn one scope type on or off and leave the rest as Okta returned them: PUT replaces
+ * the origin, and an IFRAME_EMBED scope's `allowedOktaApps` says what may be embedded.
+ */
+function withScope(
+  scopes: Schemas["TrustedOriginScope"][],
+  type: string,
+  on: boolean | undefined,
+): Schemas["TrustedOriginScope"][] {
+  if (on === undefined) return scopes;
+  if (!on) return scopes.filter((scope) => scope.type !== type);
+  return scopes.some((scope) => scope.type === type) ? scopes : [...scopes, { type }];
+}
+
 type GroupStats = NonNullable<NonNullable<Schemas["Group"]["_embedded"]>["stats"]>;
 
 type ZoneItem = string | Schemas["NetworkZoneLocation"];
@@ -1522,18 +1536,18 @@ export class OktaClient implements PluginClient {
         }
         case "trusted-origin": {
           const current = await this.api.rest.get(`/api/v1/trustedOrigins/${id}`);
-          const types = new Set((current.scopes ?? []).map((s) => str(s.type)));
-          const cors = bool(fields["cors"]);
-          const redirect = bool(fields["redirect"]);
-          if (cors !== undefined) cors ? types.add("CORS") : types.delete("CORS");
-          if (redirect !== undefined) redirect ? types.add("REDIRECT") : types.delete("REDIRECT");
+          const scopes = withScope(
+            withScope(current.scopes ?? [], "CORS", bool(fields["cors"])),
+            "REDIRECT",
+            bool(fields["redirect"]),
+          );
           return this.mapTrustedOrigin(
             accountId,
             await this.api.rest.put(`/api/v1/trustedOrigins/${id}`, {
               body: {
                 name: fields["name"] ?? current.name,
                 origin: fields["origin"] ?? current.origin,
-                scopes: [...types].map((type) => ({ type })),
+                scopes,
               },
             }),
           );

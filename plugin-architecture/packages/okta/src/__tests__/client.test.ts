@@ -388,6 +388,47 @@ describe("list reads", () => {
   });
 });
 
+describe("editing a trusted origin", () => {
+  const T = `${ACCOUNT}:trusted-origin:tos1`;
+  const dashboard = { type: "IFRAME_EMBED", allowedOktaApps: ["OKTA_ENDUSER"] };
+  const current = {
+    id: "tos1",
+    name: "Old",
+    origin: "https://app.example.com",
+    scopes: [{ type: "CORS" }, dashboard],
+  };
+  const edit = async (fields: Record<string, string>) => {
+    const client = ssws((call) => ({
+      body: call.method === "PUT" ? JSON.parse(call.body!) : current,
+    }));
+    await client.updateResource("trusted-origin", T, ACCOUNT, fields);
+    return JSON.parse(calls.find((c) => c.method === "PUT")!.body!);
+  };
+
+  it("keeps an iframe scope's allowed apps on a rename", async () => {
+    const body = await edit({ name: "New" });
+    expect(body).toEqual({
+      name: "New",
+      origin: "https://app.example.com",
+      scopes: [{ type: "CORS" }, dashboard],
+    });
+  });
+
+  it("keeps a sign-in-only iframe scope, whose empty list means something", async () => {
+    const signIn = { type: "IFRAME_EMBED", allowedOktaApps: [] };
+    const client = ssws((call) => ({
+      body: call.method === "PUT" ? JSON.parse(call.body!) : { ...current, scopes: [signIn] },
+    }));
+    await client.updateResource("trusted-origin", T, ACCOUNT, { name: "New" });
+    expect(JSON.parse(calls.find((c) => c.method === "PUT")!.body!).scopes).toEqual([signIn]);
+  });
+
+  it("keeps them while the toggles change the other scopes", async () => {
+    const body = await edit({ cors: "false", redirect: "true" });
+    expect(body.scopes).toEqual([dashboard, { type: "REDIRECT" }]);
+  });
+});
+
 describe("group stats", () => {
   const G = `${ACCOUNT}:group:00g1`;
   const group = { id: "00g1", type: "OKTA_GROUP", profile: { name: "Eng" } };
