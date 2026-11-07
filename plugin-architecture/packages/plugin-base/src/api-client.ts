@@ -32,7 +32,7 @@
  * ways and a sync that dies on an undocumented enum value helps nobody.
  */
 import { restRequest, type RestResponse } from "./http.js";
-import { ListPageError } from "./list-errors.js";
+import { ListPageError, ListTruncatedError } from "./list-errors.js";
 import type { HttpHostServices } from "./manifest.js";
 
 /** A path segment known to contain no slashes. Made by {@link pathEncode}. */
@@ -446,6 +446,8 @@ interface WalkOptions<Item> {
   maxPages?: number;
   /** End after a page this says is enough, such as one reaching past a time window. */
   stopWhen?: (batch: Item[]) => boolean;
+  /** Overrides the client's {@link ListCap.partial} for this read. */
+  partial?: boolean;
 }
 
 type GetAll<P, Paging extends string> = <
@@ -465,6 +467,19 @@ export type PaginatedApiClient<P, Paging extends string> = ApiClient<P> & {
   /** Every item of a list: `getAll("/servers", "servers")`, typed from the response. */
   getAll: GetAll<P, Paging>;
 };
+
+/** What every dialect does on reaching its page cap with more to read. */
+interface ListCap {
+  /**
+   * Return what was read on reaching `maxPages`, rather than throw a
+   * `ListTruncatedError`. For a bounded read where part of a list is fine and
+   * expected: logs, metric samples, a picker, a detail view's newest rows. Never for
+   * a list that feeds the inventory or cost data, because the sync prunes the rest.
+   */
+  partial?: boolean;
+  /** Told when a list stops at `maxPages` with more to read, before it throws or returns. */
+  onTruncated?: (info: { path: string; items: number; maxPages: number }) => void;
+}
 
 /** What every dialect can say about a page that holds no list. Off means it throws. */
 interface ListPageTolerance {
@@ -509,7 +524,7 @@ const DEFAULT_PAGE_NUMBER_MAX_PAGES = 1000;
 /**
  * Add `getAll` for a provider that pages by number. A list ends on an empty batch,
  * a batch shorter than `pageSize`, or on reaching `total`, and a page with no list
- * throws. Cursors are {@link withCursorPagination}, next links {@link withLinkPagination}.
+ * throws, as does reaching `maxPages` with more to read unless the read is `partial`. Cursors are {@link withCursorPagination}, next links {@link withLinkPagination}.
  */
 export function withPagination<
   P,
@@ -585,7 +600,8 @@ export interface CursorPagination<
   SizeParam extends string = string,
   Next extends CursorSource = CursorSource,
   HasMore extends string = string,
-> extends ListPageTolerance {
+>
+  extends ListPageTolerance, ListCap {
   /** The query parameter the cursor is sent back in. */
   cursorParam: CursorParam;
   /** Sent on the first request, for a provider that numbers pages and expects `page=1`. */
@@ -593,8 +609,10 @@ export interface CursorPagination<
   /** Where each page says what comes next. A falsy value ends the list. */
   next: Next;
   /**
-   * The most pages one list may take. A list that reaches it returns what it has,
-   * so this is also what stops a provider repeating a cursor from looping forever.
+   * The most pages one list may take. A list that reaches it with more to read
+   * throws a `ListTruncatedError` unless it is `partial`, so this is also what stops
+   * a provider repeating a cursor from looping forever. Size it for the largest
+   * account you would expect: it costs nothing until a list really is that long.
    */
   maxPages: number;
   /** The query parameter holding the page size, for a provider that takes one. */
@@ -618,8 +636,6 @@ export interface CursorPagination<
    * last request on an offset list, and is not checked against the document.
    */
   total?: string | ((page: PageAnswer) => number | string | null | undefined);
-  /** Told when a list stops at `maxPages` with a cursor still in hand. */
-  onTruncated?: (info: { path: string; items: number; maxPages: number }) => void;
 }
 
 /** The parts of a {@link CursorPagination} the types are worked out from. */
@@ -731,8 +747,9 @@ function readField(from: unknown, path: string): unknown {
  *   next: ({ headers }) => headers["x-next-page"]               // anything else on the page
  *
  * A list ends on an empty batch, a falsy cursor, a falsy `hasMore`, on reaching
- * `total`, or at `maxPages`, and a page with no list throws. A cursor is sent back
- * after the caller's query and the page size.
+ * `total`, and a page with no list throws, as does reaching `maxPages` with more to
+ * read unless the read is `partial`. A cursor is sent back after the caller's query
+ * and the page size.
  */
 export function withCursorPagination<
   P,
@@ -865,7 +882,8 @@ function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
       cursor = following;
     }
     onTruncated?.({ path, items: items.length, maxPages });
-    return items;
+    if (request.partial ?? config.partial) return items;
+    throw new ListTruncatedError({ vendor: client.vendor, path, items: items.length, maxPages });
   };
 }
 

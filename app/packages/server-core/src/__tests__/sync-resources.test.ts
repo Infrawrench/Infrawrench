@@ -65,6 +65,10 @@ vi.mock("@infrawrench/plugin-base", async (importOriginal) => ({
   evaluatePeerIntegrationUnreachable,
 }));
 
+const { ListTruncatedError } = await vi.importActual<typeof import("@infrawrench/plugin-base")>(
+  "@infrawrench/plugin-base",
+);
+
 let sync: typeof import("../sync-resources");
 
 // Helpers ------------------------------------------------------------------
@@ -281,6 +285,102 @@ describe("syncAccountResources", () => {
 });
 
 // --- refreshPinnedStats (exercised via syncAccountResources) ---------------
+describe("a list a plugin could not read whole", () => {
+  const softDeletes = () => updates("resources").filter((q) => q.sql.includes('"deleted_at"'));
+  const refused = () =>
+    new ListTruncatedError({ vendor: "AWS", path: "/vms", items: 5000, maxPages: 50 });
+
+  function accountWith(listResources: () => Promise<unknown>) {
+    pg.queueRows([accountRow()]);
+    getPlugin.mockResolvedValue({
+      plugin: fakePlugin({
+        resourceTypes: [{ id: "vm", pluralDisplayName: "VMs" }],
+        createClient: vi.fn(() => makeClient({ listResources })),
+      }),
+    });
+  }
+
+  it("fails the type and prunes nothing when the list throws", async () => {
+    accountWith(async () => {
+      throw refused();
+    });
+    const result = await sync.syncAccountResources("acc-1", "org-1");
+    expect(result.failedTypeIds).toEqual(["vm"]);
+    expect(result.succeededTypeIds).toEqual([]);
+    expect(softDeletes()).toHaveLength(0);
+    expect(result.incompleteLists).toEqual([{ resourceTypeId: "vm", message: refused().message }]);
+    expect(result.incompleteLists[0]!.message).toContain("stopped at 50 pages (5000 items)");
+  });
+
+  it("prunes nothing when the plugin swallows the error and answers empty", async () => {
+    accountWith(async () => {
+      await Promise.resolve();
+      try {
+        throw refused();
+      } catch {
+        return [];
+      }
+    });
+    const result = await sync.syncAccountResources("acc-1", "org-1");
+    expect(result.failedTypeIds).toEqual(["vm"]);
+    expect(softDeletes()).toHaveLength(0);
+  });
+
+  it("keeps a swallowed refusal in one type from failing another", async () => {
+    pg.queueRows([accountRow()]);
+    getPlugin.mockResolvedValue({
+      plugin: fakePlugin({
+        resourceTypes: [
+          { id: "vm", pluralDisplayName: "VMs" },
+          { id: "disk", pluralDisplayName: "Disks" },
+        ],
+        createClient: vi.fn(() =>
+          makeClient({
+            listResources: vi.fn(async (typeId: string) => {
+              await Promise.resolve();
+              if (typeId === "vm") {
+                try {
+                  throw refused();
+                } catch {
+                  return [];
+                }
+              }
+              return [resourceInstance({ id: "d1", resourceTypeId: "disk" })];
+            }),
+          }),
+        ),
+      }),
+    });
+    const result = await sync.syncAccountResources("acc-1", "org-1");
+    expect(result.failedTypeIds).toEqual(["vm"]);
+    expect(result.succeededTypeIds).toEqual(["disk"]);
+  });
+
+  it("also refuses a single-type sync, before writing anything", async () => {
+    accountWith(async () => {
+      try {
+        throw refused();
+      } catch {
+        return [];
+      }
+    });
+    await expect(sync.syncAccountResourceType("acc-1", "org-1", "vm")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(softDeletes()).toHaveLength(0);
+    expect(inserts("resources")).toHaveLength(0);
+  });
+
+  it("reports only incomplete lists, not a type the token cannot read", async () => {
+    accountWith(async () => {
+      throw new Error("AWS API error 403 for /vms");
+    });
+    const result = await sync.syncAccountResources("acc-1", "org-1");
+    expect(result.failedTypeIds).toEqual(["vm"]);
+    expect(result.incompleteLists).toEqual([]);
+  });
+});
+
 describe("refreshPinnedStats", () => {
   /**
    * Queue everything up to the pinned read for a one-resource sync: account

@@ -33,10 +33,16 @@ export type VercelDeploymentEvent = ApiListItem<operations["getDeploymentEvents"
   payload?: { text?: string; date?: number };
 };
 
+/**
+ * 500 pages is 50,000 rows, or 25,000 deployments at their page size. Past that a list
+ * fails with a readable error rather than come back short, because the sync prunes
+ * what it stops seeing. Deployments are what reach it: Vercel keeps them for months.
+ * Vercel allows 1,000 list requests a minute (`now-list`), so a full walk fits in one.
+ */
 const PAGES = {
   sizeParam: "limit",
   pageSize: 100,
-  maxPages: 100,
+  maxPages: 500,
   next: "pagination.next",
 } as const;
 

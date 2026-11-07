@@ -20,6 +20,7 @@ import {
   externalIdOf,
   pathEncode,
   rethrowIncompleteList,
+  withinListCap,
 } from "@infrawrench/plugin-base";
 import type { ApiForm } from "@infrawrench/plugin-base";
 import type { TwilioContext } from "./api.js";
@@ -29,7 +30,7 @@ import type { operations as V2010Ops } from "./api-types.v2010.gen.js";
 import type { operations as VerifyOps } from "./api-types.verify.gen.js";
 import { COMMON_TRIGGER_CATEGORIES, TOTAL_CATEGORY } from "./categories.js";
 import type { PeriodSpend, SubaccountRef } from "./cost-data.js";
-import { MAX_SUBACCOUNT_SCOPES, fetchPeriodSpend, fetchTwilioCostData } from "./cost-data.js";
+import { fetchPeriodSpend, fetchTwilioCostData } from "./cost-data.js";
 import type { AccountSummary, TwAccount } from "./mappers.js";
 import {
   mapAccount,
@@ -59,6 +60,12 @@ import {
 const CACHE_MS = 60_000;
 const CONCURRENCY = 4;
 const MAX_MESSAGING_SERVICES = 200;
+/**
+ * Subaccounts whose phone numbers are listed. Numbers have no account-wide route, so
+ * each one costs a request. Past this a sync fails rather than prune the numbers of
+ * the subaccounts it did not reach.
+ */
+const MAX_INVENTORY_SUBACCOUNTS = 1000;
 
 const SID = {
   account: /^AC[0-9a-fA-F]{32}$/,
@@ -243,7 +250,11 @@ export class TwilioClient implements PluginClient {
   private async readableSubaccounts(): Promise<TwAccount[]> {
     if (this.ctx.authMode !== "auth-token") return [];
     const subs = (await this.subaccounts()) ?? [];
-    return subs.filter((s) => s.status !== "closed").slice(0, MAX_SUBACCOUNT_SCOPES);
+    return withinListCap(
+      subs.filter((s) => s.status !== "closed"),
+      MAX_INVENTORY_SUBACCOUNTS,
+      { vendor: "Twilio", path: "/2010-04-01/Accounts.json" },
+    );
   }
 
   /** Messaging services with the phone numbers in each, keyed by phone number SID. */

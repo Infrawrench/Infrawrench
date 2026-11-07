@@ -69,6 +69,52 @@ describe("a list answered with something else", () => {
   });
 });
 
+describe("a list past its cap", () => {
+  it("refuses a list that goes on past 50 pages, rather than prune the rest", async () => {
+    const { c, calls } = client(() => ({
+      body: { usage_triggers: [{ sid: "UT1" }], next_page_uri: "/next.json?Page=1" },
+    }));
+    await expect(c.listResources("usage-trigger", ACCOUNT)).rejects.toThrow(
+      "stopped at 50 pages (50 items)",
+    );
+    expect(calls).toHaveLength(50);
+  });
+
+  it("refuses more subaccounts than it can list numbers for, rather than drop their numbers", async () => {
+    const subaccounts = Array.from({ length: 1001 }, (_, i) => ({
+      sid: `AC${String(i + 1).padStart(32, "0")}`,
+      status: "active",
+    }));
+    const { c } = client((url) =>
+      url.pathname === "/2010-04-01/Accounts.json"
+        ? { body: page("accounts", subaccounts) }
+        : url.pathname === "/v1/Services"
+          ? { body: { services: [], meta: {} } }
+          : { body: page("incoming_phone_numbers", []) },
+    );
+    await expect(c.listResources("phone-number", ACCOUNT)).rejects.toThrow(
+      "/2010-04-01/Accounts.json has more than Infrawrench reads. It stopped at 1000 items",
+    );
+  });
+
+  it("reads numbers for more than the 100 subaccounts it used to stop at", async () => {
+    const subaccounts = Array.from({ length: 150 }, (_, i) => ({
+      sid: `AC${String(i + 1).padStart(32, "0")}`,
+      status: "active",
+    }));
+    const { c, calls } = client((url) =>
+      url.pathname === "/2010-04-01/Accounts.json"
+        ? { body: page("accounts", subaccounts) }
+        : url.pathname.endsWith("/IncomingPhoneNumbers.json")
+          ? { body: page("incoming_phone_numbers", []) }
+          : { body: { services: [], meta: {} } },
+    );
+    await c.listResources("phone-number", ACCOUNT);
+    const listed = calls.filter((call) => call.url.pathname.endsWith("IncomingPhoneNumbers.json"));
+    expect(listed).toHaveLength(151);
+  });
+});
+
 describe("phone numbers", () => {
   const numbersRoute = (url: URL): Reply => {
     if (url.pathname === "/2010-04-01/Accounts.json") {

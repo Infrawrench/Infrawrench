@@ -255,7 +255,16 @@ const Resource = strict({
  */
 const SyncedResource = Resource.omit({ accountId: true }).openapi("SyncedResource");
 
-const SyncResponse = strict({ synced: z.number().int().nonnegative() }).openapi("SyncResponse");
+const SyncResponse = strict({
+  synced: z.number().int().nonnegative(),
+  incompleteLists: z
+    .array(strict({ resourceTypeId: z.string(), message: z.string() }))
+    .optional()
+    .openapi({
+      description:
+        "Resource types left as they were because their list could not be read whole: too long to read, or a page from the provider that was not a list. The stored rows are kept rather than pruned against part of a list.",
+    }),
+}).openapi("SyncResponse");
 
 const ResourceTypeSummary = strict({
   id: z.string(),

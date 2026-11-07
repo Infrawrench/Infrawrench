@@ -71,6 +71,10 @@ The [mobile app](../features/mobile-app.md) has the same sections and search, sh
 
 ![A DigitalOcean account page with a search query typed, narrowing the tab bar to the matching sections. With the search box empty, the same bar lists every resource type](https://agent-assets.infrawrench.com/docs-screenshots/core-concepts/resources-and-accounts/account-page-search-narrowed.png)
 
+### When a list can't be read whole
+
+A sync removes a resource when the provider stops listing it, so Infrawrench only trusts a list it read to the end. If a section has more rows than Infrawrench reads, or the provider answers with something that isn't a list, that section keeps the rows it already had and shows why. The other sections carry on syncing as usual.
+
 ### Providers with a single root
 
 With a few providers, a credential can only ever reach one top-level resource. [UploadThing](../plugins/uploadthing.md) is the clearest case: an API key belongs to one app.

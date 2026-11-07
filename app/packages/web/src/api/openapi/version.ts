@@ -409,4 +409,6 @@
 // optional `iconKey`, the word a plugin declares for what a type is. Additive.
 // 1.95.0: plugin summaries gain optional `sshTunnel`, `jumpHost` and `kvBrowser`, which
 // plugins now declare instead of hosts hard-coding them. Additive.
-export const API_VERSION = "1.95.0";
+// 1.96.0: `POST /accounts/{id}/sync` answers with optional `incompleteLists`, the types
+// a sync refused to prune because their list could not be read whole. Additive.
+export const API_VERSION = "1.96.0";

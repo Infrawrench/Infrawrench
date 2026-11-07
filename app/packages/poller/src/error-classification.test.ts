@@ -27,6 +27,36 @@ const RAW_403 =
   '{"error":{"code":403,"message":"Cloud SQL Admin API has not been used in project 205336108475 ' +
   'before or it is disabled.","status":"PERMISSION_DENIED"}}';
 
+describe("a list a plugin refused", () => {
+  // The shape a plugin's copy of `ListTruncatedError` has, seen from this package.
+  const refused = (message: string) => Object.assign(new Error(message), { incompleteList: true });
+
+  it.each([
+    [
+      "an item count that reads as a 5xx",
+      "Vendor: /x has more than it reads, stopped at 500 items",
+    ],
+    [
+      "an item count that reads as a 429",
+      "Vendor: /x has more than it reads, stopped at 429 items",
+    ],
+    ["a path that reads as a quota", "Vendor: /v1/quotas has more than it reads"],
+    ["a path that reads as a timeout", "Vendor: /v1/timeouts has more than it reads"],
+  ])("is not transient or a rate limit, despite %s", (_name, message) => {
+    expect(isTransientError(refused(message))).toBe(false);
+    expect(isRateLimitError(refused(message))).toBe(false);
+  });
+
+  it("is recognised through a wrapper", () => {
+    const wrapped = new Error("listing failed: 500", { cause: refused("x") });
+    expect(isTransientError(wrapped)).toBe(false);
+  });
+
+  it("leaves everything else to the guesses", () => {
+    expect(isTransientError(new Error("Vendor API error 500 for /x"))).toBe(true);
+  });
+});
+
 describe("isTransientError", () => {
   it("does not treat a disabled-API 403 as transient", () => {
     expect(isTransientError(withStatus(DISABLED_API, 403))).toBe(false);

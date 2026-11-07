@@ -19,8 +19,10 @@ import {
 import {
   isIncompleteListError,
   ListPageError,
+  ListTruncatedError,
   requireListPage,
   rethrowIncompleteList,
+  withinListCap,
 } from "../list-errors.js";
 import type { HttpHostServices } from "../manifest.js";
 
@@ -734,6 +736,35 @@ describe("withPagination", () => {
     await expect(api.getAll("/items", "items")).resolves.toEqual([]);
   });
 
+  it("throws at its page cap with a page still full, and only then", async () => {
+    fetchMock.mockImplementation(async () => response({ items: items(2) }));
+    const capped = withPagination(client(), {
+      pageParam: "page",
+      sizeParam: "per_page",
+      pageSize: 2,
+      maxPages: 3,
+    });
+    await expect(capped.getAll("/items", "items")).rejects.toThrow("stopped at 3 pages (6 items)");
+    await expect(capped.getAll("/items", "items", { partial: true })).resolves.toHaveLength(6);
+
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(response({ items: items(2) }))
+      .mockResolvedValueOnce(response({ items: items(2) }))
+      .mockResolvedValueOnce(response({ items: items(1) }));
+    await expect(capped.getAll("/items", "items")).resolves.toHaveLength(5);
+  });
+
+  it("has a cap of its own, so a provider ignoring the page number cannot loop forever", async () => {
+    fetchMock.mockImplementation(async () => response({ items: items(2) }));
+    const unbounded = withPagination(client(), {
+      pageParam: "page",
+      sizeParam: "per_page",
+      pageSize: 2,
+    });
+    await expect(unbounded.getAll("/items", "items")).rejects.toThrow("stopped at 1000 pages");
+  });
+
   it("reads no body as the end only when told to", async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     await expect(paged().getAll("/items", "items")).rejects.toThrow(ListPageError);
@@ -973,7 +1004,11 @@ describe("withCursorPagination", () => {
         { things: [item(1)], pagination: { next: 1 } },
         { things: [item(2)], pagination: { next: 2 } },
       );
-      const all = await nested().getAll("/nested", "things", { pageSize: 9, maxPages: 2 });
+      const all = await nested().getAll("/nested", "things", {
+        pageSize: 9,
+        maxPages: 2,
+        partial: true,
+      });
       expect(all).toHaveLength(2);
       expect(urls()).toEqual(["/nested?limit=9", "/nested?limit=9&until=1"]);
     });
@@ -992,13 +1027,51 @@ describe("withCursorPagination", () => {
   });
 
   describe("termination", () => {
-    it("stops at maxPages on a repeating cursor, returning what it has", async () => {
+    it("throws at maxPages with more to read, naming the path, the count and the cap", async () => {
+      fetchMock.mockImplementation(async () =>
+        response({ things: [item(1), item(2)], pagination: { next: 7 } }),
+      );
+      const failure = nested({ maxPages: 5 }).getAll("/nested", "things");
+      await expect(failure).rejects.toBeInstanceOf(ListTruncatedError);
+      await expect(failure).rejects.toThrow(
+        "Example: /nested has more than Infrawrench reads. It stopped at 5 pages (10 items)",
+      );
+      await expect(failure).rejects.toMatchObject({ path: "/nested", items: 10, maxPages: 5 });
+      expect(fetchMock).toHaveBeenCalledTimes(5);
+    });
+
+    it("returns normally when the last allowed page is the last page", async () => {
+      answer(
+        { things: [item(1)], pagination: { next: 7 } },
+        { things: [item(2)], pagination: { next: null } },
+      );
+      await expect(nested({ maxPages: 2 }).getAll("/nested", "things")).resolves.toHaveLength(2);
+    });
+
+    it("hands back part of a list only when a client or a call says that is fine", async () => {
       fetchMock.mockImplementation(async () =>
         response({ things: [item(1)], pagination: { next: 7 } }),
       );
-      const all = await nested({ maxPages: 5 }).getAll("/nested", "things");
-      expect(all).toHaveLength(5);
-      expect(fetchMock).toHaveBeenCalledTimes(5);
+      const bounded = withCursorPagination(client(), {
+        cursorParam: "until",
+        maxPages: 3,
+        next: "pagination.next",
+        partial: true,
+      });
+      await expect(bounded.getAll("/no-size", "things")).resolves.toHaveLength(3);
+      await expect(bounded.getAll("/no-size", "things", { partial: false })).rejects.toThrow(
+        ListTruncatedError,
+      );
+
+      const complete = withCursorPagination(client(), {
+        cursorParam: "until",
+        maxPages: 3,
+        next: "pagination.next",
+      });
+      await expect(complete.getAll("/no-size", "things")).rejects.toThrow(ListTruncatedError);
+      await expect(complete.getAll("/no-size", "things", { partial: true })).resolves.toHaveLength(
+        3,
+      );
     });
 
     it("reports a list cut off at maxPages, and only then", async () => {
@@ -1010,6 +1083,7 @@ describe("withCursorPagination", () => {
         cursorParam: "until",
         maxPages: 3,
         next: "pagination.next",
+        partial: true,
         onTruncated,
       });
       await api.getAll("/no-size", "things");
@@ -1829,7 +1903,7 @@ describe("withLinkPagination", () => {
       expect(await api.getAll("/apps", null)).toEqual([{ id: 2 }]);
     });
 
-    it("stops at maxPages on a link that repeats, returning what it has", async () => {
+    it("throws at maxPages on a link that repeats", async () => {
       fetchMock.mockImplementation(async () => paged([{ id: 1 }], link(`${BASE}/apps?same=1`)));
       const onTruncated = vi.fn();
       const api = withLinkPagination(client(), {
@@ -1838,7 +1912,7 @@ describe("withLinkPagination", () => {
         foreignLinks: "follow",
         onTruncated,
       });
-      expect(await api.getAll("/apps", null)).toHaveLength(3);
+      await expect(api.getAll("/apps", null)).rejects.toThrow(ListTruncatedError);
       expect(fetchMock).toHaveBeenCalledTimes(3);
       expect(onTruncated).toHaveBeenCalledWith({ path: "/apps", items: 3, maxPages: 3 });
     });
@@ -1860,7 +1934,7 @@ describe("withLinkPagination", () => {
 
     it("takes pageSize, maxPages and stopWhen per call", async () => {
       fetchMock.mockImplementation(async () => paged([{ id: 1 }], link(`${BASE}/apps?n=1`)));
-      await headerWalk().getAll("/apps", null, { pageSize: 9, maxPages: 2 });
+      await headerWalk().getAll("/apps", null, { pageSize: 9, maxPages: 2, partial: true });
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(`${BASE}/apps?limit=9`);
       expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -2408,5 +2482,32 @@ describe("an incomplete list inside a catch", () => {
   it("is rethrown, and anything else left to the catch", () => {
     expect(() => rethrowIncompleteList(failure)).toThrow(failure);
     expect(() => rethrowIncompleteList(new Error("404"))).not.toThrow();
+  });
+});
+
+describe("withinListCap", () => {
+  const place = { vendor: "Test", path: "/subaccounts" };
+
+  it("hands back a list that fits", () => {
+    expect(withinListCap([1, 2], 2, place)).toEqual([1, 2]);
+  });
+
+  it("refuses one that does not, saying how many there were and the cap", () => {
+    expect(() => withinListCap([1, 2, 3], 2, place)).toThrow(ListTruncatedError);
+    expect(() => withinListCap([1, 2, 3], 2, place)).toThrow(
+      "Test: /subaccounts has more than Infrawrench reads. It stopped at 2 items",
+    );
+  });
+});
+
+describe("a host watching for a swallowed list error", () => {
+  const hook = Symbol.for("infrawrench.incompleteList");
+  afterEach(() => Reflect.deleteProperty(globalThis, hook));
+
+  it("is told when one is made, whatever happens to it next", () => {
+    const seen = vi.fn();
+    Reflect.set(globalThis, hook, seen);
+    const made = new ListTruncatedError({ vendor: "Test", path: "/x", items: 1, maxPages: 1 });
+    expect(seen).toHaveBeenCalledExactlyOnceWith(made);
   });
 });

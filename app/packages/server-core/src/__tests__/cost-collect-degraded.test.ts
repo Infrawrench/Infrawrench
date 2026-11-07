@@ -1,3 +1,4 @@
+import { ListTruncatedError } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -142,5 +143,30 @@ describe("collectAccountCosts tells the reconciler what shape the rows are", () 
       expect.anything(),
       { periodNative: undefined },
     );
+  });
+});
+
+describe("a list a plugin could not read whole", () => {
+  const refused = () =>
+    new ListTruncatedError({ vendor: "AWS", path: "/costs", items: 500, maxPages: 5 });
+
+  it("leaves the chunk alone when the read throws", async () => {
+    fetchCostData.mockRejectedValue(refused());
+    await expect(collectAccountCosts("a", "o")).rejects.toThrow("has more than Infrawrench reads");
+    expect(reconcileCollectedChunk).not.toHaveBeenCalled();
+    expect(insertCostRows).not.toHaveBeenCalled();
+  });
+
+  it("leaves the chunk alone when the plugin swallows the error and answers with part", async () => {
+    fetchCostData.mockImplementation(async () => {
+      try {
+        throw refused();
+      } catch {
+        return [row];
+      }
+    });
+    await expect(collectAccountCosts("a", "o")).rejects.toThrow("has more than Infrawrench reads");
+    expect(reconcileCollectedChunk).not.toHaveBeenCalled();
+    expect(insertCostRows).not.toHaveBeenCalled();
   });
 });

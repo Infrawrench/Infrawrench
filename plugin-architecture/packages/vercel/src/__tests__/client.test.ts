@@ -118,13 +118,6 @@ describe("wire format", () => {
     expect(calls[0]!.url).toBe("https://api.vercel.com/v5/domains?limit=100&teamId=team%20a");
   });
 
-  it("stops at 100 pages on a repeating cursor, returning what it has", async () => {
-    installFetch(() => paged("domains", 7));
-    const res = await client().listResources("vercel-domain", ACCOUNT);
-    expect(calls).toHaveLength(100);
-    expect(res).toHaveLength(100);
-  });
-
   it("throws on a list with no body rather than reading it as empty", async () => {
     installFetch(() => jsonResponse(undefined, 204));
     await expect(client().listResources("vercel-domain", ACCOUNT)).rejects.toThrow(
@@ -415,6 +408,26 @@ describe("listResources dispatch + mappers", () => {
     installFetch(() => jsonResponse({ items: [], pagination: { next: null } }));
     await expect(client().listResources("vercel-deployment", ACCOUNT)).rejects.toThrow(
       'it has no "deployments", only an object with items, pagination',
+    );
+  });
+
+  it("refuses a list past its page cap, rather than prune the rest", async () => {
+    installFetch(() => jsonResponse({ deployments: [{ uid: "d" }], pagination: { next: 1 } }));
+    const failure = client().listResources("vercel-deployment", ACCOUNT);
+    await expect(failure).rejects.toThrow(
+      "Vercel: /v7/deployments has more than Infrawrench reads. It stopped at 500 pages (500 items)",
+    );
+    expect(calls).toHaveLength(500);
+  });
+
+  it("does not read a domain whose records are past the cap as a domain with none", async () => {
+    installFetch((url) =>
+      url.includes("/records")
+        ? jsonResponse({ records: [{ id: "r" }], pagination: { next: 1 } })
+        : jsonResponse({ domains: [{ name: "a.com" }], pagination: { next: null } }),
+    );
+    await expect(client().listResources("vercel-dns-record", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
     );
   });
 

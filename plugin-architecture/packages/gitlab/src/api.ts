@@ -188,38 +188,41 @@ function client(ctx: GitLabContext) {
   });
 }
 
-/** The REST API, with `getAll` for offset lists: up to `maxPages` pages of 100, so a huge instance cannot spin forever. */
+/**
+ * The REST API, with `getAll` for offset lists. 100 pages of 100 costs nothing until
+ * a list really is that long, and past it the list fails rather than come back short,
+ * because the sync prunes what it stops seeing. A bounded read says `partial: true`.
+ */
 export function gitlabApi(ctx: GitLabContext) {
   return withCursorPagination(client(ctx), {
     ...PAGES,
     next: nextPage,
-    maxPages: 10,
+    maxPages: 100,
     continueOnEmptyPage: true,
   });
 }
 
-/** A walk for a reader that stops by itself: pages count up rather than follow the header, and an empty page ends it. */
+/**
+ * A walk for a metric reader that stops by itself: pages count up rather than follow
+ * the header, an empty page ends it, and running out of pages only thins a chart.
+ */
 export function gitlabJobPages(ctx: GitLabContext, maxPages: number) {
   return withCursorPagination(client(ctx), {
     ...PAGES,
     next: ({ headers, items, cursor }) =>
       headers["x-next-page"] === "" || items.length < PAGES.pageSize ? null : followingPage(cursor),
     maxPages,
+    partial: true,
   });
 }
 
-/** Like {@link gitlabApi}, but running past `maxPages` throws rather than return part of a list. */
+/** Like {@link gitlabApi}, with a cap of the reader's own. */
 export function gitlabCompleteLists(ctx: GitLabContext, maxPages: number) {
   return withCursorPagination(client(ctx), {
     ...PAGES,
     next: nextPage,
     maxPages,
     continueOnEmptyPage: true,
-    onTruncated: ({ path }) => {
-      throw new Error(
-        `GitLab plugin: ${path} has more than ${maxPages * PAGES.pageSize} rows; refusing to report a partial list.`,
-      );
-    },
   });
 }
 

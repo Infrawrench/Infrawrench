@@ -528,11 +528,13 @@ export { isSingleSqlStatement, assertSingleSqlStatement } from "./sql-statements
 export {
   IncompleteListError,
   ListPageError,
+  ListTruncatedError,
   isIncompleteListError,
   requireListPage,
   rethrowIncompleteList,
+  withinListCap,
 } from "./list-errors.js";
-export type { ListPageProblem, ListPlace } from "./list-errors.js";
+export type { ListPageProblem, ListPlace, ListTruncation } from "./list-errors.js";
 
 export {
   commaSeparated,

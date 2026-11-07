@@ -167,6 +167,7 @@ export async function projectSeries(
         created_before: new Date(range.endMs).toISOString(),
       },
       maxPages: MAX_JOB_PAGES,
+      partial: true,
     }),
     gitlabJobPages(ctx, MAX_JOB_PAGES)
       .getAll(`/projects/${projectId}/jobs`, null, { stopWhen: reachesBefore(range.startMs) })
@@ -202,6 +203,7 @@ export async function environmentSeries(
       sort: "desc",
     },
     maxPages: MAX_JOB_PAGES,
+    partial: true,
   });
   return deploymentSeries(deployments, range);
 }

@@ -48,7 +48,11 @@ export default function AccountResources() {
 
   const sync = useMutation({
     mutationFn: () =>
-      api.org(orgId, `/accounts/${encodeURIComponent(accountId)}/sync`, { method: "POST" }),
+      api.org<{ incompleteLists?: Array<{ message: string }> }>(
+        orgId,
+        `/accounts/${encodeURIComponent(accountId)}/sync`,
+        { method: "POST" },
+      ),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["account-resources", orgId, accountId] }),
   });
@@ -152,6 +156,11 @@ export default function AccountResources() {
         disabled={sync.isPending}
         onPress={() => sync.mutate()}
       />
+      {sync.data?.incompleteLists?.[0] && (
+        <View style={styles.reconnect} accessibilityRole="alert">
+          <Text style={styles.reconnectMessage}>{sync.data.incompleteLists[0].message}</Text>
+        </View>
+      )}
       {hasAnyResources && (
         <TextInput
           style={styles.input}

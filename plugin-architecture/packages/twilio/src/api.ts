@@ -124,7 +124,10 @@ function clientFor<P>(ctx: TwilioContext, baseUrl: string) {
 const onHost = (host: string) => (pathOrUrl: string) =>
   pathOrUrl.startsWith("http") ? pathOrUrl : `${host}${pathOrUrl}`;
 
-/** A list asks for 1000 a page, may run past an empty page, and stops at 50 pages. */
+/**
+ * A list asks for 1000 a page and may run past an empty page. 50 pages is 50,000
+ * rows, and a list longer than that fails rather than come back short.
+ */
 const LISTS = {
   sizeParam: "PageSize",
   pageSize: 1000,

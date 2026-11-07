@@ -733,7 +733,10 @@ app.post("/:id/sync", async (c) => {
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   const result = await syncAccountResources(accountId, organizationId);
-  return c.json({ synced: result.resourceCount });
+  return c.json({
+    synced: result.resourceCount,
+    ...(result.incompleteLists.length > 0 ? { incompleteLists: result.incompleteLists } : {}),
+  });
 });
 
 /** GET /api/accounts/:id/detail: account metadata + resource types (no resources, no sync) */

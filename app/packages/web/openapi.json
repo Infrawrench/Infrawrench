@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.95.0",
+    "version": "1.96.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -5875,6 +5875,26 @@
           "synced": {
             "type": "integer",
             "minimum": 0
+          },
+          "incompleteLists": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceTypeId": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "resourceTypeId",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Resource types left as they were because their list could not be read whole: too long to read, or a page from the provider that was not a list. The stored rows are kept rather than pruned against part of a list."
           }
         },
         "required": [

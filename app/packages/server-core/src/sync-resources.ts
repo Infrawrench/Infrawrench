@@ -7,7 +7,10 @@ import type {
   HostPluginClient,
   ResourceInstance,
 } from "@infrawrench/plugin-base";
-import { evaluatePeerIntegrationUnreachable } from "@infrawrench/plugin-base";
+import {
+  evaluatePeerIntegrationUnreachable,
+  isIncompleteListError,
+} from "@infrawrench/plugin-base";
 import { db } from "./db/client";
 import { accounts, dashboardPins, resources, secretFieldStates } from "./db/schema";
 import { decrypt, encrypt, buildAad } from "./encryption";
@@ -19,6 +22,7 @@ import { buildPluginHostServices } from "./host-services";
 import { withEgressScope } from "./egress-guard";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
 import { runGatewayChecked } from "./runtime/gateway-only";
+import { runListChecked } from "./runtime/request-scope";
 import {
   flattenMetricSeries,
   insertAccountResourceCounts,
@@ -222,7 +226,7 @@ export async function syncAccountResourceType(
   const typeDef = plugin.resourceTypes.find((t) => t.id === typeId);
   if (!typeDef) throw new Error(`Resource type "${typeId}" not found`);
 
-  const fetched = await client.listResources(typeId, accountId);
+  const fetched = await runListChecked(() => client.listResources(typeId, accountId));
 
   const prior = await loadPriorSnapshots(accountId, organizationId, typeId).catch((err) => {
     console.error(`[sync] loading prior snapshots for account ${accountId} failed:`, err);
@@ -291,6 +295,12 @@ interface SyncAccountResult {
   skippedTypeIds: string[];
   /** First error encountered across types, if any. */
   firstError?: Error;
+  /**
+   * Types whose list could not say it had every row, so they were left as they were:
+   * a list past its page cap, or a page that was not a list. Unlike a type the token
+   * cannot read, nothing else tells whoever is looking at it that it has gone stale.
+   */
+  incompleteLists: Array<{ resourceTypeId: string; message: string }>;
 }
 
 /** Sync all resource types for an account. Returns counts + error metadata for poller backoff. */
@@ -323,13 +333,14 @@ export async function syncAccountResources(
   // degraded list. A plain call on Node.
   const fetchResults = await Promise.allSettled(
     runnableTypeIds.map((typeId) =>
-      runGatewayChecked(() => client.listResources(typeId, accountId)),
+      runGatewayChecked(() => runListChecked(() => client.listResources(typeId, accountId))),
     ),
   );
 
   const allResources: ResourceInstance[] = [];
   const succeededTypeIds: string[] = [];
   const failedTypeIds: string[] = [];
+  const incompleteLists: SyncAccountResult["incompleteLists"] = [];
   let firstError: Error | undefined;
 
   for (let i = 0; i < fetchResults.length; i++) {
@@ -343,6 +354,9 @@ export async function syncAccountResources(
       failedTypeIds.push(typeId);
       const err = r.reason instanceof Error ? r.reason : new Error(String(r.reason));
       if (!firstError) firstError = err;
+      if (isIncompleteListError(err)) {
+        incompleteLists.push({ resourceTypeId: typeId, message: err.message });
+      }
       onTypeDone(typeId, "error", err);
     }
   }
@@ -418,6 +432,7 @@ export async function syncAccountResources(
     succeededTypeIds,
     failedTypeIds,
     skippedTypeIds,
+    incompleteLists,
   };
   if (firstError) result.firstError = firstError;
   return result;

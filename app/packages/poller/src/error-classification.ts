@@ -26,7 +26,23 @@ function httpStatusOf(err: Error): number | undefined {
   return typeof raw === "number" && Number.isInteger(raw) ? raw : undefined;
 }
 
+/**
+ * A list a plugin refused: too long for its page cap, or a page that was no list.
+ * Backing off fixes neither, and its message holds a path and item counts, which the
+ * guesses below would read as a 500 or a quota. Read by marker because a plugin's
+ * copy of the class is not this package's, and through `cause` because plugins wrap.
+ */
+function isIncompleteList(err: Error): boolean {
+  let current: unknown = err;
+  for (let depth = 0; depth < 8 && typeof current === "object" && current !== null; depth++) {
+    if ("incompleteList" in current && current.incompleteList === true) return true;
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return false;
+}
+
 export function isRateLimitError(err: Error): boolean {
+  if (isIncompleteList(err)) return false;
   const status = httpStatusOf(err);
   if (status === 429) return true;
   const msg = err.message.toLowerCase();
@@ -46,6 +62,7 @@ export function isRateLimitError(err: Error): boolean {
 }
 
 export function isTransientError(err: Error): boolean {
+  if (isIncompleteList(err)) return false;
   if (isRateLimitError(err)) return true;
   const status = httpStatusOf(err);
   if (status !== undefined) return status >= 500;

@@ -1,10 +1,11 @@
+import { pathEncode } from "@infrawrench/plugin-base";
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { GitLabApiError, gitlabApi, resolveBaseUrl, statusOf } from "../api.js";
 import { GitLabClient, cleanTrace, parseListish, splitVariable } from "../client.js";
 import { hookEventFlags, parseVariableLines } from "../inputs.js";
 import { describeLevels, mapVariable } from "../mappers.js";
-import { jobSeries, percentile, pipelineSeries } from "../metrics.js";
+import { jobSeries, percentile, pipelineSeries, projectSeries } from "../metrics.js";
 import { plugin } from "../plugin.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { gitlabTerraformExport } from "../terraform.js";
@@ -71,6 +72,48 @@ describe("a list answered with something else", () => {
       { group: "g" },
     );
     await expect(c.listResources("group", ACC)).rejects.toThrow("is not a list");
+  });
+});
+
+describe("a list past its cap", () => {
+  const endless = {
+    body: [{ id: 1, path_with_namespace: "a/b" }],
+    headers: { "x-next-page": "2" },
+  };
+
+  it("refuses an inventory list past 100 pages, rather than prune the rest", async () => {
+    const { c, calls } = client(() => endless);
+    await expect(c.listResources("project", ACC)).rejects.toThrow(
+      "GitLab: /projects has more than Infrawrench reads. It stopped at 100 pages (100 items)",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("reads a project's children past the 2 pages it used to stop at", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname === "/api/v4/projects") return [{ id: 1, path_with_namespace: "a/b" }];
+      const page = Number(call.url.searchParams.get("page"));
+      return {
+        body: [{ id: page, name: `env${page}` }],
+        headers: { "x-next-page": page < 5 ? String(page + 1) : "" },
+      };
+    });
+    await expect(c.listResources("environment", ACC)).resolves.toHaveLength(5);
+  });
+
+  it("lets a chart read as far as it can", async () => {
+    const { http } = makeHttp(() => endless);
+    const ctx = { baseUrl: "https://gitlab.example.com", token: "t", http };
+    const range = { startMs: 0, endMs: 1 };
+    await expect(projectSeries(ctx, pathEncode(1), range)).resolves.toBeInstanceOf(Array);
+  });
+
+  it("lets a pipeline's detail show its first jobs", async () => {
+    const { c, calls } = client((call) =>
+      call.url.pathname.endsWith("/jobs") ? endless : { id: 1, path_with_namespace: "a/b" },
+    );
+    await expect(c.getResource("pipeline", "acc:pipeline:1/2", ACC)).resolves.toBeDefined();
+    expect(calls.filter((call) => call.url.pathname.endsWith("/jobs"))).toHaveLength(3);
   });
 });
 

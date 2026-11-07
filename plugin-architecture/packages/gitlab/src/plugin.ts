@@ -192,6 +192,7 @@ async function listCredentialOptions(
   const groups = await api.getAll("/groups", null, {
     query: { min_access_level: 10, order_by: "path" },
     maxPages: 5,
+    partial: true,
   });
   return groups
     .map((g) => ({ id: String(g.id), label: g.full_path, description: g.full_name ?? g.name }))

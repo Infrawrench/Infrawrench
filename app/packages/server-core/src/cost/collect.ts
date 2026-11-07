@@ -5,6 +5,7 @@ import { accounts } from "../db/schema";
 import { loadAccountClient } from "../sync-resources";
 import { insertCostRows, toCostDailyRows } from "../clickhouse/cost-writers";
 import { reconcileCollectedChunk } from "../clickhouse/cost-reconcile";
+import { runListChecked } from "../runtime/request-scope";
 
 import { addDays, isoDay, monthChunks } from "./dates";
 
@@ -42,6 +43,7 @@ export async function collectAccountCosts(
   if (!capability || !client.fetchCostData) {
     throw new Error(`Plugin "${account.pluginId}" does not support cost collection`);
   }
+  const fetchCostData = client.fetchCostData.bind(client);
 
   const today = isoDay(new Date());
   const backfilling = !account.costBackfilledAt;
@@ -56,7 +58,9 @@ export async function collectAccountCosts(
     // says something about the pass as well: absent means "not degraded", so
     // every plugin that has not opted in behaves exactly as before.
     const { rows, degraded } = normalizeCostFetchResult(
-      await client.fetchCostData(accountId, chunk),
+      // The reconcile below zeroes what a chunk does not return, so a list the plugin
+      // caught a refusal for must not get that far.
+      await runListChecked(() => fetchCostData(accountId, chunk)),
     );
     if (rows.length > 0) {
       // An estimating plugin's amounts *are* list prices (inventory or usage

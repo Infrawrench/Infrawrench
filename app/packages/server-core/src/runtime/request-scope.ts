@@ -37,6 +37,8 @@ export interface RequestScope {
    * poller leaves it unset and behaves exactly like the Node poller.
    */
   sessionHandoff?: boolean;
+  /** Where a list a plugin refused to complete inside this scope is recorded. */
+  incompleteList?: IncompleteListTracker;
 }
 
 /**
@@ -50,6 +52,16 @@ export interface RequestScope {
 interface GatewayOnlyTracker {
   hit?: string;
   parent?: GatewayOnlyTracker | undefined;
+}
+
+/**
+ * Records that a plugin's list read could not say it had every row, *even if the
+ * plugin caught the error*, as `.catch(() => [])` around a child list does. That
+ * reads as an empty list, and the sync prunes what it stops seeing.
+ */
+interface IncompleteListTracker {
+  error?: Error;
+  parent?: IncompleteListTracker | undefined;
 }
 
 const storage = new AsyncLocalStorage<RequestScope>();
@@ -101,6 +113,27 @@ export async function trackGatewayOnlyHits<T>(
   } catch (error) {
     return tracker.hit ? { ok: false, error, hit: tracker.hit } : { ok: false, error };
   }
+}
+
+function noteIncompleteList(error: Error): void {
+  for (let t = storage.getStore()?.incompleteList; t; t = t.parent) t.error ??= error;
+}
+
+// `IncompleteListError` calls this. A global because plugins are bundled with their
+// own copy of plugin-base, the same reason `GatewayOnlyError`'s stub reaches a hook.
+Reflect.set(globalThis, Symbol.for("infrawrench.incompleteList"), noteIncompleteList);
+
+/**
+ * Run a read whose result gets pruned or reconciled against, and fail if a list
+ * inside it was refused, whether or not the plugin caught that. A list read twice by
+ * a plugin's cache only marks the scope that started it.
+ */
+export async function runListChecked<T>(fn: () => Promise<T>): Promise<T> {
+  const parent = storage.getStore();
+  const tracker: IncompleteListTracker = { parent: parent?.incompleteList };
+  const value = await storage.run({ ...parent, incompleteList: tracker }, fn);
+  if (tracker.error) throw tracker.error;
+  return value;
 }
 
 /** Whether this scope hands work that needs process-local state to the session gateway. */

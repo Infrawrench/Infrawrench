@@ -113,8 +113,6 @@ import type {
   GlVariable,
 } from "./api.js";
 
-/** Project pages read for the inventory (100 each, most recently active first). */
-const PROJECT_PAGES = 5;
 /**
  * Projects whose children (pipelines, variables, environments, ...) are
  * listed: the most recently active non-archived ones. Each child type costs
@@ -193,11 +191,9 @@ export class GitLabClient implements PluginClient {
       const list = this.groupRef
         ? await this.api.getAll(`/groups/${this.groupRef}/projects`, null, {
             query: { ...query, include_subgroups: true, with_shared: false },
-            maxPages: PROJECT_PAGES,
           })
         : await this.api.getAll("/projects", null, {
             query: { ...query, membership: true },
-            maxPages: PROJECT_PAGES,
           });
       return list;
     };
@@ -225,7 +221,7 @@ export class GitLabClient implements PluginClient {
             query: { with_projects: false },
           }),
           this.api
-            .getAll(`/groups/${this.groupRef}/descendant_groups`, null, { maxPages: 5 })
+            .getAll(`/groups/${this.groupRef}/descendant_groups`, null)
             .catch((err: unknown): GlGroup[] => {
               rethrowIncompleteList(err);
               return [];
@@ -235,7 +231,6 @@ export class GitLabClient implements PluginClient {
       }
       return this.api.getAll("/groups", null, {
         query: { min_access_level: 10, order_by: "name" },
-        maxPages: 5,
       });
     };
     this.groupsCache ??= load().catch((err: unknown) => {
@@ -360,45 +355,37 @@ export class GitLabClient implements PluginClient {
           return this.perProject(
             (p) => enabled(p.environments_access_level),
             async (s) =>
-              (
-                await this.api.getAll(`/projects/${pathEncode(s.id)}/environments`, null, {
-                  maxPages: 2,
-                })
-              ).map((e) => mapEnvironment(accountId, s, e)),
+              (await this.api.getAll(`/projects/${pathEncode(s.id)}/environments`, null)).map((e) =>
+                mapEnvironment(accountId, s, e),
+              ),
           );
         case "protected-branch":
           return this.perProject(
             (p) => !p.empty_repo,
             async (s) =>
-              (
-                await this.api.getAll(`/projects/${pathEncode(s.id)}/protected_branches`, null, {
-                  maxPages: 2,
-                })
-              ).map((b) => mapProtectedBranch(accountId, s, b)),
+              (await this.api.getAll(`/projects/${pathEncode(s.id)}/protected_branches`, null)).map(
+                (b) => mapProtectedBranch(accountId, s, b),
+              ),
           );
         case "project-variable":
           return this.perProject(GitLabClient.maintainer, async (s) =>
-            (
-              await this.api.getAll(`/projects/${pathEncode(s.id)}/variables`, null, {
-                maxPages: 3,
-              })
-            ).map((v) => mapVariable(accountId, s, v)),
+            (await this.api.getAll(`/projects/${pathEncode(s.id)}/variables`, null)).map((v) =>
+              mapVariable(accountId, s, v),
+            ),
           );
         case "group-variable":
           return this.perGroup(async (s) =>
-            (
-              await this.api.getAll(`/groups/${pathEncode(s.id)}/variables`, null, { maxPages: 3 })
-            ).map((v) => mapVariable(accountId, s, v)),
+            (await this.api.getAll(`/groups/${pathEncode(s.id)}/variables`, null)).map((v) =>
+              mapVariable(accountId, s, v),
+            ),
           );
         case "pipeline-schedule":
           return this.perProject(
             (p) => enabled(p.builds_access_level) && p.jobs_enabled !== false,
             async (s) =>
-              (
-                await this.api.getAll(`/projects/${pathEncode(s.id)}/pipeline_schedules`, null, {
-                  maxPages: 2,
-                })
-              ).map((x) => mapSchedule(accountId, s, x)),
+              (await this.api.getAll(`/projects/${pathEncode(s.id)}/pipeline_schedules`, null)).map(
+                (x) => mapSchedule(accountId, s, x),
+              ),
           );
         case "container-repository":
           return this.perProject(
@@ -408,7 +395,6 @@ export class GitLabClient implements PluginClient {
               (
                 await this.api.getAll(`/projects/${pathEncode(s.id)}/registry/repositories`, null, {
                   query: { tags_count: true },
-                  maxPages: 3,
                 })
               ).map((r) => mapContainerRepository(accountId, s, r)),
           );
@@ -419,7 +405,6 @@ export class GitLabClient implements PluginClient {
             const packages = await this.api
               .getAll(`/groups/${this.groupRef}/packages`, null, {
                 query: { order_by: "created_at", sort: "desc" },
-                maxPages: 5,
               })
               .catch((err: unknown): GlPackage[] => {
                 if (isAbsent(err)) return [];
@@ -443,45 +428,38 @@ export class GitLabClient implements PluginClient {
               (
                 await this.api.getAll(`/projects/${pathEncode(s.id)}/packages`, null, {
                   query: { order_by: "created_at", sort: "desc" },
-                  maxPages: 2,
                 })
               ).map((pkg) => mapPackage(accountId, s, pkg)),
           );
         }
         case "deploy-key":
           return this.perProject(GitLabClient.maintainer, async (s) =>
-            (
-              await this.api.getAll(`/projects/${pathEncode(s.id)}/deploy_keys`, null, {
-                maxPages: 2,
-              })
-            ).map((k) => mapDeployKey(accountId, s, k)),
+            (await this.api.getAll(`/projects/${pathEncode(s.id)}/deploy_keys`, null)).map((k) =>
+              mapDeployKey(accountId, s, k),
+            ),
           );
         case "deploy-token":
           return this.perProject(GitLabClient.maintainer, async (s) =>
-            (
-              await this.api.getAll(`/projects/${pathEncode(s.id)}/deploy_tokens`, null, {
-                maxPages: 2,
-              })
-            ).map((t) => mapDeployToken(accountId, s, t)),
+            (await this.api.getAll(`/projects/${pathEncode(s.id)}/deploy_tokens`, null)).map((t) =>
+              mapDeployToken(accountId, s, t),
+            ),
           );
         case "group-deploy-token":
           return this.perGroup(async (s) =>
-            (
-              await this.api.getAll(`/groups/${pathEncode(s.id)}/deploy_tokens`, null, {
-                maxPages: 2,
-              })
-            ).map((t) => mapDeployToken(accountId, s, t)),
+            (await this.api.getAll(`/groups/${pathEncode(s.id)}/deploy_tokens`, null)).map((t) =>
+              mapDeployToken(accountId, s, t),
+            ),
           );
         case "project-webhook":
           return this.perProject(GitLabClient.maintainer, async (s) =>
-            (
-              await this.api.getAll(`/projects/${pathEncode(s.id)}/hooks`, null, { maxPages: 2 })
-            ).map((h) => mapHook(accountId, s, h)),
+            (await this.api.getAll(`/projects/${pathEncode(s.id)}/hooks`, null)).map((h) =>
+              mapHook(accountId, s, h),
+            ),
           );
         case "group-webhook":
           return this.perGroup(async (s) =>
-            (await this.api.getAll(`/groups/${pathEncode(s.id)}/hooks`, null, { maxPages: 2 })).map(
-              (h) => mapHook(accountId, s, h),
+            (await this.api.getAll(`/groups/${pathEncode(s.id)}/hooks`, null)).map((h) =>
+              mapHook(accountId, s, h),
             ),
           );
         case "release":
@@ -498,17 +476,15 @@ export class GitLabClient implements PluginClient {
           return this.perProject(
             () => true,
             async (s) =>
-              (
-                await this.api.getAll(`/projects/${pathEncode(s.id)}/members`, null, {
-                  maxPages: 3,
-                })
-              ).map((m) => mapMember(accountId, s, m)),
+              (await this.api.getAll(`/projects/${pathEncode(s.id)}/members`, null)).map((m) =>
+                mapMember(accountId, s, m),
+              ),
           );
         case "group-member":
           return this.perGroup(async (s) =>
-            (
-              await this.api.getAll(`/groups/${pathEncode(s.id)}/members`, null, { maxPages: 5 })
-            ).map((m) => mapMember(accountId, s, m)),
+            (await this.api.getAll(`/groups/${pathEncode(s.id)}/members`, null)).map((m) =>
+              mapMember(accountId, s, m),
+            ),
           );
         case "runner":
           return (await this.runners()).map((r) => mapRunner(accountId, r));
@@ -537,7 +513,6 @@ export class GitLabClient implements PluginClient {
           await this.api
             .getAll(`/groups/${pathEncode(g.id)}/runners`, null, {
               query: { type: "group_type" },
-              maxPages: 2,
             })
             .catch((err: unknown): GlRunner[] => {
               if (isAbsent(err)) return [];
@@ -550,7 +525,6 @@ export class GitLabClient implements PluginClient {
           await this.api
             .getAll(`/projects/${pathEncode(p.id)}/runners`, null, {
               query: { type: "project_type" },
-              maxPages: 1,
             })
             .catch((err: unknown): GlRunner[] => {
               if (isAbsent(err)) return [];
@@ -559,7 +533,7 @@ export class GitLabClient implements PluginClient {
         );
       }
     } else {
-      add(await this.api.getAll("/runners", null, { maxPages: 5 }));
+      add(await this.api.getAll("/runners", null));
     }
     const out: GlRunner[] = [];
     let read = 0;
@@ -639,6 +613,7 @@ export class GitLabClient implements PluginClient {
             this.api
               .getAll(`/projects/${pathEncode(s.id)}/pipelines/${pathEncode(rest)}/jobs`, null, {
                 maxPages: 3,
+                partial: true,
               })
               .catch(() => undefined),
           ]);
@@ -699,7 +674,7 @@ export class GitLabClient implements PluginClient {
               .getAll(
                 `/projects/${pathEncode(s.id)}/packages/${pathEncode(rest)}/package_files`,
                 null,
-                { maxPages: 2 },
+                { maxPages: 2, partial: true },
               )
               .catch(() => undefined),
           ]);
@@ -2377,7 +2352,7 @@ export class GitLabClient implements PluginClient {
       const jobs = await this.api.getAll(
         `/projects/${pathEncode(o)}/pipelines/${pathEncode(rest)}/jobs`,
         null,
-        { maxPages: 3 },
+        { maxPages: 3, partial: true },
       );
       const label = (j: GlJob) => `${j.stage ? `${j.stage} / ` : ""}${j.name} #${j.id}`;
       const ordered = [...jobs].sort((a, b) => a.id - b.id);

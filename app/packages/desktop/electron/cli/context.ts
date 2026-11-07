@@ -365,11 +365,12 @@ export async function loadLocalResourceOutputs(
  * desktop account page syncs the same way. Returns the synced row count.
  */
 export async function syncCloudAccount(orgId: string, accountId: string): Promise<number> {
-  const { synced } = await orgFetch<{ synced: number }>(
-    orgId,
-    `/accounts/${encodeURIComponent(accountId)}/sync`,
-    { method: "POST" },
-  );
+  const { synced, incompleteLists } = await orgFetch<{
+    synced: number;
+    incompleteLists?: Array<{ message: string }>;
+  }>(orgId, `/accounts/${encodeURIComponent(accountId)}/sync`, { method: "POST" });
+  // A list too long to read keeps its cached rows, and the sync still answers 200.
+  if (incompleteLists?.[0]) throw new Error(incompleteLists[0].message);
   return synced;
 }
 

@@ -527,6 +527,33 @@ describe("Account routes", () => {
       expect(body.synced).toBe(0);
     });
 
+    it("says which lists could not be read whole, and leaves it out otherwise", async () => {
+      const { mockClient, updateWhere } = setupSyncMocks([]);
+      const app = buildApp();
+      expect(await (await app.request("/a1/sync", { method: "POST" })).json()).toEqual({
+        synced: 0,
+      });
+
+      updateWhere.mockClear();
+      mockClient.listResources.mockRejectedValue(
+        Object.assign(new Error("Vendor: /x has more than Infrawrench reads."), {
+          incompleteList: true,
+        }),
+      );
+      const res = await app.request("/a1/sync", { method: "POST" });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        synced: 0,
+        incompleteLists: [
+          {
+            resourceTypeId: "ec2-instance",
+            message: "Vendor: /x has more than Infrawrench reads.",
+          },
+        ],
+      });
+      expect(updateWhere).not.toHaveBeenCalled();
+    });
+
     it("soft-deletes stale resources not returned by plugin", async () => {
       const liveResource = {
         id: "r-live",

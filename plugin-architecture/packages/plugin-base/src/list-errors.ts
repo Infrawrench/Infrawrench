@@ -7,6 +7,8 @@
  * `instanceof`: {@link isIncompleteListError} reads a marker instead.
  */
 
+const INCOMPLETE_LIST_HOOK = Symbol.for("infrawrench.incompleteList");
+
 /** Where a list was being read, for the error's message. */
 export interface ListPlace {
   /** The provider, e.g. `"Vercel"`. */
@@ -25,6 +27,11 @@ export abstract class IncompleteListError extends Error {
     super(message);
     this.vendor = place.vendor;
     this.path = place.path;
+    // A plugin that swallows this still returns a list the host must not trust.
+    // Set on the host, by `runListChecked`; a global because the plugin's copy of
+    // this package is not the host's.
+    const noted: unknown = Reflect.get(globalThis, INCOMPLETE_LIST_HOOK);
+    if (typeof noted === "function") noted(this);
   }
 }
 
@@ -81,6 +88,60 @@ export function requireListPage<T>(
 ): T[] {
   if (!Array.isArray(list)) throw new ListPageError({ ...where, found: list });
   return list;
+}
+
+export interface ListTruncation extends ListPlace {
+  /** How many rows had been read when it stopped. */
+  items: number;
+  /** The page cap it reached, for a loop that counts pages. */
+  maxPages?: number;
+  /** The row cap it reached, for a loop that counts rows or a list cut with `slice`. */
+  maxItems?: number;
+}
+
+function capReached({ items, maxPages, maxItems }: ListTruncation): string {
+  const read = `${items} ${items === 1 ? "item" : "items"}`;
+  if (maxPages !== undefined) return `${maxPages} ${maxPages === 1 ? "page" : "pages"} (${read})`;
+  return maxItems !== undefined ? `${maxItems} items` : read;
+}
+
+/**
+ * A list with more to read than its cap allows. What the sync's prune needs instead
+ * of part of a list; a read where part is fine asks for `partial: true`.
+ *
+ *   for (let page = 0; page < MAX_PAGES; page++) {
+ *     ...
+ *     if (!next) return out;
+ *   }
+ *   throw new ListTruncatedError({ vendor: "Okta", path, items: out.length, maxPages: MAX_PAGES });
+ */
+export class ListTruncatedError extends IncompleteListError {
+  readonly _tag = "ListTruncatedError";
+  readonly items: number;
+  readonly maxPages: number | undefined;
+  readonly maxItems: number | undefined;
+
+  constructor(truncation: ListTruncation) {
+    super(
+      truncation,
+      `${truncation.vendor}: ${truncation.path} has more than Infrawrench reads. It stopped at ${capReached(truncation)}, and a partial list would read the rest as deleted, so this one was not used.`,
+    );
+    this.name = "ListTruncatedError";
+    this.items = truncation.items;
+    this.maxPages = truncation.maxPages;
+    this.maxItems = truncation.maxItems;
+  }
+}
+
+/**
+ * `items` if it fits under `maxItems`, for a cap that is a `slice` of what a list
+ * fans out over. Throws rather than quietly drop the children of whatever is past it.
+ */
+export function withinListCap<T>(items: T[], maxItems: number, place: ListPlace): T[] {
+  if (items.length > maxItems) {
+    throw new ListTruncatedError({ ...place, items: items.length, maxItems });
+  }
+  return items;
 }
 
 /** True for any {@link IncompleteListError}, or anything wrapping one as its `cause`. */

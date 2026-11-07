@@ -419,16 +419,30 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           map: { ...base, [accountId]: { loading: false, resources: existing } },
         };
       });
-      apiPost(`${apiBase}/accounts/${accountId}/sync`)
-        .then(() =>
-          apiGet<ResourceSummary[]>(`${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`),
-        )
-        .then((fresh) => {
+      apiPost<{ incompleteLists?: Array<{ message: string }> }>(
+        `${apiBase}/accounts/${accountId}/sync`,
+      )
+        .then(async ({ incompleteLists }) => ({
+          fresh: await apiGet<ResourceSummary[]>(
+            `${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`,
+          ),
+          incomplete: incompleteLists?.[0]?.message,
+        }))
+        .then(({ fresh, incomplete }) => {
           setAccountResourcesStore((prev) => {
             const base = prev.forOrg === orgId ? prev.map : {};
             return {
               forOrg: orgId,
-              map: { ...base, [accountId]: { loading: false, resources: fresh } },
+              map: {
+                ...base,
+                [accountId]: {
+                  loading: false,
+                  resources: fresh,
+                  ...(incomplete
+                    ? { warning: gt("Couldn't refresh resources: {error}", { error: incomplete }) }
+                    : {}),
+                },
+              },
             };
           });
         })
