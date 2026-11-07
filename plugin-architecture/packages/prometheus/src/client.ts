@@ -18,7 +18,7 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
+import { decodePromptArgs, externalIdOf, withinListCap } from "@infrawrench/plugin-base";
 import type { PromContext } from "./api.js";
 import {
   amFetch,
@@ -60,7 +60,9 @@ import {
 import { instantQuery, queryRange, rangeOrDefault } from "./prom.js";
 import { COMMANDS, renderPromDetail, renderPromSidebar, silenceFields } from "./render.js";
 
-const MAX_TARGETS = 3000;
+// /api/v1/targets answers every target at once, so this cap costs no requests. It is
+// the most rows one resource sync takes.
+const MAX_TARGETS = 100_000;
 
 const DURATIONS: Record<string, number> = {
   m: 60_000,
@@ -240,9 +242,10 @@ export class PromClient implements PluginClient {
           );
         }
         case "prometheus-target":
-          return ((await this.targets()).activeTargets ?? [])
-            .slice(0, MAX_TARGETS)
-            .map((t) => mapTarget(accountId, t));
+          return withinListCap((await this.targets()).activeTargets ?? [], MAX_TARGETS, {
+            vendor: "Prometheus",
+            path: "/api/v1/targets",
+          }).map((t) => mapTarget(accountId, t));
         case "prometheus-rule-group":
           return (await this.ruleGroups()).map((g) => mapRuleGroup(accountId, g));
         case "prometheus-rule":
