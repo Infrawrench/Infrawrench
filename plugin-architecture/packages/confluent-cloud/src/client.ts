@@ -16,13 +16,14 @@ import type {
   SidebarItemSchema,
   SizeOption,
 } from "@infrawrench/plugin-base";
-import { pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
+import { ListPageError, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { ConfluentContext } from "./api.js";
 import type { operations } from "./api-types.management.gen.js";
 import {
   NETWORK_MAX_PAGES,
   NETWORK_PAGE_SIZE,
   PAGE_SIZE,
+  VENDOR,
   ccList,
   createConfluentContext,
   statusOf,
@@ -90,6 +91,8 @@ export const KAFKA_KEY_FIELD = "kafkaApiKey";
 export const KAFKA_SECRET_FIELD = "kafkaApiSecret";
 
 const CACHE_MS = 60_000;
+/** The 4xx answers that say the read did not happen, rather than that there is nothing to read. */
+const READ_DID_NOT_HAPPEN = new Set([401, 408, 425, 429]);
 const HOURS_PER_MONTH = 730;
 /** The rightsizing catalog: CKU counts a Dedicated cluster can be sized to. */
 const MAX_CATALOG_CKU = 24;
@@ -409,12 +412,15 @@ export class ConfluentCloudClient implements PluginClient {
     env: string,
     cluster: string,
   ): Promise<Record<string, CcConnectorExpanded>> {
-    return (
-      (await this.ctx.api.get(
-        `/connect/v1/environments/${pathEncode(env)}/clusters/${pathEncode(cluster)}/connectors`,
-        { query: { expand: "info,status,id" } },
-      )) ?? {}
+    const byName: Record<string, CcConnectorExpanded> | null | undefined = await this.ctx.api.get(
+      `/connect/v1/environments/${pathEncode(env)}/clusters/${pathEncode(cluster)}/connectors`,
+      { query: { expand: "info,status,id" } },
     );
+    if (typeof byName !== "object" || byName === null || Array.isArray(byName)) {
+      const path = `/connect/v1/environments/${env}/clusters/${cluster}/connectors`;
+      throw new ListPageError({ vendor: VENDOR, path, key: null, found: byName });
+    }
+    return byName;
   }
 
   private async listConnectors(accountId: string): Promise<ResourceInstance[]> {
@@ -428,7 +434,8 @@ export class ConfluentCloudClient implements PluginClient {
         const byName = await this.fetchConnectors(env, cluster).catch(
           (err: unknown): Record<string, CcConnectorExpanded> => {
             // Clusters still provisioning, or without managed Connect, answer 4xx.
-            if (statusOf(err) >= 400 && statusOf(err) < 500) return {};
+            const status = statusOf(err);
+            if (status >= 400 && status < 500 && !READ_DID_NOT_HAPPEN.has(status)) return {};
             throw err;
           },
         );

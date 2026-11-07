@@ -37,7 +37,7 @@ const MAX_PAGES = 100;
 export const NETWORK_PAGE_SIZE = 1000;
 /** 50,000 rows at {@link NETWORK_PAGE_SIZE}. */
 export const NETWORK_MAX_PAGES = 50;
-const VENDOR = "Confluent Cloud";
+export const VENDOR = "Confluent Cloud";
 
 export interface ConfluentCredentials {
   apiKey: string;

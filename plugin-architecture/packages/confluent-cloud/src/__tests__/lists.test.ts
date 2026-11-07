@@ -322,3 +322,56 @@ describe("host HTTP", () => {
     for (const [req] of request.mock.calls) expect(req).not.toHaveProperty("caCert");
   });
 });
+
+describe("connector reads (#667)", () => {
+  const CLUSTER = { id: "lkc-1", spec: { environment: { id: "env-1" } } };
+  const CONNECTORS = "/connect/v1/environments/env-1/clusters/lkc-1/connectors";
+
+  function connectors(reply: Reply) {
+    return client((url) => {
+      if (url.pathname === "/cmk/v2/clusters") return { body: { data: [CLUSTER], metadata: {} } };
+      return url.pathname === CONNECTORS ? reply : undefined;
+    });
+  }
+
+  it.each([401, 408, 425, 429])("does not read a %i as a cluster with none", async (status) => {
+    const { c } = connectors({ status, body: { error: "try again" } });
+    await expect(c.listResources("connector", "acc")).rejects.toThrow(String(status));
+  });
+
+  it.each([400, 403, 404])("still reads a %i as a cluster without Connect", async (status) => {
+    const { c } = connectors({ status, body: { error: "no Connect here" } });
+    await expect(c.listResources("connector", "acc")).resolves.toEqual([]);
+  });
+
+  it("reads an empty map as no connectors", async () => {
+    const { c } = connectors({ body: {} });
+    await expect(c.listResources("connector", "acc")).resolves.toEqual([]);
+  });
+
+  it("does not read a 2xx with no body as no connectors", async () => {
+    const { c } = connectors({});
+    await expect(c.listResources("connector", "acc")).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("does not take an array's indexes for connector names", async () => {
+    const { c } = connectors({ body: ["orders-sink"] });
+    await expect(c.listResources("connector", "acc")).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("lets the same refusal out of the cost context", async () => {
+    const { c } = client((url) => {
+      if (url.pathname === "/billing/v1/costs") return { body: { data: [], metadata: {} } };
+      if (url.pathname === "/cmk/v2/clusters") return { body: { data: [CLUSTER], metadata: {} } };
+      if (url.pathname === CONNECTORS) return { body: ["orders-sink"] };
+      if (url.pathname.startsWith("/fcpm/") || url.pathname.startsWith("/ksqldbcm/")) {
+        return { body: { data: [], metadata: {} } };
+      }
+      if (url.pathname.startsWith("/srcm/")) return { body: { data: [], metadata: {} } };
+      return undefined;
+    });
+    await expect(
+      c.fetchCostData("acc", { fromDate: "2026-09-01", toDate: "2026-09-01" }),
+    ).rejects.toThrow(NOT_A_LIST);
+  });
+});
