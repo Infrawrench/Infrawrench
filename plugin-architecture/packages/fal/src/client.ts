@@ -223,20 +223,37 @@ function sameAccess(key: ApiKey): {
   return key.scope === "ADMIN" ? { preset: "FULL" } : {};
 }
 
-/** Analytics pages → one series per metric. Durations are seconds. */
-export function analyticsSeries(pages: Pick<AnalyticsPage, "time_series">[]): MetricSeries[] {
-  const byMetric = new Map<string, Array<{ timestamp: number; value: number }>>();
+/**
+ * Analytics pages → one series per metric per route. Durations are seconds. Asked for by
+ * a bare app id, fal answers one row per route in each bucket, and percentiles cannot be
+ * added up. The label depends only on the row, so a route keeps its series in a window
+ * where the app's other routes are quiet.
+ */
+export function analyticsSeries(
+  pages: Pick<AnalyticsPage, "time_series">[],
+  endpointId: string,
+): MetricSeries[] {
+  const byRoute = new Map<string, Map<string, MetricSeries["points"]>>();
   for (const page of pages) {
     for (const bucket of page.time_series ?? []) {
       const ts = Date.parse(s(bucket.bucket));
       if (!Number.isFinite(ts)) continue;
       for (const row of bucket.results ?? []) {
+        const id = row.endpoint_id;
+        const route =
+          !id || id === endpointId
+            ? ""
+            : id.startsWith(`${endpointId}/`)
+              ? id.slice(endpointId.length + 1)
+              : id;
         for (const metric of ANALYTICS_METRICS) {
           const v = Number(row[metric]);
           if (row[metric] === undefined || !Number.isFinite(v)) continue;
-          const list = byMetric.get(metric) ?? [];
-          list.push({ timestamp: ts, value: v });
-          byMetric.set(metric, list);
+          const routes = byRoute.get(metric) ?? new Map<string, MetricSeries["points"]>();
+          byRoute.set(metric, routes);
+          const points = routes.get(route) ?? [];
+          points.push({ timestamp: ts, value: v });
+          routes.set(route, points);
         }
       }
     }
@@ -248,11 +265,15 @@ export function analyticsSeries(pages: Pick<AnalyticsPage, "time_series">[]): Me
       .replace(/_count$/, "")
       .replace(/_/g, " ")
       .replace(/^\w/, (c) => c.toUpperCase());
-  return [...byMetric.entries()].map(([metric, points]) => ({
-    label: label(metric),
-    unit: metric.includes("duration") ? "s" : "requests",
-    points: points.sort((a, b) => a.timestamp - b.timestamp),
-  }));
+  return [...byRoute.entries()].flatMap(([metric, routes]) =>
+    [...routes.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([route, points]) => ({
+        label: route ? `${label(metric)} · ${route}` : label(metric),
+        unit: metric.includes("duration") ? "s" : "requests",
+        points: points.sort((a, b) => a.timestamp - b.timestamp),
+      })),
+  );
 }
 
 /**
@@ -684,7 +705,10 @@ export class FalClient implements PluginClient {
 
   // ------------------------------------------------------ metrics/logs
 
-  /** `GET /models/analytics` or `/serverless/analytics` for one endpoint. */
+  /**
+   * `GET /models/analytics` or `/serverless/analytics` for one endpoint. fal's document:
+   * a bare app id includes the app's route-level ids, and rows stay grouped under them.
+   */
   fetchMetricSeries(
     resourceTypeId: string,
     resourceId: string,
@@ -718,7 +742,7 @@ export class FalClient implements PluginClient {
             partial: true,
           },
         );
-        return analyticsSeries(pages);
+        return analyticsSeries(pages, id);
       } catch (err) {
         if (statusOf(err) === 403 || statusOf(err) === 404) return [];
         throw err;

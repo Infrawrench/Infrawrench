@@ -588,20 +588,94 @@ describe("mappers", () => {
   });
 
   it("builds analytics series with seconds for durations", () => {
-    const series = analyticsSeries([
-      {
-        time_series: [
-          {
-            bucket: "2026-10-01T00:00:00Z",
-            results: [{ endpoint_id: "a", request_count: 3, p50_duration: 1.5 }],
-          },
-        ],
-      },
-    ]);
+    const series = analyticsSeries(
+      [
+        {
+          time_series: [
+            {
+              bucket: "2026-10-01T00:00:00Z",
+              results: [{ endpoint_id: "a", request_count: 3, p50_duration: 1.5 }],
+            },
+          ],
+        },
+      ],
+      "a",
+    );
     expect(series.map((x) => [x.label, x.unit])).toEqual([
       ["Request", "requests"],
       ["Execution time p50", "s"],
     ]);
+  });
+
+  it("gives each route of a multi-route app its own series, not two points on one time", () => {
+    const series = analyticsSeries(
+      [
+        {
+          time_series: [
+            {
+              bucket: "2026-10-01T00:00:00Z",
+              results: [
+                { endpoint_id: "me/app/turbo", request_count: 3, p50_duration: 1.5 },
+                { endpoint_id: "me/app", request_count: 7, p50_duration: 9 },
+              ],
+            },
+            {
+              bucket: "2026-10-01T01:00:00Z",
+              results: [{ endpoint_id: "me/app/turbo", request_count: 4 }],
+            },
+          ],
+        },
+      ],
+      "me/app",
+    );
+    expect(series.map((x) => [x.label, x.points.map((p) => p.value)])).toEqual([
+      ["Request", [7]],
+      ["Request · turbo", [3, 4]],
+      ["Execution time p50", [9]],
+      ["Execution time p50 · turbo", [1.5]],
+    ]);
+  });
+
+  it("names the route in full when it is not under the id that was asked for", () => {
+    const series = analyticsSeries(
+      [
+        {
+          time_series: [
+            {
+              bucket: "2026-10-01T00:00:00Z",
+              results: [{ endpoint_id: "other/app/turbo", request_count: 1 }],
+            },
+          ],
+        },
+      ],
+      "me/app",
+    );
+    expect(series.map((x) => x.label)).toEqual(["Request · other/app/turbo"]);
+  });
+
+  it("asks for a multi-route app by its bare id, which fal widens to its routes", async () => {
+    const { http, calls } = host(() => ({
+      body: {
+        time_series: [
+          {
+            bucket: "2026-10-01T00:00:00Z",
+            results: [
+              { endpoint_id: "me/app/turbo", request_count: 3 },
+              { endpoint_id: "me/app/slow", request_count: 1 },
+            ],
+          },
+        ],
+        next_cursor: null,
+      },
+    }));
+    const series = await hostClient(new FalClient({ apiKey: "k" }, { http })).fetchMetricSeries(
+      "fal-app",
+      `${ACCOUNT}:fal-app:me/app`,
+      ACCOUNT,
+    );
+    expect(calls).toHaveLength(1);
+    expect(new URL(calls[0]?.url ?? "").searchParams.getAll("endpoint_id")).toEqual(["me/app"]);
+    expect(series.map((x) => x.label)).toEqual(["Request · slow", "Request · turbo"]);
   });
 
   it("parses Instatus summaries and skips maintenance that has not started", () => {
