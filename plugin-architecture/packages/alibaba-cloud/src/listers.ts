@@ -87,10 +87,7 @@ const join = (values: Array<string | undefined> | undefined) =>
 // Account
 
 export async function listAccount(ctx: ListContext): Promise<ResourceInstance[]> {
-  const [caller, regions] = await Promise.all([
-    ctx.inventory.caller(),
-    ctx.inventory.regions().catch(() => [ctx.inventory.homeRegion]),
-  ]);
+  const [caller, regions] = await Promise.all([ctx.inventory.caller(), ctx.inventory.regions()]);
   return [
     makeResource(
       ctx.accountId,

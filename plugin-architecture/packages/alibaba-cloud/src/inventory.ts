@@ -6,6 +6,8 @@ import {
 import { isPermissionGap, isServiceUnavailable, mapLimit, type AliApi } from "./api.js";
 import { ALI_REGIONS, DEFAULT_REGION, productInRegion, type AliProduct } from "./regions.js";
 
+export const VENDOR = "Alibaba Cloud";
+
 /**
  * Which regions to scan. An explicit `regions` credential wins; otherwise
  * the account's own ECS `DescribeRegions` answer (the regions open to it),
@@ -25,16 +27,20 @@ export class Inventory {
     if (this.configuredRegions.length) return Promise.resolve(this.configuredRegions);
     if (!this.regionsPromise) {
       this.regionsPromise = this.api
-        .rpc<{ Regions?: { Region?: Array<{ RegionId: string; Status?: string }> } }>(
+        .rpc<{ Regions?: { Region?: Array<{ RegionId: string }> } }>(
           "ecs",
           this.homeRegion,
           "DescribeRegions",
           { AcceptLanguage: "en-US" },
         )
         .then((res) => {
-          const ids = (res.Regions?.Region ?? [])
-            .filter((r) => !r.Status || r.Status === "available")
-            .map((r) => r.RegionId);
+          // Every region, sold out or not: Status says whether new clusters can be had,
+          // not whether anything runs there.
+          const ids = requireListPage(res.Regions?.Region, {
+            vendor: VENDOR,
+            path: "DescribeRegions",
+            key: "Regions.Region",
+          }).map((r) => r.RegionId);
           const known = new Set(ALI_REGIONS.map((r) => r.id));
           // Finance and government clouds answer DescribeRegions too but
           // need a separate contract; only scan the public regions.
@@ -42,6 +48,7 @@ export class Inventory {
           return usable.length ? usable : [this.homeRegion];
         })
         .catch((err: unknown) => {
+          if (isPermissionGap(err)) return ALI_REGIONS.map((r) => r.id);
           this.regionsPromise = null;
           throw err;
         });
@@ -120,8 +127,6 @@ export async function perRegion<T>(
   if (refused && !answered) return keepRowsWhenRefused(refused);
   return results.flat();
 }
-
-export const VENDOR = "Alibaba Cloud";
 
 /**
  * A resource sync reads every type inside one poll, so a list stops at whichever comes
