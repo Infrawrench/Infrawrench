@@ -1,4 +1,5 @@
 import type { RegionOption } from "@infrawrench/plugin-base";
+import type { FlyPlatformRegion } from "./api.js";
 
 /**
  * Static region metadata: the location label and flag the region picker
@@ -43,17 +44,6 @@ export const REGION_INFO: Record<string, { location: string; flag: string }> = {
   yul: { location: "Montreal, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
   yyz: { location: "Toronto, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
 };
-
-/** One row of `GET /v1/platform/regions` (`main.regionRow` in the spec). */
-export interface FlyPlatformRegion {
-  code: string;
-  name?: string;
-  deprecated?: boolean;
-  gateway_available?: boolean;
-  geo_region?: string;
-  mpg_available?: boolean;
-  requires_paid_plan?: boolean;
-}
 
 export function formatRegion(code: string): string {
   const info = REGION_INFO[code];
