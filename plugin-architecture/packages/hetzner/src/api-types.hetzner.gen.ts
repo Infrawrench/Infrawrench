@@ -161,66 +161,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
-                        storage_box_types: {
-                            automatic_snapshot_limit: number | null;
-                            deprecation: {
-                                /** Format: date-time */
-                                announced: string;
-                                /** Format: date-time */
-                                unavailable_after: string;
-                            } | null;
-                            description: string;
-                            /** Format: int64 */
-                            id: number;
-                            name: string;
-                            prices: {
-                                location: string;
-                                price_hourly: {
-                                    /** Format: decimal */
-                                    gross: string;
-                                    /** Format: decimal */
-                                    net: string;
-                                };
-                                price_monthly: {
-                                    /** Format: decimal */
-                                    gross: string;
-                                    /** Format: decimal */
-                                    net: string;
-                                };
-                                setup_fee: {
-                                    /** Format: decimal */
-                                    gross: string;
-                                    /** Format: decimal */
-                                    net: string;
-                                };
-                            }[];
-                            /** Format: int64 */
-                            size: number;
-                            snapshot_limit: number | null;
-                            subaccounts_limit: number;
-                        }[];
+                        meta: meta_49bbce54;
+                        storage_box_types: Shared_fc90e89d[];
                     };
                 };
             };
@@ -247,121 +189,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
-                        storage_boxes: {
-                            access_settings: {
-                                reachable_externally: boolean;
-                                samba_enabled: boolean;
-                                ssh_enabled: boolean;
-                                webdav_enabled: boolean;
-                                zfs_enabled: boolean;
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            server: string | null;
-                            snapshot_plan: {
-                                /** @default null */
-                                day_of_month: number | null;
-                                /** @default null */
-                                day_of_week: number | null;
-                                hour: number;
-                                max_snapshots: number;
-                                minute: number;
-                            } | null;
-                            stats: {
-                                /** Format: int64 */
-                                size: number;
-                                /** Format: int64 */
-                                size_data: number;
-                                /** Format: int64 */
-                                size_snapshots: number;
-                            };
-                            /** @enum {string} */
-                            status: "active" | "initializing" | "locked";
-                            storage_box_type: {
-                                automatic_snapshot_limit: number | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                name: string;
-                                prices: {
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    setup_fee: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                                /** Format: int64 */
-                                size: number;
-                                snapshot_limit: number | null;
-                                subaccounts_limit: number;
-                            };
-                            system: string | null;
-                            username: string | null;
-                        }[];
+                        meta: meta_49bbce54;
+                        storage_boxes: Shared_8638ee6c[];
                     };
                 };
             };
@@ -402,121 +231,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                        storage_box: {
-                            access_settings: {
-                                reachable_externally: boolean;
-                                samba_enabled: boolean;
-                                ssh_enabled: boolean;
-                                webdav_enabled: boolean;
-                                zfs_enabled: boolean;
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            server: string | null;
-                            snapshot_plan: {
-                                /** @default null */
-                                day_of_month: number | null;
-                                /** @default null */
-                                day_of_week: number | null;
-                                hour: number;
-                                max_snapshots: number;
-                                minute: number;
-                            } | null;
-                            stats: {
-                                /** Format: int64 */
-                                size: number;
-                                /** Format: int64 */
-                                size_data: number;
-                                /** Format: int64 */
-                                size_snapshots: number;
-                            };
-                            /** @enum {string} */
-                            status: "active" | "initializing" | "locked";
-                            storage_box_type: {
-                                automatic_snapshot_limit: number | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                name: string;
-                                prices: {
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    setup_fee: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                                /** Format: int64 */
-                                size: number;
-                                snapshot_limit: number | null;
-                                subaccounts_limit: number;
-                            };
-                            system: string | null;
-                            username: string | null;
-                        };
+                        action: action_541737c7;
+                        storage_box: Shared_8638ee6c;
                     };
                 };
             };
@@ -532,110 +248,7 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        storage_box: {
-                            access_settings: {
-                                reachable_externally: boolean;
-                                samba_enabled: boolean;
-                                ssh_enabled: boolean;
-                                webdav_enabled: boolean;
-                                zfs_enabled: boolean;
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            server: string | null;
-                            snapshot_plan: {
-                                /** @default null */
-                                day_of_month: number | null;
-                                /** @default null */
-                                day_of_week: number | null;
-                                hour: number;
-                                max_snapshots: number;
-                                minute: number;
-                            } | null;
-                            stats: {
-                                /** Format: int64 */
-                                size: number;
-                                /** Format: int64 */
-                                size_data: number;
-                                /** Format: int64 */
-                                size_snapshots: number;
-                            };
-                            /** @enum {string} */
-                            status: "active" | "initializing" | "locked";
-                            storage_box_type: {
-                                automatic_snapshot_limit: number | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                name: string;
-                                prices: {
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    setup_fee: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                                /** Format: int64 */
-                                size: number;
-                                snapshot_limit: number | null;
-                                subaccounts_limit: number;
-                            };
-                            system: string | null;
-                            username: string | null;
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_7ebdca30;
     };
     update_storage_box: {
         parameters: {
@@ -656,155 +269,9 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        storage_box: {
-                            access_settings: {
-                                reachable_externally: boolean;
-                                samba_enabled: boolean;
-                                ssh_enabled: boolean;
-                                webdav_enabled: boolean;
-                                zfs_enabled: boolean;
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            server: string | null;
-                            snapshot_plan: {
-                                /** @default null */
-                                day_of_month: number | null;
-                                /** @default null */
-                                day_of_week: number | null;
-                                hour: number;
-                                max_snapshots: number;
-                                minute: number;
-                            } | null;
-                            stats: {
-                                /** Format: int64 */
-                                size: number;
-                                /** Format: int64 */
-                                size_data: number;
-                                /** Format: int64 */
-                                size_snapshots: number;
-                            };
-                            /** @enum {string} */
-                            status: "active" | "initializing" | "locked";
-                            storage_box_type: {
-                                automatic_snapshot_limit: number | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                name: string;
-                                prices: {
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    setup_fee: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                                /** Format: int64 */
-                                size: number;
-                                snapshot_limit: number | null;
-                                subaccounts_limit: number;
-                            };
-                            system: string | null;
-                            username: string | null;
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_7ebdca30;
     };
-    delete_storage_box: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
+    delete_storage_box: delete_storage_box_41cc7297;
     change_storage_box_protection: {
         parameters: {
             query?: never;
@@ -821,39 +288,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     change_storage_box_type: {
         parameters: {
@@ -871,84 +306,9 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
-    disable_storage_box_snapshot_plan: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
+    disable_storage_box_snapshot_plan: delete_storage_box_41cc7297;
     update_storage_box_access_settings: {
         parameters: {
             query?: never;
@@ -969,39 +329,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     create_storage_box_snapshot: {
         parameters: {
@@ -1029,28 +357,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
+                        action: action_541737c7;
                         snapshot: {
                             /** Format: int64 */
                             id: number;
@@ -1063,3 +370,177 @@ export interface operations {
         };
     };
 }
+type action_541737c7 = {
+    command: string;
+    error: {
+        code: string;
+        message: string;
+    } | null;
+    /** Format: date-time */
+    finished: string | null;
+    /** Format: int64 */
+    id: number;
+    /** Format: int32 */
+    progress: number;
+    resources: {
+        /** Format: int64 */
+        id: number;
+        type: string;
+    }[];
+    /** Format: date-time */
+    started: string;
+    /** @enum {string} */
+    status: "running" | "success" | "error";
+};
+type delete_storage_box_41cc7297 = {
+    parameters: {
+        query?: never;
+        header?: never;
+        path: {
+            id: number;
+        };
+        cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_8a23dcb3;
+};
+type meta_49bbce54 = {
+    pagination: {
+        /** Format: int64 */
+        last_page: number | null;
+        /** Format: int64 */
+        next_page: number | null;
+        /**
+         * Format: int64
+         * @default 1
+         */
+        page: number;
+        /**
+         * Format: int64
+         * @default 25
+         */
+        per_page: number;
+        /** Format: int64 */
+        previous_page: number | null;
+        /** Format: int64 */
+        total_entries: number | null;
+    };
+};
+type responses_7ebdca30 = {
+    200: {
+        headers: {
+            [name: string]: unknown;
+        };
+        content: {
+            "application/json": {
+                storage_box: Shared_8638ee6c;
+            };
+        };
+    };
+};
+type responses_8a23dcb3 = {
+    201: {
+        headers: {
+            [name: string]: unknown;
+        };
+        content: {
+            "application/json": {
+                action: action_541737c7;
+            };
+        };
+    };
+};
+type Shared_8638ee6c = {
+    access_settings: {
+        reachable_externally: boolean;
+        samba_enabled: boolean;
+        ssh_enabled: boolean;
+        webdav_enabled: boolean;
+        zfs_enabled: boolean;
+    };
+    /** Format: date-time */
+    created: string;
+    /** Format: int64 */
+    id: number;
+    labels: {
+        [key: string]: string;
+    };
+    location: {
+        city: string;
+        country: string;
+        description: string;
+        /** Format: int64 */
+        id: number;
+        /** Format: double */
+        latitude: number;
+        /** Format: double */
+        longitude: number;
+        name: string;
+        network_zone: string;
+    };
+    name: string;
+    protection: {
+        delete: boolean;
+    };
+    server: string | null;
+    snapshot_plan: {
+        /** @default null */
+        day_of_month: number | null;
+        /** @default null */
+        day_of_week: number | null;
+        hour: number;
+        max_snapshots: number;
+        minute: number;
+    } | null;
+    stats: {
+        /** Format: int64 */
+        size: number;
+        /** Format: int64 */
+        size_data: number;
+        /** Format: int64 */
+        size_snapshots: number;
+    };
+    /** @enum {string} */
+    status: "active" | "initializing" | "locked";
+    storage_box_type: Shared_fc90e89d;
+    system: string | null;
+    username: string | null;
+};
+type Shared_fc90e89d = {
+    automatic_snapshot_limit: number | null;
+    deprecation: {
+        /** Format: date-time */
+        announced: string;
+        /** Format: date-time */
+        unavailable_after: string;
+    } | null;
+    description: string;
+    /** Format: int64 */
+    id: number;
+    name: string;
+    prices: {
+        location: string;
+        price_hourly: {
+            /** Format: decimal */
+            gross: string;
+            /** Format: decimal */
+            net: string;
+        };
+        price_monthly: {
+            /** Format: decimal */
+            gross: string;
+            /** Format: decimal */
+            net: string;
+        };
+        setup_fee: {
+            /** Format: decimal */
+            gross: string;
+            /** Format: decimal */
+            net: string;
+        };
+    }[];
+    /** Format: int64 */
+    size: number;
+    snapshot_limit: number | null;
+    subaccounts_limit: number;
+};

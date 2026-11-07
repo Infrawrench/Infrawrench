@@ -525,12 +525,23 @@ export type {
 
 export { isSingleSqlStatement, assertSingleSqlStatement } from "./sql-statements.js";
 
-export { commaSeparated, createApiClient, pathEncode, withPagination } from "./api-client.js";
+export {
+  commaSeparated,
+  createApiClient,
+  pathEncode,
+  unencodedSegment,
+  withCursorPagination,
+  withPagination,
+} from "./api-client.js";
 export type {
   ApiBody,
   ApiClient,
   ApiClientOptions,
+  ApiListItem,
   ApiResponse,
+  CursorApiClient,
+  CursorDialect,
+  CursorPagination,
   NoSlashString,
   PageNumberPagination,
   PaginatedApiClient,
