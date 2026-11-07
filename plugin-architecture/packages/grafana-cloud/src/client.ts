@@ -21,6 +21,7 @@ import {
   externalIdOf,
   followableLink,
   pathEncode,
+  reportUnreadListPart,
   requireListPage,
   rethrowIncompleteList,
   unencodedSegment,
@@ -229,20 +230,25 @@ export class GrafanaCloudClient implements PluginClient {
     return { apiUrl, token: access.smToken };
   }
 
-  /** A 403 on one list means the token lacks that one scope; that type lists empty. */
+  /**
+   * A 403 on one list means the token lacks that one scope. This type's stored rows
+   * stay. A host that keeps no track (the desktop) answers false, and there the refusal
+   * should still show.
+   */
   private async scoped(load: () => Promise<ResourceInstance[]>): Promise<ResourceInstance[]> {
     try {
       return await load();
     } catch (err) {
-      if (statusOf(err) === 403) return [];
-      throw err;
+      if (statusOf(err) !== 403 || !reportUnreadListPart({ idPrefixes: [""] })) throw err;
+      return [];
     }
   }
 
   /**
    * Fan a stack-scoped lister out over the connected stacks. A stack whose
-   * stored token is refused (rotated, deleted, too narrow) lists empty rather
-   * than failing the other stacks.
+   * stored token is refused (rotated, deleted, too narrow) keeps its stored rows
+   * rather than failing the other stacks, which is also why the desktop, where this
+   * answers false, still lists the others instead of showing the refusal.
    */
   private async perStack(
     accountId: string,
@@ -259,8 +265,11 @@ export class GrafanaCloudClient implements PluginClient {
           return await load(a);
         } catch (err) {
           const status = statusOf(err);
-          if (status === 401 || status === 403 || status === 404) return [];
-          throw err;
+          if (status !== 401 && status !== 403 && status !== 404) throw err;
+          reportUnreadListPart({
+            parentResourceIds: [resourceIdFor(accountId, "stack", a.slug)],
+          });
+          return [];
         }
       }),
     );

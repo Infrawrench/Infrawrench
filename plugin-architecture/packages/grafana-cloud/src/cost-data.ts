@@ -24,7 +24,7 @@
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
 import { CostSetupError, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
-import { listStacks, orgSlugOf } from "./account.js";
+import { listStacks, orgSlugOf, resolveOrg } from "./account.js";
 import type { GrafanaContext } from "./api.js";
 import { cloudApi, cloudItems, statusOf } from "./api.js";
 import type { GcBilledUsage, GcStack } from "./types.js";
@@ -62,11 +62,16 @@ export function monthStartsInRange(fromDate: string, toDate: string, today: stri
   return out;
 }
 
-/** One month of billed usage. A month before the org existed answers empty. */
+/**
+ * One month of billed usage. A month before the org existed may be refused, which is
+ * no bill. A collector that stores what this answers says when that can be so: a refused
+ * month it replaces with nothing would lose a bill that is there.
+ */
 export async function fetchBilledUsage(
   ctx: GrafanaContext,
   orgSlug: string,
   monthStart: string,
+  refusalMeansNoBill = true,
 ): Promise<GcBilledUsage[]> {
   try {
     const path = `/orgs/${pathEncode(orgSlug)}/billed-usage` as const;
@@ -82,7 +87,7 @@ export async function fetchBilledUsage(
         SCOPE_HELP,
       );
     }
-    if (status === 400 || status === 404) return [];
+    if (refusalMeansNoBill && (status === 400 || status === 404)) return [];
     throw err;
   }
 }
@@ -211,10 +216,15 @@ export async function fetchGrafanaCostData(
   const months = monthStartsInRange(range.fromDate, range.toDate, today);
   if (months.length === 0) return [];
   const slug = await orgSlugOf(ctx, orgSlugCredential);
+  const { createdAt } = await resolveOrg(ctx, orgSlugCredential);
+  const firstMonth = createdAt ? `${createdAt.slice(0, 7)}-01` : undefined;
   const stacks = stackIndex(await stacksOrNone(ctx, orgSlugCredential));
   const rows: CostRow[] = [];
   for (const month of months) {
-    rows.push(...rowsForMonth(month, await fetchBilledUsage(ctx, slug, month), stacks));
+    const beforeTheOrg = firstMonth !== undefined && month < firstMonth;
+    rows.push(
+      ...rowsForMonth(month, await fetchBilledUsage(ctx, slug, month, beforeTheOrg), stacks),
+    );
   }
   return rows;
 }

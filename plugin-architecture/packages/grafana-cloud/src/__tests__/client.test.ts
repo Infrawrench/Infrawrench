@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetCachesForTests } from "../account.js";
 import { decodeCloudToken } from "../api.js";
 import { GrafanaCloudClient, nextCursor } from "../client.js";
@@ -259,6 +259,84 @@ describe("reading a list to its end", () => {
 
   const hits = (count: number, from = 0) =>
     Array.from({ length: count }, (_, i) => ({ uid: `d${from + i}`, title: `D${from + i}` }));
+
+  describe("a refused read", () => {
+    const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+    const tracked = () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      return unread;
+    };
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    });
+
+    it.each([
+      ["member", "/api/orgs/acme/members"],
+      ["stack-plugin", "/api/instances/11/plugins"],
+      ["access-policy", "/api/v1/accesspolicies"],
+      ["access-policy-token", "/api/v1/tokens"],
+    ])("keeps the stored %s rows when the token lacks the scope", async (typeId, path) => {
+      const unread = tracked();
+      const { client } = connected((url) =>
+        url.pathname === path ? { status: 403, body: { message: "no scope" } } : undefined,
+      );
+      expect(await client.listResources(typeId, "acct")).toEqual([]);
+      expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    });
+
+    it("shows a missing scope where a host keeps no track", async () => {
+      const { client } = connected((url) =>
+        url.pathname === "/api/orgs/acme/members"
+          ? { status: 403, body: { message: "no scope" } }
+          : undefined,
+      );
+      await expect(client.listResources("member", "acct")).rejects.toThrow("no scope");
+    });
+
+    it.each([401, 429, 500])("fails the type on a %i from the Cloud API", async (status) => {
+      const unread = tracked();
+      const { client } = connected((url) =>
+        url.pathname === "/api/orgs/acme/members" ? { status } : undefined,
+      );
+      await expect(client.listResources("member", "acct")).rejects.toThrow(String(status));
+      expect(unread).not.toHaveBeenCalled();
+    });
+
+    it.each([401, 403, 404])(
+      "keeps a stack's children, and reads the rest, when its token is answered %i",
+      async (status) => {
+        const unread = tracked();
+        const { client } = connected((url) => {
+          if (url.pathname === "/api/search") return { status };
+          return undefined;
+        });
+        expect(await client.listResources("dashboard", "acct")).toEqual([]);
+        expect(unread).toHaveBeenCalledWith({ parentResourceIds: ["acct:stack:acme-prod"] });
+      },
+    );
+
+    it.each([429, 500])("fails the type on a %i from a stack", async (status) => {
+      const unread = tracked();
+      const { client } = connected((url) =>
+        url.pathname === "/api/search" ? { status } : undefined,
+      );
+      await expect(client.listResources("dashboard", "acct")).rejects.toThrow(String(status));
+      expect(unread).not.toHaveBeenCalled();
+    });
+
+    it("keeps the other regions' policies when the token may not read stacks", async () => {
+      const unread = tracked();
+      const { http } = makeHttp((url) => {
+        if (url.pathname === "/api/orgs/4242") return { body: { id: 4242, slug: "acme" } };
+        if (url.pathname === "/api/orgs/acme/instances") return { status: 403 };
+        return { body: { items: [{ id: "p1", name: "infra" }] } };
+      });
+      const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http }));
+      expect(await client.listResources("access-policy", "acct")).toHaveLength(1);
+      expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    });
+  });
 
   describe("synthetic checks and probes", () => {
     const check = (id: number) => ({ id, job: `job${id}`, target: "https://x", probes: [1] });

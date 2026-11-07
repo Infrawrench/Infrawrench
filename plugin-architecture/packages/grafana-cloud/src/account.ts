@@ -1,4 +1,4 @@
-import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
+import { CostSetupError, pathEncode, reportUnreadListPart } from "@infrawrench/plugin-base";
 import type { GrafanaContext } from "./api.js";
 import { cloudApi, cloudItems, decodeCloudToken, statusOf } from "./api.js";
 import type { GcOrg, GcStack } from "./types.js";
@@ -105,11 +105,12 @@ export async function policyRegions(ctx: GrafanaContext, orgSlug: string): Promi
   const out = new Set<string>();
   const own = decodeCloudToken(ctx.token).region;
   if (own) out.add(own);
-  // A token that may not read stacks still lists its own region. Any other failure
-  // has to fail the list: dropping a region would read its policies as deleted.
+  // A token that may not read stacks still lists its own region, and the rows of any
+  // other region stay. Any other failure has to fail the list.
   const stacks = await listStacks(ctx, orgSlug).catch((err): GcStack[] => {
-    if (statusOf(err) === 403) return [];
-    throw err;
+    if (statusOf(err) !== 403) throw err;
+    reportUnreadListPart({ idPrefixes: [""] });
+    return [];
   });
   for (const s of stacks) if (s.regionSlug) out.add(s.regionSlug);
   return [...out].sort();

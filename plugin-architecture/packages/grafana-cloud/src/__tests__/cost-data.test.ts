@@ -152,6 +152,40 @@ describe("fetchBillSummary", () => {
   });
 });
 
+describe("a month the billed usage route refuses", () => {
+  const costs = (org: Record<string, unknown>, status: number) => {
+    const { http } = makeHttp((url) => {
+      if (url.pathname === "/api/orgs/acme") return { body: { id: 1, slug: "acme", ...org } };
+      if (url.pathname === "/api/orgs/acme/instances") return { body: { items: STACKS } };
+      if (url.pathname === "/api/orgs/acme/billed-usage") return { status };
+      return { status: 404 };
+    });
+    return fetchGrafanaCostData(
+      ctxWith(http),
+      "acme",
+      { fromDate: "2026-03-01", toDate: "2026-03-31" },
+      new Date("2026-04-02T00:00:00Z"),
+    );
+  };
+
+  it.each([400, 404])(
+    "reads a %i as no bill for a month before the org existed",
+    async (status) => {
+      await expect(costs({ createdAt: "2026-04-01T09:00:00.000Z" }, status)).resolves.toEqual([]);
+    },
+  );
+
+  it.each([400, 404])("fails a %i in a month the org existed", async (status) => {
+    await expect(costs({ createdAt: "2026-03-20T09:00:00.000Z" }, status)).rejects.toThrow(
+      String(status),
+    );
+  });
+
+  it("fails a refused month when it cannot tell when the org began", async () => {
+    await expect(costs({}, 404)).rejects.toThrow("404");
+  });
+});
+
 describe("billed usage that is not a list", () => {
   it("fails the month rather than reading it as a month with no bill", async () => {
     const { http } = makeHttp((url) => {
