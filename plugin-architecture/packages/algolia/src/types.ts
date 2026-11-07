@@ -57,7 +57,7 @@ export interface AlAbTestPage {
 }
 
 /**
- * A crawler's detail, or as little as its row in the list when that fails.
+ * A crawler's detail.
  * The document says `lastReindexStartAt`. `lastReindexStartedAt` is what was read before
  * that was noticed, and is still read because no live answer has ruled it out.
  */

@@ -503,6 +503,52 @@ describe("lists that cannot say they are complete", () => {
     });
   });
 
+  describe("a crawler whose detail read fails", () => {
+    const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+    const crawlers = (status: number) => {
+      const { http, c } = client(crawlerCreds);
+      http.route("GET", CRAWLERS, { items: [{ id: "c0", name: "Docs" }, { id: "c1" }], total: 2 });
+      http.route("GET", `${CRAWLERS}/c0`, respond(status, { message: "no detail" }));
+      http.route("GET", `${CRAWLERS}/c1`, { name: "Blog", running: true });
+      return c;
+    };
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    });
+
+    it.each([401, 429, 500])(
+      "fails the type on a %i, not paused with blank fields",
+      async (status) => {
+        await expect(crawlers(status).listResources("crawler", ACCOUNT)).rejects.toThrow(
+          "no detail",
+        );
+      },
+    );
+
+    it.each([400, 403])(
+      "keeps that crawler's stored row on a %i and reads the rest",
+      async (status) => {
+        const unread = vi.fn();
+        Reflect.set(globalThis, UNREAD_HOOK, unread);
+        const list = await crawlers(status).listResources("crawler", ACCOUNT);
+        expect(list.map((r) => [r.externalId, r.fields["status"]])).toEqual([["c1", "running"]]);
+        expect(unread).toHaveBeenCalledWith({ idPrefixes: [`${ACCOUNT}:crawler:c0`] });
+      },
+    );
+
+    it("shows that refusal where a host keeps no track", async () => {
+      await expect(crawlers(403).listResources("crawler", ACCOUNT)).rejects.toThrow("no detail");
+    });
+
+    it("drops a crawler deleted since the list was read", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const list = await crawlers(404).listResources("crawler", ACCOUNT);
+      expect(list.map((r) => r.externalId)).toEqual(["c1"]);
+      expect(unread).not.toHaveBeenCalled();
+    });
+  });
+
   it("walks crawlers by page until the reported total", async () => {
     const { http, c } = client(crawlerCreds);
     http.route("GET", CRAWLERS, (call: { url: URL }) =>
@@ -510,6 +556,7 @@ describe("lists that cannot say they are complete", () => {
         ? { items: rows(5, 100), total: 105, page: 2, itemsPerPage: 100 }
         : { items: rows(100), total: 105, page: 1, itemsPerPage: 100 },
     );
+    for (const row of rows(105)) http.route("GET", `${CRAWLERS}/${row.id}`, { name: row.id });
     const list = await c.listResources("crawler", ACCOUNT);
     expect(list.map((r) => r.externalId)).toContain("c104");
     expect(list).toHaveLength(105);
@@ -522,6 +569,7 @@ describe("lists that cannot say they are complete", () => {
   it("ends crawlers on a short page when no total is reported", async () => {
     const { http, c } = client(crawlerCreds);
     http.route("GET", CRAWLERS, { items: rows(3) });
+    for (const row of rows(3)) http.route("GET", `${CRAWLERS}/${row.id}`, { name: row.id });
     await expect(c.listResources("crawler", ACCOUNT)).resolves.toHaveLength(3);
     expect(on(http, CRAWLERS)).toHaveLength(1);
   });

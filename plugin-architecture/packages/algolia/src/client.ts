@@ -50,7 +50,6 @@ import type {
   AlAcl,
   AlApiKey,
   AlApiKeyBody,
-  AlCrawler,
   AlCrawlerRow,
   AlIndex,
   AlSettings,
@@ -444,10 +443,19 @@ export class AlgoliaClient implements PluginClient {
           const crawlers = await mapLimit(await this.crawlerRows(), FAN_OUT, async (c) => {
             const full = await this.api.crawler
               .get(`/1/crawlers/${pathEncode(c.id)}`, { query: { withConfig: true } })
-              .catch((): AlCrawler => (c.name === undefined ? {} : { name: c.name }));
-            return mapCrawler(c.id, full, accountId);
+              .catch((e: unknown) => {
+                // The list named it a moment ago, so it has been deleted since.
+                if (isStatus(e, 404)) return null;
+                // No status can be told without the detail, and mapping the row alone would
+                // call it paused. One refused crawler keeps its stored row; the rest still read.
+                const row = `${accountId}:crawler:${c.id}`;
+                if (isStatus(e, 400, 403) && reportUnreadListPart({ idPrefixes: [row] }))
+                  return null;
+                throw e;
+              });
+            return full && mapCrawler(c.id, full, accountId);
           });
-          return crawlers;
+          return crawlers.filter((crawler) => crawler !== null);
         }
         default:
           throw new Error(`Algolia plugin: unknown resource type "${typeId}"`);
