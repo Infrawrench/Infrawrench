@@ -393,6 +393,27 @@ describe("listResources dispatch + mappers", () => {
     expect(res[0]!.fields["target"]).toBe("production");
   });
 
+  it("a listed env var with no id refuses a delete and an edit, not /env/{project}/{key}", async () => {
+    installFetch((url) =>
+      url.includes("/v10/projects?")
+        ? jsonResponse({
+            projects: [{ id: "p1", name: "one", createdAt: 1 }],
+            pagination: { next: null },
+          })
+        : jsonResponse({ envs: [{ key: "FOO", type: "plain" }] }),
+    );
+    const [row] = await client().listResources("vercel-env-var", ACCOUNT);
+    expect(row!.id).toBe("acct-1:vercel-env-var:p1/p1/FOO");
+    calls = [];
+    await expect(client().deleteResource("vercel-env-var", row!.id, ACCOUNT)).rejects.toThrow(
+      "did not give this variable an id",
+    );
+    await expect(
+      client().updateResource("vercel-env-var", row!.id, ACCOUNT, { newValue: "x" }),
+    ).rejects.toThrow("did not give this variable an id");
+    expect(calls).toHaveLength(0);
+  });
+
   it("env var handles missing envs array and undefined target", async () => {
     installFetch((url) => {
       if (url.includes("/v10/projects?")) {
@@ -1102,8 +1123,8 @@ describe("createResource", () => {
     expect(r.fields["verified"]).toBe("false");
   });
 
-  it("creates an env var", async () => {
-    installFetch(() => jsonResponse({ id: "env_1" }));
+  it("creates an env var under the id the list will give it", async () => {
+    installFetch(() => jsonResponse({ created: { id: "env_1", key: "K" }, failed: [] }));
     const r = await client().createResource("vercel-env-var", ACCOUNT, {
       projectId: "p1",
       key: "K",
@@ -1111,15 +1132,51 @@ describe("createResource", () => {
       type: "plain",
       target: "preview",
     });
+    expect(r.id).toBe("acct-1:vercel-env-var:p1/env_1");
     expect(r.externalId).toBe("env_1");
     expect(r.parentResourceId).toBe("acct-1:vercel-project:p1");
     expect(calls[0]!.url).toContain("/v10/projects/p1/env");
     const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body.target).toEqual(["preview"]);
+
+    calls = [];
+    await client().deleteResource("vercel-env-var", r.id, ACCOUNT);
+    expect(calls[0]!.url).toBe("https://api.vercel.com/v9/projects/p1/env/env_1");
   });
 
-  it("creates env var with defaults and composite id", async () => {
-    installFetch(() => jsonResponse({}));
+  it("reads the id out of a `created` array, and the old top-level id", async () => {
+    installFetch(() =>
+      jsonResponse({
+        created: [
+          { id: "env_0", key: "OTHER" },
+          { id: "env_1", key: "K" },
+        ],
+        failed: [],
+      }),
+    );
+    const fields = { projectId: "p1", key: "K", value: "V" };
+    const r = await client().createResource("vercel-env-var", ACCOUNT, fields);
+    expect(r.externalId).toBe("env_1");
+
+    installFetch(() => jsonResponse({ id: "env_2", failed: [] }));
+    const old = await client().createResource("vercel-env-var", ACCOUNT, fields);
+    expect(old.externalId).toBe("env_2");
+  });
+
+  it("reports a variable the 201 says failed, rather than a success", async () => {
+    installFetch(() =>
+      jsonResponse({
+        created: [],
+        failed: [{ error: { code: "ENV_CONFLICT", message: "K already exists" } }],
+      }),
+    );
+    await expect(
+      client().createResource("vercel-env-var", ACCOUNT, { projectId: "p1", key: "K", value: "V" }),
+    ).rejects.toThrow("Vercel refused the variable: K already exists");
+  });
+
+  it("creates env var with defaults, and with no id gives one that cannot be deleted", async () => {
+    installFetch(() => jsonResponse({ failed: [] }));
     const r = await client().createResource("vercel-env-var", ACCOUNT, {
       projectId: "p1",
       key: "K",
@@ -1129,6 +1186,20 @@ describe("createResource", () => {
     const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body.type).toBe("encrypted");
     expect(body.target).toEqual(["production"]);
+
+    calls = [];
+    await expect(client().deleteResource("vercel-env-var", r.id, ACCOUNT)).rejects.toThrow(
+      "did not give this variable an id",
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses an env var with no project", async () => {
+    installFetch(() => jsonResponse({}));
+    await expect(
+      client().createResource("vercel-env-var", ACCOUNT, { key: "K", value: "V" }),
+    ).rejects.toThrow("a project is required");
+    expect(calls).toHaveLength(0);
   });
 
   it("creates a team", async () => {

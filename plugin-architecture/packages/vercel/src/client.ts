@@ -793,27 +793,30 @@ export class VercelClient implements PluginClient {
 
       if (typeId === "vercel-env-var") {
         const projectId = fields["projectId"] ?? "";
+        if (!projectId)
+          throw new Error("Vercel plugin: a project is required to create a variable");
+        const key = fields["key"] ?? "";
         const data: VercelResponse<"createProjectEnv"> & { id?: string } = await this.api.post(
           `/v10/projects/${pathEncode(projectId)}/env`,
           {
             body: {
-              key: fields["key"] ?? "",
+              key,
               value: fields["value"] ?? "",
               type: fields["type"] ?? "encrypted",
               target: [fields["target"] ?? "production"],
             },
           },
         );
-        const envId = String(data.id ?? `${projectId}/${fields["key"]}`);
+        const envId = envVarId(projectId, createdEnv(data, key)?.id ?? data.id, key);
         const now = new Date().toISOString();
         return {
-          id: `${accountId}:vercel-env-var:${envId}`,
+          id: `${accountId}:vercel-env-var:${projectId}/${envId}`,
           pluginId: "vercel",
           resourceTypeId: "vercel-env-var",
           accountId,
-          displayName: fields["key"] ?? "",
+          displayName: key,
           fields: {
-            key: fields["key"] ?? "",
+            key,
             value: fields["value"] ?? "",
             type: fields["type"] ?? "encrypted",
             target: fields["target"] ?? "production",
@@ -886,14 +889,7 @@ export class VercelClient implements PluginClient {
       }
 
       if (typeId === "vercel-env-var") {
-        // resourceId format: {accountId}:vercel-env-var:{projectId}/{envId}
-        // externalId is envId, but we need the projectId from the compound part
-        const compound = resourceId.split(":").slice(2).join(":");
-        const slashIdx = compound.indexOf("/");
-        if (slashIdx === -1) throw new Error("Invalid env var resource ID");
-        const projectId = compound.slice(0, slashIdx);
-        const envId = compound.slice(slashIdx + 1);
-        if (!projectId || !envId) throw new Error("Invalid env var resource ID");
+        const { projectId, envId } = splitEnvId(externalId);
         await this.api.delete(`/v9/projects/${pathEncode(projectId)}/env/${pathEncode(envId)}`);
         return;
       }
@@ -1382,7 +1378,7 @@ export class VercelClient implements PluginClient {
     project: VercelProject,
     accountId: string,
   ): ResourceInstance {
-    const envId = env.id ?? `${project.id}/${env.key}`;
+    const envId = envVarId(project.id, env.id, env.key);
     return {
       id: `${accountId}:vercel-env-var:${project.id}/${envId}`,
       pluginId: "vercel",
@@ -1984,13 +1980,39 @@ function splitRecordId(externalId: string): { domain: string; recordId: string }
   return { domain: externalId.slice(0, slash), recordId: externalId.slice(slash + 1) };
 }
 
+/**
+ * The document makes `id` optional. With none, the row still needs an id that a sync
+ * and a create agree on, and the `/` in this one is what {@link splitEnvId} refuses.
+ */
+function envVarId(projectId: string, id: string | undefined, key: string): string {
+  return id ?? `${projectId}/${key}`;
+}
+
 /** `{projectId}/{envId}`: the env var resource id's compound part. */
 function splitEnvId(compound: string): { projectId: string; envId: string } {
   const slash = compound.indexOf("/");
   const projectId = slash === -1 ? "" : compound.slice(0, slash);
   const envId = slash === -1 ? "" : compound.slice(slash + 1);
   if (!projectId || !envId) throw new Error("Invalid env var resource ID");
+  // The routes take an env id, and a key in its place would reach the wrong thing or nothing.
+  if (envId.includes("/")) {
+    throw new Error("Vercel did not give this variable an id, so it cannot be changed from here");
+  }
   return { projectId, envId };
+}
+
+/**
+ * What `POST .../env` made: `created` is one variable or an array. It answers 201 with
+ * an empty `created` and the reason in `failed`, which would otherwise read as success.
+ */
+function createdEnv(data: VercelResponse<"createProjectEnv">, key: string) {
+  const created = data.created ?? [];
+  const rows = Array.isArray(created) ? created : [created];
+  const refused = data.failed?.[0]?.error;
+  if (rows.length === 0 && refused) {
+    throw new Error(`Vercel refused the variable: ${refused.message}`);
+  }
+  return rows.find((row) => row.key === key) ?? rows[0];
 }
 
 /** A `policy-picker` value: a JSON array of ids (tolerates a comma list). */
