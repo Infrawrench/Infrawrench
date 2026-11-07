@@ -13,9 +13,11 @@ import { buildTestApp } from "./test-utils";
  */
 
 const updateWheres: SQL[] = [];
+const updateSets: Array<Record<string, unknown>> = [];
 const mockUpdate = vi.fn(() => ({
-  set: () => ({
+  set: (set: Record<string, unknown>) => ({
     where: (where: SQL) => {
+      updateSets.push(set);
       updateWheres.push(where);
       return Promise.resolve([]);
     },
@@ -26,7 +28,12 @@ vi.mock("@infrawrench/server-core/created-resource", () => ({
   supersedeResource,
   upsertCreatedResource: vi.fn(),
 }));
-const dbMock = { db: { update: mockUpdate } };
+// The stored row the route reads before the edit; none unless a test sets one.
+let storedRows: Array<{ fieldsJson: unknown; externalId: string | null }> = [];
+const mockSelect = vi.fn(() => ({
+  from: () => ({ where: () => ({ limit: async () => storedRows }) }),
+}));
+const dbMock = { db: { update: mockUpdate, select: mockSelect } };
 vi.mock("../../../db/client", () => dbMock);
 vi.mock("@infrawrench/server-core/db/client", () => dbMock);
 
@@ -36,8 +43,8 @@ const updateResource = vi.fn(async (typeId: string, resourceId: string, accountI
   resourceTypeId: typeId,
   accountId,
   displayName: "renamed",
-  fields: { name: "renamed" },
-  resolvedOutputs: { ip: "1.2.3.4" },
+  fields: { name: "renamed" } as Record<string, string>,
+  resolvedOutputs: { ip: "1.2.3.4" } as Record<string, string>,
 }));
 const getClientForResource = vi.fn(async (_pluginId: string, accountId: string, orgId: string) =>
   accountId === "acct-1" && orgId === "org-1"
@@ -52,6 +59,10 @@ vi.mock("../../../services/change-freezes", () => ({
   checkChangeFreeze: vi.fn(async () => null),
 }));
 vi.mock("../../../services/audit", () => ({ logAudit: vi.fn() }));
+vi.mock("@infrawrench/server-core/savings/capture", () => ({
+  captureDeletionSaving: vi.fn(async () => {}),
+  captureResizeSaving: vi.fn(async () => {}),
+}));
 
 const { Hono } = await import("hono");
 const { registerLifecycleRoutes } = await import("../resource-detail/lifecycle");
@@ -78,6 +89,8 @@ function post(body: Record<string, unknown>) {
 
 beforeEach(() => {
   updateWheres.length = 0;
+  updateSets.length = 0;
+  storedRows = [];
   vi.clearAllMocks();
 });
 
@@ -154,5 +167,61 @@ describe("POST /update when the plugin answers with a new id", () => {
     expect(res.status).toBe(200);
     expect(supersedeResource).not.toHaveBeenCalled();
     expect(updateWheres).toHaveLength(1);
+  });
+});
+
+describe("POST /update keeps what the plugin's read after the edit left out", () => {
+  // The plugin answers with only `name`: the side read that fills `region` failed.
+  const stored = { name: "old", region: "fsn1" };
+
+  it("merges the answer into the stored fields, the way the sync does", async () => {
+    storedRows = [{ fieldsJson: stored, externalId: "42" }];
+    const res = await post({ resourceId: "acct-1:server:42" });
+    expect(res.status).toBe(200);
+    const fields = updateSets[0]?.["fieldsJson"];
+    expect(fields).not.toEqual({ name: "renamed" });
+    const { sql, params } = new PgDialect().sqlToQuery(fields as SQL);
+    expect(sql).toBe('COALESCE("resources"."fields_json", \'{}\'::jsonb) || $1::jsonb');
+    expect(params).toEqual([JSON.stringify({ name: "renamed" })]);
+  });
+
+  it("carries the stored fields to the new row when the edit gives a new id", async () => {
+    storedRows = [{ fieldsJson: stored, externalId: "42" }];
+    updateResource.mockImplementationOnce(async (typeId, _resourceId, accountId) => ({
+      id: "acct-1:server:43",
+      pluginId: "hetzner",
+      resourceTypeId: typeId,
+      accountId,
+      displayName: "v2",
+      fields: { name: "v2", region: "" },
+      resolvedOutputs: {},
+    }));
+    await post({ resourceId: "acct-1:server:42" });
+    expect(supersedeResource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previousId: "acct-1:server:42",
+        // A field the plugin clears on purpose is an explicit value, and still applies.
+        resource: expect.objectContaining({ fields: { name: "v2", region: "" } }),
+      }),
+    );
+  });
+
+  it("keeps a stored field the new version's answer leaves out", async () => {
+    storedRows = [{ fieldsJson: stored, externalId: "42" }];
+    updateResource.mockImplementationOnce(async (typeId, _resourceId, accountId) => ({
+      id: "acct-1:server:43",
+      pluginId: "hetzner",
+      resourceTypeId: typeId,
+      accountId,
+      displayName: "v2",
+      fields: { name: "v2" },
+      resolvedOutputs: {},
+    }));
+    await post({ resourceId: "acct-1:server:42" });
+    expect(supersedeResource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: expect.objectContaining({ fields: { name: "v2", region: "fsn1" } }),
+      }),
+    );
   });
 });

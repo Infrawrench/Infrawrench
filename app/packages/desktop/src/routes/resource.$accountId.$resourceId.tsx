@@ -42,7 +42,7 @@ import {
   useStableGT,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
-import { supersedeResourceRow, upsertResourceRow, type AccountRow } from "../db/rows";
+import { mirrorEditedResourceRow, type AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices, persistPlaintextSecret } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
@@ -991,8 +991,7 @@ export function ResourcePanel({
       changedFields,
     );
     const db = await getDb();
-    if (updated.id === resource.id) await upsertResourceRow(db, updated);
-    else await supersedeResourceRow(db, resource.id, updated);
+    await mirrorEditedResourceRow(db, resource.id, updated);
     toast.success(gt("{label} updated.", { label: resourceTypeLabel }));
     followEditedResource(updated.id);
   }
@@ -1108,8 +1107,7 @@ export function ResourcePanel({
         changedFields,
       );
       const db = await getDb();
-      if (updated.id === child.id) await upsertResourceRow(db, updated);
-      else await supersedeResourceRow(db, child.id, updated);
+      await mirrorEditedResourceRow(db, child.id, updated);
     }
     dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
     setRefreshVersion((v) => v + 1);

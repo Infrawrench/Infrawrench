@@ -5,7 +5,7 @@ import initSqlJs, { type Database } from "sql.js";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DbClient } from "../client";
 import { MIGRATIONS } from "../schema";
-import { supersedeResourceRow, upsertResourceRow } from "../rows";
+import { mirrorEditedResourceRow, upsertResourceRow } from "../rows";
 import { secretAnchorStatement } from "../secret-anchor";
 
 /** The real schema on the real engine, foreign keys on as `electron/db.ts` has them. */
@@ -159,10 +159,29 @@ describe("a secret stored before anything wrote the resource's row", () => {
   });
 });
 
-describe("an edit that answers with a new id", () => {
-  it("moves to a new row and retires the old one", async () => {
-    await upsertResourceRow(db, row({ id: "a1:thing:v1" }));
-    await supersedeResourceRow(db, "a1:thing:v1", row({ id: "a1:thing:v2", displayName: "v2" }));
+describe("an edit's answer", () => {
+  const fieldsOf = async (id: string) => {
+    const [stored] = await db.select<Array<{ fields_json: string }>>(
+      "SELECT fields_json FROM resources WHERE id = $1",
+      [id],
+    );
+    return JSON.parse(stored!.fields_json) as Record<string, unknown>;
+  };
+
+  it("merges into the stored fields, so one the read after the edit missed is kept", async () => {
+    await upsertResourceRow(db, row({ fields: { size: "s", region: "fsn1", note: "x" } }));
+    await mirrorEditedResourceRow(db, "a1:thing:t", row({ fields: { size: "m", note: "" } }));
+    // A field the plugin clears on purpose is an explicit value, and still applies.
+    expect(await fieldsOf("a1:thing:t")).toEqual({ size: "m", region: "fsn1", note: "" });
+  });
+
+  it("moves to a new row with the old row's fields, and retires the old one", async () => {
+    await upsertResourceRow(db, row({ id: "a1:thing:v1", fields: { size: "s", region: "fsn1" } }));
+    await mirrorEditedResourceRow(
+      db,
+      "a1:thing:v1",
+      row({ id: "a1:thing:v2", displayName: "v2", fields: { size: "m" } }),
+    );
     const rows = await db.select<Array<{ id: string; display_name: string; retired: number }>>(
       "SELECT id, display_name, deleted_at IS NOT NULL AS retired FROM resources ORDER BY id",
     );
@@ -170,6 +189,12 @@ describe("an edit that answers with a new id", () => {
       { id: "a1:thing:v1", display_name: "Thing", retired: 1 },
       { id: "a1:thing:v2", display_name: "v2", retired: 0 },
     ]);
+    expect(await fieldsOf("a1:thing:v2")).toEqual({ size: "m", region: "fsn1" });
+  });
+
+  it("writes the answer as it is when nothing was stored", async () => {
+    await mirrorEditedResourceRow(db, "a1:thing:t", row({ fields: { size: "m" } }));
+    expect(await fieldsOf("a1:thing:t")).toEqual({ size: "m" });
   });
 });
 

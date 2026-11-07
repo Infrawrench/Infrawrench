@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import { v4 as uuidv4 } from "uuid";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../../../db/client";
 import { accounts, associations, resources } from "../../../db/schema";
 import { getClientForAccount, getClientForResource } from "../../../services/plugin-clients";
@@ -411,23 +411,33 @@ export function registerLifecycleRoutes(app: Hono): void {
     // Mirror the refreshed fields/displayName into the DB so the next page
     // load sees the new values without waiting for a sync cycle. Peer-managed
     // resources skip this: they aren't owned by the account's native plugin.
+    // The fields merge into the stored ones, as the sync does: a field the
+    // plugin's read after the edit could not fill keeps its value rather than
+    // vanish until the next poll. A field cleared on purpose is an explicit value.
     if (ctx.account.pluginId === input.pluginId) {
       try {
         if (nextId !== input.resourceId) {
+          // The new id has no row of its own yet, so the old row's fields go with it.
           await supersedeResource({
             organizationId,
             pluginId: input.pluginId,
             resourceTypeId: input.resourceTypeId,
             accountId: input.accountId,
             previousId: input.resourceId,
-            resource: updated,
+            resource: {
+              ...updated,
+              fields: {
+                ...((prior?.fieldsJson ?? {}) as NonNullable<typeof updated.fields>),
+                ...updated.fields,
+              },
+            },
           });
         } else {
           await db
             .update(resources)
             .set({
               displayName: updated.displayName,
-              fieldsJson: updated.fields ?? {},
+              fieldsJson: sql`COALESCE(${resources.fieldsJson}, '{}'::jsonb) || ${JSON.stringify(updated.fields ?? {})}::jsonb`,
               outputsJson: updated.resolvedOutputs ?? {},
               updatedAt: new Date(),
             })

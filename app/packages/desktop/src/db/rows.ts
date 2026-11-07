@@ -59,15 +59,42 @@ export async function upsertResourceRow(db: DbClient, row: ResourceRow): Promise
 }
 
 /**
- * Where an edit answered with a different id, as a provider that makes each edit a new
- * version does: the new id gets the row, and the old one is soft deleted. Mirrors
- * `supersedeResource` in server-core, which says why stored secrets do not move.
+ * Write what an edit answered. The fields merge into the stored ones, as the cloud's sync
+ * and edit route do: a field the plugin's read after the edit could not fill keeps its
+ * value rather than vanish until the next refresh. A field cleared on purpose is an
+ * explicit value, so it still applies.
+ *
+ * Where the answer has a different id, as a provider that makes each edit a new version
+ * gives, the new id gets the row with the old row's fields, and the old one is soft
+ * deleted. Mirrors `supersedeResource` in server-core, which says why stored secrets do
+ * not move.
  */
-export async function supersedeResourceRow(
+export async function mirrorEditedResourceRow(
   db: DbClient,
-  previousId: string,
+  editedId: string,
   row: ResourceRow,
 ): Promise<void> {
-  await upsertResourceRow(db, row);
-  await db.execute("UPDATE resources SET deleted_at = datetime('now') WHERE id = $1", [previousId]);
+  const [stored] = await db.select<Array<{ fields_json: string | null }>>(
+    "SELECT fields_json FROM resources WHERE id = $1",
+    [editedId],
+  );
+  await upsertResourceRow(db, {
+    ...row,
+    fields: { ...parseFields(stored?.fields_json), ...row.fields },
+  });
+  if (row.id !== editedId) {
+    await db.execute("UPDATE resources SET deleted_at = datetime('now') WHERE id = $1", [editedId]);
+  }
+}
+
+function parseFields(json: string | null | undefined): Record<string, unknown> {
+  if (!json) return {};
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
 }
