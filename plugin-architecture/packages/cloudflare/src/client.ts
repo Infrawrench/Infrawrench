@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, attemptStream, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import { hostFetch } from "@infrawrench/plugin-base";
+import { hostFetch, reportUnreadListPart } from "@infrawrench/plugin-base";
 import type { HostServices, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   AiRequestLogFetchRange,
@@ -77,7 +77,7 @@ import {
   renderWorkflowDetail,
   renderSecretsStoreSecretDetail,
 } from "./detail-renderers.js";
-import { CloudflareApi, withCloudflareErrors } from "./clients/shared.js";
+import { CloudflareApi, isScopeRefusal, withCloudflareErrors } from "./clients/shared.js";
 import { runCloudflarePreflight } from "./preflight.js";
 import { clampGraphqlRange } from "./graphql-range.js";
 import { fetchCloudflareCostData } from "./cost-data.js";
@@ -162,7 +162,17 @@ export class CloudflareClient implements PluginClient {
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
-      return withCloudflareErrors(() => this.listResourcesImpl(typeId, accountId));
+      return withCloudflareErrors(async () => {
+        try {
+          return await this.listResourcesImpl(typeId, accountId);
+        } catch (err) {
+          if (!(await isScopeRefusal(this.api, err))) throw err;
+          // Restricted tokens are normal, so failing this type on every poll would only page
+          // someone. The stored rows stay, and nothing is read as deleted.
+          reportUnreadListPart({ idPrefixes: [""] });
+          return [];
+        }
+      });
     });
   }
 
@@ -293,7 +303,7 @@ export class CloudflareClient implements PluginClient {
       }
 
       // Fallback: list all and find
-      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      const all = await withCloudflareErrors(() => this.listResourcesImpl(typeId, accountId));
       const found = all.find((r) => r.id === resourceId);
       if (!found) throw new Error(`Cloudflare plugin: resource ${typeId}/${resourceId} not found`);
       return found;

@@ -164,6 +164,110 @@ describe("the Cloudflare SDK through the host's HTTP service", () => {
     });
   });
 
+  describe("a token refused for a whole type", () => {
+    const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+    const noted = vi.fn();
+    beforeEach(() => {
+      noted.mockClear();
+      vi.stubGlobal(UNREAD_HOOK, noted);
+    });
+
+    const SCOPE_MISSING = answer(403, {
+      success: false,
+      errors: [{ code: 10000, message: "Authentication error" }],
+    });
+    const route = (over: Record<string, ReturnType<typeof answer>>) =>
+      hostHttp((_req, path) => over[path] ?? null);
+    const list = (request: ReturnType<typeof hostHttp>, typeId: string) =>
+      hostClient(
+        new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes, { http: { request } }),
+      ).listResources(typeId, "acct");
+
+    it.each([
+      [
+        "an account list behind a hint",
+        "hyperdrive",
+        "/client/v4/accounts/acc1/hyperdrive/configs",
+      ],
+      ["an account list with no hint", "worker", "/client/v4/accounts/acc1/workers/scripts"],
+      ["every zone", "dns-record", "/client/v4/zones/z1/dns_records"],
+      ["the zone list", "ssl-certificate", "/client/v4/zones"],
+    ])("keeps the rows of %s without an error", async (_what, typeId, path) => {
+      await expect(list(route({ [path]: SCOPE_MISSING }), typeId)).resolves.toEqual([]);
+      expect(noted).toHaveBeenCalledWith({ idPrefixes: [""] });
+    });
+
+    it("keeps Basin table rows when no namespace can be read", async () => {
+      const request = route({
+        "/client/v4/accounts/acc1/r2-catalog": ok({
+          warehouses: [{ bucket: "b", status: "active" }],
+        }),
+        "/client/v4/accounts/acc1/r2-catalog/b/namespaces": ok({ namespaces: [["n"]] }),
+        "/client/v4/accounts/acc1/r2-catalog/b/namespaces/n/tables": SCOPE_MISSING,
+      });
+      await expect(list(request, "basin-table")).resolves.toEqual([]);
+      expect(noted).toHaveBeenCalledWith({ idPrefixes: [""] });
+    });
+
+    it.each([
+      ["a 401", answer(401, { success: false, errors: [{ code: 10000, message: "Bad key" }] })],
+      [
+        "an invalid token on a 403",
+        answer(403, { success: false, errors: [{ code: 9109, message: "Invalid access token" }] }),
+      ],
+      ["a 404", answer(404, { success: false, errors: [{ code: 7003, message: "No route" }] })],
+    ])("still fails on %s", async (_what, failure) => {
+      const request = route({ "/client/v4/accounts/acc1/hyperdrive/configs": failure });
+      await expect(list(request, "hyperdrive")).rejects.toThrow();
+      expect(noted).not.toHaveBeenCalled();
+    });
+
+    it("still fails when the verify endpoint says the token has expired", async () => {
+      const request = route({
+        "/client/v4/accounts/acc1/hyperdrive/configs": SCOPE_MISSING,
+        "/client/v4/user/tokens/verify": ok({ id: "t", status: "expired" }),
+      });
+      await expect(list(request, "hyperdrive")).rejects.toThrow(/Account · Hyperdrive/);
+      expect(noted).not.toHaveBeenCalled();
+    });
+
+    it("keeps the rows when the verify endpoint has nothing to say about the token", async () => {
+      const request = route({
+        "/client/v4/accounts/acc1/hyperdrive/configs": SCOPE_MISSING,
+        "/client/v4/user/tokens/verify": answer(400, {
+          success: false,
+          errors: [{ code: 1000, message: "Invalid API Token" }],
+        }),
+      });
+      await expect(list(request, "hyperdrive")).resolves.toEqual([]);
+      expect(noted).toHaveBeenCalledTimes(1);
+    });
+
+    it("gives a read of one resource the hint rather than not found", async () => {
+      const request = route({ "/client/v4/accounts/acc1/hyperdrive/configs": SCOPE_MISSING });
+      const client = hostClient(
+        new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes, { http: { request } }),
+      );
+      await expect(client.getResource("hyperdrive", "acct:hyperdrive:h1", "acct")).rejects.toThrow(
+        /Account · Hyperdrive/,
+      );
+      expect(noted).not.toHaveBeenCalled();
+    });
+
+    it("finds the account of a token that reads no zones", async () => {
+      const request = hostHttp((_req, path) =>
+        path === "/client/v4/zones"
+          ? ok([])
+          : path === "/client/v4/accounts"
+            ? ok([{ id: "acc9", name: "Mine" }])
+            : null,
+      );
+      await list(request, "hyperdrive");
+      expect(paths(request)).toContain("GET /client/v4/accounts/acc9/hyperdrive/configs");
+      expect(noted).not.toHaveBeenCalled();
+    });
+  });
+
   it("sends a multipart Worker upload through the host as bytes with its boundary", async () => {
     const request = hostHttp((req) => (req.method === "PUT" ? ok({ id: "w1" }) : null));
     const api = new CloudflareApi("tok", { request });

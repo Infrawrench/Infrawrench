@@ -226,7 +226,8 @@ export async function withAuthErrorHint<T>(
     return await fn();
   } catch (err) {
     rethrowIncompleteList(err);
-    if (isCloudflareAuthError(err)) {
+    if (err instanceof CloudflareMissingPermissionError) throw err;
+    if (isCloudflareAuthError(err) && !isCredentialRejected(err)) {
       throw new CloudflareMissingPermissionError(resourceLabel, scope);
     }
     throw new Error(formatCloudflareError(err), { cause: err });
@@ -235,6 +236,48 @@ export async function withAuthErrorHint<T>(
 
 function statusOf(err: unknown): unknown {
   return err !== null && typeof err === "object" && "status" in err ? err.status : undefined;
+}
+
+/** A token Cloudflare will not take at all, rather than one that lacks a scope. */
+function isCredentialRejected(err: unknown): boolean {
+  if (statusOf(err) === 401) return true;
+  return /\binvalid\s+(?:access\s+|api\s+)?token\b|\bexpired\b/i.test(formatCloudflareError(err));
+}
+
+const tokenStatusCache = new WeakMap<CloudflareApi, Promise<boolean>>();
+
+/**
+ * Whether the token verify endpoint says this token is expired or disabled. Any other answer
+ * decides nothing, since it refuses account-owned tokens and OAuth tokens that are perfectly good.
+ */
+function isTokenInactive(api: CloudflareApi): Promise<boolean> {
+  let cached = tokenStatusCache.get(api);
+  if (!cached) {
+    cached = (async () => {
+      try {
+        const body = await api.cf.get<undefined, { result?: { status?: string } }>(
+          "/user/tokens/verify",
+        );
+        const status = body.result?.status;
+        return Boolean(status) && status !== "active";
+      } catch {
+        return false;
+      }
+    })();
+    tokenStatusCache.set(api, cached);
+  }
+  return cached;
+}
+
+/**
+ * True when a whole list failed because this token lacks a scope, which restricted tokens
+ * normally do. A throttle, an outage or a token Cloudflare will not take is not this.
+ */
+export async function isScopeRefusal(api: CloudflareApi, err: unknown): Promise<boolean> {
+  const refused =
+    err instanceof CloudflareMissingPermissionError ||
+    (isCloudflareAuthError(err) && !isCredentialRejected(err));
+  return refused && !(await isTokenInactive(api));
 }
 
 /** How Cloudflare words a feature a zone or account does not have, when it answers with a 400. */
@@ -263,8 +306,9 @@ function refusalOf(err: unknown): "denied" | "unavailable" | "unclear" | null {
  * One list read per parent, for a list that fans out over zones, Access applications or
  * namespaces. A sync soft-deletes what a list stops returning, so only an answer that means this
  * parent has nothing here reads as none. Anything else fails the whole list and the stored rows
- * stay. A 401 is the credential rather than the parent, so it fails too. When no parent answered,
- * a refusal is the result: say so, since an empty list would prune every parent's rows.
+ * stay, as does a token Cloudflare will not take. When no parent answered, a refusal is the
+ * result rather than an empty list, which would prune every parent's rows: `listResources` keeps
+ * those rows for a missing scope.
  */
 export async function collectPerParent<P, T>(
   parents: readonly P[],
@@ -283,7 +327,7 @@ export async function collectPerParent<P, T>(
       answered++;
     } catch (err) {
       rethrowIncompleteList(err);
-      if (statusOf(err) === 401) throw new CloudflareMissingPermissionError(resourceLabel, scope);
+      if (isCredentialRejected(err)) throw err;
       const refusal = refusalOf(err);
       if (!refusal) throw err;
       if (refusal === "denied") denied = true;
@@ -510,7 +554,15 @@ export class CloudflareApi {
       this.cfAccountId = accountId;
       return accountId;
     }
-    throw new Error("Cloudflare plugin: no zones found, cannot determine account ID");
+    // A token with account scopes and no zones, or an account with no zones yet.
+    for await (const account of this.cf.accounts.list({ per_page: 1 })) {
+      this.cfAccountId = account.id;
+      return account.id;
+    }
+    throw new CloudflareMissingPermissionError(
+      "account-scoped resources",
+      "Account · Account Settings:Read",
+    );
   }
 
   async getZoneOptions(): Promise<Array<{ id: string; label: string }>> {

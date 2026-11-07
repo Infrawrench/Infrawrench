@@ -176,10 +176,26 @@ describe("collectPerZone", () => {
     ).rejects.toThrow("Rate limited");
   });
 
-  it("fails the whole type on an expired credential, even if another zone answered", async () => {
-    await expect(collect(failingZoneTwo({ status: 401 }))).rejects.toThrow(
-      /doesn't have the Zone · DNS:Read permission/,
-    );
+  it.each([
+    ["a 401", { status: 401 }],
+    [
+      "an invalid token on a 403",
+      { status: 403, errors: [{ code: 9109, message: "Invalid access token" }] },
+    ],
+  ])("fails the whole type on %s, even if another zone answered", async (_what, err) => {
+    await expect(collect(failingZoneTwo(err))).rejects.toBe(err);
+  });
+
+  it("does not call a rejected token a missing permission", async () => {
+    await expect(
+      withAuthErrorHint(
+        async () => {
+          throw { status: 401, errors: [{ code: 10000, message: "Authentication error" }] };
+        },
+        "DNS records",
+        "Zone · DNS:Read",
+      ),
+    ).rejects.toThrow("Authentication error");
   });
 
   it("reads a feature no zone is entitled to as none", async () => {
