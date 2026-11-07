@@ -12,7 +12,9 @@
  * Every one has the same hosts and auth, so they make one client.
  */
 import {
+  ListTruncatedError,
   createApiClient,
+  requireListPage,
   withCursorPagination,
   type ApiClient,
   type ApiListItem,
@@ -132,18 +134,17 @@ type SendGridPaths = AlertPaths &
 
 export const PAGE_SIZE = 100;
 
-/** `limit`/`offset` lists that answer a bare array: 50 pages, so 5000 items at most. */
+/** `limit`/`offset` lists that answer a bare array: 500 pages, so 50,000 items at most. */
 function withOffsetLists(client: ApiClient<SendGridPaths>) {
   return withCursorPagination(client, {
     cursorParam: "offset",
     firstCursor: 0,
     sizeParam: "limit",
     pageSize: PAGE_SIZE,
-    maxPages: 50,
+    maxPages: 500,
     // By the page size, not by what came back: a page may be longer than was asked for.
     next: ({ cursor }) => Number(cursor) + PAGE_SIZE,
     stopOnShortPage: true,
-    emptyBodyEndsList: true,
   });
 }
 
@@ -180,35 +181,59 @@ export function createSendGridApis(ctx: SendGridContext): SendGridApis {
   return { api: createClient(ctx, ctx.onBehalfOf), parent: createClient(ctx, "") };
 }
 
+const TEMPLATE_PAGE_SIZE = 200;
+const MAX_TEMPLATE_PAGES = 250;
+
+function pageTokenOf(next: string): string | null {
+  try {
+    return new URL(next).searchParams.get("page_token");
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Walk `/v3/templates`, which pages by `page_token` taken from the absolute
- * `_metadata.next` URL (max `page_size` 200).
+ * `_metadata.next` URL (max `page_size` 200). Only the token is used, so the next
+ * request always goes to this client's own host.
  */
 export async function listTemplates(
   api: SendGridApi,
-  maxPages = 25,
 ): Promise<ApiListItem<TemplateOperations["ListTemplate"], "result">[]> {
+  const path = "/v3/templates";
   const out: ApiListItem<TemplateOperations["ListTemplate"], "result">[] = [];
   let token: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
-    const res = await api.get("/v3/templates", {
+  for (let page = 0; page < MAX_TEMPLATE_PAGES; page++) {
+    const res = await api.get(path, {
       query: {
         generations: "legacy,dynamic",
-        page_size: 200,
+        page_size: TEMPLATE_PAGE_SIZE,
         ...(token !== undefined ? { page_token: token } : {}),
       },
     });
-    out.push(...(res?.result ?? []));
+    out.push(
+      ...requireListPage(res?.result, { vendor: "SendGrid", path, key: "result", page: res }),
+    );
     const next = res?._metadata?.next;
-    if (!next) break;
-    let nextToken: string | null = null;
-    try {
-      nextToken = new URL(next).searchParams.get("page_token");
-    } catch {
-      nextToken = null;
+    if (!next) return out;
+    const nextToken = pageTokenOf(next);
+    if (!nextToken || nextToken === token) {
+      // A next link that leads nowhere is the end only if `count` says nothing is left.
+      const count = res?._metadata?.count;
+      if (count !== undefined && out.length >= count) return out;
+      throw new ListTruncatedError({
+        vendor: "SendGrid",
+        path,
+        items: out.length,
+        maxPages: page + 1,
+      });
     }
-    if (!nextToken || nextToken === token) break;
     token = nextToken;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: "SendGrid",
+    path,
+    items: out.length,
+    maxPages: MAX_TEMPLATE_PAGES,
+  });
 }

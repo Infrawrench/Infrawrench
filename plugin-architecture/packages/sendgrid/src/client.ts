@@ -13,7 +13,13 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  ListTruncatedError,
+  QuotaAccessError,
+  externalIdOf,
+  pathEncode,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import type { SendGridApi, SendGridApis, SendGridContext, SendGridRegion } from "./api.js";
 import { PAGE_SIZE, createSendGridApis, listTemplates, statusOf } from "./api.js";
 import type { operations as AlertOperations } from "./api-types.alerts.gen.js";
@@ -69,6 +75,8 @@ import {
 import { EVENT_KEYS, eventFieldKey } from "./resource-types.js";
 
 const CONCURRENCY = 4;
+const MAX_LINKS = 500;
+const MAX_SENDER_PAGES = 500;
 const MAX_KEY_SCOPE_READS = 200;
 const MAX_ADDRESSES = 1000;
 /** SendGrid leaves a subuser's region out of the answer unless asked for it. */
@@ -134,6 +142,21 @@ export function parseScopes(raw: string): string[] {
     }
   }
   return [...new Set(value.split(/[\s,]+/).filter(Boolean))];
+}
+
+/** A page's rows. Anything but a list throws, so it can never read as an empty account. */
+function listPage<T>(
+  list: readonly T[] | null | undefined,
+  path: string,
+  key: string | null,
+  page?: object,
+): T[] {
+  return requireListPage(list, {
+    vendor: "SendGrid",
+    path,
+    key,
+    ...(page !== undefined ? { page } : {}),
+  });
 }
 
 /** 403/404 mean the key lacks the scope or the plan lacks the feature: list it empty. */
@@ -217,8 +240,19 @@ export class SendGridClient implements PluginClient {
   }
 
   private async links() {
-    const res = await this.api.get("/v3/whitelabel/links", { query: { limit: 500 } });
-    return Array.isArray(res) ? res : [];
+    const path = "/v3/whitelabel/links";
+    const res = await this.api.get(path, { query: { limit: MAX_LINKS } });
+    const rows = listPage(res, path, null);
+    // The document has no way to ask for a second page, so a full one may not be all of them.
+    if (rows.length >= MAX_LINKS) {
+      throw new ListTruncatedError({
+        vendor: "SendGrid",
+        path,
+        items: rows.length,
+        maxItems: MAX_LINKS,
+      });
+    }
+    return rows;
   }
 
   private reverseDns() {
@@ -226,8 +260,9 @@ export class SendGridClient implements PluginClient {
   }
 
   private async parses() {
-    const res = await this.api.get("/v3/user/webhooks/parse/settings");
-    return res?.result ?? [];
+    const path = "/v3/user/webhooks/parse/settings";
+    const res = await this.api.get(path);
+    return listPage(res?.result, path, "result", res);
   }
 
   private ips(): Promise<SgIp[]> {
@@ -246,19 +281,26 @@ export class SendGridClient implements PluginClient {
   }
 
   private async verifiedSenders(): Promise<SgVerifiedSender[]> {
+    const path = "/v3/verified_senders";
     const out: SgVerifiedSender[] = [];
     let lastSeen: number | undefined;
-    for (let page = 0; page < 50; page++) {
-      const res = await this.api.get("/v3/verified_senders", {
-        query: { limit: 100, ...(lastSeen !== undefined ? { lastSeenID: lastSeen } : {}) },
+    for (let page = 0; page < MAX_SENDER_PAGES; page++) {
+      const res = await this.api.get(path, {
+        query: { limit: PAGE_SIZE, ...(lastSeen !== undefined ? { lastSeenID: lastSeen } : {}) },
       });
-      const items = res?.results ?? [];
+      const items = listPage(res?.results, path, "results", res);
       out.push(...items);
+      if (items.length < PAGE_SIZE) return out;
       const last = items.at(-1)?.id;
-      if (items.length < 100 || last === undefined || last === lastSeen) break;
+      if (last === undefined || last === lastSeen) break;
       lastSeen = last;
     }
-    return out;
+    throw new ListTruncatedError({
+      vendor: "SendGrid",
+      path,
+      items: out.length,
+      maxPages: MAX_SENDER_PAGES,
+    });
   }
 
   // The single reads below are documented with less than their lists, and a detail page shows
@@ -307,7 +349,7 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-api-key":
           return this.scoped(async () => {
             const res = await this.api.get("/v3/api_keys");
-            const keys = res?.result ?? [];
+            const keys = listPage(res?.result, "/v3/api_keys", "result", res);
             const inUse = keyIdOf(this.ctx.apiKey);
             const detailed = await mapLimit(keys, CONCURRENCY, async (k): Promise<SgApiKey> =>
               k.api_key_id && keys.indexOf(k) < MAX_KEY_SCOPE_READS
@@ -348,7 +390,7 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-ip-pool":
           return this.scoped(async () => {
             const pools = await this.api.get("/v3/ips/pools");
-            const names = (Array.isArray(pools) ? pools : [])
+            const names = listPage(pools, "/v3/ips/pools", null)
               .map((p) => p.name ?? "")
               .filter(Boolean);
             return mapLimit(names, CONCURRENCY, async (name) =>
@@ -365,8 +407,11 @@ export class SendGridClient implements PluginClient {
           );
         case "sendgrid-event-webhook":
           return this.scoped(async () => {
-            const res = await this.api.get("/v3/user/webhooks/event/settings/all");
-            return (res?.webhooks ?? []).map((w) => mapEventWebhook(accountId, w));
+            const path = "/v3/user/webhooks/event/settings/all";
+            const res = await this.api.get(path);
+            return listPage(res?.webhooks, path, "webhooks", res).map((w) =>
+              mapEventWebhook(accountId, w),
+            );
           });
         case "sendgrid-inbound-parse":
           return this.scoped(async () => (await this.parses()).map((p) => mapParse(accountId, p)));
@@ -377,7 +422,7 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-unsubscribe-group":
           return this.scoped(async () => {
             const res = await this.api.get("/v3/asm/groups");
-            return (Array.isArray(res) ? res : []).map((g) => mapAsmGroup(accountId, g));
+            return listPage(res, "/v3/asm/groups", null).map((g) => mapAsmGroup(accountId, g));
           });
         case "sendgrid-verified-sender":
           return this.scoped(async () =>
@@ -386,7 +431,7 @@ export class SendGridClient implements PluginClient {
         case "sendgrid-alert":
           return this.scoped(async () => {
             const res = await this.api.get("/v3/alerts");
-            return (Array.isArray(res) ? res : []).map((a) => mapAlert(accountId, a));
+            return listPage(res, "/v3/alerts", null).map((a) => mapAlert(accountId, a));
           });
         default:
           throw new Error(`SendGrid plugin: unknown resource type "${typeId}"`);
@@ -487,7 +532,7 @@ export class SendGridClient implements PluginClient {
           const list = await this.parent.get("/v3/subusers", {
             query: { username: id, ...REGION_QUERY },
           });
-          const s = (Array.isArray(list) ? list : []).find((x) => x.username === id);
+          const s = listPage(list, "/v3/subusers", null).find((x) => x.username === id);
           if (!s) throw notFound(typeId, resourceId);
           const end = Date.now();
           const [credits, reps, stats] = await Promise.all([
@@ -534,7 +579,9 @@ export class SendGridClient implements PluginClient {
           return mapAsmGroup(accountId, await this.api.get(`/v3/asm/groups/${enc}`));
         case "sendgrid-verified-sender": {
           const res = await this.api.get("/v3/verified_senders", { query: { id } });
-          const s = (res?.results ?? []).find((x) => String(x.id) === id);
+          const s = listPage(res?.results, "/v3/verified_senders", "results", res).find(
+            (x) => String(x.id) === id,
+          );
           if (!s) throw notFound(typeId, resourceId);
           return mapVerifiedSender(accountId, s);
         }

@@ -1,7 +1,8 @@
-import { hostClient } from "@infrawrench/plugin-base/effect";
-import { describe, expect, it } from "vitest";
+import { hostClient, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import { describe, expect, it, vi } from "vitest";
 import { SendGridApiError } from "../api.js";
 import { SendGridClient, parseScopes } from "../client.js";
+import { plugin } from "../plugin.js";
 import { domainDnsRecords, keyIdOf } from "../mappers.js";
 import { parseStatusFeed } from "../status-feed.js";
 
@@ -275,6 +276,266 @@ describe("SendGrid client", () => {
         "example.com",
       );
     });
+  });
+
+  describe("a list that cannot say it has every row throws", () => {
+    const row = (i: number) => ({
+      id: i,
+      username: `u${i}`,
+      domain: `d${i}.com`,
+      ip: `10.0.0.${i}`,
+    });
+    const fullPage = (url: URL) => {
+      const offset = Number(url.searchParams.get("offset"));
+      return Array.from({ length: 100 }, (_, i) => row(offset + i));
+    };
+
+    it.each([
+      ["sendgrid-domain", "/v3/whitelabel/domains"],
+      ["sendgrid-reverse-dns", "/v3/whitelabel/ips"],
+      ["sendgrid-ip", "/v3/ips"],
+      ["sendgrid-subuser", "/v3/subusers"],
+    ])("%s stops at 50,000 rows", async (type, path) => {
+      const { c, calls } = client((url) => ({ body: fullPage(url) }));
+      await expect(c.listResources(type, "a")).rejects.toThrow("has more than Infrawrench reads");
+      expect(calls).toHaveLength(500);
+      expect(calls[0]!.url.pathname).toBe(path);
+    });
+
+    it("reads an offset list the old cap would have cut at 5,000 rows", async () => {
+      const { c, calls } = client((url) => {
+        const offset = Number(url.searchParams.get("offset"));
+        return { body: offset < 12_000 ? fullPage(url) : [row(offset)] };
+      });
+      expect(await c.listResources("sendgrid-domain", "a")).toHaveLength(12_001);
+      expect(calls).toHaveLength(121);
+    });
+
+    it("rejects an offset page that is not a list, first or later, and an empty answer", async () => {
+      const wrapped = client(() => ({ body: { errors: [] } })).c;
+      await expect(wrapped.listResources("sendgrid-domain", "a")).rejects.toThrow("is not a list");
+      const later = client((url) =>
+        url.searchParams.get("offset") === "0" ? { body: fullPage(url) } : { body: { items: [] } },
+      ).c;
+      await expect(later.listResources("sendgrid-domain", "a")).rejects.toThrow("is not a list");
+      const empty = client(() => ({})).c;
+      await expect(empty.listResources("sendgrid-domain", "a")).rejects.toThrow("is not a list");
+    });
+
+    it.each([
+      ["sendgrid-api-key", "/v3/api_keys"],
+      ["sendgrid-link-branding", "/v3/whitelabel/links"],
+      ["sendgrid-ip-pool", "/v3/ips/pools"],
+      ["sendgrid-event-webhook", "/v3/user/webhooks/event/settings/all"],
+      ["sendgrid-inbound-parse", "/v3/user/webhooks/parse/settings"],
+      ["sendgrid-template", "/v3/templates"],
+      ["sendgrid-unsubscribe-group", "/v3/asm/groups"],
+      ["sendgrid-verified-sender", "/v3/verified_senders"],
+      ["sendgrid-alert", "/v3/alerts"],
+    ])("%s rejects a page that is not a list, not reading it as empty", async (type, path) => {
+      const renamed = client(() => ({ body: { renamed: [] } }));
+      await expect(renamed.c.listResources(type, "a")).rejects.toThrow("is not a list");
+      expect(renamed.calls[0]!.url.pathname).toBe(path);
+      const empty = client(() => ({}));
+      await expect(empty.c.listResources(type, "a")).rejects.toThrow("is not a list");
+    });
+
+    it("rejects DNS records when one of the lists behind them is not a list", async () => {
+      const { c } = client((url) =>
+        url.pathname === "/v3/whitelabel/links" ? { body: { renamed: [] } } : { body: [] },
+      );
+      await expect(c.listResources("sendgrid-dns-record", "a")).rejects.toThrow("is not a list");
+    });
+
+    it("lists empty lists as empty", async () => {
+      const bodies: Record<string, unknown> = {
+        "/v3/api_keys": { result: [] },
+        "/v3/user/webhooks/event/settings/all": { max_allowed: 5, webhooks: [] },
+        "/v3/user/webhooks/parse/settings": { result: [] },
+        "/v3/templates": { result: [], _metadata: { count: 0 } },
+        "/v3/verified_senders": { results: [] },
+      };
+      const { c } = client((url) => ({ body: bodies[url.pathname] ?? [] }));
+      for (const type of [
+        "sendgrid-api-key",
+        "sendgrid-domain",
+        "sendgrid-link-branding",
+        "sendgrid-reverse-dns",
+        "sendgrid-dns-record",
+        "sendgrid-ip",
+        "sendgrid-ip-pool",
+        "sendgrid-subuser",
+        "sendgrid-event-webhook",
+        "sendgrid-inbound-parse",
+        "sendgrid-template",
+        "sendgrid-unsubscribe-group",
+        "sendgrid-verified-sender",
+        "sendgrid-alert",
+      ]) {
+        expect(await c.listResources(type, "a")).toEqual([]);
+      }
+    });
+
+    it("rejects branded links when the one page it can ask for is full", async () => {
+      const page = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({ id: i, domain: "example.com", subdomain: `l${i}` }));
+      const full = client(() => ({ body: page(500) })).c;
+      await expect(full.listResources("sendgrid-link-branding", "a")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      const fits = client(() => ({ body: page(499) })).c;
+      expect(await fits.listResources("sendgrid-link-branding", "a")).toHaveLength(499);
+    });
+
+    describe("templates", () => {
+      const NEXT = "https://api.sendgrid.com/v3/templates?page_token=";
+
+      it("reads past the old cap of 25 pages, and throws at 250", async () => {
+        const reads = (pages: number) =>
+          client((url) => {
+            const at = Number(url.searchParams.get("page_token") ?? 0);
+            return {
+              body: {
+                result: [{ id: `t${at}`, name: "x" }],
+                _metadata: at + 1 < pages ? { next: `${NEXT}${at + 1}` } : {},
+              },
+            };
+          });
+        expect(await reads(30).c.listResources("sendgrid-template", "a")).toHaveLength(30);
+        const endless = reads(10_000);
+        await expect(endless.c.listResources("sendgrid-template", "a")).rejects.toThrow(
+          "has more than Infrawrench reads",
+        );
+        expect(endless.calls).toHaveLength(250);
+      });
+
+      it("rejects a later page that is not a list", async () => {
+        const { c } = client((url) =>
+          url.searchParams.get("page_token")
+            ? { body: { renamed: [] } }
+            : { body: { result: [{ id: "t" }], _metadata: { next: `${NEXT}2` } } },
+        );
+        await expect(c.listResources("sendgrid-template", "a")).rejects.toThrow("is not a list");
+      });
+
+      it.each([
+        ["with no token", "https://api.sendgrid.com/v3/templates"],
+        ["that repeats the token", `${NEXT}same`],
+        ["that cannot be parsed", "not a url"],
+      ])("rejects a next link %s while count says more are left", async (_name, next) => {
+        const { c } = client(() => ({
+          body: { result: [{ id: "t" }], _metadata: { next, count: 99 } },
+        }));
+        await expect(c.listResources("sendgrid-template", "a")).rejects.toThrow(
+          "has more than Infrawrench reads",
+        );
+      });
+
+      it("ends on a repeated next link once count says every row was read", async () => {
+        const { c } = client((url) => ({
+          body: {
+            result: [{ id: `t${url.searchParams.get("page_token") ?? "first"}` }],
+            _metadata: { next: `${NEXT}same`, count: 2 },
+          },
+        }));
+        expect(await c.listResources("sendgrid-template", "a")).toHaveLength(2);
+      });
+
+      it("takes only the token from a next link, never its host", async () => {
+        const { c, calls } = client((url) =>
+          url.searchParams.get("page_token")
+            ? { body: { result: [{ id: "t2" }] } }
+            : {
+                body: {
+                  result: [{ id: "t1" }],
+                  _metadata: { next: "https://evil.example/v3/templates?page_token=2" },
+                },
+              },
+        );
+        expect(await c.listResources("sendgrid-template", "a")).toHaveLength(2);
+        expect(calls.map((x) => x.url.host)).toEqual(["api.sendgrid.com", "api.sendgrid.com"]);
+      });
+    });
+
+    describe("verified senders", () => {
+      const page = (from: number) =>
+        Array.from({ length: 100 }, (_, i) => ({ id: from + i + 1, from_email: "a@example.com" }));
+
+      it("reads past the old cap of 5,000 rows, and throws at 50,000", async () => {
+        const reads = (rows: number) =>
+          client((url) => {
+            const after = Number(url.searchParams.get("lastSeenID") ?? 0);
+            return { body: { results: after < rows ? page(after) : [] } };
+          });
+        expect(await reads(6000).c.listResources("sendgrid-verified-sender", "a")).toHaveLength(
+          6000,
+        );
+        const endless = reads(1_000_000);
+        await expect(endless.c.listResources("sendgrid-verified-sender", "a")).rejects.toThrow(
+          "has more than Infrawrench reads",
+        );
+        expect(endless.calls).toHaveLength(500);
+      });
+
+      it("rejects a full page it cannot read past", async () => {
+        const stuck = client(() => ({ body: { results: page(0) } })).c;
+        await expect(stuck.listResources("sendgrid-verified-sender", "a")).rejects.toThrow(
+          "has more than Infrawrench reads",
+        );
+      });
+
+      it("rejects a later page that is not a list", async () => {
+        const { c } = client((url) =>
+          url.searchParams.get("lastSeenID") ? { body: {} } : { body: { results: page(0) } },
+        );
+        await expect(c.listResources("sendgrid-verified-sender", "a")).rejects.toThrow(
+          "is not a list",
+        );
+      });
+    });
+
+    it("still lists a missing scope as empty", async () => {
+      const { c } = client(() => ({ status: 403, body: { errors: [{ message: "no" }] } }));
+      for (const type of ["sendgrid-domain", "sendgrid-template", "sendgrid-verified-sender"]) {
+        expect(await c.listResources(type, "a")).toEqual([]);
+      }
+    });
+
+    it("gives a subuser picker what it read at its cap rather than failing", async () => {
+      const seen: string[] = [];
+      const http = {
+        async request(req: { url: string }) {
+          seen.push(req.url);
+          const offset = Number(new URL(req.url).searchParams.get("offset"));
+          const rows = Array.from({ length: 100 }, (_, i) => ({ username: `u${offset + i}` }));
+          return { status: 200, headers: {}, body: JSON.stringify(rows) };
+        },
+      };
+      const options = await runPluginEffect(
+        plugin.listCredentialOptions!("onBehalfOf", { apiKey: "SG.a.b" }, { http } as never),
+      );
+      expect(options).toHaveLength(5000);
+      expect(seen).toHaveLength(50);
+    });
+  });
+
+  it("sends every call through the host's transport, with no CA of its own", async () => {
+    const stub = vi.fn(() => {
+      throw new Error("fetch must not be called");
+    });
+    vi.stubGlobal("fetch", stub);
+    try {
+      const request = vi.fn(async (_req: object) => ({ status: 200, headers: {}, body: "[]" }));
+      const c = hostClient(
+        new SendGridClient({ apiKey: "SG.a.b" }, { http: { request } } as never),
+      );
+      await c.listResources("sendgrid-domain", "a");
+      expect(request).toHaveBeenCalledOnce();
+      expect(request.mock.calls[0]![0]).not.toHaveProperty("caCert");
+      expect(stub).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("synthesises DNS records and reads the key id", () => {

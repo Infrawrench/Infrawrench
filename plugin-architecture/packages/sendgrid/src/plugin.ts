@@ -97,7 +97,7 @@ async function listCredentialOptions(
     ...(caCert ? { caCert } : {}),
     ...(services?.http ? { http: services.http } : {}),
   });
-  const subusers = await api.getAll("/v3/subusers", null);
+  const subusers = await api.getAll("/v3/subusers", null, { maxPages: 50, partial: true });
   return subusers
     .filter((s) => s.username)
     .map((s) => ({
