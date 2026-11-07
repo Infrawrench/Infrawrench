@@ -1,4 +1,4 @@
-import { hostDriver } from "@infrawrench/plugin-base/effect";
+import { hostClient, hostDriver } from "@infrawrench/plugin-base/effect";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Readable } from "node:stream";
 
@@ -24,6 +24,7 @@ vi.mock("node:stream/promises", () => ({
   pipeline: (...args: unknown[]) => mockPipeline(...(args as [])),
 }));
 
+import { UploadThingClient } from "../client.js";
 import { nodeDriver as contractNodeDriver } from "../node-driver.js";
 
 const nodeDriver = hostDriver(contractNodeDriver);
@@ -237,5 +238,68 @@ describe("downloadFile", () => {
     });
     expect(mockWriteFile).toHaveBeenCalledWith("/tmp/out/logo.png", new Uint8Array([1, 2, 3]));
     expect(calls).toHaveLength(0);
+  });
+
+  describe("an account with a custom CA", () => {
+    const CA = "-----BEGIN CERTIFICATE-----\nfixture\n-----END CERTIFICATE-----\n";
+
+    function hostHttp() {
+      return vi.fn(async (req: { url: string; caCert?: string }) =>
+        req.url.endsWith("/v6/requestFileAccess")
+          ? {
+              status: 200,
+              headers: {},
+              body: JSON.stringify({ ufsUrl: `https://${APP_ID}.ufs.sh/f/${KEY}?sig=1`, url: "" }),
+            }
+          : { status: 200, headers: {}, body: "", rawBody: new Uint8Array([1]) },
+      );
+    }
+
+    it("sends the CA on the grant and the byte fetch, through the token the client hands out", async () => {
+      const token = await hostClient(new UploadThingClient({ apiKey: API_KEY, caCert: CA }))
+        .getStorageAccessToken!();
+      const request = hostHttp();
+
+      await nodeDriver.downloadFile(APP_ID, KEY, token, "/tmp/out/logo.png", {
+        http: { request },
+      });
+
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(request.mock.calls[0]![0]).toMatchObject({
+        url: "https://api.uploadthing.com/v6/requestFileAccess",
+        caCert: CA,
+        headers: expect.objectContaining({ "x-uploadthing-api-key": API_KEY }),
+      });
+      expect(request.mock.calls[1]![0]).toMatchObject({
+        url: `https://${APP_ID}.ufs.sh/f/${KEY}?sig=1`,
+        caCert: CA,
+      });
+    });
+
+    it("hands out the bare key and sends no CA for an account without one", async () => {
+      const token = await hostClient(new UploadThingClient({ apiKey: API_KEY }))
+        .getStorageAccessToken!();
+      expect(token).toBe(API_KEY);
+      const request = hostHttp();
+
+      await nodeDriver.downloadFile(APP_ID, KEY, token, "/tmp/out/logo.png", {
+        http: { request },
+      });
+
+      expect(request).toHaveBeenCalledTimes(2);
+      for (const [req] of request.mock.calls) expect(req).not.toHaveProperty("caCert");
+    });
+
+    it("sends a key that only looks like the token's wrapper as it was pasted", async () => {
+      const request = hostHttp();
+
+      await nodeDriver.downloadFile(APP_ID, KEY, "{not json", "/tmp/out/logo.png", {
+        http: { request },
+      });
+
+      expect(request.mock.calls[0]![0]).toMatchObject({
+        headers: expect.objectContaining({ "x-uploadthing-api-key": "{not json" }),
+      });
+    });
   });
 });

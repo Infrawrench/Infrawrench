@@ -33,3 +33,23 @@ export function createUploadThingApi(options: {
     caCert: options.caCert,
   });
 }
+
+/**
+ * The token `getStorageAccessToken` hands the download driver. A host passes it along
+ * unread and has no other way to carry the account's custom CA to `downloadFile`, so
+ * an account with one wraps both here. Without one it is the bare key.
+ */
+export function encodeStorageToken(apiKey: string, caCert: string): string {
+  return caCert ? JSON.stringify({ apiKey, caCert }) : apiKey;
+}
+
+export function decodeStorageToken(token: string): { apiKey: string; caCert?: string } {
+  if (!token.startsWith("{")) return { apiKey: token };
+  try {
+    const { apiKey, caCert }: { apiKey?: unknown; caCert?: unknown } = JSON.parse(token);
+    if (typeof apiKey === "string" && typeof caCert === "string") return { apiKey, caCert };
+  } catch {
+    // Not one of ours: a pasted key is sent as it is, for UploadThing to answer 401.
+  }
+  return { apiKey: token };
+}

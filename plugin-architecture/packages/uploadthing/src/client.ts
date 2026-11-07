@@ -25,7 +25,13 @@ import {
   pathEncode,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
-import { createUploadThingApi, type UploadThingApi, type UtAppInfo, type UtFile } from "./api.js";
+import {
+  createUploadThingApi,
+  encodeStorageToken,
+  type UploadThingApi,
+  type UtAppInfo,
+  type UtFile,
+} from "./api.js";
 import { UtAppResourceType } from "./resources/ut-app.js";
 
 /**
@@ -968,16 +974,17 @@ export class UploadThingClient implements PluginClient {
    * For most providers this is a short-lived read token that covers many
    * objects. UploadThing has no such thing: the only read grant it issues is
    * `requestFileAccess`, which mints a presigned URL for **one** file. So the
-   * API key itself is what crosses to the driver, and the driver does a
-   * per-file grant there. That is also what makes downloading a *private*
-   * file work: the public `ufs.sh` URL 403s unless the ACL is public-read.
+   * API key itself is what crosses to the driver, with the account's custom CA
+   * when it has one, and the driver does a per-file grant there. That is also
+   * what makes downloading a *private* file work: the public `ufs.sh` URL 403s
+   * unless the ACL is public-read.
    *
    * No new exposure: on web the token never leaves the server, and on desktop
    * the renderer already holds these credentials to construct this client.
    */
   getStorageAccessToken(): PluginEffect<string> {
     return attempt(async () => {
-      return this.apiKey;
+      return encodeStorageToken(this.apiKey, this.caCert);
     });
   }
 

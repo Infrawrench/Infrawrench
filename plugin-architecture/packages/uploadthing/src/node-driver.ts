@@ -6,8 +6,9 @@
  * Unlike GCS, there is no bearer token that reads many objects: the only read
  * grant UploadThing issues is `POST /v6/requestFileAccess`, which mints a
  * presigned URL for **one** file. So the `accessToken` the host threads
- * through here is the app's API key (see `getStorageAccessToken`), and the
- * driver spends it on a per-file grant before fetching bytes.
+ * through here carries the app's API key (see `getStorageAccessToken`), and the
+ * driver spends it on a per-file grant before fetching bytes. It also carries the
+ * account's custom CA, which both calls have to name for the host to use it.
  *
  * Going through `requestFileAccess` rather than composing the public
  * `https://<appId>.ufs.sh/f/<key>` URL is what makes private files work:
@@ -26,7 +27,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { HttpHostServices, StorageNodeDriver } from "@infrawrench/plugin-base";
-import { createUploadThingApi } from "./api.js";
+import { createUploadThingApi, decodeStorageToken } from "./api.js";
 
 /** Bound outbound UploadThing fetches so a hung host cannot wedge the process. */
 const FETCH_TIMEOUT_MS = 60_000;
@@ -36,11 +37,15 @@ async function requestFileUrl(
   key: string,
   apiKey: string,
   http?: HttpHostServices,
+  caCert?: string,
 ): Promise<string> {
-  const parsed = await createUploadThingApi({ apiKey, http }).post("/v6/requestFileAccess", {
-    body: { fileKey: key },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
+  const parsed = await createUploadThingApi({ apiKey, http, caCert }).post(
+    "/v6/requestFileAccess",
+    {
+      body: { fileKey: key },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    },
+  );
   // A 204, or an empty answer over the host service, reads as `undefined`; it has
   // always failed here as the JSON it is not.
   if (parsed === undefined) throw new SyntaxError("Unexpected end of JSON input");
@@ -65,7 +70,8 @@ async function downloadFile(
   options?: { http?: HttpHostServices },
 ): Promise<void> {
   const http = options?.http;
-  const href = await requestFileUrl(key, accessToken, http);
+  const { apiKey, caCert } = decodeStorageToken(accessToken);
+  const href = await requestFileUrl(key, apiKey, http, caCert);
 
   fs.mkdirSync(path.dirname(destPath), { recursive: true });
   try {
@@ -77,6 +83,7 @@ async function downloadFile(
         method: "GET",
         headers: {},
         responseEncoding: "binary",
+        ...(caCert ? { caCert } : {}),
       });
       if (result.status < 200 || result.status >= 300 || !result.rawBody) {
         throw new Error(`UploadThing download failed for "${key}": HTTP ${result.status}`);
