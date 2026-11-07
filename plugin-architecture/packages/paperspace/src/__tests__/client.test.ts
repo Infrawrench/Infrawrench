@@ -375,6 +375,26 @@ describe("other resources", () => {
   });
 });
 
+describe("a private network answered with null", () => {
+  it("is a not-found error carrying a 404, not a TypeError", async () => {
+    route("GET", "/private-networks/net1", () => new Response("null", { status: 200 }));
+    const err: unknown = await client()
+      .getResource("private-network", "acct:private-network:net1", "acct")
+      .catch((e: unknown) => e);
+    expect(err).not.toBeInstanceOf(TypeError);
+    expect(err).toMatchObject({
+      status: 404,
+      message: "Paperspace plugin: private network net1 not found",
+    });
+  });
+
+  it("still reads a network that is there", async () => {
+    route("GET", "/private-networks/net1", { id: "net1", name: "lan", region: "ny2" });
+    const n = await client().getResource("private-network", "acct:private-network:net1", "acct");
+    expect(n.fields).toMatchObject({ name: "lan", region: "ny2" });
+  });
+});
+
 describe("snapshot created date", () => {
   const SNAPSHOT = { id: "s1", name: "nightly", machineId: "ps1", isAutoSnapshot: false };
 

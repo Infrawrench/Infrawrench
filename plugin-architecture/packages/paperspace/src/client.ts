@@ -36,6 +36,10 @@ const EVENT_POLL_MS = 2_000;
 const EVENT_TIMEOUT_MS = 90_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+function notFound(what: string): Error {
+  return Object.assign(new Error(`Paperspace plugin: ${what} not found`), { status: 404 });
+}
+
 function str(v: string | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
 }
@@ -182,15 +186,14 @@ export class PaperspaceClient implements PluginClient {
           return mapSnapshot(await this.api.get(`/snapshots/${id}`), accountId);
         case "custom-template":
           return mapCustomTemplate(await this.api.get(`/custom-templates/${id}`), accountId);
-        case "private-network":
-          return mapNetwork(await this.api.get(`/private-networks/${id}`), accountId);
+        case "private-network": {
+          const network = await this.api.get(`/private-networks/${id}`);
+          if (!network) throw notFound(`private network ${raw}`);
+          return mapNetwork(network, accountId);
+        }
         case "public-ip": {
           const found = (await this.raw.publicIps()).find((p) => p.ip === raw);
-          if (!found) {
-            throw Object.assign(new Error(`Paperspace plugin: public IP ${raw} not found`), {
-              status: 404,
-            });
-          }
+          if (!found) throw notFound(`public IP ${raw}`);
           return mapPublicIp(found, accountId);
         }
         case "startup-script":

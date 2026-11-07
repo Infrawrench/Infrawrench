@@ -36,11 +36,6 @@
         "type": "string"
       },
       "why": "Passed through from a form field; our select offers the valid values and Paperspace validates whatever else arrives, so the plugin does not hold its own copy of the enum."
-    },
-    {
-      "pointer": "/paths/~1private-networks~1{id}/get/responses/200/content/application~1json/schema/nullable",
-      "value": false,
-      "why": "Nullable in the document, unlike every sibling; the plugin has always mapped the answer without a check, so a null fails on reading its id. Remove this when it handles one."
     }
   ],
   "paths": {

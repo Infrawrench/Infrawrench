@@ -10,7 +10,8 @@ export type PCustomTemplate = ApiResponse<operations["customTemplates-get"]>;
 export type PSharedDrive = ApiResponse<operations["sharedDrives-get"]>;
 /** The document lists no creation time on a snapshot; the plugin reads one if it is sent. */
 export type PSnapshot = ApiResponse<operations["snapshots-get"]> & { dtCreated?: string };
-export type PNetwork = ApiResponse<operations["privateNetworks-get"]>;
+/** The document marks the answer to a get nullable; a null is handled where it is read. */
+export type PNetwork = NonNullable<ApiResponse<operations["privateNetworks-get"]>>;
 export type PPublicIp = ApiListItem<operations["publicIps-list"], "items">;
 export type PStartupScript = ApiResponse<operations["startupScripts-get"]>;
 export type PProject = ApiResponse<operations["projects-get"]>;

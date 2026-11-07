@@ -1067,7 +1067,25 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: responses_3bd76e4b;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        dtCreated: string;
+                        dtDeleted?: (unknown | string) | null;
+                        id: string;
+                        name: string;
+                        netmask: string;
+                        network: string;
+                        region: "ny2" | "ca1" | "ams1" | string;
+                    } | null;
+                };
+            };
+        };
     };
     "privateNetworks-update": {
         parameters: {
