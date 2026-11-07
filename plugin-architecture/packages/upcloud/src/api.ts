@@ -22,6 +22,7 @@
  */
 
 import type { HostServices } from "@infrawrench/plugin-base";
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 
 export const UPCLOUD_API_BASE = "https://api.upcloud.com/1.3";
 
@@ -107,7 +108,10 @@ export function authHeader(c: UpCloudCredentials): string {
   throw new Error("UpCloud plugin: enter an API token, or an API username and password");
 }
 
+const VENDOR = "UpCloud";
 const PAGE = 100;
+/** 10,000 rows of a managed collection. */
+const MAX_PAGES = 100;
 
 export function createUpCloudApi(config: UpCloudApiConfig): UpCloudApi {
   const base = config.baseUrl ?? UPCLOUD_API_BASE;
@@ -154,15 +158,22 @@ export function createUpCloudApi(config: UpCloudApiConfig): UpCloudApi {
     send: <T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown) =>
       request<T>(method, path, body),
     async paged<T>(path: string) {
+      const place = { vendor: VENDOR, path: path.split("?")[0] ?? path, key: null };
       const out: T[] = [];
-      for (let offset = 0; offset < 100 * PAGE; offset += PAGE) {
+      for (let page = 0; page < MAX_PAGES; page++) {
         const sep = path.includes("?") ? "&" : "?";
-        const page = await request<T[]>("GET", `${path}${sep}limit=${PAGE}&offset=${offset}`);
-        if (!Array.isArray(page)) break;
-        out.push(...page);
-        if (page.length < PAGE) break;
+        const offset = page * PAGE;
+        const rows = requireListPage(
+          await request<T[] | null>("GET", `${path}${sep}limit=${PAGE}&offset=${offset}`),
+          place,
+        );
+        // The SDK reads some collections (object storage users) without paging: one that
+        // ignores `limit` answers everything at once.
+        if (page === 0 && rows.length > PAGE) return rows;
+        out.push(...rows);
+        if (rows.length < PAGE) return out;
       }
-      return out;
+      throw new ListTruncatedError({ ...place, items: out.length, maxPages: MAX_PAGES });
     },
   };
   return api;
@@ -173,6 +184,11 @@ export function unwrap<T>(value: unknown, outer: string, inner: string): T[] {
   const o = (value as Record<string, unknown> | undefined)?.[outer];
   const i = (o as Record<string, unknown> | undefined)?.[inner];
   return Array.isArray(i) ? (i as T[]) : [];
+}
+
+/** A managed service's bare list answer. */
+export function bareList<T>(value: T[] | null | undefined, path: string): T[] {
+  return requireListPage(value, { vendor: VENDOR, path, key: null });
 }
 
 export function trailingId(resourceId: string): string {

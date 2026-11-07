@@ -8,7 +8,8 @@
  */
 
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { type UpCloudApi, labelsText, mapPooled, unwrap } from "./api.js";
+import { reportUnreadListPart, rethrowIncompleteList } from "@infrawrench/plugin-base";
+import { type UpCloudApi, bareList, labelsText, mapPooled, statusOf, unwrap } from "./api.js";
 
 export const PLUGIN_ID = "upcloud";
 
@@ -48,6 +49,30 @@ export const num = (v: unknown) => {
   return Number.isFinite(n) ? n : 0;
 };
 const yes = (v: unknown) => v === true || v === "yes" || v === "on" || v === "true";
+// Answers that say this one parent will not list its children now, as opposed to a
+// throttle, an outage or a rejected credential, which fail the whole type.
+const PARENT_REFUSALS = new Set([400, 403, 405, 409, 422]);
+
+/**
+ * One parent's children. A parent gone since it was listed (404) has none; one that
+ * refuses keeps its stored children where the host tracks them, since none were read.
+ * Anything else fails the type, because reading it as none would prune them.
+ */
+async function childrenOf<R>(parentResourceId: string, read: () => Promise<R[]>): Promise<R[]> {
+  try {
+    return await read();
+  } catch (err) {
+    rethrowIncompleteList(err);
+    const status = statusOf(err);
+    if (status === 404) return [];
+    if (status === undefined || !PARENT_REFUSALS.has(status)) throw err;
+    // Where nobody keeps the stored rows (the desktop, a workflow's call), a list
+    // without this parent's children would be read as complete.
+    if (!reportUnreadListPart({ parentResourceIds: [parentResourceId] })) throw err;
+    return [];
+  }
+}
+
 const epochIso = (v: unknown): string => {
   if (typeof v === "number" && v > 1e8) return new Date(v * 1000).toISOString();
   return str(v);
@@ -454,14 +479,13 @@ export function mapLogicalDb(d: Json, databaseId: string, accountId: string): Re
 
 export async function listDatabaseUsers(api: UpCloudApi, accountId: string) {
   const dbs = await api.paged<Json>("/database");
-  const rows = await mapPooled(dbs, 6, async (d) => {
-    try {
-      const users = await api.get<Json[]>(`/database/${str(d["uuid"])}/users`);
+  const rows = await mapPooled(dbs, 6, (d) =>
+    childrenOf(`${accountId}:database:${str(d["uuid"])}`, async () => {
+      const path = `/database/${str(d["uuid"])}/users`;
+      const users = bareList(await api.get<Json[] | null>(path), path);
       return users.map((u) => mapDatabaseUser(u, str(d["uuid"]), accountId));
-    } catch {
-      return [];
-    }
-  });
+    }),
+  );
   return rows.flat();
 }
 
@@ -469,14 +493,13 @@ export async function listLogicalDbs(api: UpCloudApi, accountId: string) {
   const dbs = (await api.paged<Json>("/database")).filter((d) =>
     ["pg", "mysql"].includes(str(d["type"])),
   );
-  const rows = await mapPooled(dbs, 6, async (d) => {
-    try {
-      const list = await api.get<Json[]>(`/database/${str(d["uuid"])}/databases`);
+  const rows = await mapPooled(dbs, 6, (d) =>
+    childrenOf(`${accountId}:database:${str(d["uuid"])}`, async () => {
+      const path = `/database/${str(d["uuid"])}/databases`;
+      const list = bareList(await api.get<Json[] | null>(path), path);
       return list.map((x) => mapLogicalDb(x, str(d["uuid"]), accountId));
-    } catch {
-      return [];
-    }
-  });
+    }),
+  );
   return rows.flat();
 }
 
@@ -598,27 +621,23 @@ export function mapOsUser(u: Json, serviceId: string, accountId: string): Resour
 
 export async function listBuckets(api: UpCloudApi, accountId: string) {
   const list = await api.paged<Json>("/object-storage-2");
-  const rows = await mapPooled(list, 6, async (s) => {
-    try {
+  const rows = await mapPooled(list, 6, (s) =>
+    childrenOf(`${accountId}:object-storage:${str(s["uuid"])}`, async () => {
       const buckets = await api.paged<Json>(`/object-storage-2/${str(s["uuid"])}/buckets`);
       return buckets.map((b) => mapBucket(b, str(s["uuid"]), accountId));
-    } catch {
-      return [];
-    }
-  });
+    }),
+  );
   return rows.flat();
 }
 
 export async function listOsUsers(api: UpCloudApi, accountId: string) {
   const list = await api.paged<Json>("/object-storage-2");
-  const rows = await mapPooled(list, 6, async (s) => {
-    try {
+  const rows = await mapPooled(list, 6, (s) =>
+    childrenOf(`${accountId}:object-storage:${str(s["uuid"])}`, async () => {
       const users = await api.paged<Json>(`/object-storage-2/${str(s["uuid"])}/users`);
       return users.map((u) => mapOsUser(u, str(s["uuid"]), accountId));
-    } catch {
-      return [];
-    }
-  });
+    }),
+  );
   return rows.flat();
 }
 
