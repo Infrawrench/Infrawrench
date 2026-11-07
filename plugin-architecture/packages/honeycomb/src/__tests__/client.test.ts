@@ -13,6 +13,7 @@ import { describeQuery, mapSlo } from "../mappers.js";
 import { columnRef } from "../metrics.js";
 import { clampQueryRange, granularityFor, respec, resultSeries } from "../query.js";
 import { resolveRegion } from "../regions.js";
+import { EnvironmentResourceType } from "../resource-types.js";
 import { mapComponent, parseStatusFeed } from "../status-feed.js";
 import { honeycombTerraformExport } from "../terraform.js";
 import { makeHttp, memorySecrets } from "./helpers.js";
@@ -531,5 +532,53 @@ describe("burn alert recipients", () => {
     const { c } = client(burnAlertRoutes([LISTED_ALERT], () => ({ status: 404 })));
     const alerts = await c.listResources("burn-alert", ACCOUNT);
     expect(alerts.map((a) => a.externalId)).toEqual(["production/api/b1"]);
+  });
+});
+
+describe("renaming an environment", () => {
+  const routes = (url: URL, method: string): Reply => {
+    if (url.pathname === "/2/auth") return { body: AUTH_V2 };
+    if (url.pathname === "/2/teams/acme/environments" && method === "GET") {
+      return {
+        body: {
+          data: [{ id: "hcaen_1", attributes: { name: "Staging", slug: "staging" } }],
+          links: { next: null },
+        },
+      };
+    }
+    if (url.pathname === "/2/teams/acme/environments/hcaen_1" && method === "PATCH") {
+      return { body: { data: { id: "hcaen_1", attributes: { name: "Staging" } } } };
+    }
+    return { status: 404 };
+  };
+  const creds = { managementKeyId: "hcxmk_1", managementKeySecret: "s" };
+
+  it("is not offered, since Honeycomb has no rename", () => {
+    const name = EnvironmentResourceType.fields.find((x) => x.key === "name");
+    expect(name?.editable).toBe(false);
+    expect(EnvironmentResourceType.description).not.toMatch(/rename/i);
+  });
+
+  it("leaves the name out of the PATCH", async () => {
+    const { c, calls } = client(routes, creds);
+    await c.updateResource("environment", "acc:environment:staging", ACCOUNT, {
+      name: "Staging",
+      description: "new",
+    });
+    const patch = calls.find((x) => x.method === "PATCH");
+    expect(patch?.body).toEqual({
+      data: { id: "hcaen_1", type: "environments", attributes: { description: "new" } },
+    });
+  });
+
+  it("refuses a different name rather than appear to save it", async () => {
+    const { c, calls } = client(routes, creds);
+    await expect(
+      c.updateResource("environment", "acc:environment:staging", ACCOUNT, {
+        name: "Renamed",
+        description: "new",
+      }),
+    ).rejects.toThrow(/cannot be renamed/);
+    expect(calls.find((x) => x.method === "PATCH")).toBeUndefined();
   });
 });

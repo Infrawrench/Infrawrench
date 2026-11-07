@@ -2008,6 +2008,13 @@ export class HoneycombClient implements PluginClient {
       const [a = "", b = "", c = ""] = ext.split("/");
       switch (typeId) {
         case "environment": {
+          // Honeycomb's docs: "Once you create your environment, you cannot rename it."
+          const name = fields["name"]?.trim();
+          if (name && name !== (await this.env(accountId, ext)).name) {
+            throw new Error(
+              "A Honeycomb environment cannot be renamed. Create a new one with that name instead.",
+            );
+          }
           if (fields[CONFIG_KEY_FIELD]?.trim()) {
             const key = fields[CONFIG_KEY_FIELD].trim();
             const auth = await v1(this.ctx, key).get("/1/auth");
@@ -2017,7 +2024,6 @@ export class HoneycombClient implements PluginClient {
             this.envCache = undefined;
           }
           const attrs: EnvironmentUpdate["data"]["attributes"] = {};
-          if (fields["name"] !== undefined) attrs.name = fields["name"];
           if (fields["description"] !== undefined) attrs.description = fields["description"];
           if (fields["color"]) attrs.color = fields["color"];
           if ("deleteProtected" in fields) {

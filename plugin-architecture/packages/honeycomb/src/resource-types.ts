@@ -51,9 +51,9 @@ export const EnvironmentResourceType = rt({
   name: "Environment",
   id: "environment",
   description:
-    "A Honeycomb environment (production, staging, …) holding its own datasets, triggers, SLOs and boards. Create, rename, recolor or delete it with a management key, connect it with a configuration key to see what is inside, and chart the events it stores.",
+    "A Honeycomb environment (production, staging, …) holding its own datasets, triggers, SLOs and boards. Create, recolor or delete it with a management key, connect it with a configuration key to see what is inside, and chart the events it stores.",
   fields: [
-    f("name", "Name"),
+    f("name", "Name", { editable: false }),
     f("description", "Description", { required: false }),
     f("color", "Color", {
       kind: "enum",

@@ -381,7 +381,6 @@ export interface components {
                 attributes: {
                     color?: components["schemas"]["EnvironmentColor"];
                     description?: string;
-                    name?: string;
                     settings?: {
                         delete_protected?: boolean;
                     };

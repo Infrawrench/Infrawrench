@@ -281,13 +281,6 @@
             }
           },
           "why": "A union keyed on `key_type`, which comes from the form as typed, with permissions picked at run time."
-        },
-        {
-          "pointer": "/components/schemas/UpdateEnvironmentRequest/properties/data/properties/attributes/properties/name",
-          "value": {
-            "type": "string"
-          },
-          "why": "Not documented for this PATCH, and the plugin has always sent it when renaming. See #467."
         }
       ]
     }
