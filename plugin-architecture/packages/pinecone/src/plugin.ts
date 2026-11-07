@@ -14,7 +14,6 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { pineconeTerraformExport } from "./terraform.js";
 import { pineconeRemediationCommands } from "./remediation.js";
-import type { PcProject } from "./types.js";
 
 export const manifest = {
   id: "pinecone",
@@ -96,7 +95,7 @@ async function listCredentialOptions(
     services,
   );
   try {
-    const res = await api.admin<{ data?: PcProject[] }>("/projects");
+    const res = await api.admin.get("/admin/projects");
     return (res?.data ?? [])
       .map((p) => ({ id: p.id, label: p.name, description: p.id }))
       .sort((a, b) => a.label.localeCompare(b.label));

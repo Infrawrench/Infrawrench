@@ -16,7 +16,7 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, withMetricsCapability } from "@infrawrench/plugin-base";
+import { pathEncode, QuotaAccessError, withMetricsCapability } from "@infrawrench/plugin-base";
 import { collectPages, errorText, isStatus, PineconeApi } from "./api.js";
 import {
   externalOf,
@@ -51,18 +51,20 @@ import {
   SERVERLESS_REGIONS,
 } from "./resource-types.js";
 import type {
-  PcApiKey,
   PcAssistant,
-  PcAssistantFile,
   PcBackup,
   PcBackupSchedule,
-  PcCollection,
+  PcConfigureIndex,
+  PcCreateSchemaFields,
   PcIndex,
   PcModel,
-  PcPagination,
   PcProject,
-  PcRestoreJob,
+  PcReadCapacity,
   PcServiceAccount,
+  PcUpdateApiKey,
+  PcUpdateAssistant,
+  PcUpdateBackupSchedule,
+  PcUpdateProject,
 } from "./types.js";
 
 const INDEX_TTL_MS = 30_000;
@@ -75,7 +77,13 @@ const ASSISTANT_NAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 export const API_KEY_VALUE_FIELD = "apiKeyValue";
 export const CLIENT_SECRET_FIELD = "clientSecret";
 
-const enc = encodeURIComponent;
+const enc = pathEncode;
+
+/** The query of one page of a list, starting from no token. */
+const pageQuery = (token: string | undefined) => ({
+  limit: 100,
+  ...(token ? { paginationToken: token } : {}),
+});
 
 function str(v: unknown): string {
   return v === undefined || v === null ? "" : String(v).trim();
@@ -101,7 +109,8 @@ function checkName(name: string, what: string): void {
 function parseFormArg(raw: string | number | undefined): Record<string, string> {
   if (typeof raw !== "string") return {};
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return {};
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(parsed)) out[k] = String(v ?? "");
     return out;
@@ -116,7 +125,8 @@ export function parseRoles(raw: string): string[] {
   const t = raw.trim();
   if (t.startsWith("[")) {
     try {
-      list = (JSON.parse(t) as unknown[]).map((r) => String(r).trim());
+      const parsed: unknown = JSON.parse(t);
+      list = Array.isArray(parsed) ? parsed.map((r) => String(r).trim()) : [];
     } catch {
       throw new Error("Roles could not be read.");
     }
@@ -124,11 +134,16 @@ export function parseRoles(raw: string): string[] {
     list = t.split(",").map((r) => r.trim());
   }
   const roles = [...new Set(list.filter(Boolean))];
-  const bad = roles.filter((r) => !(API_KEY_ROLES as readonly string[]).includes(r));
+  const known: readonly string[] = API_KEY_ROLES;
+  const bad = roles.filter((r) => !known.includes(r));
   if (bad.length) {
     throw new Error(`Unknown role ${bad.join(", ")}. Use any of: ${API_KEY_ROLES.join(", ")}.`);
   }
   return roles;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 /** Parse the assistant metadata field: a JSON object or blank. */
@@ -141,10 +156,10 @@ export function parseMetadata(raw: string): Record<string, unknown> | null {
   } catch {
     throw new Error('Metadata must be a JSON object, e.g. {"team": "support"}.');
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     throw new Error('Metadata must be a JSON object, e.g. {"team": "support"}.');
   }
-  return parsed as Record<string, unknown>;
+  return parsed;
 }
 
 interface Cached<T> {
@@ -211,7 +226,7 @@ export class PineconeClient implements PluginClient {
 
   indexes(): Promise<PcIndex[]> {
     this.indexCache = cached(this.indexCache, INDEX_TTL_MS, () =>
-      this.api.control<{ indexes?: PcIndex[] }>("/indexes").then((r) => r?.indexes ?? []),
+      this.api.control.get("/indexes").then((r): PcIndex[] => r?.indexes ?? []),
     );
     return this.indexCache.value;
   }
@@ -222,34 +237,30 @@ export class PineconeClient implements PluginClient {
 
   models(): Promise<PcModel[]> {
     this.modelCache = cached(this.modelCache, CATALOG_TTL_MS, () =>
-      this.api
-        .control<{ models?: PcModel[] }>("/models", { query: { type: "embed" } })
-        .then((r) => r?.models ?? []),
+      this.api.inference.get("/models", { query: { type: "embed" } }).then((r) => r?.models ?? []),
     );
     return this.modelCache.value;
   }
 
   projects(): Promise<PcProject[]> {
     this.projectCache = cached(this.projectCache, CATALOG_TTL_MS, () =>
-      this.api.admin<{ data?: PcProject[] }>("/projects").then((r) => r?.data ?? []),
+      this.api.admin.get("/admin/projects").then((r) => r?.data ?? []),
     );
     return this.projectCache.value;
   }
 
   private async describeIndex(name: string): Promise<PcIndex> {
-    return this.api.control<PcIndex>(`/indexes/${enc(name)}`);
+    return this.api.control.get(`/indexes/${enc(name)}`);
   }
 
   private async listBackups(): Promise<PcBackup[]> {
-    return collectPages<PcBackup>((token) =>
-      this.api.control("/backups", { query: { limit: 100, paginationToken: token } }),
-    );
+    return collectPages((token) => this.api.control.get("/backups", { query: pageQuery(token) }));
   }
 
   private async listSchedules(indexName: string): Promise<PcBackupSchedule[]> {
-    return collectPages<PcBackupSchedule>((token) =>
-      this.api.control(`/indexes/${enc(indexName)}/backup-schedules`, {
-        query: { limit: 100, paginationToken: token },
+    return collectPages((token) =>
+      this.api.control.get(`/indexes/${enc(indexName)}/backup-schedules`, {
+        query: pageQuery(token),
       }),
     );
   }
@@ -258,9 +269,9 @@ export class PineconeClient implements PluginClient {
     const out: PcAssistant[] = [];
     let token: string | undefined;
     for (let page = 0; page < 20; page++) {
-      const res = await this.api.control<
-        { assistants?: PcAssistant[]; pagination?: PcPagination | null } | undefined
-      >("/assistant/assistants", { query: { limit: 100, pagination_token: token } });
+      const res = await this.api.assistants.get("/assistants", {
+        query: { limit: 100, ...(token ? { pagination_token: token } : {}) },
+      });
       out.push(...(res?.assistants ?? []));
       const next = res?.pagination?.next;
       if (!next || next === token) break;
@@ -270,15 +281,13 @@ export class PineconeClient implements PluginClient {
   }
 
   private async listServiceAccounts(): Promise<PcServiceAccount[]> {
-    return collectPages<PcServiceAccount>((token) =>
-      this.api.admin("/service-accounts", { query: { limit: 100, paginationToken: token } }),
+    return collectPages((token) =>
+      this.api.admin.get("/admin/service-accounts", { query: pageQuery(token) }),
     );
   }
 
-  private async projectApiKeys(project: PcProject): Promise<PcApiKey[]> {
-    const res = await this.api.admin<{ data?: PcApiKey[] }>(
-      `/projects/${enc(project.id)}/api-keys`,
-    );
+  private async projectApiKeys(project: PcProject) {
+    const res = await this.api.admin.get(`/admin/projects/${enc(project.id)}/api-keys`);
     return res?.data ?? [];
   }
 
@@ -290,7 +299,7 @@ export class PineconeClient implements PluginClient {
         case "index":
           return (await this.indexes()).map((i) => mapIndex(i, accountId));
         case "collection": {
-          const res = await this.api.control<{ collections?: PcCollection[] }>("/collections");
+          const res = await this.api.control.get("/collections");
           return (res?.collections ?? []).map((c) => mapCollection(c, accountId));
         }
         case "backup":
@@ -312,8 +321,8 @@ export class PineconeClient implements PluginClient {
           return lists.flat();
         }
         case "restore-job": {
-          const jobs = await collectPages<PcRestoreJob>((token) =>
-            this.api.control("/restore-jobs", { query: { limit: 100, paginationToken: token } }),
+          const jobs = await collectPages((token) =>
+            this.api.control.get("/restore-jobs", { query: pageQuery(token) }),
           );
           return jobs.map((j) => mapRestoreJob(j, accountId));
         }
@@ -350,41 +359,32 @@ export class PineconeClient implements PluginClient {
         case "index":
           return mapIndex(await this.describeIndex(id), accountId);
         case "collection":
-          return mapCollection(
-            await this.api.control<PcCollection>(`/collections/${enc(id)}`),
-            accountId,
-          );
+          return mapCollection(await this.api.control.get(`/collections/${enc(id)}`), accountId);
         case "backup":
-          return mapBackup(await this.api.control<PcBackup>(`/backups/${enc(id)}`), accountId);
+          return mapBackup(await this.api.control.get(`/backups/${enc(id)}`), accountId);
         case "backup-schedule": {
           const [s, indexes] = await Promise.all([
-            this.api.control<PcBackupSchedule>(`/backup-schedules/${enc(id)}`),
-            this.indexes().catch(() => [] as PcIndex[]),
+            this.api.control.get(`/backup-schedules/${enc(id)}`),
+            this.indexes().catch((): PcIndex[] => []),
           ]);
           const indexName = await this.indexNameForId(s.index_id ?? "", indexes);
           return mapBackupSchedule(s, indexName, accountId);
         }
         case "restore-job":
-          return mapRestoreJob(
-            await this.api.control<PcRestoreJob>(`/restore-jobs/${enc(id)}`),
-            accountId,
-          );
+          return mapRestoreJob(await this.api.control.get(`/restore-jobs/${enc(id)}`), accountId);
         case "assistant":
-          return mapAssistant(
-            await this.api.control<PcAssistant>(`/assistant/assistants/${enc(id)}`),
-            accountId,
-          );
+          return mapAssistant(await this.api.assistants.get(`/assistants/${enc(id)}`), accountId);
         case "project":
-          return mapProject(await this.api.admin<PcProject>(`/projects/${enc(id)}`), accountId);
+          return mapProject(await this.api.admin.get(`/admin/projects/${enc(id)}`), accountId);
         case "api-key": {
-          const key = await this.api.admin<PcApiKey>(`/api-keys/${enc(id)}`);
-          const projects = await this.projects().catch(() => [] as PcProject[]);
+          const key = await this.api.admin.get(`/admin/api-keys/${enc(id)}`);
+          const projects = await this.projects().catch((): PcProject[] => []);
           const project = projects.find((p) => p.id === key.project_id);
           return mapApiKey(key, project?.name ?? "", accountId);
         }
         case "service-account":
           return mapServiceAccount(
-            await this.api.admin<PcServiceAccount>(`/service-accounts/${enc(id)}`),
+            await this.api.admin.get(`/admin/service-accounts/${enc(id)}`),
             accountId,
           );
         default:
@@ -486,10 +486,10 @@ export class PineconeClient implements PluginClient {
           );
         }
       } else if (resource.resourceTypeId === "backup-schedule") {
-        const history = await collectPages<PcBackup & { scheduled_execution_at?: string }>(
+        const history = await collectPages(
           (token) =>
-            this.api.control(`/backup-schedules/${enc(id)}/history`, {
-              query: { limit: 100, paginationToken: token },
+            this.api.control.get(`/backup-schedules/${enc(id)}/history`, {
+              query: pageQuery(token),
             }),
           3,
         ).catch(() => []);
@@ -508,7 +508,7 @@ export class PineconeClient implements PluginClient {
         const host = String(fields["host"] ?? "");
         if (host) {
           const files = await this.api
-            .dataPlane<{ files?: PcAssistantFile[] }>(host, `/files/${enc(id)}`)
+            .listAssistantFiles(host, id)
             .then((r) => r?.files ?? [])
             .catch(() => null);
           if (files) {
@@ -543,7 +543,7 @@ export class PineconeClient implements PluginClient {
   // ── Create ───────────────────────────────────────────────────────────
 
   private async indexOptions(filter: (i: PcIndex) => boolean) {
-    const indexes = await this.indexes().catch(() => [] as PcIndex[]);
+    const indexes = await this.indexes().catch((): PcIndex[] => []);
     return indexes.filter(filter).map((i) => ({
       id: i.name,
       label: i.name,
@@ -555,7 +555,7 @@ export class PineconeClient implements PluginClient {
   }
 
   private async projectOptions() {
-    const projects = await this.projects().catch(() => [] as PcProject[]);
+    const projects = await this.projects().catch((): PcProject[] => []);
     return projects.map((p) => ({ id: p.id, label: p.name, description: p.id }));
   }
 
@@ -564,7 +564,7 @@ export class PineconeClient implements PluginClient {
       const fromParent = (type: string) => parentResourceId?.includes(`:${type}:`) === true;
       switch (typeId) {
         case "index": {
-          const models = await this.models().catch(() => [] as PcModel[]);
+          const models = await this.models().catch((): PcModel[] => []);
           const fields: CreateFieldConfig[] = [
             {
               key: "name",
@@ -908,10 +908,7 @@ export class PineconeClient implements PluginClient {
           checkName(name, "Collection");
           const source = str(fields["source"]);
           if (!source) throw new Error("Choose the pod-based index to copy.");
-          const c = await this.api.control<PcCollection>("/collections", {
-            method: "POST",
-            body: { name, source },
-          });
+          const c = await this.api.control.post("/collections", { body: { name, source } });
           const inst = mapCollection(c ?? { name, status: "Initializing" }, accountId);
           inst.fields["sourceIndex"] = source;
           return inst;
@@ -930,17 +927,13 @@ export class PineconeClient implements PluginClient {
           if (!name) throw new Error("Enter a name for the schedule.");
           const frequency = str(fields["frequency"]) || "daily";
           const days = intField(fields["retentionDays"], "Retention", 1) ?? 7;
-          const s = await this.api.control<PcBackupSchedule>(
-            `/indexes/${enc(indexName)}/backup-schedules`,
-            {
-              method: "POST",
-              body: {
-                name,
-                schedule: { type: "time-based", frequency },
-                retention: { expire_after_days: days },
-              },
+          const s = await this.api.control.post(`/indexes/${enc(indexName)}/backup-schedules`, {
+            body: {
+              name,
+              schedule: { type: "time-based", frequency },
+              retention: { expire_after_days: days },
             },
-          );
+          });
           return mapBackupSchedule(s, indexName, accountId);
         }
         case "assistant": {
@@ -951,8 +944,7 @@ export class PineconeClient implements PluginClient {
             );
           }
           const instructions = fields["instructions"] ?? "";
-          const a = await this.api.control<PcAssistant>("/assistant/assistants", {
-            method: "POST",
+          const a: PcAssistant = await this.api.assistants.post("/assistants", {
             body: {
               name,
               region: str(fields["region"]) || "us",
@@ -965,8 +957,7 @@ export class PineconeClient implements PluginClient {
           const name = str(fields["name"]);
           if (!name) throw new Error("Enter a project name.");
           const maxPods = intField(fields["maxPods"], "Max pods", 0);
-          const p = await this.api.admin<PcProject>("/projects", {
-            method: "POST",
+          const p = await this.api.admin.post("/admin/projects", {
             body: {
               name,
               ...(maxPods !== undefined ? { max_pods: maxPods } : {}),
@@ -986,11 +977,10 @@ export class PineconeClient implements PluginClient {
           const name = str(fields["name"]);
           if (!name || name.length > 80) throw new Error("API key names are 1 to 80 characters.");
           const roles = parseRoles(fields["roles"] ?? "");
-          const res = await this.api.admin<{ key: PcApiKey; value: string }>(
-            `/projects/${enc(projectId)}/api-keys`,
-            { method: "POST", body: { name, ...(roles.length ? { roles } : {}) } },
-          );
-          const projects = await this.projects().catch(() => [] as PcProject[]);
+          const res = await this.api.admin.post(`/admin/projects/${enc(projectId)}/api-keys`, {
+            body: { name, ...(roles.length ? { roles } : {}) },
+          });
+          const projects = await this.projects().catch((): PcProject[] => []);
           const inst = mapApiKey(
             res.key,
             projects.find((p) => p.id === projectId)?.name ?? "",
@@ -1004,10 +994,7 @@ export class PineconeClient implements PluginClient {
           if (!name || name.length > 80) {
             throw new Error("Service account names are 1 to 80 characters.");
           }
-          const res = await this.api.admin<{
-            service_account: PcServiceAccount;
-            client_secret: string;
-          }>("/service-accounts", { method: "POST", body: { name } });
+          const res = await this.api.admin.post("/admin/service-accounts", { body: { name } });
           const inst = mapServiceAccount(res.service_account, accountId);
           await this.services?.secrets?.setPlaintext?.(
             inst.id,
@@ -1022,7 +1009,7 @@ export class PineconeClient implements PluginClient {
     });
   }
 
-  private readCapacityBody(fields: Record<string, string>): Record<string, unknown> | undefined {
+  private readCapacityBody(fields: Record<string, string>): PcReadCapacity | undefined {
     const mode = str(fields["readCapacityMode"]);
     if (mode !== "Dedicated") return mode === "OnDemand" ? { mode: "OnDemand" } : undefined;
     return {
@@ -1055,17 +1042,16 @@ export class PineconeClient implements PluginClient {
       deletion_protection: protection,
       ...(readCapacity ? { read_capacity: readCapacity } : {}),
     };
-    let created: PcIndex;
+    let created: PcIndex | undefined;
     if (kind === "integrated") {
       const model = str(fields["model"]);
       if (!model) throw new Error("Choose an embedding model.");
       const textField = str(fields["textField"]) || "text";
-      created = await this.api.control<PcIndex>("/indexes/create-for-model", {
-        method: "POST",
+      created = await this.api.control.post("/indexes/create-for-model", {
         body: { name, cloud, region, embed: { model, field_map: { text: textField } }, ...common },
       });
     } else {
-      const schemaFields =
+      const schemaFields: PcCreateSchemaFields =
         kind === "sparse"
           ? { _sparse_values: { type: "sparse_vector" } }
           : {
@@ -1075,8 +1061,7 @@ export class PineconeClient implements PluginClient {
                 metric: str(fields["metric"]) || "cosine",
               },
             };
-      created = await this.api.control<PcIndex>("/indexes", {
-        method: "POST",
+      created = await this.api.control.post("/indexes", {
         body: {
           name,
           deployment: { deployment_type: "managed", cloud, region },
@@ -1093,8 +1078,7 @@ export class PineconeClient implements PluginClient {
     const name = str(fields["name"]);
     if (name) checkName(name, "Backup");
     const description = str(fields["description"]);
-    return this.api.control<PcBackup>(`/indexes/${enc(indexName)}/backups`, {
-      method: "POST",
+    return this.api.control.post(`/indexes/${enc(indexName)}/backups`, {
       body: { ...(name ? { name } : {}), ...(description ? { description } : {}) },
     });
   }
@@ -1114,13 +1098,13 @@ export class PineconeClient implements PluginClient {
           const current = await this.describeIndex(id);
           const body = buildConfigurePatch(current, fields);
           if (Object.keys(body).length) {
-            await this.api.control(`/indexes/${enc(id)}`, { method: "PATCH", body });
+            await this.api.control.patch(`/indexes/${enc(id)}`, { body });
             this.invalidateIndexes();
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "backup-schedule": {
-          const body: Record<string, unknown> = {};
+          const body: PcUpdateBackupSchedule = {};
           if (fields["frequency"]) body["frequency"] = str(fields["frequency"]);
           const days = intField(fields["retentionDays"], "Retention", 1);
           if (days !== undefined) body["retention"] = { expire_after_days: days };
@@ -1128,29 +1112,29 @@ export class PineconeClient implements PluginClient {
             body["enabled"] = fields["enabled"] === "true";
           }
           if (Object.keys(body).length) {
-            await this.api.control(`/backup-schedules/${enc(id)}`, { method: "PATCH", body });
+            await this.api.control.patch(`/backup-schedules/${enc(id)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "assistant": {
-          const body: Record<string, unknown> = {};
+          const body: PcUpdateAssistant = {};
           if (fields["instructions"] !== undefined) body["instructions"] = fields["instructions"];
           if (fields["metadata"] !== undefined)
             body["metadata"] = parseMetadata(fields["metadata"]);
           if (Object.keys(body).length) {
-            await this.api.control(`/assistant/assistants/${enc(id)}`, { method: "PATCH", body });
+            await this.api.assistants.patch(`/assistants/${enc(id)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "project": {
-          const body: Record<string, unknown> = {};
+          const body: PcUpdateProject = {};
           if (fields["name"]) body["name"] = str(fields["name"]);
           const maxPods = intField(fields["maxPods"], "Max pods", 0);
           if (maxPods !== undefined) body["max_pods"] = maxPods;
           if (fields["forceEncryptionWithCmek"] === "true") {
             body["force_encryption_with_cmek"] = true;
           } else if (fields["forceEncryptionWithCmek"] === "false") {
-            const current = await this.api.admin<PcProject>(`/projects/${enc(id)}`);
+            const current = await this.api.admin.get(`/admin/projects/${enc(id)}`);
             if (current.force_encryption_with_cmek) {
               throw new Error(
                 "Pinecone does not allow turning CMEK enforcement off once it is on.",
@@ -1158,13 +1142,13 @@ export class PineconeClient implements PluginClient {
             }
           }
           if (Object.keys(body).length) {
-            await this.api.admin(`/projects/${enc(id)}`, { method: "PATCH", body });
+            await this.api.admin.patch(`/admin/projects/${enc(id)}`, { body });
             this.projectCache = undefined;
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "api-key": {
-          const body: Record<string, unknown> = {};
+          const body: PcUpdateApiKey = {};
           if (fields["name"]) body["name"] = str(fields["name"]);
           if (fields["roles"] !== undefined) {
             const roles = parseRoles(fields["roles"]);
@@ -1172,17 +1156,14 @@ export class PineconeClient implements PluginClient {
             body["roles"] = roles;
           }
           if (Object.keys(body).length) {
-            await this.api.admin(`/api-keys/${enc(id)}`, { method: "PATCH", body });
+            await this.api.admin.patch(`/admin/api-keys/${enc(id)}`, { body });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "service-account": {
           const name = str(fields["name"]);
           if (name) {
-            await this.api.admin(`/service-accounts/${enc(id)}`, {
-              method: "PATCH",
-              body: { name },
-            });
+            await this.api.admin.patch(`/admin/service-accounts/${enc(id)}`, { body: { name } });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
@@ -1197,17 +1178,15 @@ export class PineconeClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalOf(resourceId);
-      const paths: Record<string, () => Promise<unknown>> = {
-        index: () => this.api.control(`/indexes/${enc(id)}`, { method: "DELETE" }),
-        collection: () => this.api.control(`/collections/${enc(id)}`, { method: "DELETE" }),
-        backup: () => this.api.control(`/backups/${enc(id)}`, { method: "DELETE" }),
-        "backup-schedule": () =>
-          this.api.control(`/backup-schedules/${enc(id)}`, { method: "DELETE" }),
-        assistant: () => this.api.control(`/assistant/assistants/${enc(id)}`, { method: "DELETE" }),
-        project: () => this.api.admin(`/projects/${enc(id)}`, { method: "DELETE" }),
-        "api-key": () => this.api.admin(`/api-keys/${enc(id)}`, { method: "DELETE" }),
-        "service-account": () =>
-          this.api.admin(`/service-accounts/${enc(id)}`, { method: "DELETE" }),
+      const paths: Record<string, () => Promise<undefined>> = {
+        index: () => this.api.control.delete(`/indexes/${enc(id)}`),
+        collection: () => this.api.control.delete(`/collections/${enc(id)}`),
+        backup: () => this.api.control.delete(`/backups/${enc(id)}`),
+        "backup-schedule": () => this.api.control.delete(`/backup-schedules/${enc(id)}`),
+        assistant: () => this.api.assistants.delete(`/assistants/${enc(id)}`),
+        project: () => this.api.admin.delete(`/admin/projects/${enc(id)}`),
+        "api-key": () => this.api.admin.delete(`/admin/api-keys/${enc(id)}`),
+        "service-account": () => this.api.admin.delete(`/admin/service-accounts/${enc(id)}`),
       };
       const run = paths[typeId];
       if (!run) throw new Error(`Pinecone plugin: cannot delete "${typeId}"`);
@@ -1232,23 +1211,20 @@ export class PineconeClient implements PluginClient {
     return attempt(async () => {
       const id = externalOf(resourceId);
       if (typeId === "index") {
-        const patches: Record<string, Record<string, unknown>> = {
+        const patches: Record<string, PcConfigureIndex> = {
           "enable-deletion-protection": { deletion_protection: "enabled" },
           "disable-deletion-protection": { deletion_protection: "disabled" },
           "read-capacity-on-demand": { read_capacity: { mode: "OnDemand" } },
         };
         const body = patches[actionId];
         if (body) {
-          await this.api.control(`/indexes/${enc(id)}`, { method: "PATCH", body });
+          await this.api.control.patch(`/indexes/${enc(id)}`, { body });
           this.invalidateIndexes();
           return;
         }
       }
       if (typeId === "service-account" && actionId === "rotate-secret") {
-        const res = await this.api.admin<{ client_secret: string }>(
-          `/service-accounts/${enc(id)}/rotate-secret`,
-          { method: "POST" },
-        );
+        const res = await this.api.admin.post(`/admin/service-accounts/${enc(id)}/rotate-secret`);
         await this.services?.secrets?.setPlaintext?.(
           resourceId,
           CLIENT_SECRET_FIELD,
@@ -1277,19 +1253,15 @@ export class PineconeClient implements PluginClient {
       if (typeId === "index" && command === "createCollection") {
         const name = str(vals["name"]);
         checkName(name, "Collection");
-        await this.api.control("/collections", { method: "POST", body: { name, source: id } });
+        await this.api.control.post("/collections", { body: { name, source: id } });
         return null;
       }
       if (typeId === "backup" && command === "restoreBackup") {
         const name = str(vals["name"]);
         checkName(name, "Index");
-        const res = await this.api.control<{ restore_job_id: string; index_id: string }>(
-          `/backups/${enc(id)}/create-index`,
-          {
-            method: "POST",
-            body: { name, deletion_protection: str(vals["deletionProtection"]) || "disabled" },
-          },
-        );
+        const res = await this.api.control.post(`/backups/${enc(id)}/create-index`, {
+          body: { name, deletion_protection: str(vals["deletionProtection"]) || "disabled" },
+        });
         this.invalidateIndexes();
         return res;
       }
@@ -1320,18 +1292,12 @@ export class PineconeClient implements PluginClient {
       const assistant = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
       const host = String(assistant.fields["host"] ?? "");
       const name = assistant.externalId ?? externalOf(resourceId);
-      const res = await this.api.dataPlane<{
-        choices?: Array<{ message?: { content?: string } }>;
-        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-      }>(host, `/chat/${enc(name)}/chat/completions`, {
-        method: "POST",
-        body: {
-          messages: messages
-            .filter((m) => m.role !== "system")
-            .map((m) => ({ role: m.role, content: m.content })),
-          stream: false,
-          ...(options?.model ? { model: options.model } : {}),
-        },
+      const res = await this.api.chatCompletion(host, name, {
+        messages: messages
+          .filter((m) => m.role !== "system")
+          .map((m) => ({ role: m.role, content: m.content })),
+        stream: false,
+        ...(options?.model ? { model: options.model } : {}),
       });
       const text = res?.choices?.[0]?.message?.content ?? "";
       if (text) yield { kind: "delta", text };
@@ -1401,7 +1367,7 @@ export class PineconeClient implements PluginClient {
       }
       let project: PcProject;
       try {
-        project = await this.api.admin<PcProject>(`/projects/${enc(this.projectId)}`);
+        project = await this.api.admin.get(`/admin/projects/${enc(this.projectId)}`);
       } catch (e) {
         if (isStatus(e, 401, 403, 404)) {
           throw new QuotaAccessError(`Pinecone refused the project lookup: ${errorText(e)}`);
@@ -1432,8 +1398,8 @@ export class PineconeClient implements PluginClient {
 export function buildConfigurePatch(
   current: PcIndex,
   fields: Record<string, string>,
-): Record<string, unknown> {
-  const body: Record<string, unknown> = {};
+): PcConfigureIndex {
+  const body: PcConfigureIndex = {};
   const isPod = current.deployment?.deployment_type === "pod";
   if (
     fields["deletionProtection"] &&
@@ -1446,7 +1412,7 @@ export function buildConfigurePatch(
     if (Object.keys(patch).length) body["tags"] = patch;
   }
   if (isPod) {
-    const deployment: Record<string, unknown> = {};
+    const deployment: NonNullable<PcConfigureIndex["deployment"]> = {};
     const replicas = intField(fields["replicas"], "Replicas", 1);
     if (replicas !== undefined && replicas !== current.deployment?.replicas) {
       deployment["replicas"] = replicas;
