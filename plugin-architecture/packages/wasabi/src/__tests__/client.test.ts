@@ -168,3 +168,114 @@ describe("status feed", () => {
     expect(out[0]!.regions).toEqual(["eu-central-2"]);
   });
 });
+
+describe("lists that must be whole", () => {
+  const iamUser = (n: string) =>
+    `<member><UserName>${n}</UserName><UserId>id-${n}</UserId><Arn>arn:aws:iam::1:user/${n}</Arn></member>`;
+  const usersPage = (members: string, truncated: boolean, marker = "") =>
+    `<ListUsersResponse><ListUsersResult><Users>${members}</Users><IsTruncated>${truncated}</IsTruncated>${marker ? `<Marker>${marker}</Marker>` : ""}</ListUsersResult></ListUsersResponse>`;
+  const empty = (tag: string) => `<R><${tag}></${tag}><IsTruncated>false</IsTruncated></R>`;
+
+  it("refuses an IAM list that never stops, after 50 pages", async () => {
+    const { c, calls } = client((_u, r) => {
+      const n = calls.length;
+      return String(r.body).includes("Action=ListUsers")
+        ? { body: usersPage(iamUser(`u${n}`), true, `m${n}`) }
+        : { body: empty("x") };
+    });
+    await expect(c.listResources("iam-user", "a1")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.length).toBe(50);
+  });
+
+  it("refuses an IAM page with no list, or one that says more and gives no marker", async () => {
+    const renamed = client(() => ({
+      body: "<ListUsersResponse><ListUsersResult><People></People><IsTruncated>false</IsTruncated></ListUsersResult></ListUsersResponse>",
+    }));
+    await expect(renamed.c.listResources("access-key", "a1")).rejects.toThrow("is not a list");
+    const noMarker = client(() => ({ body: usersPage(iamUser("a"), true) }));
+    await expect(noMarker.c.listResources("access-key", "a1")).rejects.toThrow();
+  });
+
+  it("reads an empty IAM list written as a self-closing element", async () => {
+    const { c } = client(() => ({
+      body: "<ListUsersResponse><ListUsersResult><Users/><IsTruncated>false</IsTruncated></ListUsersResult></ListUsersResponse>",
+    }));
+    expect(await c.listResources("iam-user", "a1")).toEqual([]);
+  });
+
+  it("follows every page of a user's inline policies", async () => {
+    const { c, calls } = client((_u, r) => {
+      const body = String(r.body);
+      if (body.includes("Action=ListUsers")) return { body: usersPage(iamUser("a"), false) };
+      if (body.includes("Action=ListUserPolicies")) {
+        return body.includes("Marker=p2")
+          ? {
+              body: "<R><PolicyNames><member>second</member></PolicyNames><IsTruncated>false</IsTruncated></R>",
+            }
+          : {
+              body: "<R><PolicyNames><member>first</member></PolicyNames><IsTruncated>true</IsTruncated><Marker>p2</Marker></R>",
+            };
+      }
+      if (body.includes("Action=ListAccessKeys")) return { body: empty("AccessKeyMetadata") };
+      if (body.includes("Action=ListAttachedUserPolicies"))
+        return { body: empty("AttachedPolicies") };
+      return { body: empty("Groups") };
+    });
+    const [u] = await c.listResources("iam-user", "a1");
+    expect(u!.fields["inlinePolicies"]).toBe("first, second");
+    expect(calls.filter((x) => String(x.body).includes("ListUserPolicies")).length).toBe(2);
+  });
+
+  const statsPage = (n: number, pageCount?: number) =>
+    JSON.stringify({
+      ...(pageCount === undefined ? {} : { PageInfo: { PageCount: pageCount } }),
+      Records: Array.from({ length: n }, (_, i) => ({
+        StartTime: "2026-10-05T00:00:00Z",
+        Bucket: `b${i}`,
+        PaddedStorageSizeBytes: 1024 ** 3,
+      })),
+    });
+  const range = { fromDate: "2026-10-01", toDate: "2026-10-31" };
+
+  it("refuses utilization past its page cap instead of returning part", async () => {
+    const { c, calls } = client((u) =>
+      u.host === "stats.wasabisys.com" ? { body: statsPage(100, 5000) } : { body: LIST },
+    );
+    await expect(c.fetchCostData("a1", range)).rejects.toThrow("has more than Infrawrench reads");
+    expect(calls.filter((x) => x.url.includes("stats.wasabisys.com")).length).toBe(1000);
+  });
+
+  it("keeps reading utilization pages when PageInfo is left out", async () => {
+    const { c, calls } = client((u) => {
+      if (u.host !== "stats.wasabisys.com") return { body: LIST };
+      return { body: statsPage(u.searchParams.get("pageNum") === "0" ? 100 : 3) };
+    });
+    const rows = await c.fetchCostData("a1", range);
+    expect(rows.length).toBe(103);
+    expect(calls.filter((x) => x.url.includes("stats.wasabisys.com")).length).toBe(2);
+  });
+
+  it("refuses a utilization page whose list is missing", async () => {
+    const first = client((u) =>
+      u.host === "stats.wasabisys.com" ? { body: JSON.stringify({ Items: [] }) } : { body: LIST },
+    );
+    await expect(first.c.fetchCostData("a1", range)).rejects.toThrow("is not a list");
+    const later = client((u) => {
+      if (u.host !== "stats.wasabisys.com") return { body: LIST };
+      return u.searchParams.get("pageNum") === "0"
+        ? { body: statsPage(100, 3) }
+        : { body: JSON.stringify({ PageInfo: {}, Rows: [] }) };
+    });
+    await expect(later.c.fetchCostData("a1", range)).rejects.toThrow("is not a list");
+  });
+
+  it("draws a chart from the newest pages without failing at the cap", async () => {
+    const { c } = client((u) =>
+      u.host === "stats.wasabisys.com" ? { body: statsPage(100, 5000) } : { body: LIST },
+    );
+    const series = await c.fetchMetricSeries("account", "wasabi:account:a1", "a1");
+    expect(series.length).toBeGreaterThan(0);
+  });
+});

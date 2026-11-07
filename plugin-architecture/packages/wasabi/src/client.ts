@@ -1230,13 +1230,20 @@ export class WasabiClient implements PluginClient {
       };
       const externalId = externalIdOf(resourceId);
       try {
+        // A chart window: part of a long one still draws.
+        const chart = { maxPages: 200, partial: true };
         if (resourceTypeId === "account") {
           return utilizationSeries(
-            await statsPaged(this.ctx, "/v1/standalone/utilizations", query),
+            await statsPaged(this.ctx, "/v1/standalone/utilizations", query, chart),
           );
         }
         if (resourceTypeId === "bucket") {
-          const records = await statsPaged(this.ctx, "/v1/standalone/utilizations/bucket", query);
+          const records = await statsPaged(
+            this.ctx,
+            "/v1/standalone/utilizations/bucket",
+            query,
+            chart,
+          );
           return utilizationSeries(records.filter((u) => bucketMatches(u.Bucket, externalId)));
         }
         if (resourceTypeId === "sub-account") {

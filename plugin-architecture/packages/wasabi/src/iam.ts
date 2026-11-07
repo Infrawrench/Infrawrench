@@ -1,5 +1,9 @@
+import { ListPageError, ListTruncatedError } from "@infrawrench/plugin-base";
 import type { S3Client } from "./s3.js";
 import { S3Error, xmlAll, xmlFirst } from "./s3.js";
+
+/** IAM's `MaxItems` ceiling is 1,000, so this reads 50,000 rows per list. */
+const IAM_MAX_PAGES = 50;
 
 /**
  * Wasabi IAM: the AWS IAM Query API (version 2010-05-08 only) at
@@ -53,26 +57,37 @@ export class WasabiIam {
     return res.body;
   }
 
-  /** Follows `IsTruncated`/`Marker` pagination, collecting `<member>` blocks. */
+  /**
+   * Follows `IsTruncated`/`Marker` pagination, collecting `<member>` blocks. Throws
+   * rather than return part of a list: past the cap, on a page with no list element,
+   * and on a page that says it is truncated with no marker to ask for the rest.
+   */
   private async paged(
     action: string,
     listTag: string,
     params: Record<string, string> = {},
   ): Promise<string[]> {
     const out: string[] = [];
+    const place = { vendor: "Wasabi IAM", path: action };
     let marker: string | undefined;
-    for (let page = 0; page < 50; page++) {
+    for (let page = 0; page < IAM_MAX_PAGES; page++) {
       const xml = await this.call(action, {
         ...params,
         MaxItems: "1000",
         ...(marker ? { Marker: marker } : {}),
       });
-      const list = xmlAll(xml, listTag)[0] ?? "";
-      out.push(...xmlAll(list, "member"));
-      marker = xmlFirst(xml, "IsTruncated") === "true" ? xmlFirst(xml, "Marker") : undefined;
-      if (!marker) break;
+      const list = xmlAll(xml, listTag)[0];
+      if (list === undefined && !new RegExp(`<${listTag}\\s*/>`).test(xml)) {
+        throw new ListPageError({ ...place, key: listTag, found: undefined });
+      }
+      out.push(...xmlAll(list ?? "", "member"));
+      if (xmlFirst(xml, "IsTruncated") !== "true") return out;
+      marker = xmlFirst(xml, "Marker");
+      if (!marker) {
+        throw new ListPageError({ ...place, key: listTag, found: [], saysMoreWith: "no cursor" });
+      }
     }
-    return out;
+    throw new ListTruncatedError({ ...place, items: out.length, maxPages: IAM_MAX_PAGES });
   }
 
   async listUsers(): Promise<IamUser[]> {
@@ -161,8 +176,9 @@ export class WasabiIam {
   }
 
   async inlinePolicies(userName: string): Promise<string[]> {
-    const xml = await this.call("ListUserPolicies", { UserName: userName, MaxItems: "1000" });
-    return xmlAll(xmlAll(xml, "PolicyNames")[0] ?? "", "member").map((m) => m.trim());
+    return (await this.paged("ListUserPolicies", "PolicyNames", { UserName: userName })).map((m) =>
+      m.trim(),
+    );
   }
 
   async groupsForUser(userName: string): Promise<string[]> {

@@ -1,5 +1,5 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { ListTruncatedError, jsonRestFetch, requireListPage } from "@infrawrench/plugin-base";
 
 /**
  * Wasabi's two JSON APIs (docs.wasabi.com/apidocs, verified 2026-10):
@@ -130,35 +130,41 @@ export interface Utilization {
   Region?: string;
 }
 
+/** The Stats API's largest page. */
+const STATS_PAGE_SIZE = 100;
+
 /**
  * Page through a Stats API listing. The documented responses come both as
  * `{PageInfo, Records}` and as a bare array, so both are accepted; `PageCount`
- * is only returned on page 0.
+ * is only returned on page 0, and a page without it reads on while pages are
+ * full. Past `maxPages` with more to read this throws, unless `partial`.
  */
 export async function statsPaged(
   ctx: WasabiContext,
   path: string,
   query: Query,
-  maxPages = 200,
+  opts: { maxPages?: number; partial?: boolean } = {},
 ): Promise<Utilization[]> {
+  const maxPages = opts.maxPages ?? 1000;
+  const place = { vendor: "Wasabi Stats", path };
   const out: Utilization[] = [];
-  let pageCount = 1;
-  for (let page = 0; page < Math.min(pageCount, maxPages); page++) {
+  let pageCount: number | undefined;
+  for (let page = 0; page < maxPages; page++) {
     const res = await statsFetch<
-      Utilization[] | { PageInfo?: { PageCount?: number }; Records?: Utilization[] }
-    >(ctx, path, { ...query, pageNum: page, pageSize: 100 });
-    if (Array.isArray(res)) {
-      out.push(...res);
-      if (res.length < 100) break;
-      pageCount = page + 2;
-      continue;
-    }
-    const records = res?.Records ?? [];
+      Utilization[] | { PageInfo?: { PageCount?: number }; Records?: Utilization[] } | null
+    >(ctx, path, { ...query, pageNum: page, pageSize: STATS_PAGE_SIZE });
+    const records = Array.isArray(res)
+      ? res
+      : requireListPage(res?.Records, { ...place, key: "Records", page: res });
     out.push(...records);
-    if (page === 0) pageCount = res?.PageInfo?.PageCount ?? 1;
-    if (records.length === 0) break;
+    if (page === 0 && !Array.isArray(res)) pageCount = res?.PageInfo?.PageCount;
+    const more = pageCount === undefined ? records.length >= STATS_PAGE_SIZE : page + 1 < pageCount;
+    // An empty page ends the list, as it always has here: a PageCount one too high
+    // must not fail a read that works.
+    if (!more || records.length === 0) return out;
   }
-  return out;
+  if (opts.partial) return out;
+  throw new ListTruncatedError({ ...place, items: out.length, maxPages });
 }
 
 export interface SubAccount {
