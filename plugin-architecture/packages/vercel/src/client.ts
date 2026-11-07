@@ -99,8 +99,23 @@ function fields(
 /** Default Metrics window: Web Analytics reports by hour or day, so a week reads well. */
 const WEB_ANALYTICS_DEFAULT_RANGE_MS = 7 * 86_400_000;
 
-/** GitLab and Bitbucket links have neither `org` nor `repo`; these read as undefined there. */
-type ProjectLink = NonNullable<VercelProject["link"]> & { org?: string; repo?: string };
+/** Each provider's link names the owner and repository its own way; the rest read as undefined. */
+type ProjectLink = NonNullable<VercelProject["link"]> & {
+  org?: string;
+  owner?: string;
+  projectNamespace?: string;
+  repo?: string;
+  slug?: string;
+  name?: string;
+  projectName?: string;
+};
+
+function gitRepoOf(link: ProjectLink | undefined): string | null {
+  if (!link) return null;
+  const owner = link.org ?? link.owner ?? link.projectNamespace;
+  const repo = link.repo ?? link.slug ?? link.name ?? link.projectName;
+  return [owner, repo].filter(Boolean).join("/") || null;
+}
 
 /**
  * What `mapDnsRecord` reads. A record just created has only what the form sent, and
@@ -1267,8 +1282,6 @@ export class VercelClient implements PluginClient {
   }
 
   private mapProject(p: VercelProject, accountId: string): ResourceInstance {
-    const link: ProjectLink | undefined = p.link;
-    const gitRepo = link ? `${link.org ?? ""}/${link.repo ?? ""}`.replace(/^\//, "") : undefined;
     const productionAlias = p.alias?.find((a) => a.domain)?.domain;
     const productionUrl = productionAlias
       ? `https://${productionAlias}`
@@ -1293,7 +1306,7 @@ export class VercelClient implements PluginClient {
         buildCommand: p.buildCommand,
         outputDirectory: p.outputDirectory,
         productionUrl: productionUrl,
-        gitRepo: gitRepo || null,
+        gitRepo: gitRepoOf(p.link),
         ownerId: p.accountId,
         installCommand: p.installCommand,
         devCommand: p.devCommand,

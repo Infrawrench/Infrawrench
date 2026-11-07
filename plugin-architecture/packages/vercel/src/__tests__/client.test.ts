@@ -553,6 +553,27 @@ describe("getResource", () => {
     expect(calls[0]!.url).toContain("/v9/projects/p1");
   });
 
+  it.each([
+    ["github", { type: "github", org: "acme", repo: "site" }, "acme/site"],
+    ["github with no repo", { type: "github", org: "acme" }, "acme"],
+    ["vercel", { type: "vercel", org: "acme", repo: "site" }, "acme/site"],
+    [
+      "gitlab",
+      { type: "gitlab", projectNamespace: "grp/sub", projectName: "site", projectId: "9" },
+      "grp/sub/site",
+    ],
+    [
+      "bitbucket",
+      { type: "bitbucket", owner: "acme", name: "Site Name", slug: "site-name" },
+      "acme/site-name",
+    ],
+    ["cursor-origin", { type: "cursor-origin", owner: "acme", repo: "site" }, "acme/site"],
+  ])("names the git repository of a %s link", async (_name, link, expected) => {
+    installFetch(() => jsonResponse({ id: "p1", name: "n", createdAt: 1, link }));
+    const r = await client().getResource("vercel-project", "acct-1:vercel-project:p1", ACCOUNT);
+    expect(r.fields["gitRepo"]).toBe(expected);
+  });
+
   it("reads a project's region from resourceConfig when the route has no top-level one", async () => {
     installFetch(() =>
       jsonResponse({
