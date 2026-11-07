@@ -20,10 +20,12 @@ import type {
 import { QuotaAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type { AxiomApi, AxiomContext } from "./api.js";
 import {
+  AxiomApiError,
   EDGE_DEPLOYMENTS,
   isPersonalToken,
   managementApi,
   mapPooled,
+  orgRefusedApiToken,
   statusOf,
   withOffsetLists,
 } from "./api.js";
@@ -56,7 +58,7 @@ import {
   organizationSeries,
   rangeOrDefault,
 } from "./metrics.js";
-import { verifyAxiomCredentials } from "./preflight.js";
+import { tokenAccepted, verifyAxiomCredentials } from "./preflight.js";
 import { MONITOR_HISTORY_KEY, renderAxiomDetail, renderAxiomSidebar } from "./render.js";
 import type {
   AxDataset,
@@ -69,6 +71,7 @@ import type {
 
 const TOKEN_SECRET_FIELD = "token";
 const POOL = 4;
+const REFUSED_TOKEN_MEMORY_MS = 60_000;
 
 const opt = (id: string, label = id) => ({ id, label });
 
@@ -272,6 +275,7 @@ export class AxiomClient implements PluginClient {
   private readonly secrets: SecretHostServices | undefined;
   private orgCache: Promise<AxOrg> | undefined;
   private datasetCache: { at: number; value: Promise<AxDataset[]> } | undefined;
+  private tokenRefusedAt: number | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = (credentials["token"] ?? "").trim();
@@ -305,7 +309,7 @@ export class AxiomClient implements PluginClient {
       if (this.ctx.orgId) return this.api.get(`/orgs/${pathEncode(this.ctx.orgId)}`);
       const orgs = await this.api.get("/orgs");
       const first = (orgs ?? [])[0];
-      if (!first) throw new Error("Axiom plugin: the token sees no organization");
+      if (!first) throw new AxiomApiError(404, "Axiom plugin: the token sees no organization");
       return first;
     })();
     this.orgCache.catch(() => {
@@ -345,14 +349,18 @@ export class AxiomClient implements PluginClient {
     }
   }
 
-  /** Axiom answers a bad token with 403 too; tell the two apart with `/v2/user`. */
+  /**
+   * Axiom answers a bad token with 403 too, so this asks afresh rather than trusting an
+   * earlier read: a revoked token would otherwise list every type empty, and be pruned.
+   * Only a refusal is remembered, since it costs a request per route and only fails a list.
+   */
   private async tokenWorks(): Promise<boolean> {
-    try {
-      await this.org();
-      return true;
-    } catch {
+    if (this.tokenRefusedAt && Date.now() - this.tokenRefusedAt < REFUSED_TOKEN_MEMORY_MS) {
       return false;
     }
+    const works = await tokenAccepted(this.api, this.ctx);
+    this.tokenRefusedAt = works ? undefined : Date.now();
+    return works;
   }
 
   private async notifierNames(): Promise<Map<string, string>> {
@@ -378,7 +386,12 @@ export class AxiomClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case "organization":
-          return [mapOrganization(accountId, await this.org())];
+          try {
+            return [mapOrganization(accountId, await this.org())];
+          } catch (err) {
+            if (orgRefusedApiToken(this.ctx.token, err) && (await this.tokenWorks())) return [];
+            throw err;
+          }
         case "dataset":
           return this.scoped(async () => {
             const org = await this.org().catch(() => undefined);
@@ -716,6 +729,11 @@ export class AxiomClient implements PluginClient {
       try {
         org = await this.org();
       } catch (err) {
+        if (orgRefusedApiToken(this.ctx.token, err)) {
+          throw new QuotaAccessError(
+            "Axiom shows plan limits to a personal access token, and this API token cannot read the organization.",
+          );
+        }
         if (statusOf(err) === 403)
           throw new QuotaAccessError("The Axiom token cannot read the organization.");
         throw err;

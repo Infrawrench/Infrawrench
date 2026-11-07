@@ -8,7 +8,7 @@ import type {
   CredentialsOf,
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
-import { managementApi } from "./api.js";
+import { managementApi, orgRefusedApiToken } from "./api.js";
 import { AxiomClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { AXIOM_PREFLIGHT } from "./preflight.js";
@@ -74,18 +74,24 @@ export const plugin = definePlugin({
       if (fieldKey !== "orgId") return [];
       const token = (credentials["token"] ?? "").trim();
       if (!token) return [];
-      const orgs = await managementApi({
-        token,
-        ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
-        ...(services?.http ? { http: services.http } : {}),
-      }).get("/orgs");
-      return (orgs ?? [])
-        .filter((o) => o.id)
-        .map((o) => ({
-          id: o.id,
-          label: o.name ?? o.id,
-          description: o.id,
-        }));
+      try {
+        const orgs = await managementApi({
+          token,
+          ...(credentials["caCert"] ? { caCert: credentials["caCert"] } : {}),
+          ...(services?.http ? { http: services.http } : {}),
+        }).get("/orgs");
+        return (orgs ?? [])
+          .filter((o) => o.id)
+          .map((o) => ({
+            id: o.id,
+            label: o.name ?? o.id,
+            description: o.id,
+          }));
+      } catch (err) {
+        // An API token needs no organization, so one it cannot list is nothing to report.
+        if (orgRefusedApiToken(token, err)) return [];
+        throw err;
+      }
     });
   },
 });

@@ -144,6 +144,17 @@ export function statusOf(err: unknown): number {
   return err instanceof AxiomApiError ? err.status : 0;
 }
 
+/**
+ * Whether this failure of `GET /orgs` says nothing about an API token. The document has
+ * that route and `GET /orgs/{id}` needing a personal access token, without saying how
+ * an API token is refused, so any client error here leaves the token unjudged.
+ */
+export function orgRefusedApiToken(token: string, err: unknown): boolean {
+  if (isPersonalToken(token)) return false;
+  const status = statusOf(err);
+  return status >= 400 && status < 500 && status !== 429;
+}
+
 /** Run `fn` over `items` with at most `limit` in flight, keeping order. */
 export async function mapPooled<T, R>(
   items: T[],

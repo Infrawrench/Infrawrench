@@ -1,6 +1,10 @@
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
-import type { HostServices } from "@infrawrench/plugin-base";
+import {
+  QuotaAccessError,
+  type HostServices,
+  type PreflightCapabilityCheck,
+} from "@infrawrench/plugin-base";
 import { AxiomApiError, statusOf } from "../api.js";
 import { firstRows, queryBase, rowsToSeries, tableRows } from "../apl.js";
 import { AxiomClient, logLine, monitorBody, notifierProperties } from "../client.js";
@@ -622,5 +626,138 @@ describe("editing a notifier", () => {
       disabledUntil: "2030-01-01T00:00:00Z",
       properties: { slack: { slackUrl: "https://new", messageTemplate: TEMPLATE } },
     });
+  });
+});
+
+describe("an API token that GET /v2/orgs refuses", () => {
+  const OK_LISTS: Record<string, unknown[]> = {
+    "/v2/datasets": [{ id: "logs", name: "logs", edgeDeployment: "cloud.us-east-1.aws" }],
+  };
+
+  const messageOf = (check: PreflightCapabilityCheck | undefined) =>
+    check && "message" in check ? check.message : undefined;
+
+  /** `/v2/orgs` answers `orgStatus`; anything not in `lists` answers 403. */
+  function refusing(
+    orgStatus = 403,
+    lists = OK_LISTS,
+    creds: Record<string, string> = { token: "xaat-abc" },
+  ) {
+    return client((url) => {
+      if (url.pathname.startsWith("/v2/orgs")) {
+        return { status: orgStatus, body: { message: "needs a personal access token" } };
+      }
+      const list = lists[url.pathname];
+      if (list) return { body: list };
+      if (url.pathname.endsWith("/_apl")) return { body: TABULAR(["x"], [[1]]) };
+      return { status: 403, body: { message: "forbidden" } };
+    }, creds);
+  }
+
+  for (const status of [400, 401, 403, 404]) {
+    it(`checks each capability on its own after a ${status}`, async () => {
+      const report = await refusing(status).c.verifyCredentials();
+      const of = (id: string) => report.checks.find((x) => x.capabilityId === id);
+      expect(of("resources")?.status).toBe("ok");
+      expect(of("monitors")?.status).toBe("missing");
+      expect(messageOf(of("monitors"))).toBeUndefined();
+      expect(of("metrics")?.status).toBe("unknown");
+      expect(report.identity).toBeUndefined();
+    });
+  }
+
+  it("still says the token was rejected when nothing at all answers", async () => {
+    const report = await refusing(403, {}).c.verifyCredentials();
+    expect(report.checks.every((x) => x.status === "missing")).toBe(true);
+    expect(messageOf(report.checks[0])).toMatch(/rejected the token/);
+  });
+
+  it("does not call a token rejected when only a route without a probe of its own answers", async () => {
+    const report = await refusing(403, { "/v2/views": [] }).c.verifyCredentials();
+    expect(report.checks.find((x) => x.capabilityId === "resources")?.status).toBe("missing");
+    expect(report.checks.find((x) => x.capabilityId === "metrics")?.status).toBe("unknown");
+    expect(messageOf(report.checks[0])).toBeUndefined();
+  });
+
+  it("rejects a personal access token on the organization alone", async () => {
+    const { c, calls } = refusing(403, OK_LISTS, { token: "xapt-1", orgId: "o" });
+    const report = await c.verifyCredentials();
+    expect(messageOf(report.checks[0])).toMatch(/rejected the token/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("lists a 403 type empty once another list proves the token good", async () => {
+    expect(await refusing().c.listResources("user", ACCOUNT)).toEqual([]);
+  });
+
+  it("does not read a personal access token's refusal as a missing capability", async () => {
+    const { c } = refusing(403, OK_LISTS, { token: "xapt-1", orgId: "o" });
+    await expect(c.listResources("user", ACCOUNT)).rejects.toThrow(/403/);
+  });
+
+  it("remembers a refused token for a minute, rather than probing per type", async () => {
+    const { c, calls } = refusing(403, {});
+    await expect(c.listResources("user", ACCOUNT)).rejects.toThrow(/403/);
+    const after = calls.length;
+    await expect(c.listResources("monitor", ACCOUNT)).rejects.toThrow(/403/);
+    expect(calls.length).toBeLessThan(after + 3);
+  });
+
+  it("checks the token live, so a token revoked after a read does not list everything empty", async () => {
+    let revoked = false;
+    const { c } = client((url) => {
+      if (!revoked && url.pathname === "/v2/orgs") return { body: [ORG] };
+      return { status: 403, body: { message: "invalid token" } };
+    });
+    expect(await c.listResources("organization", ACCOUNT)).toHaveLength(1);
+    revoked = true;
+    await expect(c.listResources("user", ACCOUNT)).rejects.toThrow(/403/);
+  });
+
+  it("has no organization to list when the token is good", async () => {
+    expect(await refusing().c.listResources("organization", ACCOUNT)).toEqual([]);
+    expect(await refusing(401).c.listResources("organization", ACCOUNT)).toEqual([]);
+  });
+
+  it("fails the organization list when the token is refused everywhere", async () => {
+    await expect(refusing(403, {}).c.listResources("organization", ACCOUNT)).rejects.toThrow(/403/);
+  });
+
+  it("fails the organization list on a server error", async () => {
+    await expect(refusing(500).c.listResources("organization", ACCOUNT)).rejects.toThrow(/500/);
+  });
+
+  it("reads an organization list with nothing in it as no organization", async () => {
+    const { c } = client((url) => {
+      if (url.pathname === "/v2/orgs") return { body: [] };
+      if (url.pathname === "/v2/datasets") return { body: [] };
+      return { status: 403 };
+    });
+    expect(await c.listResources("organization", ACCOUNT)).toEqual([]);
+  });
+
+  it("explains plan limits instead of failing them", async () => {
+    for (const status of [400, 401, 403]) {
+      const err = await refusing(status)
+        .c.fetchQuotas()
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(QuotaAccessError);
+      expect((err as Error).message).toMatch(/personal access token/);
+    }
+  });
+
+  it("still queries a dataset on its own edge", async () => {
+    const { c, calls } = refusing();
+    await c.executeQuery("acc:dataset:logs", ACCOUNT, "['logs'] | take 1");
+    expect(calls.find((x) => x.method === "POST")?.url.host).toBe("us-east-1.aws.edge.axiom.co");
+  });
+
+  it("offers no organizations to pick, and fails a personal token's picker", async () => {
+    const pick = (token: string) =>
+      hostPlugin(plugin).listCredentialOptions!("orgId", { token }, {
+        http: makeHttp(() => ({ status: 403, body: { message: "no" } })).http,
+      } as unknown as HostServices);
+    expect(await pick("xaat-1")).toEqual([]);
+    await expect(pick("xapt-1")).rejects.toThrow(/403/);
   });
 });
