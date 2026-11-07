@@ -43,11 +43,17 @@ export const ProjectResourceType = rt({
     "A Sentry project. Shows its platform, teams, events accepted and dropped in the last 24 hours, and unresolved issues. Create, rename, change platform or delete.",
   fields: [
     f("name", "Name"),
-    f("platform", "Platform", { required: false }),
+    f("platform", "Platform", { showcase: true, required: false }),
     f("slug", "Slug", { required: false, editable: false }),
-    f("teams", "Teams", { required: false, editable: false }),
-    f("status", "Status", { showcase: true, required: false, editable: false }),
-    f("events24h", "Events Accepted (24h)", { kind: "number", required: false, editable: false }),
+    f("teams", "Teams", { showcase: true, required: false, editable: false }),
+    // Only a single read answers with this: the project list has no status.
+    f("status", "Status", { required: false, editable: false }),
+    f("events24h", "Events Accepted (24h)", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     f("dropped24h", "Events Dropped (24h)", { kind: "number", required: false, editable: false }),
     f("unresolvedIssues", "Unresolved Issues", {
       kind: "number",
