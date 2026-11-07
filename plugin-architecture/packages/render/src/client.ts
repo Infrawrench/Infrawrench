@@ -104,7 +104,8 @@ const MAX_FANOUT_PARENTS = 60;
 /**
  * The parents to read this poll, after naming the rest so a sync keeps their children.
  * Polls share nothing, so the start moves with the clock by the golden ratio, which
- * spreads evenly over the list however long it is.
+ * spreads evenly over the list however long it is. A host that keeps no track of the
+ * rest answers false, and has no poll to outlast, so it gets every parent.
  */
 function fanOutWindow<P extends { id: string }>(
   parents: P[],
@@ -116,12 +117,12 @@ function fanOutWindow<P extends { id: string }>(
   const minute = Math.floor(Date.now() / 60_000);
   const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
   const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
-  reportUnreadListPart({
+  const tracked = reportUnreadListPart({
     parentResourceIds: rotated
       .slice(MAX_FANOUT_PARENTS)
       .map((p) => `${accountId}:${parentType}:${p.id}`),
   });
-  return rotated.slice(0, MAX_FANOUT_PARENTS);
+  return tracked ? rotated.slice(0, MAX_FANOUT_PARENTS) : parents;
 }
 
 /** For a list read only to label rows: no names is fine, a list cut short is not. */

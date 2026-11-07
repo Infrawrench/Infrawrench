@@ -205,6 +205,18 @@ describe("fan-out per poll", () => {
     for (const id of named) expect(readIds.has(id)).toBe(false);
   });
 
+  it("reads every service where the host keeps no track of the rest", async () => {
+    const all = services(150);
+    route("GET", "/services", (call: Call) =>
+      call.query.get("cursor") ? all.slice(100) : all.slice(0, 100),
+    );
+    for (let i = 0; i < 150; i++) {
+      route("GET", `/services/srv-${String(i).padStart(3, "0")}/deploys`, []);
+    }
+    await client().listResources("deploy", ACCOUNT);
+    expect(state.calls.filter((c) => c.path.endsWith("/deploys"))).toHaveLength(150);
+  });
+
   it("reads every service of a small workspace and names none", async () => {
     const named = captureUnread();
     route("GET", "/services", services(40));
