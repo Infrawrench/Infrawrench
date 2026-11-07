@@ -1077,3 +1077,118 @@ describe("transcription language (#563)", () => {
     expect(await transcribe()).not.toHaveProperty("language");
   });
 });
+
+describe("speech through the host's HTTP service (#370)", () => {
+  const clip = Buffer.from(new Uint8Array([1, 2, 3, 4])).toString("base64");
+
+  function hosted(
+    answer: {
+      status: number;
+      headers?: Record<string, string>;
+      body: string;
+      rawBody?: Uint8Array;
+    },
+    credentials: Record<string, string> = { apiKey: "sk-proj-test" },
+  ) {
+    const fetchSpy = installFetch(() => {
+      throw new Error("fetch must not be used when the host supplies http");
+    });
+    const request = vi.fn(
+      async (_req: {
+        url: string;
+        method: string;
+        headers: Record<string, string>;
+        body?: string | Uint8Array;
+        caCert?: string;
+        responseEncoding?: "utf8" | "binary";
+      }) => ({ headers: {}, ...answer }),
+    );
+    return {
+      fetchSpy,
+      request,
+      api: hostClient(new OpenAIClient(credentials, { http: { request } })),
+    };
+  }
+
+  const speech = { text: "hi", voiceId: "alloy", modelId: "gpt-4o-mini-tts" };
+  const upload = { audioBase64: clip, mimeType: "audio/webm", modelId: "whisper-1" };
+
+  it("synthesizes through request, and the audio survives", async () => {
+    const mp3 = new Uint8Array([0xff, 0xfb, 0x90, 0x00, 0xc3]);
+    const { fetchSpy, request, api } = hosted({
+      status: 200,
+      headers: { "x-request-id": "req_9" },
+      body: "",
+      rawBody: mp3,
+    });
+
+    const result = await api.synthesizeSpeech(
+      "model",
+      `${ACCOUNT}:model:gpt-4o-mini-tts`,
+      ACCOUNT,
+      speech,
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const req = request.mock.calls[0]![0];
+    expect(req.url).toBe("https://api.openai.com/v1/audio/speech");
+    expect(req.method).toBe("POST");
+    expect(req.headers["authorization"]).toBe("Bearer sk-proj-test");
+    expect(req.responseEncoding).toBe("binary");
+    expect(req).not.toHaveProperty("caCert");
+    expect(Buffer.from(result.audioBase64, "base64")).toEqual(Buffer.from(mp3));
+    expect(result.requestId).toBe("req_9");
+  });
+
+  it("uploads a clip as multipart through request, with its boundary", async () => {
+    const { fetchSpy, request, api } = hosted({
+      status: 200,
+      body: JSON.stringify({ text: "hello", language: "english", duration: 1 }),
+    });
+
+    const result = await api.transcribeAudio(
+      "model",
+      `${ACCOUNT}:model:whisper-1`,
+      ACCOUNT,
+      upload,
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const req = request.mock.calls[0]![0];
+    expect(req.url).toBe("https://api.openai.com/v1/audio/transcriptions");
+    expect(req.headers["content-type"]).toMatch(/^multipart\/form-data; ?boundary=/);
+    if (!(req.body instanceof Uint8Array)) throw new Error("the upload was not encoded");
+    const sent = new Response(req.body.slice(), {
+      headers: { "content-type": req.headers["content-type"]! },
+    });
+    const form = await sent.formData();
+    expect(form.get("model")).toBe("whisper-1");
+    expect(form.get("response_format")).toBe("verbose_json");
+    expect(req).not.toHaveProperty("caCert");
+    expect(result.text).toBe("hello");
+  });
+
+  it("hands both calls the account's custom CA", async () => {
+    const { request, api } = hosted(
+      {
+        status: 200,
+        body: "",
+        rawBody: new TextEncoder().encode(JSON.stringify({ text: "hello" })),
+      },
+      { apiKey: "sk-proj-test", caCert: "PEM" },
+    );
+
+    await api.synthesizeSpeech("model", `${ACCOUNT}:model:tts-1`, ACCOUNT, speech);
+    await api.transcribeAudio("model", `${ACCOUNT}:model:whisper-1`, ACCOUNT, upload);
+
+    expect(request.mock.calls.map(([req]) => req.caCert)).toEqual(["PEM", "PEM"]);
+  });
+
+  it("surfaces an error status from the host", async () => {
+    const { api } = hosted({ status: 401, body: '{"error":"nope"}' });
+
+    await expect(
+      api.synthesizeSpeech("model", `${ACCOUNT}:model:tts-1`, ACCOUNT, speech),
+    ).rejects.toThrow(/OpenAI API error 401 for \/audio\/speech/);
+  });
+});

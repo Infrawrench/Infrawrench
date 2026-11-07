@@ -10,6 +10,7 @@ import type {
   DashboardStat,
   DetailViewSchema,
   HostServices,
+  HostTransport,
   KVItem,
   LogsFetchParams,
   LogsFetchResult,
@@ -34,6 +35,7 @@ import {
   bytesToBase64,
   externalIdOf,
   formatBytes,
+  hostFetch,
   pathEncode,
   withAiCostTags,
 } from "@infrawrench/plugin-base";
@@ -409,9 +411,7 @@ function statusOf(value: unknown): ResourceStatus {
  * Two credentials, two disjoint planes: `apiKey` reaches everything under
  * `/v1` that isn't `/v1/organization/*`, and `adminApiKey` reaches only
  * `/v1/organization/*`. Every request goes through `services.http` when the
- * host provides one so bastion egress routing and a custom CA keep working;
- * the two audio calls are the documented exceptions (see `ttsBytes` and
- * `sttTranscribe`).
+ * host provides one so bastion egress routing and a custom CA keep working.
  */
 export class OpenAIClient implements PluginClient {
   private readonly apiKey: string;
@@ -420,6 +420,8 @@ export class OpenAIClient implements PluginClient {
   private readonly data: OpenAIApi;
   /** Admin plane: admin key, with the missing-credential guard. */
   private readonly admin: OpenAIApi;
+  /** For the two audio calls, whose bodies are not JSON. */
+  private readonly transport: HostTransport;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = credentials["apiKey"];
@@ -428,6 +430,7 @@ export class OpenAIClient implements PluginClient {
     this.adminApiKey = credentials["adminApiKey"] ?? "";
     const http = services?.http;
     const caCert = credentials["caCert"] ?? "";
+    this.transport = { http, caCert };
     this.data = createOpenAIApi(this.apiKey, { http, caCert });
     this.admin = createOpenAIApi(this.adminApiKey, { http, caCert, guard: ADMIN_KEY_REQUIRED });
   }
@@ -3378,14 +3381,11 @@ export class OpenAIClient implements PluginClient {
    * (`createSpeech`): JSON goes in, raw `application/octet-stream` audio comes
    * back.
    *
-   * Deliberately not routed through the typed client. That helper JSON-parses
-   * every response, and the host HTTP service it delegates to returns bodies as
-   * UTF-8 strings: either of which would shred an mp3. This one call therefore
-   * uses the global `fetch` and bypasses bastion egress routing and the custom
-   * CA credential; every JSON control-plane call still goes through the host.
+   * Not through the typed client, which JSON-parses every answer and would shred
+   * an mp3.
    */
   private async ttsBytes(body: SpeechBody): Promise<{ bytes: Uint8Array; requestId?: string }> {
-    const res = await fetch(`${API_BASE}/audio/speech`, {
+    const res = await hostFetch(this.transport, `${API_BASE}/audio/speech`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
@@ -3410,9 +3410,7 @@ export class OpenAIClient implements PluginClient {
 
   /**
    * POST /v1/audio/transcriptions: verified 2026-07-29 (`createTranscription`).
-   * multipart/form-data, which the typed client cannot express: its host-HTTP
-   * path stringifies a FormData instead of encoding it. So this call also uses
-   * the global `fetch` and bypasses bastion routing.
+   * multipart/form-data, which the typed client cannot express.
    *
    * The clip's content type is whatever MediaRecorder or the file picker
    * produced (`audio/webm;codecs=opus` on Chromium, `audio/mp4` on Safari) and
@@ -3443,9 +3441,8 @@ export class OpenAIClient implements PluginClient {
       form.append("timestamp_granularities[]", "word");
     }
 
-    // No explicit Content-Type: fetch has to set it so the multipart boundary
-    // matches the body it generated.
-    const res = await fetch(`${API_BASE}/audio/transcriptions`, {
+    // No explicit Content-Type: it has to carry the boundary of the encoded body.
+    const res = await hostFetch(this.transport, `${API_BASE}/audio/transcriptions`, {
       method: "POST",
       headers: { Authorization: `Bearer ${this.apiKey}` },
       body: form,
