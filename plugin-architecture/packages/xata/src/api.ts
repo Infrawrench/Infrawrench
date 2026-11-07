@@ -7,6 +7,7 @@ import {
   type HttpHostServices,
   type NoSlashString,
   type ParamValue,
+  withCursorPagination,
 } from "@infrawrench/plugin-base";
 import type { components, operations, paths } from "./api-types.gen.js";
 
@@ -139,6 +140,36 @@ export function createXataApi(ctx: XataContext) {
 }
 
 export type XataApi = ReturnType<typeof createXataApi>;
+
+/** 10,000 rows at the document's largest page of 100, for both paged lists. */
+const LIST_PAGE_SIZE = 100;
+const LIST_MAX_PAGES = 100;
+
+/** `billing/invoices` takes `cursor` and `limit`, with its next page in `pagination_metadata`. */
+export function withInvoicePages(api: XataApi) {
+  return withCursorPagination(api, {
+    cursorParam: "cursor",
+    sizeParam: "limit",
+    pageSize: LIST_PAGE_SIZE,
+    next: "pagination_metadata.next_cursor",
+    hasMore: "pagination_metadata.has_more",
+    maxPages: LIST_MAX_PAGES,
+  });
+}
+
+/**
+ * `invitations` takes a 0-based `first` and a `max`, and reports no total. Only an
+ * empty page ends it, so a server answering short of `max` cannot cut the list off.
+ */
+export function withInvitationPages(api: XataApi) {
+  return withCursorPagination(api, {
+    cursorParam: "first",
+    sizeParam: "max",
+    pageSize: LIST_PAGE_SIZE,
+    next: ({ cursor, items }) => Number(cursor ?? 0) + items.length,
+    maxPages: LIST_MAX_PAGES,
+  });
+}
 
 /** One branch's SQL gateway, which takes its connection string and rejects the API key. */
 export function createGatewayApi(ctx: XataContext, host: string, connectionString: string) {

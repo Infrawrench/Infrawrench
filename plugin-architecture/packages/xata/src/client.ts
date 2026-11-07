@@ -34,7 +34,6 @@ import type {
   XBranchShort,
   XBranchSummary,
   XCredentials,
-  XInvoice,
   XLogEntry,
   XMetricName,
   XOrg,
@@ -43,7 +42,15 @@ import type {
   XProjectConfigPatch,
   XProjectPatch,
 } from "./api.js";
-import { createGatewayApi, createXataApi, enc, statusOf, XataApiError } from "./api.js";
+import {
+  createGatewayApi,
+  createXataApi,
+  enc,
+  statusOf,
+  withInvitationPages,
+  withInvoicePages,
+  XataApiError,
+} from "./api.js";
 import { getCreateConfig } from "./create-config.js";
 import { fetchXataCostData } from "./cost-data.js";
 import { verifyXataCredentials } from "./preflight.js";
@@ -158,6 +165,8 @@ function parts(externalId: string): string[] {
 
 export class XataClient implements PluginClient {
   readonly api: XataApi;
+  private readonly invoicePages: ReturnType<typeof withInvoicePages>;
+  private readonly invitationPages: ReturnType<typeof withInvitationPages>;
   private readonly ctx: XataContext;
 
   constructor(credentials: Credentials, services?: HostServices) {
@@ -170,6 +179,8 @@ export class XataClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
     };
     this.api = createXataApi(this.ctx);
+    this.invoicePages = withInvoicePages(this.api);
+    this.invitationPages = withInvitationPages(this.api);
   }
 
   private orgPath(org: string | undefined): OrgPath {
@@ -300,8 +311,10 @@ export class XataClient implements PluginClient {
           const lists = await Promise.all(
             orgs.map(async (o) =>
               (
-                (await this.api.get(`${this.orgPath(o.id)}/invitations`, { query: { max: 100 } }))
-                  ?.invitations ?? []
+                await this.invitationPages.getAll(
+                  `${this.orgPath(o.id)}/invitations`,
+                  "invitations",
+                )
               ).map((i) =>
                 instance(
                   accountId,
@@ -963,16 +976,10 @@ export class XataClient implements PluginClient {
       const orgs = await this.orgs();
       const lists = await Promise.all(
         orgs.map(async (o) => {
-          const invoices: XInvoice[] = [];
-          let cursor: string | null | undefined;
-          for (let page = 0; page < 50; page++) {
-            const res = await this.api.get(`${this.orgPath(o.id)}/billing/invoices`, {
-              query: { limit: 100, ...(cursor ? { cursor } : {}) },
-            });
-            invoices.push(...(res?.data ?? []));
-            cursor = res?.pagination_metadata?.next_cursor;
-            if (!res?.pagination_metadata?.has_more || !cursor) break;
-          }
+          const invoices = await this.invoicePages.getAll(
+            `${this.orgPath(o.id)}/billing/invoices`,
+            "data",
+          );
           const upcoming = await this.api
             .get(`${this.orgPath(o.id)}/billing/invoices/upcoming`)
             .catch((err: unknown) => {
@@ -1001,8 +1008,8 @@ export class XataClient implements PluginClient {
             this.api.get(`${this.orgPath(o.id)}/membership-limits`),
             this.projects(o.id),
             this.api.get(`${this.orgPath(o.id)}/members`),
-            this.api.get(`${this.orgPath(o.id)}/invitations`, {
-              query: { status: "pending", max: 100 },
+            this.invitationPages.getAll(`${this.orgPath(o.id)}/invitations`, "invitations", {
+              query: { status: "pending" },
             }),
           ]);
           const perProject = await Promise.all(
@@ -1033,12 +1040,7 @@ export class XataClient implements PluginClient {
             members?.members?.length ?? 0,
             membership?.maxMembers,
           );
-          add(
-            "invites",
-            `Pending invitations (${o.name})`,
-            invites?.invitations?.length ?? 0,
-            membership?.maxInvites,
-          );
+          add("invites", `Pending invitations (${o.name})`, invites.length, membership?.maxInvites);
           for (const x of perProject) {
             add(
               `branches/${x.project.id}`,

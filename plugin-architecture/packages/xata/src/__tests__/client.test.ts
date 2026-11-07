@@ -478,3 +478,133 @@ describe("branch Host field", () => {
     expect(listed!.fields["instanceType"]).toBe("xata.small");
   });
 });
+
+describe("long lists", () => {
+  const invitation = (i: number) => ({
+    id: `inv${i}`,
+    email: `u${i}@example.test`,
+    organization_id: "org1",
+    role: "editor",
+    status: "pending",
+    created_at: "2026-01-01T00:00:00Z",
+    expires_at: "2026-02-01T00:00:00Z",
+  });
+  const invoice = (i: number) => ({
+    id: `i${i}`,
+    invoice_number: String(i),
+    amount_due: 1,
+    currency: "usd",
+    invoice_date: "2026-09-01T00:00:00Z",
+    status: "paid",
+    invoice_pdf: null,
+  });
+  const orgs = on("GET", `${API}/organizations`, { organizations: [org] });
+  const range = { fromDate: "2026-08-01", toDate: "2026-10-31" };
+
+  /** Every invitation request, answered from `total` rows honouring `first` and `max`. */
+  function invitations(total: number): Route {
+    return (call) => {
+      const u = new URL(call.url);
+      if (u.pathname !== "/organizations/org1/invitations") return undefined;
+      const first = Number(u.searchParams.get("first") ?? 0);
+      const max = Number(u.searchParams.get("max") ?? 100);
+      const rows = Array.from({ length: Math.max(total - first, 0) }, (_, i) =>
+        invitation(first + i),
+      );
+      return { status: 200, body: { invitations: rows.slice(0, max) } };
+    };
+  }
+
+  it("reads every invitation, past the first 100", async () => {
+    const { client, calls } = fake([orgs, invitations(250)]);
+    const rows = await client.listResources("xata-invitation", ACCOUNT);
+    expect(rows).toHaveLength(250);
+    expect(new Set(rows.map((r) => r.externalId)).size).toBe(250);
+    const asked = calls.slice(1).map((c) => new URL(c.url).searchParams);
+    expect(asked.map((q) => q.get("max"))).toEqual(asked.map(() => "100"));
+    expect(asked.map((q) => q.get("first") ?? "0").slice(0, 3)).toEqual(["0", "100", "200"]);
+  });
+
+  it("counts every pending invitation against the quota", async () => {
+    const { client, calls } = fake([
+      orgs,
+      invitations(120),
+      on("GET", `${API}/organizations/org1/limits`, {}),
+      on("GET", `${API}/organizations/org1/membership-limits`, { maxInvites: 500 }),
+      on("GET", `${API}/organizations/org1/projects`, { projects: [] }),
+      on("GET", `${API}/organizations/org1/members`, { members: [] }),
+    ]);
+    const quotas = await client.fetchQuotas(ACCOUNT);
+    expect(quotas.find((q) => q.id === "org1/invites")?.used).toBe(120);
+    const invites = calls.filter((c) => c.url.includes("/invitations"));
+    expect(invites.every((c) => c.url.includes("status=pending"))).toBe(true);
+  });
+
+  it("refuses to call an invitation list complete at its cap", async () => {
+    let requests = 0;
+    const { client } = fake([
+      orgs,
+      (call) => {
+        if (!call.url.includes("/invitations")) return undefined;
+        requests++;
+        const first = Number(new URL(call.url).searchParams.get("first") ?? 0);
+        const rows = Array.from({ length: 100 }, (_, i) => invitation(first + i));
+        return { status: 200, body: { invitations: rows } };
+      },
+    ]);
+    await expect(client.listResources("xata-invitation", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(requests).toBe(100);
+  });
+
+  it("reads every invoice, and sends the document's largest page size", async () => {
+    let served = 0;
+    const { client, calls } = fake([
+      orgs,
+      on("GET", `${API}/organizations/org1/billing/invoices/upcoming`, {}, 404),
+      (call) => {
+        if (new URL(call.url).pathname !== "/organizations/org1/billing/invoices") return undefined;
+        served++;
+        return {
+          status: 200,
+          body: {
+            data: [invoice(served)],
+            pagination_metadata: {
+              has_more: served < 60,
+              next_cursor: served < 60 ? `c${served}` : null,
+            },
+          },
+        };
+      },
+    ]);
+    const rows = await client.fetchCostData(ACCOUNT, range);
+    expect(rows.map((r) => r.amount)).toEqual([60]);
+    expect(served).toBe(60);
+    const pages = calls.filter((c) => c.url.includes("/billing/invoices?"));
+    expect(new URL(pages[1]!.url).searchParams.get("cursor")).toBe("c1");
+    expect(new URL(pages[0]!.url).searchParams.get("limit")).toBe("100");
+  });
+
+  it("refuses partial cost data at the invoice cap", async () => {
+    let served = 0;
+    const { client } = fake([
+      orgs,
+      (call) => {
+        if (new URL(call.url).pathname !== "/organizations/org1/billing/invoices") return undefined;
+        served++;
+        return {
+          status: 200,
+          body: {
+            data: [invoice(served)],
+            pagination_metadata: { has_more: true, next_cursor: `c${served}` },
+          },
+        };
+      },
+    ]);
+    await expect(client.fetchCostData(ACCOUNT, range)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(served).toBe(100);
+  });
+});
