@@ -71,6 +71,7 @@ import {
   listLakebaseBranches,
   listLakebaseProjects,
   FanOutBudget,
+  isForeignCatalog,
   readEachParent,
 } from "./resource-listers.js";
 import { WAREHOUSE_SIZES } from "./resources/sql-warehouse.js";
@@ -308,7 +309,9 @@ export class DatabricksClient implements PluginClient {
     const { ctx } = budget;
 
     // Child resource types need parent context
-    if (typeId === "databricks-schema") return this.readEverySchema(budget, accountId);
+    if (typeId === "databricks-schema") {
+      return this.readSchemasOf(budget, accountId, await listCatalogs(ctx, accountId));
+    }
     if (typeId === "databricks-table") return this.readInEverySchema(budget, accountId, listTables);
     if (typeId === "databricks-volume") {
       return this.readInEverySchema(budget, accountId, listVolumes);
@@ -340,13 +343,16 @@ export class DatabricksClient implements PluginClient {
     return lister(this.ctx, accountId);
   }
 
-  private async readEverySchema(
+  private readSchemasOf(
     budget: FanOutBudget,
     accountId: string,
+    catalogs: ResourceInstance[],
   ): Promise<ResourceInstance[]> {
-    const { ctx } = budget;
-    return readEachParent(budget, await listCatalogs(ctx, accountId), (catalog) =>
-      listSchemas(ctx, accountId, String(catalog.fields["name"])),
+    return readEachParent(
+      budget,
+      catalogs,
+      (catalog) => listSchemas(budget.ctx, accountId, String(catalog.fields["name"])),
+      isForeignCatalog,
     );
   }
 
@@ -360,14 +366,20 @@ export class DatabricksClient implements PluginClient {
       schemaName: string,
     ) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    const schemas = await this.readEverySchema(budget, accountId);
-    return readEachParent(budget, schemas, (schema) =>
-      read(
-        budget.ctx,
-        accountId,
-        String(schema.fields["catalogName"]),
-        String(schema.fields["name"]),
-      ),
+    const catalogs = await listCatalogs(budget.ctx, accountId);
+    const foreign = new Set(catalogs.filter(isForeignCatalog).map((c) => c.fields["name"]));
+    const schemas = await this.readSchemasOf(budget, accountId, catalogs);
+    return readEachParent(
+      budget,
+      schemas,
+      (schema) =>
+        read(
+          budget.ctx,
+          accountId,
+          String(schema.fields["catalogName"]),
+          String(schema.fields["name"]),
+        ),
+      (schema) => foreign.has(schema.fields["catalogName"]),
     );
   }
 

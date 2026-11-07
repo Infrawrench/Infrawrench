@@ -456,3 +456,76 @@ describe("a fan-out past what one poll can read", () => {
     expect(namedInReport()[0]).toBe(`${ACCOUNT}:databricks-schema:a.s998`);
   });
 });
+
+describe("a read under a foreign catalog", () => {
+  const coded = (status: number, error_code: string, message = "It failed") =>
+    fail(status, JSON.stringify({ error_code, message }));
+  const foreignAndManaged = ok({
+    catalogs: [{ name: "a" }, { name: "pg", catalog_type: "FOREIGN_CATALOG" }],
+  });
+  const LASTING: Array<[string, Answer]> = [
+    ["a 400 from Databricks", coded(400, "BAD_REQUEST", "Connection pg has an invalid password")],
+    ["a 404 from Databricks", coded(404, "RESOURCE_DOES_NOT_EXIST")],
+    ["a 500 naming the connection", coded(500, "CANNOT_ESTABLISH_CONNECTION")],
+    ["a 500 whose message names it", coded(500, "INTERNAL_ERROR", "Connection refused by host")],
+    ["a 503 that could not connect", coded(503, "INTERNAL_ERROR", "Failed to connect to pg:5432")],
+  ];
+  const PASSING: Array<[string, Answer]> = [
+    ["a 429", coded(429, "TOO_MANY_REQUESTS")],
+    ["a 429 with no body", fail(429, "")],
+    ["a throttle answered as a 400", coded(400, "REQUEST_LIMIT_EXCEEDED")],
+    ["a rejected credential", coded(401, "UNAUTHENTICATED")],
+    ["a 403 for a bad token", fail(403, '{"error_code":"403","message":"Invalid access token."}')],
+    ["a 4xx not from Databricks", fail(404, "<html>Not Found</html>")],
+    ["a plain 500", coded(500, "INTERNAL_ERROR")],
+    ["a 500 with no code", fail(500, "connection refused")],
+    ["a busy 503 naming a connection", coded(503, "TEMPORARILY_UNAVAILABLE", "Connection failed")],
+  ];
+
+  const schemaRoutes = {
+    [CATALOGS]: foreignAndManaged,
+    [schemasOf("a")]: ok({ schemas: [{ name: "s" }] }),
+  };
+  const tableRoutes = {
+    ...schemaRoutes,
+    [schemasOf("pg")]: ok({ schemas: [{ name: "public" }] }),
+    [tablesOf("a", "s")]: ok({ tables: [{ name: "t" }] }),
+  };
+
+  it.each(LASTING)("%s on its schemas names the catalog and reads the rest", async (_n, answer) => {
+    serve({ ...schemaRoutes, [schemasOf("pg")]: answer });
+    expect(externalIds(await list("databricks-schema"))).toEqual(["a.s"]);
+    expect(unread).toHaveBeenCalledExactlyOnceWith({
+      parentResourceIds: [`${ACCOUNT}:databricks-catalog:pg`],
+    });
+  });
+
+  it.each(LASTING)("%s on its tables names the schema and reads the rest", async (_n, answer) => {
+    serve({ ...tableRoutes, [tablesOf("pg", "public")]: answer });
+    expect(externalIds(await list("databricks-table"))).toEqual(["a.s.t"]);
+    expect(unread).toHaveBeenCalledExactlyOnceWith({
+      parentResourceIds: [`${ACCOUNT}:databricks-schema:pg.public`],
+    });
+  });
+
+  it.each(PASSING)("%s on its schemas fails the type", async (_n, answer) => {
+    serve({ ...schemaRoutes, [schemasOf("pg")]: answer });
+    await expect(list("databricks-schema")).rejects.toThrow(`${answer.status}`);
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it.each(PASSING)("%s on its tables fails the type", async (_n, answer) => {
+    serve({ ...tableRoutes, [tablesOf("pg", "public")]: answer });
+    await expect(list("databricks-table")).rejects.toThrow(`${answer.status}`);
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a 400", coded(400, "BAD_REQUEST")],
+    ["a 500 naming a connection", coded(500, "CANNOT_ESTABLISH_CONNECTION")],
+  ])("%s under any other catalog still fails the type", async (_n, answer) => {
+    serve({ ...tableRoutes, [schemasOf("pg")]: ok({}), [tablesOf("a", "s")]: answer });
+    await expect(list("databricks-table")).rejects.toThrow(`${answer.status}`);
+    expect(unread).not.toHaveBeenCalled();
+  });
+});

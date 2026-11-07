@@ -4,7 +4,7 @@ import {
   reportUnreadListPart,
   requireListPage,
 } from "@infrawrench/plugin-base";
-import { isAccessRefusal, isGone } from "./api-errors.js";
+import { isAccessRefusal, isForeignCatalogFault, isGone } from "./api-errors.js";
 
 const VENDOR = "Databricks";
 /** What one poll can read in sequence. A poll past that is killed with no message. */
@@ -66,21 +66,29 @@ export class FanOutBudget {
 /**
  * One parent's children. A parent gone since it was listed has none. A parent this
  * principal may not read keeps its stored rows: its catalog grants can be narrower than
- * the token's. Anything else fails the type, or a sync would prune those rows on one bad
- * answer.
+ * the token's. So does a parent under a foreign catalog with a broken connection, checked
+ * before gone because a 404 through a broken connection is no proof the rows went. Anything
+ * else fails the type, or a sync would prune those rows on one bad answer.
  */
 async function readChildren(
   parentResourceId: string,
+  underForeignCatalog: boolean,
   read: () => Promise<ResourceInstance[]>,
 ): Promise<ResourceInstance[]> {
   try {
     return await read();
   } catch (err) {
-    if (isGone(err)) return [];
-    if (!isAccessRefusal(err)) throw err;
+    if (!(underForeignCatalog && isForeignCatalogFault(err))) {
+      if (isGone(err)) return [];
+      if (!isAccessRefusal(err)) throw err;
+    }
     reportUnreadListPart({ parentResourceIds: [parentResourceId] });
     return [];
   }
+}
+
+export function isForeignCatalog(catalog: ResourceInstance): boolean {
+  return catalog.fields["catalogType"] === "FOREIGN_CATALOG";
 }
 
 /**
@@ -92,6 +100,7 @@ export async function readEachParent(
   budget: FanOutBudget,
   parents: ResourceInstance[],
   read: (parent: ResourceInstance) => Promise<ResourceInstance[]>,
+  underForeignCatalog: (parent: ResourceInstance) => boolean = () => false,
 ): Promise<ResourceInstance[]> {
   const start = Math.floor(Math.random() * parents.length);
   const ordered = [...parents.slice(start), ...parents.slice(0, start)];
@@ -101,7 +110,9 @@ export async function readEachParent(
       reportUnreadListPart({ parentResourceIds: ordered.slice(index).map((p) => p.id) });
       break;
     }
-    results.push(...(await readChildren(parent.id, () => read(parent))));
+    results.push(
+      ...(await readChildren(parent.id, underForeignCatalog(parent), () => read(parent))),
+    );
   }
   return results;
 }
