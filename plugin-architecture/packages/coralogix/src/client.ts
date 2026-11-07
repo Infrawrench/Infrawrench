@@ -824,7 +824,7 @@ export class CoralogixClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = requiredId(typeId, resourceId);
       switch (typeId) {
         case "alert": {
           const updated = await this.replaceAlert(id, (p) => {
@@ -950,7 +950,7 @@ export class CoralogixClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const raw = externalIdOf(resourceId);
+      const raw = requiredId(typeId, resourceId);
       const id = pathEncode(raw);
       switch (typeId) {
         case "alert":
@@ -996,7 +996,7 @@ export class CoralogixClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = requiredId(typeId, resourceId);
       const toggle = actionId === "enable" || actionId === "disable";
       const enabled = actionId === "enable";
       if (typeId === "alert" && toggle) {
@@ -1065,6 +1065,13 @@ export class CoralogixClient implements PluginClient {
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     return renderCoralogixSidebar(resource);
   }
+}
+
+/** The provider's id out of a resource id, refusing to act on one with nothing in it. */
+function requiredId(typeId: string, resourceId: string): string {
+  const id = externalIdOf(resourceId);
+  if (!id.trim()) throw new Error(`Coralogix plugin: ${typeId} "${resourceId}" has no id`);
+  return id;
 }
 
 function round(n: number): number {

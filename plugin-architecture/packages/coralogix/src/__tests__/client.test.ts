@@ -265,6 +265,61 @@ describe("updates and actions", () => {
     expect(keys[0]).not.toBe(keys[1]);
   });
 
+  describe("an id with nothing in it", () => {
+    const refuses = () => {
+      const { c, calls } = client((url, method) => {
+        throw new Error(`Unexpected ${method} ${url.pathname}`);
+      });
+      return { c, calls };
+    };
+
+    it.each([
+      "alert",
+      "dashboard",
+      "tco-policy",
+      "parsing-rule-group",
+      "enrichment",
+      "custom-enrichment",
+      "outgoing-webhook",
+      "events2metrics",
+    ])("refuses to delete a %s", async (type) => {
+      const { c, calls } = refuses();
+      await expect(c.deleteResource(type, `${ACCOUNT}:${type}:`, ACCOUNT)).rejects.toThrow(/no id/);
+      await expect(c.deleteResource(type, `${ACCOUNT}:${type}:  `, ACCOUNT)).rejects.toThrow(
+        /no id/,
+      );
+      expect(calls).toHaveLength(0);
+    });
+
+    it.each([
+      ["alert", { name: "x" }],
+      ["tco-policy", { name: "x" }],
+      ["quota-rule", { allocation: "1" }],
+    ])("refuses to update a %s", async (type, fields) => {
+      const { c, calls } = refuses();
+      await expect(c.updateResource(type, `${ACCOUNT}:${type}:`, ACCOUNT, fields)).rejects.toThrow(
+        /no id/,
+      );
+      expect(calls).toHaveLength(0);
+    });
+
+    it.each([
+      ["alert", "disable"],
+      ["tco-policy", "enable"],
+      ["parsing-rule-group", "disable"],
+      ["dashboard", "pin"],
+      ["dashboard", "unpin"],
+      ["dashboard", "make-default"],
+      ["outgoing-webhook", "test"],
+    ])("refuses to act on a %s (%s)", async (type, action) => {
+      const { c, calls } = refuses();
+      await expect(c.invokeAction(type, `${ACCOUNT}:${type}:`, action, ACCOUNT)).rejects.toThrow(
+        /no id/,
+      );
+      expect(calls).toHaveLength(0);
+    });
+  });
+
   it("reports a failed webhook test with the provider's message", async () => {
     const { c } = client(() => ({
       body: { failure: { statusCode: 404, displayMessage: "Endpoint not found" } },
