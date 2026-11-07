@@ -33,12 +33,43 @@ function lastPathSegment(path: string): string {
 }
 
 /**
- * One parent's children, for a list that fans out. A parent gone since it was listed has
- * none. A parent this principal may not read keeps its stored rows: its catalog grants
- * can be narrower than the token's. Anything else fails the type, or a sync would prune
- * those rows on one bad answer.
+ * What one fan-out may read in one poll. Types run side by side, so each gets its own. 1,000
+ * reads is about 200 seconds at 200 ms a read, and a poll past 300 is killed with no message.
+ * The clock is there because a large Unity Catalog schema can take far longer than that.
  */
-export async function readChildren(
+const MAX_FAN_OUT_READS = 1000;
+const MAX_FAN_OUT_MS = 200_000;
+
+export class FanOutBudget {
+  readonly ctx: ListerContext;
+  private reads = 0;
+  private readonly startedAt = Date.now();
+  private readonly unbounded: boolean;
+
+  constructor(ctx: ListerContext, { unbounded = false }: { unbounded?: boolean } = {}) {
+    this.unbounded = unbounded;
+    this.ctx = {
+      ...ctx,
+      api: <T>(method: string, path: string, body?: Record<string, unknown>) => {
+        this.reads++;
+        return ctx.api<T>(method, path, body);
+      },
+    };
+  }
+
+  get spent(): boolean {
+    if (this.unbounded) return false;
+    return this.reads >= MAX_FAN_OUT_READS || Date.now() - this.startedAt >= MAX_FAN_OUT_MS;
+  }
+}
+
+/**
+ * One parent's children. A parent gone since it was listed has none. A parent this
+ * principal may not read keeps its stored rows: its catalog grants can be narrower than
+ * the token's. Anything else fails the type, or a sync would prune those rows on one bad
+ * answer.
+ */
+async function readChildren(
   parentResourceId: string,
   read: () => Promise<ResourceInstance[]>,
 ): Promise<ResourceInstance[]> {
@@ -50,6 +81,29 @@ export async function readChildren(
     reportUnreadListPart({ parentResourceIds: [parentResourceId] });
     return [];
   }
+}
+
+/**
+ * Every parent's children, one parent at a time, for as long as the budget lasts. The
+ * parents it does not reach keep their stored rows, and it starts from a different parent
+ * each poll so that all of them are read over time.
+ */
+export async function readEachParent(
+  budget: FanOutBudget,
+  parents: ResourceInstance[],
+  read: (parent: ResourceInstance) => Promise<ResourceInstance[]>,
+): Promise<ResourceInstance[]> {
+  const start = Math.floor(Math.random() * parents.length);
+  const ordered = [...parents.slice(start), ...parents.slice(0, start)];
+  const results: ResourceInstance[] = [];
+  for (const [index, parent] of ordered.entries()) {
+    if (budget.spent) {
+      reportUnreadListPart({ parentResourceIds: ordered.slice(index).map((p) => p.id) });
+      break;
+    }
+    results.push(...(await readChildren(parent.id, () => read(parent))));
+  }
+  return results;
 }
 
 async function listPaginated(

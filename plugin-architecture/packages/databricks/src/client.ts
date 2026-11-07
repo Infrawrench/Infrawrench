@@ -70,7 +70,8 @@ import {
   lakebaseProjectToResource,
   listLakebaseBranches,
   listLakebaseProjects,
-  readChildren,
+  FanOutBudget,
+  readEachParent,
 } from "./resource-listers.js";
 import { WAREHOUSE_SIZES } from "./resources/sql-warehouse.js";
 import {
@@ -288,7 +289,7 @@ export class DatabricksClient implements PluginClient {
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
     return attempt(async () => {
       try {
-        return await this.readResources(typeId, accountId);
+        return await this.readResources(typeId, accountId, new FanOutBudget(this.ctx));
       } catch (err) {
         // A token scoped away from a whole type is normal, and failing it on every poll
         // would page someone. Its stored rows stay, with no error.
@@ -299,67 +300,39 @@ export class DatabricksClient implements PluginClient {
     });
   }
 
-  private async readResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    // Child resource types need parent context
-    if (typeId === "databricks-schema") {
-      const catalogs = await listCatalogs(this.ctx, accountId);
-      const results: ResourceInstance[] = [];
-      for (const cat of catalogs) {
-        results.push(
-          ...(await readChildren(cat.id, () =>
-            listSchemas(this.ctx, accountId, String(cat.fields["name"])),
-          )),
-        );
-      }
-      return results;
-    }
+  private async readResources(
+    typeId: string,
+    accountId: string,
+    budget: FanOutBudget,
+  ): Promise<ResourceInstance[]> {
+    const { ctx } = budget;
 
-    if (typeId === "databricks-table") {
-      return this.readInEverySchema(accountId, listTables);
-    }
+    // Child resource types need parent context
+    if (typeId === "databricks-schema") return this.readEverySchema(budget, accountId);
+    if (typeId === "databricks-table") return this.readInEverySchema(budget, accountId, listTables);
     if (typeId === "databricks-volume") {
-      return this.readInEverySchema(accountId, listVolumes);
+      return this.readInEverySchema(budget, accountId, listVolumes);
     }
     if (typeId === "databricks-function") {
-      return this.readInEverySchema(accountId, listFunctions);
+      return this.readInEverySchema(budget, accountId, listFunctions);
     }
 
     if (typeId === "databricks-vector-search-index") {
-      const endpoints = await listVectorSearchEndpoints(this.ctx, accountId);
-      const results: ResourceInstance[] = [];
-      for (const endpoint of endpoints) {
-        results.push(
-          ...(await readChildren(endpoint.id, () =>
-            listVectorSearchIndexes(this.ctx, accountId, String(endpoint.fields["name"])),
-          )),
-        );
-      }
-      return results;
+      return readEachParent(budget, await listVectorSearchEndpoints(ctx, accountId), (endpoint) =>
+        listVectorSearchIndexes(ctx, accountId, String(endpoint.fields["name"])),
+      );
     }
 
     if (typeId === "databricks-lakebase-branch") {
-      const projects = await listLakebaseProjects(this.ctx, accountId);
-      const perProject = await Promise.all(
-        projects.map((project) =>
-          readChildren(project.id, () =>
-            listLakebaseBranches(this.ctx, accountId, String(project.externalId)),
-          ),
-        ),
+      return readEachParent(budget, await listLakebaseProjects(ctx, accountId), (project) =>
+        listLakebaseBranches(ctx, accountId, String(project.externalId)),
       );
-      return perProject.flat();
     }
 
     if (typeId === "databricks-model-version") {
-      const models = await listRegisteredModels(this.ctx, accountId);
-      const results: ResourceInstance[] = [];
-      for (const model of models) {
-        results.push(
-          ...(await readChildren(model.id, () =>
-            listModelVersions(this.ctx, accountId, String(model.externalId)),
-          )),
-        );
-      }
-      return results;
+      return readEachParent(budget, await listRegisteredModels(ctx, accountId), (model) =>
+        listModelVersions(ctx, accountId, String(model.externalId)),
+      );
     }
 
     const lister = DatabricksClient.LISTERS[typeId];
@@ -367,7 +340,18 @@ export class DatabricksClient implements PluginClient {
     return lister(this.ctx, accountId);
   }
 
+  private async readEverySchema(
+    budget: FanOutBudget,
+    accountId: string,
+  ): Promise<ResourceInstance[]> {
+    const { ctx } = budget;
+    return readEachParent(budget, await listCatalogs(ctx, accountId), (catalog) =>
+      listSchemas(ctx, accountId, String(catalog.fields["name"])),
+    );
+  }
+
   private async readInEverySchema(
+    budget: FanOutBudget,
     accountId: string,
     read: (
       ctx: ListerContext,
@@ -376,26 +360,15 @@ export class DatabricksClient implements PluginClient {
       schemaName: string,
     ) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    const catalogs = await listCatalogs(this.ctx, accountId);
-    const results: ResourceInstance[] = [];
-    for (const cat of catalogs) {
-      const schemas = await readChildren(cat.id, () =>
-        listSchemas(this.ctx, accountId, String(cat.fields["name"])),
-      );
-      for (const schema of schemas) {
-        results.push(
-          ...(await readChildren(schema.id, () =>
-            read(
-              this.ctx,
-              accountId,
-              String(schema.fields["catalogName"]),
-              String(schema.fields["name"]),
-            ),
-          )),
-        );
-      }
-    }
-    return results;
+    const schemas = await this.readEverySchema(budget, accountId);
+    return readEachParent(budget, schemas, (schema) =>
+      read(
+        budget.ctx,
+        accountId,
+        String(schema.fields["catalogName"]),
+        String(schema.fields["name"]),
+      ),
+    );
   }
 
   getResource(
@@ -404,7 +377,9 @@ export class DatabricksClient implements PluginClient {
     accountId: string,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const all = await runPluginEffect(this.listResources(typeId, accountId));
+      // One row someone asked for: stopping at the poll's budget would call it not found.
+      const budget = new FanOutBudget(this.ctx, { unbounded: true });
+      const all = await this.readResources(typeId, accountId, budget);
       const found = all.find((r) => r.id === resourceId);
       if (!found) {
         throw new Error(`Databricks plugin: resource ${typeId}/${resourceId} not found`);

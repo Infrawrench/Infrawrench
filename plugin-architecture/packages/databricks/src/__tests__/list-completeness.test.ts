@@ -63,6 +63,7 @@ beforeEach(() => {
 afterEach(() => {
   Reflect.deleteProperty(globalThis, UNREAD_HOOK);
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const CATALOGS = "/api/2.1/unity-catalog/catalogs?max_results=0";
@@ -326,5 +327,132 @@ describe("the shared list loop", () => {
       [page("t")]: ok({ clusters: [{ cluster_id: "c1" }] }),
     });
     expect(externalIds(await list("databricks-cluster"))).toEqual(["c1"]);
+  });
+});
+
+describe("a fan-out past what one poll can read", () => {
+  const BUDGET = 1000;
+  const MODELS = 1500;
+
+  /** A list of registered models, and one version under each. */
+  function serveModels(onRead?: () => void) {
+    const stats = { reads: 0, peak: 0, active: 0, modelsRead: new Set<string>() };
+    vi.stubGlobal("fetch", async (input: string) => {
+      const { pathname } = new URL(input);
+      stats.reads++;
+      stats.active++;
+      stats.peak = Math.max(stats.peak, stats.active);
+      onRead?.();
+      await Promise.resolve();
+      stats.active--;
+      if (pathname === "/api/2.1/unity-catalog/models") {
+        const registered_models = Array.from({ length: MODELS }, (_, i) => ({
+          full_name: `a.s.m${i}`,
+        }));
+        return new Response(JSON.stringify({ registered_models }));
+      }
+      const model = /models\/([^/]+)\/versions$/.exec(pathname)?.[1];
+      if (!model) throw new Error(`Unexpected request: ${pathname}`);
+      stats.modelsRead.add(model);
+      return new Response(JSON.stringify({ model_versions: [{ version: 1 }] }));
+    });
+    return stats;
+  }
+
+  const namedInReport = (): string[] =>
+    unread.mock.calls.flatMap(([part]) => part.parentResourceIds ?? []);
+
+  it("stops at the budget and names every parent it did not read", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const stats = serveModels();
+    const rows = await list("databricks-model-version");
+    expect(stats.reads).toBe(BUDGET);
+    expect(rows).toHaveLength(BUDGET - 1);
+    const named = namedInReport();
+    expect(named).toHaveLength(MODELS - (BUDGET - 1));
+    for (const id of named) {
+      const model = id.slice(`${ACCOUNT}:databricks-registered-model:`.length);
+      expect(stats.modelsRead.has(model)).toBe(false);
+    }
+  });
+
+  it("starts somewhere else each poll, so every parent is read over time", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    const first = serveModels();
+    await list("databricks-model-version");
+    expect(first.modelsRead.has("a.s.m0")).toBe(true);
+    expect(first.modelsRead.has("a.s.m1400")).toBe(false);
+
+    random.mockReturnValue(0.9);
+    const second = serveModels();
+    await list("databricks-model-version");
+    expect(second.modelsRead.has("a.s.m1400")).toBe(true);
+  });
+
+  it("stops when the time is up, however few reads that took", async () => {
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const stats = serveModels(() => {
+      now += 1000;
+    });
+    const rows = await list("databricks-model-version");
+    expect(stats.reads).toBeLessThan(250);
+    expect(rows.length + namedInReport().length).toBe(MODELS);
+  });
+
+  it("still finds the one row someone asked for, past the budget", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    serveModels();
+    const id = `${ACCOUNT}:databricks-model-version:a.s.m1499@1`;
+    const row = await client().getResource("databricks-model-version", id, ACCOUNT);
+    expect(row.id).toBe(id);
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("a refusal on the one row asked for says so instead of not found", async () => {
+    serve({ [CATALOGS]: denied });
+    await expect(client().getResource("databricks-catalog", "x", ACCOUNT)).rejects.toThrow("403");
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("reads Lakebase projects one at a time", async () => {
+    const stats = { active: 0, peak: 0 };
+    vi.stubGlobal("fetch", async (input: string) => {
+      const { pathname } = new URL(input);
+      stats.active++;
+      stats.peak = Math.max(stats.peak, stats.active);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      stats.active--;
+      if (pathname === "/api/2.0/postgres/projects") {
+        return new Response(
+          JSON.stringify({ projects: [{ name: "projects/p1" }, { name: "projects/p2" }] }),
+        );
+      }
+      return new Response(JSON.stringify({ branches: [] }));
+    });
+    await list("databricks-lakebase-branch");
+    expect(stats.peak).toBe(1);
+  });
+
+  it("names a catalog's and a schema's rows the same way for tables", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    vi.stubGlobal("fetch", async (input: string) => {
+      const { pathname } = new URL(input);
+      if (pathname.endsWith("/catalogs")) {
+        return new Response(JSON.stringify({ catalogs: [{ name: "a" }] }));
+      }
+      if (pathname.endsWith("/schemas")) {
+        const schemas = Array.from({ length: 1200 }, (_, i) => ({ name: `s${i}` }));
+        return new Response(JSON.stringify({ schemas }));
+      }
+      if (pathname.endsWith("/tables")) {
+        return new Response(JSON.stringify({ tables: [{ name: "t" }] }));
+      }
+      throw new Error(`Unexpected request: ${pathname}`);
+    });
+    const rows = await list("databricks-table");
+    expect(rows).toHaveLength(BUDGET - 2);
+    expect(namedInReport()).toHaveLength(1200 - (BUDGET - 2));
+    expect(namedInReport()[0]).toBe(`${ACCOUNT}:databricks-schema:a.s998`);
   });
 });
