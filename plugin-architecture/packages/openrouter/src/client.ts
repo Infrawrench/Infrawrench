@@ -34,6 +34,7 @@ import {
   pathEncode,
   requireListPage,
   withAiCostTags,
+  withinListCap,
 } from "@infrawrench/plugin-base";
 import {
   BASE_URL,
@@ -91,6 +92,9 @@ const MODELS_MAX_PAGES = 20;
  */
 const ENDPOINT_FANOUT_MODELS = 25;
 const ENDPOINT_FANOUT_CONCURRENCY = 5;
+
+/** A sync reads the keys, guardrails and BYOK credentials of each, one at a time. */
+const MAX_WORKSPACES = 1000;
 
 /** GET /activity only covers the last 30 completed UTC days. */
 const ACTIVITY_WINDOW_DAYS = 30;
@@ -250,15 +254,23 @@ export class OpenRouterClient implements PluginClient {
         case "api-key":
           return this.listApiKeys(accountId);
         case "guardrail":
-          return (await this.api.getAll("/guardrails", "data")).map((g) =>
-            mapGuardrail(accountId, g),
-          );
+          return (
+            await this.acrossWorkspaces(
+              (query) => this.api.getAll("/guardrails", "data", { query }),
+              (g) => g.id,
+            )
+          ).map((g) => mapGuardrail(accountId, g));
         case "workspace":
           return (await this.api.getAll("/workspaces", "data")).map((w) =>
             mapWorkspace(accountId, w),
           );
         case "byok-credential":
-          return (await this.api.getAll("/byok", "data")).map((b) => mapByok(accountId, b));
+          return (
+            await this.acrossWorkspaces(
+              (query) => this.api.getAll("/byok", "data", { query }),
+              (b) => b.id,
+            )
+          ).map((b) => mapByok(accountId, b));
         default:
           throw new Error(`OpenRouter plugin: unknown resource type "${typeId}"`);
       }
@@ -458,10 +470,38 @@ export class OpenRouterClient implements PluginClient {
   /** GET /keys: offset-paginated, management key required. */
   private async listApiKeys(accountId: string): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();
-    const keys = await this.api.keys.getAll("/keys", "data", {
-      query: { include_disabled: true },
-    });
+    const keys = await this.acrossWorkspaces(
+      (query) =>
+        this.api.keys.getAll("/keys", "data", { query: { ...query, include_disabled: true } }),
+      (k) => k.hash,
+    );
     return keys.map((k) => this.mapKey(accountId, now, k));
+  }
+
+  /**
+   * `/keys`, `/guardrails` and `/byok` answer for the default workspace unless told
+   * another, and nothing marks which workspace is the default, so the plain read goes
+   * first and each workspace follows it. Only a refusal reads as nothing there:
+   * anything else fails the list, and with it the sync's prune.
+   */
+  private async acrossWorkspaces<T>(
+    read: (query: { workspace_id?: string }) => Promise<T[]>,
+    idOf: (row: T) => string,
+  ): Promise<T[]> {
+    const rows = new Map((await read({})).map((row) => [idOf(row), row]));
+    const workspaces = await this.api.getAll("/workspaces", "data").catch((err: unknown) => {
+      if (isRefused(err)) return [];
+      throw err;
+    });
+    const place = { vendor: "OpenRouter", path: "/workspaces" };
+    for (const { id } of withinListCap(workspaces, MAX_WORKSPACES, place)) {
+      const found = await read({ workspace_id: id }).catch((err: unknown) => {
+        if (isRefused(err)) return [];
+        throw err;
+      });
+      for (const row of found) if (!rows.has(idOf(row))) rows.set(idOf(row), row);
+    }
+    return [...rows.values()];
   }
 
   private mapKey(accountId: string, now: string, k: OrKey): ResourceInstance {
@@ -954,7 +994,10 @@ export class OpenRouterClient implements PluginClient {
         ? this.fetchAllModels().catch((): OrModel[] => [])
         : Promise.resolve<OrModel[]>([]),
       need.keys
-        ? this.api.keys.getAll("/keys", "data", { partial: true }).catch((): OrKey[] => [])
+        ? this.acrossWorkspaces(
+            (query) => this.api.keys.getAll("/keys", "data", { query, partial: true }),
+            (k) => k.hash,
+          ).catch((): OrKey[] => [])
         : Promise.resolve<OrKey[]>([]),
       need.workspaces
         ? this.api.getAll("/workspaces", "data", { partial: true }).catch((): OrWorkspace[] => [])
@@ -1967,6 +2010,11 @@ export class OpenRouterClient implements PluginClient {
 }
 
 // -------------------------------------------------------------- helpers
+
+/** The key may not reach this route, or the thing it asked about is gone. */
+function isRefused(err: unknown): boolean {
+  return err instanceof Error && /API error 40[34]\b/.test(err.message);
+}
 
 function isAudioModel(m: OrModelFields): boolean {
   const outputs = m.architecture?.output_modalities ?? [];

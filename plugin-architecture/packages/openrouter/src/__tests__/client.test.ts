@@ -207,6 +207,7 @@ describe("listResources", () => {
 
   it("lists API keys including disabled ones", async () => {
     installFetch((url) => {
+      if (url.includes("/workspaces")) return jsonResponse({ data: [], total_count: 0 });
       expect(url).toContain("include_disabled=true");
       if (!url.includes("offset=0")) return jsonResponse({ data: [] });
       return jsonResponse({
@@ -233,6 +234,7 @@ describe("listResources", () => {
   it("reads API keys to an empty page, whatever size the pages are", async () => {
     // The document gives no page size for GET /keys, so a short page does not end it.
     installFetch((url) => {
+      if (url.includes("/workspaces")) return jsonResponse({ data: [], total_count: 0 });
       const offset = new URL(url).searchParams.get("offset");
       if (offset === "0") return jsonResponse({ data: [{ hash: "a" }, { hash: "b" }] });
       if (offset === "2") return jsonResponse({ data: [{ hash: "c" }] });
@@ -1158,6 +1160,102 @@ describe("BYOK credentials", () => {
     await client().deleteResource("byok-credential", `${ACCOUNT}:byok-credential:byok_1`, ACCOUNT);
     expect(calls[0]?.url).toBe("https://openrouter.ai/api/v1/byok/byok_1");
     expect(calls[0]?.init?.method).toBe("DELETE");
+  });
+});
+
+describe("workspaces beyond the default", () => {
+  const search = (url: string) => new URL(url).searchParams;
+
+  it.each([
+    ["api-key", "/keys", "hash"],
+    ["guardrail", "/guardrails", "id"],
+    ["byok-credential", "/byok", "id"],
+  ])("lists %s from every workspace, each row once", async (typeId, route, idKey) => {
+    installFetch((url) => {
+      if (url.includes("/workspaces")) {
+        return jsonResponse({
+          data: [
+            { id: "ws_default", name: "Default" },
+            { id: "ws_2", name: "Second" },
+          ],
+          total_count: 2,
+        });
+      }
+      expect(url).toContain(route);
+      if (search(url).get("offset") !== "0") return jsonResponse({ data: [], total_count: 1 });
+      const workspace = search(url).get("workspace_id");
+      const id = workspace === "ws_2" ? "in-second" : "in-default";
+      return jsonResponse({ data: [{ [idKey]: id, name: id }], total_count: 1 });
+    });
+    const rows = await client().listResources(typeId, ACCOUNT);
+    expect(rows.map((r) => r.externalId).sort()).toEqual(["in-default", "in-second"]);
+    // The read with no workspace still goes first: it is what a narrower key can make.
+    expect(search(calls[0]!.url).get("workspace_id")).toBeNull();
+  });
+
+  it("keeps the default workspace's rows for a key that cannot list workspaces", async () => {
+    installFetch((url) => {
+      if (url.includes("/workspaces")) return jsonResponse({ error: "no" }, 403);
+      return jsonResponse({ data: [{ id: "g1", name: "g" }], total_count: 1 });
+    });
+    expect(await client().listResources("guardrail", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("skips one workspace the key is refused, and keeps the rest", async () => {
+    installFetch((url) => {
+      if (url.includes("/workspaces")) {
+        return jsonResponse({ data: [{ id: "ws_2", name: "Second" }], total_count: 1 });
+      }
+      if (search(url).get("workspace_id")) return jsonResponse({ error: "no" }, 403);
+      return jsonResponse({ data: [{ id: "g1", name: "g" }], total_count: 1 });
+    });
+    expect(await client().listResources("guardrail", ACCOUNT)).toHaveLength(1);
+  });
+
+  it.each([
+    ["the workspace list", (url: string) => url.includes("/workspaces")],
+    ["one workspace's list", (url: string) => url.includes("workspace_id=ws_2")],
+  ])("fails the sync when %s cannot be read, so nothing is pruned", async (_name, failing) => {
+    installFetch((url) => {
+      if (failing(url)) return jsonResponse({ error: "busy" }, 503);
+      if (url.includes("/workspaces")) {
+        return jsonResponse({ data: [{ id: "ws_2", name: "Second" }], total_count: 1 });
+      }
+      return jsonResponse({ data: [{ id: "g1", name: "g" }], total_count: 1 });
+    });
+    await expect(client().listResources("guardrail", ACCOUNT)).rejects.toThrow("503");
+  });
+
+  it("fails rather than skip the workspaces past 1,000", async () => {
+    let next = 0;
+    installFetch((url) => {
+      if (url.includes("/workspaces")) {
+        return jsonResponse({
+          data: Array.from({ length: 100 }, () => ({ id: `ws_${next++}`, name: "w" })),
+          total_count: 1001,
+        });
+      }
+      return jsonResponse({ data: [], total_count: 0 });
+    });
+    await expect(client().listResources("guardrail", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("offers keys from every workspace in the guardrail form", async () => {
+    installFetch((url) => {
+      if (url.includes("/workspaces")) {
+        return jsonResponse({ data: [{ id: "ws_2", name: "Second" }], total_count: 1 });
+      }
+      if (url.includes("/keys") && search(url).get("offset") === "0") {
+        const workspace = search(url).get("workspace_id");
+        return jsonResponse({ data: [{ hash: workspace ? "in-second" : "in-default" }] });
+      }
+      return jsonResponse({ data: [], total_count: 0 });
+    });
+    const config = await client().getCreateConfig("guardrail");
+    const picker = config.fields.find((field) => field.key === "assignedKeys");
+    expect(picker?.policies?.map((policy) => policy.id)).toEqual(["in-default", "in-second"]);
   });
 });
 
