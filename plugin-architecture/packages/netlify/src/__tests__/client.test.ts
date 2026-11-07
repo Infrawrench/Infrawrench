@@ -77,7 +77,7 @@ const SITE = {
     cmd: "build",
     dir: "dist",
   },
-  published_deploy: { framework: "next", state: "current" },
+  published_deploy: { framework: "next", state: "ready" },
 };
 
 describe("constructor", () => {
@@ -150,7 +150,7 @@ describe("listResources sites + pagination", () => {
     const s = res[0]!;
     expect(s.id).toBe("acct-1:netlify-site:site1");
     expect(s.fields["framework"]).toBe("next");
-    expect(s.fields["state"]).toBe("current");
+    expect(s.fields["state"]).toBe("ready");
     expect(s.fields["domainAliases"]).toBe("www.example.com");
     expect(s.fields["repoUrl"]).toBe("https://github.com/a/b");
     expect(s.resolvedOutputs["siteId"]).toBe("site1");
@@ -641,9 +641,19 @@ describe("fetchDashboardStats", () => {
       "acct-1:netlify-site:site1",
       ACCOUNT,
     );
-    expect(stats[0]).toEqual({ label: "State", value: "current", variant: "status-healthy" });
+    expect(stats[0]).toEqual({ label: "State", value: "ready", variant: "status-healthy" });
     expect(stats.find((s) => s.label === "Domain")?.value).toBe("example.com");
     expect(stats.find((s) => s.label === "Framework")?.value).toBe("next");
+  });
+
+  it("a site with no published deploy reads its own state", async () => {
+    router([[(u) => u.includes("/sites/site1"), { ...SITE, published_deploy: undefined }]]);
+    const stats = await client().fetchDashboardStats(
+      "netlify-site",
+      "acct-1:netlify-site:site1",
+      ACCOUNT,
+    );
+    expect(stats[0]).toEqual({ label: "State", value: "current", variant: "status-healthy" });
   });
 
   it("site stats error variant, no optional fields", async () => {
@@ -1056,6 +1066,31 @@ describe("renderSidebarItem", () => {
   it("env var sidebar visible", () => {
     const item = res("netlify-env-var", { key: "K", isSecret: false });
     expect(item.label).toBe("K");
+  });
+
+  it("a published deploy's ready state reads as healthy, in the sidebar and the detail", () => {
+    expect((res("netlify-site", { state: "ready" }).status as { status: string }).status).toBe(
+      "healthy",
+    );
+    const view = client().renderDetail({
+      id: "acct-1:netlify-site:site1",
+      pluginId: "netlify",
+      resourceTypeId: "netlify-site",
+      accountId: ACCOUNT,
+      displayName: "n",
+      fields: { name: "n", state: "ready" },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: "x",
+      updatedAt: "y",
+    });
+    expect((view.status as { status: string }).status).toBe("healthy");
+  });
+
+  it("a site follows the deploy states a published deploy can be in", () => {
+    expect((res("netlify-site", { state: "processing" }).status as { status: string }).status).toBe(
+      "provisioning",
+    );
   });
 
   it("default sidebar uses state mapping", () => {

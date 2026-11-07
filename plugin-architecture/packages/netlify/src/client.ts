@@ -42,20 +42,6 @@ import {
 /** A field of a stored resource, which may not be there. */
 type FieldValue = ResourceInstance["fields"][string] | undefined;
 
-function mapSiteState(state: string): ResourceStatus {
-  switch (state) {
-    case "current":
-      return "healthy";
-    case "building":
-    case "enqueued":
-      return "provisioning";
-    case "error":
-      return "error";
-    default:
-      return "info";
-  }
-}
-
 function mapDeployState(state: string): ResourceStatus {
   switch (state) {
     case "ready":
@@ -75,6 +61,14 @@ function mapDeployState(state: string): ResourceStatus {
     default:
       return "info";
   }
+}
+
+/**
+ * A site's `state` is its published deploy's when it has one (`mapSite`), and its own,
+ * which reads `current`, when it does not.
+ */
+function mapSiteState(state: string): ResourceStatus {
+  return state === "current" ? "healthy" : mapDeployState(state);
 }
 
 export class NetlifyClient implements PluginClient {
@@ -268,8 +262,13 @@ export class NetlifyClient implements PluginClient {
       switch (resourceTypeId) {
         case "netlify-site": {
           const state = String(f["state"] ?? "unknown");
+          const status = mapSiteState(state);
           const variant =
-            state === "current" ? "status-healthy" : state === "error" ? "status-error" : "default";
+            status === "healthy"
+              ? "status-healthy"
+              : status === "error"
+                ? "status-error"
+                : "default";
           return [
             { label: "State", value: state, variant },
             ...(f["customDomain"] ? [{ label: "Domain", value: String(f["customDomain"]) }] : []),
