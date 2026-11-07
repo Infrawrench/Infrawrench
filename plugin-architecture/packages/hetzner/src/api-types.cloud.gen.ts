@@ -2770,7 +2770,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    assignee?: {
+                    assignee: {
                         /** Format: int64 */
                         id: number;
                         type: string;

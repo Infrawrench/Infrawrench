@@ -28,11 +28,6 @@
           "why": "Its own description says IDs (integer) or names (string); the schema only allows strings, and the plugin sends IDs."
         },
         {
-          "pointer": "/paths/~1volumes~1{id}~1actions~1attach/post/requestBody/content/application~1json/schema/required",
-          "value": [],
-          "why": "The plugin still sends the deprecated `server` rather than the `assignee` the document requires. Remove this when it moves over."
-        },
-        {
           "pointer": "/paths/~1floating_ips/post/requestBody/content/application~1json/schema/properties/type",
           "value": {
             "type": "string"

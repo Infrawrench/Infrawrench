@@ -155,6 +155,21 @@ describe("listResources", () => {
     expect(res[1]!.fields["format"]).toBe("");
   });
 
+  it("reads a volume's server from assignee once the deprecated server field is gone", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        volumes: [
+          { id: 10, name: "new-shape", size: 50, assignee: { type: "server", id: 7 } },
+          { id: 11, name: "both", size: 50, assignee: { type: "server", id: 8 }, server: 8 },
+          { id: 12, name: "detached", size: 20, assignee: null },
+        ],
+      }),
+    );
+    const res = await c.listResources("volume", ACCOUNT);
+    expect(res.map((v) => v.fields["serverId"])).toEqual(["7", "8", ""]);
+  });
+
   it("maps floating ips", async () => {
     const c = makeClient();
     fetchMock.mockResolvedValueOnce(
@@ -714,7 +729,13 @@ describe("createResource", () => {
     expect(serverBody.ssh_keys).toEqual([77]);
     expect(serverBody.firewalls).toEqual([{ firewall: 30 }]);
     const volBody = JSON.parse((fetchMock.mock.calls[2]![1] as RequestInit).body as string);
-    expect(volBody).toMatchObject({ size: 80, server: 6, format: "xfs", automount: true });
+    expect(volBody).toMatchObject({
+      size: 80,
+      assignee: { type: "server", id: 6 },
+      format: "xfs",
+      automount: true,
+    });
+    expect(volBody.server).toBeUndefined();
   });
 
   it("reuses existing ssh key on uniqueness error", async () => {
@@ -929,7 +950,10 @@ describe("attachResource", () => {
     );
     const [url, init] = lastCall();
     expect(String(url)).toBe("https://api.hetzner.cloud/v1/volumes/10/actions/attach");
-    expect(JSON.parse(init.body as string)).toMatchObject({ server: 7, automount: true });
+    expect(JSON.parse(init.body as string)).toEqual({
+      assignee: { type: "server", id: 7 },
+      automount: true,
+    });
   });
 
   it("rejects volume attach when locations differ", async () => {

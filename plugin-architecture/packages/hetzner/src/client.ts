@@ -548,7 +548,7 @@ export class HetznerClient implements PluginClient {
             body: {
               name: `${fields["name"]}-data`,
               size: Number(fields["extraDiskSizeGb"] ?? 40),
-              server: data.server.id,
+              assignee: { type: "server", id: data.server.id },
               automount: true,
               format: fields["extraDiskFormat"] ?? "ext4",
             },
@@ -1190,7 +1190,7 @@ export class HetznerClient implements PluginClient {
           );
         }
         await this.cloud.post(`/volumes/${pathEncode(volumeId)}/actions/attach`, {
-          body: { server: Number(serverId), automount: true },
+          body: { assignee: { type: "server", id: Number(serverId) }, automount: true },
         });
         return;
       }
@@ -1883,7 +1883,7 @@ export class HetznerClient implements PluginClient {
         sizeGb: v.size,
         location: v.location?.name ?? "",
         format: v.format ?? "",
-        serverId: v.server != null ? String(v.server) : "",
+        serverId: volumeServerId(v),
         linuxDevice: v.linux_device ?? "",
       },
       resolvedOutputs: {},
@@ -2181,6 +2181,19 @@ export class HetznerClient implements PluginClient {
       );
     });
   }
+}
+
+/**
+ * `assignee` replaces `server`, which Hetzner removes on 27 October 2027. Any assignee
+ * counts, so that a volume on some future kind of resource never reads as detached and
+ * so as an orphan to delete.
+ */
+function volumeServerId(volume: {
+  assignee?: { id: number } | null;
+  server?: number | null;
+}): string {
+  const id = volume.assignee?.id ?? volume.server;
+  return id != null ? String(id) : "";
 }
 
 function resourceDot(resource: ResourceInstance): ResourceStatus {
