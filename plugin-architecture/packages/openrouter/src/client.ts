@@ -360,12 +360,17 @@ export class OpenRouterClient implements PluginClient {
     const slug = rest.join("/");
     if (!author || !slug) return [];
     try {
-      const data = await this.api.get(
-        `/models/${pathEncode(author)}/${pathEncode(slug)}/endpoints`,
-      );
-      return data.data?.endpoints ?? [];
-    } catch {
-      return [];
+      const path = `/models/${pathEncode(author)}/${pathEncode(slug)}/endpoints` as const;
+      const data = await this.api.get(path);
+      return requireListPage(data.data?.endpoints, {
+        vendor: "OpenRouter",
+        path,
+        key: "data.endpoints",
+      });
+    } catch (err) {
+      // Anything else reading as "no endpoints" would prune this model's stored rows.
+      if (err instanceof Error && /API error 404\b/.test(err.message)) return [];
+      throw err;
     }
   }
 

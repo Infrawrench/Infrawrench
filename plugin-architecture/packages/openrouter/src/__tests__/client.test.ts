@@ -171,6 +171,40 @@ describe("listResources", () => {
     expect(rows[0]?.fields["status"]).toBe("healthy");
   });
 
+  it("fails the endpoint list when one model's read fails, so a sync prunes nothing", async () => {
+    installFetch((url) => {
+      if (url.includes("/models?")) return jsonResponse({ data: [{ id: "a/b" }, { id: "a/c" }] });
+      if (url.endsWith("/models/a/b/endpoints")) {
+        return jsonResponse({ data: { endpoints: [{ name: "One" }] } });
+      }
+      return jsonResponse({ error: "busy" }, 429);
+    });
+    await expect(client().listResources("model-endpoint", ACCOUNT)).rejects.toThrow("429");
+  });
+
+  it("refuses an endpoints answer with its list renamed", async () => {
+    installFetch((url) =>
+      url.includes("/models?")
+        ? jsonResponse({ data: [{ id: "a/b" }] })
+        : jsonResponse({ data: { items: [] } }),
+    );
+    await expect(client().listResources("model-endpoint", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("reads a model the endpoints route no longer knows as having none", async () => {
+    installFetch((url) => {
+      if (url.includes("/models?")) return jsonResponse({ data: [{ id: "a/b" }, { id: "a/c" }] });
+      if (url.endsWith("/models/a/b/endpoints")) {
+        return jsonResponse({ data: { endpoints: [{ name: "One" }] } });
+      }
+      return jsonResponse({ error: "gone" }, 404);
+    });
+    const rows = await client().listResources("model-endpoint", ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["a/b|One"]);
+  });
+
   it("lists API keys including disabled ones", async () => {
     installFetch((url) => {
       expect(url).toContain("include_disabled=true");
