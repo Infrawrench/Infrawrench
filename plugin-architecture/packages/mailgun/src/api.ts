@@ -14,6 +14,7 @@
  * 2026-10).
  */
 import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { ListTruncatedError, followableLink, requireListPage } from "@infrawrench/plugin-base";
 
 export const API_HOSTS = {
   us: "https://api.mailgun.net",
@@ -145,30 +146,47 @@ export async function mailgunFetch<T>(
   }
 }
 
-/** `limit`/`skip` lists returning `{ items, total_count }`. */
+const VENDOR = "Mailgun";
+const MAX_LIST_ROWS = 100_000;
+const MAX_LIST_REQUESTS = 1000;
+
+export interface ListSkipOptions {
+  query?: Record<string, FormValue>;
+  /** The most the route is known to take. A route that gives back fewer loses nothing. */
+  pageSize?: number;
+  maxItems?: number;
+  key?: "items" | "subaccounts";
+}
+
+/** `limit`/`skip` lists returning `{ items, total_count }` or `{ subaccounts, total }`. */
 export async function listSkip<T>(
   ctx: MailgunContext,
   region: MailgunRegion,
   path: string,
-  query: Record<string, FormValue> = {},
-  pageSize = 100,
-  maxItems = 5000,
+  { query = {}, pageSize = 100, maxItems = MAX_LIST_ROWS, key = "items" }: ListSkipOptions = {},
 ): Promise<T[]> {
   const out: T[] = [];
-  for (let skip = 0; skip < maxItems; skip += pageSize) {
-    const res = await mailgunFetch<{ items?: T[]; total_count?: number }>(ctx, region, path, {
-      query: { ...query, limit: pageSize, skip },
-    });
-    const items = res?.items ?? [];
-    out.push(...items);
-    if (
-      items.length < pageSize ||
-      (res?.total_count !== undefined && out.length >= res.total_count)
-    )
-      break;
+  for (let request = 0; request < MAX_LIST_REQUESTS && out.length < maxItems; request++) {
+    const res = await mailgunFetch<{
+      items?: T[];
+      subaccounts?: T[];
+      total_count?: number;
+      total?: number;
+    }>(ctx, region, path, { query: { ...query, limit: pageSize, skip: out.length } });
+    const rows = requireListPage(res?.[key], { vendor: VENDOR, path, key, page: res });
+    out.push(...rows);
+    if (rows.length === 0) return out;
+    // Most of these routes document no largest page, so a short page only ends the list
+    // when there is no count to say otherwise.
+    const total = res?.total_count ?? res?.total;
+    if (total !== undefined ? out.length >= total : rows.length < pageSize) return out;
   }
-  return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxItems });
 }
+
+/** A next link may name either of Mailgun's API hosts, both in the manifest's `egressHosts`. */
+const isMailgunHost = (link: URL): boolean =>
+  link.protocol === "https:" && MAILGUN_HOSTNAMES.includes(link.hostname);
 
 /** Lists that page by an absolute `paging.next` URL and end on an empty page. */
 export async function listPaging<T>(
@@ -176,26 +194,32 @@ export async function listPaging<T>(
   region: MailgunRegion,
   path: string,
   query: Record<string, FormValue> = {},
-  maxPages = 50,
+  maxPages = MAX_LIST_REQUESTS,
 ): Promise<T[]> {
   const out: T[] = [];
-  let next: string | null = path;
-  let first = true;
   const seen = new Set<string>();
-  for (let page = 0; page < maxPages && next; page++) {
-    const res: { items?: T[]; paging?: { next?: string } } = await mailgunFetch(
+  let pageUrl = `${API_HOSTS[region]}${path}`;
+  for (let page = 0; page < maxPages; page++) {
+    const res: { items?: T[]; paging?: { next?: string } } | undefined = await mailgunFetch(
       ctx,
       region,
-      next,
-      first ? { query } : {},
+      pageUrl,
+      page === 0 ? { query } : {},
     );
-    first = false;
-    const items = res?.items ?? [];
-    out.push(...items);
-    const n = res?.paging?.next;
-    if (items.length === 0 || !n || seen.has(n)) break;
-    seen.add(n);
-    next = n;
+    const rows = requireListPage(res?.items, { vendor: VENDOR, path, key: "items", page: res });
+    out.push(...rows);
+    const next = res?.paging?.next;
+    if (rows.length === 0 || !next) return out;
+    pageUrl = followableLink(next, pageUrl, {
+      vendor: VENDOR,
+      path,
+      foreignLinks: isMailgunHost,
+    });
+    // The cursor is the page's last row, so a link seen before is a list that stopped moving.
+    if (seen.has(pageUrl)) {
+      throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages: page + 1 });
+    }
+    seen.add(pageUrl);
   }
-  return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
 }

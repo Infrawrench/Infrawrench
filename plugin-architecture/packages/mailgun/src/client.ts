@@ -13,10 +13,18 @@ import type {
   ResourceInstance,
   SelectOption,
   SidebarItemSchema,
+  UnreadListPart,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, externalIdOf } from "@infrawrench/plugin-base";
+import {
+  ListPageError,
+  ListTruncatedError,
+  QuotaAccessError,
+  externalIdOf,
+  reportUnreadListPart,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import type { FormValue, MailgunContext, MailgunRegion, MailgunRequest } from "./api.js";
-import { REGIONS, listPaging, listSkip, mailgunFetch, statusOf } from "./api.js";
+import { MailgunApiError, REGIONS, listPaging, listSkip, mailgunFetch, statusOf } from "./api.js";
 import type {
   DomainBundle,
   MgAccountWebhook,
@@ -48,6 +56,7 @@ import {
   mapTag,
   mapWebhook,
   parseActions,
+  resourceId,
   splitRegion,
 } from "./mappers.js";
 import { queryMetrics, rangeOrDefault, seriesFromItems, totals } from "./metrics.js";
@@ -70,10 +79,39 @@ const CACHE_MS = 60_000;
 const CONCURRENCY = 4;
 const MAX_ADDRESSES = 1000;
 const DAY_MS = 86_400_000;
+/**
+ * Domains one type reads children for in one poll. Mailgun documents no limit for these
+ * routes, so this is sized on the poll: a domain's DNS records take three requests, and
+ * every type together stays near 125 seconds of a poll's 300 at four at a time.
+ */
+const DOMAIN_READS_PER_POLL = 500;
+const MAX_TAGS = 100_000;
+const TAG_PAGE_SIZE = 1000;
+const MAX_CREDENTIALS_PER_DOMAIN = 10_000;
 
 interface Cached<T> {
   at: number;
   value: Promise<T>;
+}
+
+interface DomainSummary {
+  region: MailgunRegion;
+  domain: MgDomain;
+}
+
+/** What every region answered, for each type reading it to act on for itself. */
+interface RegionRead<T> {
+  rows: T[];
+  /** Regions that rejected a key another region took. */
+  unreadRegions: MailgunRegion[];
+  /** Why no region could be read, when it was a permission and not a bad key. */
+  refused: MailgunApiError | undefined;
+}
+
+interface DomainsRead {
+  summaries: RegionRead<DomainSummary>;
+  bundles: DomainBundle[];
+  unread: DomainSummary[];
 }
 
 async function mapLimit<T, R>(
@@ -91,6 +129,13 @@ async function mapLimit<T, R>(
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return out;
+}
+
+/** Starts where the clock says, so polls that read only part get round to all of it. */
+function rotatedByClock<T>(items: T[]): T[] {
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * items.length);
+  return [...items.slice(start), ...items.slice(0, start)];
 }
 
 const bool = (v: string | undefined): boolean | undefined =>
@@ -134,6 +179,13 @@ function isUnavailable(err: unknown): boolean {
   return s === 403 || s === 404;
 }
 
+/** Keep a type's stored rows when the key's role may not read it. */
+function keepRowsOfRefusedType(err: unknown): ResourceInstance[] {
+  // A host that keeps no track (the desktop) answers false, and there it should still show.
+  if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+  return [];
+}
+
 function stash(r: ResourceInstance, extras: Record<string, unknown>): ResourceInstance {
   const out: Record<string, string> = { ...r.resolvedOutputs };
   for (const [k, v] of Object.entries(extras)) {
@@ -174,7 +226,7 @@ export function domainForm(fields: Record<string, string>): Record<string, FormV
 
 export class MailgunClient implements PluginClient {
   readonly ctx: MailgunContext;
-  private domainCache: Cached<DomainBundle[]> | undefined;
+  private domainCache: Cached<DomainsRead> | undefined;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
@@ -201,35 +253,134 @@ export class MailgunClient implements PluginClient {
     try {
       return await load();
     } catch (err) {
-      if (isUnavailable(err)) return [];
+      if (statusOf(err) === 404) return [];
+      if (statusOf(err) === 403) return keepRowsOfRefusedType(err);
       throw err;
     }
   }
 
-  /** Run `fn` in every configured region; a region the key cannot read is skipped. */
-  private async perRegion<T>(fn: (region: MailgunRegion) => Promise<T[]>): Promise<T[]> {
+  /**
+   * Run `fn` in every configured region. A 403 or 404 reads as a region this key has
+   * nothing in, and a throttle or 5xx fails the read. A 401 is the same key failing, so
+   * only another region taking it makes it about the region.
+   */
+  private async perRegion<T>(fn: (region: MailgunRegion) => Promise<T[]>): Promise<RegionRead<T>> {
+    const refusals = new Map<MailgunRegion, MailgunApiError>();
     const results = await Promise.all(
       this.ctx.regions.map((region) =>
-        fn(region).catch((err) => {
-          if (isUnavailable(err) || (statusOf(err) === 401 && this.ctx.regions.length > 1))
-            return [] as T[];
-          throw err;
+        fn(region).catch((err): T[] => {
+          if (!(err instanceof MailgunApiError) || ![401, 403, 404].includes(err.status)) throw err;
+          refusals.set(region, err);
+          return [];
         }),
       ),
     );
-    return results.flat();
+    const refused = [...refusals.values()];
+    const answered = refusals.size < this.ctx.regions.length;
+    const rejected = refused.find((err) => err.status === 401);
+    if (rejected && !answered) throw rejected;
+    return {
+      rows: results.flat(),
+      unreadRegions: [...refusals].filter(([, err]) => err.status === 401).map(([r]) => r),
+      refused: answered ? undefined : refused.find((err) => err.status === 403),
+    };
+  }
+
+  /** The rows of a region read, after saying which of `typeId`'s stored rows it could not see. */
+  private rowsOf<T>(typeId: string, accountId: string, read: RegionRead<T>): T[] {
+    if (read.refused) keepRowsOfRefusedType(read.refused);
+    if (read.unreadRegions.length > 0) {
+      reportUnreadListPart({
+        idPrefixes: read.unreadRegions.map((r) => resourceId(accountId, typeId, `${r}/`)),
+      });
+    }
+    return read.rows;
+  }
+
+  private async regionRows<T>(
+    typeId: string,
+    accountId: string,
+    fn: (region: MailgunRegion) => Promise<T[]>,
+  ): Promise<T[]> {
+    return this.rowsOf(typeId, accountId, await this.perRegion(fn));
+  }
+
+  /**
+   * Read something per domain, as far as one poll's requests and Mailgun's patience go.
+   * A domain past either is named, so its stored rows go stale rather than being deleted.
+   * A host that keeps no track prunes nothing and shows all it can, so it reads them all.
+   */
+  private async fanOut<R>(
+    domains: DomainSummary[],
+    part: (summary: DomainSummary) => UnreadListPart,
+    load: (summary: DomainSummary) => Promise<R[]>,
+  ): Promise<{ rows: R[]; unread: DomainSummary[] }> {
+    const order = domains.length > DOMAIN_READS_PER_POLL ? rotatedByClock(domains) : domains;
+    const unread: DomainSummary[] = [];
+    let started = 0;
+    let throttled = false;
+    let refusedUntracked = 0;
+    let refusal: unknown;
+    const lists = await mapLimit(order, CONCURRENCY, async (summary): Promise<R[]> => {
+      const turn = started++;
+      if ((throttled || turn >= DOMAIN_READS_PER_POLL) && reportUnreadListPart(part(summary))) {
+        unread.push(summary);
+        return [];
+      }
+      try {
+        return await load(summary);
+      } catch (err) {
+        const status = statusOf(err);
+        if (status === 404) return [];
+        // A 400 is the only refusal the credentials route documents.
+        if (status === 400 || status === 403) {
+          if (!reportUnreadListPart(part(summary))) refusedUntracked++;
+          refusal = err;
+          unread.push(summary);
+          return [];
+        }
+        if (status === 429 && reportUnreadListPart(part(summary))) {
+          throttled = true;
+          unread.push(summary);
+          return [];
+        }
+        throw err;
+      }
+    });
+    if (order.length > 0 && refusedUntracked === order.length) throw refusal;
+    return { rows: lists.flat(), unread };
+  }
+
+  /** How a type names a domain it did not read: the row itself, or the domain's children. */
+  private unreadDomainPart(
+    typeId: string,
+    accountId: string,
+  ): (summary: DomainSummary) => UnreadListPart {
+    return ({ region, domain }) => {
+      const id = resourceId(accountId, "mailgun-domain", `${region}/${domain.name ?? ""}`);
+      return typeId === "mailgun-domain" ? { idPrefixes: [id] } : { parentResourceIds: [id] };
+    };
+  }
+
+  private async perDomain(
+    typeId: string,
+    accountId: string,
+    load: (summary: DomainSummary) => Promise<ResourceInstance[]>,
+  ): Promise<ResourceInstance[]> {
+    const summaries = this.rowsOf(typeId, accountId, await this.domainSummaries());
+    const { rows } = await this.fanOut(summaries, this.unreadDomainPart(typeId, accountId), load);
+    return rows;
   }
 
   // -------------------------------------------------------------------------
   // Domains (shared by the domain, DNS, webhook and credential listers)
   // -------------------------------------------------------------------------
 
-  private domainSummaries(): Promise<Array<{ region: MailgunRegion; domain: MgDomain }>> {
+  private domainSummaries(): Promise<RegionRead<DomainSummary>> {
     return this.perRegion(async (region) =>
-      (await listSkip<MgDomain>(this.ctx, region, "/v4/domains", {}, 1000)).map((domain) => ({
-        region,
-        domain,
-      })),
+      (await listSkip<MgDomain>(this.ctx, region, "/v4/domains", { pageSize: 1000 })).map(
+        (domain) => ({ region, domain }),
+      ),
     );
   }
 
@@ -253,17 +404,15 @@ export class MailgunClient implements PluginClient {
     };
   }
 
-  private domains(): Promise<DomainBundle[]> {
+  private domains(part: (summary: DomainSummary) => UnreadListPart): Promise<DomainsRead> {
     if (this.domainCache && Date.now() - this.domainCache.at < CACHE_MS)
       return this.domainCache.value;
     const value = (async () => {
       const summaries = await this.domainSummaries();
-      return mapLimit(summaries, CONCURRENCY, ({ region, domain }) =>
-        this.domainBundle(region, domain.name ?? "").catch((): DomainBundle => ({
-          region,
-          detail: { domain },
-        })),
-      );
+      const { rows, unread } = await this.fanOut(summaries.rows, part, async (s) => [
+        await this.domainBundle(s.region, s.domain.name ?? ""),
+      ]);
+      return { summaries, bundles: rows, unread };
     })();
     value.catch(() => {
       if (this.domainCache?.value === value) this.domainCache = undefined;
@@ -276,6 +425,80 @@ export class MailgunClient implements PluginClient {
     this.domainCache = undefined;
   }
 
+  /** The domain bundles, naming what went unread for each type, since the read is cached. */
+  private async readDomains(typeId: string, accountId: string): Promise<DomainBundle[]> {
+    const part = this.unreadDomainPart(typeId, accountId);
+    const { summaries, bundles, unread } = await this.domains(part);
+    this.rowsOf(typeId, accountId, summaries);
+    for (const summary of unread) reportUnreadListPart(part(summary));
+    return bundles;
+  }
+
+  private async domainWebhooks(
+    accountId: string,
+    region: MailgunRegion,
+    domain: string,
+  ): Promise<ResourceInstance[]> {
+    const path = `/v3/domains/${encodeURIComponent(domain)}/webhooks`;
+    const res = await this.call<{
+      webhooks?: Record<string, { urls?: string[] } | null> | null;
+    }>(region, path);
+    const webhooks = res?.webhooks;
+    if (webhooks === undefined || Array.isArray(webhooks)) {
+      throw new ListPageError({
+        vendor: "Mailgun",
+        path,
+        key: "webhooks",
+        found: webhooks,
+        page: res,
+      });
+    }
+    return [...groupWebhooks(webhooks ?? {})].map(([url, events]) =>
+      mapWebhook(accountId, region, domain, url, events),
+    );
+  }
+
+  private async domainCredentials(
+    accountId: string,
+    region: MailgunRegion,
+    domain: string,
+  ): Promise<ResourceInstance[]> {
+    const creds = await listSkip<MgCredential>(
+      this.ctx,
+      region,
+      `/v3/domains/${encodeURIComponent(domain)}/credentials`,
+      { maxItems: MAX_CREDENTIALS_PER_DOMAIN },
+    );
+    return creds.map((c) => mapCredential(accountId, region, domain, c));
+  }
+
+  private async tags(accountId: string, region: MailgunRegion): Promise<ResourceInstance[]> {
+    const path = "/v1/analytics/tags";
+    const out: ResourceInstance[] = [];
+    while (out.length < MAX_TAGS) {
+      const res = await this.call<{ items?: MgTag[] }>(region, path, {
+        json: {
+          pagination: { sort: "lastseen:desc", skip: out.length, limit: TAG_PAGE_SIZE },
+          include_subaccounts: false,
+        },
+      });
+      const items = requireListPage(res?.items, {
+        vendor: "Mailgun",
+        path,
+        key: "items",
+        page: res,
+      });
+      if (items.length === 0) return out;
+      out.push(...items.map((t) => mapTag(accountId, region, t)));
+    }
+    throw new ListTruncatedError({
+      vendor: "Mailgun",
+      path,
+      items: out.length,
+      maxItems: MAX_TAGS,
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Listing
   // -------------------------------------------------------------------------
@@ -286,68 +509,63 @@ export class MailgunClient implements PluginClient {
         case "mailgun-account":
           return [await this.loadAccount(accountId)];
         case "mailgun-domain":
-          return (await this.domains()).map((b) => mapDomain(accountId, b));
+          return (await this.readDomains(typeId, accountId)).map((b) => mapDomain(accountId, b));
         case "mailgun-dns-record":
-          return (await this.domains()).flatMap((b) => mapDnsRecords(accountId, b));
+          return (await this.readDomains(typeId, accountId)).flatMap((b) =>
+            mapDnsRecords(accountId, b),
+          );
         case "mailgun-api-key":
           return this.scoped(async () => {
-            const res = await this.call<{ items?: MgKey[] }>(this.home, "/v1/keys");
-            return (res?.items ?? []).map((k) => mapKey(accountId, k));
+            const path = "/v1/keys";
+            const res = await this.call<{ items?: MgKey[] }>(this.home, path);
+            return requireListPage(res?.items, {
+              vendor: "Mailgun",
+              path,
+              key: "items",
+              page: res,
+            }).map((k) => mapKey(accountId, k));
           });
-        case "mailgun-webhook": {
-          const domains = await this.domainSummaries();
-          const lists = await mapLimit(domains, CONCURRENCY, async ({ region, domain }) => {
-            const name = domain.name ?? "";
-            const res = await this.call<{ webhooks?: Record<string, { urls?: string[] } | null> }>(
-              region,
-              `/v3/domains/${encodeURIComponent(name)}/webhooks`,
-            ).catch(() => undefined);
-            return [...groupWebhooks(res?.webhooks ?? {})].map(([url, events]) =>
-              mapWebhook(accountId, region, name, url, events),
-            );
-          });
-          return lists.flat();
-        }
+        case "mailgun-webhook":
+          return this.perDomain(typeId, accountId, ({ region, domain }) =>
+            this.domainWebhooks(accountId, region, domain.name ?? ""),
+          );
         case "mailgun-account-webhook":
           return this.scoped(async () => {
-            const res = await this.call<{ webhooks?: MgAccountWebhook[] }>(
-              this.home,
-              "/v1/webhooks",
-            );
-            return (res?.webhooks ?? []).map((w) => mapAccountWebhook(accountId, w));
+            const path = "/v1/webhooks";
+            const res = await this.call<{ webhooks?: MgAccountWebhook[] }>(this.home, path);
+            return requireListPage(res?.webhooks, {
+              vendor: "Mailgun",
+              path,
+              key: "webhooks",
+              page: res,
+            }).map((w) => mapAccountWebhook(accountId, w));
           });
         case "mailgun-route":
-          return this.perRegion(async (region) =>
-            (await listSkip<MgRoute>(this.ctx, region, "/v3/routes", {}, 1000)).map((r) =>
+          return this.regionRows(typeId, accountId, async (region) =>
+            (await listSkip<MgRoute>(this.ctx, region, "/v3/routes", { pageSize: 1000 })).map((r) =>
               mapRoute(accountId, region, r),
             ),
           );
         case "mailgun-mailing-list":
-          return this.perRegion(async (region) =>
+          return this.regionRows(typeId, accountId, async (region) =>
             (await listPaging<MgList>(this.ctx, region, "/v3/lists/pages", { limit: 100 })).map(
               (l) => mapList(accountId, region, l),
             ),
           );
-        case "mailgun-smtp-credential": {
-          const domains = await this.domainSummaries();
-          const lists = await mapLimit(domains, CONCURRENCY, async ({ region, domain }) => {
-            const name = domain.name ?? "";
-            const creds = await listSkip<MgCredential>(
-              this.ctx,
-              region,
-              `/v3/domains/${encodeURIComponent(name)}/credentials`,
-            ).catch(() => [] as MgCredential[]);
-            return creds.map((c) => mapCredential(accountId, region, name, c));
-          });
-          return lists.flat();
-        }
+        case "mailgun-smtp-credential":
+          return this.perDomain(typeId, accountId, ({ region, domain }) =>
+            this.domainCredentials(accountId, region, domain.name ?? ""),
+          );
         case "mailgun-ip-pool":
           return this.scoped(async () => (await this.pools()).map((p) => mapIpPool(accountId, p)));
         case "mailgun-ip":
           return this.scoped(async () => {
             const [ips, pools] = await Promise.all([
               this.ips(),
-              this.pools().catch(() => [] as MgIpPool[]),
+              this.pools().catch((err): MgIpPool[] => {
+                if (isUnavailable(err)) return [];
+                throw err;
+              }),
             ]);
             return ips.map((ip) =>
               mapIp(
@@ -360,21 +578,7 @@ export class MailgunClient implements PluginClient {
             );
           });
         case "mailgun-tag":
-          return this.perRegion(async (region) => {
-            const out: ResourceInstance[] = [];
-            for (let skip = 0; skip < 5000; skip += 100) {
-              const res = await this.call<{ items?: MgTag[] }>(region, "/v1/analytics/tags", {
-                json: {
-                  pagination: { sort: "lastseen:desc", skip, limit: 100 },
-                  include_subaccounts: false,
-                },
-              });
-              const items = res?.items ?? [];
-              out.push(...items.map((t) => mapTag(accountId, region, t)));
-              if (items.length < 100) break;
-            }
-            return out;
-          });
+          return this.regionRows(typeId, accountId, (region) => this.tags(accountId, region));
         case "mailgun-subaccount":
           return this.scoped(async () =>
             (await this.subaccounts()).map((s) => mapSubaccount(accountId, s)),
@@ -386,31 +590,30 @@ export class MailgunClient implements PluginClient {
   }
 
   private async pools(): Promise<MgIpPool[]> {
-    const res = await this.call<{ ip_pools?: MgIpPool[] }>(this.home, "/v3/ip_pools");
-    return res?.ip_pools ?? [];
+    const path = "/v3/ip_pools";
+    const res = await this.call<{ ip_pools?: MgIpPool[] }>(this.home, path);
+    return requireListPage(res?.ip_pools, {
+      vendor: "Mailgun",
+      path,
+      key: "ip_pools",
+      page: res,
+    });
   }
 
   private async ips(): Promise<MgIpDetail[]> {
-    const res = await this.call<{ details?: MgIpDetail[]; items?: string[] }>(this.home, "/v3/ips");
+    const path = "/v3/ips";
+    const res = await this.call<{ details?: MgIpDetail[]; items?: string[] }>(this.home, path);
     if (res?.details?.length) return res.details;
-    return (res?.items ?? []).map((ip) => ({ ip }));
+    return requireListPage(res?.items, { vendor: "Mailgun", path, key: "items", page: res }).map(
+      (ip) => ({ ip }),
+    );
   }
 
-  private async subaccounts(): Promise<MgSubaccount[]> {
-    const out: MgSubaccount[] = [];
-    for (let skip = 0; skip < 10_000; skip += 1000) {
-      const res = await this.call<{ subaccounts?: MgSubaccount[]; total?: number }>(
-        this.home,
-        "/v5/accounts/subaccounts",
-        {
-          query: { limit: 1000, skip },
-        },
-      );
-      const items = res?.subaccounts ?? [];
-      out.push(...items);
-      if (items.length < 1000) break;
-    }
-    return out;
+  private subaccounts(): Promise<MgSubaccount[]> {
+    return listSkip<MgSubaccount>(this.ctx, this.home, "/v5/accounts/subaccounts", {
+      pageSize: 1000,
+      key: "subaccounts",
+    });
   }
 
   /** The custom monthly limit, or undefined when none is set (Mailgun answers 404). */
@@ -431,7 +634,7 @@ export class MailgunClient implements PluginClient {
   private async loadAccount(accountId: string): Promise<ResourceInstance> {
     // Listing domains doubles as the credential check: a bad key fails here.
     const [domains, limit] = await Promise.all([
-      this.domainSummaries(),
+      this.domainSummaries().then((read) => read.rows),
       this.monthlyLimit().catch(() => undefined),
     ]);
     const at = new Date().toISOString();
@@ -541,7 +744,9 @@ export class MailgunClient implements PluginClient {
               `/v3/ip_pools/${encodeURIComponent(ext)}`,
             ),
             this.ips().catch(() => [] as MgIpDetail[]),
-            this.domainSummaries().catch(() => []),
+            this.domainSummaries()
+              .then((read) => read.rows)
+              .catch((): DomainSummary[] => []),
           ]);
           const p = pool?.ip_pool ?? pool;
           const inPool = new Set(p?.ips ?? []);
@@ -564,6 +769,22 @@ export class MailgunClient implements PluginClient {
             this.monthlyLimit(ext).catch(() => undefined),
           ]);
           return mapSubaccount(accountId, res?.subaccount ?? { id: ext }, limit);
+        }
+        // These lists read only so many domains a poll, and this one's may not be among them.
+        case "mailgun-webhook":
+        case "mailgun-smtp-credential":
+        case "mailgun-dns-record": {
+          const domain = rest.slice(0, Math.max(rest.indexOf("/"), 0));
+          if (!domain) throw notFound(typeId, resourceId);
+          const children =
+            typeId === "mailgun-webhook"
+              ? await this.domainWebhooks(accountId, region, domain)
+              : typeId === "mailgun-smtp-credential"
+                ? await this.domainCredentials(accountId, region, domain)
+                : mapDnsRecords(accountId, await this.domainBundle(region, domain));
+          const found = children.find((r) => r.externalId === ext);
+          if (!found) throw notFound(typeId, resourceId);
+          return found;
         }
         default: {
           const all = await runPluginEffect(this.listResources(typeId, accountId));
@@ -719,7 +940,8 @@ export class MailgunClient implements PluginClient {
   }
 
   private async domainOptions(): Promise<SelectOption[]> {
-    return (await this.domainSummaries().catch(() => [])).map(({ region, domain }) => ({
+    const read = await this.domainSummaries().catch(() => undefined);
+    return (read?.rows ?? []).map(({ region, domain }) => ({
       id: `${region}/${domain.name ?? ""}`,
       label: domain.name ?? "",
       description: `${region.toUpperCase()}, ${domain.state ?? ""}`,
@@ -1274,10 +1496,9 @@ export class MailgunClient implements PluginClient {
           const slash = rest.indexOf("/");
           const domain = rest.slice(0, slash);
           const url = rest.slice(slash + 1);
-          const current = await runPluginEffect(this.listResources(typeId, accountId)).then((all) =>
-            all.find((r) => r.externalId === ext),
-          );
-          const merged = { ...(current?.fields ?? {}), ...fields } as Record<
+          // This write replaces the webhook's events, so what is there has to be read first.
+          const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          const merged = { ...current.fields, ...fields } as Record<
             string,
             string | boolean | number
           >;
@@ -1291,10 +1512,9 @@ export class MailgunClient implements PluginClient {
           return mapWebhook(accountId, region, domain, url, events);
         }
         case "mailgun-account-webhook": {
-          const current = (await runPluginEffect(this.listResources(typeId, accountId))).find(
-            (r) => r.externalId === ext,
-          );
-          const merged = { ...(current?.fields ?? {}), ...fields } as Record<
+          // This write replaces the URL and description too, so a miss must not reach it.
+          const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
+          const merged = { ...current.fields, ...fields } as Record<
             string,
             string | boolean | number
           >;
