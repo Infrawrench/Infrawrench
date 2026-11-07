@@ -331,6 +331,81 @@ describe("listResources", () => {
     expect(lb.fields["networkIds"]).toBe("40");
   });
 
+  it("rolls load-balancer target health up across services and resolved label selectors", async () => {
+    const c = makeClient();
+    const target = (...statuses: string[]) => ({
+      type: "server",
+      server: { id: 1, ip: "10.0.0.2" },
+      health_status: statuses.map((status) => ({ listen_port: 80, status })),
+    });
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        load_balancers: [
+          { id: 1, name: "all-healthy", targets: [target("healthy", "healthy")] },
+          { id: 2, name: "one-port-down", targets: [target("healthy", "unhealthy")] },
+          { id: 3, name: "all-down", targets: [target("unhealthy"), target("unhealthy")] },
+          { id: 4, name: "still-checking", targets: [target("healthy", "unknown")] },
+          { id: 5, name: "no-targets", targets: [] },
+          {
+            id: 6,
+            name: "selector",
+            targets: [
+              {
+                type: "label_selector",
+                label_selector: { selector: "env=prod" },
+                targets: [target("healthy"), target("unhealthy")],
+              },
+            ],
+          },
+          { id: 7, name: "no-reports", targets: [{ type: "ip", ip: { ip: "203.0.113.1" } }] },
+        ],
+      }),
+    );
+    const health = (await c.listResources("load-balancer", ACCOUNT)).map((lb) => [
+      lb.displayName,
+      lb.fields["targetHealth"],
+    ]);
+    expect(health).toEqual([
+      ["all-healthy", "healthy"],
+      ["one-port-down", "degraded"],
+      ["all-down", "unhealthy"],
+      ["still-checking", "unknown"],
+      ["no-targets", "unknown"],
+      ["selector", "degraded"],
+      ["no-reports", "unknown"],
+    ]);
+  });
+
+  it("shows load-balancer target health as the stat and the status dot", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValue(
+      okJson({
+        load_balancers: [
+          {
+            id: 1,
+            name: "lb",
+            targets: [
+              {
+                type: "server",
+                server: { id: 1, ip: "10.0.0.2" },
+                health_status: [{ listen_port: 80, status: "unhealthy" }],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const [lb] = await c.listResources("load-balancer", ACCOUNT);
+    expect(c.renderSidebarItem(lb!).status).toEqual({ kind: "status-dot", status: "error" });
+    expect(c.renderDetail(lb!).status).toEqual({ kind: "status-dot", status: "error" });
+    const stats = await c.fetchDashboardStats("load-balancer", lb!.id, ACCOUNT);
+    expect(stats[0]).toEqual({
+      label: "Target Health",
+      value: "unhealthy",
+      variant: "status-error",
+    });
+  });
+
   it("throws on unknown type", async () => {
     const c = makeClient();
     await expect(c.listResources("nope", ACCOUNT)).rejects.toThrow(/unknown resource type/);
@@ -905,7 +980,7 @@ describe("attachResource", () => {
     fetchMock
       .mockResolvedValueOnce(
         okJson({
-          load_balancers: [{ id: 40, name: "lb", status: "running", location: { name: "fsn1" } }],
+          load_balancers: [{ id: 40, name: "lb", location: { name: "fsn1" } }],
         }),
       )
       .mockResolvedValueOnce(
@@ -939,7 +1014,7 @@ describe("attachResource", () => {
     fetchMock
       .mockResolvedValueOnce(
         okJson({
-          load_balancers: [{ id: 40, name: "lb", status: "running", location: { name: "nbg1" } }],
+          load_balancers: [{ id: 40, name: "lb", location: { name: "nbg1" } }],
         }),
       )
       .mockResolvedValueOnce(
@@ -989,9 +1064,7 @@ describe("attachResource", () => {
       .mockResolvedValueOnce(
         okJson({ networks: [{ id: 50, name: "net", ip_range: "10.0.0.0/16" }] }),
       )
-      .mockResolvedValueOnce(
-        okJson({ load_balancers: [{ id: 40, name: "lb", status: "running" }] }),
-      )
+      .mockResolvedValueOnce(okJson({ load_balancers: [{ id: 40, name: "lb" }] }))
       .mockResolvedValueOnce(okJson({}, 204));
     await c.attachResource(
       "network",

@@ -1374,8 +1374,18 @@ export class HetznerClient implements PluginClient {
       }
 
       if (resourceTypeId === "load-balancer") {
+        const health = String(f["targetHealth"] ?? "unknown");
         return [
-          { label: "Status", value: String(f["status"] ?? "unknown") },
+          {
+            label: "Target Health",
+            value: health,
+            variant:
+              health === "healthy"
+                ? ("status-healthy" as const)
+                : health === "unhealthy"
+                  ? ("status-error" as const)
+                  : ("status-degraded" as const),
+          },
           { label: "Type", value: String(f["type"] ?? "") },
           { label: "Targets", value: String(f["targetCount"] ?? 0) },
           ...(resource.resolvedOutputs["ipv4"]
@@ -1592,10 +1602,7 @@ export class HetznerClient implements PluginClient {
 
   private renderDetailInner(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
-    const status =
-      resource.resourceTypeId === "server"
-        ? serverStatusToDot(String(fields["status"] ?? "unknown"))
-        : ("info" as const);
+    const status = resourceDot(resource);
 
     // Power off/on header actions for the server lifecycle pair (see the
     // type's `lifecycle` declaration).
@@ -1797,10 +1804,7 @@ export class HetznerClient implements PluginClient {
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
-    const status =
-      resource.resourceTypeId === "server"
-        ? serverStatusToDot(String(resource.fields["status"] ?? "unknown"))
-        : ("info" as const);
+    const status = resourceDot(resource);
 
     return {
       id: resource.id,
@@ -2019,7 +2023,7 @@ export class HetznerClient implements PluginClient {
       displayName: lb.name,
       fields: {
         name: lb.name,
-        status: lb.status ?? "unknown",
+        targetHealth: targetHealth(lb),
         type: lb.load_balancer_type?.name ?? "",
         location: lb.location?.name ?? "",
         ipv4: lb.public_net?.ipv4?.ip ?? "",
@@ -2179,6 +2183,47 @@ export class HetznerClient implements PluginClient {
   }
 }
 
+function resourceDot(resource: ResourceInstance): ResourceStatus {
+  if (resource.resourceTypeId === "server") {
+    return serverStatusToDot(String(resource.fields["status"] ?? "unknown"));
+  }
+  if (resource.resourceTypeId === "load-balancer") {
+    return targetHealthToDot(String(resource.fields["targetHealth"] ?? "unknown"));
+  }
+  return "info";
+}
+
+function targetHealthToDot(health: string): ResourceStatus {
+  switch (health) {
+    case "healthy":
+      return "healthy";
+    case "degraded":
+      return "degraded";
+    case "unhealthy":
+      return "error";
+    default:
+      return "info";
+  }
+}
+
+/**
+ * Hetzner reports no status for a load balancer itself, only a health check per
+ * target and service port, on the target or on what a label selector resolved to.
+ */
+function targetHealth(lb: HetznerLoadBalancer): string {
+  const reports = (lb.targets ?? []).flatMap((target) => [
+    ...("health_status" in target ? (target.health_status ?? []) : []),
+    ...("targets" in target
+      ? (target.targets ?? []).flatMap((resolved) => resolved.health_status ?? [])
+      : []),
+  ]);
+  if (reports.length === 0) return "unknown";
+  const unhealthy = reports.filter((report) => report.status === "unhealthy").length;
+  if (unhealthy === reports.length) return "unhealthy";
+  if (unhealthy > 0) return "degraded";
+  return reports.every((report) => report.status === "healthy") ? "healthy" : "unknown";
+}
+
 function serverStatusToDot(status: string): ResourceStatus {
   switch (status) {
     case "running":
@@ -2308,8 +2353,5 @@ type HetznerNetwork = CloudResponse<"list_networks">["networks"][number] & {
   /** Legacy spelling kept for payloads that used it. */
   exposes_routes_to_vswitch?: boolean;
 };
-type HetznerLoadBalancer = CloudResponse<"list_load_balancers">["load_balancers"][number] & {
-  /** Not in the document: Hetzner reports no load balancer status, so this reads "unknown". */
-  status?: string;
-};
+type HetznerLoadBalancer = CloudResponse<"list_load_balancers">["load_balancers"][number];
 type HetznerPrimaryIp = CloudResponse<"list_primary_ips">["primary_ips"][number] & LegacyDatacenter;

@@ -6,10 +6,13 @@ export const LoadBalancerResourceType = rt({
   description: "A Hetzner Cloud Load Balancer with services, targets, and public IPs",
   fields: [
     f("name", "Name"),
-    f("status", "Status", {
+    f("targetHealth", "Target Health", {
       showcase: true,
       kind: "enum",
-      enumValues: ["running", "initializing", "unknown"],
+      enumValues: ["healthy", "degraded", "unhealthy", "unknown"],
+      required: false,
+      description:
+        "Health checks across every target and service port. Unknown means no check has reported yet, including a load balancer with no targets",
       editable: false,
     }),
     f("type", "Type", { required: false, editable: false }),
