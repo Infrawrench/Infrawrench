@@ -627,11 +627,13 @@ export class CoreWeaveClient implements PluginClient {
             startTime: window.start,
             endTime: window.end,
             groupBy: "location",
+            partial: true,
           }).catch(() => [] as FocusRow[]);
           const plans = await fetchFocusRows(this.ctx, {
             startTime: window.start,
             endTime: window.end,
             groupBy: "capacity_plan",
+            partial: true,
           }).catch(() => [] as FocusRow[]);
           return [
             ...gpuHourSeriesFromRows(location),

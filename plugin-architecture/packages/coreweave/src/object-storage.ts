@@ -1,7 +1,12 @@
 import type { S3StorageConfig } from "@infrawrench/plugin-base";
-import { hostFetch, signedS3Fetch, virtualHostedUrl } from "@infrawrench/plugin-base";
+import {
+  hostFetch,
+  ListTruncatedError,
+  signedS3Fetch,
+  virtualHostedUrl,
+} from "@infrawrench/plugin-base";
 import type { CoreWeaveContext } from "./api.js";
-import { cwFetch } from "./api.js";
+import { cloudList, cwFetch } from "./api.js";
 import type { CwAccessKey, CwBucket } from "./mappers.js";
 
 /**
@@ -28,17 +33,27 @@ export const S3_ENDPOINT = `https://${S3_HOST}`;
 const PAGE = 1000;
 const MAX_PAGES = 50;
 
-export async function listBuckets(ctx: CoreWeaveContext): Promise<CwBucket[]> {
-  const out: CwBucket[] = [];
+/** Every row of an offset list. Neither list reports a total, so a short page ends it. */
+async function listAllInfo<T>(ctx: CoreWeaveContext, path: string): Promise<T[]> {
+  const out: T[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
-    const res = await cwFetch<{ info?: CwBucket[] }>(ctx, "/v1/cwobject/bucket-info", {
+    const res = await cwFetch<{ info?: T[] | null }>(ctx, path, {
       query: { offset: page * PAGE, limit: PAGE },
     });
-    const batch = res?.info ?? [];
+    const batch = cloudList(res, res?.info, { path, key: "info" });
     out.push(...batch);
-    if (batch.length < PAGE) break;
+    if (batch.length < PAGE) return out;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: "CoreWeave",
+    path,
+    items: out.length,
+    maxPages: MAX_PAGES,
+  });
+}
+
+export function listBuckets(ctx: CoreWeaveContext): Promise<CwBucket[]> {
+  return listAllInfo<CwBucket>(ctx, "/v1/cwobject/bucket-info");
 }
 
 export async function getBucket(ctx: CoreWeaveContext, name: string): Promise<CwBucket> {
@@ -68,17 +83,8 @@ export async function setBucketSettings(
   });
 }
 
-export async function listAccessKeys(ctx: CoreWeaveContext): Promise<CwAccessKey[]> {
-  const out: CwAccessKey[] = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const res = await cwFetch<{ info?: CwAccessKey[] }>(ctx, "/v1/cwobject/access-key", {
-      query: { offset: page * PAGE, limit: PAGE },
-    });
-    const batch = res?.info ?? [];
-    out.push(...batch);
-    if (batch.length < PAGE) break;
-  }
-  return out;
+export function listAccessKeys(ctx: CoreWeaveContext): Promise<CwAccessKey[]> {
+  return listAllInfo<CwAccessKey>(ctx, "/v1/cwobject/access-key");
 }
 
 export async function setPrincipalKeyStatus(

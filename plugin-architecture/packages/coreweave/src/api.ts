@@ -1,5 +1,5 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { jsonRestFetch, requireListPage } from "@infrawrench/plugin-base";
 
 /**
  * Everything a CoreWeave request needs. One API access token reaches every
@@ -82,6 +82,24 @@ export function cwFetch<T>(
   init?: RequestInit & { query?: Query },
 ): Promise<T> {
   return bearerFetch<T>(ctx, `${API_BASE}${path}`, { ...init, errorPath: path });
+}
+
+/**
+ * The list in a Cloud API answer, or a `ListPageError`. These routes are protobuf
+ * services behind a JSON gateway whose references mark no list field required, and proto3
+ * JSON leaves an empty list out. So an answer with nothing else in it is an empty list,
+ * while one holding some other field is a renamed key or a wrapped error. `siblings` are
+ * the other fields the reference gives the same answer.
+ */
+export function cloudList<T>(
+  page: object | null | undefined,
+  list: readonly T[] | null | undefined,
+  where: { path: string; key: string; siblings?: readonly string[] },
+): T[] {
+  const { path, key, siblings = [] } = where;
+  const alone = page && Object.keys(page).every((k) => k === key || siblings.includes(k));
+  if (list === undefined && alone) return [];
+  return requireListPage(list, { vendor: "CoreWeave", path, key, page });
 }
 
 /**

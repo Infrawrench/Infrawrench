@@ -1,3 +1,4 @@
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { CoreWeaveContext } from "./api.js";
 import { cwFetch } from "./api.js";
 
@@ -42,7 +43,7 @@ export interface FocusRow {
 }
 
 interface FocusPage {
-  data?: FocusRow[];
+  data?: FocusRow[] | null;
   next_page_token?: string | null;
   data_as_of?: string;
 }
@@ -55,13 +56,16 @@ export interface FocusQuery {
   groupBy: FocusGroupBy;
   productFamily?: "GPU Compute" | "CPU Compute" | "Storage" | "Network";
   cluster?: string;
+  /** For a chart, where a window past the page cap can show what was read. */
+  partial?: boolean;
 }
 
 /** The API's own ceiling on one request's window. */
 export const FOCUS_MAX_WINDOW_DAYS = 90;
 const PAGE_SIZE = 1000;
-/** Hard stop so a cursor that never ends cannot spin forever. */
+/** Per window, so about 230 rows an hour across the 90 days before a read throws. */
 const MAX_PAGES = 500;
+const FOCUS_PATH = "/v1/billing/focus";
 const DAY_MS = 86_400_000;
 
 /** Every row for one window and view, following `next_page_token`. */
@@ -71,7 +75,7 @@ export async function fetchFocusRows(ctx: CoreWeaveContext, q: FocusQuery): Prom
   for (const [start, end] of windows) {
     let token: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
-      const res = await cwFetch<FocusPage>(ctx, "/v1/billing/focus", {
+      const res = await cwFetch<FocusPage>(ctx, FOCUS_PATH, {
         query: {
           start_time: start,
           end_time: end,
@@ -83,9 +87,19 @@ export async function fetchFocusRows(ctx: CoreWeaveContext, q: FocusQuery): Prom
           ...(token ? { page_token: token } : {}),
         },
       });
-      out.push(...(res?.data ?? []));
+      out.push(
+        ...requireListPage(res?.data, { vendor: "CoreWeave", path: FOCUS_PATH, key: "data" }),
+      );
       token = res?.next_page_token || undefined;
       if (!token) break;
+    }
+    if (token && !q.partial) {
+      throw new ListTruncatedError({
+        vendor: "CoreWeave",
+        path: FOCUS_PATH,
+        items: out.length,
+        maxPages: MAX_PAGES,
+      });
     }
   }
   return out;

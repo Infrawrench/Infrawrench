@@ -152,6 +152,7 @@ export async function gpuHourSeries(
     startTime: toApiTime(Math.floor(range.startMs / 86_400_000) * 86_400_000),
     endTime: toApiTime(Math.floor(range.endMs / 3_600_000) * 3_600_000),
     groupBy: "location",
+    partial: true,
     productFamily: "GPU Compute",
     ...(clusterId ? { cluster: clusterId } : {}),
   }).catch(() => [] as FocusRow[]);
