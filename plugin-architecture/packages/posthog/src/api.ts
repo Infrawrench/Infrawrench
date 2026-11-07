@@ -2,10 +2,12 @@ import {
   createApiClient,
   pathEncode,
   restRequest,
+  withCursorPagination,
   type ApiBody,
   type ApiClient,
   type ApiResponse,
   type HttpHostServices,
+  type NextPage,
   type NoSlashString,
 } from "@infrawrench/plugin-base";
 import type { components, operations, paths } from "./api-types.gen.js";
@@ -14,7 +16,8 @@ import type { components, operations, paths } from "./api-types.gen.js";
  * PostHog's private (management) API, verified against the OpenAPI schema
  * served at `https://us.posthog.com/api/schema/` (2026-10): personal API key
  * as `Authorization: Bearer phx_…`, every list a DRF page
- * (`{count, next, previous, results}` with `limit`/`offset`), project objects
+ * (`{count, next, previous, results}` with `limit`/`offset`) but actions, which
+ * answer `{count, results}` for the same parameters, project objects
  * under `/api/projects/{project_id}/…`, organization objects under
  * `/api/organizations/{organization_id}/…`.
  */
@@ -23,7 +26,35 @@ export const CLOUD_HOSTS: Record<string, string> = {
   eu: "https://eu.posthog.com",
 };
 
-export type PostHogApi = ApiClient<paths>;
+/** The document gives `limit` no maximum, so this stays the size the plugin has always asked for. */
+const PAGE = 200;
+/** 50,000 rows, which is as many as the host's sync can prune against. */
+const MAX_PAGES = 250;
+
+/**
+ * `next` says whether to go on, where a page has one. The actions route has only
+ * `count`, and a page with neither carries on until an empty one. Either way the
+ * next page starts after the last row read, since a page can be shorter than asked.
+ */
+const nextOffset: NextPage = ({ body, items, cursor }) => {
+  const page: { next?: string | null; count?: number } =
+    typeof body === "object" && body !== null ? body : {};
+  const offset = Number(cursor) + items.length;
+  if (page.next !== undefined) return page.next ? offset : undefined;
+  return page.count === undefined || offset < page.count ? offset : undefined;
+};
+
+const withOffsetPages = (client: ApiClient<paths>) =>
+  withCursorPagination(client, {
+    cursorParam: "offset",
+    firstCursor: 0,
+    sizeParam: "limit",
+    pageSize: PAGE,
+    maxPages: MAX_PAGES,
+    next: nextOffset,
+  });
+
+export type PostHogApi = ReturnType<typeof withOffsetPages>;
 
 interface PostHogConnection {
   baseUrl: string;
@@ -95,49 +126,21 @@ const headersFor = (connection: PostHogConnection) => ({
 export function createPostHogContext(connection: PostHogConnection): PostHogContext {
   return {
     ...connection,
-    api: createApiClient<paths>({
-      vendor: "PostHog",
-      baseUrl: connection.baseUrl,
-      headers: headersFor(connection),
-      http: connection.http,
-      caCert: connection.caCert,
-      httpError: ({ status, path, body }) => apiError(status, path, body),
-    }),
+    api: withOffsetPages(
+      createApiClient<paths>({
+        vendor: "PostHog",
+        baseUrl: connection.baseUrl,
+        headers: headersFor(connection),
+        http: connection.http,
+        caCert: connection.caCert,
+        httpError: ({ status, path, body }) => apiError(status, path, body),
+      }),
+    ),
   };
 }
 
 export function statusOf(err: unknown): number {
   return err instanceof PostHogApiError ? err.status : 0;
-}
-
-const PAGE = 200;
-const MAX_PAGES = 25;
-
-export interface PageQuery {
-  limit: number;
-  offset: number;
-}
-
-interface Page<Row> {
-  results?: readonly Row[];
-  next?: string | null;
-}
-
-/**
- * Walk a DRF `limit`/`offset` list. By hand rather than `getAll`, which reads a
- * `results` that is not an array as an empty list, where this has always failed.
- */
-export async function pagedList<Row>(
-  fetchPage: (query: PageQuery) => Promise<Page<Row> | undefined>,
-): Promise<Row[]> {
-  const out: Row[] = [];
-  for (let i = 0; i < MAX_PAGES; i++) {
-    const res = await fetchPage({ limit: PAGE, offset: i * PAGE });
-    const items = res?.results ?? [];
-    out.push(...items);
-    if (!res?.next || items.length === 0) break;
-  }
-  return out;
 }
 
 /**
@@ -200,54 +203,54 @@ export type ProjectObjectType = keyof ProjectObjects;
 
 interface ObjectRoutes<Row> {
   route: string;
-  list(api: PostHogApi, project: NoSlashString, query: PageQuery): Promise<Page<Row>>;
+  list(api: PostHogApi, project: NoSlashString): Promise<readonly Row[]>;
   get(api: PostHogApi, project: NoSlashString, id: NoSlashString): Promise<Row>;
 }
 
 export const OBJECTS: { [T in ProjectObjectType]: ObjectRoutes<ProjectObjects[T]> } = {
   "feature-flag": {
     route: "feature_flags",
-    list: (api, p, query) => api.get(`/api/projects/${p}/feature_flags/`, { query }),
+    list: (api, p) => api.getAll(`/api/projects/${p}/feature_flags/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/feature_flags/${id}/`),
   },
   experiment: {
     route: "experiments",
-    list: (api, p, query) => api.get(`/api/projects/${p}/experiments/`, { query }),
+    list: (api, p) => api.getAll(`/api/projects/${p}/experiments/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/experiments/${id}/`),
   },
   cohort: {
     route: "cohorts",
-    list: (api, p, query) => api.get(`/api/projects/${p}/cohorts/`, { query }),
+    list: (api, p) => api.getAll(`/api/projects/${p}/cohorts/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/cohorts/${id}/`),
   },
   dashboard: {
     route: "dashboards",
-    list: (api, p, query) => api.get(`/api/projects/${p}/dashboards/`, { query }),
+    list: (api, p) => api.getAll(`/api/projects/${p}/dashboards/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/dashboards/${id}/`),
   },
   insight: {
     route: "insights",
-    list: (api, p, query) => api.get(`/api/projects/${p}/insights/`, { query }),
+    list: (api, p) => api.getAll(`/api/projects/${p}/insights/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/insights/${id}/`),
   },
   action: {
     route: "actions",
-    list: (api, p, query) => api.get(`/api/projects/${p}/actions/`, { query }),
+    list: (api, p) => api.getAll(`/api/projects/${p}/actions/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/actions/${id}/`),
   },
   annotation: {
     route: "annotations",
-    list: (api, p, query) => api.get(`/api/projects/${p}/annotations/`, { query }),
+    list: (api, p) => api.getAll(`/api/projects/${p}/annotations/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/annotations/${id}/`),
   },
   "hog-function": {
     route: "hog_functions",
-    list: (api, p, query) => api.get(`/api/projects/${p}/hog_functions/`, { query }),
+    list: (api, p) => api.getAll(`/api/projects/${p}/hog_functions/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/hog_functions/${id}/`),
   },
   "batch-export": {
     route: "batch_exports",
-    list: (api, p, query) => api.get(`/api/projects/${p}/batch_exports/`, { query }),
+    list: (api, p) => api.getAll(`/api/projects/${p}/batch_exports/`, "results"),
     get: (api, p, id) => api.get(`/api/projects/${p}/batch_exports/${id}/`),
   },
 };

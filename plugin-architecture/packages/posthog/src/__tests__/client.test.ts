@@ -9,7 +9,7 @@ import { plugin } from "../plugin.js";
 import { hogqlString } from "../query.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { posthogTerraformExport } from "../terraform.js";
-import { CREDS, makeHttp } from "./helpers.js";
+import { CREDS, makeHttp, type Recorded } from "./helpers.js";
 
 const PROJECTS = {
   results: [{ id: 7, name: "Web", api_token: "phc_x", timezone: "UTC" }],
@@ -203,6 +203,136 @@ describe("PostHogClient", () => {
       { http },
     );
     expect(opts).toEqual([{ id: "o1", label: "Acme", description: "acme" }]);
+  });
+});
+
+describe("reading a whole list", () => {
+  const client = (route: Parameters<typeof makeHttp>[0]) => {
+    const { http, calls } = makeHttp((url, method, body) =>
+      url.pathname === "/api/organizations/org-1/projects/"
+        ? { body: PROJECTS }
+        : route(url, method, body),
+    );
+    return { client: hostClient(new PostHogClient(CREDS, { http })), calls };
+  };
+  const listCalls = (calls: Recorded[], route: string) =>
+    calls.filter((c) => c.url.pathname === `/api/projects/7/${route}/`);
+
+  it("walks actions by count, because that route answers no next", async () => {
+    const rows = Array.from({ length: 450 }, (_, i) => ({ id: i + 1, name: `a${i}` }));
+    const { client: c, calls } = client((url) => {
+      const offset = Number(url.searchParams.get("offset"));
+      const limit = Number(url.searchParams.get("limit"));
+      return url.pathname === "/api/projects/7/actions/"
+        ? { body: { count: rows.length, results: rows.slice(offset, offset + limit) } }
+        : undefined;
+    });
+    const actions = await c.listResources("action", "acct");
+    expect(actions).toHaveLength(450);
+    expect(listCalls(calls, "actions").map((r) => r.url.searchParams.get("offset"))).toEqual([
+      "0",
+      "200",
+      "400",
+    ]);
+  });
+
+  it("asks for the row after the last one read, where a page is shorter than asked for", async () => {
+    const { client: c, calls } = client((url) => {
+      const offset = Number(url.searchParams.get("offset"));
+      if (url.pathname !== "/api/projects/7/dashboards/") return undefined;
+      return offset === 0
+        ? { body: { count: 2, results: [{ id: 1 }], next: "https://eu.posthog.com/more" } }
+        : { body: { count: 2, results: [{ id: 2 }], next: null } };
+    });
+    await c.listResources("dashboard", "acct");
+    expect(listCalls(calls, "dashboards")[1]?.url.searchParams.get("offset")).toBe("1");
+  });
+
+  it("ends on next: null even where count says otherwise", async () => {
+    const { client: c, calls } = client((url) =>
+      url.pathname === "/api/projects/7/cohorts/"
+        ? { body: { count: 5, results: [{ id: 1 }], next: null } }
+        : undefined,
+    );
+    await c.listResources("cohort", "acct");
+    expect(listCalls(calls, "cohorts")).toHaveLength(1);
+  });
+
+  it("throws at the page cap rather than answer part of the list", async () => {
+    const { client: c, calls } = client((url) =>
+      url.pathname === "/api/projects/7/feature_flags/"
+        ? {
+            body: {
+              count: 1_000_000,
+              results: [{ id: Number(url.searchParams.get("offset")) + 1 }],
+              next: "https://eu.posthog.com/api/projects/7/feature_flags/?offset=1",
+            },
+          }
+        : undefined,
+    );
+    await expect(c.listResources("feature-flag", "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(listCalls(calls, "feature_flags")).toHaveLength(250);
+  });
+
+  it("reads 50,000 rows before it gives up", async () => {
+    const page = Array.from({ length: 200 }, (_, i) => ({ id: i + 1 }));
+    const { client: c } = client((url) =>
+      url.pathname === "/api/projects/7/insights/"
+        ? {
+            body: {
+              count: 50_000,
+              results: page,
+              next: Number(url.searchParams.get("offset")) < 49_800 ? "more" : null,
+            },
+          }
+        : undefined,
+    );
+    await expect(c.listResources("insight", "acct")).resolves.toHaveLength(50_000);
+  });
+
+  it("throws on a page whose list is not a list, first or later", async () => {
+    const first = client((url) =>
+      url.pathname === "/api/projects/7/annotations/" ? { body: { rows: [] } } : undefined,
+    );
+    await expect(first.client.listResources("annotation", "acct")).rejects.toThrow("is not a list");
+    const later = client((url) => {
+      if (url.pathname !== "/api/projects/7/annotations/") return undefined;
+      return url.searchParams.get("offset") === "0"
+        ? { body: { results: [{ id: 1 }], next: "more" } }
+        : { body: { rows: [] } };
+    });
+    await expect(later.client.listResources("annotation", "acct")).rejects.toThrow("is not a list");
+  });
+
+  it("throws where a list of projects cannot be read", async () => {
+    const { http } = makeHttp((url) =>
+      url.pathname === "/api/organizations/org-1/projects/" ? { body: { rows: [] } } : undefined,
+    );
+    await expect(
+      hostClient(new PostHogClient(CREDS, { http })).listResources("project", "acct"),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("never sends a request to the host a next link names", async () => {
+    const { client: c, calls } = client((url) => {
+      if (url.pathname !== "/api/projects/7/experiments/") return undefined;
+      return url.searchParams.get("offset") === "0"
+        ? { body: { results: [{ id: 1 }], next: "https://evil.example/steal" } }
+        : { body: { results: [], next: null } };
+    });
+    await c.listResources("experiment", "acct");
+    expect(calls.every((r) => r.url.origin === "https://eu.posthog.com")).toBe(true);
+  });
+
+  it("still reads a project with no access to a type as having none", async () => {
+    const { client: c } = client((url) =>
+      url.pathname === "/api/projects/7/hog_functions/"
+        ? { status: 403, body: { detail: "scope" } }
+        : undefined,
+    );
+    await expect(c.listResources("hog-function", "acct")).resolves.toEqual([]);
   });
 });
 

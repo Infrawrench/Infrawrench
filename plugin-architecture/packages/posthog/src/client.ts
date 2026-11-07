@@ -29,7 +29,6 @@ import {
   createPostHogContext,
   isProjectObjectType,
   listRouteRequest,
-  pagedList,
   resolveHost,
   statusOf,
 } from "./api.js";
@@ -66,7 +65,7 @@ export function withRollout(filters: FlagFilters, rollout: number): FlagFilters 
 
 /** Organizations the key can see, for the organization picker. */
 export async function listOrganizations(ctx: PostHogContext) {
-  return pagedList((query) => ctx.api.get("/api/organizations/", { query }));
+  return ctx.api.getAll("/api/organizations/", "results");
 }
 
 export class PostHogClient implements PluginClient {
@@ -113,7 +112,7 @@ export class PostHogClient implements PluginClient {
 
   private async projects() {
     const org = pathEncode(await this.orgId());
-    return pagedList((query) => this.ctx.api.get(`/api/organizations/${org}/projects/`, { query }));
+    return this.ctx.api.getAll(`/api/organizations/${org}/projects/`, "results");
   }
 
   private objectType(typeId: string): ProjectObjectType {
@@ -142,9 +141,7 @@ export class PostHogClient implements PluginClient {
       projects.map(async (p) => {
         const pid = str(p.id);
         try {
-          const items = await pagedList((query) =>
-            OBJECTS[typeId].list(this.ctx.api, pathEncode(pid), query),
-          );
+          const items = await OBJECTS[typeId].list(this.ctx.api, pathEncode(pid));
           return items
             .filter((o) => o.deleted !== true)
             .map((o) => mapProjectObject(accountId, typeId, pid, o, this.ctx));
@@ -221,11 +218,9 @@ export class PostHogClient implements PluginClient {
         case "member": {
           const org = pathEncode(await this.orgId());
           try {
-            return (
-              await pagedList((query) =>
-                this.ctx.api.get(`/api/organizations/${org}/members/`, { query }),
-              )
-            ).map((m) => mapMember(accountId, m));
+            return (await this.ctx.api.getAll(`/api/organizations/${org}/members/`, "results")).map(
+              (m) => mapMember(accountId, m),
+            );
           } catch (err) {
             if (statusOf(err) === 403) return [];
             throw err;
