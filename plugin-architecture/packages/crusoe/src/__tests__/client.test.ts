@@ -273,6 +273,48 @@ describe("create, update, delete", () => {
     });
   });
 
+  describe("a VPC subnet", () => {
+    const subnets = () => {
+      route("GET", "/projects/p-1/networking/vpc-subnets", {
+        items: [{ id: "s-1", name: "public" }],
+      });
+      route("GET", "/projects/p-2/networking/vpc-subnets", { items: [] });
+      route("PATCH", "/projects/p-1/networking/vpc-subnets/s-1", done);
+    };
+    const patches = () => calls.filter((x) => x.method === "PATCH").map((x) => x.body);
+
+    it("sends its current name when only the NAT gateway changes", async () => {
+      subnets();
+      await client().updateResource("vpc-subnet", "acct:vpc-subnet:p-1/s-1", "acct", {
+        natGateway: "true",
+      });
+      expect(patches()).toEqual([{ name: "public", nat_gateway_action: "enable" }]);
+    });
+
+    it("sends a new name as given and asks for no NAT action", async () => {
+      subnets();
+      await client().updateResource("vpc-subnet", "acct:vpc-subnet:p-1/s-1", "acct", {
+        name: "renamed",
+      });
+      expect(patches()).toEqual([{ name: "renamed" }]);
+    });
+
+    it("does not patch when the current name cannot be read", async () => {
+      route(
+        "GET",
+        "/projects/p-1/networking/vpc-subnets",
+        () => new Response("{}", { status: 500 }),
+      );
+      route("GET", "/projects/p-2/networking/vpc-subnets", { items: [] });
+      await expect(
+        client().updateResource("vpc-subnet", "acct:vpc-subnet:p-1/s-1", "acct", {
+          natGateway: "false",
+        }),
+      ).rejects.toThrow(/500/);
+      expect(patches()).toEqual([]);
+    });
+  });
+
   it("resizes a VM with the UPDATE action and grows a disk", async () => {
     route("PATCH", "/projects/p-1/compute/vms/instances/vm-1", done);
     route("PATCH", "/projects/p-1/storage/disks/d-1", done);

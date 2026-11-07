@@ -655,6 +655,9 @@ export class CrusoeClient implements PluginClient {
             nat_gateway_action: given("natGateway", (v) => (v === "true" ? "enable" : "disable")),
           };
           if (isBlank(body)) return current();
+          // The document requires a name on every patch, even one that only moves the NAT
+          // gateway, such as a revert carrying just that field.
+          body.name ??= str(String((await current()).fields["name"] ?? "")) || undefined;
           return settled(
             await this.api.patch(`/projects/${project}/networking/vpc-subnets/${item}`, { body }),
           );
