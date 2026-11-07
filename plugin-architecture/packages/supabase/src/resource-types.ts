@@ -24,6 +24,13 @@ export const COMPUTE_SIZES = [
   "48xlarge_high_memory",
 ];
 
+/**
+ * Sizes an existing project can move to. The add-on variants the Management API
+ * documents start at `ci_micro`, and Supabase's docs say Nano cannot be launched on a
+ * paid plan, so Nano stays a create-time choice.
+ */
+export const COMPUTE_ADDON_SIZES = COMPUTE_SIZES.filter((size) => size !== "nano");
+
 export const OrganizationType = rt({
   name: "Organization",
   id: "supabase-organization",
@@ -86,10 +93,10 @@ export const ProjectType = rt({
     f("apiUrl", "API URL", { required: false, editable: false }),
     f("computeSize", "Compute Size", {
       kind: "enum",
-      enumValues: COMPUTE_SIZES,
+      enumValues: COMPUTE_ADDON_SIZES,
       required: false,
       description:
-        "Dedicated compute add-on. Changing it restarts the database for a few minutes and changes the bill.",
+        "Dedicated compute add-on, Micro and up. A project on Nano shows (none) here until it moves up. Changing it restarts the database for a few minutes and changes the bill.",
     }),
     f("diskSizeGb", "Disk Size (GB)", {
       showcase: true,

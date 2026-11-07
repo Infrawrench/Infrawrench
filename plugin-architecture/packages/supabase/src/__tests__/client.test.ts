@@ -6,6 +6,7 @@ import { poolerUrl, SupabaseClient } from "../client.js";
 import { fetchSupabaseCostData } from "../cost-data.js";
 import { networkIsOpen } from "../listers.js";
 import { intervalFor, parsePrometheus } from "../observability.js";
+import { COMPUTE_SIZES, ProjectType } from "../resource-types.js";
 import { authChangesBody, groupProjectChanges } from "../settings.js";
 import { parseStatusFeed } from "../status-feed.js";
 import { supabaseTerraformExport } from "../terraform.js";
@@ -494,5 +495,82 @@ describe("helpers", () => {
     expect(result?.resource.type).toBe("supabase_project");
     expect(result?.resource.importId).toBe(REF);
     expect(result?.variables?.[0]?.sensitive).toBe(true);
+  });
+});
+
+describe("editing a project's compute size", () => {
+  const ADDONS = `/v1/projects/${REF}/billing/addons`;
+  const ID = `${ACCOUNT}:supabase-project:${REF}`;
+  const offering = (...ids: string[]) =>
+    on("GET", ADDONS, {
+      selected_addons: [],
+      available_addons: [
+        { name: "PITR", type: "pitr", variants: [{ id: "pitr_7" }] },
+        { name: "Compute", type: "compute_instance", variants: ids.map((id) => ({ id })) },
+      ],
+    });
+  const written = (calls: Call[]) => calls.filter((call) => call.method !== "GET");
+  const reread = [
+    on("GET", `/v1/projects/${REF}`, project),
+    on("GET", "/v1/projects", [project]),
+    on("PATCH", ADDONS, {}),
+    on("PATCH", `/v1/projects/${REF}`, {}),
+  ];
+
+  it("offers every size but Nano, which only a new project can ask for", () => {
+    const field = ProjectType.fields.find((candidate) => candidate.key === "computeSize");
+    expect(field?.enumValues).toEqual(COMPUTE_SIZES.filter((size) => size !== "nano"));
+    expect(COMPUTE_SIZES).toContain("nano");
+  });
+
+  it("applies a documented size without reading the add-ons first", async () => {
+    const { c, calls } = client(reread);
+    await c.updateResource!("supabase-project", ID, ACCOUNT, { computeSize: "micro" });
+    const patch = calls[0]!;
+    expect(patch.method).toBe("PATCH");
+    expect(new URL(patch.url).pathname).toBe(ADDONS);
+    expect(JSON.parse(String(patch.body))).toEqual({
+      addon_type: "compute_instance",
+      addon_variant: "ci_micro",
+    });
+  });
+
+  it("refuses Nano before writing anything when Supabase does not offer it", async () => {
+    const { c, calls } = client([offering("ci_micro", "ci_small"), ...reread]);
+    await expect(
+      c.updateResource!("supabase-project", ID, ACCOUNT, { name: "New", computeSize: "nano" }),
+    ).rejects.toThrow("Supabase does not offer nano compute for this project");
+    expect(written(calls)).toEqual([]);
+  });
+
+  it("does not mistake a variant offered for another add-on type", async () => {
+    const { c, calls } = client([
+      on("GET", ADDONS, {
+        selected_addons: [],
+        available_addons: [{ name: "PITR", type: "pitr", variants: [{ id: "ci_nano" }] }],
+      }),
+      ...reread,
+    ]);
+    await expect(
+      c.updateResource!("supabase-project", ID, ACCOUNT, { computeSize: "nano" }),
+    ).rejects.toThrow("Supabase does not offer nano compute");
+    expect(written(calls)).toEqual([]);
+  });
+
+  it("sends Nano when Supabase lists it for this project", async () => {
+    const { c, calls } = client([offering("ci_nano", "ci_micro"), ...reread]);
+    await c.updateResource!("supabase-project", ID, ACCOUNT, { computeSize: "nano" });
+    expect(JSON.parse(String(written(calls)[0]!.body))).toEqual({
+      addon_type: "compute_instance",
+      addon_variant: "ci_nano",
+    });
+  });
+
+  it("does not write when the add-on list cannot be read", async () => {
+    const { c, calls } = client([on("GET", ADDONS, { message: "down" }, 500), ...reread]);
+    await expect(
+      c.updateResource!("supabase-project", ID, ACCOUNT, { name: "New", computeSize: "nano" }),
+    ).rejects.toThrow("500");
+    expect(written(calls)).toEqual([]);
   });
 });

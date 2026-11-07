@@ -76,6 +76,7 @@ import {
 } from "./observability.js";
 import { verifySupabaseCredentials } from "./preflight.js";
 import { ENRICH, renderDetail, renderSidebarItem } from "./render.js";
+import { COMPUTE_ADDON_SIZES } from "./resource-types.js";
 import {
   AUTH_SETTINGS,
   authChangesBody,
@@ -960,13 +961,40 @@ export class SupabaseClient implements PluginClient {
     });
   }
 
+  /**
+   * A size outside the documented add-on variants still reaches here from a change
+   * revert or a workflow (a project that was on Nano), so it goes only if Supabase
+   * lists that variant for this project.
+   */
+  private async computeAddonVariant(ref: string, size: string): Promise<string> {
+    const variant = `ci_${size}`;
+    if (COMPUTE_ADDON_SIZES.includes(size)) return variant;
+    const addons = await this.api.get(`/v1/projects/${pathEncode(ref)}/billing/addons`);
+    const offered = addons?.available_addons
+      .filter((addon) => addon.type === "compute_instance")
+      .flatMap((addon) => addon.variants)
+      .some((option) => {
+        const id: string = option.id;
+        return id === variant;
+      });
+    if (offered) return variant;
+    throw new Error(
+      `Supabase does not offer ${size} compute for this project. Choose Micro or larger.`,
+    );
+  }
+
   private async updateProject(ref: string, fields: Record<string, string>): Promise<void> {
     const base = `/v1/projects/${pathEncode(ref)}` as const;
+    // Before the first write, so a refused size leaves the rest of the edit unapplied too.
+    const computeVariant = fields["computeSize"]
+      ? await this.computeAddonVariant(ref, fields["computeSize"])
+      : undefined;
+
     if (fields["name"]) await this.api.patch(base, { body: { name: fields["name"] } });
 
-    if (fields["computeSize"]) {
+    if (computeVariant) {
       await this.api.patch(`${base}/billing/addons`, {
-        body: { addon_type: "compute_instance", addon_variant: `ci_${fields["computeSize"]}` },
+        body: { addon_type: "compute_instance", addon_variant: computeVariant },
       });
     }
 
