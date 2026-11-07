@@ -411,9 +411,10 @@ export function registerLifecycleRoutes(app: Hono): void {
     // Mirror the refreshed fields/displayName into the DB so the next page
     // load sees the new values without waiting for a sync cycle. Peer-managed
     // resources skip this: they aren't owned by the account's native plugin.
-    // The fields merge into the stored ones, as the sync does: a field the
-    // plugin's read after the edit could not fill keeps its value rather than
-    // vanish until the next poll. A field cleared on purpose is an explicit value.
+    // The fields and outputs merge into the stored ones, as the sync does: a
+    // field the plugin's read after the edit could not fill keeps its value
+    // rather than vanish until the next poll. A field cleared on purpose is an
+    // explicit value.
     if (ctx.account.pluginId === input.pluginId) {
       try {
         if (nextId !== input.resourceId) {
@@ -438,7 +439,7 @@ export function registerLifecycleRoutes(app: Hono): void {
             .set({
               displayName: updated.displayName,
               fieldsJson: sql`COALESCE(${resources.fieldsJson}, '{}'::jsonb) || ${JSON.stringify(updated.fields ?? {})}::jsonb`,
-              outputsJson: updated.resolvedOutputs ?? {},
+              outputsJson: sql`COALESCE(${resources.outputsJson}, '{}'::jsonb) || ${JSON.stringify(updated.resolvedOutputs ?? {})}::jsonb`,
               updatedAt: new Date(),
             })
             .where(

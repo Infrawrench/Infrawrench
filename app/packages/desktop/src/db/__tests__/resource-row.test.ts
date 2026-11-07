@@ -5,7 +5,7 @@ import initSqlJs, { type Database } from "sql.js";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DbClient } from "../client";
 import { MIGRATIONS } from "../schema";
-import { mirrorEditedResourceRow, upsertResourceRow } from "../rows";
+import { mergeResourceRow, mirrorEditedResourceRow, upsertResourceRow } from "../rows";
 import { secretAnchorStatement } from "../secret-anchor";
 
 /** The real schema on the real engine, foreign keys on as `electron/db.ts` has them. */
@@ -207,5 +207,17 @@ describe("the renderer", () => {
         /INSERT OR REPLACE INTO resources/.test(readFileSync(join(src, file), "utf8")),
       );
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("a read that may find the row already there", () => {
+  it("merges into the stored fields, as a pin or an agent VM refresh writes", async () => {
+    await upsertResourceRow(db, row({ fields: { size: "s", region: "fsn1", note: "x" } }));
+    await mergeResourceRow(db, row({ displayName: "Pinned", fields: { size: "m", note: "" } }));
+    const [stored] = await db.select<Array<{ fields_json: string; display_name: string }>>(
+      "SELECT fields_json, display_name FROM resources",
+    );
+    expect(stored?.display_name).toBe("Pinned");
+    expect(JSON.parse(stored!.fields_json)).toEqual({ size: "m", region: "fsn1", note: "" });
   });
 });

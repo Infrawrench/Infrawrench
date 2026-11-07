@@ -29,7 +29,7 @@ import {
   CreateTile,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
-import { upsertResourceRow, type AccountRow } from "../db/rows";
+import { mergeResourceRow, type AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
@@ -611,8 +611,9 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         return s;
       });
     } else {
-      // Satisfy the dashboard_pins FK by upserting the resource first.
-      await upsertResourceRow(db, { ...resource, resourceTypeId: typeId });
+      // Satisfy the dashboard_pins FK by writing the resource first, merged into any
+      // stored fields as the sync does, since the listing's answer may lack some.
+      await mergeResourceRow(db, { ...resource, resourceTypeId: typeId });
 
       const dashboards = await db.select<{ id: string }[]>(
         "SELECT id FROM dashboards WHERE is_default = 1 LIMIT 1",

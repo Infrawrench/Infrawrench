@@ -56,7 +56,7 @@ import type {
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 
 import { getDb } from "../db/client";
-import { upsertResourceRow } from "../db/rows";
+import { mergeResourceRow, mergeStoredFields, upsertResourceRow } from "../db/rows";
 import { loadPlugins } from "../plugins/loader";
 import { invoke } from "./invoke";
 import { createPluginClient } from "./plugin-client";
@@ -1498,7 +1498,7 @@ async function loadAgentVmResource(row: SessionRow): Promise<ResourceInstance> {
     row.account_id,
   );
   const db = await getDb();
-  await upsertResourceRow(db, resource);
+  await mergeResourceRow(db, resource);
   return resource;
 }
 
@@ -1755,6 +1755,12 @@ async function refreshAgentSession(row: SessionRow): Promise<AgentSession | null
     const latestRow = latestRows[0] ?? row;
     const status =
       latestRow.status === "failed" ? "failed" : setupAwareAgentStatus(latestRow, vmStatus);
+    // The fields merge into the stored ones, as the sync does: one this read missed keeps
+    // its value rather than vanish until the next refresh.
+    const [stored] = await db.select<Array<{ fields_json: string | null }>>(
+      "SELECT fields_json FROM resources WHERE id = $1",
+      [resource.id],
+    );
     await db.execute(
       `UPDATE resources
        SET display_name = $1, external_id = $2, fields_json = $3, outputs_json = $4, parent_resource_id = $5, updated_at = datetime('now')
@@ -1762,7 +1768,7 @@ async function refreshAgentSession(row: SessionRow): Promise<AgentSession | null
       [
         resource.displayName,
         resource.externalId ?? resource.id,
-        JSON.stringify(resource.fields ?? {}),
+        JSON.stringify(mergeStoredFields(stored?.fields_json, resource.fields)),
         JSON.stringify(resource.resolvedOutputs ?? {}),
         resource.parentResourceId ?? null,
         resource.id,

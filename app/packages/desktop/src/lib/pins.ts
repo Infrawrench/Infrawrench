@@ -1,6 +1,6 @@
 import type { DraggableResource } from "@infrawrench/ui";
 import type { DbClient } from "../db/client";
-import { upsertResourceRow } from "../db/rows";
+import { mergeResourceRow } from "../db/rows";
 
 export type { DraggableResource };
 
@@ -15,7 +15,8 @@ export async function pinResource(
   db: DbClient,
   dashboardId?: string | undefined,
 ): Promise<void> {
-  await upsertResourceRow(db, resource);
+  // The row may already be there, from an earlier pin or an edit: merge, as the sync does.
+  await mergeResourceRow(db, resource);
 
   let dashId: string;
   if (dashboardId) {

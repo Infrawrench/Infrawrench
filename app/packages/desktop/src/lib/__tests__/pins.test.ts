@@ -39,7 +39,9 @@ describe("createDashboard", () => {
 describe("pinResource", () => {
   it("upserts the resource and pins to an explicit dashboard at the next grid slot", async () => {
     const { db, select, execute } = makeDb();
-    select.mockResolvedValueOnce([{ max_x: 2 }]); // MAX(grid_x)
+    select
+      .mockResolvedValueOnce([]) // no stored row yet
+      .mockResolvedValueOnce([{ max_x: 2 }]); // MAX(grid_x)
     await pinResource(resource, db, "dash-explicit");
 
     // resource upsert
@@ -73,6 +75,7 @@ describe("pinResource", () => {
   it("uses the existing default dashboard when none is specified", async () => {
     const { db, select, execute } = makeDb();
     select
+      .mockResolvedValueOnce([]) // no stored row yet
       .mockResolvedValueOnce([{ id: "default-dash" }]) // default dashboard lookup
       .mockResolvedValueOnce([{ max_x: null }]); // no pins yet -> nextX = 0
     await pinResource(resource, db);
@@ -86,6 +89,7 @@ describe("pinResource", () => {
   it("creates a Home default dashboard when none exists", async () => {
     const { db, select, execute } = makeDb();
     select
+      .mockResolvedValueOnce([]) // no stored row yet
       .mockResolvedValueOnce([]) // no default dashboard
       .mockResolvedValueOnce([]); // no pins
     await pinResource(resource, db);
@@ -99,9 +103,23 @@ describe("pinResource", () => {
 
   it("falls back to resource.id when externalId is absent", async () => {
     const { db, select, execute } = makeDb();
-    select.mockResolvedValueOnce([{ id: "d" }]).mockResolvedValueOnce([{ max_x: 0 }]);
+    select.mockResolvedValueOnce([]).mockResolvedValueOnce([{ max_x: 0 }]);
     const noExt = { ...resource, externalId: undefined } as DraggableResource;
     await pinResource(noExt, db, "d");
     expect(execute.mock.calls[0]![1]![5]).toBe("res-1");
+  });
+
+  it("merges the listing's fields into a row that is already there", async () => {
+    const { db, select, execute } = makeDb();
+    select
+      .mockResolvedValueOnce([{ fields_json: JSON.stringify({ region: "eu", size: "s" }) }])
+      .mockResolvedValueOnce([{ max_x: 0 }]);
+    await pinResource({ ...resource, fields: { size: "" } } as DraggableResource, db, "d");
+    expect(select.mock.calls[0]).toEqual([
+      "SELECT fields_json FROM resources WHERE id = $1",
+      ["res-1"],
+    ]);
+    // A field the answer lacks keeps its value; one it clears on purpose still applies.
+    expect(execute.mock.calls[0]![1]![6]).toBe(JSON.stringify({ region: "eu", size: "" }));
   });
 });

@@ -59,10 +59,30 @@ export async function upsertResourceRow(db: DbClient, row: ResourceRow): Promise
 }
 
 /**
- * Write what an edit answered. The fields merge into the stored ones, as the cloud's sync
- * and edit route do: a field the plugin's read after the edit could not fill keeps its
- * value rather than vanish until the next refresh. A field cleared on purpose is an
- * explicit value, so it still applies.
+ * Write a plugin's answer about a resource that may already have a row: a pin, a refresh
+ * of an agent VM. The fields merge into the stored ones, as the cloud's sync does: a field
+ * this read could not fill keeps its value rather than vanish until the next refresh, and
+ * the change timeline does not then record it as added back. A field cleared on purpose
+ * is an explicit value, so it still applies. `storedId` is the row whose fields to merge
+ * into, when the answer carries a different id.
+ */
+export async function mergeResourceRow(
+  db: DbClient,
+  row: ResourceRow,
+  storedId: string = row.id,
+): Promise<void> {
+  const [stored] = await db.select<Array<{ fields_json: string | null }>>(
+    "SELECT fields_json FROM resources WHERE id = $1",
+    [storedId],
+  );
+  await upsertResourceRow(db, {
+    ...row,
+    fields: mergeStoredFields(stored?.fields_json, row.fields),
+  });
+}
+
+/**
+ * Write what an edit answered, merged as `mergeResourceRow` does.
  *
  * Where the answer has a different id, as a provider that makes each edit a new version
  * gives, the new id gets the row with the old row's fields, and the old one is soft
@@ -74,17 +94,18 @@ export async function mirrorEditedResourceRow(
   editedId: string,
   row: ResourceRow,
 ): Promise<void> {
-  const [stored] = await db.select<Array<{ fields_json: string | null }>>(
-    "SELECT fields_json FROM resources WHERE id = $1",
-    [editedId],
-  );
-  await upsertResourceRow(db, {
-    ...row,
-    fields: { ...parseFields(stored?.fields_json), ...row.fields },
-  });
+  await mergeResourceRow(db, row, editedId);
   if (row.id !== editedId) {
     await db.execute("UPDATE resources SET deleted_at = datetime('now') WHERE id = $1", [editedId]);
   }
+}
+
+/** A resource's stored `fields_json` with an answer's fields laid over it. */
+export function mergeStoredFields(
+  storedJson: string | null | undefined,
+  fields: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  return { ...parseFields(storedJson), ...fields };
 }
 
 function parseFields(json: string | null | undefined): Record<string, unknown> {

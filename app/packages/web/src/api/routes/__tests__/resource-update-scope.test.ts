@@ -185,6 +185,17 @@ describe("POST /update keeps what the plugin's read after the edit left out", ()
     expect(params).toEqual([JSON.stringify({ name: "renamed" })]);
   });
 
+  it("merges the answer's outputs into the stored ones too, as the sync does", async () => {
+    storedRows = [{ fieldsJson: stored, externalId: "42" }];
+    const res = await post({ resourceId: "acct-1:server:42" });
+    expect(res.status).toBe(200);
+    const outputs = updateSets[0]?.["outputsJson"];
+    expect(outputs).not.toEqual({ ip: "1.2.3.4" });
+    const { sql, params } = new PgDialect().sqlToQuery(outputs as SQL);
+    expect(sql).toBe('COALESCE("resources"."outputs_json", \'{}\'::jsonb) || $1::jsonb');
+    expect(params).toEqual([JSON.stringify({ ip: "1.2.3.4" })]);
+  });
+
   it("carries the stored fields to the new row when the edit gives a new id", async () => {
     storedRows = [{ fieldsJson: stored, externalId: "42" }];
     updateResource.mockImplementationOnce(async (typeId, _resourceId, accountId) => ({
