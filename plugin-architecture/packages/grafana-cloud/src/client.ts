@@ -247,8 +247,8 @@ export class GrafanaCloudClient implements PluginClient {
   /**
    * Fan a stack-scoped lister out over the connected stacks. A stack whose
    * stored token is refused (rotated, deleted, too narrow) keeps its stored rows
-   * rather than failing the other stacks, which is also why the desktop, where this
-   * answers false, still lists the others instead of showing the refusal.
+   * rather than failing the other stacks. A host that keeps no track (the desktop)
+   * answers false, and there the refusal shows rather than a list short of that stack.
    */
   private async perStack(
     accountId: string,
@@ -266,9 +266,10 @@ export class GrafanaCloudClient implements PluginClient {
         } catch (err) {
           const status = statusOf(err);
           if (status !== 401 && status !== 403 && status !== 404) throw err;
-          reportUnreadListPart({
+          const tracked = reportUnreadListPart({
             parentResourceIds: [resourceIdFor(accountId, "stack", a.slug)],
           });
+          if (!tracked) throw err;
           return [];
         }
       }),

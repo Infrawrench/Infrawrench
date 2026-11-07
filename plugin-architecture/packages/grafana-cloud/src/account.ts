@@ -106,10 +106,11 @@ export async function policyRegions(ctx: GrafanaContext, orgSlug: string): Promi
   const own = decodeCloudToken(ctx.token).region;
   if (own) out.add(own);
   // A token that may not read stacks still lists its own region, and the rows of any
-  // other region stay. Any other failure has to fail the list.
+  // other region stay. Any other failure has to fail the list. A host that keeps no track
+  // (the desktop) answers false, and there the refusal shows.
   const stacks = await listStacks(ctx, orgSlug).catch((err): GcStack[] => {
     if (statusOf(err) !== 403) throw err;
-    reportUnreadListPart({ idPrefixes: [""] });
+    if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
     return [];
   });
   for (const s of stacks) if (s.regionSlug) out.add(s.regionSlug);

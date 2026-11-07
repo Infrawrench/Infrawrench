@@ -316,6 +316,13 @@ describe("reading a list to its end", () => {
       },
     );
 
+    it("shows a stack's refusal where a host keeps no track", async () => {
+      const { client } = connected((url) =>
+        url.pathname === "/api/search" ? { status: 403 } : undefined,
+      );
+      await expect(client.listResources("dashboard", "acct")).rejects.toThrow("403");
+    });
+
     it.each([429, 500])("fails the type on a %i from a stack", async (status) => {
       const unread = tracked();
       const { client } = connected((url) =>
@@ -335,6 +342,16 @@ describe("reading a list to its end", () => {
       const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http }));
       expect(await client.listResources("access-policy", "acct")).toHaveLength(1);
       expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    });
+
+    it("shows a refused stack list where a host keeps no track, rather than one region's policies", async () => {
+      const { http } = makeHttp((url) => {
+        if (url.pathname === "/api/orgs/4242") return { body: { id: 4242, slug: "acme" } };
+        if (url.pathname === "/api/orgs/acme/instances") return { status: 403 };
+        return { body: { items: [{ id: "p1", name: "infra" }] } };
+      });
+      const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http }));
+      await expect(client.listResources("access-policy", "acct")).rejects.toThrow("403");
     });
   });
 
@@ -392,7 +409,10 @@ describe("reading a list to its end", () => {
         if (url.pathname === "/api/v1/probe/list") return { status: 401 };
         return undefined;
       });
+      // A sync keeps the refused stack's rows; elsewhere the refusal fails the list.
+      vi.stubGlobal(Symbol.for("infrawrench.unreadListPart"), () => true);
       await client.listResources("synthetic-check", "acct");
+      vi.unstubAllGlobals();
       expect(smCalls(calls).sort()).toEqual(["/api/v1/check/list", "/api/v1/probe/list"]);
     });
 
@@ -777,7 +797,10 @@ describe("reading a list to its end", () => {
       return { body: { items: [{ id: "p1", name: "infra" }] } };
     });
     const client = hostClient(new GrafanaCloudClient({ token: fakeToken() }, { http }));
+    // A sync keeps the other regions' rows; elsewhere the refusal fails the list.
+    vi.stubGlobal(Symbol.for("infrawrench.unreadListPart"), () => true);
     expect(await client.listResources("access-policy", "acct")).toHaveLength(1);
+    vi.unstubAllGlobals();
     expect(calls.at(-1)?.url.searchParams.get("region")).toBe("prod-us-east-0");
   });
 
