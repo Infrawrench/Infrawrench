@@ -118,14 +118,20 @@ export function parsePromptValues(args: (string | number)[]): Record<string, str
 }
 
 export function parseAddresses(raw: string): string[] {
-  return [
+  const addresses = [
     ...new Set(
       raw
         .split(/[\s,;]+/)
         .map((s) => s.trim())
         .filter((s) => s.includes("@")),
     ),
-  ].slice(0, MAX_ADDRESSES);
+  ];
+  if (addresses.length > MAX_ADDRESSES) {
+    throw new Error(
+      `That is ${addresses.length} addresses, and this takes at most ${MAX_ADDRESSES} at a time. Nothing was changed.`,
+    );
+  }
+  return addresses;
 }
 
 /** A policy-picker value (JSON array) or a comma-separated list, as scope ids. */

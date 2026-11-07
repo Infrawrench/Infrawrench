@@ -1,7 +1,7 @@
 import { hostClient, runPluginEffect } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it, vi } from "vitest";
 import { SendGridApiError } from "../api.js";
-import { SendGridClient, parseScopes } from "../client.js";
+import { SendGridClient, parseAddresses, parseScopes } from "../client.js";
 import { plugin } from "../plugin.js";
 import { domainDnsRecords, keyIdOf } from "../mappers.js";
 import { parseStatusFeed } from "../status-feed.js";
@@ -573,6 +573,30 @@ describe("SendGrid client", () => {
         c.updateResource("sendgrid-subuser", "a:t:sub1", "a", { creditType: "nonrecurring" }),
       ).rejects.toThrow(/credits/i);
       expect(puts(calls)).toEqual([]);
+    });
+  });
+
+  describe("pasted addresses", () => {
+    const many = Array.from({ length: 1001 }, (_, i) => `u${i}@example.com`).join("\n");
+
+    it("refuses more than it would act on, instead of dropping the rest", async () => {
+      const { c, calls } = client(() => ({ body: {} }));
+      await expect(
+        c.executeNoSqlCommand("sendgrid-account", "a:t:me", "a", "remove-suppressions", [
+          JSON.stringify({ list: "bounces", emails: many }),
+        ]),
+      ).rejects.toThrow(/1000/);
+      await expect(
+        c.executeNoSqlCommand("sendgrid-account", "a:t:me", "a", "add-global-unsubscribes", [
+          JSON.stringify({ emails: many }),
+        ]),
+      ).rejects.toThrow(/1000/);
+      expect(calls).toEqual([]);
+    });
+
+    it("reads a list at the limit, counting a repeated address once", () => {
+      const addresses = Array.from({ length: 1000 }, (_, i) => `u${i}@example.com`);
+      expect(parseAddresses([...addresses, addresses[0]!].join(","))).toHaveLength(1000);
     });
   });
 
