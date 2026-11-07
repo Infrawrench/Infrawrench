@@ -1,5 +1,8 @@
 import {
   createApiClient,
+  ListTruncatedError,
+  requireListPage,
+  withCursorPagination,
   type ApiClient,
   type HostServices,
   type HttpHostServices,
@@ -72,32 +75,93 @@ export interface Paging {
  */
 type ListPage<Key extends string, Item> = Item[] | ({ total?: number } & { [K in Key]?: Item[] });
 
+const VENDOR = "Auth0";
+
+/** 50,000 rows at the document's largest page of 100, the most the host can prune. */
+const MAX_PAGES = 500;
+
+export interface PagesOptions {
+  /** The cap on pages. Past it a list throws, unless it is {@link partial}. */
+  maxPages?: number;
+  /** Sent as `per_page`, and what makes a page short when a route reports no total. */
+  perPage?: number;
+  /** Return what was read at the cap, for a picker or a detail view that nothing is stored from. */
+  partial?: boolean;
+  /** Only a short or empty page ends the list, whatever `total` says. */
+  totalIsEstimate?: boolean;
+}
+
+function isBadRequest(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "status" in err && err.status === 400;
+}
+
 /**
  * Page through an offset-paginated collection (`page`/`per_page` with
- * `include_totals=true`). Auth0 caps `per_page` at 100 and, for users, the
- * reachable depth at 1000. A hand loop rather than `withCursorPagination`, which
- * reads one shape per route and has no running count to compare with `total`.
+ * `include_totals=true`). A hand loop rather than `withCursorPagination` because the
+ * document also allows these routes to answer the bare array, and a 400 past the first
+ * page has to read as this list being too long, not as a bad request.
  */
 export async function pages<Key extends string, Item>(
+  path: string,
   key: Key,
   fetchPage: (paging: Paging) => Promise<ListPage<Key, Item>>,
-  maxPages = 10,
+  options: PagesOptions = {},
 ): Promise<Item[]> {
+  const { maxPages = MAX_PAGES, perPage = 100, partial = false, totalIsEstimate } = options;
   const out: Item[] = [];
   for (let page = 0; page < maxPages; page++) {
-    const body = await fetchPage({ page, per_page: 100, include_totals: true });
-    if (Array.isArray(body)) {
-      out.push(...body);
-      if (body.length < 100) break;
-      continue;
+    let body: ListPage<Key, Item>;
+    try {
+      body = await fetchPage({ page, per_page: perPage, include_totals: true });
+    } catch (err) {
+      // The same request worked for page 0, so what it refuses is the depth: offset
+      // paging on /users stops at 1000 rows.
+      if (page === 0 || !isBadRequest(err)) throw err;
+      if (partial) return out;
+      throw new ListTruncatedError({
+        vendor: VENDOR,
+        path,
+        items: out.length,
+        maxItems: out.length,
+      });
     }
-    const keyed: { [K in Key]?: Item[] } = body;
-    const items = keyed[key] ?? [];
-    out.push(...items);
-    const { total } = body;
-    if (items.length < 100 || (typeof total === "number" && out.length >= total)) break;
+    let rows: Item[];
+    let total: number | undefined;
+    if (Array.isArray(body)) {
+      rows = body;
+    } else {
+      const keyed: { [K in Key]?: Item[] } = body;
+      ({ total } = body);
+      // The document marks the key optional, and a total of 0 says what its absence means.
+      rows =
+        total === 0 && keyed[key] === undefined
+          ? []
+          : requireListPage(keyed[key], { vendor: VENDOR, path, key, page: body });
+    }
+    out.push(...rows);
+    if (rows.length === 0) return out;
+    if (typeof total === "number" && !totalIsEstimate) {
+      if (out.length >= total) return out;
+    } else if (rows.length < perPage) {
+      return out;
+    }
   }
-  return out;
+  if (partial) return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
+}
+
+/**
+ * Checkpoint paging (`from`/`take`, ended by `next` going away), which the document
+ * requires for reading past 1000 rows of the routes it describes that way.
+ */
+function withCheckpoints(rest: ApiClient<paths>) {
+  return withCursorPagination(rest, {
+    cursorParam: "from",
+    sizeParam: "take",
+    pageSize: 100,
+    next: "next",
+    maxPages: MAX_PAGES,
+  });
 }
 
 export class Auth0Api {
@@ -107,6 +171,8 @@ export class Auth0Api {
   lastRateLimit: { limit: number; remaining: number; resetAt: number } | null = null;
   /** The Management API, through {@link send}. */
   readonly rest: ApiClient<paths>;
+  /** The same client, with `getAll` for the routes that page by checkpoint. */
+  readonly checkpoints: ReturnType<typeof withCheckpoints>;
 
   constructor(
     readonly creds: Auth0Credentials,
@@ -121,6 +187,7 @@ export class Auth0Api {
       emptyBodyIsUndefined: true,
       httpError: ({ status, path, body }) => apiError(status, path, body),
     });
+    this.checkpoints = withCheckpoints(this.rest);
   }
 
   get domain(): string {

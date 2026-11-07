@@ -20,7 +20,7 @@ import type {
   SettingDescriptor,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { operations, paths } from "./api-types.gen.js";
 import { Auth0Api, pages, readCredentials, regionOfDomain } from "./api.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
@@ -41,6 +41,9 @@ import type {
 
 const PLUGIN_ID = "auth0";
 export const METRICS_DEFAULT_RANGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** What a picker or a detail view reads: part of a list is fine, and nothing is stored from it. */
+const PICKER = { maxPages: 10, partial: true };
 
 /** Starter code for a new Action, per trigger family. */
 const ACTION_TEMPLATE = `/**
@@ -114,10 +117,12 @@ type ActionBindingUpdate = NonNullable<ApiBody<operations["patch_bindings"]>["bi
 export class Auth0Client implements PluginClient {
   readonly api: Auth0Api;
   private readonly rest: ApiClient<paths>;
+  private readonly checkpoints: Auth0Api["checkpoints"];
 
   constructor(credentials: Credentials, services?: HostServices) {
     this.api = new Auth0Api(readCredentials(credentials), services);
     this.rest = this.api.rest;
+    this.checkpoints = this.api.checkpoints;
   }
 
   // -------------------------------------------------------------------------
@@ -131,41 +136,44 @@ export class Auth0Client implements PluginClient {
           return [await this.tenantResource(accountId)];
         case "application":
           return (
-            await pages("clients", (paging) =>
+            await pages("/clients", "clients", (paging) =>
               this.rest.get("/clients", { query: { is_global: false, ...paging } }),
             )
           ).map((c) => this.mapClient(accountId, c));
         case "api":
           return (
-            await pages("resource_servers", (paging) =>
+            await pages("/resource-servers", "resource_servers", (paging) =>
               this.rest.get("/resource-servers", { query: paging }),
             )
           ).map((r) => this.mapApi(accountId, r));
         case "connection": {
-          const connections = await pages("connections", (paging) =>
-            this.rest.get("/connections", { query: paging }),
-          );
+          const connections = await this.checkpoints.getAll("/connections", "connections");
           return connections.map((c) => this.mapConnection(accountId, c));
         }
         case "user":
           return (
-            await pages("users", (paging) =>
-              this.rest.get("/users", { query: { sort: "created_at:-1", ...paging } }),
+            await pages(
+              "/users",
+              "users",
+              (paging) => this.rest.get("/users", { query: { sort: "created_at:-1", ...paging } }),
+              // A best-effort search, as the document says, with nothing to say `total`
+              // counts past the depth it pages to. Asking once more is what proves the end.
+              { totalIsEstimate: true },
             )
           ).map((u) => this.mapUser(accountId, u));
         case "role":
-          return (await pages("roles", (paging) => this.rest.get("/roles", { query: paging }))).map(
-            (r) => this.mapRole(accountId, r),
-          );
-        case "organization":
           return (
-            await pages("organizations", (paging) =>
-              this.rest.get("/organizations", { query: paging }),
-            )
-          ).map((o) => this.mapOrganization(accountId, o));
+            await pages("/roles", "roles", (paging) => this.rest.get("/roles", { query: paging }))
+          ).map((r) => this.mapRole(accountId, r));
+        case "organization":
+          return (await this.checkpoints.getAll("/organizations", "organizations")).map((o) =>
+            this.mapOrganization(accountId, o),
+          );
         case "action": {
           const [actions, bound] = await Promise.all([
-            pages("actions", (paging) => this.rest.get("/actions/actions", { query: paging })),
+            pages("/actions/actions", "actions", (paging) =>
+              this.rest.get("/actions/actions", { query: paging }),
+            ),
             this.boundActionIds(),
           ]);
           return actions.map((a) => this.mapAction(accountId, a, bound));
@@ -204,7 +212,10 @@ export class Auth0Client implements PluginClient {
         case "role": {
           const [role, permissions] = await Promise.all([
             this.rest.get(`/roles/${id}`),
-            this.rolePermissions(externalIdOf(resourceId)).catch(() => []),
+            this.rolePermissions(externalIdOf(resourceId)).catch((err) => {
+              rethrowIncompleteList(err);
+              return [];
+            }),
           ]);
           return this.mapRole(
             accountId,
@@ -264,9 +275,8 @@ export class Auth0Client implements PluginClient {
   }
 
   private async rolePermissions(roleId: string) {
-    return pages("permissions", (paging) =>
-      this.rest.get(`/roles/${pathEncode(roleId)}/permissions`, { query: paging }),
-    );
+    const path = `/roles/${pathEncode(roleId)}/permissions` as const;
+    return pages(path, "permissions", (paging) => this.rest.get(path, { query: paging }));
   }
 
   private actionTriggers() {
@@ -284,7 +294,10 @@ export class Auth0Client implements PluginClient {
       unique.map((t) => this.rest.get(`/actions/triggers/${pathEncode(t)}/bindings`)),
     );
     for (const result of settled) {
-      if (result.status !== "fulfilled") continue;
+      if (result.status !== "fulfilled") {
+        rethrowIncompleteList(result.reason);
+        continue;
+      }
       for (const b of result.value.bindings ?? []) if (b.action?.id) ids.add(b.action.id);
     }
     return ids;
@@ -882,12 +895,13 @@ export class Auth0Client implements PluginClient {
 
   private async connectionOptions(strategy?: "auth0"): Promise<SelectOption[]> {
     const connections = await pages(
+      "/connections",
       "connections",
       (paging) =>
         this.rest.get("/connections", {
           query: { ...(strategy ? { strategy: [strategy] } : {}), ...paging },
         }),
-      3,
+      PICKER,
     ).catch((): A0Connection[] => []);
     return connections.map((c) => ({
       id: str(c.name),
@@ -1248,9 +1262,10 @@ export class Auth0Client implements PluginClient {
 
   private async clientPolicies(): Promise<PolicyOption[]> {
     const clients = await pages(
+      "/clients",
       "clients",
       (paging) => this.rest.get("/clients", { query: { is_global: false, ...paging } }),
-      3,
+      PICKER,
     ).catch((): A0Client[] => []);
     return clients.map((c) => ({
       id: str(c.client_id),
@@ -1261,9 +1276,10 @@ export class Auth0Client implements PluginClient {
 
   private async connectionIdOptions(): Promise<SelectOption[]> {
     const connections = await pages(
+      "/connections",
       "connections",
       (paging) => this.rest.get("/connections", { query: paging }),
-      3,
+      PICKER,
     ).catch((): A0Connection[] => []);
     return connections.map((c) => ({
       id: str(c.id),
@@ -1275,9 +1291,10 @@ export class Auth0Client implements PluginClient {
   /** Every API permission, as `identifier|scope` ids. */
   async permissionPolicies(): Promise<PolicyOption[]> {
     const apis = await pages(
+      "/resource-servers",
       "resource_servers",
       (paging) => this.rest.get("/resource-servers", { query: paging }),
-      3,
+      PICKER,
     ).catch((): A0ResourceServer[] => []);
     return apis.flatMap((api) =>
       (api.scopes ?? []).map((scope) => ({
@@ -1852,13 +1869,17 @@ export class Auth0Client implements PluginClient {
         case "user": {
           const [roles, allRoles] = await Promise.all([
             pages(
+              `/users/${id}/roles`,
               "roles",
               (paging) => this.rest.get(`/users/${id}/roles`, { query: paging }),
-              2,
+              PICKER,
             ).catch((): A0Role[] => []),
-            pages("roles", (paging) => this.rest.get("/roles", { query: paging }), 3).catch(
-              (): A0Role[] => [],
-            ),
+            pages(
+              "/roles",
+              "roles",
+              (paging) => this.rest.get("/roles", { query: paging }),
+              PICKER,
+            ).catch((): A0Role[] => []),
           ]);
           extra["__roles__"] = JSON.stringify(
             roles.map((r) => ({ id: str(r.id), label: str(r.name) })),
@@ -1874,7 +1895,10 @@ export class Auth0Client implements PluginClient {
         }
         case "role": {
           const [granted, all] = await Promise.all([
-            this.rolePermissions(raw).catch(() => []),
+            this.rolePermissions(raw).catch((err) => {
+              rethrowIncompleteList(err);
+              return [];
+            }),
             this.permissionPolicies(),
           ]);
           extra["__granted__"] = JSON.stringify(
@@ -1905,19 +1929,23 @@ export class Auth0Client implements PluginClient {
         case "organization": {
           const [members, users, connections, enabled, clients] = await Promise.all([
             pages(
+              `/organizations/${id}/members`,
               "members",
               (paging) => this.rest.get(`/organizations/${id}/members`, { query: paging }),
-              2,
+              PICKER,
             ).catch(() => []),
-            pages("users", (paging) => this.rest.get("/users", { query: paging }), 2).catch(
-              (): A0User[] => [],
-            ),
+            // Two pages only: /users is a slow search, and this runs on every open of the view.
+            pages("/users", "users", (paging) => this.rest.get("/users", { query: paging }), {
+              maxPages: 2,
+              partial: true,
+            }).catch((): A0User[] => []),
             this.connectionIdOptions(),
             pages(
+              `/organizations/${id}/enabled_connections`,
               "enabled_connections",
               (paging) =>
                 this.rest.get(`/organizations/${id}/enabled_connections`, { query: paging }),
-              2,
+              PICKER,
             ).catch(() => []),
             this.clientPolicies(),
           ]);

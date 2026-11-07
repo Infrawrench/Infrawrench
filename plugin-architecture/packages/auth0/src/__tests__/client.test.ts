@@ -184,6 +184,131 @@ describe("listing", () => {
   });
 });
 
+describe("list limits", () => {
+  const fullPage = (key: string, page: number, extra: object = {}) => ({
+    body: {
+      [key]: Array.from({ length: 100 }, (_, i) => ({ id: `${key}-${page}-${i}` })),
+      ...extra,
+    },
+  });
+  const pageOf = (call: Call) => Number(new URL(call.url).searchParams.get("page"));
+
+  it("refuses a list that never ends rather than return part of it", async () => {
+    const c = client((call) => fullPage("roles", pageOf(call)));
+    await expect(c.listResources("role", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(apiCalls()).toHaveLength(500);
+  });
+
+  it("reads a long list past the old ten pages", async () => {
+    const c = client((call) =>
+      pageOf(call) < 30 ? fullPage("roles", pageOf(call)) : { body: { roles: [] } },
+    );
+    await expect(c.listResources("role", ACCOUNT)).resolves.toHaveLength(3000);
+  });
+
+  it("refuses a page with its key renamed, first or later", async () => {
+    const first = client(() => ({ body: { start: 0, total: 5, rolez: [] } }));
+    await expect(first.listResources("role", ACCOUNT)).rejects.toThrow("is not a list");
+    const later = client((call) =>
+      pageOf(call) === 0 ? fullPage("roles", 0, { total: 150 }) : { body: { error: "busy" } },
+    );
+    await expect(later.listResources("role", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("reads an empty answer that reports no rows", async () => {
+    const c = client(() => ({ body: { start: 0, limit: 100, total: 0 } }));
+    await expect(c.listResources("role", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("keeps reading while the total says more, whatever size the pages come in", async () => {
+    const c = client((call) => ({
+      body: {
+        total: 120,
+        roles: Array.from({ length: 40 }, (_, i) => ({ id: `r-${pageOf(call)}-${i}` })),
+      },
+    }));
+    await expect(c.listResources("role", ACCOUNT)).resolves.toHaveLength(120);
+    expect(apiCalls()).toHaveLength(3);
+  });
+
+  it("does not take the user total's word for the end of the list", async () => {
+    const c = client((call) =>
+      pageOf(call) < 10
+        ? fullPage("users", pageOf(call), { total: 1000 })
+        : {
+            status: 400,
+            body: { statusCode: 400, message: "You can only page through the first 1000 records" },
+          },
+    );
+    await expect(c.listResources("user", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(apiCalls()).toHaveLength(11);
+  });
+
+  it("ends the user list on an empty page after a full one", async () => {
+    const c = client((call) =>
+      pageOf(call) === 0
+        ? fullPage("users", 0, { total: 100 })
+        : { body: { users: [], total: 100 } },
+    );
+    await expect(c.listResources("user", ACCOUNT)).resolves.toHaveLength(100);
+  });
+
+  it("still reports a 400 on the first page as what it is", async () => {
+    const c = client(() => ({ status: 400, body: { statusCode: 400, message: "Bad query" } }));
+    await expect(c.listResources("user", ACCOUNT)).rejects.toThrow("Bad query");
+  });
+
+  it.each([
+    ["connection", "/connections", "connections"],
+    ["organization", "/organizations", "organizations"],
+  ])("walks %s by checkpoint, which the document requires past 1000", async (type, path, key) => {
+    const c = client((call) => {
+      const url = new URL(call.url);
+      expect(url.pathname).toBe(`/api/v2${path}`);
+      const from = url.searchParams.get("from");
+      if (!from) return { body: { [key]: [{ id: "a" }], next: "cursor-2" } };
+      expect(from).toBe("cursor-2");
+      return { body: { [key]: [{ id: "b" }] } };
+    });
+    const rows = await c.listResources(type, ACCOUNT);
+    expect(rows.map((r) => r.externalId)).toEqual(["a", "b"]);
+    const first = new URL(apiCalls()[0]!.url).searchParams;
+    expect(first.get("take")).toBe("100");
+    expect(first.get("page")).toBeNull();
+  });
+
+  it("refuses a checkpoint list that never ends", async () => {
+    const c = client(() => ({ body: { organizations: [{ id: "a" }], next: "again" } }));
+    await expect(c.listResources("organization", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(apiCalls()).toHaveLength(500);
+  });
+
+  it("does not read a role's cut-off permissions as none", async () => {
+    const c = client((call) =>
+      call.url.includes("/permissions")
+        ? fullPage("permissions", pageOf(call))
+        : { body: { id: "rol_1", name: "Admin" } },
+    );
+    await expect(c.getResource("role", `${ACCOUNT}:role:rol_1`, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("lets a picker stop at its cap, because part of a list is fine there", async () => {
+    const c = client((call) => fullPage("clients", pageOf(call)));
+    const config = await c.getCreateConfig("connection");
+    const picker = config.fields.find((f) => f.key === "enabledClients");
+    expect(picker).toMatchObject({ kind: "policy-picker" });
+    expect(apiCalls()).toHaveLength(10);
+  });
+});
+
 describe("mutations", () => {
   it("appends an action to its trigger's flow, keeping existing bindings", async () => {
     const c = client((call) => {
