@@ -162,6 +162,137 @@ describe("ChronosphereClient", () => {
   });
 });
 
+/** A list of `pages` one-row pages, or one that never ends. */
+function pagedList(pathname: string, key: string, pages = Number.POSITIVE_INFINITY) {
+  return makeHttp((url) => {
+    if (url.pathname !== pathname) return undefined;
+    const page = Number(url.searchParams.get("page.token") ?? 0);
+    return {
+      body: {
+        [key]: [{ slug: `s${page}` }],
+        page: page + 1 < pages ? { next_token: String(page + 1) } : {},
+      },
+    };
+  });
+}
+
+describe("reading a whole list", () => {
+  const MONITORS = "/api/v1/config/monitors";
+
+  it("throws at 100 pages rather than read a long list as complete", async () => {
+    const { http, calls } = pagedList(MONITORS, "monitors");
+    const client = hostClient(new ChronosphereClient(CREDS, { http }));
+    await expect(client.listResources("monitor", "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("reads past the 30 pages it used to stop at", async () => {
+    const { http } = pagedList(MONITORS, "monitors", 100);
+    const list = await hostClient(new ChronosphereClient(CREDS, { http })).listResources(
+      "monitor",
+      "acct",
+    );
+    expect(list).toHaveLength(100);
+  });
+
+  it.each([
+    ["left out", { page: {} }],
+    ["null", { monitors: null, page: {} }],
+    ["an empty array", { monitors: [], page: {} }],
+  ])("reads an empty list as none when it is %s", async (_name, body) => {
+    const { http } = makeHttp((url) => (url.pathname === MONITORS ? { body } : undefined));
+    expect(
+      await hostClient(new ChronosphereClient(CREDS, { http })).listResources("monitor", "acct"),
+    ).toEqual([]);
+  });
+
+  it("keeps reading past a page with no rows and a next token", async () => {
+    const { http } = makeHttp((url) => {
+      if (url.pathname !== MONITORS) return undefined;
+      return url.searchParams.get("page.token") === "t2"
+        ? { body: { monitors: [{ slug: "b" }], page: {} } }
+        : { body: { page: { next_token: "t2" } } };
+    });
+    const list = await hostClient(new ChronosphereClient(CREDS, { http })).listResources(
+      "monitor",
+      "acct",
+    );
+    expect(list.map((m) => m.externalId)).toEqual(["b"]);
+  });
+
+  it("does not read a 2xx with no body as the end of the list", async () => {
+    const { http } = makeHttp((url) => (url.pathname === MONITORS ? {} : undefined));
+    await expect(
+      hostClient(new ChronosphereClient(CREDS, { http })).listResources("monitor", "acct"),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("rejects a list that is not an array, on the first page and on a later one", async () => {
+    const first = makeHttp((url) =>
+      url.pathname === MONITORS ? { body: { monitors: { code: 13 } } } : undefined,
+    );
+    await expect(
+      hostClient(new ChronosphereClient(CREDS, { http: first.http })).listResources(
+        "monitor",
+        "acct",
+      ),
+    ).rejects.toThrow("is not a list");
+    const later = makeHttp((url) => {
+      if (url.pathname !== MONITORS) return undefined;
+      return url.searchParams.get("page.token")
+        ? { body: { monitors: "nope" } }
+        : { body: { monitors: [{ slug: "a" }], page: { next_token: "t2" } } };
+    });
+    await expect(
+      hostClient(new ChronosphereClient(CREDS, { http: later.http })).listResources(
+        "monitor",
+        "acct",
+      ),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("does not hide a list it could not finish behind the tenant's counts", async () => {
+    const { http } = pagedList(MONITORS, "monitors");
+    await expect(
+      hostClient(new ChronosphereClient(CREDS, { http })).listResources("tenant", "acct"),
+    ).rejects.toThrow("has more than Infrawrench reads");
+  });
+
+  it("still lists the tenant when a count fails", async () => {
+    const { http } = makeHttp((url) =>
+      url.pathname === MONITORS
+        ? { status: 500, body: { code: 13, message: "boom" } }
+        : { body: { page: {} } },
+    );
+    const [tenant] = await hostClient(new ChronosphereClient(CREDS, { http })).listResources(
+      "tenant",
+      "acct",
+    );
+    expect(tenant?.fields["monitorCount"]).toBeUndefined();
+    expect(tenant?.fields["sloCount"]).toBe(0);
+  });
+
+  it("gives a picker the rows it read from a list too long to finish", async () => {
+    const { http, calls } = pagedList("/api/v1/config/collections", "collections");
+    const form = await hostClient(new ChronosphereClient(CREDS, { http })).getCreateConfig(
+      "monitor",
+    );
+    expect(form.fields.find((f) => f.key === "collectionSlug")?.options).toHaveLength(100);
+    expect(calls.filter((c) => c.url.pathname.endsWith("/collections"))).toHaveLength(100);
+  });
+
+  it("does not show a picker empty because a page was not a list", async () => {
+    const { http } = makeHttp((url) =>
+      url.pathname === "/api/v1/config/collections" ? { body: { collections: {} } } : undefined,
+    );
+    await expect(
+      hostClient(new ChronosphereClient(CREDS, { http })).getCreateConfig("monitor"),
+    ).rejects.toThrow("is not a list");
+  });
+});
+
 describe("helpers", () => {
   it("describes conditions and parses matchers", () => {
     expect(

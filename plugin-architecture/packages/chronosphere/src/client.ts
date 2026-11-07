@@ -12,7 +12,7 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import { pathEncode } from "@infrawrench/plugin-base";
 import type { ChronoContext, ConfigObjects, ConfigRoutes, ConfigTypeId, Monitor } from "./api.js";
 import { configRoutes, guarded, isConfigType, normalizeOrg, statusOf } from "./api.js";
@@ -154,8 +154,11 @@ export class ChronosphereClient implements PluginClient {
     throw new Error(`Chronosphere plugin: unknown resource type "${typeId}"`);
   }
 
-  private list<T extends ConfigTypeId>(typeId: T): Promise<ConfigObjects[T][]> {
-    return guarded(this.routes[typeId].list());
+  private list<T extends ConfigTypeId>(
+    typeId: T,
+    request?: { partial?: boolean },
+  ): Promise<ConfigObjects[T][]> {
+    return guarded(this.routes[typeId].list(request));
   }
 
   private read<T extends ConfigTypeId>(typeId: T, slug: string): Promise<ConfigObjects[T]> {
@@ -193,7 +196,10 @@ export class ChronosphereClient implements PluginClient {
     const count = (t: ConfigTypeId) =>
       this.list(t)
         .then((l) => l.length)
-        .catch(() => undefined);
+        .catch((err: unknown) => {
+          rethrowIncompleteList(err);
+          return undefined;
+        });
     const [monitorCount, collectionCount, dashboardCount, sloCount] = await Promise.all([
       count("monitor"),
       count("collection"),
@@ -313,7 +319,10 @@ export class ChronosphereClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async options(typeId: ConfigTypeId): Promise<Array<{ id: string; label: string }>> {
-    const list = await this.list(typeId).catch(() => []);
+    const list = await this.list(typeId, { partial: true }).catch((err: unknown) => {
+      rethrowIncompleteList(err);
+      return [];
+    });
     return list
       .filter((o) => o.slug)
       .map((o) => ({ id: String(o.slug), label: String(o.name ?? o.slug) }));

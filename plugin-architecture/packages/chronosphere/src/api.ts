@@ -144,7 +144,8 @@ export function statusOf(err: unknown): number {
   return err instanceof ChronoApiError ? err.status : 0;
 }
 
-const MAX_PAGES = 30;
+// 50,000 rows at the size asked for, the most the host can prune.
+const MAX_PAGES = 100;
 
 /** The Config API. Its failures name the path without the query; see {@link guarded}. */
 export function configApi(ctx: ChronoContext) {
@@ -163,15 +164,19 @@ export function configApi(ctx: ChronoContext) {
     pageSize: 500,
     maxPages: MAX_PAGES,
     next: "page.next_token",
+    // The document: "clients must never assume how many items will be returned", and
+    // only an empty `next_token` means there are no more.
     continueOnEmptyPage: true,
-    emptyBodyEndsList: true,
+    // The document is grpc-gateway output with no response field required, and proto3
+    // JSON can leave out an empty repeated field.
+    missingListIsEmpty: true,
   });
 }
 
 /** What one resource type's routes do, with a slug already encoded. */
 export interface ConfigRoute<O> {
-  /** Every object, walking `page.token`. */
-  list(): Promise<O[]>;
+  /** Every object, walking `page.token`. `partial` is for a picker, never the inventory. */
+  list(request?: { partial?: boolean }): Promise<O[]>;
   read(slug: NoSlashString): Promise<O>;
   /** Every type has one, because a write with an empty slug has always been a create. */
   create(body: O): Promise<O>;
@@ -204,7 +209,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
   const api = configApi(ctx);
   return {
     monitor: {
-      list: () => api.getAll("/api/v1/config/monitors", "monitors"),
+      list: (request) => api.getAll("/api/v1/config/monitors", "monitors", request),
       read: (slug) => api.get(`/api/v1/config/monitors/${slug}`).then((r) => r?.monitor ?? {}),
       create: (monitor) =>
         api
@@ -217,7 +222,8 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/monitors/${slug}`),
     },
     "notification-policy": {
-      list: () => api.getAll("/api/v1/config/notification-policies", "notification_policies"),
+      list: (request) =>
+        api.getAll("/api/v1/config/notification-policies", "notification_policies", request),
       read: (slug) =>
         api
           .get(`/api/v1/config/notification-policies/${slug}`)
@@ -233,7 +239,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/notification-policies/${slug}`),
     },
     notifier: {
-      list: () => api.getAll("/api/v1/config/notifiers", "notifiers"),
+      list: (request) => api.getAll("/api/v1/config/notifiers", "notifiers", request),
       read: (slug) => api.get(`/api/v1/config/notifiers/${slug}`).then((r) => r?.notifier ?? {}),
       create: (notifier) =>
         api
@@ -246,7 +252,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/notifiers/${slug}`),
     },
     collection: {
-      list: () => api.getAll("/api/v1/config/collections", "collections"),
+      list: (request) => api.getAll("/api/v1/config/collections", "collections", request),
       read: (slug) =>
         api.get(`/api/v1/config/collections/${slug}`).then((r) => r?.collection ?? {}),
       create: (collection) =>
@@ -260,7 +266,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/collections/${slug}`),
     },
     bucket: {
-      list: () => api.getAll("/api/v1/config/buckets", "buckets"),
+      list: (request) => api.getAll("/api/v1/config/buckets", "buckets", request),
       read: (slug) => api.get(`/api/v1/config/buckets/${slug}`).then((r) => r?.bucket ?? {}),
       create: (bucket) =>
         api.post("/api/v1/config/buckets", { body: { bucket } }).then((r) => r?.bucket ?? bucket),
@@ -271,7 +277,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/buckets/${slug}`),
     },
     team: {
-      list: () => api.getAll("/api/v1/config/teams", "teams"),
+      list: (request) => api.getAll("/api/v1/config/teams", "teams", request),
       read: (slug) => api.get(`/api/v1/config/teams/${slug}`).then((r) => r?.team ?? {}),
       create: (team) =>
         api.post("/api/v1/config/teams", { body: { team } }).then((r) => r?.team ?? team),
@@ -280,7 +286,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/teams/${slug}`),
     },
     dashboard: {
-      list: () => api.getAll("/api/v1/config/dashboards", "dashboards"),
+      list: (request) => api.getAll("/api/v1/config/dashboards", "dashboards", request),
       read: (slug) => api.get(`/api/v1/config/dashboards/${slug}`).then((r) => r?.dashboard ?? {}),
       create: (dashboard) =>
         api
@@ -293,7 +299,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/dashboards/${slug}`),
     },
     slo: {
-      list: () => api.getAll("/api/v1/config/slos", "slos"),
+      list: (request) => api.getAll("/api/v1/config/slos", "slos", request),
       read: (slug) => api.get(`/api/v1/config/slos/${slug}`).then((r) => r?.slo ?? {}),
       create: (slo) =>
         api.post("/api/v1/config/slos", { body: { slo } }).then((r) => r?.slo ?? slo),
@@ -302,7 +308,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/slos/${slug}`),
     },
     "rollup-rule": {
-      list: () => api.getAll("/api/v1/config/rollup-rules", "rollup_rules"),
+      list: (request) => api.getAll("/api/v1/config/rollup-rules", "rollup_rules", request),
       read: (slug) =>
         api.get(`/api/v1/config/rollup-rules/${slug}`).then((r) => r?.rollup_rule ?? {}),
       create: (rollup_rule) =>
@@ -316,7 +322,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/rollup-rules/${slug}`),
     },
     "drop-rule": {
-      list: () => api.getAll("/api/v1/config/drop-rules", "drop_rules"),
+      list: (request) => api.getAll("/api/v1/config/drop-rules", "drop_rules", request),
       read: (slug) => api.get(`/api/v1/config/drop-rules/${slug}`).then((r) => r?.drop_rule ?? {}),
       create: (drop_rule) =>
         api
@@ -329,7 +335,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/drop-rules/${slug}`),
     },
     "recording-rule": {
-      list: () => api.getAll("/api/v1/config/recording-rules", "recording_rules"),
+      list: (request) => api.getAll("/api/v1/config/recording-rules", "recording_rules", request),
       read: (slug) =>
         api.get(`/api/v1/config/recording-rules/${slug}`).then((r) => r?.recording_rule ?? {}),
       create: (recording_rule) =>
@@ -343,7 +349,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/recording-rules/${slug}`),
     },
     "muting-rule": {
-      list: () => api.getAll("/api/v1/config/muting-rules", "muting_rules"),
+      list: (request) => api.getAll("/api/v1/config/muting-rules", "muting_rules", request),
       read: (slug) =>
         api.get(`/api/v1/config/muting-rules/${slug}`).then((r) => r?.muting_rule ?? {}),
       create: (muting_rule) =>
@@ -357,7 +363,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/muting-rules/${slug}`),
     },
     "service-account": {
-      list: () => api.getAll("/api/v1/config/service-accounts", "service_accounts"),
+      list: (request) => api.getAll("/api/v1/config/service-accounts", "service_accounts", request),
       read: (slug) =>
         api.get(`/api/v1/config/service-accounts/${slug}`).then((r) => r?.service_account ?? {}),
       create: (service_account) =>
@@ -372,7 +378,7 @@ export function configRoutes(ctx: ChronoContext): ConfigRoutes {
       delete: (slug) => api.delete(`/api/v1/config/service-accounts/${slug}`),
     },
     service: {
-      list: () => api.getAll("/api/v1/config/services", "services"),
+      list: (request) => api.getAll("/api/v1/config/services", "services", request),
       read: (slug) => api.get(`/api/v1/config/services/${slug}`).then((r) => r?.service ?? {}),
       create: (service) =>
         chronoFetch<ServiceAnswer>(ctx, "/api/v1/config/services", {
