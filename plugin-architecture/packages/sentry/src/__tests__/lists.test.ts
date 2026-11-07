@@ -29,6 +29,28 @@ function endless(call: Call) {
   };
 }
 
+describe("writes with a blank id", () => {
+  it("refuses, and sends nothing", async () => {
+    const { c, calls } = client(() => ({}));
+    const blank = (type: string) => `${ACCOUNT}:${type}:`;
+    await expect(c.deleteResource("project", blank("project"), ACCOUNT)).rejects.toThrow(/id/);
+    await expect(c.deleteResource("team", blank("team"), ACCOUNT)).rejects.toThrow(/id/);
+    await expect(c.invokeAction!("issue", blank("issue"), "resolve", ACCOUNT)).rejects.toThrow(
+      /id/,
+    );
+    await expect(c.invokeAction!("alert", blank("alert"), "disable", ACCOUNT)).rejects.toThrow(
+      /id/,
+    );
+    await expect(c.invokeAction!("monitor", blank("monitor"), "disable", ACCOUNT)).rejects.toThrow(
+      /id/,
+    );
+    await expect(
+      c.updateResource("project", blank("project"), ACCOUNT, { name: "x" }),
+    ).rejects.toThrow(/id/);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("cron monitor max runtime", () => {
   const monitor = {
     id: "1",

@@ -135,6 +135,16 @@ function num(raw: string | undefined, label: string): number | undefined {
   return n;
 }
 
+/**
+ * A resource's id for a write. A blank one would send the write to another route,
+ * or to a bulk route with nothing limiting which rows it touches.
+ */
+function writeId(resourceId: string): string {
+  const id = externalIdOf(resourceId);
+  if (!id) throw new Error(`Sentry plugin: malformed id "${resourceId}"`);
+  return id;
+}
+
 /** Crontab (`0 * * * *`) or interval (`10 minute`) into Sentry's monitor config. */
 export function parseSchedule(
   raw: string,
@@ -783,7 +793,7 @@ export class SentryClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       const has = (k: string) => k in fields;
       const text = (k: string) => (fields[k] ?? "").trim();
       const named = () => (has("name") && text("name") ? text("name") : undefined);
@@ -924,7 +934,7 @@ export class SentryClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       switch (typeId) {
         case "project":
           await this.api.delete(`/projects/${this.o}/${enc(id)}/`);
@@ -977,7 +987,7 @@ export class SentryClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       const toggle = actionId === "enable" || actionId === "disable";
       switch (typeId) {
         case "issue":
