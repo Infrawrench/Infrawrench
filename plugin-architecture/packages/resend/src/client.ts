@@ -1,6 +1,11 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import { pathEncode, type ApiBody, type PluginEffect } from "@infrawrench/plugin-base";
+import {
+  pathEncode,
+  withinListCap,
+  type ApiBody,
+  type PluginEffect,
+} from "@infrawrench/plugin-base";
 import type {
   CreateFieldConfig,
   CreateResourceConfig,
@@ -17,7 +22,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf } from "@infrawrench/plugin-base";
 import type { ResendApi } from "./api.js";
-import { API_BASE, ResendApiError, createResendApi, isRestrictedKey, listAll } from "./api.js";
+import { API_BASE, ResendApiError, createResendApi, isRestrictedKey } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import type { ResendDomain } from "./mappers.js";
 import {
@@ -96,6 +101,12 @@ const REGIONS = [
 
 /** Domain details are reused by the domain and DNS-record listers within a sync. */
 const DOMAIN_CACHE_MS = 60_000;
+
+/** One read per domain per sync, which 5 requests a second gets through in a few minutes. */
+const MAX_DETAILED_DOMAINS = 1000;
+
+/** What a form's pickers read: enough to choose from, and part of a list is fine there. */
+const PICKER_LIST = { maxPages: 10, partial: true };
 
 /** Run `fn` over `items` with at most `limit` in flight (Resend allows 10 req/s per team). */
 async function mapLimit<T, R>(
@@ -176,14 +187,6 @@ export class ResendClient implements PluginClient {
     this.services = services;
   }
 
-  private listDomains() {
-    return listAll((query) => this.api.get("/domains", { query }));
-  }
-
-  private listSegments() {
-    return listAll((query) => this.api.get("/segments", { query }));
-  }
-
   // ---------------------------------------------------------------- listing
 
   /** Every domain with its records: the list omits records, so each is re-read. */
@@ -192,12 +195,20 @@ export class ResendClient implements PluginClient {
     if (this.domainCache && now - this.domainCache.at < DOMAIN_CACHE_MS)
       return this.domainCache.domains;
     const domains = (async () => {
-      const list = await this.listDomains();
+      const list = withinListCap(await this.api.getAll("/domains", "data"), MAX_DETAILED_DOMAINS, {
+        vendor: "Resend",
+        path: "/domains",
+      });
       return mapLimit(list, 3, async (d) =>
         d.id
           ? {
               ...d,
-              ...(await this.api.get(`/domains/${pathEncode(d.id)}`).catch(() => ({}))),
+              // Only a domain deleted since the list has no records. Anything else
+              // that failed would read its records as gone, and prune them.
+              ...(await this.api.get(`/domains/${pathEncode(d.id)}`).catch((err: unknown) => {
+                if (err instanceof ResendApiError && err.status === 404) return {};
+                throw err;
+              })),
             }
           : d,
       );
@@ -220,49 +231,38 @@ export class ResendClient implements PluginClient {
         case DNS_RECORD:
           return (await this.detailedDomains()).flatMap((d) => mapDnsRecords(accountId, d));
         case API_KEY:
-          return (await listAll((query) => api.get("/api-keys", { query }))).map((k) =>
-            mapApiKey(accountId, k),
-          );
+          return (await api.getAll("/api-keys", "data")).map((k) => mapApiKey(accountId, k));
         case WEBHOOK:
-          return (await listAll((query) => api.get("/webhooks", { query }))).map((w) =>
-            mapWebhook(accountId, w),
-          );
+          return (await api.getAll("/webhooks", "data")).map((w) => mapWebhook(accountId, w));
         case EMAIL:
-          return (await listAll((query) => api.get("/emails", { query }), 1)).map((e) =>
-            mapEmail(accountId, e),
+          return (
+            // Rolling window: the newest 100. Older rows falling off is what this type means.
+            (await api.getAll("/emails", "data", { maxPages: 1, partial: true })).map((e) =>
+              mapEmail(accountId, e),
+            )
           );
         case BROADCAST:
-          return (await listAll((query) => api.get("/broadcasts", { query }))).map((b) =>
-            mapBroadcast(accountId, b),
-          );
+          return (await api.getAll("/broadcasts", "data")).map((b) => mapBroadcast(accountId, b));
         case TEMPLATE:
-          return (await listAll((query) => api.get("/templates", { query }))).map((t) =>
-            mapTemplate(accountId, t),
-          );
+          return (await api.getAll("/templates", "data")).map((t) => mapTemplate(accountId, t));
         case SEGMENT:
-          return (await this.listSegments()).map((s) => mapSegment(accountId, s));
+          return (await api.getAll("/segments", "data")).map((s) => mapSegment(accountId, s));
         case TOPIC:
-          return (await listAll((query) => api.get("/topics", { query }))).map((t) =>
-            mapTopic(accountId, t),
-          );
+          return (await api.getAll("/topics", "data")).map((t) => mapTopic(accountId, t));
         case CONTACT:
-          return (await listAll((query) => api.get("/contacts", { query }))).map((c) =>
-            mapContact(accountId, c),
-          );
+          return (await api.getAll("/contacts", "data")).map((c) => mapContact(accountId, c));
         case CONTACT_PROPERTY:
-          return (await listAll((query) => api.get("/contact-properties", { query }))).map((p) =>
+          return (await api.getAll("/contact-properties", "data")).map((p) =>
             mapContactProperty(accountId, p),
           );
         case SUPPRESSION:
-          return (await listAll((query) => api.get("/suppressions", { query }))).map((s) =>
+          return (await api.getAll("/suppressions", "data")).map((s) =>
             mapSuppression(accountId, s),
           );
         case AUTOMATION:
-          return (await listAll((query) => api.get("/automations", { query }))).map((a) =>
-            mapAutomation(accountId, a),
-          );
+          return (await api.getAll("/automations", "data")).map((a) => mapAutomation(accountId, a));
         case OAUTH_GRANT:
-          return (await listAll((query) => api.get("/oauth/grants", { query }))).map((g) =>
+          return (await api.getAll("/oauth/grants", "data")).map((g) =>
             mapOAuthGrant(accountId, g),
           );
         default:
@@ -532,7 +532,7 @@ export class ResendClient implements PluginClient {
             ],
           };
         case API_KEY: {
-          const domains = await this.listDomains().catch(() => []);
+          const domains = await this.api.getAll("/domains", "data", PICKER_LIST).catch(() => []);
           return {
             fields: [
               text("name", "Name", true, { placeholder: "production-api" }),
@@ -588,9 +588,9 @@ export class ResendClient implements PluginClient {
           };
         case BROADCAST: {
           const [segments, topics, domains] = await Promise.all([
-            this.listSegments().catch(() => []),
-            listAll((query) => this.api.get("/topics", { query })).catch(() => []),
-            this.listDomains().catch(() => []),
+            this.api.getAll("/segments", "data", PICKER_LIST).catch(() => []),
+            this.api.getAll("/topics", "data", PICKER_LIST).catch(() => []),
+            this.api.getAll("/domains", "data", PICKER_LIST).catch(() => []),
           ]);
           const verified = domains
             .filter((d) => d.status === "verified")
@@ -700,7 +700,7 @@ export class ResendClient implements PluginClient {
             ],
           };
         case CONTACT: {
-          const segments = await this.listSegments().catch(() => []);
+          const segments = await this.api.getAll("/segments", "data", PICKER_LIST).catch(() => []);
           return {
             fields: [
               text("email", "Email", true, { placeholder: "jane@example.com" }),
@@ -1267,16 +1267,18 @@ export class ResendClient implements PluginClient {
     return attempt(async () => {
       const { api } = this;
       const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 500);
-      const pages = Math.ceil(limit / 100);
+      // Log lines: the newest are what is wanted, and part of a list is fine.
+      const newestLines = { maxPages: Math.ceil(limit / 100), partial: true };
       let containers: string[];
       let active: string;
       let lines: string[];
       if (typeId === WEBHOOK) {
         containers = ["Deliveries"];
         active = "Deliveries";
-        const events = await listAll(
-          (query) => api.get(`/webhooks/${pathEncode(externalIdOf(resourceId))}/events`, { query }),
-          pages,
+        const events = await api.getAll(
+          `/webhooks/${pathEncode(externalIdOf(resourceId))}/events`,
+          "data",
+          newestLines,
         );
         lines = events
           .slice(0, limit)
@@ -1288,7 +1290,7 @@ export class ResendClient implements PluginClient {
             ? params.container
             : "API requests";
         if (active === "API requests") {
-          const logs = await listAll((query) => api.get("/logs", { query }), pages);
+          const logs = await api.getAll("/logs", "data", newestLines);
           lines = logs
             .slice(0, limit)
             .map((l) =>
@@ -1297,8 +1299,8 @@ export class ResendClient implements PluginClient {
         } else {
           const emails: LoggedEmail[] =
             active === "Sent emails"
-              ? await listAll((query) => api.get("/emails", { query }), pages)
-              : await listAll((query) => api.get("/emails/receiving", { query }), pages);
+              ? await api.getAll("/emails", "data", newestLines)
+              : await api.getAll("/emails/receiving", "data", newestLines);
           lines = emails.slice(0, limit).map((e) => {
             const to = Array.isArray(e.to) ? e.to.join(",") : (e.to ?? "");
             const ev = e.last_event ? `  ${e.last_event}` : "";

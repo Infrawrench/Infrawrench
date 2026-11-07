@@ -1,6 +1,6 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
-import { createResendApi, listAll } from "../api.js";
+import { createResendApi } from "../api.js";
 import { ResendClient, WEBHOOK_EVENTS, parseList } from "../client.js";
 import { qualify, toIso } from "../mappers.js";
 import { mapComponent, parseStatusFeed } from "../status-feed.js";
@@ -59,7 +59,7 @@ describe("api", () => {
         : { data: [{ id: "a" }, { id: "b" }], has_more: true },
     );
     const api = createResendApi({ apiKey: "re_K", http });
-    const out = await listAll((query) => api.get("/contacts", { query }));
+    const out = await api.getAll("/contacts", "data");
     expect(out.map((x) => x.id)).toEqual(["a", "b", "c"]);
     expect(calls[1]?.url.searchParams.get("after")).toBe("b");
     expect(calls[0]?.url.searchParams.get("limit")).toBe("100");
@@ -357,6 +357,95 @@ describe("logs", () => {
     const out = await c.getLogs("resend-account", "acc:resend-account:account", ACC, {});
     expect(out.text.split("\n")[0]).toContain("GET /domains");
     expect(out.containers).toEqual(["API requests", "Sent emails", "Received emails"]);
+  });
+});
+
+describe("complete lists", () => {
+  const forever = (call: Call) => ({
+    data: [{ id: `row-${call.url.searchParams.get("after") ?? "0"}`, endpoint: "/e" }],
+    has_more: true,
+  });
+
+  it("throws at the cap instead of reading part of an inventory list as all of it", async () => {
+    const { c, calls } = client(forever);
+    await expect(c.listResources("resend-contact", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(500);
+  });
+
+  it("asks for Resend's largest page, and reads 10,000 rows without complaint", async () => {
+    let served = 0;
+    const { c, calls } = client(() => {
+      const data = Array.from({ length: 100 }, () => ({ id: `row-${served++}` }));
+      return { data, has_more: served < 10_000 };
+    });
+    await expect(c.listResources("resend-suppression", ACC)).resolves.toHaveLength(10_000);
+    expect(calls[0]?.url.searchParams.get("limit")).toBe("100");
+  });
+
+  it("refuses a page whose list is not an array, first or later", async () => {
+    const first = client(() => ({ items: [], has_more: false }));
+    await expect(first.c.listResources("resend-topic", ACC)).rejects.toThrow("is not a list");
+
+    const later = client((call) =>
+      call.url.searchParams.get("after")
+        ? { items: [{ id: "b" }], has_more: false }
+        : { data: [{ id: "a" }], has_more: true },
+    );
+    await expect(later.c.listResources("resend-topic", ACC)).rejects.toThrow("is not a list");
+  });
+
+  it("keeps the newest page of emails as a rolling window", async () => {
+    const { c, calls } = client(forever);
+    await expect(c.listResources("resend-email", ACC)).resolves.toHaveLength(1);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("does not read a failed domain as a domain with no records", async () => {
+    const route = (call: Call) =>
+      call.url.pathname === "/domains"
+        ? { data: [{ id: "d1", name: "mail.acme.test" }], has_more: false }
+        : { status: 500, body: { name: "application_error", message: "boom" } };
+    await expect(client(route).c.listResources("resend-dns-record", ACC)).rejects.toThrow("boom");
+    await expect(client(route).c.listResources("resend-domain", ACC)).rejects.toThrow("boom");
+  });
+
+  it("reads a domain deleted since the list as having no records", async () => {
+    const { c } = client((call) =>
+      call.url.pathname === "/domains"
+        ? { data: [{ id: "d1", name: "mail.acme.test" }], has_more: false }
+        : { status: 404, body: { name: "not_found", message: "gone" } },
+    );
+    await expect(c.listResources("resend-dns-record", ACC)).resolves.toEqual([]);
+  });
+
+  it("fails rather than read the details of more domains than it can fan out over", async () => {
+    const data = Array.from({ length: 1001 }, (_, i) => ({ id: `d${i}`, name: `d${i}.test` }));
+    const { c, calls } = client((call) => {
+      if (call.url.pathname === "/domains") return { data, has_more: false };
+      throw new Error(`unexpected ${call.url.pathname}`);
+    });
+    await expect(c.listResources("resend-domain", ACC)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it("offers what it read in a picker when the list is longer than the picker reads", async () => {
+    const { c, calls } = client(forever);
+    const config = await c.getCreateConfig("resend-contact");
+    expect(config.fields.find((f) => f.key === "segments")?.policies).toHaveLength(10);
+    expect(calls).toHaveLength(10);
+  });
+
+  it("shows the log lines it read when there are more than it asked for", async () => {
+    const { c, calls } = client(forever);
+    const out = await c.getLogs("resend-account", "acc:resend-account:account", ACC, {
+      tailLines: 200,
+    });
+    expect(calls).toHaveLength(2);
+    expect(out.text).toContain("/e");
   });
 });
 

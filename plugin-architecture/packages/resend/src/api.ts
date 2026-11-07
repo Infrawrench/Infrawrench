@@ -1,6 +1,6 @@
 import {
   createApiClient,
-  type ApiClient,
+  withCursorPagination,
   type HttpHostServices,
   type ParamValue,
 } from "@infrawrench/plugin-base";
@@ -149,10 +149,10 @@ function transport(ctx: ResendContext): HttpHostServices {
   };
 }
 
-export type ResendApi = ApiClient<paths>;
+export type ResendApi = ReturnType<typeof createResendApi>;
 
-export function createResendApi(ctx: ResendContext): ResendApi {
-  return createApiClient<paths>({
+export function createResendApi(ctx: ResendContext) {
+  const client = createApiClient<paths>({
     vendor: "Resend",
     baseUrl: API_BASE,
     headers: { Authorization: `Bearer ${ctx.apiKey}`, Accept: "application/json" },
@@ -165,34 +165,13 @@ export function createResendApi(ctx: ResendContext): ResendApi {
       return new ResendApiError(status, `Resend API error ${status} for ${path}: ${message}`, name);
     },
   });
-}
-
-/** What every list in the document answers with. */
-interface Page<Item> {
-  data?: Item[];
-  has_more?: boolean;
-}
-
-/**
- * Every page of a cursor list, up to `maxPages` × 100 items:
- * `listAll((query) => api.get("/domains", { query }))`.
- *
- * Not `withCursorPagination`, which reads a `data` that is not an array as an empty
- * list. Here it throws, and an empty list is what lets the host prune a resource.
- */
-export async function listAll<Item extends { id?: string }>(
-  fetchPage: (query: { limit: number; after?: string }) => Promise<Page<Item>>,
-  maxPages = 10,
-): Promise<Item[]> {
-  const out: Item[] = [];
-  let after: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
-    const res = await fetchPage({ limit: 100, ...(after ? { after } : {}) });
-    const data = res?.data ?? [];
-    out.push(...data);
-    const last = data[data.length - 1]?.id;
-    if (!res?.has_more || !last) break;
-    after = last;
-  }
-  return out;
+  return withCursorPagination(client, {
+    cursorParam: "after",
+    sizeParam: "limit",
+    // The document's largest page, so 500 pages is 50,000 rows.
+    pageSize: 100,
+    maxPages: 500,
+    next: { lastItem: "id" },
+    hasMore: "has_more",
+  });
 }
