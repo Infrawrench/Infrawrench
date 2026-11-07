@@ -451,16 +451,65 @@ describe("listResources dispatch + mappers", () => {
     expect(team!.fields["name"]).toBeUndefined();
   });
 
-  it("returns empty teams when request fails", async () => {
+  it("reads every page of teams, without the team the route does not take", async () => {
+    let page = 0;
+    installFetch(() =>
+      jsonResponse({
+        teams: [{ id: `t${page}`, name: "Team", slug: "team", createdAt: 1 }],
+        pagination: { next: page++ === 0 ? 1700 : null },
+      }),
+    );
+    const res = await client({ accessToken: "tok", teamId: "team_x" }).listResources(
+      "vercel-team",
+      ACCOUNT,
+    );
+    expect(res.map((t) => t.externalId)).toEqual(["t0", "t1"]);
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.vercel.com/v2/teams?limit=20",
+      "https://api.vercel.com/v2/teams?limit=20&until=1700",
+    ]);
+  });
+
+  it("asks again with the team when a scoped token is refused without it", async () => {
+    installFetch((url) =>
+      url.includes("teamId=team_x")
+        ? jsonResponse({
+            teams: [{ id: "t1", name: "Team", slug: "team", createdAt: 1 }],
+            pagination: { next: null },
+          })
+        : jsonResponse("nope", 403),
+    );
+    const res = await client({ accessToken: "tok", teamId: "team_x" }).listResources(
+      "vercel-team",
+      ACCOUNT,
+    );
+    expect(res.map((t) => t.externalId)).toEqual(["t1"]);
+  });
+
+  it("returns empty teams when the token has no team access", async () => {
     installFetch(() => jsonResponse("nope", 403));
     const res = await client().listResources("vercel-team", ACCOUNT);
     expect(res).toEqual([]);
+    expect(calls).toHaveLength(1);
   });
 
-  it("returns empty teams when teams field missing", async () => {
+  it("does not read a failed team list as no teams", async () => {
+    installFetch(() => jsonResponse("boom", 500));
+    await expect(client().listResources("vercel-team", ACCOUNT)).rejects.toThrow(
+      "Vercel API error 500",
+    );
+  });
+
+  it("refuses a team list with no teams field, or past the cap", async () => {
     installFetch(() => jsonResponse({}));
-    const res = await client().listResources("vercel-team", ACCOUNT);
-    expect(res).toEqual([]);
+    await expect(client().listResources("vercel-team", ACCOUNT)).rejects.toThrow("is not a list");
+
+    calls = [];
+    installFetch(() => jsonResponse({ teams: [{ id: "t", slug: "s" }], pagination: { next: 1 } }));
+    await expect(client().listResources("vercel-team", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(500);
   });
 
   it("throws on unknown type", async () => {

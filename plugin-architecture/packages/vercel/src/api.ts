@@ -1,6 +1,7 @@
 import {
   createApiClient,
   withCursorPagination,
+  type ApiFailure,
   type ApiListItem,
   type ApiResponse,
   type HttpHostServices,
@@ -48,6 +49,21 @@ const PAGES = {
   next: "pagination.next",
 } as const;
 
+/** Carries the status, for the few reads where one status means "there is none". */
+export class VercelApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "VercelApiError";
+  }
+}
+
+export function hasStatus(error: unknown, ...statuses: number[]): boolean {
+  return error instanceof VercelApiError && statuses.includes(error.status);
+}
+
 export function createVercelApi(options: {
   accessToken: string;
   teamId: string | null;
@@ -55,19 +71,26 @@ export function createVercelApi(options: {
   http: HttpHostServices | undefined;
 }) {
   const { accessToken, teamId, caCert, http } = options;
-  const client = createApiClient<paths>({
+  const connection = {
     vendor: "Vercel",
     baseUrl: "https://api.vercel.com",
     headers: { Authorization: `Bearer ${accessToken}` },
-    scopeQuery: { teamId },
     encodeQuery: encodeURIComponent,
     http,
     caCert,
-  });
+    httpError: ({ status, target, body }: ApiFailure) =>
+      new VercelApiError(status, `Vercel API error ${status} for ${target}: ${body}`),
+  };
+  const client = createApiClient<paths>({ ...connection, scopeQuery: { teamId } });
   return {
     /** Most lists take the previous page's `pagination.next` timestamp as `until`. */
     api: withCursorPagination(client, { ...PAGES, cursorParam: "until" }),
     /** `GET /v10/projects` answers with a continuation token and takes it as `from`. */
     projectPages: withCursorPagination(client, { ...PAGES, cursorParam: "from" }),
+    /** `GET /v2/teams` is the user's teams: the document gives it no team to scope to. */
+    accountPages: withCursorPagination(createApiClient<paths>(connection), {
+      ...PAGES,
+      cursorParam: "until",
+    }),
   };
 }

@@ -28,6 +28,7 @@ import {
 } from "@infrawrench/plugin-base";
 import {
   createVercelApi,
+  hasStatus,
   type VercelDeployment,
   type VercelDeploymentDetail,
   type VercelDeploymentEvent,
@@ -159,6 +160,7 @@ export class VercelClient implements PluginClient {
   private readonly services: HostServices | undefined;
   private readonly api: ReturnType<typeof createVercelApi>["api"];
   private readonly projectPages: ReturnType<typeof createVercelApi>["projectPages"];
+  private readonly accountPages: ReturnType<typeof createVercelApi>["accountPages"];
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = credentials["accessToken"];
@@ -167,7 +169,7 @@ export class VercelClient implements PluginClient {
     this.teamId = credentials["teamId"] || null;
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
-    const { api, projectPages } = createVercelApi({
+    const { api, projectPages, accountPages } = createVercelApi({
       accessToken: token,
       teamId: this.teamId,
       caCert: this.caCert,
@@ -175,6 +177,21 @@ export class VercelClient implements PluginClient {
     });
     this.api = api;
     this.projectPages = projectPages;
+    this.accountPages = accountPages;
+  }
+
+  private async listRawTeams() {
+    // No `limit` maximum is documented for this route; 20 is its own example, and 500 pages of
+    // it is 10,000 teams.
+    const read = (client: typeof this.api) => client.getAll("/v2/teams", "teams", { pageSize: 20 });
+    try {
+      return await read(this.accountPages);
+    } catch (err) {
+      // The document lists no `teamId` here but the plugin has always sent one, so a token
+      // scoped to the team may only be answered with it.
+      if (!this.teamId || !hasStatus(err, 403)) throw err;
+      return read(this.api);
+    }
   }
 
   private listRawProjects() {
@@ -1273,12 +1290,13 @@ export class VercelClient implements PluginClient {
 
   private async listTeams(accountId: string): Promise<ResourceInstance[]> {
     try {
-      const data = await this.api.get("/v2/teams");
-      const teams = data.teams ?? [];
+      const teams = await this.listRawTeams();
       return teams.map((t) => this.mapTeam(t, accountId));
-    } catch {
-      // Personal accounts may not have team access
-      return [];
+    } catch (err) {
+      // A token with no team access has none to show. Any other failure is not "no teams":
+      // a sync would delete them all.
+      if (hasStatus(err, 403)) return [];
+      throw err;
     }
   }
 
