@@ -18,9 +18,12 @@ import type {
   SelectOption,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import { InfisicalApi, readCredentials } from "./api.js";
+import { messageOf, statusOf } from "./http.js";
 import type {
+  AuditLogQuery,
+  CertificateAltNames,
   InfAuditLog,
   InfCa,
   InfCertificate,
@@ -36,8 +39,17 @@ import type {
   InfRole,
   InfSecret,
   InfSecretSync,
+  InfSecretWrite,
   InfSyncOption,
   InfUniversalAuth,
+  ProjectIdentity,
+  UpdateDynamicSecretData,
+  UpdateEnvironmentBody,
+  UpdateIdentityBody,
+  UpdateProjectBody,
+  UpdateSecretBody,
+  UpdateSecretSyncBody,
+  UpdateUniversalAuthBody,
 } from "./types.js";
 import { renderDetail, renderSidebarItem } from "./render.js";
 
@@ -67,6 +79,13 @@ const BUILTIN_PROJECT_ROLES: SelectOption[] = [
   { id: "no-access", label: "No access" },
 ];
 
+const PROJECT_FLAGS = ["hasDeleteProtection", "autoCapitalization", "secretSharing"] as const;
+const UNIVERSAL_AUTH_LIMITS = [
+  "accessTokenTTL",
+  "accessTokenMaxTTL",
+  "accessTokenNumUsesLimit",
+] as const;
+
 const READ_EVENTS = new Set(["get-secrets", "get-secret", "reveal-secret"]);
 const WRITE_EVENTS = new Set([
   "create-secret",
@@ -79,7 +98,7 @@ const WRITE_EVENTS = new Set([
   "duplicate-secret",
 ]);
 
-function str(value: unknown): string {
+function str(value: string | number | boolean | null | undefined): string {
   return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
@@ -148,9 +167,7 @@ export class InfisicalClient implements PluginClient {
 
   async projects(): Promise<InfProject[]> {
     if (!this.projectsCache || Date.now() - this.projectsCache.at > 60_000) {
-      const value = this.api
-        .request<{ projects?: InfProject[] }>("/api/v1/projects")
-        .then((body) => body.projects ?? []);
+      const value = this.api.rest.get("/api/v1/projects").then((body) => body.projects ?? []);
       value.catch(() => {
         this.projectsCache = null;
       });
@@ -170,24 +187,18 @@ export class InfisicalClient implements PluginClient {
   private async project(projectId: string): Promise<InfProject> {
     const cached = (await this.projects()).find((p) => p.id === projectId);
     if (cached) return cached;
-    const body = await this.api.request<{ project?: InfProject }>(
-      `/api/v1/projects/${encodeURIComponent(projectId)}`,
-    );
+    const body = await this.api.rest.get(`/api/v1/projects/${pathEncode(projectId)}`);
     if (!body.project) throw notFound("project", projectId);
     return body.project;
   }
 
   /** The organization the machine identity belongs to (needed for identity listings). */
   async orgId(): Promise<string> {
-    this.orgIdCache ??= this.api
-      .request<{ identityDetails?: { organization?: { id?: string } } }>(
-        "/api/v1/identities/details",
-      )
-      .then((body) => {
-        const id = str(body.identityDetails?.organization?.id);
-        if (!id) throw new Error("Infisical plugin: could not determine the organization");
-        return id;
-      });
+    this.orgIdCache ??= this.api.rest.get("/api/v1/identities/details").then((body) => {
+      const id = str(body.identityDetails?.organization?.id);
+      if (!id) throw new Error("Infisical plugin: could not determine the organization");
+      return id;
+    });
     this.orgIdCache.catch(() => {
       this.orgIdCache = null;
     });
@@ -195,10 +206,10 @@ export class InfisicalClient implements PluginClient {
   }
 
   private async syncOptions(): Promise<InfSyncOption[]> {
-    this.syncOptionsCache ??= this.api
-      .request<{ secretSyncOptions?: InfSyncOption[] }>("/api/v1/secret-syncs/options")
+    this.syncOptionsCache ??= this.api.rest
+      .get("/api/v1/secret-syncs/options")
       .then((body) => body.secretSyncOptions ?? [])
-      .catch(() => [] as InfSyncOption[]);
+      .catch((): InfSyncOption[] => []);
     return this.syncOptionsCache;
   }
 
@@ -227,58 +238,51 @@ export class InfisicalClient implements PluginClient {
   }
 
   private async foldersIn(projectId: string, env: string): Promise<InfFolder[]> {
-    const body = await this.api.request<{ folders?: InfFolder[] }>("/api/v2/folders", {
+    const body = await this.api.rest.get("/api/v2/folders", {
       query: { projectId, environment: env, path: "/", recursive: true },
     });
     return body.folders ?? [];
   }
 
   private async secretsIn(projectId: string, env: string, path = "/", recursive = true) {
-    const body = await this.api.request<{ secrets?: InfSecret[] }>("/api/v4/secrets", {
+    const body = await this.api.rest.get("/api/v4/secrets", {
       query: {
         projectId,
         environment: env,
         secretPath: path,
-        recursive,
-        viewSecretValue: false,
-        expandSecretReferences: false,
-        includeImports: false,
+        recursive: recursive ? "true" : "false",
+        viewSecretValue: "false",
+        expandSecretReferences: "false",
+        includeImports: "false",
       },
     });
     return body.secrets ?? [];
   }
 
   private async dynamicSecretsAt(projectSlug: string, env: string, path: string) {
-    const body = await this.api.request<{ dynamicSecrets?: InfDynamicSecret[] }>(
-      "/api/v1/dynamic-secrets",
-      { query: { projectSlug, environmentSlug: env, path } },
-    );
+    const body = await this.api.rest.get("/api/v1/dynamic-secrets", {
+      query: { projectSlug, environmentSlug: env, path },
+    });
     return body.dynamicSecrets ?? [];
   }
 
   private async syncsIn(projectId: string): Promise<InfSecretSync[]> {
-    const body = await this.api.request<{ secretSyncs?: InfSecretSync[] }>("/api/v1/secret-syncs", {
-      query: { projectId },
-    });
+    const body = await this.api.rest.get("/api/v1/secret-syncs", { query: { projectId } });
     return body.secretSyncs ?? [];
   }
 
   private async identities(): Promise<InfIdentityMembership[]> {
     const orgId = await this.orgId();
-    const body = await this.api.request<{ identities?: InfIdentityMembership[] }>(
-      "/api/v1/identities",
-      { query: { orgId } },
-    );
+    const body = await this.api.rest.get("/api/v1/identities", { query: { orgId } });
     return body.identities ?? [];
   }
 
   private async casIn(projectId: string): Promise<InfCa[]> {
     const out: InfCa[] = [];
     for (let offset = 0; offset < 1000; offset += 100) {
-      const body = await this.api.request<{ cas?: InfCa[] }>(
-        `/api/v1/projects/${encodeURIComponent(projectId)}/cas`,
-        { query: { offset, limit: 100 } },
-      );
+      const body = await this.api.rest.get(`/api/v1/projects/${pathEncode(projectId)}/cas`, {
+        query: { offset, limit: 100 },
+      });
       const page = body.cas ?? [];
       out.push(...page);
       if (page.length < 100) break;
@@ -289,9 +293,9 @@ export class InfisicalClient implements PluginClient {
   private async certificatesIn(projectId: string): Promise<InfCertificate[]> {
     const out: InfCertificate[] = [];
     for (let offset = 0; offset < 2000; offset += 100) {
-      const body = await this.api.request<{ certificates?: InfCertificate[]; totalCount?: number }>(
-        `/api/v1/projects/${encodeURIComponent(projectId)}/certificates/search`,
-        { method: "POST", body: { offset, limit: 100 } },
+      const body = await this.api.rest.post(
+        `/api/v1/projects/${pathEncode(projectId)}/certificates/search`,
+        { body: { offset, limit: 100 } },
       );
       const page = body.certificates ?? [];
       out.push(...page);
@@ -338,7 +342,7 @@ export class InfisicalClient implements PluginClient {
             ({ project, env }) => `${str(project.slug)}/${str(env.slug)}`,
             async ({ project, env }) => {
               const folders = await this.foldersIn(str(project.id), str(env.slug)).catch(
-                () => [] as InfFolder[],
+                (): InfFolder[] => [],
               );
               const paths = ["/", ...folders.map(folderPath)].slice(0, MAX_DYNAMIC_SECRET_PATHS);
               const found = await Promise.all(
@@ -365,8 +369,8 @@ export class InfisicalClient implements PluginClient {
             await this.secretProjects(),
             (p) => str(p.slug),
             async (p) => {
-              const body = await this.api.request<{ integrations?: InfIntegration[] }>(
-                `/api/v1/projects/${encodeURIComponent(str(p.id))}/integrations`,
+              const body = await this.api.rest.get(
+                `/api/v1/projects/${pathEncode(str(p.id))}/integrations`,
               );
               return (body.integrations ?? []).map((i) =>
                 this.mapIntegration(accountId, str(p.id), i),
@@ -410,24 +414,20 @@ export class InfisicalClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "project": {
-          const body = await this.api.request<{ project?: InfProject }>(
-            `/api/v1/projects/${encodeURIComponent(id)}`,
-          );
+          const body = await this.api.rest.get(`/api/v1/projects/${pathEncode(id)}`);
           if (!body.project) throw notFound("project", id);
           return this.mapProject(accountId, body.project);
         }
         case "environment": {
-          const [projectId, envId] = split(id, 2, "environment") as [string, string];
+          const [projectId = "", envId = ""] = split(id, 2, "environment");
           const project = await this.project(projectId);
           const env = (project.environments ?? []).find((e) => e.id === envId);
           if (!env) throw notFound("environment", id);
           return this.mapEnvironment(accountId, project, env);
         }
         case "folder": {
-          const [projectId, envSlug, folderId] = split(id, 3, "folder") as [string, string, string];
-          const body = await this.api.request<{ folder?: InfFolder }>(
-            `/api/v2/folders/${encodeURIComponent(folderId)}`,
-          );
+          const [projectId = "", envSlug = "", folderId = ""] = split(id, 3, "folder");
+          const body = await this.api.rest.get(`/api/v2/folders/${pathEncode(folderId)}`);
           if (!body.folder) throw notFound("folder", id);
           const project = await this.project(projectId);
           const env = (project.environments ?? []).find((e) => e.slug === envSlug) ?? {
@@ -443,10 +443,9 @@ export class InfisicalClient implements PluginClient {
         case "dynamic-secret": {
           const ref = this.dynamicRef(id);
           const project = await this.project(ref.projectId);
-          const body = await this.api.request<{ dynamicSecret?: InfDynamicSecret }>(
-            `/api/v1/dynamic-secrets/${encodeURIComponent(ref.name)}`,
-            { query: { projectSlug: str(project.slug), environmentSlug: ref.env, path: ref.path } },
-          );
+          const body = await this.api.rest.get(`/api/v1/dynamic-secrets/${pathEncode(ref.name)}`, {
+            query: { projectSlug: str(project.slug), environmentSlug: ref.env, path: ref.path },
+          });
           if (!body.dynamicSecret) throw notFound("dynamic secret", id);
           const env = (project.environments ?? []).find((e) => e.slug === ref.env) ?? {
             slug: ref.env,
@@ -454,40 +453,36 @@ export class InfisicalClient implements PluginClient {
           return this.mapDynamicSecret(accountId, project, env, ref.path, body.dynamicSecret);
         }
         case "secret-sync": {
-          const [destination, syncId] = split(id, 2, "secret sync") as [string, string];
-          const body = await this.api.request<{ secretSync?: InfSecretSync }>(
-            `/api/v1/secret-syncs/${encodeURIComponent(destination)}/${encodeURIComponent(syncId)}`,
+          const [destination = "", syncId = ""] = split(id, 2, "secret sync");
+          const body = await this.api.rest.get(
+            `/api/v1/secret-syncs/${pathEncode(destination)}/${pathEncode(syncId)}`,
           );
           if (!body.secretSync) throw notFound("secret sync", id);
           return this.mapSync(accountId, body.secretSync, await this.syncOptions());
         }
         case "integration": {
-          const body = await this.api.request<{
-            integration?: InfIntegration & { projectId?: string };
-          }>(`/api/v1/integration/${encodeURIComponent(id)}`);
+          const body = await this.api.rest.get(`/api/v1/integration/${pathEncode(id)}`);
           if (!body.integration) throw notFound("integration", id);
-          return this.mapIntegration(accountId, str(body.integration.projectId), body.integration);
+          const integration: InfIntegration = body.integration;
+          return this.mapIntegration(accountId, str(integration.projectId), integration);
         }
         case "machine-identity": {
-          const body = await this.api.request<{ identity?: InfIdentityMembership }>(
-            `/api/v1/identities/${encodeURIComponent(id)}`,
-          );
+          const body = await this.api.rest.get(`/api/v1/identities/${pathEncode(id)}`);
           if (!body.identity) throw notFound("machine identity", id);
           return this.mapIdentity(accountId, body.identity);
         }
         case "certificate-authority": {
-          const body = await this.api.request<{ ca?: InfCa }>(
-            `/api/v1/pki/ca/${encodeURIComponent(id)}`,
-          );
+          const body = await this.api.rest.get(`/api/v1/pki/ca/${pathEncode(id)}`);
           if (!body.ca) throw notFound("certificate authority", id);
           return this.mapCa(accountId, body.ca, str(body.ca.projectId));
         }
         case "certificate": {
-          const body = await this.api.request<{ certificate?: InfCertificate }>(
-            `/api/v1/cert-manager/certificates/${encodeURIComponent(id)}`,
+          const body = await this.api.rest.get(
+            `/api/v1/cert-manager/certificates/${pathEncode(id)}`,
           );
           if (!body.certificate) throw notFound("certificate", id);
-          return this.mapCertificate(accountId, body.certificate, str(body.certificate.projectId));
+          const certificate: InfCertificate = body.certificate;
+          return this.mapCertificate(accountId, certificate, str(certificate.projectId));
         }
         default:
           throw new Error(`Infisical plugin: unknown resource type "${typeId}"`);
@@ -496,21 +491,18 @@ export class InfisicalClient implements PluginClient {
   }
 
   private async fetchSecret(secretId: string): Promise<InfSecret> {
-    const body = await this.api.request<{ secret?: InfSecret }>(
-      `/api/v4/secrets/id/${encodeURIComponent(secretId)}`,
-    );
+    const body = await this.api.rest.get(`/api/v4/secrets/id/${pathEncode(secretId)}`);
     if (!body.secret) throw notFound("secret", secretId);
     return body.secret;
   }
 
   /** `{projectId}/{env}/{encoded path}/{name}` → parts. */
   private dynamicRef(externalId: string) {
-    const [projectId, env, encodedPath, name] = split(externalId, 4, "dynamic secret") as [
-      string,
-      string,
-      string,
-      string,
-    ];
+    const [projectId = "", env = "", encodedPath = "", name = ""] = split(
+      externalId,
+      4,
+      "dynamic secret",
+    );
     return { projectId, env, path: decodeURIComponent(encodedPath), name };
   }
 
@@ -539,16 +531,13 @@ export class InfisicalClient implements PluginClient {
         return ua.clientId;
       }
       if (typeId === "certificate-authority" && outputKey === "certificate") {
-        const body = await this.api.request<{ certificate?: string; certificateChain?: string }>(
-          `/api/v1/pki/ca/${encodeURIComponent(id)}/certificate`,
-        );
+        const body = await this.api.rest.get(`/api/v1/pki/ca/${pathEncode(id)}/certificate`);
         return [str(body.certificate), str(body.certificateChain)].filter(Boolean).join("\n");
       }
       if (typeId === "certificate" && outputKey === "certificate") {
-        const body = await this.api.request<{
-          certificate?: string;
-          certificateChain?: string | null;
-        }>(`/api/v1/cert-manager/certificates/${encodeURIComponent(id)}/certificate`);
+        const body = await this.api.rest.get(
+          `/api/v1/cert-manager/certificates/${pathEncode(id)}/certificate`,
+        );
         return [str(body.certificate), str(body.certificateChain)].filter(Boolean).join("\n");
       }
       const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
@@ -562,12 +551,12 @@ export class InfisicalClient implements PluginClient {
 
   private async universalAuth(identityId: string): Promise<InfUniversalAuth | null> {
     try {
-      const body = await this.api.request<{ identityUniversalAuth?: InfUniversalAuth }>(
-        `/api/v1/auth/universal-auth/identities/${encodeURIComponent(identityId)}`,
+      const body = await this.api.rest.get(
+        `/api/v1/auth/universal-auth/identities/${pathEncode(identityId)}`,
       );
       return body.identityUniversalAuth ?? null;
     } catch (error) {
-      const status = (error as { status?: number }).status;
+      const status = statusOf(error);
       if (status === 404 || status === 400) return null;
       throw error;
     }
@@ -917,16 +906,21 @@ export class InfisicalClient implements PluginClient {
           await run();
           checks.push({ capabilityId, status: "ok" });
         } catch (error) {
-          const status = (error as { status?: number }).status;
+          const status = statusOf(error);
+          const message = messageOf(error);
           if (status === 401 || status === 403) {
             checks.push({
               capabilityId,
               status: "missing",
               missingPermissions: [{ id: permission, label: permission }],
-              message: (error as Error).message,
+              ...(message !== undefined ? { message } : {}),
             });
           } else {
-            checks.push({ capabilityId, status: "unknown", message: (error as Error).message });
+            checks.push({
+              capabilityId,
+              status: "unknown",
+              ...(message !== undefined ? { message } : {}),
+            });
           }
         }
       };
@@ -934,9 +928,7 @@ export class InfisicalClient implements PluginClient {
       await probe(
         "login",
         async () => {
-          const body = await this.api.request<{
-            identityDetails?: { organization?: { name?: string; slug?: string } };
-          }>("/api/v1/identities/details");
+          const body = await this.api.rest.get("/api/v1/identities/details");
           organization = str(body.identityDetails?.organization?.name);
         },
         "Universal Auth client ID and secret",
@@ -949,7 +941,7 @@ export class InfisicalClient implements PluginClient {
       );
       await probe(
         "audit-logs",
-        () => this.api.request("/api/v1/organization/audit-logs", { query: { limit: 1 } }),
+        () => this.api.rest.get("/api/v1/organization/audit-logs", { query: { limit: 1 } }),
         "Organization role with Audit Logs read access",
       );
       return { checks, ...(organization ? { identity: organization } : {}) };
@@ -960,16 +952,12 @@ export class InfisicalClient implements PluginClient {
   // Metrics, stats and logs
   // -------------------------------------------------------------------------
 
-  private async auditLogs(
-    query: Record<string, string | number>,
-    maxPages: number,
-  ): Promise<InfAuditLog[]> {
+  private async auditLogs(query: AuditLogQuery, maxPages: number): Promise<InfAuditLog[]> {
     const out: InfAuditLog[] = [];
     for (let page = 0; page < maxPages; page++) {
-      const body = await this.api.request<{ auditLogs?: InfAuditLog[] }>(
-        "/api/v1/organization/audit-logs",
-        { query: { ...query, offset: page * Number(query["limit"] ?? AUDIT_PAGE_SIZE) } },
-      );
+      const body = await this.api.rest.get("/api/v1/organization/audit-logs", {
+        query: { ...query, offset: page * Number(query["limit"] ?? AUDIT_PAGE_SIZE) },
+      });
       const items = body.auditLogs ?? [];
       out.push(...items);
       if (items.length < Number(query["limit"] ?? AUDIT_PAGE_SIZE)) break;
@@ -1044,7 +1032,7 @@ export class InfisicalClient implements PluginClient {
         if (project.type && project.type !== "secret-manager") {
           return [{ label: "Product", value: str(project.type) }];
         }
-        const syncs = await this.syncsIn(id).catch(() => [] as InfSecretSync[]);
+        const syncs = await this.syncsIn(id).catch((): InfSecretSync[] => []);
         const failing = syncs.filter((s) => s.syncStatus === "failed").length;
         return [
           { label: "Environments", value: String(project.environments?.length ?? 0) },
@@ -1053,14 +1041,14 @@ export class InfisicalClient implements PluginClient {
         ];
       }
       if (resourceTypeId === "environment") {
-        const [projectId] = split(id, 2, "environment") as [string, string];
+        const [projectId = ""] = split(id, 2, "environment");
         const project = await this.project(projectId);
         const envId = id.split("/")[1];
         const env = (project.environments ?? []).find((e) => e.id === envId);
         if (!env) return [];
         const [secrets, folders] = await Promise.all([
-          this.secretsIn(projectId, str(env.slug)).catch(() => [] as InfSecret[]),
-          this.foldersIn(projectId, str(env.slug)).catch(() => [] as InfFolder[]),
+          this.secretsIn(projectId, str(env.slug)).catch((): InfSecret[] => []),
+          this.foldersIn(projectId, str(env.slug)).catch((): InfFolder[] => []),
         ]);
         return [
           { label: "Secrets", value: String(secrets.length) },
@@ -1080,10 +1068,10 @@ export class InfisicalClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       const limit = Math.min(Math.max(params.tailLines ?? 100, 1), 1000);
-      const query: Record<string, string | number> = { limit };
+      const query: AuditLogQuery = { limit };
       if (typeId === "project") query["projectId"] = id;
       else if (typeId === "environment") {
-        const [projectId] = split(id, 2, "environment") as [string, string];
+        const [projectId = ""] = split(id, 2, "environment");
         const project = await this.project(projectId);
         const env = (project.environments ?? []).find((e) => e.id === id.split("/")[1]);
         query["projectId"] = projectId;
@@ -1107,13 +1095,14 @@ export class InfisicalClient implements PluginClient {
         .slice()
         .reverse()
         .map((log) => {
-          const meta = (log.event?.metadata ?? {}) as Record<string, unknown>;
+          const meta: NonNullable<InfAuditLog["event"]["metadata"]> = log.event?.metadata ?? {};
           const subject =
             str(meta["secretKey"]) ||
             str(meta["secretPath"]) ||
             str(meta["name"]) ||
             str(meta["environment"]);
-          const actorMeta = (log.actor?.metadata ?? {}) as Record<string, unknown>;
+          const actorMeta: NonNullable<InfAuditLog["actor"]["metadata"]> =
+            log.actor?.metadata ?? {};
           const actor =
             str(actorMeta["email"]) || str(actorMeta["name"]) || str(actorMeta["identityId"]);
           const parts = [
@@ -1152,7 +1141,7 @@ export class InfisicalClient implements PluginClient {
     const perEnv = await Promise.all(
       pairs.slice(0, 60).map(async ({ project, env }) => {
         const folders = await this.foldersIn(str(project.id), str(env.slug)).catch(
-          () => [] as InfFolder[],
+          (): InfFolder[] => [],
         );
         const paths = ["/", ...folders.map(folderPath).sort()];
         return paths.map((path) => ({
@@ -1171,9 +1160,9 @@ export class InfisicalClient implements PluginClient {
   }
 
   private async orgRoleOptions(): Promise<SelectOption[]> {
-    const body = await this.api
-      .request<{ roles?: InfRole[] }>("/api/v1/organization/roles")
-      .catch(() => ({ roles: [] as InfRole[] }));
+    const body = await this.api.rest
+      .get("/api/v1/organization/roles")
+      .catch((): { roles?: InfRole[] } => ({ roles: [] }));
     const custom = (body.roles ?? [])
       .filter((r) => r.slug && !BUILTIN_ORG_ROLES.some((b) => b.id === r.slug))
       .map((r) => ({ id: str(r.slug), label: str(r.name) || str(r.slug) }));
@@ -1181,9 +1170,9 @@ export class InfisicalClient implements PluginClient {
   }
 
   async projectRoleOptions(projectId: string): Promise<SelectOption[]> {
-    const body = await this.api
-      .request<{ roles?: InfRole[] }>(`/api/v1/projects/${encodeURIComponent(projectId)}/roles`)
-      .catch(() => ({ roles: [] as InfRole[] }));
+    const body = await this.api.rest
+      .get(`/api/v1/projects/${pathEncode(projectId)}/roles`)
+      .catch((): { roles?: InfRole[] } => ({ roles: [] }));
     const roles = (body.roles ?? []).filter((r) => r.slug);
     if (roles.length === 0) return BUILTIN_PROJECT_ROLES;
     return roles.map((r) => ({ id: str(r.slug), label: str(r.name) || str(r.slug) }));
@@ -1331,13 +1320,12 @@ export class InfisicalClient implements PluginClient {
             ],
           };
         case "certificate": {
-          const profiles = await this.api
-            .request<{ certificateProfiles?: InfCertificateProfile[] }>(
-              "/api/v1/cert-manager/certificate-profiles",
-              { query: { limit: 100, enrollmentType: "api" } },
-            )
+          const profiles = await this.api.rest
+            .get("/api/v1/cert-manager/certificate-profiles", {
+              query: { limit: 100, enrollmentType: "api" },
+            })
             .then((b) => b.certificateProfiles ?? [])
-            .catch(() => [] as InfCertificateProfile[]);
+            .catch((): InfCertificateProfile[] => []);
           return {
             fields: [
               ...(parentResourceId
@@ -1408,8 +1396,7 @@ export class InfisicalClient implements PluginClient {
       switch (typeId) {
         case "project": {
           const type = fields["type"] || "secret-manager";
-          const body = await this.api.request<{ project?: InfProject }>("/api/v1/projects", {
-            method: "POST",
+          const body = await this.api.rest.post("/api/v1/projects", {
             body: {
               projectName: fields["name"],
               ...(fields["slug"] ? { slug: fields["slug"] } : {}),
@@ -1427,9 +1414,9 @@ export class InfisicalClient implements PluginClient {
         case "environment": {
           const projectId = parentResourceId ? externalIdOf(parentResourceId) : fields["projectId"];
           if (!projectId) throw new Error("Infisical plugin: choose a project");
-          const body = await this.api.request<{ environment?: InfEnvironment }>(
-            `/api/v1/projects/${encodeURIComponent(projectId)}/environments`,
-            { method: "POST", body: { name: fields["name"], slug: fields["slug"] } },
+          const body = await this.api.rest.post(
+            `/api/v1/projects/${pathEncode(projectId)}/environments`,
+            { body: { name: fields["name"], slug: fields["slug"] } },
           );
           this.projectsCache = null;
           return this.mapEnvironment(
@@ -1440,8 +1427,7 @@ export class InfisicalClient implements PluginClient {
         }
         case "folder": {
           const loc = decodeLocation(fields["location"] ?? "");
-          const body = await this.api.request<{ folder?: InfFolder }>("/api/v2/folders", {
-            method: "POST",
+          const body = await this.api.rest.post("/api/v2/folders", {
             body: {
               projectId: loc.projectId,
               environment: loc.env,
@@ -1462,10 +1448,9 @@ export class InfisicalClient implements PluginClient {
           const key = (fields["key"] ?? "").trim();
           if (!key) throw new Error("Infisical plugin: a secret key is required");
           const days = Number(fields["reminderRepeatDays"]);
-          const body = await this.api.request<{ secret?: InfSecret; approval?: unknown }>(
-            `/api/v4/secrets/${encodeURIComponent(key)}`,
+          const body: InfSecretWrite = await this.api.rest.post(
+            `/api/v4/secrets/${pathEncode(key)}`,
             {
-              method: "POST",
               body: {
                 projectId: loc.projectId,
                 environment: loc.env,
@@ -1492,10 +1477,7 @@ export class InfisicalClient implements PluginClient {
         }
         case "machine-identity": {
           const orgId = await this.orgId();
-          const body = await this.api.request<{
-            identity?: { id?: string; name?: string; createdAt?: string };
-          }>("/api/v1/identities", {
-            method: "POST",
+          const body = await this.api.rest.post("/api/v1/identities", {
             body: {
               name: fields["name"],
               organizationId: orgId,
@@ -1505,12 +1487,9 @@ export class InfisicalClient implements PluginClient {
           const identityId = str(body.identity?.id);
           if (!identityId) throw new Error("Infisical plugin: identity creation returned no id");
           if (fields["enableUniversalAuth"] !== "false") {
-            await this.api.request(
-              `/api/v1/auth/universal-auth/identities/${encodeURIComponent(identityId)}`,
-              {
-                method: "POST",
-                body: {},
-              },
+            await this.api.rest.post(
+              `/api/v1/auth/universal-auth/identities/${pathEncode(identityId)}`,
+              { body: {} },
             );
           }
           return runPluginEffect(
@@ -1523,21 +1502,16 @@ export class InfisicalClient implements PluginClient {
         }
         case "certificate": {
           const projectId = parentResourceId ? externalIdOf(parentResourceId) : fields["projectId"];
-          const altNames = (fields["altNames"] ?? "")
+          const altNames: CertificateAltNames = (fields["altNames"] ?? "")
             .split(",")
             .map((name) => name.trim())
             .filter(Boolean)
             .map((value) => ({ type: "dns_name", value }));
-          const body = await this.api.request<{
-            certificate?: { certificateId?: string } | null;
-            status?: string;
-            message?: string;
-          }>("/api/v1/cert-manager/certificates", {
-            method: "POST",
+          const body = await this.api.rest.post("/api/v1/cert-manager/certificates", {
             body: {
               profileId: fields["profileId"],
               attributes: {
-                commonName: fields["commonName"],
+                ...(fields["commonName"] !== undefined ? { commonName: fields["commonName"] } : {}),
                 ...(altNames.length > 0 ? { altNames } : {}),
                 ttl: fields["ttl"] || "90d",
                 ...(fields["keyAlgorithm"] ? { keyAlgorithm: fields["keyAlgorithm"] } : {}),
@@ -1579,44 +1553,40 @@ export class InfisicalClient implements PluginClient {
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "project": {
-          const body: Record<string, unknown> = {};
+          const body: UpdateProjectBody = {};
           if (fields["name"] !== undefined) body["name"] = fields["name"];
           if (fields["description"] !== undefined) body["description"] = fields["description"];
           if (fields["slug"] !== undefined) body["slug"] = fields["slug"];
-          for (const key of ["hasDeleteProtection", "autoCapitalization", "secretSharing"]) {
+          for (const key of PROJECT_FLAGS) {
             const value = bool(fields[key]);
             if (value !== undefined) body[key] = value;
           }
           if (fields["pitVersionLimit"])
             body["pitVersionLimit"] = Number(fields["pitVersionLimit"]);
-          const res = await this.api.request<{ project?: InfProject }>(
-            `/api/v1/projects/${encodeURIComponent(id)}`,
-            { method: "PATCH", body },
-          );
+          const res = await this.api.rest.patch(`/api/v1/projects/${pathEncode(id)}`, { body });
           this.projectsCache = null;
           return res.project
             ? this.mapProject(accountId, { ...(await this.project(id)), ...res.project })
             : runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "environment": {
-          const [projectId, envId] = split(id, 2, "environment") as [string, string];
-          const body: Record<string, unknown> = {};
+          const [projectId = "", envId = ""] = split(id, 2, "environment");
+          const body: UpdateEnvironmentBody = {};
           if (fields["name"] !== undefined) body["name"] = fields["name"];
           if (fields["slug"] !== undefined) body["slug"] = fields["slug"];
           if (fields["position"]) body["position"] = Number(fields["position"]);
-          await this.api.request(
-            `/api/v1/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envId)}`,
-            { method: "PATCH", body },
+          await this.api.rest.patch(
+            `/api/v1/projects/${pathEncode(projectId)}/environments/${pathEncode(envId)}`,
+            { body },
           );
           this.projectsCache = null;
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "folder": {
           const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-          const [projectId, envSlug, folderId] = split(id, 3, "folder") as [string, string, string];
+          const [projectId = "", envSlug = "", folderId = ""] = split(id, 3, "folder");
           const path = str(current.fields["path"]);
-          await this.api.request(`/api/v2/folders/${encodeURIComponent(folderId)}`, {
-            method: "PATCH",
+          await this.api.rest.patch(`/api/v2/folders/${pathEncode(folderId)}`, {
             body: {
               projectId,
               environment: envSlug,
@@ -1632,7 +1602,7 @@ export class InfisicalClient implements PluginClient {
         case "secret": {
           const secret = await this.fetchSecret(id);
           const days = fields["reminderRepeatDays"];
-          const body: Record<string, unknown> = {
+          const body: UpdateSecretBody = {
             projectId: str(secret.workspace),
             environment: str(secret.environment),
             secretPath: str(secret.secretPath) || "/",
@@ -1645,9 +1615,9 @@ export class InfisicalClient implements PluginClient {
           if (days !== undefined) body["secretReminderRepeatDays"] = days ? Number(days) : null;
           if (fields["reminderNote"] !== undefined)
             body["secretReminderNote"] = fields["reminderNote"] || null;
-          const res = await this.api.request<{ secret?: InfSecret; approval?: unknown }>(
-            `/api/v4/secrets/${encodeURIComponent(str(secret.secretKey))}`,
-            { method: "PATCH", body },
+          const res: InfSecretWrite = await this.api.rest.patch(
+            `/api/v4/secrets/${pathEncode(str(secret.secretKey))}`,
+            { body },
           );
           if (!res.secret) {
             throw Object.assign(
@@ -1662,12 +1632,11 @@ export class InfisicalClient implements PluginClient {
         case "dynamic-secret": {
           const ref = this.dynamicRef(id);
           const project = await this.project(ref.projectId);
-          const data: Record<string, unknown> = {};
+          const data: UpdateDynamicSecretData = {};
           if (fields["defaultTTL"]) data["defaultTTL"] = fields["defaultTTL"];
           if (fields["maxTTL"] !== undefined) data["maxTTL"] = fields["maxTTL"] || null;
           if (fields["name"] && fields["name"] !== ref.name) data["newName"] = fields["name"];
-          await this.api.request(`/api/v1/dynamic-secrets/${encodeURIComponent(ref.name)}`, {
-            method: "PATCH",
+          await this.api.rest.patch(`/api/v1/dynamic-secrets/${pathEncode(ref.name)}`, {
             body: {
               projectSlug: str(project.slug),
               environmentSlug: ref.env,
@@ -1685,8 +1654,8 @@ export class InfisicalClient implements PluginClient {
           );
         }
         case "secret-sync": {
-          const [destination, syncId] = split(id, 2, "secret sync") as [string, string];
-          const body: Record<string, unknown> = {};
+          const [destination = "", syncId = ""] = split(id, 2, "secret sync");
+          const body: UpdateSecretSyncBody = {};
           if (fields["name"] !== undefined) body["name"] = fields["name"];
           if (fields["description"] !== undefined)
             body["description"] = fields["description"] || null;
@@ -1694,22 +1663,19 @@ export class InfisicalClient implements PluginClient {
           if (auto !== undefined) body["isAutoSyncEnabled"] = auto;
           if (fields["environment"]) body["environment"] = fields["environment"];
           if (fields["secretPath"]) body["secretPath"] = fields["secretPath"];
-          await this.api.request(
-            `/api/v1/secret-syncs/${encodeURIComponent(destination)}/${encodeURIComponent(syncId)}`,
-            { method: "PATCH", body },
+          await this.api.rest.patch(
+            `/api/v1/secret-syncs/${pathEncode(destination)}/${pathEncode(syncId)}`,
+            { body },
           );
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "machine-identity": {
-          const body: Record<string, unknown> = {};
+          const body: UpdateIdentityBody = {};
           if (fields["name"] !== undefined) body["name"] = fields["name"];
           if (fields["role"]) body["role"] = fields["role"];
           const protect = bool(fields["hasDeleteProtection"]);
           if (protect !== undefined) body["hasDeleteProtection"] = protect;
-          await this.api.request(`/api/v1/identities/${encodeURIComponent(id)}`, {
-            method: "PATCH",
-            body,
-          });
+          await this.api.rest.patch(`/api/v1/identities/${pathEncode(id)}`, { body });
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         default:
@@ -1728,23 +1694,19 @@ export class InfisicalClient implements PluginClient {
       this.projectsCache = null;
       switch (typeId) {
         case "project":
-          await this.api.request(`/api/v1/projects/${encodeURIComponent(id)}`, {
-            method: "DELETE",
-          });
+          await this.api.rest.delete(`/api/v1/projects/${pathEncode(id)}`);
           return;
         case "environment": {
-          const [projectId, envId] = split(id, 2, "environment") as [string, string];
-          await this.api.request(
-            `/api/v1/projects/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(envId)}`,
-            { method: "DELETE" },
+          const [projectId = "", envId = ""] = split(id, 2, "environment");
+          await this.api.rest.delete(
+            `/api/v1/projects/${pathEncode(projectId)}/environments/${pathEncode(envId)}`,
           );
           return;
         }
         case "folder": {
           const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-          const [projectId, envSlug, folderId] = split(id, 3, "folder") as [string, string, string];
-          await this.api.request(`/api/v2/folders/${encodeURIComponent(folderId)}`, {
-            method: "DELETE",
+          const [projectId = "", envSlug = "", folderId = ""] = split(id, 3, "folder");
+          await this.api.rest.delete(`/api/v2/folders/${pathEncode(folderId)}`, {
             body: {
               projectId,
               environment: envSlug,
@@ -1756,8 +1718,7 @@ export class InfisicalClient implements PluginClient {
         }
         case "secret": {
           const secret = await this.fetchSecret(id);
-          await this.api.request(`/api/v4/secrets/${encodeURIComponent(str(secret.secretKey))}`, {
-            method: "DELETE",
+          await this.api.rest.delete(`/api/v4/secrets/${pathEncode(str(secret.secretKey))}`, {
             body: {
               projectId: str(secret.workspace),
               environment: str(secret.environment),
@@ -1770,37 +1731,30 @@ export class InfisicalClient implements PluginClient {
         case "dynamic-secret": {
           const ref = this.dynamicRef(id);
           const project = await this.project(ref.projectId);
-          await this.api.request(`/api/v1/dynamic-secrets/${encodeURIComponent(ref.name)}`, {
-            method: "DELETE",
+          await this.api.rest.delete(`/api/v1/dynamic-secrets/${pathEncode(ref.name)}`, {
             body: { projectSlug: str(project.slug), environmentSlug: ref.env, path: ref.path },
           });
           return;
         }
         case "secret-sync": {
-          const [destination, syncId] = split(id, 2, "secret sync") as [string, string];
-          await this.api.request(
-            `/api/v1/secret-syncs/${encodeURIComponent(destination)}/${encodeURIComponent(syncId)}`,
-            { method: "DELETE", query: { removeSecrets: false } },
+          const [destination = "", syncId = ""] = split(id, 2, "secret sync");
+          await this.api.rest.delete(
+            `/api/v1/secret-syncs/${pathEncode(destination)}/${pathEncode(syncId)}`,
+            { query: { removeSecrets: "false" } },
           );
           return;
         }
         case "integration":
-          await this.api.request(`/api/v1/integration/${encodeURIComponent(id)}`, {
-            method: "DELETE",
-          });
+          await this.api.rest.delete(`/api/v1/integration/${pathEncode(id)}`);
           return;
         case "machine-identity":
-          await this.api.request(`/api/v1/identities/${encodeURIComponent(id)}`, {
-            method: "DELETE",
-          });
+          await this.api.rest.delete(`/api/v1/identities/${pathEncode(id)}`);
           return;
         case "certificate-authority":
-          await this.api.request(`/api/v1/pki/ca/${encodeURIComponent(id)}`, { method: "DELETE" });
+          await this.api.rest.delete(`/api/v1/pki/ca/${pathEncode(id)}`);
           return;
         case "certificate":
-          await this.api.request(`/api/v1/cert-manager/certificates/${encodeURIComponent(id)}`, {
-            method: "DELETE",
-          });
+          await this.api.rest.delete(`/api/v1/cert-manager/certificates/${pathEncode(id)}`);
           return;
         default:
           throw new Error(`Infisical plugin: cannot delete resource type "${typeId}"`);
@@ -1821,49 +1775,43 @@ export class InfisicalClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       if (typeId === "secret-sync") {
-        const [destination, syncId] = split(id, 2, "secret sync") as [string, string];
-        const base = `/api/v1/secret-syncs/${encodeURIComponent(destination)}/${encodeURIComponent(syncId)}`;
+        const [destination = "", syncId = ""] = split(id, 2, "secret sync");
         // Both queue a job; the sync's status fields report how it went.
-        const verbs: Record<string, string> = { sync: "sync-secrets", remove: "remove-secrets" };
-        const verb = verbs[actionId];
-        if (verb) {
-          await this.api.request(`${base}/${verb}`, { method: "POST" });
+        if (actionId === "sync") {
+          await this.api.rest.post(
+            `/api/v1/secret-syncs/${pathEncode(destination)}/${pathEncode(syncId)}/sync-secrets`,
+          );
+          return;
+        }
+        if (actionId === "remove") {
+          await this.api.rest.post(
+            `/api/v1/secret-syncs/${pathEncode(destination)}/${pathEncode(syncId)}/remove-secrets`,
+          );
           return;
         }
       }
       if (typeId === "integration" && actionId === "sync") {
-        await this.api.request(`/api/v1/integration/${encodeURIComponent(id)}/sync`, {
-          method: "POST",
-        });
+        await this.api.rest.post(`/api/v1/integration/${pathEncode(id)}/sync`);
         return;
       }
       if (typeId === "machine-identity") {
         if (actionId === "enable-universal-auth") {
-          await this.api.request(
-            `/api/v1/auth/universal-auth/identities/${encodeURIComponent(id)}`,
-            {
-              method: "POST",
-              body: {},
-            },
-          );
+          await this.api.rest.post(`/api/v1/auth/universal-auth/identities/${pathEncode(id)}`, {
+            body: {},
+          });
           return;
         }
         if (actionId === "clear-lockouts") {
-          await this.api.request(
-            `/api/v1/auth/universal-auth/identities/${encodeURIComponent(id)}/clear-lockouts`,
-            { method: "POST" },
+          await this.api.rest.post(
+            `/api/v1/auth/universal-auth/identities/${pathEncode(id)}/clear-lockouts`,
           );
           return;
         }
       }
       if (typeId === "certificate" && actionId === "renew") {
-        await this.api.request(
-          `/api/v1/cert-manager/certificates/${encodeURIComponent(id)}/renew`,
-          {
-            method: "POST",
-            body: {},
-          },
-        );
+        await this.api.rest.post(`/api/v1/cert-manager/certificates/${pathEncode(id)}/renew`, {
+          body: {},
+        });
         return;
       }
       throw new Error(`Infisical plugin: unknown action "${actionId}" for type "${typeId}"`);
@@ -1879,39 +1827,34 @@ export class InfisicalClient implements PluginClient {
     args: (string | number)[],
   ): PluginEffect<unknown> {
     return attempt(async () => {
-      const values = JSON.parse(String(args[0] ?? "{}")) as Record<string, string>;
+      const values: Record<string, string> = JSON.parse(String(args[0] ?? "{}"));
       const id = externalIdOf(resourceId);
 
       if (typeId === "machine-identity" && command === "add-to-project") {
         const projectId = values["projectId"];
         if (!projectId) throw new Error("Infisical plugin: choose a project");
-        return this.api.request(
-          `/api/v1/projects/${encodeURIComponent(projectId)}/identity-memberships/${encodeURIComponent(id)}`,
-          {
-            method: "POST",
-            body: { roles: [{ role: values["role"] || "viewer", isTemporary: false }] },
-          },
+        return this.api.rest.post(
+          `/api/v1/projects/${pathEncode(projectId)}/identity-memberships/${pathEncode(id)}`,
+          { body: { roles: [{ role: values["role"] || "viewer", isTemporary: false }] } },
         );
       }
       if (typeId === "machine-identity" && command === "remove-from-project") {
         const projectId = values["projectId"];
         if (!projectId) throw new Error("Infisical plugin: choose a project");
-        return this.api.request(
-          `/api/v1/projects/${encodeURIComponent(projectId)}/identity-memberships/${encodeURIComponent(id)}`,
-          { method: "DELETE" },
+        return this.api.rest.delete(
+          `/api/v1/projects/${pathEncode(projectId)}/identity-memberships/${pathEncode(id)}`,
         );
       }
       if (typeId === "machine-identity" && command === "revoke-client-secret") {
         const secretId = values["clientSecretId"];
         if (!secretId) throw new Error("Infisical plugin: choose a client secret");
-        return this.api.request(
-          `/api/v1/auth/universal-auth/identities/${encodeURIComponent(id)}/client-secrets/${encodeURIComponent(secretId)}/revoke`,
-          { method: "POST" },
+        return this.api.rest.post(
+          `/api/v1/auth/universal-auth/identities/${pathEncode(id)}/client-secrets/${pathEncode(secretId)}/revoke`,
         );
       }
       if (typeId === "machine-identity" && command === "configure-universal-auth") {
-        const body: Record<string, unknown> = {};
-        for (const key of ["accessTokenTTL", "accessTokenMaxTTL", "accessTokenNumUsesLimit"]) {
+        const body: UpdateUniversalAuthBody = {};
+        for (const key of UNIVERSAL_AUTH_LIMITS) {
           if (values[key] !== undefined && values[key] !== "") body[key] = Number(values[key]);
         }
         const ips = (values["trustedIps"] ?? "")
@@ -1923,22 +1866,15 @@ export class InfisicalClient implements PluginClient {
           body["clientSecretTrustedIps"] = ips;
           body["accessTokenTrustedIps"] = ips;
         }
-        return this.api.request(
-          `/api/v1/auth/universal-auth/identities/${encodeURIComponent(id)}`,
-          {
-            method: "PATCH",
-            body,
-          },
-        );
+        return this.api.rest.patch(`/api/v1/auth/universal-auth/identities/${pathEncode(id)}`, {
+          body,
+        });
       }
       if (typeId === "secret-sync" && command === "import") {
-        const [destination, syncId] = split(id, 2, "secret sync") as [string, string];
-        return this.api.request(
-          `/api/v1/secret-syncs/${encodeURIComponent(destination)}/${encodeURIComponent(syncId)}/import-secrets`,
-          {
-            method: "POST",
-            query: { importBehavior: values["importBehavior"] || "prioritize-source" },
-          },
+        const [destination = "", syncId = ""] = split(id, 2, "secret sync");
+        return this.api.rest.post(
+          `/api/v1/secret-syncs/${pathEncode(destination)}/${pathEncode(syncId)}/import-secrets`,
+          { query: { importBehavior: values["importBehavior"] || "prioritize-source" } },
         );
       }
       if (typeId === "dynamic-secret" && command === "revoke-lease") {
@@ -1946,19 +1882,14 @@ export class InfisicalClient implements PluginClient {
         const project = await this.project(ref.projectId);
         const leaseId = values["leaseId"];
         if (!leaseId) throw new Error("Infisical plugin: choose a lease");
-        return this.api.request(`/api/v1/dynamic-secrets/leases/${encodeURIComponent(leaseId)}`, {
-          method: "DELETE",
+        return this.api.rest.delete(`/api/v1/dynamic-secrets/leases/${pathEncode(leaseId)}`, {
           body: { projectSlug: str(project.slug), environmentSlug: ref.env, path: ref.path },
         });
       }
       if (typeId === "certificate" && command === "revoke") {
-        return this.api.request(
-          `/api/v1/cert-manager/certificates/${encodeURIComponent(id)}/revoke`,
-          {
-            method: "POST",
-            body: { revocationReason: values["reason"] || "UNSPECIFIED" },
-          },
-        );
+        return this.api.rest.post(`/api/v1/cert-manager/certificates/${pathEncode(id)}/revoke`, {
+          body: { revocationReason: values["reason"] || "UNSPECIFIED" },
+        });
       }
       throw new Error(`Infisical plugin: unknown command "${command}" for type "${typeId}"`);
     });
@@ -1981,9 +1912,9 @@ export class InfisicalClient implements PluginClient {
         if (!ua?.clientId) {
           throw new Error("Infisical plugin: enable Universal Auth on this identity first");
         }
-        const body = await this.api.request<{ clientSecret?: string }>(
-          `/api/v1/auth/universal-auth/identities/${encodeURIComponent(id)}/client-secrets`,
-          { method: "POST", body: { description: "Created from Infrawrench" } },
+        const body = await this.api.rest.post(
+          `/api/v1/auth/universal-auth/identities/${pathEncode(id)}/client-secrets`,
+          { body: { description: "Created from Infrawrench" } },
         );
         const secret = str(body.clientSecret);
         if (!secret) throw new Error("Infisical plugin: Infisical returned no client secret");
@@ -2003,19 +1934,15 @@ export class InfisicalClient implements PluginClient {
       if (typeId === "dynamic-secret" && formatId === "lease") {
         const ref = this.dynamicRef(id);
         const project = await this.project(ref.projectId);
-        const body = await this.api.request<{ lease?: InfLease; data?: unknown }>(
-          "/api/v1/dynamic-secrets/leases",
-          {
-            method: "POST",
-            body: {
-              dynamicSecretName: ref.name,
-              projectSlug: str(project.slug),
-              environmentSlug: ref.env,
-              path: ref.path,
-            },
+        const body = await this.api.rest.post("/api/v1/dynamic-secrets/leases", {
+          body: {
+            dynamicSecretName: ref.name,
+            projectSlug: str(project.slug),
+            environmentSlug: ref.env,
+            path: ref.path,
           },
-        );
-        const data = (body.data ?? {}) as Record<string, unknown>;
+        });
+        const data = body.data ?? {};
         return {
           content: JSON.stringify(data, null, 2),
           filename: `${ref.name}-lease.json`,
@@ -2041,11 +1968,9 @@ export class InfisicalClient implements PluginClient {
         return { content: pem, filename: `${id}.pem`, mimeType: "application/x-pem-file" };
       }
       if (typeId === "certificate" && formatId === "bundle") {
-        const body = await this.api.request<{
-          certificate?: string;
-          certificateChain?: string | null;
-          privateKey?: string | null;
-        }>(`/api/v1/cert-manager/certificates/${encodeURIComponent(id)}/bundle`);
+        const body = await this.api.rest.get(
+          `/api/v1/cert-manager/certificates/${pathEncode(id)}/bundle`,
+        );
         if (!body.privateKey) {
           throw new Error(
             "Infisical plugin: Infisical holds no private key for this certificate (it was issued from a CSR or imported without one)",
@@ -2078,13 +2003,11 @@ export class InfisicalClient implements PluginClient {
         case "machine-identity": {
           const [ua, secrets, projects] = await Promise.all([
             this.universalAuth(id).catch(() => null),
-            this.api
-              .request<{ clientSecretData?: InfClientSecret[] }>(
-                `/api/v1/auth/universal-auth/identities/${encodeURIComponent(id)}/client-secrets`,
-              )
+            this.api.rest
+              .get(`/api/v1/auth/universal-auth/identities/${pathEncode(id)}/client-secrets`)
               .then((b) => b.clientSecretData ?? [])
-              .catch(() => [] as InfClientSecret[]),
-            this.projects().catch(() => [] as InfProject[]),
+              .catch((): InfClientSecret[] => []),
+            this.projects().catch((): InfProject[] => []),
           ]);
           extra["__universalAuth__"] = JSON.stringify(ua);
           extra["__clientSecrets__"] = JSON.stringify(
@@ -2099,15 +2022,12 @@ export class InfisicalClient implements PluginClient {
         case "dynamic-secret": {
           const ref = this.dynamicRef(id);
           const project = await this.project(ref.projectId);
-          const leases = await this.api
-            .request<{ leases?: InfLease[] }>(
-              `/api/v1/dynamic-secrets/${encodeURIComponent(ref.name)}/leases`,
-              {
-                query: { projectSlug: str(project.slug), environmentSlug: ref.env, path: ref.path },
-              },
-            )
+          const leases = await this.api.rest
+            .get(`/api/v1/dynamic-secrets/${pathEncode(ref.name)}/leases`, {
+              query: { projectSlug: str(project.slug), environmentSlug: ref.env, path: ref.path },
+            })
             .then((b) => b.leases ?? [])
-            .catch(() => [] as InfLease[]);
+            .catch((): InfLease[] => []);
           extra["__leases__"] = JSON.stringify(leases);
           break;
         }
@@ -2115,15 +2035,10 @@ export class InfisicalClient implements PluginClient {
           const projectId = id;
           const type = String(resource.fields["type"] ?? "");
           if (type === "secret-manager" || !type) {
-            const members = await this.api
-              .request<{
-                identityMemberships?: Array<{
-                  identity?: { name?: string };
-                  roles?: Array<{ role?: string; customRoleSlug?: string | null }>;
-                }>;
-              }>(`/api/v1/projects/${encodeURIComponent(projectId)}/identity-memberships`)
+            const members = await this.api.rest
+              .get(`/api/v1/projects/${pathEncode(projectId)}/identity-memberships`)
               .then((b) => b.identityMemberships ?? [])
-              .catch(() => []);
+              .catch((): ProjectIdentity[] => []);
             extra["__identities__"] = JSON.stringify(
               members.map((m) => ({
                 name: str(m.identity?.name),

@@ -1,10 +1,19 @@
-import type { HostServices } from "@infrawrench/plugin-base";
-import { apiError, sendRaw } from "./http.js";
+import {
+  createApiClient,
+  type ApiBody,
+  type ApiClient,
+  type ApiResponse,
+  type HostServices,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { operations, paths } from "./api-types.gen.js";
+import { apiError, sendRaw, type RawRequest, type RawResponse } from "./http.js";
 
 /**
  * Infisical REST transport: Universal Auth login, bearer-token caching and
- * JSON requests. Shapes verified against the live OpenAPI document at
- * https://app.infisical.com/api/docs/json (2026-10).
+ * JSON requests, typed from the live OpenAPI document at
+ * https://app.infisical.com/api/docs/json (`plugingen.json`).
  *
  * Auth: POST /api/v1/auth/universal-auth/login with `{clientId, clientSecret,
  * organizationSlug?}` answers `{accessToken, expiresIn, accessTokenMaxTTL,
@@ -15,6 +24,8 @@ export const DEFAULT_SITE_URL = "https://app.infisical.com";
 
 /** Refresh the access token this long before Infisical says it expires. */
 const TOKEN_SKEW_MS = 60_000;
+
+type Login = operations["loginWithUniversalAuth"];
 
 export interface InfisicalCredentials {
   siteUrl: string;
@@ -49,22 +60,27 @@ export function normalizeSiteUrl(raw: string): string {
   return url;
 }
 
-export type Query = Record<string, string | number | boolean | undefined>;
-
-export interface RequestOptions {
-  method?: string;
-  query?: Query;
-  body?: unknown;
-}
-
 export class InfisicalApi {
+  /** Every call but the login: signed in, and retried once with a fresh token on a 401. */
+  readonly rest: ApiClient<paths>;
   private token: { value: string; expiresAt: number } | null = null;
   private login: Promise<string> | null = null;
 
   constructor(
     readonly creds: InfisicalCredentials,
     private readonly services: HostServices | undefined,
-  ) {}
+  ) {
+    const http: HttpHostServices = { request: (req) => this.signedIn(req) };
+    this.rest = createApiClient<paths>({
+      vendor: "Infisical",
+      baseUrl: creds.siteUrl,
+      headers: { Accept: "application/json" },
+      http,
+      contentType: "with-body",
+      serializeQuery: buildQuery,
+      httpError: ({ status, path, body }) => apiError(status, path, body),
+    });
+  }
 
   get siteUrl(): string {
     return this.creds.siteUrl;
@@ -80,24 +96,29 @@ export class InfisicalApi {
     return this.login;
   }
 
+  /**
+   * On `sendRaw` rather than `rest`, typed by hand from the document: the client reads a
+   * 2xx with no body as `undefined`, and a login that answers nothing has to fail on it.
+   */
   private async doLogin(): Promise<string> {
     const path = "/api/v1/auth/universal-auth/login";
+    const body: ApiBody<Login> = {
+      clientId: this.creds.clientId,
+      clientSecret: this.creds.clientSecret,
+      ...(this.creds.organizationSlug ? { organizationSlug: this.creds.organizationSlug } : {}),
+    };
     const res = await sendRaw(
       {
         url: `${this.creds.siteUrl}${path}`,
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          clientId: this.creds.clientId,
-          clientSecret: this.creds.clientSecret,
-          ...(this.creds.organizationSlug ? { organizationSlug: this.creds.organizationSlug } : {}),
-        }),
+        body: JSON.stringify(body),
       },
       this.services,
       this.creds.caCert,
     );
     if (res.status < 200 || res.status >= 300) throw apiError(res.status, path, res.body);
-    const parsed = JSON.parse(res.body) as { accessToken?: string; expiresIn?: number };
+    const parsed: ApiResponse<Login> = JSON.parse(res.body);
     if (!parsed.accessToken) {
       throw Object.assign(new Error("Infisical plugin: login returned no access token"), {
         status: 502,
@@ -108,47 +129,35 @@ export class InfisicalApi {
     return parsed.accessToken;
   }
 
-  /** JSON request against the API. Retries once with a fresh token on a 401. */
-  async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const method = options.method ?? "GET";
-    const qs = buildQuery(options.query);
-    const url = `${this.creds.siteUrl}${path}${qs}`;
-    const body = options.body === undefined ? undefined : JSON.stringify(options.body);
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const token = await this.accessToken(attempt > 0);
-      const res = await sendRaw(
-        {
-          url,
-          method,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-          },
-          ...(body !== undefined ? { body } : {}),
-        },
-        this.services,
-        this.creds.caCert,
-      );
-      if (res.status === 401 && attempt === 0) {
-        this.token = null;
-        continue;
-      }
-      if (res.status < 200 || res.status >= 300) throw apiError(res.status, path, res.body);
-      if (!res.body) return undefined as T;
-      return JSON.parse(res.body) as T;
+  /** The transport `rest` runs on. Retries once with a fresh token on a 401. */
+  private async signedIn(req: Parameters<HttpHostServices["request"]>[0]): Promise<RawResponse> {
+    const send = async (force: boolean) => {
+      const token = await this.accessToken(force);
+      const request: RawRequest = {
+        url: req.url,
+        method: req.method,
+        headers: { Authorization: `Bearer ${token}`, ...req.headers },
+        // The client only ever sends JSON text.
+        ...(typeof req.body === "string" ? { body: req.body } : {}),
+      };
+      return sendRaw(request, this.services, this.creds.caCert);
+    };
+    let res = await send(false);
+    if (res.status === 401) {
+      this.token = null;
+      res = await send(true);
     }
-    throw apiError(401, path, "unauthorized");
+    // The client reads every 204 as empty; one that came with a body has always been parsed.
+    return res.status === 204 && res.body ? { ...res, status: 200 } : res;
   }
 }
 
-export function buildQuery(query: Query | undefined): string {
-  if (!query) return "";
+/** Skips `undefined` and `""`, which Infisical would otherwise read as a filter. No leading `?`. */
+export function buildQuery(query: Record<string, ParamValue>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined || value === "") continue;
     params.set(key, String(value));
   }
-  const text = params.toString();
-  return text ? `?${text}` : "";
+  return params.toString();
 }

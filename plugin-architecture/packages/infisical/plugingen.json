@@ -1,0 +1,555 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://app.infisical.com/api/docs/json",
+  "patches": [
+    {
+      "pointer": "/components/schemas/SecretSync",
+      "value": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "isAutoSyncEnabled": {
+            "type": "boolean"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "connectionId": {
+            "type": "string"
+          },
+          "syncStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastSyncMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastSyncedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "importStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastImportMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "removeStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "connection": {
+            "type": "object",
+            "properties": {
+              "app": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "environment": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "slug": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "folder": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            }
+          },
+          "destination": {
+            "type": "string"
+          },
+          "destinationConfig": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "Every destination documents this same row with its own destinationConfig, 52 variants of about 6 KB each. The plugin reads the shared fields and treats the configuration as generic, so the list and the routes below share one schema."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1secret-syncs/get/responses/200/content/application~1json/schema/properties/secretSyncs/items",
+      "value": {
+        "$ref": "#/components/schemas/SecretSync"
+      },
+      "why": "See SecretSync: the 52-member union adds nothing the plugin reads."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1secret-syncs~1{destination}~1{syncId}",
+      "value": {
+        "get": {
+          "operationId": "getSecretSync",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "destination",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "syncId",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "secretSync": {
+                        "$ref": "#/components/schemas/SecretSync"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "patch": {
+          "operationId": "updateSecretSync",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "destination",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "syncId",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "environment": {
+                      "type": "string"
+                    },
+                    "secretPath": {
+                      "type": "string"
+                    },
+                    "isAutoSyncEnabled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "secretSync": {
+                        "$ref": "#/components/schemas/SecretSync"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "operationId": "deleteSecretSync",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "removeSecrets",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "enum": ["true", "false"]
+              }
+            },
+            {
+              "in": "path",
+              "name": "destination",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "syncId",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "secretSync": {
+                        "$ref": "#/components/schemas/SecretSync"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document spells this route out once per destination (/secret-syncs/github/{syncId} and so on). The plugin reads the destination from the sync, so it needs the route with the destination as a parameter."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1secret-syncs~1{destination}~1{syncId}~1sync-secrets",
+      "value": {
+        "post": {
+          "operationId": "syncSecretSync",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "destination",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "syncId",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "secretSync": {
+                        "$ref": "#/components/schemas/SecretSync"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Documented once per destination; see the route above."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1secret-syncs~1{destination}~1{syncId}~1remove-secrets",
+      "value": {
+        "post": {
+          "operationId": "removeSecretSyncSecrets",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "destination",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "syncId",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "secretSync": {
+                        "$ref": "#/components/schemas/SecretSync"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Documented once per destination; see the route above."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1secret-syncs~1{destination}~1{syncId}~1import-secrets",
+      "value": {
+        "post": {
+          "operationId": "importSecretSyncSecrets",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "importBehavior",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "destination",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "syncId",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "secretSync": {
+                        "$ref": "#/components/schemas/SecretSync"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Documented once per destination, see the route above. importBehavior is a string because the form's value goes through as typed and Infisical validates it."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1secret-syncs~1options/get/responses/200/content/application~1json/schema/properties/secretSyncOptions/items",
+      "value": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "canImportSecrets": {
+            "type": "boolean"
+          }
+        }
+      },
+      "why": "A 52-member union of constants, one per destination. The plugin looks an option up by a destination read from the API, so the literals check nothing."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1projects/post/requestBody/content/application~1json/schema/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's value goes through as typed and Infisical validates it."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1cert-manager~1certificates~1{id}~1revoke/post/requestBody/content/application~1json/schema/properties/revocationReason",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's value goes through as typed and Infisical validates it."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1cert-manager~1certificates/post/requestBody/content/application~1json/schema/properties/attributes/properties/keyAlgorithm",
+      "value": {
+        "type": "string"
+      },
+      "why": "The form's value goes through as typed and Infisical validates it."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1dynamic-secrets~1leases/post/responses/200/content/application~1json/schema/properties/data",
+      "value": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "why": "Documented with no type. It is the lease's credentials, an object whose keys depend on the provider."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1organization~1audit-logs/get/responses/200/content/application~1json/schema/properties/auditLogs/items/properties/event/properties/metadata",
+      "value": {
+        "type": "object",
+        "properties": {
+          "secretKey": {
+            "type": "string"
+          },
+          "secretPath": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "Documented with no type, and it varies per event. These are the keys the plugin reads, when an event has them."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1organization~1audit-logs/get/responses/200/content/application~1json/schema/properties/auditLogs/items/properties/actor/properties/metadata",
+      "value": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "identityId": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "Documented with no type, and it varies per actor. These are the keys the plugin reads, when an actor has them."
+    }
+  ],
+  "paths": {
+    "/api/v1/auth/universal-auth/login": ["post"],
+    "/api/v1/auth/universal-auth/identities/{identityId}": ["get", "post", "patch"],
+    "/api/v1/auth/universal-auth/identities/{identityId}/clear-lockouts": ["post"],
+    "/api/v1/auth/universal-auth/identities/{identityId}/client-secrets": ["get", "post"],
+    "/api/v1/auth/universal-auth/identities/{identityId}/client-secrets/{clientSecretId}/revoke": [
+      "post"
+    ],
+    "/api/v1/projects": ["get", "post"],
+    "/api/v1/projects/{projectId}": ["get", "patch", "delete"],
+    "/api/v1/projects/{projectId}/integrations": ["get"],
+    "/api/v1/projects/{projectId}/cas": ["get"],
+    "/api/v1/projects/{projectId}/certificates/search": ["post"],
+    "/api/v1/projects/{projectId}/roles": ["get"],
+    "/api/v1/projects/{projectId}/environments": ["post"],
+    "/api/v1/projects/{projectId}/environments/{id}": ["patch", "delete"],
+    "/api/v1/projects/{projectId}/identity-memberships": ["get"],
+    "/api/v1/projects/{projectId}/identity-memberships/{identityId}": ["post", "delete"],
+    "/api/v1/identities": ["get", "post"],
+    "/api/v1/identities/details": ["get"],
+    "/api/v1/identities/{identityId}": ["get", "patch", "delete"],
+    "/api/v1/secret-syncs": ["get"],
+    "/api/v1/secret-syncs/options": ["get"],
+    "/api/v1/secret-syncs/{destination}/{syncId}": ["get", "patch", "delete"],
+    "/api/v1/secret-syncs/{destination}/{syncId}/sync-secrets": ["post"],
+    "/api/v1/secret-syncs/{destination}/{syncId}/remove-secrets": ["post"],
+    "/api/v1/secret-syncs/{destination}/{syncId}/import-secrets": ["post"],
+    "/api/v2/folders": ["get", "post"],
+    "/api/v2/folders/{id}": ["get"],
+    "/api/v2/folders/{folderId}": ["patch"],
+    "/api/v2/folders/{folderIdOrName}": ["delete"],
+    "/api/v4/secrets": ["get"],
+    "/api/v4/secrets/id/{secretId}": ["get"],
+    "/api/v4/secrets/{secretName}": ["post", "patch", "delete"],
+    "/api/v1/dynamic-secrets": ["get"],
+    "/api/v1/dynamic-secrets/leases": ["post"],
+    "/api/v1/dynamic-secrets/leases/{leaseId}": ["delete"],
+    "/api/v1/dynamic-secrets/{name}": ["get", "patch", "delete"],
+    "/api/v1/dynamic-secrets/{name}/leases": ["get"],
+    "/api/v1/integration/{integrationId}": ["get", "delete"],
+    "/api/v1/integration/{integrationId}/sync": ["post"],
+    "/api/v1/pki/ca/{caId}": ["get", "delete"],
+    "/api/v1/pki/ca/{caId}/certificate": ["get"],
+    "/api/v1/cert-manager/certificate-profiles": ["get"],
+    "/api/v1/cert-manager/certificates": ["post"],
+    "/api/v1/cert-manager/certificates/{id}": ["get", "delete"],
+    "/api/v1/cert-manager/certificates/{id}/certificate": ["get"],
+    "/api/v1/cert-manager/certificates/{id}/bundle": ["get"],
+    "/api/v1/cert-manager/certificates/{id}/renew": ["post"],
+    "/api/v1/cert-manager/certificates/{id}/revoke": ["post"],
+    "/api/v1/organization/audit-logs": ["get"],
+    "/api/v1/organization/roles": ["get"]
+  }
+}

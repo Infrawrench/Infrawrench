@@ -22,7 +22,8 @@ function stashed<T>(resource: ResourceInstance, key: string, fallback: T): T {
   const raw = resource.resolvedOutputs[key];
   if (!raw) return fallback;
   try {
-    return (JSON.parse(raw) as T) ?? fallback;
+    const parsed: T | null = JSON.parse(raw);
+    return parsed ?? fallback;
   } catch {
     return fallback;
   }

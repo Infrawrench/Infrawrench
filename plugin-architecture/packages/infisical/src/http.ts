@@ -57,11 +57,31 @@ function lowerKeys(headers: Record<string, string> | undefined): Record<string, 
   return out;
 }
 
+/** The HTTP status a thrown API error carries. */
+export function statusOf(error: unknown): number | undefined {
+  return typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof error.status === "number"
+    ? error.status
+    : undefined;
+}
+
+/** The message of whatever was thrown, read off the value so an error from another realm keeps it. */
+export function messageOf(error: unknown): string | undefined {
+  return typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+    ? error.message
+    : undefined;
+}
+
 /** An API error carrying the HTTP status, which the poller classifies on. */
 export function apiError(status: number, path: string, body: string): Error {
   let detail = body.slice(0, 500);
   try {
-    const parsed = JSON.parse(body) as { message?: unknown; error?: unknown };
+    const parsed: { message?: unknown; error?: unknown } = JSON.parse(body);
     const message = typeof parsed.message === "string" ? parsed.message : "";
     const error = typeof parsed.error === "string" ? parsed.error : "";
     if (message || error) detail = [error, message].filter(Boolean).join(": ");
