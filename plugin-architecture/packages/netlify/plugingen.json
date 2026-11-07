@@ -1,0 +1,194 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/netlify/open-api/master/swagger.yml",
+  "patches": [
+    {
+      "pointer": "/components/schemas/site/required",
+      "value": ["id", "name", "created_at", "updated_at"],
+      "why": "The document marks nothing required. Every site has these, and the mappers have always read them as present."
+    },
+    {
+      "pointer": "/components/schemas/siteSetup",
+      "value": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "custom_domain": {
+            "type": "string"
+          },
+          "domain_aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "force_ssl": {
+            "type": "boolean"
+          },
+          "build_settings": {
+            "$ref": "#/components/schemas/repoInfo"
+          }
+        }
+      },
+      "why": "The document makes this `site` plus `repo` by allOf, which would make the read-only fields required on `site` compulsory to send. These are the fields of `site` the plugin writes."
+    },
+    {
+      "pointer": "/components/schemas/deploy/required",
+      "value": ["id", "created_at", "updated_at"],
+      "why": "The document marks nothing required. Every deploy has these, and the mappers have always read them as present."
+    },
+    {
+      "pointer": "/components/schemas/form/required",
+      "value": ["id", "name", "created_at"],
+      "why": "The document marks nothing required. Every form has these, and the mappers have always read them as present."
+    },
+    {
+      "pointer": "/components/schemas/dnsZone/required",
+      "value": ["id", "name", "created_at", "updated_at"],
+      "why": "The document marks nothing required. Every DNS zone has these, and the mappers have always read them as present."
+    },
+    {
+      "pointer": "/components/schemas/dnsRecord/required",
+      "value": ["id"],
+      "why": "The document marks nothing required. Every DNS record has these, and the mappers have always read them as present."
+    },
+    {
+      "pointer": "/components/schemas/buildHook/required",
+      "value": ["id"],
+      "why": "The document marks nothing required. Every build hook has these, and the mappers have always read them as present."
+    },
+    {
+      "pointer": "/components/schemas/envVar/required",
+      "value": ["key"],
+      "why": "The document marks nothing required. Every environment variable has these, and the mappers have always read them as present."
+    },
+    {
+      "pointer": "/components/schemas/hook/required",
+      "value": ["id"],
+      "why": "The document marks nothing required. Every notification hook has these, and the mappers have always read them as present."
+    },
+    {
+      "pointer": "/components/schemas/hook/properties/data",
+      "value": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "The document says only `object`, which generates as a record of `never`. The mapper reads the two destinations the plugin knows."
+    },
+    {
+      "pointer": "/paths/~1hooks/post/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "why": "The document uses the response's `hook` here, whose required `id` the server assigns. These are the fields the plugin sends."
+    },
+    {
+      "pointer": "/paths/~1hooks~1{hook_id}/put/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "why": "The document uses the response's `hook` here, and the id is already in the path. These are the fields the plugin sends."
+    },
+    {
+      "pointer": "/components/schemas/envVarValue/properties/context",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Netlify validates whatever else arrives, so the plugin does not hold a copy of the list."
+    },
+    {
+      "pointer": "/paths/~1accounts~1{account_id}~1env/post/requestBody/content/application~1json/schema/items/properties/scopes/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our picker offers the valid values and Netlify validates whatever else arrives, so the plugin does not hold a copy of the list."
+    },
+    {
+      "pointer": "/paths/~1accounts~1{account_id}~1env~1{key}/patch/requestBody/content/application~1json/schema/properties/context",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Netlify validates whatever else arrives, so the plugin does not hold a copy of the list."
+    },
+    {
+      "pointer": "/components/schemas/user/properties/slug",
+      "value": {
+        "type": "string"
+      },
+      "why": "Not in the document; the account name has always fallen back on it when the API sends one."
+    }
+  ],
+  "paths": {
+    "/sites": ["get", "post"],
+    "/sites/{site_id}": ["get", "patch", "delete"],
+    "/sites/{site_id}/deploys": ["get"],
+    "/sites/{site_id}/deploys/{deploy_id}/restore": ["post"],
+    "/deploys/{deploy_id}": ["get", "delete"],
+    "/deploys/{deploy_id}/cancel": ["post"],
+    "/deploys/{deploy_id}/lock": ["post"],
+    "/deploys/{deploy_id}/unlock": ["post"],
+    "/sites/{site_id}/forms": ["get"],
+    "/sites/{site_id}/forms/{form_id}": ["delete"],
+    "/dns_zones": ["get", "post"],
+    "/dns_zones/{zone_id}": ["delete"],
+    "/dns_zones/{zone_id}/dns_records": ["get", "post"],
+    "/dns_zones/{zone_id}/dns_records/{dns_record_id}": ["delete"],
+    "/sites/{site_id}/build_hooks": ["get", "post"],
+    "/sites/{site_id}/build_hooks/{id}": ["put", "delete"],
+    "/accounts/{account_id}/env": ["get", "post"],
+    "/accounts/{account_id}/env/{key}": ["patch", "delete"],
+    "/sites/{site_id}/builds": ["post"],
+    "/sites/{site_id}/rollback": ["put"],
+    "/sites/{site_id}/ssl": ["get", "post"],
+    "/purge": ["post"],
+    "/forms/{form_id}/submissions": ["get"],
+    "/hooks": ["get", "post"],
+    "/hooks/types": ["get"],
+    "/hooks/{hook_id}": ["put", "delete"],
+    "/hooks/{hook_id}/enable": ["post"],
+    "/sites/{site_id}/snippets": ["get", "post"],
+    "/sites/{site_id}/snippets/{snippet_id}": ["put", "delete"],
+    "/sites/{site_id}/database": ["get", "post", "delete"],
+    "/sites/{site_id}/database/branches": ["get"],
+    "/sites/{site_id}/database/snapshots": ["get"],
+    "/sites/{site_id}/database/snapshot": ["post"],
+    "/user": ["get"]
+  }
+}
