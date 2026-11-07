@@ -8,7 +8,7 @@ import { RESOURCE_TYPES } from "./resource-types.js";
 
 export const manifest = {
   id: "s3-compatible",
-  // user-supplied endpoint; v1 doesn't bastion-route self-hosted S3
+  // No fixed host: a bastion allows the `endpoint` the user typed, through `providerHost`.
   egressHosts: [],
   displayName: "S3-Compatible Storage",
   description:
