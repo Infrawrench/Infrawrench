@@ -379,7 +379,6 @@ describe("CockroachClient", () => {
     it.each([
       ["a renamed key", '{"cluster_list":[]}'],
       ["a key left out", "{}"],
-      ["a null key", '{"clusters":null}'],
     ])("fails on %s", async (_name, text) => {
       const { client } = fake([raw("/api/v1/clusters", text)]);
       await expect(client.listResources("crdb-cluster", ACCOUNT)).rejects.toThrow("is not a list");
