@@ -717,8 +717,8 @@ describe("reading a whole list or failing", () => {
 
   it("fails a billing report that never ends, after exactly 50 pages", async () => {
     let pages = 0;
-    installFetch(() => {
-      pages += 1;
+    installFetch((url) => {
+      if (url.includes("/v1/billing/usage")) pages += 1;
       return jsonResponse({ data: [], next_cursor: `cur-${pages}` });
     });
     await expect(client().fetchCostData!(ACCOUNT, RANGE)).rejects.toThrow(
@@ -860,10 +860,11 @@ describe("billing usage costs", () => {
       fromDate: "2026-05-31",
       toDate: "2026-06-01",
     });
-    expect(calls[0]?.url).toBe(
+    const usage = calls.filter((c) => c.url.includes("/v1/billing/usage"));
+    expect(usage[0]?.url).toBe(
       "https://api.together.ai/v1/billing/usage?month=2026-05&granularity=day&limit=1000",
     );
-    expect(calls.map((c) => c.url)).toHaveLength(3);
+    expect(usage).toHaveLength(3);
     const inference = rows.find((r) => r.service === "Serverless Inference - Input Tokens");
     expect(inference).toMatchObject({
       date: "2026-05-31",
@@ -876,6 +877,68 @@ describe("billing usage costs", () => {
     expect(rows.find((r) => r.service === "Fine-tuning")?.date).toBe("2026-06-01");
     expect(rows.some((r) => r.service === "Zero")).toBe(false);
     expect(rows).toHaveLength(3);
+  });
+
+  describe("organization_id, which the route requires at GA", () => {
+    const RANGE = { fromDate: "2026-05-31", toDate: "2026-06-01" };
+    const billing = () => calls.filter((call) => call.url.includes("/v1/billing/usage"));
+    const report = {
+      data: [{ date: "2026-05-31", line_items: [{ product_name: "GPU Clusters", cost: "5" }] }],
+      next_cursor: null,
+    };
+
+    it("sends the organization that whoami names, on every page of every month", async () => {
+      installFetch((url) => {
+        if (url.endsWith("/v3/whoami")) return jsonResponse({ organization: { id: "org-1" } });
+        if (url.includes("month=2026-05") && !url.includes("after=")) {
+          return jsonResponse({ data: [], next_cursor: "cur-2" });
+        }
+        return jsonResponse(report);
+      });
+      await client().fetchCostData(ACCOUNT, RANGE);
+      expect(
+        billing().map((call) => new URL(call.url).searchParams.get("organization_id")),
+      ).toEqual(["org-1", "org-1", "org-1"]);
+    });
+
+    it("collects without it when whoami cannot say", async () => {
+      installFetch((url) => {
+        if (url.includes("whoami")) return jsonResponse({ error: { message: "down" } }, 500);
+        return jsonResponse(report);
+      });
+      const rows = await client().fetchCostData(ACCOUNT, RANGE);
+      expect(rows).toHaveLength(1);
+      expect(billing()[0]?.url).not.toContain("organization_id");
+    });
+
+    it.each([400, 403])(
+      "drops it for good when Together answers %i, so working collection stays working",
+      async (status) => {
+        installFetch((url) => {
+          if (url.endsWith("/v3/whoami")) return jsonResponse({ organization: { id: "org-1" } });
+          if (url.includes("organization_id")) return jsonResponse({ error: {} }, status);
+          return jsonResponse(report);
+        });
+        const rows = await client().fetchCostData(ACCOUNT, RANGE);
+        expect(rows).toHaveLength(1);
+        expect(billing().map((call) => call.url.includes("organization_id"))).toEqual([
+          true,
+          false,
+          false,
+        ]);
+      },
+    );
+
+    it("still reports a refusal that has nothing to do with the organization", async () => {
+      installFetch((url) => {
+        if (url.endsWith("/v3/whoami")) return jsonResponse({ organization: { id: "org-1" } });
+        return jsonResponse({ error: {} }, 403);
+      });
+      await expect(client().fetchCostData(ACCOUNT, RANGE)).rejects.toMatchObject({
+        name: "CostSetupError",
+      });
+      expect(billing()).toHaveLength(2);
+    });
   });
 
   it("turns the beta 404 into a setup error rather than a failure", async () => {

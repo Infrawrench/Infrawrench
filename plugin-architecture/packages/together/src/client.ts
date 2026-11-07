@@ -2124,6 +2124,7 @@ export class TogetherClient implements PluginClient {
   ): Promise<CostRow[]> {
     const merged = new Map<string, CostRow>();
     const currentMonth = new Date().toISOString().slice(0, 7);
+    const readPage = await this.billingPageReader();
 
     months: for (const month of monthsInRange(range.fromDate, range.toDate)) {
       if (month > currentMonth) break;
@@ -2131,9 +2132,7 @@ export class TogetherClient implements PluginClient {
       for (let page = 0; page < MAX_BILLING_PAGES; page += 1) {
         let report: BillingUsageReport;
         try {
-          report = await this.api.get("/v1/billing/usage", {
-            query: { month, granularity: "day", limit: 1000, ...(after ? { after } : {}) },
-          });
+          report = await readPage(month, after);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           if (/API error 404/.test(message)) {
@@ -2179,6 +2178,39 @@ export class TogetherClient implements PluginClient {
       });
     }
     return [...merged.values()];
+  }
+
+  /**
+   * The document has `organization_id` optional in beta and required at GA, and always
+   * reports the key's own organization, so the value is sent where whoami can name it. Beta
+   * collection must not depend on that being right: a failed whoami sends none, and a
+   * refusal of the value is not repeated. If the route then refuses the request without it,
+   * that answer is the one the caller sees.
+   */
+  private async billingPageReader() {
+    let organizationId = await this.whoami().then(
+      (identity) => identity.organizationId,
+      () => undefined,
+    );
+    return async (month: string, after: string | undefined): Promise<BillingUsageReport> => {
+      const query = {
+        month,
+        granularity: "day",
+        limit: 1000,
+        ...(after ? { after } : {}),
+      } as const;
+      if (!organizationId) return this.api.get("/v1/billing/usage", { query });
+      try {
+        return await this.api.get("/v1/billing/usage", {
+          query: { ...query, organization_id: organizationId },
+        });
+      } catch (error) {
+        const status = apiErrorStatus(error);
+        if (status !== 400 && status !== 403) throw error;
+        organizationId = undefined;
+        return this.api.get("/v1/billing/usage", { query });
+      }
+    };
   }
 
   /**
