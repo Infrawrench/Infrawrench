@@ -1,0 +1,1089 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://raw.githubusercontent.com/hashicorp/nomad-openapi/main/v1/openapi.yaml",
+  "patches": [
+    {
+      "pointer": "/components/schemas/NodePool",
+      "value": {
+        "type": "object",
+        "properties": {
+          "Name": {
+            "type": "string"
+          },
+          "Description": {
+            "type": "string"
+          },
+          "Meta": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "SchedulerConfiguration": {
+            "type": "object",
+            "properties": {
+              "SchedulerAlgorithm": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          }
+        }
+      },
+      "why": "Node pools arrived in Nomad 1.6, after the document's last update. Fields from the Nomad 2.0 API docs (node-pools); null SchedulerConfiguration is how the plugin clears one."
+    },
+    {
+      "pointer": "/paths/~1agent~1self",
+      "value": {
+        "get": {
+          "operationId": "GetAgentSelf",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "config": {
+                        "type": "object",
+                        "properties": {
+                          "Region": {
+                            "type": "string"
+                          },
+                          "Datacenter": {
+                            "type": "string"
+                          },
+                          "ACL": {
+                            "type": "object",
+                            "properties": {
+                              "Enabled": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          "Version": {
+                            "type": "object",
+                            "properties": {
+                              "Version": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "member": {
+                        "type": "object",
+                        "properties": {
+                          "Tags": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document has no agent routes. What the plugin reads, from the Nomad 2.0 API docs (agent)."
+    },
+    {
+      "pointer": "/paths/~1agent~1members",
+      "value": {
+        "get": {
+          "operationId": "GetAgentMembers",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "Members": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "Name": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document has no agent routes. What the plugin reads, from the Nomad 2.0 API docs (agent)."
+    },
+    {
+      "pointer": "/paths/~1node~1pools",
+      "value": {
+        "get": {
+          "operationId": "GetNodePools",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/NodePool"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "operationId": "PostNodePool",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodePool"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          }
+        }
+      },
+      "why": "Node pools arrived in Nomad 1.6, after the document's last update. POST is what Nomad's own Go client uses to upsert (api/node_pools.go puts to the same route, and the server takes both)."
+    },
+    {
+      "pointer": "/paths/~1node~1pool~1{poolName}",
+      "value": {
+        "parameters": [
+          {
+            "name": "poolName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "get": {
+          "operationId": "GetNodePool",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NodePool"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "operationId": "DeleteNodePool",
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          }
+        }
+      },
+      "why": "Node pools arrived in Nomad 1.6, after the document's last update."
+    },
+    {
+      "pointer": "/paths/~1node~1pool~1{poolName}~1nodes",
+      "value": {
+        "parameters": [
+          {
+            "name": "poolName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "get": {
+          "operationId": "GetNodePoolNodes",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/NodeListStub"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Node pools arrived in Nomad 1.6, after the document's last update."
+    },
+    {
+      "pointer": "/paths/~1acl~1token/post",
+      "value": {
+        "operationId": "CreateACLToken",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "Name": {
+                    "type": "string"
+                  },
+                  "Type": {
+                    "type": "string"
+                  },
+                  "Policies": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "Global": {
+                    "type": "boolean"
+                  },
+                  "ExpirationTTL": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ACLToken"
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document only has GET here, which Nomad does not serve. ExpirationTTL is a duration string on the wire (Nomad 2.0 API docs, acl/tokens), not ACLToken's integer."
+    },
+    {
+      "pointer": "/paths/~1acl~1token~1self",
+      "value": {
+        "get": {
+          "operationId": "GetACLTokenSelf",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ACLToken"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Missing from the document; Nomad 2.0 API docs (acl/tokens)."
+    },
+    {
+      "pointer": "/paths/~1volume~1{volumeType}~1{volumeId}",
+      "value": {
+        "parameters": [
+          {
+            "name": "volumeType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "volumeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/NamespaceParam"
+          }
+        ],
+        "get": {
+          "operationId": "GetVolumeOfType",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/CSIVolume"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "CapacityBytes": {
+                            "type": "integer"
+                          },
+                          "State": {
+                            "type": "string"
+                          },
+                          "NodeID": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The plugin reads CSI and host volumes through one call with the type taken from the resource id, and the document has no host volumes (added in Nomad 1.10). Host fields from the Nomad 2.0 API docs (volumes)."
+    },
+    {
+      "pointer": "/paths/~1volume~1host~1{volumeId}~1delete",
+      "value": {
+        "parameters": [
+          {
+            "name": "volumeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/NamespaceParam"
+          }
+        ],
+        "delete": {
+          "operationId": "DeleteHostVolume",
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          }
+        }
+      },
+      "why": "The document has no host volumes (added in Nomad 1.10); Nomad 2.0 API docs (volumes)."
+    },
+    {
+      "pointer": "/paths/~1services",
+      "value": {
+        "get": {
+          "operationId": "GetServices",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/NamespaceParam"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "Namespace": {
+                          "type": "string"
+                        },
+                        "Services": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "ServiceName": {
+                                "type": "string"
+                              },
+                              "Tags": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Native service discovery is missing from the document; Nomad 2.0 API docs (services)."
+    },
+    {
+      "pointer": "/paths/~1service~1{serviceName}",
+      "value": {
+        "parameters": [
+          {
+            "name": "serviceName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "get": {
+          "operationId": "GetService",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/NamespaceParam"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "Address": {
+                          "type": "string"
+                        },
+                        "Port": {
+                          "type": "integer"
+                        },
+                        "AllocID": {
+                          "type": "string"
+                        },
+                        "NodeID": {
+                          "type": "string"
+                        },
+                        "JobID": {
+                          "type": "string"
+                        },
+                        "Datacenter": {
+                          "type": "string"
+                        },
+                        "Tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Native service discovery is missing from the document; Nomad 2.0 API docs (services)."
+    },
+    {
+      "pointer": "/paths/~1job~1{jobName}~1submission",
+      "value": {
+        "parameters": [
+          {
+            "name": "jobName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "get": {
+          "operationId": "GetJobSubmission",
+          "parameters": [
+            {
+              "$ref": "#/components/parameters/NamespaceParam"
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "schema": {
+                "type": "integer"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "Source": {
+                        "type": "string"
+                      },
+                      "Format": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "Job submissions are missing from the document; Nomad 2.0 API docs (jobs)."
+    },
+    {
+      "pointer": "/paths/~1client~1fs~1logs~1{allocID}",
+      "value": {
+        "parameters": [
+          {
+            "name": "allocID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "get": {
+          "operationId": "GetAllocLogs",
+          "parameters": [
+            {
+              "name": "task",
+              "in": "query",
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "type",
+              "in": "query",
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "origin",
+              "in": "query",
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "schema": {
+                "type": "integer"
+              }
+            },
+            {
+              "name": "plain",
+              "in": "query",
+              "schema": {
+                "type": "boolean"
+              }
+            },
+            {
+              "name": "follow",
+              "in": "query",
+              "schema": {
+                "type": "boolean"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "text/plain": {
+                  "schema": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document has no client routes; Nomad 2.0 API docs (client). Plain text, so the plugin reads it with getText."
+    },
+    {
+      "pointer": "/paths/~1client~1stats",
+      "value": {
+        "get": {
+          "operationId": "GetClientStats",
+          "parameters": [
+            {
+              "name": "node_id",
+              "in": "query",
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "CPU": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "Total": {
+                              "type": "number"
+                            }
+                          }
+                        }
+                      },
+                      "Memory": {
+                        "type": "object",
+                        "properties": {
+                          "Used": {
+                            "type": "integer"
+                          },
+                          "Total": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      "AllocDirStats": {
+                        "type": "object",
+                        "properties": {
+                          "UsedPercent": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document has no client routes. What the plugin reads, from the Nomad 2.0 API docs (client)."
+    },
+    {
+      "pointer": "/paths/~1client~1allocation~1{allocID}~1stats",
+      "value": {
+        "parameters": [
+          {
+            "name": "allocID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "get": {
+          "operationId": "GetAllocStats",
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "ResourceUsage": {
+                        "type": "object",
+                        "properties": {
+                          "CpuStats": {
+                            "type": "object",
+                            "properties": {
+                              "Percent": {
+                                "type": "number"
+                              }
+                            }
+                          },
+                          "MemoryStats": {
+                            "type": "object",
+                            "properties": {
+                              "RSS": {
+                                "type": "integer"
+                              },
+                              "Usage": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document has no client routes. What the plugin reads, from the Nomad 2.0 API docs (client)."
+    },
+    {
+      "pointer": "/paths/~1client~1allocation~1{allocID}~1restart",
+      "value": {
+        "parameters": [
+          {
+            "name": "allocID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "post": {
+          "operationId": "PostAllocRestart",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "AllTasks": {
+                      "type": "boolean"
+                    },
+                    "TaskName": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          }
+        }
+      },
+      "why": "The document has no client routes; Nomad 2.0 API docs (allocations)."
+    },
+    {
+      "pointer": "/paths/~1client~1allocation~1{allocID}~1signal",
+      "value": {
+        "parameters": [
+          {
+            "name": "allocID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "post": {
+          "operationId": "PostAllocSignal",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "Signal": {
+                      "type": "string"
+                    },
+                    "Task": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "OK"
+            }
+          }
+        }
+      },
+      "why": "The document has no client routes; Nomad 2.0 API docs (allocations)."
+    },
+    {
+      "pointer": "/paths/~1plugins/get/parameters/9",
+      "value": {
+        "name": "type",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "The API requires type=csi on this list (Nomad 2.0 API docs, plugins); the document leaves it out."
+    },
+    {
+      "pointer": "/paths/~1var~1{path}/delete/requestBody/required",
+      "value": false,
+      "why": "The document requires a Variable body on DELETE. Nomad takes the path and an optional cas, and the plugin sends nothing."
+    },
+    {
+      "pointer": "/paths/~1namespace/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Namespace"
+            }
+          }
+        }
+      },
+      "why": "The document has no body here, but this route takes the namespace to create (Nomad 2.0 API docs, namespaces)."
+    },
+    {
+      "pointer": "/paths/~1deployment~1fail~1{deploymentID}/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "DeploymentID": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document has no body here; the plugin sends the id, as Nomad's own Go client does."
+    },
+    {
+      "pointer": "/paths/~1node~1{nodeId}~1purge/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "The document has no body here. The plugin sends an empty object, which Nomad ignores."
+    },
+    {
+      "pointer": "/paths/~1allocation~1{allocID}~1stop/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "The document has no body here. The plugin sends an empty object, which Nomad ignores."
+    },
+    {
+      "pointer": "/paths/~1job~1{jobName}~1periodic~1force/post/requestBody",
+      "value": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "why": "The document has no body here. The plugin sends an empty object, which Nomad ignores."
+    },
+    {
+      "pointer": "/components/schemas/NodeUpdateDrainRequest/properties/DrainSpec",
+      "value": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DrainSpec"
+          }
+        ],
+        "nullable": true
+      },
+      "why": "A null DrainSpec is how a drain is cancelled (Nomad 2.0 API docs, nodes); the document does not allow it."
+    },
+    {
+      "pointer": "/components/schemas/JobRegisterRequest/properties/Submission",
+      "value": {
+        "type": "object",
+        "properties": {
+          "Source": {
+            "type": "string"
+          },
+          "Format": {
+            "type": "string"
+          },
+          "Namespace": {
+            "type": "string"
+          },
+          "JobID": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "Added in Nomad 1.6, after the document's last update; api/jobs.go JobRegisterRequest, with Namespace and JobID from structs.JobSubmission."
+    },
+    {
+      "pointer": "/components/responses/GetPluginCSIResponse/content/application~1json/schema",
+      "value": {
+        "$ref": "#/components/schemas/CSIPlugin"
+      },
+      "why": "Nomad answers one plugin here (command/agent/csi_endpoint.go returns out.Plugin), and the plugin reads one. The document and the API docs' sample both show an array."
+    },
+    {
+      "pointer": "/components/schemas/JobListStub/properties/NodePool",
+      "value": {
+        "type": "string"
+      },
+      "why": "Node pools arrived in Nomad 1.6, after the document's last update (structs.go)."
+    },
+    {
+      "pointer": "/components/schemas/Job/properties/NodePool",
+      "value": {
+        "type": "string"
+      },
+      "why": "Node pools arrived in Nomad 1.6, after the document's last update (structs.go)."
+    },
+    {
+      "pointer": "/components/schemas/NodeListStub/properties/NodePool",
+      "value": {
+        "type": "string"
+      },
+      "why": "Node pools arrived in Nomad 1.6, after the document's last update (structs.go)."
+    },
+    {
+      "pointer": "/components/schemas/Node/properties/NodePool",
+      "value": {
+        "type": "string"
+      },
+      "why": "Node pools arrived in Nomad 1.6, after the document's last update (structs.go)."
+    },
+    {
+      "pointer": "/components/schemas/ACLTokenListStub/properties/ExpirationTime",
+      "value": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "why": "Added in Nomad 1.4, and the document's list row lacks it (api/acl.go ACLTokenListStub)."
+    },
+    {
+      "pointer": "/components/schemas/Job/properties/Periodic",
+      "value": {
+        "type": "boolean"
+      },
+      "why": "Not what Nomad sends: a full job has an object here and only a list row has a boolean. mapJob reads both through one type and passes this straight into a field, which is #487. Fixing that removes this patch."
+    },
+    {
+      "pointer": "/components/schemas/Job/properties/ParameterizedJob",
+      "value": {
+        "type": "boolean"
+      },
+      "why": "Not what Nomad sends: a full job has an object here and only a list row has a boolean. mapJob reads both through one type and passes this straight into a field, which is #487. Fixing that removes this patch."
+    }
+  ],
+  "paths": {
+    "/status/leader": ["get"],
+    "/status/peers": ["get"],
+    "/agent/self": ["get"],
+    "/agent/members": ["get"],
+    "/regions": ["get"],
+    "/metrics": ["get"],
+    "/namespaces": ["get"],
+    "/namespace": ["post"],
+    "/namespace/{namespaceName}": ["get", "post", "delete"],
+    "/node/pools": ["get", "post"],
+    "/node/pool/{poolName}": ["get", "delete"],
+    "/node/pool/{poolName}/nodes": ["get"],
+    "/nodes": ["get"],
+    "/node/{nodeId}": ["get"],
+    "/node/{nodeId}/allocations": ["get"],
+    "/node/{nodeId}/purge": ["post"],
+    "/node/{nodeId}/drain": ["post"],
+    "/node/{nodeId}/eligibility": ["post"],
+    "/jobs": ["get", "post"],
+    "/jobs/parse": ["post"],
+    "/job/{jobName}": ["get", "delete"],
+    "/job/{jobName}/summary": ["get"],
+    "/job/{jobName}/versions": ["get"],
+    "/job/{jobName}/submission": ["get"],
+    "/job/{jobName}/scale": ["post"],
+    "/job/{jobName}/dispatch": ["post"],
+    "/job/{jobName}/revert": ["post"],
+    "/job/{jobName}/evaluate": ["post"],
+    "/job/{jobName}/periodic/force": ["post"],
+    "/allocations": ["get"],
+    "/allocation/{allocID}": ["get"],
+    "/allocation/{allocID}/stop": ["post"],
+    "/client/fs/logs/{allocID}": ["get"],
+    "/client/stats": ["get"],
+    "/client/allocation/{allocID}/stats": ["get"],
+    "/client/allocation/{allocID}/restart": ["post"],
+    "/client/allocation/{allocID}/signal": ["post"],
+    "/deployments": ["get"],
+    "/deployment/{deploymentID}": ["get"],
+    "/deployment/promote/{deploymentID}": ["post"],
+    "/deployment/fail/{deploymentID}": ["post"],
+    "/deployment/pause/{deploymentID}": ["post"],
+    "/vars": ["get"],
+    "/var/{path}": ["get", "put", "delete"],
+    "/acl/policies": ["get"],
+    "/acl/policy/{policyName}": ["get", "post", "delete"],
+    "/acl/tokens": ["get"],
+    "/acl/token": ["post"],
+    "/acl/token/self": ["get"],
+    "/acl/token/{tokenAccessor}": ["get", "post", "delete"],
+    "/volumes": ["get"],
+    "/volume/{volumeType}/{volumeId}": ["get"],
+    "/volume/csi/{volumeId}": ["delete"],
+    "/volume/host/{volumeId}/delete": ["delete"],
+    "/plugins": ["get"],
+    "/plugin/csi/{pluginID}": ["get"],
+    "/services": ["get"],
+    "/service/{serviceName}": ["get"]
+  }
+}

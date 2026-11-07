@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { ApiBody, ApiListItem, ApiResponse, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
   DashboardStat,
@@ -16,27 +16,25 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf, utf8ToBase64 } from "@infrawrench/plugin-base";
-import type { NomadContext, Query } from "./api.js";
+import {
+  decodePromptArgs,
+  externalIdOf,
+  pathEncode,
+  unencodedSegment,
+  utf8ToBase64,
+} from "@infrawrench/plugin-base";
+import type { NomadApi, NomadContext } from "./api.js";
 import {
   buildContext,
   encodePath,
   joinId,
   NomadApiError,
-  nomadFetch,
+  nomadApi,
   splitId,
   statusOf,
 } from "./api.js";
-import type {
-  AclToken,
-  AllocStub,
-  CsiPlugin,
-  Deployment,
-  JobStub,
-  NodeStub,
-  Variable,
-  Volume,
-} from "./mappers.js";
+import type { operations } from "./api-types.gen.js";
+import type { AllocStub } from "./mappers.js";
 import {
   mapAllocation,
   mapCsiPlugin,
@@ -55,7 +53,13 @@ import { COMMANDS, renderNomadDetail, renderNomadSidebar } from "./render.js";
 const MAX_JOBS = 3000;
 const MAX_ALLOCS = 3000;
 const MAX_DEPLOYMENTS = 500;
-const ALL = { namespace: "*" } as const;
+const ALL = { namespace: "*" };
+
+type Job = ApiResponse<operations["GetJob"]>;
+type Namespace = ApiListItem<operations["GetNamespaces"], null>;
+type NodePool = ApiListItem<operations["GetNodePools"], null>;
+type AclPolicy = ApiResponse<operations["GetACLPolicy"]>;
+type JobRegistration = ApiBody<operations["RegisterJob"]>;
 
 export const JOB_TEMPLATE = `job "example" {
   type = "service"
@@ -107,10 +111,7 @@ export function parseItems(raw: string): Record<string, string> {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
       throw new NomadApiError(400, "Nomad plugin: the items must be a JSON object");
     return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [
-        k,
-        typeof v === "string" ? v : JSON.stringify(v),
-      ]),
+      Object.entries(parsed).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]),
     );
   }
   const out: Record<string, string> = {};
@@ -128,87 +129,82 @@ export function durationNs(raw: string): number {
   return Number(m[1]) * DURATION_NS[m[2]!]!;
 }
 
-const PROBES: Array<{ capability: PreflightCapability; path: string; query?: Query }> = [
-  {
-    capability: {
-      id: "jobs",
-      label: "Jobs and allocations",
-      description: "List, run, stop and scale jobs; read allocations, logs and deployments.",
-      requiredPermissions: [{ id: 'namespace "*" { policy = "write" }', label: "namespace write" }],
-      essential: true,
+const PROBES: Array<{ capability: PreflightCapability; probe: (api: NomadApi) => Promise<void> }> =
+  [
+    {
+      capability: {
+        id: "jobs",
+        label: "Jobs and allocations",
+        description: "List, run, stop and scale jobs; read allocations, logs and deployments.",
+        requiredPermissions: [
+          { id: 'namespace "*" { policy = "write" }', label: "namespace write" },
+        ],
+        essential: true,
+      },
+      probe: async (api) => {
+        await api.get("/jobs", { query: ALL });
+      },
     },
-    path: "/jobs",
-    query: ALL,
-  },
-  {
-    capability: {
-      id: "nodes",
-      label: "Nodes",
-      description: "Read nodes; drain them and change their eligibility (node write).",
-      requiredPermissions: [{ id: 'node { policy = "write" }', label: "node write" }],
+    {
+      capability: {
+        id: "nodes",
+        label: "Nodes",
+        description: "Read nodes; drain them and change their eligibility (node write).",
+        requiredPermissions: [{ id: 'node { policy = "write" }', label: "node write" }],
+      },
+      probe: async (api) => {
+        await api.get("/nodes");
+      },
     },
-    path: "/nodes",
-  },
-  {
-    capability: {
-      id: "variables",
-      label: "Variables",
-      description: "List, read and write variables.",
-      requiredPermissions: [
-        {
-          id: 'namespace "*" { variables { path "*" { capabilities = ["write", "read", "list", "destroy"] } } }',
-          label: "variables",
-        },
-      ],
+    {
+      capability: {
+        id: "variables",
+        label: "Variables",
+        description: "List, read and write variables.",
+        requiredPermissions: [
+          {
+            id: 'namespace "*" { variables { path "*" { capabilities = ["write", "read", "list", "destroy"] } } }',
+            label: "variables",
+          },
+        ],
+      },
+      probe: async (api) => {
+        await api.get("/vars", { query: ALL });
+      },
     },
-    path: "/vars",
-    query: ALL,
-  },
-  {
-    capability: {
-      id: "acl",
-      label: "ACL policies and tokens",
-      description: "Manage ACL policies and tokens (needs a management token).",
-      requiredPermissions: [{ id: "management", label: "Management token" }],
+    {
+      capability: {
+        id: "acl",
+        label: "ACL policies and tokens",
+        description: "Manage ACL policies and tokens (needs a management token).",
+        requiredPermissions: [{ id: "management", label: "Management token" }],
+      },
+      probe: async (api) => {
+        await api.get("/acl/tokens");
+      },
     },
-    path: "/acl/tokens",
-  },
-  {
-    capability: {
-      id: "agent",
-      label: "Agent and metrics",
-      description: "Read the agent's configuration, cluster members and telemetry.",
-      requiredPermissions: [{ id: 'agent { policy = "read" }', label: "agent read" }],
+    {
+      capability: {
+        id: "agent",
+        label: "Agent and metrics",
+        description: "Read the agent's configuration, cluster members and telemetry.",
+        requiredPermissions: [{ id: 'agent { policy = "read" }', label: "agent read" }],
+      },
+      probe: async (api) => {
+        await api.get("/agent/self");
+      },
     },
-    path: "/agent/self",
-  },
-];
+  ];
 
 export const NOMAD_PREFLIGHT = { capabilities: PROBES.map((p) => p.capability) };
 
-interface AgentSelf {
-  config?: {
-    Region?: string;
-    Datacenter?: string;
-    ACL?: { Enabled?: boolean };
-    Version?: { Version?: string };
-  };
-  member?: { Tags?: Record<string, string> };
-}
-
 export class NomadClient implements PluginClient {
   private readonly ctx: NomadContext;
+  private readonly api: NomadApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     this.ctx = buildContext(credentials, services?.http);
-  }
-
-  private get<T>(path: string, query?: Query): Promise<T> {
-    return nomadFetch<T>(this.ctx, path, query ? { query } : {});
-  }
-
-  private post<T>(path: string, body: unknown, query?: Query): Promise<T> {
-    return nomadFetch<T>(this.ctx, path, { method: "POST", body, ...(query ? { query } : {}) });
+    this.api = nomadApi(this.ctx);
   }
 
   private soft<T>(p: Promise<T>): Promise<T | undefined> {
@@ -232,13 +228,13 @@ export class NomadClient implements PluginClient {
 
   private async cluster(accountId: string): Promise<ResourceInstance> {
     const [leader, peers, self, members, regions, nodes, jobs] = await Promise.all([
-      this.get<string>("/status/leader"),
-      this.soft(this.get<string[]>("/status/peers")),
-      this.soft(this.get<AgentSelf>("/agent/self")),
-      this.soft(this.get<{ Members?: Array<{ Name?: string }> }>("/agent/members")),
-      this.soft(this.get<string[]>("/regions")),
-      this.soft(this.get<NodeStub[]>("/nodes")),
-      this.soft(this.get<JobStub[]>("/jobs", ALL)),
+      this.api.get("/status/leader"),
+      this.soft(this.api.get("/status/peers")),
+      this.soft(this.api.get("/agent/self")),
+      this.soft(this.api.get("/agent/members")),
+      this.soft(this.api.get("/regions")),
+      this.soft(this.api.get("/nodes")),
+      this.soft(this.api.get("/jobs", { query: ALL })),
     ]);
     const now = new Date().toISOString();
     const fields: Record<string, string | number | boolean> = {
@@ -282,16 +278,16 @@ export class NomadClient implements PluginClient {
     };
   }
 
-  private async variables(): Promise<Variable[]> {
-    return this.get<Variable[]>("/vars", ALL).then((v) => v ?? []);
+  private async variables() {
+    return this.api.get("/vars", { query: ALL }).then((v) => v ?? []);
   }
 
-  private variable(ns: string, path: string): Promise<Variable> {
-    return this.get<Variable>(`/var/${encodePath(path)}`, { namespace: ns });
+  private variable(ns: string, path: string) {
+    return this.api.get(`/var/${unencodedSegment(encodePath(path))}`, { query: { namespace: ns } });
   }
 
-  private job(ns: string, id: string): Promise<JobStub & Record<string, unknown>> {
-    return this.get(`/job/${encodeURIComponent(id)}`, { namespace: ns });
+  private job(ns: string, id: string) {
+    return this.api.get(`/job/${pathEncode(id)}`, { query: { namespace: ns } });
   }
 
   // -------------------------------------------------------------------------
@@ -304,43 +300,27 @@ export class NomadClient implements PluginClient {
         case "nomad-cluster":
           return [await this.cluster(accountId)];
         case "nomad-namespace":
-          return (
-            await this.get<
-              Array<{
-                Name?: string;
-                Description?: string;
-                Quota?: string;
-                Meta?: Record<string, string>;
-              }>
-            >("/namespaces")
-          ).map((n) => this.mapNamespace(accountId, n));
+          return (await this.api.get("/namespaces")).map((n) => this.mapNamespace(accountId, n));
         case "nomad-node-pool": {
           const [pools, nodes] = await Promise.all([
-            this.get<
-              Array<{
-                Name?: string;
-                Description?: string;
-                Meta?: Record<string, string>;
-                SchedulerConfiguration?: { SchedulerAlgorithm?: string };
-              }>
-            >("/node/pools"),
-            this.soft(this.get<NodeStub[]>("/nodes")),
+            this.api.get("/node/pools"),
+            this.soft(this.api.get("/nodes")),
           ]);
           return pools.map((p) =>
             this.mapPool(accountId, p, nodes?.filter((n) => n.NodePool === p.Name).length),
           );
         }
         case "nomad-node":
-          return (await this.get<NodeStub[]>("/nodes", { resources: true })).map((n) =>
+          return (await this.api.get("/nodes", { query: { resources: true } })).map((n) =>
             mapNode(accountId, n),
           );
         case "nomad-job":
-          return (await this.get<JobStub[]>("/jobs", ALL))
+          return (await this.api.get("/jobs", { query: ALL }))
             .slice(0, MAX_JOBS)
             .map((j) => mapJob(accountId, j));
         case "nomad-allocation": {
           const allocs =
-            (await this.get<AllocStub[]>("/allocations", { ...ALL, resources: false })) ?? [];
+            (await this.api.get("/allocations", { query: { ...ALL, resources: false } })) ?? [];
           const live = (a: AllocStub) =>
             a.ClientStatus === "running" || a.ClientStatus === "pending" ? 1 : 0;
           return allocs
@@ -349,39 +329,33 @@ export class NomadClient implements PluginClient {
             .map((a) => mapAllocation(accountId, a));
         }
         case "nomad-deployment":
-          return ((await this.get<Deployment[]>("/deployments", ALL)) ?? [])
+          return ((await this.api.get("/deployments", { query: ALL })) ?? [])
             .slice(0, MAX_DEPLOYMENTS)
             .map((d) => mapDeployment(accountId, d));
         case "nomad-variable":
           return (await this.variables()).map((v) => mapVariable(accountId, v));
         case "nomad-acl-policy": {
           // The list omits the rules; read them (policies are few) so Terraform export has them.
-          const list = await this.optional(
-            this.get<Array<{ Name?: string; Description?: string }>>("/acl/policies"),
-          );
+          const list = await this.optional(this.api.get("/acl/policies"));
           return Promise.all(
             list
               .slice(0, 200)
               .map(async (p) =>
                 this.mapPolicy(
                   accountId,
-                  (await this.soft(
-                    this.get<{ Name?: string; Description?: string; Rules?: string }>(
-                      `/acl/policy/${encodeURIComponent(p.Name ?? "")}`,
-                    ),
-                  )) ?? p,
+                  (await this.soft(this.api.get(`/acl/policy/${pathEncode(p.Name ?? "")}`))) ?? p,
                 ),
               ),
           );
         }
         case "nomad-acl-token":
-          return (await this.optional(this.get<AclToken[]>("/acl/tokens"))).map((t) =>
+          return (await this.optional(this.api.get("/acl/tokens"))).map((t) =>
             mapToken(accountId, t),
           );
         case "nomad-volume": {
           const [csi, host] = await Promise.all([
-            this.optional(this.get<Volume[]>("/volumes", { ...ALL, type: "csi" })),
-            this.optional(this.get<Volume[]>("/volumes", { ...ALL, type: "host" })),
+            this.optional(this.api.get("/volumes", { query: { ...ALL, type: "csi" } })),
+            this.optional(this.api.get("/volumes", { query: { ...ALL, type: "host" } })),
           ]);
           return [
             ...csi.map((v) => mapVolume(accountId, v, "csi")),
@@ -389,17 +363,11 @@ export class NomadClient implements PluginClient {
           ];
         }
         case "nomad-csi-plugin":
-          return (await this.optional(this.get<CsiPlugin[]>("/plugins", { type: "csi" }))).map(
+          return (await this.optional(this.api.get("/plugins", { query: { type: "csi" } }))).map(
             (p) => mapCsiPlugin(accountId, p),
           );
         case "nomad-service": {
-          const groups =
-            (await this.get<
-              Array<{
-                Namespace?: string;
-                Services?: Array<{ ServiceName?: string; Tags?: string[] }>;
-              }>
-            >("/services", ALL)) ?? [];
+          const groups = (await this.api.get("/services", { query: ALL })) ?? [];
           return groups.flatMap((g) =>
             (g.Services ?? []).map((s) =>
               mapService(accountId, g.Namespace ?? "default", s.ServiceName ?? "", s.Tags ?? []),
@@ -412,10 +380,7 @@ export class NomadClient implements PluginClient {
     });
   }
 
-  private mapNamespace(
-    accountId: string,
-    n: { Name?: string; Description?: string; Quota?: string; Meta?: Record<string, string> },
-  ): ResourceInstance {
+  private mapNamespace(accountId: string, n: Namespace): ResourceInstance {
     const now = new Date().toISOString();
     const name = n.Name ?? "";
     return {
@@ -438,16 +403,7 @@ export class NomadClient implements PluginClient {
     };
   }
 
-  private mapPool(
-    accountId: string,
-    p: {
-      Name?: string;
-      Description?: string;
-      Meta?: Record<string, string>;
-      SchedulerConfiguration?: { SchedulerAlgorithm?: string };
-    },
-    nodes: number | undefined,
-  ): ResourceInstance {
+  private mapPool(accountId: string, p: NodePool, nodes: number | undefined): ResourceInstance {
     const now = new Date().toISOString();
     const name = p.Name ?? "";
     return {
@@ -471,10 +427,7 @@ export class NomadClient implements PluginClient {
     };
   }
 
-  private mapPolicy(
-    accountId: string,
-    p: { Name?: string; Description?: string; Rules?: string },
-  ): ResourceInstance {
+  private mapPolicy(accountId: string, p: AclPolicy): ResourceInstance {
     const now = new Date().toISOString();
     const name = p.Name ?? "";
     return {
@@ -503,18 +456,21 @@ export class NomadClient implements PluginClient {
         case "nomad-cluster":
           return this.cluster(accountId);
         case "nomad-namespace":
-          return this.mapNamespace(accountId, await this.get(`/namespace/${id}`));
+          return this.mapNamespace(
+            accountId,
+            await this.api.get(`/namespace/${unencodedSegment(id)}`),
+          );
         case "nomad-node-pool": {
           const [p, nodes] = await Promise.all([
-            this.get<{ Name?: string }>(`/node/pool/${id}`),
-            this.soft(this.get<NodeStub[]>(`/node/pool/${id}/nodes`)),
+            this.api.get(`/node/pool/${unencodedSegment(id)}`),
+            this.soft(this.api.get(`/node/pool/${unencodedSegment(id)}/nodes`)),
           ]);
           return this.mapPool(accountId, p, nodes?.length);
         }
         case "nomad-node": {
           const [n, allocs] = await Promise.all([
-            this.get<NodeStub>(`/node/${encodeURIComponent(id)}`),
-            this.soft(this.get<AllocStub[]>(`/node/${encodeURIComponent(id)}/allocations`)),
+            this.api.get(`/node/${pathEncode(id)}`),
+            this.soft(this.api.get(`/node/${pathEncode(id)}/allocations`)),
           ]);
           return mapNode(accountId, n, allocs?.filter((a) => a.ClientStatus === "running").length);
         }
@@ -523,55 +479,43 @@ export class NomadClient implements PluginClient {
           const [job, summary] = await Promise.all([
             this.job(ns!, jobId!),
             this.soft(
-              this.get<JobStub["JobSummary"]>(`/job/${encodeURIComponent(jobId!)}/summary`, {
-                namespace: ns!,
-              }),
+              this.api.get(`/job/${pathEncode(jobId!)}/summary`, { query: { namespace: ns! } }),
             ),
           ]);
           return mapJob(accountId, { ...job, ...(summary ? { JobSummary: summary } : {}) });
         }
         case "nomad-allocation":
-          return mapAllocation(
-            accountId,
-            await this.get<AllocStub>(`/allocation/${encodeURIComponent(id)}`),
-          );
+          return mapAllocation(accountId, await this.api.get(`/allocation/${pathEncode(id)}`));
         case "nomad-deployment":
-          return mapDeployment(
-            accountId,
-            await this.get<Deployment>(`/deployment/${encodeURIComponent(id)}`),
-          );
+          return mapDeployment(accountId, await this.api.get(`/deployment/${pathEncode(id)}`));
         case "nomad-variable": {
           const [ns, path] = splitId(id, 2);
           return mapVariable(accountId, await this.variable(ns!, path!));
         }
         case "nomad-acl-policy":
-          return this.mapPolicy(accountId, await this.get(`/acl/policy/${id}`));
-        case "nomad-acl-token":
-          return mapToken(
+          return this.mapPolicy(
             accountId,
-            await this.get<AclToken>(`/acl/token/${encodeURIComponent(id)}`),
+            await this.api.get(`/acl/policy/${unencodedSegment(id)}`),
           );
+        case "nomad-acl-token":
+          return mapToken(accountId, await this.api.get(`/acl/token/${pathEncode(id)}`));
         case "nomad-volume": {
           const [type, ns, volId] = splitId(id, 3);
           return mapVolume(
             accountId,
-            await this.get<Volume>(`/volume/${type}/${encodeURIComponent(volId!)}`, {
-              namespace: ns!,
+            await this.api.get(`/volume/${unencodedSegment(type!)}/${pathEncode(volId!)}`, {
+              query: { namespace: ns! },
             }),
-            type as "csi" | "host",
+            type!,
           );
         }
         case "nomad-csi-plugin":
-          return mapCsiPlugin(
-            accountId,
-            await this.get<CsiPlugin>(`/plugin/csi/${encodeURIComponent(id)}`),
-          );
+          return mapCsiPlugin(accountId, await this.api.get(`/plugin/csi/${pathEncode(id)}`));
         case "nomad-service": {
           const [ns, name] = splitId(id, 2);
-          const regs = await this.get<Array<{ Tags?: string[] }>>(
-            `/service/${encodeURIComponent(name!)}`,
-            { namespace: ns! },
-          );
+          const regs = await this.api.get(`/service/${pathEncode(name!)}`, {
+            query: { namespace: ns! },
+          });
           return mapService(
             accountId,
             ns!,
@@ -595,14 +539,14 @@ export class NomadClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       if (typeId === "nomad-acl-token" && outputKey === "secretId") {
-        return (await this.get<AclToken>(`/acl/token/${encodeURIComponent(id)}`)).SecretID ?? "";
+        return (await this.api.get(`/acl/token/${pathEncode(id)}`)).SecretID ?? "";
       }
       if (typeId === "nomad-variable" && outputKey === "items") {
         const [ns, path] = splitId(id, 2);
         return JSON.stringify((await this.variable(ns!, path!)).Items ?? {});
       }
       if (typeId === "nomad-acl-policy" && outputKey === "rules") {
-        return (await this.get<{ Rules?: string }>(`/acl/policy/${id}`)).Rules ?? "";
+        return (await this.api.get(`/acl/policy/${unencodedSegment(id)}`)).Rules ?? "";
       }
       const r = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
       return String(r.resolvedOutputs[outputKey] ?? r.fields[outputKey] ?? "");
@@ -618,9 +562,7 @@ export class NomadClient implements PluginClient {
         if (resource.resourceTypeId === "nomad-job") {
           const [ns, jobId] = splitId(id, 2);
           const [versions, job] = await Promise.all([
-            this.get<{
-              Versions?: Array<{ Version?: number; Stable?: boolean; SubmitTime?: number }>;
-            }>(`/job/${encodeURIComponent(jobId!)}/versions`, { namespace: ns! }),
+            this.api.get(`/job/${pathEncode(jobId!)}/versions`, { query: { namespace: ns! } }),
             this.job(ns!, jobId!),
           ]);
           extra["__versions__"] = JSON.stringify(
@@ -634,16 +576,9 @@ export class NomadClient implements PluginClient {
           );
         } else if (resource.resourceTypeId === "nomad-service") {
           const [ns, name] = splitId(id, 2);
-          const regs = await this.get<
-            Array<{
-              Address?: string;
-              Port?: number;
-              AllocID?: string;
-              NodeID?: string;
-              JobID?: string;
-              Datacenter?: string;
-            }>
-          >(`/service/${encodeURIComponent(name!)}`, { namespace: ns! });
+          const regs = await this.api.get(`/service/${pathEncode(name!)}`, {
+            query: { namespace: ns! },
+          });
           extra["__registrations__"] = JSON.stringify(
             (regs ?? []).map((r) => ({
               address: `${r.Address ?? ""}:${r.Port ?? ""}`,
@@ -654,10 +589,10 @@ export class NomadClient implements PluginClient {
             })),
           );
         } else if (resource.resourceTypeId === "nomad-acl-policy") {
-          extra["rules"] = (await this.get<{ Rules?: string }>(`/acl/policy/${id}`)).Rules ?? "";
+          extra["rules"] = (await this.api.get(`/acl/policy/${unencodedSegment(id)}`)).Rules ?? "";
         }
         if (resource.resourceTypeId === "nomad-acl-token") {
-          const policies = await this.soft(this.get<Array<{ Name?: string }>>("/acl/policies"));
+          const policies = await this.soft(this.api.get("/acl/policies"));
           if (policies) extra["__policies__"] = JSON.stringify(policies.map((p) => p.Name ?? ""));
         }
       } catch {
@@ -685,7 +620,7 @@ export class NomadClient implements PluginClient {
       if (typeId !== "nomad-allocation")
         throw new NomadApiError(400, "Nomad plugin: logs are per allocation");
       const id = externalIdOf(resourceId);
-      const alloc = await this.get<AllocStub>(`/allocation/${encodeURIComponent(id)}`);
+      const alloc = await this.api.get(`/allocation/${pathEncode(id)}`);
       const tasks = Object.keys(alloc.TaskStates ?? {}).sort();
       const containers = tasks.flatMap((t) => [`${t} (stdout)`, `${t} (stderr)`]);
       const active =
@@ -695,20 +630,23 @@ export class NomadClient implements PluginClient {
       if (!active) return { text: "", containers, activeContainer: "" };
       const m = /^(.*) \((stdout|stderr)\)$/.exec(active)!;
       const tail = Math.max(1, Math.min(params.tailLines ?? 200, 5000));
-      const text = await nomadFetch<string>(this.ctx, `/client/fs/logs/${encodeURIComponent(id)}`, {
-        query: {
-          task: m[1]!,
-          type: m[2]!,
-          origin: "end",
-          offset: tail * 300,
-          plain: true,
-          follow: false,
-        },
-        text: true,
-      }).catch((err: unknown) => {
-        if (statusOf(err) === 404) return "";
-        throw err;
-      });
+      const text = await this.api
+        .getText(`/client/fs/logs/${pathEncode(id)}`, {
+          query: {
+            task: m[1]!,
+            type: m[2]!,
+            origin: "end",
+            offset: tail * 300,
+            plain: true,
+            follow: false,
+          },
+          headers: { Accept: "text/plain" },
+        })
+        .then((answer) => answer.body)
+        .catch((err: unknown) => {
+          if (statusOf(err) === 404) return "";
+          throw err;
+        });
       const lines = text.split("\n");
       if (lines.length > tail + 1) lines.splice(0, lines.length - tail - 1);
       return { text: lines.join("\n"), containers, activeContainer: active };
@@ -758,16 +696,18 @@ export class NomadClient implements PluginClient {
   ): PluginEffect<MetricSeries[]> {
     return attempt(async () => {
       const now = Date.now();
-      const pt = (label: string, unit: string, value: number | undefined): MetricSeries[] =>
+      const pt = (
+        label: string,
+        unit: string,
+        value: string | number | boolean | undefined,
+      ): MetricSeries[] =>
         typeof value === "number" && Number.isFinite(value)
           ? [{ label, unit, points: [{ timestamp: now, value }] }]
           : [];
       const id = externalIdOf(resourceId);
       switch (typeId) {
         case "nomad-cluster": {
-          const m = await this.get<{ Gauges?: Array<{ Name?: string; Value?: number }> }>(
-            "/metrics",
-          );
+          const m = await this.api.get("/metrics");
           const wanted: Record<string, [string, string]> = {
             "nomad.broker.total_ready": ["Evaluations ready", "count"],
             "nomad.broker.total_unacked": ["Evaluations unacked", "count"],
@@ -786,11 +726,7 @@ export class NomadClient implements PluginClient {
           return [...sums].flatMap(([k, v]) => pt(wanted[k]![0], wanted[k]![1], v));
         }
         case "nomad-node": {
-          const s = await this.get<{
-            CPU?: Array<{ Total?: number }>;
-            Memory?: { Used?: number; Total?: number };
-            AllocDirStats?: { UsedPercent?: number };
-          }>("/client/stats", { node_id: id });
+          const s = await this.api.get("/client/stats", { query: { node_id: id } });
           const cpus = s.CPU ?? [];
           return [
             ...pt(
@@ -803,12 +739,7 @@ export class NomadClient implements PluginClient {
           ];
         }
         case "nomad-allocation": {
-          const s = await this.get<{
-            ResourceUsage?: {
-              CpuStats?: { Percent?: number };
-              MemoryStats?: { RSS?: number; Usage?: number };
-            };
-          }>(`/client/allocation/${encodeURIComponent(id)}/stats`);
+          const s = await this.api.get(`/client/allocation/${pathEncode(id)}/stats`);
           return [
             ...pt("CPU", "%", s.ResourceUsage?.CpuStats?.Percent),
             ...pt(
@@ -821,9 +752,9 @@ export class NomadClient implements PluginClient {
         case "nomad-job": {
           const f = (await runPluginEffect(this.getResource(typeId, resourceId, accountId))).fields;
           return [
-            ...pt("Running", "count", f["running"] as number | undefined),
-            ...pt("Queued", "count", f["queued"] as number | undefined),
-            ...pt("Failed", "count", f["failed"] as number | undefined),
+            ...pt("Running", "count", f["running"]),
+            ...pt("Queued", "count", f["queued"]),
+            ...pt("Failed", "count", f["failed"]),
           ];
         }
         default:
@@ -837,7 +768,7 @@ export class NomadClient implements PluginClient {
       const checks = await Promise.all(
         PROBES.map(async (p): Promise<PreflightCapabilityCheck> => {
           try {
-            await this.get(p.path, p.query);
+            await p.probe(this.api);
             return { capabilityId: p.capability.id, status: "ok" };
           } catch (err) {
             const s = statusOf(err);
@@ -854,7 +785,7 @@ export class NomadClient implements PluginClient {
           }
         }),
       );
-      const self = await this.soft(this.get<AclToken>("/acl/token/self"));
+      const self = await this.soft(this.api.get("/acl/token/self"));
       return {
         checks,
         ...(self?.AccessorID
@@ -869,9 +800,9 @@ export class NomadClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private async namespacePicker(): Promise<CreateResourceConfig["fields"]> {
-    const names = (await this.soft(this.get<Array<{ Name?: string }>>("/namespaces")))?.map(
-      (n) => n.Name ?? "",
-    ) ?? ["default"];
+    const names = (await this.soft(this.api.get("/namespaces")))?.map((n) => n.Name ?? "") ?? [
+      "default",
+    ];
     return [
       {
         key: "namespace",
@@ -975,8 +906,7 @@ export class NomadClient implements PluginClient {
             ],
           };
         case "nomad-acl-token": {
-          const policies =
-            (await this.soft(this.get<Array<{ Name?: string }>>("/acl/policies"))) ?? [];
+          const policies = (await this.soft(this.api.get("/acl/policies"))) ?? [];
           return {
             fields: [
               {
@@ -1040,32 +970,35 @@ export class NomadClient implements PluginClient {
   private async register(spec: string, namespace?: string): Promise<{ ns: string; id: string }> {
     const t = spec.trim();
     if (!t) throw new NomadApiError(400, "Nomad plugin: the job specification is empty");
-    let job: Record<string, unknown>;
-    let submission: Record<string, unknown> | undefined;
+    let job: Job;
+    let submission: NonNullable<JobRegistration["Submission"]>;
     if (t.startsWith("{")) {
-      let parsed: Record<string, unknown>;
+      let parsed: Job & { Job?: Job };
       try {
-        parsed = JSON.parse(t) as Record<string, unknown>;
+        parsed = JSON.parse(t);
       } catch {
         throw new NomadApiError(400, "Nomad plugin: the job specification is not valid JSON");
       }
-      job = (parsed["Job"] as Record<string, unknown> | undefined) ?? parsed;
+      job = parsed.Job ?? parsed;
       submission = { Source: t, Format: "json" };
     } else {
-      job = await this.post<Record<string, unknown>>("/jobs/parse", {
-        JobHCL: t,
-        Canonicalize: true,
-      });
+      job = await this.api.post("/jobs/parse", { body: { JobHCL: t, Canonicalize: true } });
       submission = { Source: t, Format: "hcl2" };
     }
-    if (namespace) job["Namespace"] = namespace;
-    const ns = String(job["Namespace"] ?? "default");
-    await this.post(
-      "/jobs",
-      { Job: job, Submission: { ...submission, Namespace: ns, JobID: job["ID"] } },
-      { namespace: ns },
-    );
-    return { ns, id: String(job["ID"] ?? "") };
+    if (namespace) job.Namespace = namespace;
+    const ns = String(job.Namespace ?? "default");
+    await this.api.post("/jobs", {
+      body: {
+        Job: job,
+        Submission: {
+          ...submission,
+          Namespace: ns,
+          ...(job.ID !== undefined ? { JobID: job.ID } : {}),
+        },
+      },
+      query: { namespace: ns },
+    });
+    return { ns, id: String(job.ID ?? "") };
   }
 
   createResource(
@@ -1084,10 +1017,12 @@ export class NomadClient implements PluginClient {
       switch (typeId) {
         case "nomad-namespace": {
           const name = need("name", "a name");
-          await this.post("/namespace", {
-            Name: name,
-            Description: text("description"),
-            Meta: parseMeta(fields["meta"]),
+          await this.api.post("/namespace", {
+            body: {
+              Name: name,
+              Description: text("description"),
+              Meta: parseMeta(fields["meta"]),
+            },
           });
           return runPluginEffect(
             this.getResource(typeId, ref(encodeURIComponent(name)), accountId),
@@ -1095,12 +1030,14 @@ export class NomadClient implements PluginClient {
         }
         case "nomad-node-pool": {
           const name = need("name", "a name");
-          await this.post("/node/pools", {
-            Name: name,
-            Description: text("description"),
-            ...(text("schedulerAlgorithm")
-              ? { SchedulerConfiguration: { SchedulerAlgorithm: text("schedulerAlgorithm") } }
-              : {}),
+          await this.api.post("/node/pools", {
+            body: {
+              Name: name,
+              Description: text("description"),
+              ...(text("schedulerAlgorithm")
+                ? { SchedulerConfiguration: { SchedulerAlgorithm: text("schedulerAlgorithm") } }
+                : {}),
+            },
           });
           return runPluginEffect(
             this.getResource(typeId, ref(encodeURIComponent(name)), accountId),
@@ -1124,8 +1061,7 @@ export class NomadClient implements PluginClient {
           const items = parseItems(fields["items"] ?? "");
           if (!Object.keys(items).length)
             throw new NomadApiError(400, "Nomad plugin: add at least one item");
-          await nomadFetch(this.ctx, `/var/${encodePath(path)}`, {
-            method: "PUT",
+          await this.api.put(`/var/${unencodedSegment(encodePath(path))}`, {
             query: { namespace: ns, cas: 0 },
             body: { Namespace: ns, Path: path, Items: items },
           });
@@ -1133,10 +1069,12 @@ export class NomadClient implements PluginClient {
         }
         case "nomad-acl-policy": {
           const name = need("name", "a name");
-          await this.post(`/acl/policy/${encodeURIComponent(name)}`, {
-            Name: name,
-            Description: text("description"),
-            Rules: fields["rules"] ?? "",
+          await this.api.post(`/acl/policy/${pathEncode(name)}`, {
+            body: {
+              Name: name,
+              Description: text("description"),
+              Rules: fields["rules"] ?? "",
+            },
           });
           return runPluginEffect(
             this.getResource(typeId, ref(encodeURIComponent(name)), accountId),
@@ -1147,12 +1085,14 @@ export class NomadClient implements PluginClient {
           const policies = parsePolicyList(fields["policies"]);
           if (type === "client" && !policies.length)
             throw new NomadApiError(400, "Nomad plugin: a client token needs at least one policy");
-          const t = await this.post<AclToken>("/acl/token", {
-            Name: text("name"),
-            Type: type,
-            Policies: type === "client" ? policies : [],
-            Global: text("global") === "true",
-            ...(text("ttl") ? { ExpirationTTL: text("ttl") } : {}),
+          const t = await this.api.post("/acl/token", {
+            body: {
+              Name: text("name"),
+              Type: type,
+              Policies: type === "client" ? policies : [],
+              Global: text("global") === "true",
+              ...(text("ttl") ? { ExpirationTTL: text("ttl") } : {}),
+            },
           });
           const r = mapToken(accountId, t);
           return t.SecretID
@@ -1182,57 +1122,58 @@ export class NomadClient implements PluginClient {
       const text = (k: string) => (fields[k] ?? "").trim();
       switch (typeId) {
         case "nomad-namespace": {
-          const cur = await this.get<{
-            Name?: string;
-            Description?: string;
-            Meta?: Record<string, string>;
-            Quota?: string;
-          }>(`/namespace/${id}`);
-          await this.post(`/namespace/${id}`, {
-            ...cur,
-            Name: cur.Name,
-            Description: has("description") ? text("description") : cur.Description,
-            Meta: has("meta") ? parseMeta(fields["meta"]) : cur.Meta,
-            ...(has("quota") ? { Quota: text("quota") } : {}),
+          const cur = await this.api.get(`/namespace/${unencodedSegment(id)}`);
+          await this.api.post(`/namespace/${unencodedSegment(id)}`, {
+            body: {
+              ...cur,
+              Name: cur.Name,
+              Description: has("description") ? text("description") : cur.Description,
+              Meta: has("meta") ? parseMeta(fields["meta"]) : cur.Meta,
+              ...(has("quota") ? { Quota: text("quota") } : {}),
+            },
           });
           break;
         }
         case "nomad-node-pool": {
-          const cur = await this.get<Record<string, unknown>>(`/node/pool/${id}`);
-          await this.post("/node/pools", {
-            ...cur,
-            ...(has("description") ? { Description: text("description") } : {}),
-            ...(has("meta") ? { Meta: parseMeta(fields["meta"]) } : {}),
-            ...(has("schedulerAlgorithm")
-              ? {
-                  SchedulerConfiguration: text("schedulerAlgorithm")
-                    ? { SchedulerAlgorithm: text("schedulerAlgorithm") }
-                    : null,
-                }
-              : {}),
+          const cur = await this.api.get(`/node/pool/${unencodedSegment(id)}`);
+          await this.api.post("/node/pools", {
+            body: {
+              ...cur,
+              ...(has("description") ? { Description: text("description") } : {}),
+              ...(has("meta") ? { Meta: parseMeta(fields["meta"]) } : {}),
+              ...(has("schedulerAlgorithm")
+                ? {
+                    SchedulerConfiguration: text("schedulerAlgorithm")
+                      ? { SchedulerAlgorithm: text("schedulerAlgorithm") }
+                      : null,
+                  }
+                : {}),
+            },
           });
           break;
         }
         case "nomad-acl-policy": {
-          const cur = await this.get<{ Name?: string; Description?: string; Rules?: string }>(
-            `/acl/policy/${id}`,
-          );
-          await this.post(`/acl/policy/${id}`, {
-            Name: cur.Name,
-            Description: has("description") ? text("description") : cur.Description,
-            Rules: has("rules") ? (fields["rules"] ?? "") : cur.Rules,
+          const cur = await this.api.get(`/acl/policy/${unencodedSegment(id)}`);
+          await this.api.post(`/acl/policy/${unencodedSegment(id)}`, {
+            body: {
+              Name: cur.Name,
+              Description: has("description") ? text("description") : cur.Description,
+              Rules: has("rules") ? (fields["rules"] ?? "") : cur.Rules,
+            },
           });
           break;
         }
         case "nomad-acl-token": {
-          const cur = await this.get<AclToken>(`/acl/token/${encodeURIComponent(id)}`);
-          await this.post(`/acl/token/${encodeURIComponent(id)}`, {
-            AccessorID: id,
-            Name: has("name") ? text("name") : cur.Name,
-            Type: cur.Type,
-            Policies: has("policies") ? parsePolicyList(fields["policies"]) : cur.Policies,
-            Roles: cur.Roles ?? [],
-            Global: cur.Global,
+          const cur = await this.api.get(`/acl/token/${pathEncode(id)}`);
+          await this.api.post(`/acl/token/${pathEncode(id)}`, {
+            body: {
+              AccessorID: id,
+              Name: has("name") ? text("name") : cur.Name,
+              Type: cur.Type,
+              Policies: has("policies") ? parsePolicyList(fields["policies"]) : cur.Policies,
+              Roles: cur.Roles ?? [],
+              Global: cur.Global,
+            },
           });
           break;
         }
@@ -1249,13 +1190,11 @@ export class NomadClient implements PluginClient {
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
-      const del = (path: string, query?: Query) =>
-        nomadFetch(this.ctx, path, { method: "DELETE", ...(query ? { query } : {}) });
       switch (typeId) {
         case "nomad-namespace":
           if (decodeURIComponent(id) === "default")
             throw new NomadApiError(400, "Nomad plugin: the default namespace cannot be deleted");
-          await del(`/namespace/${id}`);
+          await this.api.delete(`/namespace/${unencodedSegment(id)}`);
           return;
         case "nomad-node-pool":
           if (["all", "default"].includes(decodeURIComponent(id)))
@@ -1263,32 +1202,36 @@ export class NomadClient implements PluginClient {
               400,
               "Nomad plugin: the all and default node pools are built in",
             );
-          await del(`/node/pool/${id}`);
+          await this.api.delete(`/node/pool/${unencodedSegment(id)}`);
           return;
         case "nomad-node":
-          await this.post(`/node/${encodeURIComponent(id)}/purge`, {});
+          await this.api.post(`/node/${pathEncode(id)}/purge`, { body: {} });
           return;
         case "nomad-job": {
           const [ns, jobId] = splitId(id, 2);
-          await del(`/job/${encodeURIComponent(jobId!)}`, { namespace: ns!, purge: true });
+          await this.api.delete(`/job/${pathEncode(jobId!)}`, {
+            query: { namespace: ns!, purge: true },
+          });
           return;
         }
         case "nomad-variable": {
           const [ns, path] = splitId(id, 2);
-          await del(`/var/${encodePath(path!)}`, { namespace: ns! });
+          await this.api.delete(`/var/${unencodedSegment(encodePath(path!))}`, {
+            query: { namespace: ns! },
+          });
           return;
         }
         case "nomad-acl-policy":
-          await del(`/acl/policy/${id}`);
+          await this.api.delete(`/acl/policy/${unencodedSegment(id)}`);
           return;
         case "nomad-acl-token":
-          await del(`/acl/token/${encodeURIComponent(id)}`);
+          await this.api.delete(`/acl/token/${pathEncode(id)}`);
           return;
         case "nomad-volume": {
           const [type, ns, volId] = splitId(id, 3);
-          if (type === "csi")
-            await del(`/volume/csi/${encodeURIComponent(volId!)}`, { namespace: ns! });
-          else await del(`/volume/host/${encodeURIComponent(volId!)}/delete`, { namespace: ns! });
+          const query = { namespace: ns! };
+          if (type === "csi") await this.api.delete(`/volume/csi/${pathEncode(volId!)}`, { query });
+          else await this.api.delete(`/volume/host/${pathEncode(volId!)}/delete`, { query });
           return;
         }
         default:
@@ -1305,13 +1248,12 @@ export class NomadClient implements PluginClient {
       const id = externalIdOf(resourceId);
       const jobPath = () => {
         const [ns, jobId] = splitId(id, 2);
-        return { ns: ns!, base: `/job/${encodeURIComponent(jobId!)}`, jobId: jobId! };
+        return { ns: ns!, segment: pathEncode(jobId!), jobId: jobId! };
       };
       switch (`${typeId}:${actionId}`) {
         case "nomad-job:stop": {
           const j = jobPath();
-          await nomadFetch(this.ctx, j.base, {
-            method: "DELETE",
+          await this.api.delete(`/job/${j.segment}`, {
             query: { namespace: j.ns, purge: false },
           });
           return;
@@ -1319,56 +1261,62 @@ export class NomadClient implements PluginClient {
         case "nomad-job:start": {
           const j = jobPath();
           const job = await this.job(j.ns, j.jobId);
-          await this.post("/jobs", { Job: { ...job, Stop: false } }, { namespace: j.ns });
+          await this.api.post("/jobs", {
+            body: { Job: { ...job, Stop: false } },
+            query: { namespace: j.ns },
+          });
           return;
         }
         case "nomad-job:force-periodic": {
           const j = jobPath();
-          await this.post(`${j.base}/periodic/force`, {}, { namespace: j.ns });
+          await this.api.post(`/job/${j.segment}/periodic/force`, {
+            body: {},
+            query: { namespace: j.ns },
+          });
           return;
         }
         case "nomad-job:evaluate": {
           const j = jobPath();
-          await this.post(
-            `${j.base}/evaluate`,
-            { JobID: j.jobId, EvalOptions: { ForceReschedule: true } },
-            { namespace: j.ns },
-          );
+          await this.api.post(`/job/${j.segment}/evaluate`, {
+            body: { JobID: j.jobId, EvalOptions: { ForceReschedule: true } },
+            query: { namespace: j.ns },
+          });
           return;
         }
         case "nomad-allocation:restart":
-          await this.post(`/client/allocation/${encodeURIComponent(id)}/restart`, {
-            AllTasks: true,
+          await this.api.post(`/client/allocation/${pathEncode(id)}/restart`, {
+            body: { AllTasks: true },
           });
           return;
         case "nomad-allocation:stop":
-          await this.post(`/allocation/${encodeURIComponent(id)}/stop`, {});
+          await this.api.post(`/allocation/${pathEncode(id)}/stop`, { body: {} });
           return;
         case "nomad-deployment:promote":
-          await this.post(`/deployment/promote/${encodeURIComponent(id)}`, {
-            DeploymentID: id,
-            All: true,
+          await this.api.post(`/deployment/promote/${pathEncode(id)}`, {
+            body: { DeploymentID: id, All: true },
           });
           return;
         case "nomad-deployment:fail":
-          await this.post(`/deployment/fail/${encodeURIComponent(id)}`, { DeploymentID: id });
+          await this.api.post(`/deployment/fail/${pathEncode(id)}`, {
+            body: { DeploymentID: id },
+          });
           return;
         case "nomad-deployment:pause":
         case "nomad-deployment:resume":
-          await this.post(`/deployment/pause/${encodeURIComponent(id)}`, {
-            DeploymentID: id,
-            Pause: actionId === "pause",
+          await this.api.post(`/deployment/pause/${pathEncode(id)}`, {
+            body: { DeploymentID: id, Pause: actionId === "pause" },
           });
           return;
         case "nomad-node:cancel-drain":
-          await this.post(`/node/${encodeURIComponent(id)}/drain`, {
-            DrainSpec: null,
-            MarkEligible: true,
+          await this.api.post(`/node/${pathEncode(id)}/drain`, {
+            body: { DrainSpec: null, MarkEligible: true },
           });
           return;
         case "nomad-node:eligible":
         case "nomad-node:ineligible":
-          await this.post(`/node/${encodeURIComponent(id)}/eligibility`, { Eligibility: actionId });
+          await this.api.post(`/node/${pathEncode(id)}/eligibility`, {
+            body: { Eligibility: actionId },
+          });
           return;
         default:
           throw new NomadApiError(
@@ -1395,47 +1343,46 @@ export class NomadClient implements PluginClient {
           const count = Number(v["count"]);
           if (!Number.isInteger(count) || count < 0)
             throw new NomadApiError(400, "Nomad plugin: the count must be a whole number");
-          await this.post(
-            `/job/${encodeURIComponent(jobId!)}/scale`,
-            {
+          await this.api.post(`/job/${pathEncode(jobId!)}/scale`, {
+            body: {
               Count: count,
               Target: { Group: v["group"] ?? "" },
               Message: (v["message"] ?? "").trim() || "Scaled from Infrawrench",
             },
-            { namespace: ns! },
-          );
+            query: { namespace: ns! },
+          });
           return { ok: true };
         }
         case `nomad-job:${COMMANDS.dispatch}`: {
           const [ns, jobId] = splitId(id, 2);
           const payload = v["payload"] ?? "";
-          const res = await this.post<{ DispatchedJobID?: string }>(
-            `/job/${encodeURIComponent(jobId!)}/dispatch`,
-            {
+          const res = await this.api.post(`/job/${pathEncode(jobId!)}/dispatch`, {
+            body: {
               ...(payload ? { Payload: utf8ToBase64(payload) } : {}),
               Meta: parseMeta(v["meta"]),
             },
-            { namespace: ns! },
-          );
+            query: { namespace: ns! },
+          });
           return { dispatchedJobId: res?.DispatchedJobID };
         }
         case `nomad-job:${COMMANDS.revert}`: {
           const [ns, jobId] = splitId(id, 2);
-          await this.post(
-            `/job/${encodeURIComponent(jobId!)}/revert`,
-            { JobID: jobId, JobVersion: Number(v["version"]) },
-            { namespace: ns! },
-          );
+          await this.api.post(`/job/${pathEncode(jobId!)}/revert`, {
+            body: { JobID: jobId, JobVersion: Number(v["version"]) },
+            query: { namespace: ns! },
+          });
           return { ok: true };
         }
         case `nomad-node:${COMMANDS.drain}`:
-          await this.post(`/node/${encodeURIComponent(id)}/drain`, {
-            DrainSpec: {
-              Deadline: v["deadline"] === "force" ? -1 : durationNs(v["deadline"] || "1h"),
-              IgnoreSystemJobs: v["ignoreSystemJobs"] === "true",
+          await this.api.post(`/node/${pathEncode(id)}/drain`, {
+            body: {
+              DrainSpec: {
+                Deadline: v["deadline"] === "force" ? -1 : durationNs(v["deadline"] || "1h"),
+                IgnoreSystemJobs: v["ignoreSystemJobs"] === "true",
+              },
+              MarkEligible: false,
+              Meta: { message: (v["message"] ?? "").trim() || "Drained from Infrawrench" },
             },
-            MarkEligible: false,
-            Meta: { message: (v["message"] ?? "").trim() || "Drained from Infrawrench" },
           });
           return { ok: true };
         case `nomad-acl-policy:${COMMANDS.editRules}`:
@@ -1444,9 +1391,11 @@ export class NomadClient implements PluginClient {
           );
           return { ok: true };
         case `nomad-allocation:${COMMANDS.signal}`:
-          await this.post(`/client/allocation/${encodeURIComponent(id)}/signal`, {
-            Signal: (v["signal"] ?? "SIGHUP").trim(),
-            ...((v["task"] ?? "").trim() ? { Task: v["task"]!.trim() } : {}),
+          await this.api.post(`/client/allocation/${pathEncode(id)}/signal`, {
+            body: {
+              Signal: (v["signal"] ?? "SIGHUP").trim(),
+              ...((v["task"] ?? "").trim() ? { Task: v["task"]!.trim() } : {}),
+            },
           });
           return { ok: true };
         default:
@@ -1463,28 +1412,16 @@ export class NomadClient implements PluginClient {
         const [ns, jobId] = splitId(id, 2);
         const job = await this.job(ns!, jobId!);
         const sub = await this.soft(
-          this.get<{ Source?: string; Format?: string }>(
-            `/job/${encodeURIComponent(jobId!)}/submission`,
-            {
-              namespace: ns!,
-              version: job.Version ?? 0,
-            },
-          ),
+          this.api.get(`/job/${pathEncode(jobId!)}/submission`, {
+            query: { namespace: ns!, version: job.Version ?? 0 },
+          }),
         );
         return sub?.Source
           ? `# Submitted source (${sub.Format ?? "hcl2"}), version ${job.Version ?? 0}\n\n${sub.Source}`
           : `# No source was stored with version ${job.Version ?? 0}; the Manifest tab shows the registered JSON.\n`;
       }
       if (typeId === "nomad-allocation") {
-        const a = await this.get<{
-          TaskStates?: Record<
-            string,
-            {
-              State?: string;
-              Events?: Array<{ Type?: string; Time?: number; DisplayMessage?: string }>;
-            }
-          >;
-        }>(`/allocation/${encodeURIComponent(id)}`);
+        const a = await this.api.get(`/allocation/${pathEncode(id)}`);
         const lines: string[] = [];
         for (const [task, s] of Object.entries(a.TaskStates ?? {})) {
           lines.push(`Task ${task}: ${s.State ?? "?"}`);
@@ -1523,8 +1460,7 @@ export class NomadClient implements PluginClient {
       if (typeId === "nomad-variable") {
         // Check-and-set against the version just read, so a concurrent write is not silently overwritten.
         const cur = await this.variable(ns!, rest!);
-        await nomadFetch(this.ctx, `/var/${encodePath(rest!)}`, {
-          method: "PUT",
+        await this.api.put(`/var/${unencodedSegment(encodePath(rest!))}`, {
           query: { namespace: ns!, ...(cur.ModifyIndex ? { cas: cur.ModifyIndex } : {}) },
           body: { Namespace: ns, Path: rest, Items: parseItems(manifest) },
         });
@@ -1554,7 +1490,8 @@ export function parsePolicyList(raw: string | undefined): string[] {
   if (!t) return [];
   if (t.startsWith("[")) {
     try {
-      return (JSON.parse(t) as unknown[]).map(String).filter(Boolean);
+      const parsed: unknown = JSON.parse(t);
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {
       // fall through
     }
