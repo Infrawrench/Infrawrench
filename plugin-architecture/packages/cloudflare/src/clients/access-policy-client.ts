@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord } from "./shared.js";
+import { asRecord, collectPerParent } from "./shared.js";
 import type {
   AccessRuleParam,
   PolicyCreateParams,
@@ -90,20 +90,22 @@ export async function listAllAccessPolicies(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const account_id = await api.getAccountId();
-  const results: ResourceInstance[] = [];
-  for await (const app of api.cf.zeroTrust.access.applications.list({ account_id })) {
-    const appId = app.id ?? "";
-    try {
+  const apps = await api.collect(api.cf.zeroTrust.access.applications.list({ account_id }));
+  return collectPerParent(
+    apps,
+    async (app) => {
+      const appId = app.id ?? "";
+      const part: ResourceInstance[] = [];
       for await (const policy of api.cf.zeroTrust.access.applications.policies.list(appId, {
         account_id,
       })) {
-        results.push(mapAccessPolicy(asRecord(policy), accountId, appId));
+        part.push(mapAccessPolicy(asRecord(policy), accountId, appId));
       }
-    } catch {
-      // Skip apps where we can't read policies
-    }
-  }
-  return results;
+      return part;
+    },
+    "Access policies",
+    "Account · Access: Apps and Policies:Read",
+  );
 }
 
 /**

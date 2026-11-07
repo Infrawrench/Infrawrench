@@ -6,7 +6,7 @@
  * object plane: see `r2-client.ts`. New code should prefer the SDK
  * namespaces exposed via `api.cf`.
  */
-import { hostFetch, type HttpHostServices } from "@infrawrench/plugin-base";
+import { hostFetch, rethrowIncompleteList, type HttpHostServices } from "@infrawrench/plugin-base";
 import Cloudflare from "cloudflare";
 import type { Zone } from "cloudflare/resources/zones/zones";
 
@@ -35,6 +35,9 @@ function isCloudflareAuthError(err: unknown): boolean {
     message?: unknown;
   };
 
+  // A throttle or an outage says nothing about the token, whatever code its body carries.
+  if (isRetryableStatus(e.status)) return false;
+
   // Collect every numeric Cloudflare error code we can find: from the
   // structured `.errors` array and from any JSON body embedded in the message
   // string (the raw-fetch / SDK-stringified path).
@@ -56,6 +59,13 @@ function isCloudflareAuthError(err: unknown): boolean {
     if (e.message.includes("Authentication error")) return true;
   }
   return false;
+}
+
+function isRetryableStatus(status: unknown): boolean {
+  return (
+    typeof status === "number" &&
+    (status === 408 || status === 425 || status === 429 || status >= 500)
+  );
 }
 
 /** Gather numeric Cloudflare error codes from a structured error or its message body. */
@@ -190,6 +200,7 @@ export async function withCloudflareErrors<T>(fn: () => Promise<T>): Promise<T> 
   try {
     return await fn();
   } catch (err) {
+    rethrowIncompleteList(err);
     if (err instanceof CloudflareMissingPermissionError) throw err;
     throw new Error(formatCloudflareError(err), { cause: err });
   }
@@ -214,6 +225,7 @@ export async function withAuthErrorHint<T>(
   try {
     return await fn();
   } catch (err) {
+    rethrowIncompleteList(err);
     if (isCloudflareAuthError(err)) {
       throw new CloudflareMissingPermissionError(resourceLabel, scope);
     }
@@ -221,22 +233,69 @@ export async function withAuthErrorHint<T>(
   }
 }
 
+function statusOf(err: unknown): unknown {
+  return err !== null && typeof err === "object" && "status" in err ? err.status : undefined;
+}
+
+/** How Cloudflare words a feature a zone or account does not have, when it answers with a 400. */
+const NOT_AVAILABLE_WORDING =
+  /\bnot\s+(?:been\s+)?(?:enabled|entitled|available|supported|allowed|activated|purchased)\b|\bentitle|\bupgrade\b|\bsubscription\b|\bplan\b/i;
+
 /**
- * Helper for listers that fan out one inner call per zone (page rules, DNS
- * custom rulesets, SSL certs, etc.). Tracks auth-error counts so we can
- * distinguish "the token has zone:read but not <feature>:read" from "this
- * zone simply has no resources".
- *
- * The caller passes a `perZone` async function that throws on failure (the
- * usual SDK iterator pattern). We:
- *   - Run the zone-list call through {@link withAuthErrorHint} so a missing
- *     Zone:Read scope surfaces with the right hint instead of bleeding
- *     through as a per-feature error.
- *   - Per zone, swallow auth errors but count them. If every zone's call
- *     failed with auth and zero results came back, throw the per-feature
- *     missing-permission error. Other zone errors (DNS not enabled, etc.)
- *     are swallowed as before so a single bad zone doesn't poison the list.
+ * What a parent's failed read says about its children:
+ *   - `denied`: the token may not read them here.
+ *   - `unavailable`: this parent has none to read (a feature it does not have, a missing endpoint).
+ *   - `unclear`: a refusal with no reason given, which could as well be a request Cloudflare has
+ *     stopped accepting. It reads as none only while another parent shows that the read works.
+ *   - `null`: a throttle, an outage, a dropped connection or a bug, which say nothing about the
+ *     children.
  */
+function refusalOf(err: unknown): "denied" | "unavailable" | "unclear" | null {
+  if (isCloudflareAuthError(err)) return "denied";
+  const status = statusOf(err);
+  if (typeof status !== "number" || status < 400 || status >= 500) return null;
+  if (isRetryableStatus(status)) return null;
+  if (status === 403 || status === 404) return "unavailable";
+  return NOT_AVAILABLE_WORDING.test(formatCloudflareError(err)) ? "unavailable" : "unclear";
+}
+
+/**
+ * One list read per parent, for a list that fans out over zones, Access applications or
+ * namespaces. A sync soft-deletes what a list stops returning, so only an answer that means this
+ * parent has nothing here reads as none. Anything else fails the whole list and the stored rows
+ * stay. A 401 is the credential rather than the parent, so it fails too. When no parent answered,
+ * a refusal is the result: say so, since an empty list would prune every parent's rows.
+ */
+export async function collectPerParent<P, T>(
+  parents: readonly P[],
+  read: (parent: P) => Promise<T[]>,
+  resourceLabel: string,
+  scope: string,
+): Promise<T[]> {
+  const results: T[] = [];
+  let answered = 0;
+  let denied = false;
+  let unclear: { err: unknown } | null = null;
+  for (const parent of parents) {
+    try {
+      const part = await read(parent);
+      for (const item of part) results.push(item);
+      answered++;
+    } catch (err) {
+      rethrowIncompleteList(err);
+      if (statusOf(err) === 401) throw new CloudflareMissingPermissionError(resourceLabel, scope);
+      const refusal = refusalOf(err);
+      if (!refusal) throw err;
+      if (refusal === "denied") denied = true;
+      if (refusal === "unclear") unclear ??= { err };
+    }
+  }
+  if (answered === 0 && denied) throw new CloudflareMissingPermissionError(resourceLabel, scope);
+  if (answered === 0 && unclear) throw unclear.err;
+  return results;
+}
+
+/** {@link collectPerParent} over the account's zones, whose own list has its own permission. */
 export async function collectPerZone<T>(
   api: CloudflareApi,
   perZone: (zoneId: string, zoneName: string) => Promise<T[]>,
@@ -244,26 +303,7 @@ export async function collectPerZone<T>(
   scope: string,
 ): Promise<T[]> {
   const zones = await withAuthErrorHint(() => api.listZones(), "zones", "Zone · Zone:Read");
-  const results: T[] = [];
-  let authFailures = 0;
-  for (const zone of zones) {
-    try {
-      const part = await perZone(zone.id, zone.name);
-      for (const item of part) results.push(item);
-    } catch (err) {
-      if (isCloudflareAuthError(err)) {
-        authFailures++;
-        continue;
-      }
-      // Non-auth per-zone errors are non-fatal: feature may not be enabled
-      // on that zone, or the user lacks permission for some zones but not
-      // others. Continue collecting from remaining zones.
-    }
-  }
-  if (results.length === 0 && authFailures > 0 && authFailures === zones.length) {
-    throw new CloudflareMissingPermissionError(resourceLabel, scope);
-  }
-  return results;
+  return collectPerParent(zones, (zone) => perZone(zone.id, zone.name), resourceLabel, scope);
 }
 
 /**

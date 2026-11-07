@@ -39,16 +39,18 @@ describe("access-policy-client", () => {
     expect(out[0]!.fields.excludeRules).toBe("ip:1.2.3.4");
   });
 
-  it("listAllAccessPolicies skips apps where policies throw", async () => {
-    const api = policyApi({
+  function policiesFailing(failure: (appId: string) => unknown) {
+    return policyApi({
       cf: {
         zeroTrust: {
           access: {
             applications: {
-              list: vi.fn(() => asyncIter([{ id: "app1" }])),
+              list: vi.fn(() => asyncIter([{ id: "app1" }, { id: "app2" }])),
               policies: {
-                list: vi.fn(() => {
-                  throw new Error("no");
+                list: vi.fn((appId: string) => {
+                  const err = failure(appId);
+                  if (err) throw err;
+                  return asyncIter([POLICY]);
                 }),
               },
             },
@@ -56,7 +58,28 @@ describe("access-policy-client", () => {
         },
       },
     });
-    expect(await listAllAccessPolicies(api, "acct")).toEqual([]);
+  }
+
+  it("listAllAccessPolicies reads an app with no policies to read as none", async () => {
+    const api = policiesFailing((appId) => (appId === "app2" ? { status: 404 } : null));
+    const out = await listAllAccessPolicies(api, "acct");
+    expect(out.map((p) => p.id)).toEqual(["acct:access-policy:app1/pol1"]);
+  });
+
+  it.each([
+    ["a 429", { status: 429 }],
+    ["a 500", { status: 500 }],
+    ["a dropped connection", new Error("Connection error.")],
+  ])("listAllAccessPolicies fails on %s for one app, so its rows stay", async (_what, err) => {
+    const api = policiesFailing((appId) => (appId === "app2" ? err : null));
+    await expect(listAllAccessPolicies(api, "acct")).rejects.toBe(err);
+  });
+
+  it("listAllAccessPolicies says so when the token can read no app's policies", async () => {
+    const api = policiesFailing(() => ({ status: 403 }));
+    await expect(listAllAccessPolicies(api, "acct")).rejects.toThrow(
+      /doesn't have the Account · Access: Apps and Policies:Read permission/,
+    );
   });
 
   it("createAccessPolicy builds an email-domain include rule", async () => {

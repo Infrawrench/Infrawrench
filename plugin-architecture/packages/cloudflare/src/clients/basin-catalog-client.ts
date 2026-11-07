@@ -21,11 +21,17 @@
  * query is billed on bytes scanned (10 MB minimum).
  */
 import { cfFetch } from "./shared.js";
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { ResourceInstance, SqlTableMeta } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { asRecord, withAuthErrorHint } from "./shared.js";
+import { asRecord, collectPerParent, withAuthErrorHint } from "./shared.js";
 
 const SCOPE = "Account · Workers R2 Data Catalog:Read";
+
+const VENDOR = "Cloudflare";
+/** Catalog lists cap at 1,000 a page, so this reads 50,000 namespaces, or tables per namespace. */
+const CATALOG_MAX_PAGES = 50;
+const CATALOG_PAGE_SIZE = 1000;
 export const BASIN_SQL_HOST = "https://api.sql.cloudflarestorage.com";
 const CATALOG_HOST = "https://catalog.cloudflarestorage.com";
 
@@ -160,6 +166,15 @@ export function mapCatalog(w: Record<string, unknown>, accountId: string): Resou
   };
 }
 
+async function listWarehouses(api: CloudflareApi, account_id: string) {
+  const res = await api.cf.r2DataCatalog.list({ account_id });
+  return requireListPage(res.warehouses, {
+    vendor: VENDOR,
+    path: `/accounts/${account_id}/r2-catalog`,
+    key: "warehouses",
+  });
+}
+
 export async function listCatalogs(
   api: CloudflareApi,
   accountId: string,
@@ -167,8 +182,8 @@ export async function listCatalogs(
   return withAuthErrorHint(
     async () => {
       const account_id = await api.getAccountId();
-      const res = await api.cf.r2DataCatalog.list({ account_id });
-      return (res.warehouses ?? []).map((w) => mapCatalog(asRecord(w), accountId));
+      const warehouses = await listWarehouses(api, account_id);
+      return warehouses.map((w) => mapCatalog(asRecord(w), accountId));
     },
     "Basin catalogs",
     SCOPE,
@@ -314,19 +329,26 @@ export interface CatalogTableRef {
 /** Every namespace in a catalog (top level, following `next_page_token`). */
 export async function listNamespaces(api: CloudflareApi, bucket: string): Promise<string[]> {
   const account_id = await api.getAccountId();
+  const path = `/accounts/${account_id}/r2-catalog/${bucket}/namespaces`;
   const out: string[] = [];
   let page_token: string | undefined;
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < CATALOG_MAX_PAGES; i++) {
     const res = await api.cf.r2DataCatalog.namespaces.list(bucket, {
       account_id,
-      page_size: 1000,
+      page_size: CATALOG_PAGE_SIZE,
       ...(page_token ? { page_token } : {}),
     });
-    for (const ns of res.namespaces ?? []) out.push(ns.join("."));
+    const namespaces = requireListPage(res.namespaces, { vendor: VENDOR, path, key: "namespaces" });
+    for (const ns of namespaces) out.push(ns.join("."));
     page_token = res.next_page_token ?? undefined;
-    if (!page_token) break;
+    if (!page_token) return out;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path,
+    items: out.length,
+    maxPages: CATALOG_MAX_PAGES,
+  });
 }
 
 /** Every table in one namespace, with details (uuid, location, timestamps). */
@@ -336,13 +358,19 @@ export async function listNamespaceTables(
   namespace: string,
 ): Promise<CatalogTableRef[]> {
   const account_id = await api.getAccountId();
+  const path = `/accounts/${account_id}/r2-catalog/${bucket}/namespaces/${namespace}/tables`;
   const out: CatalogTableRef[] = [];
   let page_token: string | undefined;
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < CATALOG_MAX_PAGES; i++) {
     const res = await api.cf.r2DataCatalog.namespaces.tables.list(
       bucket,
       namespacePath(namespace),
-      { account_id, page_size: 1000, return_details: true, ...(page_token ? { page_token } : {}) },
+      {
+        account_id,
+        page_size: CATALOG_PAGE_SIZE,
+        return_details: true,
+        ...(page_token ? { page_token } : {}),
+      },
     );
     const details = res.details ?? [];
     if (details.length > 0) {
@@ -359,7 +387,12 @@ export async function listNamespaceTables(
         });
       }
     } else {
-      for (const id of res.identifiers ?? []) {
+      const identifiers = requireListPage(res.identifiers, {
+        vendor: VENDOR,
+        path,
+        key: "identifiers",
+      });
+      for (const id of identifiers) {
         out.push({
           bucket,
           namespace: id.namespace.join(".") || namespace,
@@ -373,26 +406,28 @@ export async function listNamespaceTables(
       }
     }
     page_token = res.next_page_token ?? undefined;
-    if (!page_token) break;
+    if (!page_token) return out;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path,
+    items: out.length,
+    maxPages: CATALOG_MAX_PAGES,
+  });
 }
 
-/** Tables across every namespace of one catalog. Per-namespace failures are skipped. */
+/** Tables across every namespace of one catalog. A namespace with none to read adds none. */
 export async function listCatalogTables(
   api: CloudflareApi,
   bucket: string,
 ): Promise<CatalogTableRef[]> {
   const namespaces = await listNamespaces(api, bucket);
-  const out: CatalogTableRef[] = [];
-  for (const ns of namespaces) {
-    try {
-      out.push(...(await listNamespaceTables(api, bucket, ns)));
-    } catch {
-      /* one unreadable namespace shouldn't hide the rest */
-    }
-  }
-  return out;
+  return collectPerParent(
+    namespaces,
+    (namespace) => listNamespaceTables(api, bucket, namespace),
+    "Basin tables",
+    SCOPE,
+  );
 }
 
 /** Table resource ids: `<bucket>/<namespace>/<table>` (namespace levels dot-joined). */
@@ -454,9 +489,8 @@ export async function listTables(
   return withAuthErrorHint(
     async () => {
       const account_id = await api.getAccountId();
-      const res = await api.cf.r2DataCatalog.list({ account_id });
       const out: ResourceInstance[] = [];
-      for (const w of res.warehouses ?? []) {
+      for (const w of await listWarehouses(api, account_id)) {
         if (w.status !== "active") continue;
         for (const t of await listCatalogTables(api, w.bucket)) out.push(mapTable(t, accountId));
       }

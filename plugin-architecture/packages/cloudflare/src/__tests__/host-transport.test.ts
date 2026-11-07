@@ -102,6 +102,40 @@ describe("the Cloudflare SDK through the host's HTTP service", () => {
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
+  describe("a failed zone read in the real SDK's error shape", () => {
+    const zones = [ZONE, { id: "z2", name: "two.test", account: { id: "acc1" } }];
+    const failingZoneTwo = (failure: ReturnType<typeof answer>) =>
+      hostHttp((req, path) => {
+        if (path === "/client/v4/zones") {
+          return ok(new URL(req.url).searchParams.get("page") === "2" ? [] : zones);
+        }
+        return path === "/client/v4/zones/z2/dns_records" ? failure : null;
+      });
+    const listRecords = (request: ReturnType<typeof hostHttp>) =>
+      hostClient(
+        new CloudflareClient({ apiToken: "tok" }, plugin.resourceTypes, { http: { request } }),
+      ).listResources("dns-record", "acct");
+
+    it("fails the whole type on a 429 once the SDK has stopped retrying", async () => {
+      const throttled = answer(429, {
+        success: false,
+        errors: [{ code: 10000, message: "Rate limited" }],
+      });
+      const request = failingZoneTwo({
+        ...throttled,
+        headers: { ...throttled.headers, "retry-after-ms": "1" },
+      });
+      await expect(listRecords(request)).rejects.toThrow("Rate limited");
+    });
+
+    it("reads a zone that is not entitled as none", async () => {
+      const request = failingZoneTwo(
+        answer(403, { success: false, errors: [{ code: 1034, message: "Zone not entitled" }] }),
+      );
+      await expect(listRecords(request)).resolves.toEqual([]);
+    });
+  });
+
   it("sends a multipart Worker upload through the host as bytes with its boundary", async () => {
     const request = hostHttp((req) => (req.method === "PUT" ? ok({ id: "w1" }) : null));
     const api = new CloudflareApi("tok", { request });

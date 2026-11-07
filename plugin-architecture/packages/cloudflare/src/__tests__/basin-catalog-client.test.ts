@@ -77,6 +77,91 @@ function catalogApi() {
   return makeApi({ apiToken: "secret-token", cf: { r2DataCatalog, r2 } });
 }
 
+function pagedCatalogApi(namespaces: unknown, tables: unknown) {
+  const r2DataCatalog = {
+    list: vi.fn(async () => ({ warehouses: [WAREHOUSE] })),
+    namespaces: { list: namespaces, tables: { list: tables } },
+  };
+  return makeApi({ cf: { r2DataCatalog } });
+}
+
+describe("basin catalog lists", () => {
+  const oneNamespace = vi.fn(async () => ({ namespaces: [["default"]] }));
+  const noTables = vi.fn(async () => ({ identifiers: [] }));
+
+  it("namespaces that never end throw after 50 pages", async () => {
+    const namespaces = vi.fn(async () => ({ namespaces: [["a"]], next_page_token: "more" }));
+    await expect(listTables(pagedCatalogApi(namespaces, noTables), "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(namespaces).toHaveBeenCalledTimes(50);
+  });
+
+  it("tables that never end throw after 50 pages", async () => {
+    const tables = vi.fn(async () => ({
+      identifiers: [{ name: "t", namespace: ["default"] }],
+      next_page_token: "more",
+    }));
+    await expect(listTables(pagedCatalogApi(oneNamespace, tables), "acct")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(tables).toHaveBeenCalledTimes(50);
+  });
+
+  it("a namespaces page with its key renamed is not a list", async () => {
+    const renamed = vi.fn(async () => ({ items: [["default"]] }));
+    await expect(listTables(pagedCatalogApi(renamed, noTables), "acct")).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("a tables page with its key renamed is not a list", async () => {
+    const renamed = vi.fn(async () => ({ tables: [{ name: "t" }] }));
+    await expect(listTables(pagedCatalogApi(oneNamespace, renamed), "acct")).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("an answer with no warehouses is not a list", async () => {
+    const api = makeApi({ cf: { r2DataCatalog: { list: vi.fn(async () => ({ items: [] })) } } });
+    await expect(listCatalogs(api, "acct")).rejects.toThrow("is not a list");
+    await expect(listTables(api, "acct")).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["a 429", { status: 429 }],
+    ["a 500", { status: 500 }],
+  ])("%s on one namespace fails the type, so its tables stay", async (_what, err) => {
+    const namespaces = vi.fn(async () => ({ namespaces: [["a"], ["b"]] }));
+    const tables = vi.fn(async (_b: string, ns: string) => {
+      if (ns === "b") throw err;
+      return { identifiers: [{ name: "t", namespace: ["a"] }] };
+    });
+    await expect(listTables(pagedCatalogApi(namespaces, tables), "acct")).rejects.toMatchObject({
+      cause: err,
+    });
+  });
+
+  it("a namespace gone since the namespace list reads as none", async () => {
+    const namespaces = vi.fn(async () => ({ namespaces: [["a"], ["b"]] }));
+    const tables = vi.fn(async (_b: string, ns: string) => {
+      if (ns === "b") throw { status: 404 };
+      return { identifiers: [{ name: "t", namespace: ["a"] }] };
+    });
+    const out = await listTables(pagedCatalogApi(namespaces, tables), "acct");
+    expect(out.map((t) => t.externalId)).toEqual(["lake/a/t"]);
+  });
+
+  it("says so when the token can read no namespace", async () => {
+    const tables = vi.fn(async () => {
+      throw { status: 403 };
+    });
+    await expect(listTables(pagedCatalogApi(oneNamespace, tables), "acct")).rejects.toThrow(
+      /doesn't have the Account · Workers R2 Data Catalog:Read permission/,
+    );
+  });
+});
+
 describe("basin catalogs", () => {
   it("maps warehouses, maintenance and the Iceberg URI", async () => {
     const [c, old] = await listCatalogs(catalogApi(), "acct");

@@ -1,3 +1,4 @@
+import { ListTruncatedError } from "@infrawrench/plugin-base";
 import { describe, it, expect, vi } from "vitest";
 import {
   formatCloudflareError,
@@ -131,21 +132,97 @@ describe("collectPerZone", () => {
     expect(out).toEqual(["z1-x", "z2-x"]);
   });
 
-  it("swallows non-auth per-zone errors but keeps other zones", async () => {
-    const api = makeApi([
-      { id: "z1", name: "a.com" },
-      { id: "z2", name: "b.com" },
-    ]);
-    const out = await collectPerZone(
-      api,
-      async (zoneId) => {
-        if (zoneId === "z1") throw new Error("DNS not enabled");
-        return ["ok"];
-      },
-      "DNS records",
-      "Zone · DNS:Read",
+  const TWO_ZONES = [
+    { id: "z1", name: "a.com" },
+    { id: "z2", name: "b.com" },
+  ];
+  const collect = (perZone: (zoneId: string) => Promise<string[]>) =>
+    collectPerZone(makeApi(TWO_ZONES), perZone, "DNS records", "Zone · DNS:Read");
+  const failingZoneTwo = (err: unknown) => async (zoneId: string) => {
+    if (zoneId === "z2") throw err;
+    return [`${zoneId}-x`];
+  };
+
+  it.each([
+    ["a feature the zone is not entitled to", { status: 403, errors: [{ code: 1034 }] }],
+    ["a missing endpoint", { status: 404 }],
+    ["a scope this zone refuses", { status: 403, errors: [{ code: 10000 }] }],
+    ["a 400 saying it is not enabled", { status: 400, message: "400 DNS is not enabled here" }],
+    ["a 400 that names no reason", { status: 400, message: "400 Bad request" }],
+  ])("reads %s on one zone as none and keeps the others", async (_what, err) => {
+    await expect(collect(failingZoneTwo(err))).resolves.toEqual(["z1-x"]);
+  });
+
+  it.each([
+    ["a 429", { status: 429, errors: [{ code: 971 }] }],
+    ["a 429 carrying the auth code", { status: 429, errors: [{ code: 10000 }] }],
+    ["a 500", { status: 500 }],
+    ["a 503 carrying the auth code", { status: 503, errors: [{ code: 10000 }] }],
+    ["a dropped connection", new Error("Connection error.")],
+    ["a bug in a mapper", new TypeError("x is not a function")],
+  ])("fails the whole type on %s, so stored rows stay", async (_what, err) => {
+    await expect(collect(failingZoneTwo(err))).rejects.toBe(err);
+  });
+
+  it("does not call a 429 with the auth code a missing permission", async () => {
+    await expect(
+      withAuthErrorHint(
+        async () => {
+          throw { status: 429, errors: [{ code: 10000, message: "Rate limited" }] };
+        },
+        "DNS records",
+        "Zone · DNS:Read",
+      ),
+    ).rejects.toThrow("Rate limited");
+  });
+
+  it("fails the whole type on an expired credential, even if another zone answered", async () => {
+    await expect(collect(failingZoneTwo({ status: 401 }))).rejects.toThrow(
+      /doesn't have the Zone · DNS:Read permission/,
     );
-    expect(out).toEqual(["ok"]);
+  });
+
+  it("reads a feature no zone is entitled to as none", async () => {
+    await expect(
+      collect(async () => {
+        throw { status: 403, errors: [{ code: 1034, message: "Zone not entitled" }] };
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it("says so when one zone refuses the token and the rest are not entitled", async () => {
+    await expect(
+      collect(async (zoneId) => {
+        throw zoneId === "z1" ? { status: 403 } : { status: 403, errors: [{ code: 1034 }] };
+      }),
+    ).rejects.toThrow(/doesn't have the Zone · DNS:Read permission/);
+  });
+
+  it("fails rather than empties when every zone answers a 400 that names no reason", async () => {
+    await expect(
+      collect(async () => {
+        throw Object.assign(new Error("400 unknown field"), { status: 400 });
+      }),
+    ).rejects.toThrow("400 unknown field");
+  });
+
+  it("passes a truncated list through unchanged", async () => {
+    const err = new ListTruncatedError({ vendor: "Cloudflare", path: "/x", items: 1, maxPages: 1 });
+    await expect(collect(failingZoneTwo(err))).rejects.toBe(err);
+    await expect(
+      withAuthErrorHint(
+        async () => {
+          throw err;
+        },
+        "x",
+        "y",
+      ),
+    ).rejects.toBe(err);
+    await expect(
+      withCloudflareErrors(async () => {
+        throw err;
+      }),
+    ).rejects.toBe(err);
   });
 
   it("throws a permission error when every zone fails with auth and nothing collected", async () => {
