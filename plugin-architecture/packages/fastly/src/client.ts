@@ -15,12 +15,13 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, requireListPage, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type { FastlyContext } from "./api.js";
 import {
   fastlyCursorPaged,
   fastlyFetch,
   fastlyJsonApiPaged,
+  fastlyList,
   fastlyPaged,
   fastlyRaw,
   mapLimit,
@@ -250,8 +251,7 @@ export class FastlyClient implements PluginClient {
           );
         case "config-store":
           return this.scoped(async () => {
-            const stores =
-              (await fastlyFetch<FastlyStore[]>(this.ctx, "/resources/stores/config")) ?? [];
+            const stores = await fastlyList<FastlyStore>(this.ctx, "/resources/stores/config");
             return mapLimit(stores, FAN_OUT, async (st) => {
               const info = await fastlyFetch<{ item_count?: number }>(
                 this.ctx,
@@ -311,11 +311,10 @@ export class FastlyClient implements PluginClient {
     }
     const results = await mapLimit(jobs, FAN_OUT * 2, async ({ svc, version, type }) => {
       try {
-        const list =
-          (await fastlyFetch<FastlyLoggingEndpoint[]>(
-            this.ctx,
-            `/service/${encodeURIComponent(svc.id!)}/version/${version}/logging/${type}`,
-          )) ?? [];
+        const list = await fastlyList<FastlyLoggingEndpoint>(
+          this.ctx,
+          `/service/${encodeURIComponent(svc.id!)}/version/${version}/logging/${type}`,
+        );
         return list.map((e) => mapLoggingEndpoint(accountId, svc, version, type, e));
       } catch (err) {
         const status = statusOf(err);
@@ -331,14 +330,13 @@ export class FastlyClient implements PluginClient {
     const perService = await mapLimit(services, FAN_OUT, async (svc) => {
       const version = liveVersionOf(svc);
       if (!svc.id || !version) return [];
-      const dicts =
-        (await fastlyFetch<FastlyDictionary[]>(
-          this.ctx,
-          `/service/${encodeURIComponent(svc.id)}/version/${version}/dictionary`,
-        ).catch((err) => {
-          if (statusOf(err) === 403 || statusOf(err) === 404) return [] as FastlyDictionary[];
-          throw err;
-        })) ?? [];
+      const dicts = await fastlyList<FastlyDictionary>(
+        this.ctx,
+        `/service/${encodeURIComponent(svc.id)}/version/${version}/dictionary`,
+      ).catch((err) => {
+        if (statusOf(err) === 403 || statusOf(err) === 404) return [] as FastlyDictionary[];
+        throw err;
+      });
       return mapLimit(dicts, FAN_OUT, async (d) => {
         const info = await fastlyFetch<{ item_count?: number }>(
           this.ctx,
@@ -352,12 +350,15 @@ export class FastlyClient implements PluginClient {
 
   private async listTokens(accountId: string): Promise<ResourceInstance[]> {
     const [tokens, self, services] = await Promise.all([
-      fastlyFetch<FastlyToken[]>(this.ctx, "/tokens"),
+      fastlyList<FastlyToken>(this.ctx, "/tokens"),
       fastlyFetch<FastlyToken>(this.ctx, "/tokens/self").catch(() => ({}) as FastlyToken),
-      this.services().catch(() => [] as FastlyServiceDetail[]),
+      this.services().catch((err) => {
+        rethrowIncompleteList(err);
+        return [] as FastlyServiceDetail[];
+      }),
     ]);
     const names = new Map(services.map((s) => [s.id ?? "", s.name ?? ""]));
-    return (tokens ?? []).map((t) => mapToken(accountId, t, self.id ?? "", names));
+    return tokens.map((t) => mapToken(accountId, t, self.id ?? "", names));
   }
 
   private async loadAccount(accountId: string): Promise<ResourceInstance> {
@@ -367,7 +368,10 @@ export class FastlyClient implements PluginClient {
       ),
       fastlyFetch<CurrentUser>(this.ctx, "/current_user").catch(() => ({}) as CurrentUser),
       fastlyFetch<FastlyToken>(this.ctx, "/tokens/self").catch(() => ({}) as FastlyToken),
-      this.services().catch(() => undefined),
+      this.services().catch((err) => {
+        rethrowIncompleteList(err);
+        return undefined;
+      }),
     ]);
     const customerId = customer.id ?? user.customer_id ?? "customer";
     const fields: ResourceInstance["fields"] = {};
@@ -945,18 +949,23 @@ export class FastlyClient implements PluginClient {
             },
           },
         );
+        const keys = requireListPage(res?.data, {
+          vendor: "Fastly",
+          path: "/resources/stores/kv/{id}/keys",
+          key: "data",
+          page: res,
+        });
         return {
-          items: (res?.data ?? []).map((name) => ({ name })),
+          items: keys.map((name) => ({ name })),
           ...(res?.meta?.next_cursor ? { nextCursor: res.meta.next_cursor } : {}),
         };
       }
       let all: Array<{ item_key?: string }> = [];
       if (resourceTypeId === "config-store") {
-        all =
-          (await fastlyFetch<Array<{ item_key?: string }>>(
-            this.ctx,
-            `/resources/stores/config/${encodeURIComponent(id)}/items`,
-          )) ?? [];
+        all = await fastlyList<{ item_key?: string }>(
+          this.ctx,
+          `/resources/stores/config/${encodeURIComponent(id)}/items`,
+        );
       } else if (resourceTypeId === "dictionary") {
         const [sid, did] = splitChild(id);
         all = await fastlyPaged<{ item_key?: string }>(

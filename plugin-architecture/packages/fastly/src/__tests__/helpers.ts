@@ -5,6 +5,7 @@ export interface Reply {
   body?: unknown;
   /** Sent verbatim instead of JSON-encoding `body`. */
   text?: string;
+  headers?: Record<string, string>;
 }
 
 export interface Recorded {
@@ -29,7 +30,7 @@ export function makeHttp(route: (url: URL, method: string, body: string | undefi
       calls.push({ url, method: req.method, headers: req.headers, ...(body ? { body } : {}) });
       const reply = route(url, req.method, body);
       const text = reply.text ?? (reply.body === undefined ? "" : JSON.stringify(reply.body));
-      return { status: reply.status ?? 200, headers: {}, body: text };
+      return { status: reply.status ?? 200, headers: reply.headers ?? {}, body: text };
     },
   };
   return { http, calls };

@@ -1,8 +1,21 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  ListPageError,
+  ListTruncatedError,
+  findNextLink,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 
 /** Every management call goes here; the real-time stats API has its own host. */
 export const API_BASE = "https://api.fastly.com";
 export const REALTIME_BASE = "https://rt.fastly.com";
+
+const VENDOR = "Fastly";
+/**
+ * 10,000 rows at the 100 a page classic and JSON:API lists are asked for. Fastly
+ * documents no largest page size for those.
+ */
+const MAX_PAGES = 100;
 
 /**
  * Everything a Fastly request needs. Split out of the client so the cost
@@ -58,6 +71,7 @@ export interface FastlyRequest {
 
 export interface FastlyResponse {
   status: number;
+  headers: Record<string, string>;
   body: string;
 }
 
@@ -108,6 +122,7 @@ export async function fastlyRaw(
   }
 
   let status: number;
+  let responseHeaders: Record<string, string>;
   let text: string;
   if (ctx.http) {
     const res = await ctx.http.request({
@@ -118,16 +133,18 @@ export async function fastlyRaw(
       ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
     });
     status = res.status;
+    responseHeaders = res.headers;
     text = res.body;
   } else {
     const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
     status = res.status;
+    responseHeaders = Object.fromEntries(res.headers.entries());
     text = await res.text();
   }
   if (status < 200 || status >= 300) {
     throw new FastlyApiError(status, `Fastly API error ${status} for ${path}: ${errorText(text)}`);
   }
-  return { status, body: text };
+  return { status, headers: responseHeaders, body: text };
 }
 
 /** Fastly errors are `{msg, detail}` (classic) or JSON:API `{errors:[{title,detail}]}`. */
@@ -152,94 +169,127 @@ function errorText(body: string): string {
   return body.slice(0, 500);
 }
 
+function parsed<T>(res: FastlyResponse): T {
+  if (!res.body) return undefined as T;
+  return JSON.parse(res.body) as T;
+}
+
 /** JSON request; `undefined` for an empty body. */
 export async function fastlyFetch<T>(
   ctx: FastlyContext,
   path: string,
   req: FastlyRequest = {},
 ): Promise<T> {
-  const res = await fastlyRaw(ctx, path, req);
-  if (!res.body) return undefined as T;
-  return JSON.parse(res.body) as T;
+  return parsed<T>(await fastlyRaw(ctx, path, req));
+}
+
+/** A list Fastly answers whole, as one bare array. */
+export async function fastlyList<T>(ctx: FastlyContext, path: string): Promise<T[]> {
+  return requireListPage(await fastlyFetch<T[] | undefined>(ctx, path), {
+    vendor: VENDOR,
+    path,
+    key: null,
+  });
 }
 
 /**
  * Page through a classic list endpoint (`page` / `per_page`, a bare array per
- * page). Stops on a short page and hard-stops at `maxPages`.
+ * page). Throws at `maxPages` with more to read.
  */
 export async function fastlyPaged<T>(
   ctx: FastlyContext,
   path: string,
   query: Query = {},
   perPage = 100,
-  maxPages = 50,
+  maxPages = MAX_PAGES,
 ): Promise<T[]> {
   const out: T[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    const batch = await fastlyFetch<T[]>(ctx, path, {
-      query: { ...query, page, per_page: perPage },
+    const res = await fastlyRaw(ctx, path, { query: { ...query, page, per_page: perPage } });
+    const list = requireListPage(parsed<T[] | undefined>(res), {
+      vendor: VENDOR,
+      path,
+      key: null,
     });
-    const list = Array.isArray(batch) ? batch : [];
     out.push(...list);
-    if (list.length < perPage) break;
+    // Fastly documents no largest per_page. A server serving fewer than was asked for
+    // looks like the last page, except that its Link header still names a next one.
+    if (list.length < perPage && !findNextLink(res.headers["link"])) return out;
   }
-  return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
 }
 
 /**
  * Page through a JSON:API list (`page[number]` / `page[size]`, the shape the
- * TLS endpoints share). Stops when `meta.total_pages` is reached or a page
- * comes back short.
+ * TLS endpoints share). `meta.total_pages` says when it ends, a short page where
+ * that is missing. Throws at `maxPages` with more to read.
  */
 export async function fastlyJsonApiPaged<T>(
   ctx: FastlyContext,
   path: string,
   query: Query = {},
   pageSize = 100,
-  maxPages = 50,
+  maxPages = MAX_PAGES,
 ): Promise<{ data: T[]; included: unknown[] }> {
   const data: T[] = [];
   const included: unknown[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    const res = await fastlyFetch<{
-      data?: T[];
-      included?: unknown[];
-      meta?: { total_pages?: number };
-    }>(ctx, path, {
+    const res = await fastlyFetch<
+      | {
+          data?: T[];
+          included?: unknown[];
+          meta?: { total_pages?: number };
+        }
+      | undefined
+    >(ctx, path, {
       query: { ...query, "page[number]": page, "page[size]": pageSize },
       headers: { Accept: "application/vnd.api+json" },
     });
-    const batch = res?.data ?? [];
+    const batch = requireListPage(res?.data, { vendor: VENDOR, path, key: "data", page: res });
     data.push(...batch);
     included.push(...(res?.included ?? []));
     const total = res?.meta?.total_pages;
-    if (batch.length < pageSize || (total !== undefined && page >= total)) break;
+    if (total === undefined ? batch.length < pageSize : page >= total) return { data, included };
+    if (batch.length === 0) {
+      throw new ListPageError({
+        vendor: VENDOR,
+        path,
+        key: "data",
+        found: batch,
+        saysMoreWith: "no rows",
+      });
+    }
   }
-  return { data, included };
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: data.length, maxPages });
 }
 
 /**
  * Page through a cursor list (`cursor` / `limit`, `{data, meta.next_cursor}`),
- * the shape the billing, KV, secret store and newer endpoints share.
+ * the shape the billing, KV, secret store and newer endpoints share. Throws at
+ * `maxPages` with more to read.
  */
 export async function fastlyCursorPaged<T>(
   ctx: FastlyContext,
   path: string,
   query: Query = {},
   limit = 100,
-  maxPages = 100,
+  maxPages = MAX_PAGES,
 ): Promise<T[]> {
   const out: T[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const res = await fastlyFetch<{ data?: T[]; meta?: { next_cursor?: string } }>(ctx, path, {
-      query: { ...query, limit, ...(cursor ? { cursor } : {}) },
-    });
-    out.push(...(res?.data ?? []));
+    const res = await fastlyFetch<{ data?: T[]; meta?: { next_cursor?: string } } | undefined>(
+      ctx,
+      path,
+      {
+        query: { ...query, limit, ...(cursor ? { cursor } : {}) },
+      },
+    );
+    out.push(...requireListPage(res?.data, { vendor: VENDOR, path, key: "data", page: res }));
     cursor = res?.meta?.next_cursor || undefined;
-    if (!cursor) break;
+    if (!cursor) return out;
   }
-  return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
 }
 
 /** Run `fn` over `items` with at most `limit` in flight. Order is preserved. */
