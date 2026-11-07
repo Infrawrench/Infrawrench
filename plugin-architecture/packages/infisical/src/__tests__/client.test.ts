@@ -476,6 +476,71 @@ describe("paged reads for a view", () => {
   });
 });
 
+describe("certificates read by id", () => {
+  const certProjects = [
+    { ...PROJECT, id: "other", type: "cert-manager" },
+    { ...PROJECT, id: "cert-1", type: "cert-manager" },
+  ];
+  const CERT = { id: "c1", commonName: "api.example.com", serialNumber: "ab:cd", status: "active" };
+
+  function certClient(handler: (call: Call) => { status?: number; body: unknown }) {
+    return hostClient(
+      new InfisicalClient(
+        { siteUrl: "eu.infisical.com", clientId: "cid", clientSecret: "csecret" },
+        services((call) => {
+          if (call.url.endsWith("/universal-auth/login")) return { body: LOGIN };
+          if (call.url.endsWith("/api/v1/projects")) return { body: { projects: certProjects } };
+          return handler(call);
+        }),
+      ),
+    );
+  }
+
+  it("finds the project from the search row, as a listing has it", async () => {
+    const c = certClient((call) => {
+      if (call.url.includes("/projects/other/certificates/search"))
+        return { body: { certificates: [] } };
+      if (call.url.includes("/projects/cert-1/certificates/search")) {
+        return { body: { certificates: [{ ...CERT, projectId: "cert-1" }] } };
+      }
+      return { body: { certificate: CERT } };
+    });
+    const resource = await c.getResource("certificate", `${ACCOUNT}:certificate:c1`, ACCOUNT);
+    expect(resource.parentResourceId).toBe(`${ACCOUNT}:project:cert-1`);
+    expect(resource.fields["projectId"]).toBe("cert-1");
+    const search = calls.find((x) => x.url.includes("/cert-1/certificates/search"))!;
+    expect(JSON.parse(search.body!)).toMatchObject({ search: "ab:cd" });
+  });
+
+  it("still reads the certificate when no project can be found", async () => {
+    const c = certClient((call) => {
+      if (call.url.includes("/certificates/search")) return { status: 500, body: {} };
+      return { body: { certificate: CERT } };
+    });
+    const resource = await c.getResource("certificate", `${ACCOUNT}:certificate:c1`, ACCOUNT);
+    expect(resource.displayName).toBe("api.example.com");
+    expect(resource.parentResourceId).toBeUndefined();
+  });
+
+  it("gives a created certificate the project it was created in, field and parent", async () => {
+    const c = certClient((call) => {
+      if (call.method === "POST" && call.url.endsWith("/api/v1/cert-manager/certificates")) {
+        return { body: { certificate: { certificateId: "c1" } } };
+      }
+      if (call.url.includes("/certificates/search")) throw new Error("no search was needed");
+      return { body: { certificate: CERT } };
+    });
+    const resource = await c.createResource(
+      "certificate",
+      ACCOUNT,
+      { profileId: "p1", commonName: "api.example.com" },
+      `${ACCOUNT}:project:cert-1`,
+    );
+    expect(resource.fields["projectId"]).toBe("cert-1");
+    expect(resource.parentResourceId).toBe(`${ACCOUNT}:project:cert-1`);
+  });
+});
+
 describe("mutations", () => {
   it("renames and re-values a secret through the v4 PATCH", async () => {
     const c = client((call) => {

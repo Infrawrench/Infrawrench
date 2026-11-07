@@ -534,18 +534,45 @@ export class InfisicalClient implements PluginClient {
           if (!body.ca) throw notFound("certificate authority", id);
           return this.mapCa(accountId, body.ca, str(body.ca.projectId));
         }
-        case "certificate": {
-          const body = await this.api.rest.get(
-            `/api/v1/cert-manager/certificates/${pathEncode(id)}`,
-          );
-          if (!body.certificate) throw notFound("certificate", id);
-          const certificate: InfCertificate = body.certificate;
-          return this.mapCertificate(accountId, certificate, str(certificate.projectId));
-        }
+        case "certificate":
+          return this.readCertificate(accountId, id);
         default:
           throw new Error(`Infisical plugin: unknown resource type "${typeId}"`);
       }
     });
+  }
+
+  private async readCertificate(
+    accountId: string,
+    id: string,
+    knownProjectId?: string,
+  ): Promise<ResourceInstance> {
+    const body = await this.api.rest.get(`/api/v1/cert-manager/certificates/${pathEncode(id)}`);
+    if (!body.certificate) throw notFound("certificate", id);
+    const certificate: InfCertificate = body.certificate;
+    const projectId =
+      str(certificate.projectId) || knownProjectId || (await this.certificateProject(certificate));
+    return this.mapCertificate(accountId, certificate, projectId);
+  }
+
+  /**
+   * The document gives a certificate read by id no project; only the search row has one. The
+   * search takes a serial number, so this finds the row in whichever project holds it. Finding
+   * nothing costs the certificate its parent, never the read.
+   */
+  private async certificateProject(certificate: InfCertificate): Promise<string> {
+    const search = str(certificate.serialNumber);
+    if (!search) return "";
+    for (const project of await this.certProjects().catch((): InfProject[] => [])) {
+      const body = await this.api.rest
+        .post(`/api/v1/projects/${pathEncode(str(project.id))}/certificates/search`, {
+          body: { search, limit: CERTIFICATE_PAGE_SIZE },
+        })
+        .catch((): { certificates?: InfCertificate[] } => ({}));
+      const row = (body.certificates ?? []).find((c) => c.id === certificate.id);
+      if (row) return str(row.projectId) || str(project.id);
+    }
+    return "";
   }
 
   private async fetchSecret(secretId: string): Promise<InfSecret> {
@@ -1589,11 +1616,7 @@ export class InfisicalClient implements PluginClient {
               { status: 202 },
             );
           }
-          const resource = await runPluginEffect(
-            this.getResource("certificate", `${accountId}:certificate:${certId}`, accountId),
-          );
-          if (projectId && !resource.fields["projectId"]) resource.fields["projectId"] = projectId;
-          return resource;
+          return this.readCertificate(accountId, certId, projectId);
         }
         default:
           throw new Error(`Infisical plugin: cannot create resource type "${typeId}"`);
