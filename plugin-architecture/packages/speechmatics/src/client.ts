@@ -23,7 +23,7 @@ import type {
   TranscribeAudioResult,
   TranscriptWord,
 } from "@infrawrench/plugin-base";
-import { base64ToBytes, bytesToBase64, jsonRestFetch } from "@infrawrench/plugin-base";
+import { base64ToBytes, bytesToBase64, hostFetch, jsonRestFetch } from "@infrawrench/plugin-base";
 import { fetchSpeechmaticsCostData, normalizeMode, normalizeOperatingPoint } from "./cost-data.js";
 
 /* -------------------------------------------------------------------------- */
@@ -1352,7 +1352,8 @@ export class SpeechmaticsClient implements PluginClient {
         : DEFAULT_TTS_VOICE;
 
       const started = Date.now();
-      const res = await fetch(
+      const res = await hostFetch(
+        { http: this.services?.http, caCert: this.caCert },
         `${TTS_BASE_URL}/generate/${encodeURIComponent(voice)}?output_format=wav_16000`,
         {
           method: "POST",

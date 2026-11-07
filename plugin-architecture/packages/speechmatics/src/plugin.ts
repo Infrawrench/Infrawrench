@@ -29,7 +29,12 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 
 export const manifest = {
   id: "speechmatics",
-  egressHosts: ["*.asr.api.speechmatics.com", "mp.api.speechmatics.com", "portal.speechmatics.com"],
+  egressHosts: [
+    "*.asr.api.speechmatics.com",
+    "mp.speechmatics.com",
+    "preview.tts.speechmatics.com",
+    "portal.speechmatics.com",
+  ],
   displayName: "Speechmatics",
   logoSvg,
   credentialFields: defineCredentials([
