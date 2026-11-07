@@ -25,6 +25,7 @@
  */
 
 import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { ListPageError } from "@infrawrench/plugin-base";
 
 export const DEFAULT_SERVER_URL = "https://api.modal.com";
 const SERVICE = "modal.client.ModalClient";
@@ -184,7 +185,11 @@ async function post(
 }
 
 /** Perform one call and return every message in the response body. */
-async function call(ctx: ModalContext, method: string, request: Uint8Array): Promise<Uint8Array[]> {
+async function call(
+  ctx: ModalContext,
+  method: string,
+  request: Uint8Array,
+): Promise<{ messages: Uint8Array[]; statusSeen: boolean }> {
   const res = await post(ctx, method, request);
   const status = header(res.headers, "grpc-status");
   if (status !== undefined && status !== "0") {
@@ -212,7 +217,7 @@ async function call(ctx: ModalContext, method: string, request: Uint8Array): Pro
       res.status,
     );
   }
-  return unframe(res.body, method);
+  return { messages: unframe(res.body, method), statusSeen: status !== undefined };
 }
 
 /** A unary RPC. A missing message is the empty message, as protobuf defines it. */
@@ -221,15 +226,31 @@ export async function unary(
   method: string,
   request: Uint8Array,
 ): Promise<Uint8Array> {
-  const messages = await call(ctx, method, request);
+  const { messages } = await call(ctx, method, request);
   return messages[0] ?? new Uint8Array();
 }
 
+/**
+ * A unary RPC whose answer a sync prunes against. A server that succeeds frames its
+ * message even when it is empty, so no frame and no status in the headers means the
+ * status went in a trailer this transport cannot read, which may well be a failure.
+ */
+export async function unaryList(
+  ctx: ModalContext,
+  method: string,
+  request: Uint8Array,
+): Promise<Uint8Array> {
+  const { messages, statusSeen } = await call(ctx, method, request);
+  if (messages[0]) return messages[0];
+  if (statusSeen) return new Uint8Array();
+  throw new ListPageError({ vendor: "Modal", path: method, key: null, found: undefined });
+}
+
 /** A server-streaming RPC, collected. */
-export function serverStream(
+export async function serverStream(
   ctx: ModalContext,
   method: string,
   request: Uint8Array,
 ): Promise<Uint8Array[]> {
-  return call(ctx, method, request);
+  return (await call(ctx, method, request)).messages;
 }

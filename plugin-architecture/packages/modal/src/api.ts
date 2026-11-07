@@ -11,8 +11,9 @@
  * `modal secret|volume|dict|queue list|delete`, `Function.get_current_stats()`.
  */
 
+import { ListPageError, ListTruncatedError } from "@infrawrench/plugin-base";
 import type { ModalContext } from "./grpc.js";
-import { serverStream, unary } from "./grpc.js";
+import { serverStream, unary, unaryList } from "./grpc.js";
 import type { ProtoMessage } from "./proto.js";
 import { ProtoWriter, decode } from "./proto.js";
 
@@ -20,6 +21,14 @@ const EMPTY = new Uint8Array();
 
 async function rpc(ctx: ModalContext, method: string, req?: ProtoWriter): Promise<ProtoMessage> {
   return decode(await unary(ctx, method, req ? req.finish() : EMPTY));
+}
+
+async function listRpc(
+  ctx: ModalContext,
+  method: string,
+  req?: ProtoWriter,
+): Promise<ProtoMessage> {
+  return decode(await unaryList(ctx, method, req ? req.finish() : EMPTY));
 }
 
 /** Epoch seconds (`double created_at`) to milliseconds; 0 means unset. */
@@ -105,7 +114,7 @@ export function decodeEnvironment(m: ProtoMessage): ModalEnvironment {
 
 /** `EnvironmentList(Empty) -> EnvironmentListResponse { repeated EnvironmentListItem items = 2; }` */
 export async function listEnvironments(ctx: ModalContext): Promise<ModalEnvironment[]> {
-  const res = await rpc(ctx, "EnvironmentList");
+  const res = await listRpc(ctx, "EnvironmentList");
   return res.messages(2).map(decodeEnvironment);
 }
 
@@ -202,7 +211,7 @@ function lifecycleFields(l: ProtoMessage | undefined): Partial<ModalApp> {
  * and `AppHandleMetadata { description = 1; app_id = 2; environment_name = 3; AppLifecycle lifecycle = 4; }`.
  */
 export async function listApps(ctx: ModalContext, environmentName: string): Promise<ModalApp[]> {
-  const res = await rpc(ctx, "AppList", new ProtoWriter().string(1, environmentName));
+  const res = await listRpc(ctx, "AppList", new ProtoWriter().string(1, environmentName));
   return res.messages(1).map((item) => {
     const meta = item.message(11);
     const createdAt = secondsToMs(item.double(5));
@@ -613,40 +622,62 @@ export async function getFunctionTimeRangeStats(
 // ---------------------------------------------------------------------------
 
 const PAGE_SIZE = 100;
-const MAX_PAGES = 50;
+/** 50,000 rows per environment per type. */
+const MAX_PAGES = 500;
 
 /**
  * Page a `*List` RPC with `ListPagination { int32 max_objects = 1; double created_before = 2; }`,
- * the way the SDKs do: ask for a page, then for everything created before the
- * oldest item seen, until a short page.
+ * the way the SDKs do: ask for 100, then for everything created before the oldest item
+ * seen, until a short page. The cursor is that item's exact `double`: rounded to a
+ * millisecond it would skip the rows just older than it, or read it again.
  */
-async function paged<T extends { createdAt?: number }>(
+async function paged<T>(
   ctx: ModalContext,
   method: string,
   build: (pagination: ProtoWriter) => ProtoWriter,
   itemsField: number,
+  createdSeconds: (m: ProtoMessage) => number,
   decodeItem: (m: ProtoMessage) => T,
 ): Promise<T[]> {
   const out: T[] = [];
   let before: number | undefined;
   for (let page = 0; page < MAX_PAGES; page++) {
-    const pagination = new ProtoWriter()
-      .int(1, PAGE_SIZE)
-      .double(2, before !== undefined ? before / 1000 : undefined);
-    const res = await rpc(ctx, method, build(pagination));
-    const batch = res.messages(itemsField).map(decodeItem);
-    out.push(...batch);
-    if (batch.length < PAGE_SIZE) break;
-    const oldest = Math.min(...batch.map((b) => b.createdAt ?? Number.POSITIVE_INFINITY));
-    if (!Number.isFinite(oldest) || (before !== undefined && oldest >= before)) break;
+    const res = await listRpc(
+      ctx,
+      method,
+      build(new ProtoWriter().int(1, PAGE_SIZE).double(2, before)),
+    );
+    const items = res.messages(itemsField);
+    for (const item of items) out.push(decodeItem(item));
+    if (items.length < PAGE_SIZE) return out;
+    const oldest = Math.min(...items.map(createdSeconds).filter((seconds) => seconds > 0));
+    if (!Number.isFinite(oldest) || (before !== undefined && oldest >= before)) {
+      throw new ListPageError({
+        vendor: "Modal",
+        path: method,
+        key: null,
+        found: items,
+        saysMoreWith: "no cursor",
+      });
+    }
     before = oldest;
   }
-  return out;
+  throw new ListTruncatedError({
+    vendor: "Modal",
+    path: method,
+    items: out.length,
+    maxPages: MAX_PAGES,
+  });
+}
+
+/** `CreationInfo.created_at`, or the older field on the list item when it is absent. */
+function creationSeconds(info: ProtoMessage | undefined, fallbackSeconds: number): number {
+  return info?.double(1) || fallbackSeconds;
 }
 
 /** `CreationInfo { double created_at = 1; string created_by = 2; }` */
 function creation(m: ProtoMessage | undefined, fallbackSeconds: number) {
-  const createdAt = secondsToMs(m?.double(1) || fallbackSeconds);
+  const createdAt = secondsToMs(creationSeconds(m, fallbackSeconds));
   const createdBy = m?.string(2) ?? "";
   return {
     ...(createdAt !== undefined ? { createdAt } : {}),
@@ -677,6 +708,7 @@ export function listSecrets(ctx: ModalContext, environmentName: string): Promise
     "SecretList",
     (p) => new ProtoWriter().string(1, environmentName).message(2, p),
     1,
+    (m) => creationSeconds(m.message(6)?.message(2), m.double(2)),
     (m) => {
       const meta = m.message(6);
       const lastUsedAt = secondsToMs(m.double(3));
@@ -713,6 +745,7 @@ export function listVolumes(ctx: ModalContext, environmentName: string): Promise
     "VolumeList",
     (p) => new ProtoWriter().string(1, environmentName).message(2, p),
     1,
+    (m) => creationSeconds(m.message(4)?.message(3), m.double(3)),
     (m) => {
       const meta = m.message(4);
       const v = meta?.uint(1) ?? 0;
@@ -746,6 +779,7 @@ export function listDicts(ctx: ModalContext, environmentName: string): Promise<M
     "DictList",
     (p) => new ProtoWriter().string(1, environmentName).message(2, p),
     1,
+    (m) => creationSeconds(m.message(4)?.message(2), m.double(2)),
     (m) => {
       const meta = m.message(4);
       return {
@@ -783,6 +817,7 @@ export function listQueues(ctx: ModalContext, environmentName: string): Promise<
     "QueueList",
     (p) => new ProtoWriter().string(1, environmentName).int(2, QUEUE_SIZE_LIMIT).message(3, p),
     1,
+    (m) => creationSeconds(m.message(6)?.message(2), m.double(2)),
     (m) => {
       const meta = m.message(6);
       return {
