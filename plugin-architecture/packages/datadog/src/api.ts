@@ -1,5 +1,7 @@
 import {
   createApiClient,
+  ListTruncatedError,
+  requireListPage,
   type ApiClient,
   type ApiFailure,
   type HttpHostServices,
@@ -77,6 +79,53 @@ export function statusOf(err: unknown): number {
 export function isPermissionError(err: unknown): boolean {
   const status = statusOf(err);
   return status === 401 || status === 403;
+}
+
+/** Which list is being read, and how far. */
+export interface PagedList {
+  /** The route, for the errors this throws. */
+  path: string;
+  /** The field holding the list, or `null` when the answer is the list. */
+  key: string | null;
+  pageSize: number;
+  maxPages: number;
+  /** For a picker, where the first `maxPages` will do. Never for a list that is stored. */
+  partial?: boolean;
+}
+
+/**
+ * Read a list page by page, ending on a short page. A hand loop because Datadog pages
+ * each route with its own parameter names, zero-based, with no `next` to follow. A sync
+ * prunes what a list stops returning, so a page that is not a list and a list longer
+ * than the cap both throw. `page` counts from zero.
+ */
+export async function readPages<Item>(
+  list: PagedList,
+  fetchPage: (page: number) => Promise<readonly Item[] | null | undefined>,
+): Promise<Item[]> {
+  const { path, key, pageSize, maxPages, partial } = list;
+  const out: Item[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    const batch = requireListPage(await fetchPage(page), { vendor: "Datadog", path, key });
+    out.push(...batch);
+    if (batch.length < pageSize) return out;
+  }
+  if (partial) return out;
+  throw new ListTruncatedError({ vendor: "Datadog", path, items: out.length, maxPages });
+}
+
+/** {@link readPages} for a JSON:API answer, collecting `included` beside `data`. */
+export async function readJsonApiPages<Item, Included>(
+  list: Omit<PagedList, "key">,
+  fetchPage: (page: number) => Promise<{ data?: Item[]; included?: Included[] }>,
+): Promise<{ data: Item[]; included: Included[] }> {
+  const included: Included[] = [];
+  const data = await readPages({ ...list, key: "data" }, async (page) => {
+    const res = await fetchPage(page);
+    included.push(...(res.included ?? []));
+    return res.data;
+  });
+  return { data, included };
 }
 
 /** The paging parameters of a JSON:API style list, for the call to send last. */

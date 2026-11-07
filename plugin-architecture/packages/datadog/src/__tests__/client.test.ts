@@ -300,6 +300,68 @@ describe("DatadogClient", () => {
   });
 });
 
+describe("current downtimes", () => {
+  const downtime = (id: string, monitorId: number) => ({
+    id,
+    attributes: { scope: "*", monitor_identifier: { monitor_id: monitorId } },
+  });
+
+  /** A full first page of other monitors' downtimes, with `last` on the second page. */
+  function twoPages(last: object, included: object[] = []) {
+    return client((url, method) => {
+      if (method !== "GET") return { body: {} };
+      if (url.searchParams.get("page[offset]") === "30") {
+        return { body: { data: [last], included } };
+      }
+      return {
+        body: { data: Array.from({ length: 30 }, (_, i) => downtime(`dt-${i}`, 1000 + i)) },
+      };
+    });
+  }
+
+  it("lists past the first page, naming monitors from any page", async () => {
+    const { c, calls } = twoPages(downtime("dt-last", 42), [
+      { id: 42, type: "monitors", attributes: { name: "CPU high" } },
+    ]);
+    const rows = await c.listResources("downtime", ACCOUNT);
+    expect(rows).toHaveLength(31);
+    expect(rows[30]!.fields["monitorName"]).toBe("CPU high");
+    expect(calls.map((x) => x.url.searchParams.get("page[offset]"))).toEqual(["0", "30"]);
+    expect(calls[0]!.url.searchParams.get("page[limit]")).toBe("30");
+    expect(calls[1]!.url.searchParams.get("current_only")).toBe("true");
+    expect(calls[1]!.url.searchParams.get("include")).toBe("monitor");
+  });
+
+  it("unmutes a monitor whose downtime is past the first page", async () => {
+    const { c, calls } = twoPages(downtime("dt-last", 42));
+    await c.invokeAction!("monitor", "acc:monitor:42", "unmute", ACCOUNT);
+    const deletes = calls.filter((x) => x.method === "DELETE").map((x) => x.url.pathname);
+    expect(deletes).toEqual(["/api/v2/downtime/dt-last"]);
+  });
+
+  it("cancels nothing when the list cannot be read to its end", async () => {
+    const { c, calls } = client((url) =>
+      url.searchParams.get("page[offset]") === "0"
+        ? { body: { data: Array.from({ length: 30 }, (_, i) => downtime(`dt-${i}`, 42)) } }
+        : { body: { errors: ["bad"] } },
+    );
+    await expect(c.invokeAction!("monitor", "acc:monitor:42", "unmute", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+    expect(calls.filter((x) => x.method === "DELETE")).toEqual([]);
+  });
+
+  it("reads a list that never ends as an error after the cap", async () => {
+    const { c, calls } = client(() => ({
+      body: { data: Array.from({ length: 30 }, (_, i) => downtime(`dt-${i}`, 1)) },
+    }));
+    await expect(c.listResources("downtime", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(334);
+  });
+});
+
 describe("synthetic test charts", () => {
   const range = { startMs: 1_000, endMs: 2_000 };
 

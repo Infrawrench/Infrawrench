@@ -21,7 +21,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
-import { createDatadogContext, ddPaged, statusOf } from "./api.js";
+import { createDatadogContext, ddPaged, readJsonApiPages, statusOf } from "./api.js";
 import { fetchCostAttribution } from "./attribution.js";
 import {
   listDatadogMetricSourceOptions,
@@ -84,6 +84,9 @@ const SLO_PAGE = 1000;
 const MAX_SLO_PAGES = 20;
 const SYNTHETICS_PAGE = 100;
 const MAX_SYNTHETICS_PAGES = 50;
+// The document's default; it states no maximum.
+const DOWNTIME_PAGE = 30;
+const MAX_DOWNTIME_PAGES = 334;
 
 const MONITOR_ACTIONS = new Set(["mute", "mute-1h", "mute-1d", "unmute"]);
 
@@ -196,17 +199,30 @@ export class DatadogClient implements PluginClient {
     return out;
   }
 
+  private fetchCurrentDowntimes(query: { include?: string } = {}) {
+    return readJsonApiPages(
+      { path: "/api/v2/downtime", pageSize: DOWNTIME_PAGE, maxPages: MAX_DOWNTIME_PAGES },
+      (page) =>
+        this.ctx.v2.get("/api/v2/downtime", {
+          query: {
+            current_only: true,
+            ...query,
+            "page[limit]": DOWNTIME_PAGE,
+            "page[offset]": page * DOWNTIME_PAGE,
+          },
+        }),
+    );
+  }
+
   private async listDowntimes(accountId: string): Promise<ResourceInstance[]> {
-    const res = await this.ctx.v2.get("/api/v2/downtime", {
-      query: { current_only: true, include: "monitor" },
-    });
+    const { data, included } = await this.fetchCurrentDowntimes({ include: "monitor" });
     const names = new Map<string, string>();
-    for (const inc of res.included ?? []) {
+    for (const inc of included) {
       if (inc.type === "monitors" && inc.id !== undefined && inc.attributes?.name) {
         names.set(String(inc.id), inc.attributes.name);
       }
     }
-    return (res.data ?? []).map((d) => mapDowntime(accountId, d, names));
+    return data.map((d) => mapDowntime(accountId, d, names));
   }
 
   private async fetchDashboards(): Promise<DdDashboardSummary[]> {
@@ -814,10 +830,8 @@ export class DatadogClient implements PluginClient {
 
   /** Cancel every current downtime that targets this monitor by id. */
   private async unmuteMonitor(monitorId: string): Promise<void> {
-    const res = await this.ctx.v2.get("/api/v2/downtime", {
-      query: { current_only: true },
-    });
-    const targets = (res.data ?? []).filter(
+    const { data } = await this.fetchCurrentDowntimes();
+    const targets = data.filter(
       (d) => String(d.attributes?.monitor_identifier?.monitor_id ?? "") === monitorId,
     );
     if (targets.length === 0) {
