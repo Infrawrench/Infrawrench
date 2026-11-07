@@ -163,6 +163,18 @@ function parseBool(raw: string | undefined): boolean | undefined {
   return raw === "true" || raw === "yes" || raw === "1";
 }
 
+/** A preset setting, which the document says is usually a string even when it is a boolean. */
+function settingBool(value: string | boolean | string[] | undefined): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  return typeof value === "string" ? parseBool(value) : undefined;
+}
+
+function tagList(value: string | string[]): string[] {
+  return (typeof value === "string" ? value.split(",") : value)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
 /**
  * A preset's `transformation` comes back either as a string: a named
  * reference (`"t_thumb"`) or a raw spec (`"w_100,c_fill"`), or as a
@@ -717,11 +729,7 @@ export class CloudinaryClient implements PluginClient {
           if (fields["displayName"] !== undefined) body.display_name = fields["displayName"].trim();
           if (fields["folder"] !== undefined) body.asset_folder = fields["folder"].trim();
           if (fields["tags"] !== undefined) {
-            body.tags = fields["tags"]
-              .split(",")
-              .map((tag) => tag.trim())
-              .filter(Boolean)
-              .join(",");
+            body.tags = tagList(fields["tags"]).join(",");
           }
           if (Object.keys(body).length === 0) return current;
           const updated = await this.api.put(`/resources/${pathEncode(assetId)}`, { body });
@@ -731,7 +739,7 @@ export class CloudinaryClient implements PluginClient {
           const body: ApiBody<operations["updateUploadPreset"]> = {};
           if (fields["mode"] !== undefined) body.unsigned = fields["mode"] === "unsigned";
           if (fields["folder"] !== undefined) body.folder = fields["folder"].trim();
-          if (fields["tags"] !== undefined) body.tags = fields["tags"].trim();
+          if (fields["tags"] !== undefined) body.tags = tagList(fields["tags"]).join(",");
           if (fields["allowedFormats"] !== undefined) {
             body.allowed_formats = fields["allowedFormats"].replace(/\s+/g, "");
           }
@@ -1732,6 +1740,10 @@ export class CloudinaryClient implements PluginClient {
     return presets.map((preset) => {
       const mode = preset.unsigned ? "unsigned" : "signed";
       const settings = preset.settings ?? {};
+      const tags = tagList(
+        typeof settings["tags"] === "boolean" ? [] : (settings["tags"] ?? []),
+      ).join(", ");
+      const disallowPublicId = settingBool(settings["disallow_public_id"]);
       return {
         id: `${accountId}:upload-preset:${preset.name}`,
         pluginId: "cloudinary",
@@ -1742,16 +1754,14 @@ export class CloudinaryClient implements PluginClient {
           name: preset.name,
           mode,
           ...(settings["folder"] ? { folder: String(settings["folder"]) } : {}),
-          ...(Array.isArray(settings["tags"]) ? { tags: settings["tags"].join(", ") } : {}),
+          ...(tags ? { tags } : {}),
           ...(settings["allowed_formats"]
             ? { allowedFormats: String(settings["allowed_formats"]) }
             : {}),
           ...(settings["transformation"]
             ? { transformation: formatTransformationSetting(settings["transformation"]) }
             : {}),
-          ...(settings["disallow_public_id"] != null
-            ? { disallowPublicId: Boolean(settings["disallow_public_id"]) }
-            : {}),
+          ...(disallowPublicId !== undefined ? { disallowPublicId } : {}),
           ...(preset.external_id ? { externalId: preset.external_id } : {}),
         },
         resolvedOutputs: { presetName: preset.name, mode },

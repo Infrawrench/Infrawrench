@@ -414,6 +414,47 @@ describe("listResources", () => {
     }
   });
 
+  describe("upload preset settings", () => {
+    const preset = async (settings: Record<string, unknown>) => {
+      installFetch(() => jsonResponse({ presets: [{ name: "p", external_id: "e", settings }] }));
+      const [listed] = await client().listResources("upload-preset", ACCOUNT);
+      return listed?.fields;
+    };
+
+    it.each([
+      ["a comma-separated string", "a, b,c", "a, b, c"],
+      ["an array", ["a", "b"], "a, b"],
+    ])("reads tags given as %s", async (_form, tags, expected) => {
+      expect((await preset({ tags }))?.["tags"]).toBe(expected);
+    });
+
+    it("leaves out tags that are empty", async () => {
+      expect(await preset({ tags: "" })).not.toHaveProperty("tags");
+    });
+
+    it.each([
+      ["false", false],
+      ["true", true],
+      [false, false],
+      [true, true],
+    ])("reads disallow_public_id %j as %j", async (value, expected) => {
+      expect((await preset({ disallow_public_id: value }))?.["disallowPublicId"]).toBe(expected);
+    });
+
+    it("sends edited tags without the spaces the form shows them with", async () => {
+      installFetch((_url, init) =>
+        init?.method === "PUT"
+          ? jsonResponse({})
+          : jsonResponse({ presets: [{ name: "p", external_id: "e" }] }),
+      );
+      await client().updateResource("upload-preset", `${ACCOUNT}:upload-preset:p`, ACCOUNT, {
+        tags: "a, b ,",
+      });
+      const put = calls.find((c) => c.init?.method === "PUT");
+      expect(JSON.parse(String(put?.init?.body))).toEqual({ tags: "a,b" });
+    });
+  });
+
   it("paginates upload presets and accepts Cloudinary response envelopes", async () => {
     installFetch((url) => {
       if (url.endsWith("/upload_presets?max_results=500")) {
