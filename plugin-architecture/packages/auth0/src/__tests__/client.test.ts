@@ -339,6 +339,107 @@ describe("mutations", () => {
     });
   });
 
+  describe("a flow with more bindings than one page", () => {
+    const binding = (n: number) => ({
+      id: `b-${n}`,
+      display_name: `binding ${n}`,
+      action: { id: `act-${n}` },
+    });
+    const flow = (call: Call) => {
+      const url = new URL(call.url);
+      if (url.pathname.endsWith("/actions/triggers")) {
+        return { body: { triggers: [{ id: "post-login", version: "v3" }] } };
+      }
+      if (url.pathname.endsWith("/actions/actions")) {
+        return { body: { actions: [{ id: "act-22", name: "late" }], total: 1 } };
+      }
+      if (url.pathname.includes("/actions/actions/")) {
+        return {
+          body: {
+            id: url.pathname.split("/").pop(),
+            name: "the action",
+            supported_triggers: [{ id: "post-login", version: "v3" }],
+          },
+        };
+      }
+      if (call.method === "PATCH") return { body: {} };
+      const page = Number(url.searchParams.get("page") ?? 0);
+      const rows = Array.from({ length: 25 }, (_, i) => binding(i)).slice(
+        page * 20,
+        page * 20 + 20,
+      );
+      return { body: { total: 25, page, per_page: 20, bindings: rows } };
+    };
+    const sent = () =>
+      JSON.parse(apiCalls().find((x) => x.method === "PATCH")!.body!) as {
+        bindings: { ref: { value: string } }[];
+      };
+
+    it("keeps every one of them when binding", async () => {
+      await client(flow).invokeAction("action", `${ACCOUNT}:action:act-new`, "bind");
+      expect(sent().bindings.map((b) => b.ref.value)).toEqual([
+        ...Array.from({ length: 25 }, (_, i) => `b-${i}`),
+        "act-new",
+      ]);
+    });
+
+    it("keeps the others when unbinding, and removes one past the first page", async () => {
+      await client(flow).invokeAction("action", `${ACCOUNT}:action:act-22`, "unbind");
+      const values = sent().bindings.map((b) => b.ref.value);
+      expect(values).toHaveLength(24);
+      expect(values).not.toContain("b-22");
+      expect(values).toContain("b-24");
+    });
+
+    it("does not bind again what is bound past the first page", async () => {
+      await client(flow).invokeAction("action", `${ACCOUNT}:action:act-22`, "bind");
+      expect(apiCalls().some((x) => x.method === "PATCH")).toBe(false);
+    });
+
+    it("shows an action bound past the first page as bound", async () => {
+      const [action] = await client(flow).listResources("action", ACCOUNT);
+      expect(action!.fields["bound"]).toBe(true);
+    });
+
+    it("writes nothing when a page of the flow cannot be read", async () => {
+      const c = client((call) => {
+        if (call.method === "GET" && call.url.includes("/bindings")) {
+          const page = Number(new URL(call.url).searchParams.get("page") ?? 0);
+          return page === 0
+            ? { body: { total: 25, bindings: [binding(0)] } }
+            : { body: { error: "busy" } };
+        }
+        return flow(call);
+      });
+      await expect(c.invokeAction("action", `${ACCOUNT}:action:act-new`, "bind")).rejects.toThrow(
+        "is not a list",
+      );
+      expect(apiCalls().some((x) => x.method === "PATCH")).toBe(false);
+    });
+
+    it("carries a flow that never ends out through the action list", async () => {
+      const c = client((call) => {
+        if (call.url.includes("/bindings")) {
+          return { body: { bindings: Array.from({ length: 20 }, (_, i) => binding(i)) } };
+        }
+        return flow(call);
+      });
+      await expect(c.listResources("action", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+
+    it("refuses to unbind an action with no trigger", async () => {
+      const c = client((call) =>
+        call.url.includes("/actions/actions/") ? { body: { id: "act-1" } } : flow(call),
+      );
+      await expect(c.invokeAction("action", `${ACCOUNT}:action:act-1`, "unbind")).rejects.toThrow(
+        "the action has no trigger",
+      );
+      expect(apiCalls().some((x) => x.method === "PATCH")).toBe(false);
+    });
+  });
+
   it("splits identifier|scope permission ids for role grants", async () => {
     const c = client(() => ({ body: {} }));
     await c.executeNoSqlCommand("role", `${ACCOUNT}:role:rol_1`, ACCOUNT, "add-permissions", [

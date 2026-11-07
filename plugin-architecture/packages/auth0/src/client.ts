@@ -285,20 +285,30 @@ export class Auth0Client implements PluginClient {
       .catch((): ApiResponse<operations["get_triggers"]> => ({ triggers: [] }));
   }
 
+  /**
+   * Every binding of a flow. A bind or an unbind replaces the whole list with what this
+   * read, so a binding missing from it would be removed from the flow. `per_page` stays
+   * at the 20 the route defaults to, as the document gives it no maximum.
+   */
+  private triggerBindings(trigger: string) {
+    const path = `/actions/triggers/${pathEncode(trigger)}/bindings` as const;
+    return pages(path, "bindings", ({ page }) => this.rest.get(path, { query: { page } }), {
+      perPage: 20,
+    });
+  }
+
   /** Action ids currently bound into any flow (one call per trigger). */
   private async boundActionIds(): Promise<Set<string>> {
     const triggers = await this.actionTriggers();
     const ids = new Set<string>();
     const unique = [...new Set((triggers.triggers ?? []).map((t) => str(t.id)).filter(Boolean))];
-    const settled = await Promise.allSettled(
-      unique.map((t) => this.rest.get(`/actions/triggers/${pathEncode(t)}/bindings`)),
-    );
+    const settled = await Promise.allSettled(unique.map((t) => this.triggerBindings(t)));
     for (const result of settled) {
       if (result.status !== "fulfilled") {
         rethrowIncompleteList(result.reason);
         continue;
       }
-      for (const b of result.value.bindings ?? []) if (b.action?.id) ids.add(b.action.id);
+      for (const b of result.value) if (b.action?.id) ids.add(b.action.id);
     }
     return ids;
   }
@@ -1695,12 +1705,12 @@ export class Auth0Client implements PluginClient {
           const action = await this.rest.get(`/actions/actions/${id}`);
           const trigger = str(action.supported_triggers?.[0]?.id);
           if (!trigger) throw new Error("Auth0 plugin: the action has no trigger");
-          const current = await this.rest.get(`/actions/triggers/${pathEncode(trigger)}/bindings`);
-          const bindings = (current.bindings ?? []).map((b): ActionBindingUpdate => ({
+          const current = await this.triggerBindings(trigger);
+          if (current.some((b) => b.action?.id === raw)) return;
+          const bindings = current.map((b): ActionBindingUpdate => ({
             ref: { type: "binding_id", value: str(b.id) },
             display_name: str(b.display_name),
           }));
-          if ((current.bindings ?? []).some((b) => b.action?.id === raw)) return;
           bindings.push({ ref: { type: "action_id", value: raw }, display_name: str(action.name) });
           await this.rest.patch(`/actions/triggers/${pathEncode(trigger)}/bindings`, {
             body: { bindings },
@@ -1710,8 +1720,9 @@ export class Auth0Client implements PluginClient {
         case "action:unbind": {
           const action = await this.rest.get(`/actions/actions/${id}`);
           const trigger = str(action.supported_triggers?.[0]?.id);
-          const current = await this.rest.get(`/actions/triggers/${pathEncode(trigger)}/bindings`);
-          const bindings = (current.bindings ?? [])
+          if (!trigger) throw new Error("Auth0 plugin: the action has no trigger");
+          const current = await this.triggerBindings(trigger);
+          const bindings = current
             .filter((b) => b.action?.id !== raw)
             .map((b): ActionBindingUpdate => ({
               ref: { type: "binding_id", value: str(b.id) },
