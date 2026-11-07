@@ -343,6 +343,75 @@ describe("lists that cannot say they are complete", () => {
     expect(calls.filter((c) => c.method === "POST")).toEqual([]);
   });
 
+  const envVars = `${onDeploymentApi}/list_environment_variables`;
+  const unavailable = { code: "Unavailable", message: "try later" };
+
+  it("fails the list when an established deployment answers 503", async () => {
+    const { client } = fake([teamToken, deployments, on("GET", envVars, unavailable, 503)]);
+    const err = await client.listResources("convex-env-var", ACCOUNT).catch((e: unknown) => e);
+    expect(statusOf(err)).toBe(503);
+  });
+
+  it("fails the list when the Management API answers 503 for deploy keys", async () => {
+    const { client } = fake([
+      teamToken,
+      deployments,
+      on("GET", `${API}/deployments/happy-otter-123/list_deploy_keys`, unavailable, 503),
+    ]);
+    const err = await client.listResources("convex-deploy-key", ACCOUNT).catch((e: unknown) => e);
+    expect(statusOf(err)).toBe(503);
+  });
+
+  it("skips a deployment still provisioning, and one deleted mid-sync", async () => {
+    const provisioning = { ...deployment, createTime: Date.now() - 60_000 };
+    const fresh = fake([
+      teamToken,
+      on("GET", `${API}/teams/42/list_deployments`, {
+        items: [provisioning],
+        pagination: { hasMore: false },
+      }),
+      on("GET", envVars, unavailable, 503),
+    ]);
+    await expect(fresh.client.listResources("convex-env-var", ACCOUNT)).resolves.toEqual([]);
+
+    const deleted = fake([teamToken, deployments, on("GET", envVars, unavailable, 404)]);
+    await expect(deleted.client.listResources("convex-env-var", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("lets an unreadable member list fail the team, but not a refused one", async () => {
+    const members = `${API}/teams/42/list_members`;
+    const invites = on("GET", `${API}/teams/42/list_pending_invites`, { items: [] });
+    const renamed = fake([teamToken, projects, invites, on("GET", members, { members: [] })]);
+    await expect(renamed.client.listResources("convex-team", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+
+    const refused = fake([
+      teamToken,
+      projects,
+      invites,
+      on("GET", members, { code: "Forbidden", message: "no" }, 403),
+    ]);
+    const [team] = await refused.client.listResources("convex-team", ACCOUNT);
+    expect(team!.fields["projectCount"]).toBe(1);
+    expect(team!.fields).not.toHaveProperty("memberCount");
+  });
+
+  it("lets a truncated invite list fail the team too", async () => {
+    const { client } = fake([
+      teamToken,
+      projects,
+      on("GET", `${API}/teams/42/list_members`, { items: [] }),
+      on("GET", `${API}/teams/42/list_pending_invites`, {
+        items: [{ email: "a@example.com", role: "developer", expired: false }],
+        pagination: { hasMore: true, nextCursor: "again" },
+      }),
+    ]);
+    await expect(client.listResources("convex-team", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
   it("uses the host's transport with no CA, and never fetch", async () => {
     const stub = vi.fn(() => {
       throw new Error("fetch must not be called");

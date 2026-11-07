@@ -14,7 +14,7 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
 import type {
   ConvexContext,
   CreateLogStreamBody,
@@ -56,6 +56,15 @@ import { renderDetail, renderSidebarItem } from "./render.js";
 import { USAGE_METRICS } from "./resource-types.js";
 
 const METRIC_LABELS = new Map(USAGE_METRICS);
+
+/** How long a new deployment's 503 reads as provisioning rather than an outage. */
+const PROVISIONING_MS = 15 * 60 * 1000;
+
+/** For a read a team row can do without, such as a count. Part of a list is still an error. */
+function orNothing(err: unknown): undefined {
+  rethrowIncompleteList(err);
+  return undefined;
+}
 
 function bool(value: string | undefined): boolean | undefined {
   if (value === undefined || value === "") return undefined;
@@ -225,9 +234,10 @@ export class ConvexClient implements PluginClient {
   }
 
   /**
-   * Run `fn` for every deployment, skipping ones the Deployment API cannot
-   * reach right now (a 404 for a deleted preview, or a deployment that is
-   * still provisioning). Other errors fail the listing.
+   * Run `fn` for every deployment, skipping one that was deleted (a 404) or has
+   * only just been created and is still provisioning (a 503). Other errors fail the
+   * listing, a 503 from an established deployment included: it has rows a sync would
+   * prune, so an outage must leave them alone.
    */
   private async perDeployment<T>(
     only: CvDeployment[] | undefined,
@@ -240,7 +250,9 @@ export class ConvexClient implements PluginClient {
         try {
           return await fn(d);
         } catch (err) {
-          if ([404, 503].includes(statusOf(err))) return [];
+          const status = statusOf(err);
+          if (status === 404) return [];
+          if (status === 503 && Date.now() - d.createTime < PROVISIONING_MS) return [];
           throw err;
         }
       }),
@@ -460,8 +472,8 @@ export class ConvexClient implements PluginClient {
     const teamId = await this.teamId();
     const [projects, members, invites] = await Promise.all([
       this.projects(),
-      this.members(teamId).catch(() => undefined),
-      this.invites(teamId).catch(() => undefined),
+      this.members(teamId).catch(orNothing),
+      this.invites(teamId).catch(orNothing),
     ]);
     const slug = projects[0]?.teamSlug ?? "";
     return instance(accountId, "convex-team", String(teamId), slug || `Team ${teamId}`, {
