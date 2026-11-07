@@ -24,7 +24,7 @@ import {
   type ApiBody,
 } from "@infrawrench/plugin-base";
 import type { EcContext } from "./api.js";
-import { createEcContext, isProjectType, statusOf, VENDOR } from "./api.js";
+import { createEcContext, isProjectType, onlyPage, statusOf, VENDOR } from "./api.js";
 import type { operations as BillingOperations } from "./api-types.billing.gen.js";
 import type { operations as ServerlessOperations } from "./api-types.serverless.gen.js";
 import {
@@ -283,7 +283,7 @@ export class ElasticCloudClient implements PluginClient {
     try {
       const path = `/api/v1/serverless/projects/${pathEncode(type)}` as const;
       const res = await this.ctx.projects.get(path);
-      return requireListPage<EcProject>(res.items, { vendor: VENDOR, path, key: "items" });
+      return onlyPage<EcProject>(res, res.items, { path, key: "items" });
     } catch (err) {
       const s = statusOf(err);
       if (s === 403 || s === 404) return [];

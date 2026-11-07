@@ -101,6 +101,46 @@ describe("ElasticCloudClient listing", () => {
       await expect(c.listResources(typeId, "acct")).rejects.toThrow("is not a list");
     });
 
+    it.each([
+      ["organization", "/api/v1/organizations", { organizations: [{ id: "org1" }] }],
+      ["project", "/api/v1/serverless/projects/security", { items: [{ id: "p" }] }],
+    ])("fails a %s list that says it has another page", async (typeId, path, body) => {
+      const { c, calls } = client((url) =>
+        url.pathname === path ? { body: { ...body, next_page: "t1" } } : { body: { items: [] } },
+      );
+      await expect(c.listResources(typeId, "acct")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls.filter((x) => x.url.pathname === path)).toHaveLength(1);
+    });
+
+    it.each([
+      ["organization", "/api/v1/organizations", { organizations: [{ id: "org1" }] }],
+      ["project", "/api/v1/serverless/projects/security", { items: [{ id: "p" }] }],
+    ])("keeps a %s list whose next_page is empty", async (typeId, path, body) => {
+      for (const next_page of [null, ""]) {
+        const { c } = client((url) =>
+          url.pathname === path ? { body: { ...body, next_page } } : { body: { items: [] } },
+        );
+        await expect(c.listResources(typeId, "acct")).resolves.toHaveLength(1);
+      }
+    });
+
+    it("does not read a project list with another page as none while labelling budgets", async () => {
+      const { c } = client((url) => {
+        if (url.pathname === "/api/v1/serverless/projects/vectordb") {
+          return { body: { items: [{ id: "p" }], next_page: "t1" } };
+        }
+        if (url.pathname === "/api/v1/organizations") return { body: orgs };
+        if (url.pathname.endsWith("/budgets")) return { body: [] };
+        if (url.pathname === "/api/v1/deployments") return { body: { deployments: [] } };
+        return { body: { items: [] } };
+      });
+      await expect(c.listResources("budget", "acct")).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+
     it("fails a budget list that is not an array", async () => {
       const { c } = client((url) => {
         if (url.pathname === "/api/v1/organizations") return { body: orgs };

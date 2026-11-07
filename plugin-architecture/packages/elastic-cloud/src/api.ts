@@ -1,5 +1,7 @@
 import {
   createApiClient,
+  ListTruncatedError,
+  requireListPage,
   type ApiClient,
   type ApiResponse,
   type HttpHostServices,
@@ -129,6 +131,28 @@ export function createEcContext(options: {
       httpError: httpError(""),
     }),
   };
+}
+
+/**
+ * The list of a route that can answer `next_page` while its document names no way to
+ * send it back. A token means rows this read cannot reach, so the page is not used as
+ * the whole list. Actually following it waits on a live check: #678.
+ */
+export function onlyPage<T>(
+  body: { next_page?: string | null | undefined },
+  list: readonly T[] | null | undefined,
+  place: { path: string; key: string },
+): T[] {
+  const rows = requireListPage(list, { vendor: VENDOR, ...place });
+  if (body.next_page) {
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path: place.path,
+      items: rows.length,
+      maxPages: 1,
+    });
+  }
+  return rows;
 }
 
 /** HTTP status of a failed call, or 0 for a transport error. */

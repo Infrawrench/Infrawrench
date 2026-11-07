@@ -215,6 +215,15 @@ describe("fetchElasticCostData", () => {
     await expect(fetchElasticCostData(ctxWith(http), oneDay, NOW)).resolves.toEqual([]);
   });
 
+  it("fails when the organization list has another page, for costs and for credits", async () => {
+    const { http } = makeHttp(() => ({
+      body: { organizations: [{ id: "org1" }], next_page: "t1" },
+    }));
+    const more = "has more than Infrawrench reads";
+    await expect(fetchElasticCostData(ctxWith(http), oneDay, NOW)).rejects.toThrow(more);
+    await expect(fetchElasticCreditBalance(ctxWith(http), NOW)).rejects.toThrow(more);
+  });
+
   it("fails when the organization list is renamed, for costs and for credits", async () => {
     const { http } = makeHttp(() => ({ body: { orgs: [{ id: "org1" }] } }));
     await expect(fetchElasticCostData(ctxWith(http), oneDay, NOW)).rejects.toThrow("is not a list");
