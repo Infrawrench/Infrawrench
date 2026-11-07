@@ -367,9 +367,24 @@ export class AlgoliaClient implements PluginClient {
     const path = "/1/crawlers";
     const out: AlCrawlerRow[] = [];
     for (let page = 1; page <= MAX_CRAWLER_PAGES; page++) {
-      const res = await this.api.crawler.get(path, {
-        query: { appID: this.api.creds.appId, page, itemsPerPage: CRAWLER_PAGE_SIZE },
-      });
+      const res = await this.api.crawler
+        .get(path, {
+          query: { appID: this.api.creds.appId, page, itemsPerPage: CRAWLER_PAGE_SIZE },
+        })
+        .catch((e: unknown) => {
+          if (page > 1) throw e;
+          // Algolia's reference: a 404 here is "does not have results for this combination of
+          // query params", so an application with no crawlers must not fail. A 404 could also
+          // be a moved route, so the stored rows stay rather than being pruned; the desktop
+          // prunes nothing, so there it reads as the none it says.
+          if (isStatus(e, 404)) {
+            reportUnreadListPart({ idPrefixes: [""] });
+            return null;
+          }
+          if (isStatus(e, 403) && reportUnreadListPart({ idPrefixes: [""] })) return null;
+          throw e;
+        });
+      if (res === null) return [];
       // The document makes `items` and `total` optional. Only a stated 0 means none here.
       const rows = requireListPage(res?.items ?? (res?.total === 0 ? [] : undefined), {
         vendor: VENDOR,

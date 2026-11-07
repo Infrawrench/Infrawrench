@@ -450,6 +450,59 @@ describe("lists that cannot say they are complete", () => {
     });
   });
 
+  describe("a crawler list answering 404", () => {
+    const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    });
+
+    it("keeps the stored crawlers without failing the type on the first page", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const { http, c } = client(crawlerCreds);
+      http.route("GET", CRAWLERS, respond(404, { message: "No results" }));
+      await expect(c.listResources("crawler", ACCOUNT)).resolves.toEqual([]);
+      expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+      expect(on(http, CRAWLERS)).toHaveLength(1);
+    });
+
+    it("reads as none on a host that prunes nothing", async () => {
+      const { http, c } = client(crawlerCreds);
+      http.route("GET", CRAWLERS, respond(404, { message: "No results" }));
+      await expect(c.listResources("crawler", ACCOUNT)).resolves.toEqual([]);
+    });
+
+    it("still fails the type past the first page", async () => {
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      const { http, c } = client(crawlerCreds);
+      http.route("GET", CRAWLERS, (call: { url: URL }) =>
+        call.url.searchParams.get("page") === "2"
+          ? respond(404, { message: "No results" })
+          : { items: rows(100), total: 105 },
+      );
+      for (const row of rows(100)) http.route("GET", `${CRAWLERS}/${row.id}`, { name: row.id });
+      await expect(c.listResources("crawler", ACCOUNT)).rejects.toThrow("No results");
+      expect(unread).not.toHaveBeenCalled();
+    });
+
+    it.each([401, 429, 500])("still fails the type on a %i", async (status) => {
+      const { http, c } = client(crawlerCreds);
+      http.route("GET", CRAWLERS, respond(status, { message: "try again" }));
+      await expect(c.listResources("crawler", ACCOUNT)).rejects.toThrow("try again");
+    });
+
+    it("keeps the stored crawlers quietly on a 403, and shows it where a host keeps no track", async () => {
+      const { http, c } = client(crawlerCreds);
+      http.route("GET", CRAWLERS, respond(403, { message: "Forbidden" }));
+      await expect(c.listResources("crawler", ACCOUNT)).rejects.toThrow("Forbidden");
+      const unread = vi.fn();
+      Reflect.set(globalThis, UNREAD_HOOK, unread);
+      await expect(c.listResources("crawler", ACCOUNT)).resolves.toEqual([]);
+      expect(unread).toHaveBeenCalledWith({ idPrefixes: [""] });
+    });
+  });
+
   it("walks crawlers by page until the reported total", async () => {
     const { http, c } = client(crawlerCreds);
     http.route("GET", CRAWLERS, (call: { url: URL }) =>
