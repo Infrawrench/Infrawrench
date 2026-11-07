@@ -300,6 +300,127 @@ describe("DatadogClient", () => {
   });
 });
 
+describe("synthetic test charts", () => {
+  const range = { startMs: 1_000, endMs: 2_000 };
+
+  function synthetics(type: string, results: unknown[]) {
+    return client((url) => {
+      if (url.pathname.endsWith("/results")) return { body: { results } };
+      return { body: { public_id: "abc-def", type, name: "Check" } };
+    });
+  }
+
+  it("charts a browser test's duration, errors and failed runs", async () => {
+    const { c, calls } = synthetics("browser", [
+      {
+        check_time: 300,
+        probe_dc: "aws:eu-west-1",
+        result: { duration: 900, errorCount: 2, stepCountCompleted: 3, stepCountTotal: 5 },
+      },
+      {
+        check_time: 100,
+        probe_dc: "aws:eu-west-1",
+        result: { duration: 800, errorCount: 0, stepCountCompleted: 5, stepCountTotal: 5 },
+      },
+      {
+        check_time: 200,
+        probe_dc: "aws:us-east-1",
+        result: { duration: 700, errorCount: 0, stepCountCompleted: 5, stepCountTotal: 5 },
+      },
+    ]);
+    const series = await c.fetchMetricSeries!(
+      "synthetics-test",
+      "acc:synthetics-test:abc-def",
+      ACCOUNT,
+      range,
+    );
+    const results = calls.find((x) => x.url.pathname.endsWith("/results"))!;
+    expect(results.url.pathname).toBe("/api/v1/synthetics/tests/browser/abc-def/results");
+    expect(series).toEqual([
+      {
+        label: "Duration (aws:eu-west-1)",
+        unit: "ms",
+        points: [
+          { timestamp: 100, value: 800 },
+          { timestamp: 300, value: 900 },
+        ],
+      },
+      { label: "Duration (aws:us-east-1)", unit: "ms", points: [{ timestamp: 200, value: 700 }] },
+      {
+        label: "Errors",
+        points: [
+          { timestamp: 100, value: 0 },
+          { timestamp: 200, value: 0 },
+          { timestamp: 300, value: 2 },
+        ],
+      },
+      {
+        label: "Failed runs",
+        points: [
+          { timestamp: 100, value: 0 },
+          { timestamp: 200, value: 0 },
+          { timestamp: 300, value: 1 },
+        ],
+      },
+    ]);
+  });
+
+  it("leaves out a browser test's errors and failures when it has none", async () => {
+    const { c } = synthetics("browser", [
+      {
+        check_time: 100,
+        result: { duration: 800, errorCount: 0, stepCountCompleted: 5, stepCountTotal: 5 },
+      },
+    ]);
+    const series = await c.fetchMetricSeries!(
+      "synthetics-test",
+      "acc:synthetics-test:abc-def",
+      ACCOUNT,
+      range,
+    );
+    expect(series.map((s) => s.label)).toEqual(["Duration (all)"]);
+  });
+
+  it("still charts an API test's response time and failed runs", async () => {
+    const { c, calls } = synthetics("api", [
+      {
+        check_time: 200,
+        probe_dc: "aws:eu-west-1",
+        result: { passed: false, timings: { total: 90 } },
+      },
+      {
+        check_time: 100,
+        probe_dc: "aws:eu-west-1",
+        result: { passed: true, timings: { total: 40 } },
+      },
+    ]);
+    const series = await c.fetchMetricSeries!(
+      "synthetics-test",
+      "acc:synthetics-test:abc-def",
+      ACCOUNT,
+      range,
+    );
+    expect(calls.at(-1)!.url.pathname).toBe("/api/v1/synthetics/tests/abc-def/results");
+    expect(series).toEqual([
+      {
+        label: "Response time (aws:eu-west-1)",
+        unit: "ms",
+        points: [
+          { timestamp: 100, value: 40 },
+          { timestamp: 200, value: 90 },
+        ],
+      },
+      {
+        label: "Failed runs",
+        points: [
+          { timestamp: 100, value: 0 },
+          { timestamp: 200, value: 1 },
+        ],
+      },
+    ]);
+  });
+});
+
 describe("policy template", () => {
   it("lists the scopes for the chosen capabilities", () => {
     const t = datadogPolicyTemplate(["costs", "hosts"]);

@@ -9,12 +9,14 @@
  *   Metric SLOs return numerator/denominator series; monitor and time-slice
  *   SLOs return an uptime history of `[seconds, 0|1]` pairs per monitor.
  * - Synthetic tests: `GET /api/v1/synthetics/tests/{id}/results`, the last
- *   results per location with timings and a pass flag.
+ *   results per location with timings and a pass flag. Browser tests have their
+ *   own route, whose results carry a duration, an error count and step counts.
  * - Organizations: `GET /api/v2/usage/hourly_usage` by product family.
  */
 
 import { pathEncode, type MetricSeries, type MetricSeriesPoint } from "@infrawrench/plugin-base";
 import type { DatadogContext } from "./api.js";
+import type { components } from "./api-types.v1.gen.js";
 import { productLabel } from "./products.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -202,6 +204,74 @@ export async function sloSeries(
   return out;
 }
 
+type SyntheticsApiResult = components["schemas"]["SyntheticsAPITestResultShort"];
+type SyntheticsBrowserResult = components["schemas"]["SyntheticsBrowserTestResultShort"];
+
+const byTime = (points: MetricSeriesPoint[]) => points.sort((a, b) => a.timestamp - b.timestamp);
+
+/** One series per location, in the order the locations first appear. */
+function perLocation(label: string, runs: Map<string, MetricSeriesPoint[]>): MetricSeries[] {
+  return [...runs].map(([loc, points]) => ({
+    label: `${label} (${loc})`,
+    unit: "ms",
+    points: byTime(points),
+  }));
+}
+
+function addRun(
+  runs: Map<string, MetricSeriesPoint[]>,
+  location: string | undefined,
+  point: MetricSeriesPoint,
+): void {
+  const loc = location ?? "all";
+  runs.set(loc, [...(runs.get(loc) ?? []), point]);
+}
+
+/** A series that is all zeros says nothing, so it is left out. */
+function whenNonZero(label: string, points: MetricSeriesPoint[]): MetricSeries[] {
+  return points.some((p) => p.value > 0) ? [{ label, points: byTime(points) }] : [];
+}
+
+function apiTestSeries(results: SyntheticsApiResult[]): MetricSeries[] {
+  const times = new Map<string, MetricSeriesPoint[]>();
+  const failures: MetricSeriesPoint[] = [];
+  for (const { check_time: timestamp, probe_dc, result } of results) {
+    if (typeof timestamp !== "number") continue;
+    const total = result?.timings?.total;
+    if (typeof total === "number") addRun(times, probe_dc, { timestamp, value: total });
+    failures.push({ timestamp, value: result?.passed === false ? 1 : 0 });
+  }
+  return [...perLocation("Response time", times), ...whenNonZero("Failed runs", failures)];
+}
+
+/**
+ * A browser test's result has no pass flag. `stepCountCompleted` is documented as the
+ * steps completed before failing, so a run that stops short of `stepCountTotal` failed.
+ * `errorCount` is charted on its own: a run can collect errors and still pass.
+ */
+function browserTestSeries(results: SyntheticsBrowserResult[]): MetricSeries[] {
+  const durations = new Map<string, MetricSeriesPoint[]>();
+  const errors: MetricSeriesPoint[] = [];
+  const failures: MetricSeriesPoint[] = [];
+  for (const { check_time: timestamp, probe_dc, result } of results) {
+    if (typeof timestamp !== "number") continue;
+    if (typeof result?.duration === "number") {
+      addRun(durations, probe_dc, { timestamp, value: result.duration });
+    }
+    if (typeof result?.errorCount === "number") {
+      errors.push({ timestamp, value: result.errorCount });
+    }
+    const { stepCountCompleted: completed, stepCountTotal: total } = result ?? {};
+    const failed = typeof completed === "number" && typeof total === "number" && completed < total;
+    failures.push({ timestamp, value: failed ? 1 : 0 });
+  }
+  return [
+    ...perLocation("Duration", durations),
+    ...whenNonZero("Errors", errors),
+    ...whenNonZero("Failed runs", failures),
+  ];
+}
+
 export async function syntheticsSeries(
   ctx: DatadogContext,
   publicId: string,
@@ -209,44 +279,13 @@ export async function syntheticsSeries(
   range: TimeRange,
 ): Promise<MetricSeries[]> {
   const query = { from_ts: range.startMs, to_ts: range.endMs };
-  // Browser tests read results from their own route.
-  const res =
-    type === "browser"
-      ? await ctx.v1.get(`/api/v1/synthetics/tests/browser/${pathEncode(publicId)}/results`, {
-          query,
-        })
-      : await ctx.v1.get(`/api/v1/synthetics/tests/${pathEncode(publicId)}/results`, { query });
-  const byLocation = new Map<string, MetricSeriesPoint[]>();
-  const failures: MetricSeriesPoint[] = [];
-  for (const r of res.results ?? []) {
-    if (typeof r.check_time !== "number") continue;
-    // Only an API test's result says these; a browser test's has neither (#459).
-    const { result } = r;
-    const outcome =
-      typeof result === "object" && result !== null && ("timings" in result || "passed" in result)
-        ? result
-        : undefined;
-    const total = outcome?.timings?.total;
-    if (typeof total === "number") {
-      const loc = r.probe_dc ?? "all";
-      const list = byLocation.get(loc) ?? [];
-      list.push({ timestamp: r.check_time, value: total });
-      byLocation.set(loc, list);
-    }
-    failures.push({ timestamp: r.check_time, value: outcome?.passed === false ? 1 : 0 });
+  const id = pathEncode(publicId);
+  if (type === "browser") {
+    const res = await ctx.v1.get(`/api/v1/synthetics/tests/browser/${id}/results`, { query });
+    return browserTestSeries(res.results ?? []);
   }
-  const out: MetricSeries[] = [];
-  for (const [loc, points] of byLocation) {
-    out.push({
-      label: `Response time (${loc})`,
-      unit: "ms",
-      points: points.sort((a, b) => a.timestamp - b.timestamp),
-    });
-  }
-  if (failures.some((p) => p.value > 0)) {
-    out.push({ label: "Failed runs", points: failures.sort((a, b) => a.timestamp - b.timestamp) });
-  }
-  return out;
+  const res = await ctx.v1.get(`/api/v1/synthetics/tests/${id}/results`, { query });
+  return apiTestSeries(res.results ?? []);
 }
 
 /** Product families charted on an organization; the ones most bills are made of. */
