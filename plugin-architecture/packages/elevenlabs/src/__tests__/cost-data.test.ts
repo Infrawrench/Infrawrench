@@ -471,7 +471,7 @@ describe("fetchElevenLabsCostData — fallback to the deprecated endpoint", () =
   });
 });
 
-describe("fetchElevenLabsCostData — an answer that cannot say what was spent", () => {
+describe("fetchElevenLabsCostData: an answer that cannot say what was spent", () => {
   const noRows = {
     columns: ["time", "fiat_units_spent"],
     column_types: ["DateTime", "Float"],
