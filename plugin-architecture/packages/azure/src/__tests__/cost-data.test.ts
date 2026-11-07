@@ -884,6 +884,31 @@ describe("fetchAzureCostData blended basis", () => {
     ).toMatchObject({ totalQuantity: { name: "UsageQuantity", function: "Sum" } });
   });
 
+  it("asks for retail prices through the host when there is one", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("no direct calls"));
+    const request = vi.fn(async (_req: { url: string }) => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({
+        Items: [{ meterId: "m-1", retailPrice: 3, tierMinimumUnits: 0, type: "Consumption" }],
+        NextPageLink: null,
+      }),
+    }));
+    const { ctx } = ctxFor([
+      ...basePasses(),
+      page({
+        columns: METER_COLUMNS,
+        rows: [[30, 30, 20260701, "Virtual Machines", "m-1", "USD"]],
+      }),
+      page({ columns: OD_METER_COLUMNS, rows: [] }),
+    ]);
+
+    await fetchAzureCostData({ ...ctx, http: { request } }, RANGE);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(request.mock.calls[0]![0].url).toContain("prices.azure.com/api/retail/prices");
+  });
+
   it("prices a meter never run on demand from the public retail price list", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

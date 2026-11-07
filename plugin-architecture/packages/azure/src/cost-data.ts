@@ -245,6 +245,8 @@
  * amortized rather than as a guess.
  */
 
+import type { HttpHostServices } from "@infrawrench/plugin-base";
+import { azureRequest } from "./http.js";
 import {
   blendCommitmentPools,
   type BlendMember,
@@ -724,6 +726,7 @@ const RETAIL_PRICES_URL = "https://prices.azure.com/api/retail/prices";
  * filter is a URL parameter.
  */
 async function retailMeterPrices(
+  http: HttpHostServices | undefined,
   meterIds: string[],
   currency: string,
 ): Promise<Map<string, number>> {
@@ -739,12 +742,12 @@ async function retailMeterPrices(
     // Lowest tier per meter: tiered meters start at tierMinimumUnits 0.
     const tier = new Map<string, number>();
     while (url) {
-      const res = await fetch(url);
+      const res = await azureRequest(http, url);
       if (!res.ok) throw new Error(`Azure retail prices ${res.status}`);
-      const data = (await res.json()) as {
+      const data = await res.json<{
         Items?: Array<{ meterId?: string; retailPrice?: number; tierMinimumUnits?: number }>;
         NextPageLink?: string | null;
-      };
+      }>();
       for (const item of data.Items ?? []) {
         const id = item.meterId?.toLowerCase();
         const price = Number(item.retailPrice);
@@ -858,7 +861,7 @@ async function blendedAmounts(
     if (unpriced.length > 0) {
       try {
         const currency = covered[0]!.currency;
-        for (const [id, price] of await retailMeterPrices(unpriced, currency)) {
+        for (const [id, price] of await retailMeterPrices(ctx.http, unpriced, currency)) {
           if (price > 0) meterPrice.set(id, price);
         }
       } catch {

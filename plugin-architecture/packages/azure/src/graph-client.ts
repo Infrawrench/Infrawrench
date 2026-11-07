@@ -8,7 +8,16 @@
  * `Client` for a sequence of requests, or call `makeGraphClient(...)` once per
  * call site.
  */
-import { Client } from "@microsoft/microsoft-graph-client";
+import { hostFetch, type HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  AuthenticationHandler,
+  Client,
+  CustomAuthenticationProvider,
+  RetryHandler,
+  type AuthProvider,
+  type Context,
+  type Middleware,
+} from "@microsoft/microsoft-graph-client";
 
 interface GraphTokenProvider {
   graphToken(): Promise<string>;
@@ -20,13 +29,32 @@ interface GraphTokenProvider {
  * caching and refresh itself (the AzureClient already wraps
  * `fetchGraphAccessToken` in a per-instance cache).
  */
-export function makeGraphClient(tokenProvider: GraphTokenProvider): Client {
-  return Client.init({
-    authProvider: (done) => {
-      tokenProvider
-        .graphToken()
-        .then((token) => done(null, token))
-        .catch((err) => done(err as Error, null));
+export function makeGraphClient(
+  tokenProvider: GraphTokenProvider,
+  http?: HttpHostServices,
+): Client {
+  const authProvider: AuthProvider = (done) => {
+    tokenProvider
+      .graphToken()
+      .then((token) => done(null, token))
+      .catch((err) => done(err as Error, null));
+  };
+  if (!http) return Client.init({ authProvider });
+
+  const auth = new AuthenticationHandler(new CustomAuthenticationProvider(authProvider));
+  const retry = new RetryHandler();
+  auth.setNext(retry);
+  retry.setNext(hostHandler(http));
+  return Client.initWithMiddleware({ middleware: auth });
+}
+
+/** The end of the SDK's middleware chain: its requests, through the host's HTTP service. */
+function hostHandler(http: HttpHostServices): Middleware {
+  return {
+    execute: async (context: Context) => {
+      const { request, options } = context;
+      const url = typeof request === "string" ? request : request.url;
+      context.response = await hostFetch({ http }, url, options);
     },
-  });
+  };
 }

@@ -117,10 +117,9 @@ export class AzureClient implements PluginClient {
   /**
    * Host services, when the host provides them. Every Azure request this
    * client makes (ARM, the AAD token endpoint, Blob Storage, ACR, the
-   * Service Bus / Event Hubs data plane, Retail Prices) goes through
-   * `services.http` when it is present, which is what makes per-account
-   * bastion routing and custom CA trust reach Azure. See `http.ts`. The one
-   * exception is Microsoft Graph, which the vendor SDK transports itself.
+   * Service Bus / Event Hubs data plane, Retail Prices, Microsoft Graph) goes
+   * through `services.http` when it is present, which is what makes per-account
+   * bastion routing and custom CA trust reach Azure. See `http.ts`.
    */
   private readonly services: HostServices | undefined;
   private tokenCache: TokenCache | null = null;
@@ -288,7 +287,7 @@ export class AzureClient implements PluginClient {
    * provider, so this matches the lifecycle of the previous helper).
    */
   private get graphClient() {
-    return makeGraphClient({ graphToken: () => this.graphToken() });
+    return makeGraphClient({ graphToken: () => this.graphToken() }, this.http);
   }
 
   // ─── Context builders ──────────────────────────────────────────────────

@@ -59,6 +59,7 @@ export const manifest = {
     "*.microsoftonline.com",
     "management.azure.com",
     "login.microsoftonline.com",
+    "graph.microsoft.com",
   ],
   displayName: "Microsoft Azure",
   description:
