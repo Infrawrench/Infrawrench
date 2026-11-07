@@ -16,8 +16,13 @@ import type {
   ResourceTypeDefinition,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { pathEncode, QuotaAccessError, withMetricsCapability } from "@infrawrench/plugin-base";
-import { collectPages, errorText, isStatus, PineconeApi } from "./api.js";
+import {
+  pathEncode,
+  QuotaAccessError,
+  requireListPage,
+  withMetricsCapability,
+} from "@infrawrench/plugin-base";
+import { errorText, isStatus, PineconeApi } from "./api.js";
 import {
   externalOf,
   mapApiKey,
@@ -78,12 +83,6 @@ export const API_KEY_VALUE_FIELD = "apiKeyValue";
 export const CLIENT_SECRET_FIELD = "clientSecret";
 
 const enc = pathEncode;
-
-/** The query of one page of a list, starting from no token. */
-const pageQuery = (token: string | undefined) => ({
-  limit: 100,
-  ...(token ? { paginationToken: token } : {}),
-});
 
 function str(v: unknown): string {
   return v === undefined || v === null ? "" : String(v).trim();
@@ -226,7 +225,12 @@ export class PineconeClient implements PluginClient {
 
   indexes(): Promise<PcIndex[]> {
     this.indexCache = cached(this.indexCache, INDEX_TTL_MS, () =>
-      this.api.control.get("/indexes").then((r): PcIndex[] => r?.indexes ?? []),
+      // The document's example for a project with none is `indexes: []`, not a missing key.
+      this.api.control
+        .get("/indexes")
+        .then((r): PcIndex[] =>
+          requireListPage(r?.indexes, { vendor: "Pinecone", path: "/indexes", key: "indexes" }),
+        ),
     );
     return this.indexCache.value;
   }
@@ -244,7 +248,11 @@ export class PineconeClient implements PluginClient {
 
   projects(): Promise<PcProject[]> {
     this.projectCache = cached(this.projectCache, CATALOG_TTL_MS, () =>
-      this.api.admin.get("/admin/projects").then((r) => r?.data ?? []),
+      this.api.admin
+        .get("/admin/projects")
+        .then((r) =>
+          requireListPage(r?.data, { vendor: "Pinecone", path: "/admin/projects", key: "data" }),
+        ),
     );
     return this.projectCache.value;
   }
@@ -253,42 +261,26 @@ export class PineconeClient implements PluginClient {
     return this.api.control.get(`/indexes/${enc(name)}`);
   }
 
-  private async listBackups(): Promise<PcBackup[]> {
-    return collectPages((token) => this.api.control.get("/backups", { query: pageQuery(token) }));
+  private async listBackups(partial = false): Promise<PcBackup[]> {
+    return this.api.backups.getAll("/backups", "data", { partial });
   }
 
   private async listSchedules(indexName: string): Promise<PcBackupSchedule[]> {
-    return collectPages((token) =>
-      this.api.control.get(`/indexes/${enc(indexName)}/backup-schedules`, {
-        query: pageQuery(token),
-      }),
-    );
+    return this.api.control.getAll(`/indexes/${enc(indexName)}/backup-schedules`, "data");
   }
 
   private async listAssistants(): Promise<PcAssistant[]> {
-    const out: PcAssistant[] = [];
-    let token: string | undefined;
-    for (let page = 0; page < 20; page++) {
-      const res = await this.api.assistants.get("/assistants", {
-        query: { limit: 100, ...(token ? { pagination_token: token } : {}) },
-      });
-      out.push(...(res?.assistants ?? []));
-      const next = res?.pagination?.next;
-      if (!next || next === token) break;
-      token = next;
-    }
-    return out;
+    return this.api.assistants.getAll("/assistants", "assistants");
   }
 
   private async listServiceAccounts(): Promise<PcServiceAccount[]> {
-    return collectPages((token) =>
-      this.api.admin.get("/admin/service-accounts", { query: pageQuery(token) }),
-    );
+    return this.api.admin.getAll("/admin/service-accounts", "data");
   }
 
   private async projectApiKeys(project: PcProject) {
-    const res = await this.api.admin.get(`/admin/projects/${enc(project.id)}/api-keys`);
-    return res?.data ?? [];
+    const path = `/admin/projects/${enc(project.id)}/api-keys` as const;
+    const res = await this.api.admin.get(path);
+    return requireListPage(res?.data, { vendor: "Pinecone", path, key: "data" });
   }
 
   // ── Listing ──────────────────────────────────────────────────────────
@@ -300,7 +292,12 @@ export class PineconeClient implements PluginClient {
           return (await this.indexes()).map((i) => mapIndex(i, accountId));
         case "collection": {
           const res = await this.api.control.get("/collections");
-          return (res?.collections ?? []).map((c) => mapCollection(c, accountId));
+          // The document's example for a project with none is `collections: []`.
+          return requireListPage(res?.collections, {
+            vendor: "Pinecone",
+            path: "/collections",
+            key: "collections",
+          }).map((c) => mapCollection(c, accountId));
         }
         case "backup":
           return (await this.listBackups()).map((b) => mapBackup(b, accountId));
@@ -321,9 +318,7 @@ export class PineconeClient implements PluginClient {
           return lists.flat();
         }
         case "restore-job": {
-          const jobs = await collectPages((token) =>
-            this.api.control.get("/restore-jobs", { query: pageQuery(token) }),
-          );
+          const jobs = await this.api.control.getAll("/restore-jobs", "data");
           return jobs.map((j) => mapRestoreJob(j, accountId));
         }
         case "assistant":
@@ -453,7 +448,8 @@ export class PineconeClient implements PluginClient {
             ? fetchIndexStats(this.api, host).catch(() => null)
             : Promise.resolve(null),
           isPod ? Promise.resolve([]) : this.listSchedules(id).catch(() => []),
-          isPod ? Promise.resolve([]) : this.listBackups().catch(() => []),
+          // Only 50 of this index's are shown, so a project past the cap still has something to show.
+          isPod ? Promise.resolve([]) : this.listBackups(true).catch(() => []),
         ]);
         if (stats) {
           const rows: NamespaceRow[] = Object.entries(stats.namespaces ?? {})
@@ -486,13 +482,9 @@ export class PineconeClient implements PluginClient {
           );
         }
       } else if (resource.resourceTypeId === "backup-schedule") {
-        const history = await collectPages(
-          (token) =>
-            this.api.control.get(`/backup-schedules/${enc(id)}/history`, {
-              query: pageQuery(token),
-            }),
-          3,
-        ).catch(() => []);
+        const history = await this.api.control
+          .getAll(`/backup-schedules/${enc(id)}/history`, "data", { maxPages: 3, partial: true })
+          .catch(() => []);
         if (history.length) {
           fields[ENRICH_HISTORY] = JSON.stringify(
             history.slice(0, 50).map((b) => ({
@@ -507,10 +499,8 @@ export class PineconeClient implements PluginClient {
       } else if (resource.resourceTypeId === "assistant") {
         const host = String(fields["host"] ?? "");
         if (host) {
-          const files = await this.api
-            .listAssistantFiles(host, id)
-            .then((r) => r?.files ?? [])
-            .catch(() => null);
+          // Past the cap this throws: no count is better than a short one.
+          const files = await this.api.listAssistantFiles(host, id).catch(() => null);
           if (files) {
             fields["fileCount"] = files.length;
             fields[ENRICH_FILES] = JSON.stringify(

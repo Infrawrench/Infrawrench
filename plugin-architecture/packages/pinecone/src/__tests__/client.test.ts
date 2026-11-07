@@ -2,7 +2,14 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { PineconeApiError } from "../api.js";
 import { buildConfigurePatch, parseMetadata, parseRoles, PineconeClient } from "../client.js";
-import { indexShape, mapIndex, parseTags, tagPatch } from "../mappers.js";
+import {
+  indexShape,
+  mapAssistant,
+  mapBackupSchedule,
+  mapIndex,
+  parseTags,
+  tagPatch,
+} from "../mappers.js";
 import { parsePrometheusText, prometheusSeries } from "../metrics.js";
 import { RESOURCE_TYPES } from "../resource-types.js";
 import { mapComponent, parseStatusFeed } from "../status-feed.js";
@@ -94,6 +101,213 @@ describe("transport", () => {
     );
     const list = await c.listResources("backup", ACCOUNT);
     expect(list.map((b) => b.externalId)).toEqual(["b1", "b2"]);
+  });
+
+  describe("lists that cannot say they are complete (#384)", () => {
+    const admin = { clientId: "cid", clientSecret: "secret" };
+    const withToken = (http: ReturnType<typeof fakeHttp>) =>
+      http.route("POST", "login.pinecone.io/oauth/token", { access_token: "t", expires_in: 1800 });
+
+    /** A route that always has another page, numbering its cursors so none repeats. */
+    const endless = (key: string, cursor: string) => (call: { url: URL }) => ({
+      [key]: [{ backup_id: "b", name: "x", restore_job_id: "r", id: "s" }],
+      pagination: { next: `${call.url.searchParams.get(cursor) ?? ""}n` },
+    });
+
+    const walks: [string, string, string, string, Record<string, string>][] = [
+      ["backup", "api.pinecone.io/backups", "data", "paginationToken", {}],
+      ["restore-job", "api.pinecone.io/restore-jobs", "data", "paginationToken", {}],
+      ["assistant", "api.pinecone.io/assistant/assistants", "assistants", "pagination_token", {}],
+      [
+        "service-account",
+        "api.pinecone.io/admin/service-accounts",
+        "data",
+        "paginationToken",
+        admin,
+      ],
+    ];
+
+    it.each(walks)("%s throws past 100 pages of 100", async (type, route, key, cursor, creds) => {
+      const { http, c } = client(creds);
+      withToken(http);
+      http.route("GET", route, endless(key, cursor));
+      await expect(c.listResources(type, ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      const pages = http.calls.filter((call) => `${call.url.host}${call.url.pathname}` === route);
+      expect(pages).toHaveLength(100);
+      expect(pages[0]!.url.searchParams.get("limit")).toBe("100");
+    });
+
+    it("throws for a backup schedule list past its cap", async () => {
+      const { http, c } = client();
+      http.route("GET", "api.pinecone.io/indexes", { indexes: [serverless] });
+      http.route(
+        "GET",
+        "api.pinecone.io/indexes/products/backup-schedules",
+        endless("data", "paginationToken"),
+      );
+      await expect(c.listResources("backup-schedule", ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+    });
+
+    it.each(walks)(
+      "%s refuses a page with its key renamed",
+      async (type, route, key, cursor, creds) => {
+        const { http, c } = client(creds);
+        withToken(http);
+        http.route("GET", route, { rows: [], [key]: "not a list" });
+        await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+
+        const later = client(creds);
+        withToken(later.http);
+        later.http.route("GET", route, (call: { url: URL }) =>
+          call.url.searchParams.get(cursor)
+            ? { [key]: { oops: true } }
+            : {
+                [key]: [{ backup_id: "b", restore_job_id: "r", id: "s", name: "x" }],
+                pagination: { next: "p2" },
+              },
+        );
+        await expect(later.c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+      },
+    );
+
+    it.each([
+      ["index", "api.pinecone.io/indexes", {}],
+      ["collection", "api.pinecone.io/collections", {}],
+      ["project", "api.pinecone.io/admin/projects", admin],
+      ["restore-job", "api.pinecone.io/restore-jobs", {}],
+      ["service-account", "api.pinecone.io/admin/service-accounts", admin],
+    ] as const)("%s refuses a 200 with its list left out", async (type, route, creds) => {
+      const { http, c } = client(creds);
+      withToken(http);
+      http.route("GET", route, { message: "try again" });
+      await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it.each([
+      ["index", "api.pinecone.io/indexes", {}],
+      ["collection", "api.pinecone.io/collections", {}],
+      ["backup", "api.pinecone.io/backups", {}],
+      ["assistant", "api.pinecone.io/assistant/assistants", {}],
+      ["project", "api.pinecone.io/admin/projects", admin],
+    ] as const)("%s refuses a 200 with no body", async (type, route, creds) => {
+      const { http, c } = client(creds);
+      withToken(http);
+      http.route("GET", route, respond(200, "", true));
+      await expect(c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("reads an api key list with no data as a failure, not as no keys", async () => {
+      const { http, c } = client(admin);
+      withToken(http);
+      http.route("GET", "api.pinecone.io/admin/projects", { data: [{ id: "p1", name: "Prod" }] });
+      http.route("GET", "api.pinecone.io/admin/projects/p1/api-keys", { message: "try again" });
+      await expect(c.listResources("api-key", ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it("takes the empty answers the document allows", async () => {
+      const { http, c } = client();
+      http.route("GET", "api.pinecone.io/indexes", { indexes: [] });
+      http.route("GET", "api.pinecone.io/collections", { collections: [] });
+      // Both documents leave the key optional and show no empty answer.
+      http.route("GET", "api.pinecone.io/backups", {});
+      http.route("GET", "api.pinecone.io/assistant/assistants", {});
+      for (const type of ["index", "collection", "backup", "assistant"]) {
+        expect(await c.listResources(type, ACCOUNT)).toEqual([]);
+      }
+    });
+
+    it("still reads a forbidden index's schedules as none, and throws on anything else", async () => {
+      const { http, c } = client();
+      http.route("GET", "api.pinecone.io/indexes", { indexes: [serverless] });
+      http.route(
+        "GET",
+        "api.pinecone.io/indexes/products/backup-schedules",
+        respond(403, { status: 403, error: { code: "FORBIDDEN", message: "no" } }),
+      );
+      expect(await c.listResources("backup-schedule", ACCOUNT)).toEqual([]);
+      http.route(
+        "GET",
+        "api.pinecone.io/indexes/products/backup-schedules",
+        respond(500, { status: 500, error: { code: "INTERNAL", message: "no" } }),
+      );
+      await expect(c.listResources("backup-schedule", ACCOUNT)).rejects.toThrow("500");
+    });
+
+    it("keeps three pages of a schedule's history in its detail view, without throwing", async () => {
+      const { http, c } = client();
+      http.route(
+        "GET",
+        "api.pinecone.io/backup-schedules/s1/history",
+        endless("data", "paginationToken"),
+      );
+      const detail = await c.enrichDetail(
+        mapBackupSchedule(
+          {
+            schedule_id: "s1",
+            index_id: "i",
+            name: "nightly",
+            frequency: "daily",
+            enabled: true,
+            created_at: "2026-01-01T00:00:00Z",
+            next_scheduled_run: null,
+            project_id: "p",
+            retention_expire_after_days: 7,
+            schedule_type: "time-based",
+          },
+          "products",
+          ACCOUNT,
+        ),
+      );
+      expect(JSON.parse(String(detail.fields["__history"]))).toHaveLength(3);
+      expect(http.calls).toHaveLength(3);
+    });
+
+    const assistant = mapAssistant(
+      { name: "helper", status: "Ready", host: "prod-1-data.ke.pinecone.io" },
+      ACCOUNT,
+    );
+    const filesRoute = "prod-1-data.ke.pinecone.io/files/helper";
+
+    it("counts every page of an assistant's files", async () => {
+      const { http, c } = client();
+      http.route("GET", filesRoute, (call: { url: URL }) =>
+        call.url.searchParams.get("pagination_token") === "p2"
+          ? { files: [{ id: "f2", name: "two.pdf" }] }
+          : { files: [{ id: "f1", name: "one.pdf" }], pagination: { next: "p2" } },
+      );
+      const detail = await c.enrichDetail(assistant);
+      expect(detail.fields["fileCount"]).toBe(2);
+      expect(http.calls.map((call) => call.url.searchParams.get("limit"))).toEqual(["100", "100"]);
+    });
+
+    it("shows no file count rather than a short one", async () => {
+      const { http, c } = client();
+      http.route("GET", filesRoute, endless("files", "pagination_token"));
+      const detail = await c.enrichDetail(assistant);
+      expect(detail.fields["fileCount"]).toBeUndefined();
+      expect(http.calls).toHaveLength(100);
+    });
+
+    it("still shows an index's own backups when the project has more than the cap", async () => {
+      const { http, c } = client();
+      http.route("GET", "api.pinecone.io/backups", (call: { url: URL }) => ({
+        data: [
+          {
+            backup_id: `b${call.url.searchParams.get("paginationToken") ?? ""}`,
+            source_index_name: "products",
+            status: "Ready",
+          },
+        ],
+        pagination: { next: `${call.url.searchParams.get("paginationToken") ?? ""}n` },
+      }));
+      http.route("GET", "api.pinecone.io/indexes/products/backup-schedules", { data: [] });
+      const detail = await c.enrichDetail(mapIndex({ ...serverless, status: {} }, ACCOUNT));
+      expect(JSON.parse(String(detail.fields["__backups"]))).toHaveLength(50);
+    });
   });
 
   it("exchanges service-account credentials once and uses the Bearer token for Admin calls", async () => {

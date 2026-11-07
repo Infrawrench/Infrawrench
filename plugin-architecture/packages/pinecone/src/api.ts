@@ -7,6 +7,7 @@ import {
   type ApiResponse,
   type HostServices,
   type RestResponse,
+  withCursorPagination,
 } from "@infrawrench/plugin-base";
 import type { paths as AdminPaths } from "./api-types.admin.gen.js";
 import type {
@@ -109,18 +110,66 @@ type HeaderMap = Record<string, string>;
 
 const JSON_HEADERS = { Accept: "application/json", "X-Pinecone-Api-Version": API_VERSION };
 
+/**
+ * 10,000 rows a list. The assistant routes document a maximum `limit` of 100; the
+ * control plane's default is 100 with no maximum given.
+ */
+const PAGING = {
+  sizeParam: "limit",
+  pageSize: 100,
+  maxPages: 100,
+  next: "pagination.next",
+} as const;
+
+function controlLists(client: ApiClient<ControlPaths>) {
+  return withCursorPagination(client, { ...PAGING, cursorParam: "paginationToken" });
+}
+
+function adminLists(client: ApiClient<AdminPaths>) {
+  return withCursorPagination(client, { ...PAGING, cursorParam: "paginationToken" });
+}
+
+// The `data` of BackupList, unlike the other control-plane lists, is optional in the document.
+function backupLists(client: ApiClient<ControlPaths>) {
+  return withCursorPagination(client, {
+    ...PAGING,
+    cursorParam: "paginationToken",
+    missingListIsEmpty: true,
+  });
+}
+
+// `assistants` is optional in the document, which shows no empty answer.
+function assistantLists(client: ApiClient<AssistantPaths>) {
+  return withCursorPagination(client, {
+    ...PAGING,
+    cursorParam: "pagination_token",
+    missingListIsEmpty: true,
+  });
+}
+
+// `files` is optional in the document, which shows no empty answer.
+function fileLists(client: ApiClient<AssistantDataPaths>) {
+  return withCursorPagination(client, {
+    ...PAGING,
+    cursorParam: "pagination_token",
+    missingListIsEmpty: true,
+  });
+}
+
 export class PineconeApi {
   private token: TokenCache | undefined;
   private tokenInFlight: Promise<string> | undefined;
 
   /** Control plane (`https://api.pinecone.io`), with the project API key. */
-  readonly control: ApiClient<ControlPaths>;
+  readonly control: ReturnType<typeof controlLists>;
+  /** The control plane again, for `/backups`, whose list key may be left out. */
+  readonly backups: ReturnType<typeof backupLists>;
   /** Inference model catalog (`https://api.pinecone.io`), with the project API key. */
   readonly inference: ApiClient<InferencePaths>;
   /** Assistant control plane (`https://api.pinecone.io/assistant`), with the project API key. */
-  readonly assistants: ApiClient<AssistantPaths>;
+  readonly assistants: ReturnType<typeof assistantLists>;
   /** Admin API, with a service-account access token. */
-  readonly admin: ApiClient<AdminPaths>;
+  readonly admin: ReturnType<typeof adminLists>;
 
   constructor(
     private readonly creds: PineconeCredentials,
@@ -130,13 +179,19 @@ export class PineconeApi {
     const key = creds.apiKey
       ? { "Api-Key": creds.apiKey }
       : () => ({ "Api-Key": this.requireKey() });
-    this.control = this.client<ControlPaths>(API_HOST, key);
+    const control = this.client<ControlPaths>(API_HOST, key);
+    this.control = controlLists(control);
+    this.backups = backupLists(control);
     this.inference = this.client<InferencePaths>(API_HOST, key);
     // The document's paths start at `/assistants`; errors have always named the whole path.
-    this.assistants = this.client<AssistantPaths>(`${API_HOST}/assistant`, key, "/assistant");
-    this.admin = this.client<AdminPaths>(API_HOST, async () => ({
-      Authorization: `Bearer ${await this.accessToken()}`,
-    }));
+    this.assistants = assistantLists(
+      this.client<AssistantPaths>(`${API_HOST}/assistant`, key, "/assistant"),
+    );
+    this.admin = adminLists(
+      this.client<AdminPaths>(API_HOST, async () => ({
+        Authorization: `Bearer ${await this.accessToken()}`,
+      })),
+    );
   }
 
   get hasApiKey(): boolean {
@@ -197,7 +252,7 @@ export class PineconeApi {
 
   async listAssistantFiles(host: string, assistant: string) {
     const path = `/files/${pathEncode(assistant)}` as const;
-    return this.onHost<AssistantDataPaths>(host, path).get(path);
+    return fileLists(this.onHost<AssistantDataPaths>(host, path)).getAll(path, "files");
   }
 
   async chatCompletion(
@@ -313,23 +368,4 @@ export function isStatus(err: unknown, ...statuses: number[]): boolean {
 
 export function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
-}
-
-/** Follow a `pagination.next` cursor (sent back as `paginationToken`) up to a page cap. */
-export async function collectPages<T>(
-  fetchPage: (
-    token: string | undefined,
-  ) => Promise<{ data?: T[]; pagination?: { next?: string } | null } | undefined>,
-  maxPages = 50,
-): Promise<T[]> {
-  const out: T[] = [];
-  let token: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
-    const res = await fetchPage(token);
-    out.push(...(res?.data ?? []));
-    const next = res?.pagination?.next;
-    if (!next || next === token) break;
-    token = next;
-  }
-  return out;
 }
