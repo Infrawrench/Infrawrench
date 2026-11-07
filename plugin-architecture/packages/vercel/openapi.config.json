@@ -1,0 +1,182 @@
+{
+  "specUrl": "https://openapi.vercel.sh/",
+  "patches": [
+    {
+      "pointer": "/components/schemas/FlagJSONValue",
+      "value": {
+        "nullable": true
+      },
+      "why": "A recursive union with no object around it is TS2502 once it is a property of `components`, and nothing reads a flag option's value."
+    },
+    {
+      "pointer": "/components/schemas/Team/properties/name",
+      "value": {
+        "type": "string"
+      },
+      "why": "Nullable in the document; the plugin has always used it as a display name without a fallback. Remove this when it gets one."
+    },
+    {
+      "pointer": "/components/schemas/TeamLimited/properties/name",
+      "value": {
+        "type": "string"
+      },
+      "why": "Nullable in the document; the plugin has always used it as a display name without a fallback. Remove this when it gets one."
+    },
+    {
+      "pointer": "/paths/~1v11~1projects/post/requestBody/content/application~1json/schema/properties/framework",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Vercel validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1v9~1projects~1{idOrName}/patch/requestBody/content/application~1json/schema/properties/framework",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Vercel validates whatever else arrives, so the plugin does not hold its own copy of the enum. Blank sends null, which the document's enum allows."
+    },
+    {
+      "pointer": "/paths/~1v9~1projects~1{idOrName}/patch/requestBody/content/application~1json/schema/properties/nodeVersion",
+      "value": {
+        "type": "string",
+        "nullable": true
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Vercel validates whatever else arrives, so the plugin does not hold its own copy of the enum. Blank sends null, which the document does not allow; reported as drift."
+    },
+    {
+      "pointer": "/paths/~1v9~1projects~1{idOrName}~1env~1{id}/patch/requestBody/content/application~1json/schema/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Vercel validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1v9~1projects~1{idOrName}~1env~1{id}/patch/requestBody/content/application~1json/schema/properties/target/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Vercel validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1v2~1domains~1{domain}~1records/post/requestBody/content/application~1json/schema",
+      "value": {
+        "type": "object",
+        "required": ["type", "name", "value"],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "ttl": {
+            "type": "number"
+          },
+          "mxPriority": {
+            "type": "number"
+          },
+          "comment": {
+            "type": "string"
+          }
+        }
+      },
+      "why": "The document is a union discriminated on `type`, which here comes from a form field. Every type the form offers takes this one flat shape."
+    },
+    {
+      "pointer": "/paths/~1v1~1webhooks/post/requestBody/content/application~1json/schema/properties/events/items",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and Vercel validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/paths/~1v1~1query~1web-analytics~1visits~1aggregate/get/responses/200/content/application~1json/schema/properties/data",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["timestamp"],
+          "properties": {
+            "timestamp": {
+              "type": "string"
+            },
+            "pageviews": {
+              "type": "number"
+            },
+            "visitors": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "why": "The document's rows have no counts at all, though its description says this counts pageviews. Also dropped: the rows of a non-time `by`, which the plugin never asks for."
+    },
+    {
+      "pointer": "/paths/~1v1~1query~1web-analytics~1events~1aggregate/get/responses/200/content/application~1json/schema/properties/data",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["timestamp"],
+          "properties": {
+            "timestamp": {
+              "type": "string"
+            },
+            "count": {
+              "type": "number"
+            },
+            "visitors": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "why": "As for visits: the document's rows have no counts, and the rows of a non-time `by` are never asked for."
+    },
+    {
+      "pointer": "/paths/~1v3~1deployments~1{idOrUrl}~1events/get/responses/200/content/application~1json/schema/items/nullable",
+      "value": false,
+      "why": "The plugin has never handled a null entry, so one fails the logs call. Remove this when it does."
+    }
+  ],
+  "paths": {
+    "/v10/projects": ["get"],
+    "/v9/projects/{idOrName}": ["get", "patch", "delete"],
+    "/v11/projects": ["post"],
+    "/v10/projects/{idOrName}/env": ["get", "post"],
+    "/v9/projects/{idOrName}/env/{id}": ["patch", "delete"],
+    "/v10/projects/{idOrName}/domains": ["post"],
+    "/v10/projects/{projectId}/promote/{deploymentId}": ["post"],
+    "/v1/projects/{projectId}/rollback/{deploymentId}": ["post"],
+    "/v1/projects/{projectId}/pause": ["post"],
+    "/v1/projects/{projectId}/unpause": ["post"],
+    "/v1/security/attack-mode": ["post"],
+    "/v7/deployments": ["get"],
+    "/v13/deployments": ["post"],
+    "/v13/deployments/{idOrUrl}": ["get"],
+    "/v13/deployments/{id}": ["delete"],
+    "/v12/deployments/{id}/cancel": ["patch"],
+    "/v3/deployments/{idOrUrl}/events": ["get"],
+    "/v5/domains": ["get"],
+    "/v7/domains": ["post"],
+    "/v6/domains/{domain}": ["delete"],
+    "/v6/domains/{domain}/config": ["get"],
+    "/v1/registrar/domains/{domain}/auto-renew": ["patch"],
+    "/v5/domains/{domain}/records": ["get"],
+    "/v2/domains/{domain}/records": ["post"],
+    "/v2/domains/{domain}/records/{recordId}": ["delete"],
+    "/v1/domains/records/{recordId}": ["patch"],
+    "/v2/teams": ["get"],
+    "/v1/teams": ["post"],
+    "/v1/webhooks": ["get", "post"],
+    "/v1/webhooks/{id}": ["get", "delete"],
+    "/v1/query/web-analytics/visits/aggregate": ["get"],
+    "/v1/query/web-analytics/events/aggregate": ["get"],
+    "/v1/billing/charges": ["get"]
+  }
+}

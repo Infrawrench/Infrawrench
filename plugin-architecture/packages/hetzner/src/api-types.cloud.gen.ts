@@ -886,34 +886,7 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ServiceHTTPProtocol: {
-            destination_port: number;
-            health_check: {
-                http?: {
-                    domain: string | null;
-                    path: string;
-                    response?: string;
-                    /**
-                     * @default [
-                     *       "2??",
-                     *       "3??"
-                     *     ]
-                     */
-                    status_codes?: string[];
-                    tls?: boolean;
-                };
-                interval: number;
-                port: number;
-                /** @enum {string} */
-                protocol: "tcp" | "http";
-                retries: number;
-                timeout: number;
-            };
-            listen_port: number;
-            /** @enum {string} */
-            protocol: "tcp" | "http" | "https";
-            proxyprotocol: boolean;
-        } & {
+        ServiceHTTPProtocol: Shared_4ff43b0e & {
             http: {
                 /** @default 300 */
                 cookie_lifetime: number;
@@ -933,84 +906,14 @@ export interface components {
              */
             protocol: "http";
         };
-        ServiceHTTPSProtocol: {
-            destination_port: number;
-            health_check: {
-                http?: {
-                    domain: string | null;
-                    path: string;
-                    response?: string;
-                    /**
-                     * @default [
-                     *       "2??",
-                     *       "3??"
-                     *     ]
-                     */
-                    status_codes?: string[];
-                    tls?: boolean;
-                };
-                interval: number;
-                port: number;
-                /** @enum {string} */
-                protocol: "tcp" | "http";
-                retries: number;
-                timeout: number;
-            };
-            listen_port: number;
-            /** @enum {string} */
-            protocol: "tcp" | "http" | "https";
-            proxyprotocol: boolean;
-        } & {
-            http: {
-                certificates: number[];
-                /** @default 300 */
-                cookie_lifetime: number;
-                /** @default HCLBSTICKY */
-                cookie_name: string;
-                /** @default false */
-                redirect_http: boolean;
-                /** @default false */
-                sticky_sessions: boolean;
-                /** @default 50 */
-                timeout_idle: number;
-            };
-            /** @enum {string} */
-            protocol?: "https";
-        } & {
+        ServiceHTTPSProtocol: Shared_4ff43b0e & Shared_23e0bcf5 & {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             protocol: "https";
         };
-        ServiceTCP: {
-            destination_port: number;
-            health_check: {
-                http?: {
-                    domain: string | null;
-                    path: string;
-                    response?: string;
-                    /**
-                     * @default [
-                     *       "2??",
-                     *       "3??"
-                     *     ]
-                     */
-                    status_codes?: string[];
-                    tls?: boolean;
-                };
-                interval: number;
-                port: number;
-                /** @enum {string} */
-                protocol: "tcp" | "http";
-                retries: number;
-                timeout: number;
-            };
-            listen_port: number;
-            /** @enum {string} */
-            protocol: "tcp" | "http" | "https";
-            proxyprotocol: boolean;
-        } & {
+        ServiceTCP: Shared_4ff43b0e & {
             /** @enum {string} */
             protocol?: "tcp";
         } & {
@@ -1023,21 +926,7 @@ export interface components {
         TargetTypeIP: {
             /** @enum {string} */
             type: "server" | "label_selector" | "ip";
-        } & {
-            health_status: {
-                /** @enum {string} */
-                detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                http_status_code?: number;
-                listen_port: number;
-                /** @enum {string} */
-                status: "healthy" | "unhealthy" | "unknown";
-            }[];
-            ip: {
-                ip: string;
-            };
-            /** @enum {string} */
-            type?: "ip";
-        } & {
+        } & Shared_10666f37 & {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1047,33 +936,7 @@ export interface components {
         TargetTypeLabelSelector: {
             /** @enum {string} */
             type: "server" | "label_selector" | "ip";
-        } & {
-            label_selector: {
-                selector: string;
-            };
-            targets: {
-                health_status: {
-                    /** @enum {string} */
-                    detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                    http_status_code?: number;
-                    listen_port: number;
-                    /** @enum {string} */
-                    status: "healthy" | "unhealthy" | "unknown";
-                }[];
-                server: {
-                    /** Format: int64 */
-                    id: number;
-                    ip: string;
-                };
-                type: string;
-                /** @default false */
-                use_private_ip: boolean;
-            }[];
-            /** @enum {string} */
-            type?: "label_selector";
-            /** @default false */
-            use_private_ip: boolean;
-        } & {
+        } & Shared_a39cafaa & {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1083,67 +946,14 @@ export interface components {
         TargetTypeServer: {
             /** @enum {string} */
             type: "server" | "label_selector" | "ip";
-        } & {
-            health_status: {
-                /** @enum {string} */
-                detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                http_status_code?: number;
-                listen_port: number;
-                /** @enum {string} */
-                status: "healthy" | "unhealthy" | "unknown";
-            }[];
-            server: {
-                /** Format: int64 */
-                id: number;
-                ip: string;
-            };
-            /** @enum {string} */
-            type?: "server";
-            /** @default false */
-            use_private_ip: boolean;
-        } & {
+        } & Shared_4b5fdc00 & {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
              */
             type: "server";
         };
-        ZonePrimary: {
-            authoritative_nameservers: {
-                assigned: string[];
-                delegated: string[];
-                /** Format: date-time */
-                delegation_last_check: string | null;
-                /** @enum {string} */
-                delegation_status?: "valid" | "partially-valid" | "invalid" | "lame" | "unregistered" | "unknown";
-            };
-            /** Format: date-time */
-            created: string;
-            /** Format: int64 */
-            id: number;
-            labels: {
-                [key: string]: string;
-            };
-            name: string;
-            primary_nameservers?: {
-                address: string;
-                /** @default 53 */
-                port?: number;
-                /** @enum {string} */
-                tsig_algorithm?: "hmac-md5" | "hmac-sha1" | "hmac-sha256";
-                tsig_key?: string;
-            }[];
-            protection: {
-                delete: boolean;
-            };
-            record_count: number;
-            /** @enum {string} */
-            registrar: "hetzner" | "other" | "unknown";
-            /** @enum {string} */
-            status: "ok" | "updating" | "error";
-            /** @default 3600 */
-            ttl: number;
-        } & {
+        ZonePrimary: Shared_add2182c & {
             /** @enum {string} */
             mode: "primary";
         } & {
@@ -1153,42 +963,7 @@ export interface components {
              */
             mode: "primary";
         };
-        ZoneSecondary: {
-            authoritative_nameservers: {
-                assigned: string[];
-                delegated: string[];
-                /** Format: date-time */
-                delegation_last_check: string | null;
-                /** @enum {string} */
-                delegation_status?: "valid" | "partially-valid" | "invalid" | "lame" | "unregistered" | "unknown";
-            };
-            /** Format: date-time */
-            created: string;
-            /** Format: int64 */
-            id: number;
-            labels: {
-                [key: string]: string;
-            };
-            name: string;
-            primary_nameservers?: {
-                address: string;
-                /** @default 53 */
-                port?: number;
-                /** @enum {string} */
-                tsig_algorithm?: "hmac-md5" | "hmac-sha1" | "hmac-sha256";
-                tsig_key?: string;
-            }[];
-            protection: {
-                delete: boolean;
-            };
-            record_count: number;
-            /** @enum {string} */
-            registrar: "hetzner" | "other" | "unknown";
-            /** @enum {string} */
-            status: "ok" | "updating" | "error";
-            /** @default 3600 */
-            ttl: number;
-        } & {
+        ZoneSecondary: Shared_add2182c & {
             /** @enum {string} */
             mode: "secondary";
         } & {
@@ -1229,62 +1004,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        certificates: {
-                            certificate: string | null;
-                            /** Format: date-time */
-                            created: string;
-                            domain_names: string[];
-                            fingerprint: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            /** Format: date-time */
-                            not_valid_after: string | null;
-                            /** Format: date-time */
-                            not_valid_before: string | null;
-                            status?: {
-                                error?: {
-                                    code?: string;
-                                    message?: string;
-                                } | null;
-                                /** @enum {string} */
-                                issuance?: "pending" | "completed" | "failed";
-                                /** @enum {string} */
-                                renewal?: "scheduled" | "pending" | "failed" | "unavailable";
-                            } | null;
-                            /** @enum {string} */
-                            type?: "uploaded" | "managed";
-                            used_by: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                        }[];
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
+                        certificates: Shared_c9d2ce6f[];
+                        meta: meta_49bbce54;
                     };
                 };
             };
@@ -1322,62 +1043,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action?: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        } | null;
-                        certificate: {
-                            certificate: string | null;
-                            /** Format: date-time */
-                            created: string;
-                            domain_names: string[];
-                            fingerprint: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            /** Format: date-time */
-                            not_valid_after: string | null;
-                            /** Format: date-time */
-                            not_valid_before: string | null;
-                            status?: {
-                                error?: {
-                                    code?: string;
-                                    message?: string;
-                                } | null;
-                                /** @enum {string} */
-                                issuance?: "pending" | "completed" | "failed";
-                                /** @enum {string} */
-                                renewal?: "scheduled" | "pending" | "failed" | "unavailable";
-                            } | null;
-                            /** @enum {string} */
-                            type?: "uploaded" | "managed";
-                            used_by: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                        };
+                        action?: action_77a74d43;
+                        certificate: Shared_c9d2ce6f;
                     };
                 };
             };
@@ -1409,40 +1076,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        certificate: {
-                            certificate: string | null;
-                            /** Format: date-time */
-                            created: string;
-                            domain_names: string[];
-                            fingerprint: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            /** Format: date-time */
-                            not_valid_after: string | null;
-                            /** Format: date-time */
-                            not_valid_before: string | null;
-                            status?: {
-                                error?: {
-                                    code?: string;
-                                    message?: string;
-                                } | null;
-                                /** @enum {string} */
-                                issuance?: "pending" | "completed" | "failed";
-                                /** @enum {string} */
-                                renewal?: "scheduled" | "pending" | "failed" | "unavailable";
-                            } | null;
-                            /** @enum {string} */
-                            type?: "uploaded" | "managed";
-                            used_by: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                        };
+                        certificate: Shared_c9d2ce6f;
                     };
                 };
             };
@@ -1467,63 +1101,9 @@ export interface operations {
             };
         };
     };
-    retry_certificate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
+    retry_certificate: retry_certificate_41cc7297;
     list_firewalls: {
-        parameters: {
-            query?: {
-                label_selector?: string;
-                name?: string;
-                page?: number;
-                per_page?: number;
-                sort?: ("id" | "id:asc" | "id:desc" | "name" | "name:asc" | "name:desc" | "created" | "created:asc" | "created:desc")[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_d19c844b;
         requestBody?: never;
         responses: {
             200: {
@@ -1532,67 +1112,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        firewalls: {
-                            applied_to: {
-                                applied_to_resources?: {
-                                    server?: {
-                                        /** Format: int64 */
-                                        id: number;
-                                    };
-                                    /** @enum {string} */
-                                    type?: "server";
-                                }[];
-                                label_selector?: {
-                                    selector: string;
-                                };
-                                server?: {
-                                    /** Format: int64 */
-                                    id: number;
-                                };
-                                /** @enum {string} */
-                                type: "server" | "label_selector";
-                            }[];
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels?: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            rules: {
-                                description?: string | null;
-                                destination_ips: string[];
-                                /** @enum {string} */
-                                direction: "in" | "out";
-                                port: string | null;
-                                /** @enum {string} */
-                                protocol: "tcp" | "udp" | "icmp" | "esp" | "gre";
-                                source_ips: string[];
-                            }[];
-                        }[];
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
+                        firewalls: Shared_93c2a875[];
+                        meta: meta_49bbce54;
                     };
                 };
             };
@@ -1643,67 +1164,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        actions?: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        }[];
-                        firewall: {
-                            applied_to: {
-                                applied_to_resources?: {
-                                    server?: {
-                                        /** Format: int64 */
-                                        id: number;
-                                    };
-                                    /** @enum {string} */
-                                    type?: "server";
-                                }[];
-                                label_selector?: {
-                                    selector: string;
-                                };
-                                server?: {
-                                    /** Format: int64 */
-                                    id: number;
-                                };
-                                /** @enum {string} */
-                                type: "server" | "label_selector";
-                            }[];
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels?: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            rules: {
-                                description?: string | null;
-                                destination_ips: string[];
-                                /** @enum {string} */
-                                direction: "in" | "out";
-                                port: string | null;
-                                /** @enum {string} */
-                                protocol: "tcp" | "udp" | "icmp" | "esp" | "gre";
-                                source_ips: string[];
-                            }[];
-                        };
+                        actions?: Shared_541737c7[];
+                        firewall: Shared_93c2a875;
                     };
                 };
             };
@@ -1735,45 +1197,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        firewall: {
-                            applied_to: {
-                                applied_to_resources?: {
-                                    server?: {
-                                        /** Format: int64 */
-                                        id: number;
-                                    };
-                                    /** @enum {string} */
-                                    type?: "server";
-                                }[];
-                                label_selector?: {
-                                    selector: string;
-                                };
-                                server?: {
-                                    /** Format: int64 */
-                                    id: number;
-                                };
-                                /** @enum {string} */
-                                type: "server" | "label_selector";
-                            }[];
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels?: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            rules: {
-                                description?: string | null;
-                                destination_ips: string[];
-                                /** @enum {string} */
-                                direction: "in" | "out";
-                                port: string | null;
-                                /** @enum {string} */
-                                protocol: "tcp" | "udp" | "icmp" | "esp" | "gre";
-                                source_ips: string[];
-                            }[];
-                        };
+                        firewall: Shared_93c2a875;
                     };
                 };
             };
@@ -1831,28 +1255,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        actions: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        }[];
+                        actions: Shared_541737c7[];
                     };
                 };
             };
@@ -1879,65 +1282,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        floating_ips: {
-                            blocked: boolean;
-                            /** Format: date-time */
-                            created: string;
-                            description: string | null;
-                            dns_ptr: {
-                                dns_ptr: string;
-                                ip: string;
-                            }[];
-                            home_location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            /** Format: int64 */
-                            id: number;
-                            ip: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            /** Format: int64 */
-                            server: number | null;
-                            /** @enum {string} */
-                            type: "ipv4" | "ipv6";
-                        }[];
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
+                        floating_ips: Shared_94dd631d[];
+                        meta: meta_49bbce54;
                     };
                 };
             };
@@ -1972,65 +1318,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action?: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        } | null;
-                        floating_ip: {
-                            blocked: boolean;
-                            /** Format: date-time */
-                            created: string;
-                            description: string | null;
-                            dns_ptr: {
-                                dns_ptr: string;
-                                ip: string;
-                            }[];
-                            home_location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            /** Format: int64 */
-                            id: number;
-                            ip: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            /** Format: int64 */
-                            server: number | null;
-                            /** @enum {string} */
-                            type: "ipv4" | "ipv6";
-                        };
+                        action?: action_77a74d43;
+                        floating_ip: Shared_94dd631d;
                     };
                 };
             };
@@ -2046,54 +1335,7 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        floating_ip: {
-                            blocked: boolean;
-                            /** Format: date-time */
-                            created: string;
-                            description: string | null;
-                            dns_ptr: {
-                                dns_ptr: string;
-                                ip: string;
-                            }[];
-                            home_location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            /** Format: int64 */
-                            id: number;
-                            ip: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            /** Format: int64 */
-                            server: number | null;
-                            /** @enum {string} */
-                            type: "ipv4" | "ipv6";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8fb75389;
     };
     update_floating_ip: {
         parameters: {
@@ -2115,54 +1357,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        floating_ip: {
-                            blocked: boolean;
-                            /** Format: date-time */
-                            created: string;
-                            description: string | null;
-                            dns_ptr: {
-                                dns_ptr: string;
-                                ip: string;
-                            }[];
-                            home_location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            /** Format: int64 */
-                            id: number;
-                            ip: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            /** Format: int64 */
-                            server: number | null;
-                            /** @enum {string} */
-                            type: "ipv4" | "ipv6";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8fb75389;
     };
     delete_floating_ip: {
         parameters: {
@@ -2200,39 +1395,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     list_images: {
         parameters: {
@@ -2260,68 +1423,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        images: {
-                            /** @enum {string} */
-                            architecture: "x86" | "arm";
-                            /** Format: int64 */
-                            bound_to: number | null;
-                            /** Format: date-time */
-                            created: string;
-                            created_from: {
-                                /** Format: int64 */
-                                id: number;
-                                name: string;
-                            } | null;
-                            deleted: string | null;
-                            deprecation: {
-                                /** Format: date-time */
-                                announced: string;
-                                /** Format: date-time */
-                                unavailable_after: string;
-                            } | null;
-                            description: string;
-                            disk_size: number;
-                            /** Format: int64 */
-                            id: number;
-                            image_size: number | null;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string | null;
-                            /** @enum {string} */
-                            os_flavor: "ubuntu" | "centos" | "debian" | "fedora" | "rocky" | "alma" | "opensuse" | "unknown";
-                            os_version: string | null;
-                            protection: {
-                                delete: boolean;
-                            };
-                            rapid_deploy?: boolean;
-                            /** @enum {string} */
-                            status: "available" | "creating" | "unavailable";
-                            /** @enum {string} */
-                            type: "system" | "app" | "snapshot" | "backup";
-                        }[];
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
+                        images: Shared_114ab166[];
+                        meta: meta_49bbce54;
                     };
                 };
             };
@@ -2365,89 +1468,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        load_balancer_types: {
-                            deprecation: {
-                                /** Format: date-time */
-                                announced: string;
-                                /** Format: date-time */
-                                unavailable_after: string;
-                            } | null;
-                            description: string;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int64 */
-                            max_assigned_certificates: number;
-                            /** Format: int64 */
-                            max_connections: number;
-                            /** Format: int64 */
-                            max_services: number;
-                            /** Format: int64 */
-                            max_targets: number;
-                            name: string;
-                            prices: {
-                                /** Format: int64 */
-                                included_traffic: number;
-                                location: string;
-                                price_hourly: {
-                                    /** Format: decimal */
-                                    gross: string;
-                                    /** Format: decimal */
-                                    net: string;
-                                };
-                                price_monthly: {
-                                    /** Format: decimal */
-                                    gross: string;
-                                    /** Format: decimal */
-                                    net: string;
-                                };
-                                price_per_tb_traffic: {
-                                    /** Format: decimal */
-                                    gross: string;
-                                    /** Format: decimal */
-                                    net: string;
-                                };
-                            }[];
-                        }[];
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
+                        load_balancer_types: Shared_b913e689[];
+                        meta: meta_49bbce54;
                     };
                 };
             };
         };
     };
     list_load_balancers: {
-        parameters: {
-            query?: {
-                label_selector?: string;
-                name?: string;
-                page?: number;
-                per_page?: number;
-                sort?: ("id" | "id:asc" | "id:desc" | "name" | "name:asc" | "name:desc" | "created" | "created:asc" | "created:desc")[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_d19c844b;
         requestBody?: never;
         responses: {
             200: {
@@ -2456,311 +1485,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        load_balancers: {
-                            algorithm: {
-                                /** @enum {string} */
-                                type: "round_robin" | "least_connections";
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int64 */
-                            included_traffic: number;
-                            /** Format: int64 */
-                            ingoing_traffic: number | null;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            load_balancer_type: {
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: int64 */
-                                max_assigned_certificates: number;
-                                /** Format: int64 */
-                                max_connections: number;
-                                /** Format: int64 */
-                                max_services: number;
-                                /** Format: int64 */
-                                max_targets: number;
-                                name: string;
-                                prices: {
-                                    /** Format: int64 */
-                                    included_traffic: number;
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_per_tb_traffic: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                            };
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            /** Format: int64 */
-                            outgoing_traffic: number | null;
-                            private_net: {
-                                ip: string;
-                                /** Format: int64 */
-                                network: number;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                            };
-                            public_net: {
-                                enabled: boolean;
-                                ipv4: {
-                                    blocked: boolean;
-                                    dns_ptr: string | null;
-                                    /** Format: int64 */
-                                    id: number | null;
-                                    ip: string | null;
-                                };
-                                ipv6: {
-                                    blocked: boolean;
-                                    dns_ptr: string | null;
-                                    /** Format: int64 */
-                                    id: number | null;
-                                    ip: string | null;
-                                };
-                            };
-                            services: (({
-                                destination_port: number;
-                                health_check: {
-                                    http?: {
-                                        domain: string | null;
-                                        path: string;
-                                        response?: string;
-                                        /**
-                                         * @default [
-                                         *       "2??",
-                                         *       "3??"
-                                         *     ]
-                                         */
-                                        status_codes?: string[];
-                                        tls?: boolean;
-                                    };
-                                    interval: number;
-                                    port: number;
-                                    /** @enum {string} */
-                                    protocol: "tcp" | "http";
-                                    retries: number;
-                                    timeout: number;
-                                };
-                                listen_port: number;
-                                /** @enum {string} */
-                                protocol: "tcp" | "http" | "https";
-                                proxyprotocol: boolean;
-                            } & {
-                                /** @enum {string} */
-                                protocol?: "tcp";
-                            }) | ({
-                                destination_port: number;
-                                health_check: {
-                                    http?: {
-                                        domain: string | null;
-                                        path: string;
-                                        response?: string;
-                                        /**
-                                         * @default [
-                                         *       "2??",
-                                         *       "3??"
-                                         *     ]
-                                         */
-                                        status_codes?: string[];
-                                        tls?: boolean;
-                                    };
-                                    interval: number;
-                                    port: number;
-                                    /** @enum {string} */
-                                    protocol: "tcp" | "http";
-                                    retries: number;
-                                    timeout: number;
-                                };
-                                listen_port: number;
-                                /** @enum {string} */
-                                protocol: "tcp" | "http" | "https";
-                                proxyprotocol: boolean;
-                            } & {
-                                http: {
-                                    /** @default 300 */
-                                    cookie_lifetime: number;
-                                    /** @default HCLBSTICKY */
-                                    cookie_name: string;
-                                    /** @default false */
-                                    sticky_sessions: boolean;
-                                    /** @default 50 */
-                                    timeout_idle: number;
-                                };
-                                /** @enum {string} */
-                                protocol?: "http";
-                            }) | ({
-                                destination_port: number;
-                                health_check: {
-                                    http?: {
-                                        domain: string | null;
-                                        path: string;
-                                        response?: string;
-                                        /**
-                                         * @default [
-                                         *       "2??",
-                                         *       "3??"
-                                         *     ]
-                                         */
-                                        status_codes?: string[];
-                                        tls?: boolean;
-                                    };
-                                    interval: number;
-                                    port: number;
-                                    /** @enum {string} */
-                                    protocol: "tcp" | "http";
-                                    retries: number;
-                                    timeout: number;
-                                };
-                                listen_port: number;
-                                /** @enum {string} */
-                                protocol: "tcp" | "http" | "https";
-                                proxyprotocol: boolean;
-                            } & {
-                                http: {
-                                    certificates: number[];
-                                    /** @default 300 */
-                                    cookie_lifetime: number;
-                                    /** @default HCLBSTICKY */
-                                    cookie_name: string;
-                                    /** @default false */
-                                    redirect_http: boolean;
-                                    /** @default false */
-                                    sticky_sessions: boolean;
-                                    /** @default 50 */
-                                    timeout_idle: number;
-                                };
-                                /** @enum {string} */
-                                protocol?: "https";
-                            }))[];
-                            targets: (({
-                                /** @enum {string} */
-                                type: "server" | "label_selector" | "ip";
-                            } & {
-                                health_status: {
-                                    /** @enum {string} */
-                                    detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                                    http_status_code?: number;
-                                    listen_port: number;
-                                    /** @enum {string} */
-                                    status: "healthy" | "unhealthy" | "unknown";
-                                }[];
-                                server: {
-                                    /** Format: int64 */
-                                    id: number;
-                                    ip: string;
-                                };
-                                /** @enum {string} */
-                                type?: "server";
-                                /** @default false */
-                                use_private_ip: boolean;
-                            }) | ({
-                                /** @enum {string} */
-                                type: "server" | "label_selector" | "ip";
-                            } & {
-                                label_selector: {
-                                    selector: string;
-                                };
-                                targets: {
-                                    health_status: {
-                                        /** @enum {string} */
-                                        detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                                        http_status_code?: number;
-                                        listen_port: number;
-                                        /** @enum {string} */
-                                        status: "healthy" | "unhealthy" | "unknown";
-                                    }[];
-                                    server: {
-                                        /** Format: int64 */
-                                        id: number;
-                                        ip: string;
-                                    };
-                                    type: string;
-                                    /** @default false */
-                                    use_private_ip: boolean;
-                                }[];
-                                /** @enum {string} */
-                                type?: "label_selector";
-                                /** @default false */
-                                use_private_ip: boolean;
-                            }) | ({
-                                /** @enum {string} */
-                                type: "server" | "label_selector" | "ip";
-                            } & {
-                                health_status: {
-                                    /** @enum {string} */
-                                    detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                                    http_status_code?: number;
-                                    listen_port: number;
-                                    /** @enum {string} */
-                                    status: "healthy" | "unhealthy" | "unknown";
-                                }[];
-                                ip: {
-                                    ip: string;
-                                };
-                                /** @enum {string} */
-                                type?: "ip";
-                            }))[];
-                        }[];
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
+                        load_balancers: Shared_8d9d1928[];
+                        meta: meta_49bbce54;
                     };
                 };
             };
@@ -2800,120 +1526,7 @@ export interface operations {
                         /** Format: int64 */
                         ipv6?: number | null;
                     };
-                    services?: (({
-                        destination_port: number;
-                        health_check: {
-                            http?: {
-                                domain: string | null;
-                                path: string;
-                                response?: string;
-                                /**
-                                 * @default [
-                                 *       "2??",
-                                 *       "3??"
-                                 *     ]
-                                 */
-                                status_codes?: string[];
-                                tls?: boolean;
-                            };
-                            interval: number;
-                            port: number;
-                            /** @enum {string} */
-                            protocol: "tcp" | "http";
-                            retries: number;
-                            timeout: number;
-                        };
-                        listen_port: number;
-                        /** @enum {string} */
-                        protocol: "tcp" | "http" | "https";
-                        proxyprotocol: boolean;
-                    } & {
-                        /** @enum {string} */
-                        protocol?: "tcp";
-                    }) | ({
-                        destination_port: number;
-                        health_check: {
-                            http?: {
-                                domain: string | null;
-                                path: string;
-                                response?: string;
-                                /**
-                                 * @default [
-                                 *       "2??",
-                                 *       "3??"
-                                 *     ]
-                                 */
-                                status_codes?: string[];
-                                tls?: boolean;
-                            };
-                            interval: number;
-                            port: number;
-                            /** @enum {string} */
-                            protocol: "tcp" | "http";
-                            retries: number;
-                            timeout: number;
-                        };
-                        listen_port: number;
-                        /** @enum {string} */
-                        protocol: "tcp" | "http" | "https";
-                        proxyprotocol: boolean;
-                    } & {
-                        http: {
-                            /** @default 300 */
-                            cookie_lifetime: number;
-                            /** @default HCLBSTICKY */
-                            cookie_name: string;
-                            /** @default false */
-                            sticky_sessions: boolean;
-                            /** @default 50 */
-                            timeout_idle: number;
-                        };
-                        /** @enum {string} */
-                        protocol?: "http";
-                    }) | ({
-                        destination_port: number;
-                        health_check: {
-                            http?: {
-                                domain: string | null;
-                                path: string;
-                                response?: string;
-                                /**
-                                 * @default [
-                                 *       "2??",
-                                 *       "3??"
-                                 *     ]
-                                 */
-                                status_codes?: string[];
-                                tls?: boolean;
-                            };
-                            interval: number;
-                            port: number;
-                            /** @enum {string} */
-                            protocol: "tcp" | "http";
-                            retries: number;
-                            timeout: number;
-                        };
-                        listen_port: number;
-                        /** @enum {string} */
-                        protocol: "tcp" | "http" | "https";
-                        proxyprotocol: boolean;
-                    } & {
-                        http: {
-                            certificates: number[];
-                            /** @default 300 */
-                            cookie_lifetime: number;
-                            /** @default HCLBSTICKY */
-                            cookie_name: string;
-                            /** @default false */
-                            redirect_http: boolean;
-                            /** @default false */
-                            sticky_sessions: boolean;
-                            /** @default 50 */
-                            timeout_idle: number;
-                        };
-                        /** @enum {string} */
-                        protocol?: "https";
-                    }))[];
+                    services?: (Shared_a3dff974)[];
                     targets?: ({
                         ip?: {
                             ip: string;
@@ -2942,311 +1555,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                        load_balancer: {
-                            algorithm: {
-                                /** @enum {string} */
-                                type: "round_robin" | "least_connections";
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int64 */
-                            included_traffic: number;
-                            /** Format: int64 */
-                            ingoing_traffic: number | null;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            load_balancer_type: {
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: int64 */
-                                max_assigned_certificates: number;
-                                /** Format: int64 */
-                                max_connections: number;
-                                /** Format: int64 */
-                                max_services: number;
-                                /** Format: int64 */
-                                max_targets: number;
-                                name: string;
-                                prices: {
-                                    /** Format: int64 */
-                                    included_traffic: number;
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_per_tb_traffic: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                            };
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            /** Format: int64 */
-                            outgoing_traffic: number | null;
-                            private_net: {
-                                ip: string;
-                                /** Format: int64 */
-                                network: number;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                            };
-                            public_net: {
-                                enabled: boolean;
-                                ipv4: {
-                                    blocked: boolean;
-                                    dns_ptr: string | null;
-                                    /** Format: int64 */
-                                    id: number | null;
-                                    ip: string | null;
-                                };
-                                ipv6: {
-                                    blocked: boolean;
-                                    dns_ptr: string | null;
-                                    /** Format: int64 */
-                                    id: number | null;
-                                    ip: string | null;
-                                };
-                            };
-                            services: (({
-                                destination_port: number;
-                                health_check: {
-                                    http?: {
-                                        domain: string | null;
-                                        path: string;
-                                        response?: string;
-                                        /**
-                                         * @default [
-                                         *       "2??",
-                                         *       "3??"
-                                         *     ]
-                                         */
-                                        status_codes?: string[];
-                                        tls?: boolean;
-                                    };
-                                    interval: number;
-                                    port: number;
-                                    /** @enum {string} */
-                                    protocol: "tcp" | "http";
-                                    retries: number;
-                                    timeout: number;
-                                };
-                                listen_port: number;
-                                /** @enum {string} */
-                                protocol: "tcp" | "http" | "https";
-                                proxyprotocol: boolean;
-                            } & {
-                                /** @enum {string} */
-                                protocol?: "tcp";
-                            }) | ({
-                                destination_port: number;
-                                health_check: {
-                                    http?: {
-                                        domain: string | null;
-                                        path: string;
-                                        response?: string;
-                                        /**
-                                         * @default [
-                                         *       "2??",
-                                         *       "3??"
-                                         *     ]
-                                         */
-                                        status_codes?: string[];
-                                        tls?: boolean;
-                                    };
-                                    interval: number;
-                                    port: number;
-                                    /** @enum {string} */
-                                    protocol: "tcp" | "http";
-                                    retries: number;
-                                    timeout: number;
-                                };
-                                listen_port: number;
-                                /** @enum {string} */
-                                protocol: "tcp" | "http" | "https";
-                                proxyprotocol: boolean;
-                            } & {
-                                http: {
-                                    /** @default 300 */
-                                    cookie_lifetime: number;
-                                    /** @default HCLBSTICKY */
-                                    cookie_name: string;
-                                    /** @default false */
-                                    sticky_sessions: boolean;
-                                    /** @default 50 */
-                                    timeout_idle: number;
-                                };
-                                /** @enum {string} */
-                                protocol?: "http";
-                            }) | ({
-                                destination_port: number;
-                                health_check: {
-                                    http?: {
-                                        domain: string | null;
-                                        path: string;
-                                        response?: string;
-                                        /**
-                                         * @default [
-                                         *       "2??",
-                                         *       "3??"
-                                         *     ]
-                                         */
-                                        status_codes?: string[];
-                                        tls?: boolean;
-                                    };
-                                    interval: number;
-                                    port: number;
-                                    /** @enum {string} */
-                                    protocol: "tcp" | "http";
-                                    retries: number;
-                                    timeout: number;
-                                };
-                                listen_port: number;
-                                /** @enum {string} */
-                                protocol: "tcp" | "http" | "https";
-                                proxyprotocol: boolean;
-                            } & {
-                                http: {
-                                    certificates: number[];
-                                    /** @default 300 */
-                                    cookie_lifetime: number;
-                                    /** @default HCLBSTICKY */
-                                    cookie_name: string;
-                                    /** @default false */
-                                    redirect_http: boolean;
-                                    /** @default false */
-                                    sticky_sessions: boolean;
-                                    /** @default 50 */
-                                    timeout_idle: number;
-                                };
-                                /** @enum {string} */
-                                protocol?: "https";
-                            }))[];
-                            targets: (({
-                                /** @enum {string} */
-                                type: "server" | "label_selector" | "ip";
-                            } & {
-                                health_status: {
-                                    /** @enum {string} */
-                                    detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                                    http_status_code?: number;
-                                    listen_port: number;
-                                    /** @enum {string} */
-                                    status: "healthy" | "unhealthy" | "unknown";
-                                }[];
-                                server: {
-                                    /** Format: int64 */
-                                    id: number;
-                                    ip: string;
-                                };
-                                /** @enum {string} */
-                                type?: "server";
-                                /** @default false */
-                                use_private_ip: boolean;
-                            }) | ({
-                                /** @enum {string} */
-                                type: "server" | "label_selector" | "ip";
-                            } & {
-                                label_selector: {
-                                    selector: string;
-                                };
-                                targets: {
-                                    health_status: {
-                                        /** @enum {string} */
-                                        detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                                        http_status_code?: number;
-                                        listen_port: number;
-                                        /** @enum {string} */
-                                        status: "healthy" | "unhealthy" | "unknown";
-                                    }[];
-                                    server: {
-                                        /** Format: int64 */
-                                        id: number;
-                                        ip: string;
-                                    };
-                                    type: string;
-                                    /** @default false */
-                                    use_private_ip: boolean;
-                                }[];
-                                /** @enum {string} */
-                                type?: "label_selector";
-                                /** @default false */
-                                use_private_ip: boolean;
-                            }) | ({
-                                /** @enum {string} */
-                                type: "server" | "label_selector" | "ip";
-                            } & {
-                                health_status: {
-                                    /** @enum {string} */
-                                    detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                                    http_status_code?: number;
-                                    listen_port: number;
-                                    /** @enum {string} */
-                                    status: "healthy" | "unhealthy" | "unknown";
-                                }[];
-                                ip: {
-                                    ip: string;
-                                };
-                                /** @enum {string} */
-                                type?: "ip";
-                            }))[];
-                        };
+                        action: Shared_541737c7;
+                        load_balancer: Shared_8d9d1928;
                     };
                 };
             };
@@ -3278,338 +1588,13 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        load_balancer: {
-                            algorithm: {
-                                /** @enum {string} */
-                                type: "round_robin" | "least_connections";
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int64 */
-                            included_traffic: number;
-                            /** Format: int64 */
-                            ingoing_traffic: number | null;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            load_balancer_type: {
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: int64 */
-                                max_assigned_certificates: number;
-                                /** Format: int64 */
-                                max_connections: number;
-                                /** Format: int64 */
-                                max_services: number;
-                                /** Format: int64 */
-                                max_targets: number;
-                                name: string;
-                                prices: {
-                                    /** Format: int64 */
-                                    included_traffic: number;
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_per_tb_traffic: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                            };
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            /** Format: int64 */
-                            outgoing_traffic: number | null;
-                            private_net: {
-                                ip: string;
-                                /** Format: int64 */
-                                network: number;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                            };
-                            public_net: {
-                                enabled: boolean;
-                                ipv4: {
-                                    blocked: boolean;
-                                    dns_ptr: string | null;
-                                    /** Format: int64 */
-                                    id: number | null;
-                                    ip: string | null;
-                                };
-                                ipv6: {
-                                    blocked: boolean;
-                                    dns_ptr: string | null;
-                                    /** Format: int64 */
-                                    id: number | null;
-                                    ip: string | null;
-                                };
-                            };
-                            services: (({
-                                destination_port: number;
-                                health_check: {
-                                    http?: {
-                                        domain: string | null;
-                                        path: string;
-                                        response?: string;
-                                        /**
-                                         * @default [
-                                         *       "2??",
-                                         *       "3??"
-                                         *     ]
-                                         */
-                                        status_codes?: string[];
-                                        tls?: boolean;
-                                    };
-                                    interval: number;
-                                    port: number;
-                                    /** @enum {string} */
-                                    protocol: "tcp" | "http";
-                                    retries: number;
-                                    timeout: number;
-                                };
-                                listen_port: number;
-                                /** @enum {string} */
-                                protocol: "tcp" | "http" | "https";
-                                proxyprotocol: boolean;
-                            } & {
-                                /** @enum {string} */
-                                protocol?: "tcp";
-                            }) | ({
-                                destination_port: number;
-                                health_check: {
-                                    http?: {
-                                        domain: string | null;
-                                        path: string;
-                                        response?: string;
-                                        /**
-                                         * @default [
-                                         *       "2??",
-                                         *       "3??"
-                                         *     ]
-                                         */
-                                        status_codes?: string[];
-                                        tls?: boolean;
-                                    };
-                                    interval: number;
-                                    port: number;
-                                    /** @enum {string} */
-                                    protocol: "tcp" | "http";
-                                    retries: number;
-                                    timeout: number;
-                                };
-                                listen_port: number;
-                                /** @enum {string} */
-                                protocol: "tcp" | "http" | "https";
-                                proxyprotocol: boolean;
-                            } & {
-                                http: {
-                                    /** @default 300 */
-                                    cookie_lifetime: number;
-                                    /** @default HCLBSTICKY */
-                                    cookie_name: string;
-                                    /** @default false */
-                                    sticky_sessions: boolean;
-                                    /** @default 50 */
-                                    timeout_idle: number;
-                                };
-                                /** @enum {string} */
-                                protocol?: "http";
-                            }) | ({
-                                destination_port: number;
-                                health_check: {
-                                    http?: {
-                                        domain: string | null;
-                                        path: string;
-                                        response?: string;
-                                        /**
-                                         * @default [
-                                         *       "2??",
-                                         *       "3??"
-                                         *     ]
-                                         */
-                                        status_codes?: string[];
-                                        tls?: boolean;
-                                    };
-                                    interval: number;
-                                    port: number;
-                                    /** @enum {string} */
-                                    protocol: "tcp" | "http";
-                                    retries: number;
-                                    timeout: number;
-                                };
-                                listen_port: number;
-                                /** @enum {string} */
-                                protocol: "tcp" | "http" | "https";
-                                proxyprotocol: boolean;
-                            } & {
-                                http: {
-                                    certificates: number[];
-                                    /** @default 300 */
-                                    cookie_lifetime: number;
-                                    /** @default HCLBSTICKY */
-                                    cookie_name: string;
-                                    /** @default false */
-                                    redirect_http: boolean;
-                                    /** @default false */
-                                    sticky_sessions: boolean;
-                                    /** @default 50 */
-                                    timeout_idle: number;
-                                };
-                                /** @enum {string} */
-                                protocol?: "https";
-                            }))[];
-                            targets: (({
-                                /** @enum {string} */
-                                type: "server" | "label_selector" | "ip";
-                            } & {
-                                health_status: {
-                                    /** @enum {string} */
-                                    detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                                    http_status_code?: number;
-                                    listen_port: number;
-                                    /** @enum {string} */
-                                    status: "healthy" | "unhealthy" | "unknown";
-                                }[];
-                                server: {
-                                    /** Format: int64 */
-                                    id: number;
-                                    ip: string;
-                                };
-                                /** @enum {string} */
-                                type?: "server";
-                                /** @default false */
-                                use_private_ip: boolean;
-                            }) | ({
-                                /** @enum {string} */
-                                type: "server" | "label_selector" | "ip";
-                            } & {
-                                label_selector: {
-                                    selector: string;
-                                };
-                                targets: {
-                                    health_status: {
-                                        /** @enum {string} */
-                                        detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                                        http_status_code?: number;
-                                        listen_port: number;
-                                        /** @enum {string} */
-                                        status: "healthy" | "unhealthy" | "unknown";
-                                    }[];
-                                    server: {
-                                        /** Format: int64 */
-                                        id: number;
-                                        ip: string;
-                                    };
-                                    type: string;
-                                    /** @default false */
-                                    use_private_ip: boolean;
-                                }[];
-                                /** @enum {string} */
-                                type?: "label_selector";
-                                /** @default false */
-                                use_private_ip: boolean;
-                            }) | ({
-                                /** @enum {string} */
-                                type: "server" | "label_selector" | "ip";
-                            } & {
-                                health_status: {
-                                    /** @enum {string} */
-                                    detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
-                                    http_status_code?: number;
-                                    listen_port: number;
-                                    /** @enum {string} */
-                                    status: "healthy" | "unhealthy" | "unknown";
-                                }[];
-                                ip: {
-                                    ip: string;
-                                };
-                                /** @enum {string} */
-                                type?: "ip";
-                            }))[];
-                        };
+                        load_balancer: Shared_8d9d1928;
                     };
                 };
             };
         };
     };
-    delete_load_balancer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
+    delete_load_balancer: retry_certificate_41cc7297;
     add_load_balancer_target: {
         parameters: {
             query?: never;
@@ -3641,39 +1626,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     attach_load_balancer_to_network: {
         parameters: {
@@ -3694,39 +1647,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     get_load_balancer_metrics: {
         parameters: {
@@ -3743,32 +1664,7 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        metrics: {
-                            /** Format: date-time */
-                            end: string;
-                            /** Format: date-time */
-                            start: string;
-                            step: number;
-                            time_series: {
-                                [key: string]: {
-                                    values: [
-                                        number,
-                                        string
-                                    ][];
-                                };
-                            };
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_fef6e0ad;
     };
     list_locations: {
         parameters: {
@@ -3803,46 +1699,14 @@ export interface operations {
                             name: string;
                             network_zone: string;
                         }[];
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
+                        meta: meta_49bbce54;
                     };
                 };
             };
         };
     };
     list_networks: {
-        parameters: {
-            query?: {
-                label_selector?: string;
-                name?: string;
-                page?: number;
-                per_page?: number;
-                sort?: ("id" | "id:asc" | "id:desc" | "name" | "name:asc" | "name:desc" | "created" | "created:asc" | "created:desc")[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_d19c844b;
         requestBody?: never;
         responses: {
             200: {
@@ -3851,58 +1715,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
-                        networks: {
-                            /** Format: date-time */
-                            created: string;
-                            expose_routes_to_vswitch: boolean;
-                            /** Format: int64 */
-                            id: number;
-                            ip_range: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            load_balancers?: number[];
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            routes: {
-                                destination: string;
-                                gateway: string;
-                            }[];
-                            servers: number[];
-                            subnets: {
-                                gateway: string;
-                                ip_range?: string;
-                                network_zone: string;
-                                /** @enum {string} */
-                                type: "cloud" | "server" | "vswitch";
-                                /** Format: int64 */
-                                vswitch_id?: number | null;
-                            }[];
-                        }[];
+                        meta: meta_49bbce54;
+                        networks: Shared_0ec43067[];
                     };
                 };
             };
@@ -3946,36 +1760,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        network: {
-                            /** Format: date-time */
-                            created: string;
-                            expose_routes_to_vswitch: boolean;
-                            /** Format: int64 */
-                            id: number;
-                            ip_range: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            load_balancers?: number[];
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            routes: {
-                                destination: string;
-                                gateway: string;
-                            }[];
-                            servers: number[];
-                            subnets: {
-                                gateway: string;
-                                ip_range?: string;
-                                network_zone: string;
-                                /** @enum {string} */
-                                type: "cloud" | "server" | "vswitch";
-                                /** Format: int64 */
-                                vswitch_id?: number | null;
-                            }[];
-                        };
+                        network: Shared_0ec43067;
                     };
                 };
             };
@@ -4008,36 +1793,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        network?: {
-                            /** Format: date-time */
-                            created: string;
-                            expose_routes_to_vswitch: boolean;
-                            /** Format: int64 */
-                            id: number;
-                            ip_range: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            load_balancers?: number[];
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            routes: {
-                                destination: string;
-                                gateway: string;
-                            }[];
-                            servers: number[];
-                            subnets: {
-                                gateway: string;
-                                ip_range?: string;
-                                network_zone: string;
-                                /** @enum {string} */
-                                type: "cloud" | "server" | "vswitch";
-                                /** Format: int64 */
-                                vswitch_id?: number | null;
-                            }[];
-                        };
+                        network?: Shared_0ec43067;
                     };
                 };
             };
@@ -4084,28 +1840,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
+                        meta: meta_49bbce54;
                         placement_groups: {
                             /** Format: date-time */
                             created: string;
@@ -4149,28 +1884,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action?: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        } | null;
+                        action?: action_77a74d43;
                         placement_group: {
                             /** Format: date-time */
                             created: string;
@@ -4299,34 +2013,7 @@ export interface operations {
                                     net: string;
                                 };
                             };
-                            load_balancer_types: {
-                                /** Format: int64 */
-                                id: number;
-                                name: string;
-                                prices: {
-                                    /** Format: int64 */
-                                    included_traffic: number;
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_per_tb_traffic: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                            }[];
+                            load_balancer_types: Shared_53d2c7ba[];
                             primary_ips: {
                                 prices: {
                                     location: string;
@@ -4350,34 +2037,7 @@ export interface operations {
                                 /** Format: decimal */
                                 percentage: string;
                             };
-                            server_types: {
-                                /** Format: int64 */
-                                id: number;
-                                name: string;
-                                prices: {
-                                    /** Format: int64 */
-                                    included_traffic: number;
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_per_tb_traffic: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                            }[];
+                            server_types: Shared_53d2c7ba[];
                             /** Format: decimal */
                             vat_rate: string;
                             volume: {
@@ -4416,68 +2076,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
-                        primary_ips: {
-                            /** Format: int64 */
-                            assignee_id: number | null;
-                            /** @enum {string} */
-                            assignee_type: "server" | "unassigned";
-                            /** @default false */
-                            auto_delete: boolean;
-                            blocked: boolean;
-                            /** Format: date-time */
-                            created: string;
-                            dns_ptr: {
-                                dns_ptr: string;
-                                ip: string;
-                            }[];
-                            /** Format: int64 */
-                            id: number;
-                            ip: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            /** @enum {string} */
-                            type: "ipv4" | "ipv6";
-                        }[];
+                        meta: meta_49bbce54;
+                        primary_ips: Shared_6843f168[];
                     };
                 };
             };
@@ -4515,68 +2115,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action?: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        } | null;
-                        primary_ip: {
-                            /** Format: int64 */
-                            assignee_id: number | null;
-                            /** @enum {string} */
-                            assignee_type: "server" | "unassigned";
-                            /** @default false */
-                            auto_delete: boolean;
-                            blocked: boolean;
-                            /** Format: date-time */
-                            created: string;
-                            dns_ptr: {
-                                dns_ptr: string;
-                                ip: string;
-                            }[];
-                            /** Format: int64 */
-                            id: number;
-                            ip: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            /** @enum {string} */
-                            type: "ipv4" | "ipv6";
-                        };
+                        action?: action_77a74d43;
+                        primary_ip: Shared_6843f168;
                     };
                 };
             };
@@ -4610,46 +2150,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        primary_ip: {
-                            /** Format: int64 */
-                            assignee_id: number | null;
-                            /** @enum {string} */
-                            assignee_type: "server" | "unassigned";
-                            /** @default false */
-                            auto_delete: boolean;
-                            blocked: boolean;
-                            /** Format: date-time */
-                            created: string;
-                            dns_ptr: {
-                                dns_ptr: string;
-                                ip: string;
-                            }[];
-                            /** Format: int64 */
-                            id: number;
-                            ip: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            /** @enum {string} */
-                            type: "ipv4" | "ipv6";
-                        };
+                        primary_ip: Shared_6843f168;
                     };
                 };
             };
@@ -4693,39 +2194,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     list_server_types: {
         parameters: {
@@ -4746,87 +2215,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
-                        server_types: {
-                            /** @enum {string} */
-                            architecture: "x86" | "arm";
-                            category?: string;
-                            cores: number;
-                            /** @enum {string} */
-                            cpu_type: "shared" | "dedicated";
-                            /** @deprecated */
-                            deprecation?: {
-                                /** Format: date-time */
-                                announced: string;
-                                /** Format: date-time */
-                                unavailable_after: string;
-                            } | null;
-                            description: string;
-                            disk: number;
-                            /** Format: int64 */
-                            id: number;
-                            locations: {
-                                available: boolean;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                /** Format: int64 */
-                                id: number;
-                                name: string;
-                                recommended: boolean;
-                            }[];
-                            memory: number;
-                            name: string;
-                            prices: {
-                                /** Format: int64 */
-                                included_traffic: number;
-                                location: string;
-                                price_hourly: {
-                                    /** Format: decimal */
-                                    gross: string;
-                                    /** Format: decimal */
-                                    net: string;
-                                };
-                                price_monthly: {
-                                    /** Format: decimal */
-                                    gross: string;
-                                    /** Format: decimal */
-                                    net: string;
-                                };
-                                price_per_tb_traffic: {
-                                    /** Format: decimal */
-                                    gross: string;
-                                    /** Format: decimal */
-                                    net: string;
-                                };
-                            }[];
-                            /** @enum {string} */
-                            storage_type: "local" | "network";
-                        }[];
+                        meta: meta_49bbce54;
+                        server_types: Shared_fb527d6f[];
                     };
                 };
             };
@@ -4855,230 +2245,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
-                        servers: {
-                            backup_window: string | null;
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            image: {
-                                /** @enum {string} */
-                                architecture: "x86" | "arm";
-                                /** Format: int64 */
-                                bound_to: number | null;
-                                /** Format: date-time */
-                                created: string;
-                                created_from: {
-                                    /** Format: int64 */
-                                    id: number;
-                                    name: string;
-                                } | null;
-                                deleted: string | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                disk_size: number;
-                                /** Format: int64 */
-                                id: number;
-                                image_size: number | null;
-                                labels: {
-                                    [key: string]: string;
-                                };
-                                name: string | null;
-                                /** @enum {string} */
-                                os_flavor: "ubuntu" | "centos" | "debian" | "fedora" | "rocky" | "alma" | "opensuse" | "unknown";
-                                os_version: string | null;
-                                protection: {
-                                    delete: boolean;
-                                };
-                                rapid_deploy?: boolean;
-                                /** @enum {string} */
-                                status: "available" | "creating" | "unavailable";
-                                /** @enum {string} */
-                                type: "system" | "app" | "snapshot" | "backup";
-                            } | null;
-                            /** Format: int64 */
-                            included_traffic: number | null;
-                            /** Format: int64 */
-                            ingoing_traffic: number | null;
-                            iso: {
-                                /** @enum {string|null} */
-                                architecture: "x86" | "arm" | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                name: string | null;
-                                /** @enum {string|null} */
-                                type: "public" | "private" | null;
-                            } | null;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            load_balancers?: number[];
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            locked: boolean;
-                            name: string;
-                            /** Format: int64 */
-                            outgoing_traffic: number | null;
-                            placement_group?: {
-                                /** Format: date-time */
-                                created: string;
-                                /** Format: int64 */
-                                id: number;
-                                labels: {
-                                    [key: string]: string;
-                                };
-                                name: string;
-                                servers: number[];
-                                /** @enum {string} */
-                                type: "spread";
-                            } | null;
-                            primary_disk_size: number;
-                            private_net: {
-                                alias_ips?: string[];
-                                ip?: string;
-                                mac_address?: string;
-                                /** Format: int64 */
-                                network?: number;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                                rebuild: boolean;
-                            };
-                            public_net: {
-                                firewalls?: {
-                                    /** Format: int64 */
-                                    id?: number;
-                                    /** @enum {string} */
-                                    status?: "applied" | "pending";
-                                }[];
-                                floating_ips: number[];
-                                ipv4: {
-                                    blocked: boolean;
-                                    dns_ptr: string;
-                                    /** Format: int64 */
-                                    id?: number;
-                                    ip: string;
-                                } | null;
-                                ipv6: {
-                                    blocked: boolean;
-                                    dns_ptr: {
-                                        dns_ptr: string;
-                                        ip: string;
-                                    }[] | null;
-                                    /** Format: int64 */
-                                    id?: number;
-                                    ip: string;
-                                } | null;
-                            };
-                            rescue_enabled: boolean;
-                            server_type: {
-                                /** @enum {string} */
-                                architecture: "x86" | "arm";
-                                category?: string;
-                                cores: number;
-                                /** @enum {string} */
-                                cpu_type: "shared" | "dedicated";
-                                /** @deprecated */
-                                deprecation?: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                disk: number;
-                                /** Format: int64 */
-                                id: number;
-                                locations: {
-                                    available: boolean;
-                                    deprecation: {
-                                        /** Format: date-time */
-                                        announced: string;
-                                        /** Format: date-time */
-                                        unavailable_after: string;
-                                    } | null;
-                                    /** Format: int64 */
-                                    id: number;
-                                    name: string;
-                                    recommended: boolean;
-                                }[];
-                                memory: number;
-                                name: string;
-                                prices: {
-                                    /** Format: int64 */
-                                    included_traffic: number;
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_per_tb_traffic: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                                /** @enum {string} */
-                                storage_type: "local" | "network";
-                            };
-                            /** @enum {string} */
-                            status: "running" | "initializing" | "starting" | "stopping" | "off" | "deleting" | "migrating" | "rebuilding" | "unknown";
-                            volumes?: number[];
-                        }[];
+                        meta: meta_49bbce54;
+                        servers: Shared_2dfbd859[];
                     };
                 };
             };
@@ -5132,253 +2300,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                        next_actions: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        }[];
+                        action: Shared_541737c7;
+                        next_actions: Shared_541737c7[];
                         root_password: string | null;
-                        server: {
-                            backup_window: string | null;
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            image: {
-                                /** @enum {string} */
-                                architecture: "x86" | "arm";
-                                /** Format: int64 */
-                                bound_to: number | null;
-                                /** Format: date-time */
-                                created: string;
-                                created_from: {
-                                    /** Format: int64 */
-                                    id: number;
-                                    name: string;
-                                } | null;
-                                deleted: string | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                disk_size: number;
-                                /** Format: int64 */
-                                id: number;
-                                image_size: number | null;
-                                labels: {
-                                    [key: string]: string;
-                                };
-                                name: string | null;
-                                /** @enum {string} */
-                                os_flavor: "ubuntu" | "centos" | "debian" | "fedora" | "rocky" | "alma" | "opensuse" | "unknown";
-                                os_version: string | null;
-                                protection: {
-                                    delete: boolean;
-                                };
-                                rapid_deploy?: boolean;
-                                /** @enum {string} */
-                                status: "available" | "creating" | "unavailable";
-                                /** @enum {string} */
-                                type: "system" | "app" | "snapshot" | "backup";
-                            } | null;
-                            /** Format: int64 */
-                            included_traffic: number | null;
-                            /** Format: int64 */
-                            ingoing_traffic: number | null;
-                            iso: {
-                                /** @enum {string|null} */
-                                architecture: "x86" | "arm" | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                name: string | null;
-                                /** @enum {string|null} */
-                                type: "public" | "private" | null;
-                            } | null;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            load_balancers?: number[];
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            locked: boolean;
-                            name: string;
-                            /** Format: int64 */
-                            outgoing_traffic: number | null;
-                            placement_group?: {
-                                /** Format: date-time */
-                                created: string;
-                                /** Format: int64 */
-                                id: number;
-                                labels: {
-                                    [key: string]: string;
-                                };
-                                name: string;
-                                servers: number[];
-                                /** @enum {string} */
-                                type: "spread";
-                            } | null;
-                            primary_disk_size: number;
-                            private_net: {
-                                alias_ips?: string[];
-                                ip?: string;
-                                mac_address?: string;
-                                /** Format: int64 */
-                                network?: number;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                                rebuild: boolean;
-                            };
-                            public_net: {
-                                firewalls?: {
-                                    /** Format: int64 */
-                                    id?: number;
-                                    /** @enum {string} */
-                                    status?: "applied" | "pending";
-                                }[];
-                                floating_ips: number[];
-                                ipv4: {
-                                    blocked: boolean;
-                                    dns_ptr: string;
-                                    /** Format: int64 */
-                                    id?: number;
-                                    ip: string;
-                                } | null;
-                                ipv6: {
-                                    blocked: boolean;
-                                    dns_ptr: {
-                                        dns_ptr: string;
-                                        ip: string;
-                                    }[] | null;
-                                    /** Format: int64 */
-                                    id?: number;
-                                    ip: string;
-                                } | null;
-                            };
-                            rescue_enabled: boolean;
-                            server_type: {
-                                /** @enum {string} */
-                                architecture: "x86" | "arm";
-                                category?: string;
-                                cores: number;
-                                /** @enum {string} */
-                                cpu_type: "shared" | "dedicated";
-                                /** @deprecated */
-                                deprecation?: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                disk: number;
-                                /** Format: int64 */
-                                id: number;
-                                locations: {
-                                    available: boolean;
-                                    deprecation: {
-                                        /** Format: date-time */
-                                        announced: string;
-                                        /** Format: date-time */
-                                        unavailable_after: string;
-                                    } | null;
-                                    /** Format: int64 */
-                                    id: number;
-                                    name: string;
-                                    recommended: boolean;
-                                }[];
-                                memory: number;
-                                name: string;
-                                prices: {
-                                    /** Format: int64 */
-                                    included_traffic: number;
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_per_tb_traffic: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                                /** @enum {string} */
-                                storage_type: "local" | "network";
-                            };
-                            /** @enum {string} */
-                            status: "running" | "initializing" | "starting" | "stopping" | "off" | "deleting" | "migrating" | "rebuilding" | "unknown";
-                            volumes?: number[];
-                        };
+                        server: Shared_2dfbd859;
                     };
                 };
             };
@@ -5401,208 +2326,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        server: {
-                            backup_window: string | null;
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            image: {
-                                /** @enum {string} */
-                                architecture: "x86" | "arm";
-                                /** Format: int64 */
-                                bound_to: number | null;
-                                /** Format: date-time */
-                                created: string;
-                                created_from: {
-                                    /** Format: int64 */
-                                    id: number;
-                                    name: string;
-                                } | null;
-                                deleted: string | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                disk_size: number;
-                                /** Format: int64 */
-                                id: number;
-                                image_size: number | null;
-                                labels: {
-                                    [key: string]: string;
-                                };
-                                name: string | null;
-                                /** @enum {string} */
-                                os_flavor: "ubuntu" | "centos" | "debian" | "fedora" | "rocky" | "alma" | "opensuse" | "unknown";
-                                os_version: string | null;
-                                protection: {
-                                    delete: boolean;
-                                };
-                                rapid_deploy?: boolean;
-                                /** @enum {string} */
-                                status: "available" | "creating" | "unavailable";
-                                /** @enum {string} */
-                                type: "system" | "app" | "snapshot" | "backup";
-                            } | null;
-                            /** Format: int64 */
-                            included_traffic: number | null;
-                            /** Format: int64 */
-                            ingoing_traffic: number | null;
-                            iso: {
-                                /** @enum {string|null} */
-                                architecture: "x86" | "arm" | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                name: string | null;
-                                /** @enum {string|null} */
-                                type: "public" | "private" | null;
-                            } | null;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            load_balancers?: number[];
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            locked: boolean;
-                            name: string;
-                            /** Format: int64 */
-                            outgoing_traffic: number | null;
-                            placement_group?: {
-                                /** Format: date-time */
-                                created: string;
-                                /** Format: int64 */
-                                id: number;
-                                labels: {
-                                    [key: string]: string;
-                                };
-                                name: string;
-                                servers: number[];
-                                /** @enum {string} */
-                                type: "spread";
-                            } | null;
-                            primary_disk_size: number;
-                            private_net: {
-                                alias_ips?: string[];
-                                ip?: string;
-                                mac_address?: string;
-                                /** Format: int64 */
-                                network?: number;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                                rebuild: boolean;
-                            };
-                            public_net: {
-                                firewalls?: {
-                                    /** Format: int64 */
-                                    id?: number;
-                                    /** @enum {string} */
-                                    status?: "applied" | "pending";
-                                }[];
-                                floating_ips: number[];
-                                ipv4: {
-                                    blocked: boolean;
-                                    dns_ptr: string;
-                                    /** Format: int64 */
-                                    id?: number;
-                                    ip: string;
-                                } | null;
-                                ipv6: {
-                                    blocked: boolean;
-                                    dns_ptr: {
-                                        dns_ptr: string;
-                                        ip: string;
-                                    }[] | null;
-                                    /** Format: int64 */
-                                    id?: number;
-                                    ip: string;
-                                } | null;
-                            };
-                            rescue_enabled: boolean;
-                            server_type: {
-                                /** @enum {string} */
-                                architecture: "x86" | "arm";
-                                category?: string;
-                                cores: number;
-                                /** @enum {string} */
-                                cpu_type: "shared" | "dedicated";
-                                /** @deprecated */
-                                deprecation?: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                disk: number;
-                                /** Format: int64 */
-                                id: number;
-                                locations: {
-                                    available: boolean;
-                                    deprecation: {
-                                        /** Format: date-time */
-                                        announced: string;
-                                        /** Format: date-time */
-                                        unavailable_after: string;
-                                    } | null;
-                                    /** Format: int64 */
-                                    id: number;
-                                    name: string;
-                                    recommended: boolean;
-                                }[];
-                                memory: number;
-                                name: string;
-                                prices: {
-                                    /** Format: int64 */
-                                    included_traffic: number;
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_per_tb_traffic: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                                /** @enum {string} */
-                                storage_type: "local" | "network";
-                            };
-                            /** @enum {string} */
-                            status: "running" | "initializing" | "starting" | "stopping" | "off" | "deleting" | "migrating" | "rebuilding" | "unknown";
-                            volumes?: number[];
-                        };
+                        server: Shared_2dfbd859;
                     };
                 };
             };
@@ -5634,208 +2358,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        server?: {
-                            backup_window: string | null;
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            image: {
-                                /** @enum {string} */
-                                architecture: "x86" | "arm";
-                                /** Format: int64 */
-                                bound_to: number | null;
-                                /** Format: date-time */
-                                created: string;
-                                created_from: {
-                                    /** Format: int64 */
-                                    id: number;
-                                    name: string;
-                                } | null;
-                                deleted: string | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                disk_size: number;
-                                /** Format: int64 */
-                                id: number;
-                                image_size: number | null;
-                                labels: {
-                                    [key: string]: string;
-                                };
-                                name: string | null;
-                                /** @enum {string} */
-                                os_flavor: "ubuntu" | "centos" | "debian" | "fedora" | "rocky" | "alma" | "opensuse" | "unknown";
-                                os_version: string | null;
-                                protection: {
-                                    delete: boolean;
-                                };
-                                rapid_deploy?: boolean;
-                                /** @enum {string} */
-                                status: "available" | "creating" | "unavailable";
-                                /** @enum {string} */
-                                type: "system" | "app" | "snapshot" | "backup";
-                            } | null;
-                            /** Format: int64 */
-                            included_traffic: number | null;
-                            /** Format: int64 */
-                            ingoing_traffic: number | null;
-                            iso: {
-                                /** @enum {string|null} */
-                                architecture: "x86" | "arm" | null;
-                                deprecation: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                name: string | null;
-                                /** @enum {string|null} */
-                                type: "public" | "private" | null;
-                            } | null;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            load_balancers?: number[];
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            locked: boolean;
-                            name: string;
-                            /** Format: int64 */
-                            outgoing_traffic: number | null;
-                            placement_group?: {
-                                /** Format: date-time */
-                                created: string;
-                                /** Format: int64 */
-                                id: number;
-                                labels: {
-                                    [key: string]: string;
-                                };
-                                name: string;
-                                servers: number[];
-                                /** @enum {string} */
-                                type: "spread";
-                            } | null;
-                            primary_disk_size: number;
-                            private_net: {
-                                alias_ips?: string[];
-                                ip?: string;
-                                mac_address?: string;
-                                /** Format: int64 */
-                                network?: number;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                                rebuild: boolean;
-                            };
-                            public_net: {
-                                firewalls?: {
-                                    /** Format: int64 */
-                                    id?: number;
-                                    /** @enum {string} */
-                                    status?: "applied" | "pending";
-                                }[];
-                                floating_ips: number[];
-                                ipv4: {
-                                    blocked: boolean;
-                                    dns_ptr: string;
-                                    /** Format: int64 */
-                                    id?: number;
-                                    ip: string;
-                                } | null;
-                                ipv6: {
-                                    blocked: boolean;
-                                    dns_ptr: {
-                                        dns_ptr: string;
-                                        ip: string;
-                                    }[] | null;
-                                    /** Format: int64 */
-                                    id?: number;
-                                    ip: string;
-                                } | null;
-                            };
-                            rescue_enabled: boolean;
-                            server_type: {
-                                /** @enum {string} */
-                                architecture: "x86" | "arm";
-                                category?: string;
-                                cores: number;
-                                /** @enum {string} */
-                                cpu_type: "shared" | "dedicated";
-                                /** @deprecated */
-                                deprecation?: {
-                                    /** Format: date-time */
-                                    announced: string;
-                                    /** Format: date-time */
-                                    unavailable_after: string;
-                                } | null;
-                                description: string;
-                                disk: number;
-                                /** Format: int64 */
-                                id: number;
-                                locations: {
-                                    available: boolean;
-                                    deprecation: {
-                                        /** Format: date-time */
-                                        announced: string;
-                                        /** Format: date-time */
-                                        unavailable_after: string;
-                                    } | null;
-                                    /** Format: int64 */
-                                    id: number;
-                                    name: string;
-                                    recommended: boolean;
-                                }[];
-                                memory: number;
-                                name: string;
-                                prices: {
-                                    /** Format: int64 */
-                                    included_traffic: number;
-                                    location: string;
-                                    price_hourly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_monthly: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                    price_per_tb_traffic: {
-                                        /** Format: decimal */
-                                        gross: string;
-                                        /** Format: decimal */
-                                        net: string;
-                                    };
-                                }[];
-                                /** @enum {string} */
-                                storage_type: "local" | "network";
-                            };
-                            /** @enum {string} */
-                            status: "running" | "initializing" | "starting" | "stopping" | "off" | "deleting" | "migrating" | "rebuilding" | "unknown";
-                            volumes?: number[];
-                        };
+                        server?: Shared_2dfbd859;
                     };
                 };
             };
@@ -5858,28 +2381,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action?: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
+                        action?: Shared_541737c7;
                     };
                 };
             };
@@ -5902,39 +2404,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     attach_server_to_network: {
         parameters: {
@@ -5956,39 +2426,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     change_server_protection: {
         parameters: {
@@ -6007,39 +2445,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     change_server_type: {
         parameters: {
@@ -6058,39 +2464,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     create_server_image: {
         parameters: {
@@ -6123,381 +2497,20 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action?: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                        image?: {
-                            /** @enum {string} */
-                            architecture: "x86" | "arm";
-                            /** Format: int64 */
-                            bound_to: number | null;
-                            /** Format: date-time */
-                            created: string;
-                            created_from: {
-                                /** Format: int64 */
-                                id: number;
-                                name: string;
-                            } | null;
-                            deleted: string | null;
-                            deprecation: {
-                                /** Format: date-time */
-                                announced: string;
-                                /** Format: date-time */
-                                unavailable_after: string;
-                            } | null;
-                            description: string;
-                            disk_size: number;
-                            /** Format: int64 */
-                            id: number;
-                            image_size: number | null;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string | null;
-                            /** @enum {string} */
-                            os_flavor: "ubuntu" | "centos" | "debian" | "fedora" | "rocky" | "alma" | "opensuse" | "unknown";
-                            os_version: string | null;
-                            protection: {
-                                delete: boolean;
-                            };
-                            rapid_deploy?: boolean;
-                            /** @enum {string} */
-                            status: "available" | "creating" | "unavailable";
-                            /** @enum {string} */
-                            type: "system" | "app" | "snapshot" | "backup";
-                        };
+                        action?: Shared_541737c7;
+                        image?: Shared_114ab166;
                     };
                 };
             };
         };
     };
-    disable_server_backup: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
-    enable_server_backup: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
-    poweroff_server: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
-    poweron_server: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
-    reboot_server: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
-    reset_server: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
-    shutdown_server: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
-    };
+    disable_server_backup: retry_certificate_41cc7297;
+    enable_server_backup: retry_certificate_41cc7297;
+    poweroff_server: retry_certificate_41cc7297;
+    poweron_server: retry_certificate_41cc7297;
+    reboot_server: retry_certificate_41cc7297;
+    reset_server: retry_certificate_41cc7297;
+    shutdown_server: retry_certificate_41cc7297;
     get_server_metrics: {
         parameters: {
             query: {
@@ -6513,32 +2526,7 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        metrics: {
-                            /** Format: date-time */
-                            end: string;
-                            /** Format: date-time */
-                            start: string;
-                            step: number;
-                            time_series: {
-                                [key: string]: {
-                                    values: [
-                                        number,
-                                        string
-                                    ][];
-                                };
-                            };
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_fef6e0ad;
     };
     list_ssh_keys: {
         parameters: {
@@ -6562,28 +2550,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
+                        meta: meta_49bbce54;
                         ssh_keys: {
                             /** Format: date-time */
                             created: string;
@@ -6620,27 +2587,7 @@ export interface operations {
             };
         };
         responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        ssh_key: {
-                            /** Format: date-time */
-                            created: string;
-                            fingerprint: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            public_key: string;
-                        };
-                    };
-                };
-            };
+            201: Shared_89b6fdeb;
         };
     };
     update_ssh_key: {
@@ -6663,27 +2610,7 @@ export interface operations {
             };
         };
         responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        ssh_key: {
-                            /** Format: date-time */
-                            created: string;
-                            fingerprint: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            public_key: string;
-                        };
-                    };
-                };
-            };
+            200: Shared_89b6fdeb;
         };
     };
     delete_ssh_key: {
@@ -6727,69 +2654,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
-                        volumes: {
-                            assignee: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            } | null;
-                            /** Format: date-time */
-                            created: string;
-                            format: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            linux_device: string;
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            /**
-                             * Format: int64
-                             * @deprecated
-                             */
-                            server: number | null;
-                            size: number;
-                            /** @enum {string} */
-                            status: "available" | "creating";
-                        }[];
+                        meta: meta_49bbce54;
+                        volumes: Shared_77b85a11[];
                     };
                 };
             };
@@ -6833,91 +2699,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                        next_actions: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        }[];
-                        volume: {
-                            assignee: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            } | null;
-                            /** Format: date-time */
-                            created: string;
-                            format: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            linux_device: string;
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            /**
-                             * Format: int64
-                             * @deprecated
-                             */
-                            server: number | null;
-                            size: number;
-                            /** @enum {string} */
-                            status: "available" | "creating";
-                        };
+                        action: Shared_541737c7;
+                        next_actions: Shared_541737c7[];
+                        volume: Shared_77b85a11;
                     };
                 };
             };
@@ -6949,47 +2733,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        volume: {
-                            assignee: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            } | null;
-                            /** Format: date-time */
-                            created: string;
-                            format: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            linux_device: string;
-                            location: {
-                                city: string;
-                                country: string;
-                                description: string;
-                                /** Format: int64 */
-                                id: number;
-                                /** Format: double */
-                                latitude: number;
-                                /** Format: double */
-                                longitude: number;
-                                name: string;
-                                network_zone: string;
-                            };
-                            name: string;
-                            protection: {
-                                delete: boolean;
-                            };
-                            /**
-                             * Format: int64
-                             * @deprecated
-                             */
-                            server: number | null;
-                            size: number;
-                            /** @enum {string} */
-                            status: "available" | "creating";
-                        };
+                        volume: Shared_77b85a11;
                     };
                 };
             };
@@ -7040,39 +2784,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     resize_volume: {
         parameters: {
@@ -7090,39 +2802,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     list_zones: {
         parameters: {
@@ -7146,105 +2826,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
-                        zones: (({
-                            authoritative_nameservers: {
-                                assigned: string[];
-                                delegated: string[];
-                                /** Format: date-time */
-                                delegation_last_check: string | null;
-                                /** @enum {string} */
-                                delegation_status?: "valid" | "partially-valid" | "invalid" | "lame" | "unregistered" | "unknown";
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            primary_nameservers?: {
-                                address: string;
-                                /** @default 53 */
-                                port?: number;
-                                /** @enum {string} */
-                                tsig_algorithm?: "hmac-md5" | "hmac-sha1" | "hmac-sha256";
-                                tsig_key?: string;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                            };
-                            record_count: number;
-                            /** @enum {string} */
-                            registrar: "hetzner" | "other" | "unknown";
-                            /** @enum {string} */
-                            status: "ok" | "updating" | "error";
-                            /** @default 3600 */
-                            ttl: number;
-                        } & {
-                            /** @enum {string} */
-                            mode: "primary";
-                        }) | ({
-                            authoritative_nameservers: {
-                                assigned: string[];
-                                delegated: string[];
-                                /** Format: date-time */
-                                delegation_last_check: string | null;
-                                /** @enum {string} */
-                                delegation_status?: "valid" | "partially-valid" | "invalid" | "lame" | "unregistered" | "unknown";
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            primary_nameservers?: {
-                                address: string;
-                                /** @default 53 */
-                                port?: number;
-                                /** @enum {string} */
-                                tsig_algorithm?: "hmac-md5" | "hmac-sha1" | "hmac-sha256";
-                                tsig_key?: string;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                            };
-                            record_count: number;
-                            /** @enum {string} */
-                            registrar: "hetzner" | "other" | "unknown";
-                            /** @enum {string} */
-                            status: "ok" | "updating" | "error";
-                            /** @default 3600 */
-                            ttl: number;
-                        } & {
-                            /** @enum {string} */
-                            mode: "secondary";
-                        }))[];
+                        meta: meta_49bbce54;
+                        zones: (Shared_205fbad0)[];
                     };
                 };
             };
@@ -7300,105 +2883,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                        zone: ({
-                            authoritative_nameservers: {
-                                assigned: string[];
-                                delegated: string[];
-                                /** Format: date-time */
-                                delegation_last_check: string | null;
-                                /** @enum {string} */
-                                delegation_status?: "valid" | "partially-valid" | "invalid" | "lame" | "unregistered" | "unknown";
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            primary_nameservers?: {
-                                address: string;
-                                /** @default 53 */
-                                port?: number;
-                                /** @enum {string} */
-                                tsig_algorithm?: "hmac-md5" | "hmac-sha1" | "hmac-sha256";
-                                tsig_key?: string;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                            };
-                            record_count: number;
-                            /** @enum {string} */
-                            registrar: "hetzner" | "other" | "unknown";
-                            /** @enum {string} */
-                            status: "ok" | "updating" | "error";
-                            /** @default 3600 */
-                            ttl: number;
-                        } & {
-                            /** @enum {string} */
-                            mode: "primary";
-                        }) | ({
-                            authoritative_nameservers: {
-                                assigned: string[];
-                                delegated: string[];
-                                /** Format: date-time */
-                                delegation_last_check: string | null;
-                                /** @enum {string} */
-                                delegation_status?: "valid" | "partially-valid" | "invalid" | "lame" | "unregistered" | "unknown";
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            primary_nameservers?: {
-                                address: string;
-                                /** @default 53 */
-                                port?: number;
-                                /** @enum {string} */
-                                tsig_algorithm?: "hmac-md5" | "hmac-sha1" | "hmac-sha256";
-                                tsig_key?: string;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                            };
-                            record_count: number;
-                            /** @enum {string} */
-                            registrar: "hetzner" | "other" | "unknown";
-                            /** @enum {string} */
-                            status: "ok" | "updating" | "error";
-                            /** @default 3600 */
-                            ttl: number;
-                        } & {
-                            /** @enum {string} */
-                            mode: "secondary";
-                        });
+                        action: Shared_541737c7;
+                        zone: Shared_205fbad0;
                     };
                 };
             };
@@ -7421,83 +2907,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        zone: ({
-                            authoritative_nameservers: {
-                                assigned: string[];
-                                delegated: string[];
-                                /** Format: date-time */
-                                delegation_last_check: string | null;
-                                /** @enum {string} */
-                                delegation_status?: "valid" | "partially-valid" | "invalid" | "lame" | "unregistered" | "unknown";
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            primary_nameservers?: {
-                                address: string;
-                                /** @default 53 */
-                                port?: number;
-                                /** @enum {string} */
-                                tsig_algorithm?: "hmac-md5" | "hmac-sha1" | "hmac-sha256";
-                                tsig_key?: string;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                            };
-                            record_count: number;
-                            /** @enum {string} */
-                            registrar: "hetzner" | "other" | "unknown";
-                            /** @enum {string} */
-                            status: "ok" | "updating" | "error";
-                            /** @default 3600 */
-                            ttl: number;
-                        } & {
-                            /** @enum {string} */
-                            mode: "primary";
-                        }) | ({
-                            authoritative_nameservers: {
-                                assigned: string[];
-                                delegated: string[];
-                                /** Format: date-time */
-                                delegation_last_check: string | null;
-                                /** @enum {string} */
-                                delegation_status?: "valid" | "partially-valid" | "invalid" | "lame" | "unregistered" | "unknown";
-                            };
-                            /** Format: date-time */
-                            created: string;
-                            /** Format: int64 */
-                            id: number;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            primary_nameservers?: {
-                                address: string;
-                                /** @default 53 */
-                                port?: number;
-                                /** @enum {string} */
-                                tsig_algorithm?: "hmac-md5" | "hmac-sha1" | "hmac-sha256";
-                                tsig_key?: string;
-                            }[];
-                            protection: {
-                                delete: boolean;
-                            };
-                            record_count: number;
-                            /** @enum {string} */
-                            registrar: "hetzner" | "other" | "unknown";
-                            /** @enum {string} */
-                            status: "ok" | "updating" | "error";
-                            /** @default 3600 */
-                            ttl: number;
-                        } & {
-                            /** @enum {string} */
-                            mode: "secondary";
-                        });
+                        zone: Shared_205fbad0;
                     };
                 };
             };
@@ -7513,39 +2923,7 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     change_zone_ttl: {
         parameters: {
@@ -7564,39 +2942,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     list_zone_rrsets: {
         parameters: {
@@ -7622,47 +2968,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        meta: {
-                            pagination: {
-                                /** Format: int64 */
-                                last_page: number | null;
-                                /** Format: int64 */
-                                next_page: number | null;
-                                /**
-                                 * Format: int64
-                                 * @default 1
-                                 */
-                                page: number;
-                                /**
-                                 * Format: int64
-                                 * @default 25
-                                 */
-                                per_page: number;
-                                /** Format: int64 */
-                                previous_page: number | null;
-                                /** Format: int64 */
-                                total_entries: number | null;
-                            };
-                        };
-                        rrsets: {
-                            id: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            protection: {
-                                change: boolean;
-                            };
-                            records: {
-                                comment?: string;
-                                value: string;
-                            }[];
-                            ttl: number | null;
-                            /** @enum {string} */
-                            type: "A" | "AAAA" | "CAA" | "CNAME" | "DS" | "HINFO" | "HTTPS" | "MX" | "NS" | "PTR" | "RP" | "SOA" | "SRV" | "SVCB" | "TLSA" | "TXT";
-                            /** Format: int64 */
-                            zone: number;
-                        }[];
+                        meta: meta_49bbce54;
+                        rrsets: Shared_22a020c0[];
                     };
                 };
             };
@@ -7700,47 +3007,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                        rrset: {
-                            id: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            protection: {
-                                change: boolean;
-                            };
-                            records: {
-                                comment?: string;
-                                value: string;
-                            }[];
-                            ttl: number | null;
-                            /** @enum {string} */
-                            type: "A" | "AAAA" | "CAA" | "CNAME" | "DS" | "HINFO" | "HTTPS" | "MX" | "NS" | "PTR" | "RP" | "SOA" | "SRV" | "SVCB" | "TLSA" | "TXT";
-                            /** Format: int64 */
-                            zone: number;
-                        };
+                        action: Shared_541737c7;
+                        rrset: Shared_22a020c0;
                     };
                 };
             };
@@ -7765,25 +3033,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        rrset: {
-                            id: string;
-                            labels: {
-                                [key: string]: string;
-                            };
-                            name: string;
-                            protection: {
-                                change: boolean;
-                            };
-                            records: {
-                                comment?: string;
-                                value: string;
-                            }[];
-                            ttl: number | null;
-                            /** @enum {string} */
-                            type: "A" | "AAAA" | "CAA" | "CNAME" | "DS" | "HINFO" | "HTTPS" | "MX" | "NS" | "PTR" | "RP" | "SOA" | "SRV" | "SVCB" | "TLSA" | "TXT";
-                            /** Format: int64 */
-                            zone: number;
-                        };
+                        rrset: Shared_22a020c0;
                     };
                 };
             };
@@ -7801,39 +3051,7 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     change_zone_rrset_ttl: {
         parameters: {
@@ -7853,39 +3071,7 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
-                        };
-                    };
-                };
-            };
-        };
+        responses: responses_8a23dcb3;
     };
     set_zone_rrset_records: {
         parameters: {
@@ -7908,38 +3094,841 @@ export interface operations {
                 };
             };
         };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        action: {
-                            command: string;
-                            error: {
-                                code: string;
-                                message: string;
-                            } | null;
-                            /** Format: date-time */
-                            finished: string | null;
-                            /** Format: int64 */
-                            id: number;
-                            /** Format: int32 */
-                            progress: number;
-                            resources: {
-                                /** Format: int64 */
-                                id: number;
-                                type: string;
-                            }[];
-                            /** Format: date-time */
-                            started: string;
-                            /** @enum {string} */
-                            status: "running" | "success" | "error";
+        responses: responses_8a23dcb3;
+    };
+}
+type action_77a74d43 = Shared_541737c7 | null;
+type meta_49bbce54 = {
+    pagination: {
+        /** Format: int64 */
+        last_page: number | null;
+        /** Format: int64 */
+        next_page: number | null;
+        /**
+         * Format: int64
+         * @default 1
+         */
+        page: number;
+        /**
+         * Format: int64
+         * @default 25
+         */
+        per_page: number;
+        /** Format: int64 */
+        previous_page: number | null;
+        /** Format: int64 */
+        total_entries: number | null;
+    };
+};
+type parameters_d19c844b = {
+    query?: {
+        label_selector?: string;
+        name?: string;
+        page?: number;
+        per_page?: number;
+        sort?: ("id" | "id:asc" | "id:desc" | "name" | "name:asc" | "name:desc" | "created" | "created:asc" | "created:desc")[];
+    };
+    header?: never;
+    path?: never;
+    cookie?: never;
+};
+type responses_8a23dcb3 = {
+    201: {
+        headers: {
+            [name: string]: unknown;
+        };
+        content: {
+            "application/json": {
+                action: Shared_541737c7;
+            };
+        };
+    };
+};
+type responses_8fb75389 = {
+    200: {
+        headers: {
+            [name: string]: unknown;
+        };
+        content: {
+            "application/json": {
+                floating_ip: Shared_94dd631d;
+            };
+        };
+    };
+};
+type responses_fef6e0ad = {
+    200: {
+        headers: {
+            [name: string]: unknown;
+        };
+        content: {
+            "application/json": {
+                metrics: {
+                    /** Format: date-time */
+                    end: string;
+                    /** Format: date-time */
+                    start: string;
+                    step: number;
+                    time_series: {
+                        [key: string]: {
+                            values: [
+                                number,
+                                string
+                            ][];
                         };
                     };
                 };
             };
         };
     };
-}
+};
+type retry_certificate_41cc7297 = {
+    parameters: {
+        query?: never;
+        header?: never;
+        path: {
+            id: number;
+        };
+        cookie?: never;
+    };
+    requestBody?: never;
+    responses: responses_8a23dcb3;
+};
+type Shared_0ec43067 = {
+    /** Format: date-time */
+    created: string;
+    expose_routes_to_vswitch: boolean;
+    /** Format: int64 */
+    id: number;
+    ip_range: string;
+    labels: {
+        [key: string]: string;
+    };
+    load_balancers?: number[];
+    name: string;
+    protection: {
+        delete: boolean;
+    };
+    routes: {
+        destination: string;
+        gateway: string;
+    }[];
+    servers: number[];
+    subnets: {
+        gateway: string;
+        ip_range?: string;
+        network_zone: string;
+        /** @enum {string} */
+        type: "cloud" | "server" | "vswitch";
+        /** Format: int64 */
+        vswitch_id?: number | null;
+    }[];
+};
+type Shared_10666f37 = {
+    health_status: Shared_463de7ed[];
+    ip: {
+        ip: string;
+    };
+    /** @enum {string} */
+    type?: "ip";
+};
+type Shared_114ab166 = {
+    /** @enum {string} */
+    architecture: "x86" | "arm";
+    /** Format: int64 */
+    bound_to: number | null;
+    /** Format: date-time */
+    created: string;
+    created_from: {
+        /** Format: int64 */
+        id: number;
+        name: string;
+    } | null;
+    deleted: string | null;
+    deprecation: {
+        /** Format: date-time */
+        announced: string;
+        /** Format: date-time */
+        unavailable_after: string;
+    } | null;
+    description: string;
+    disk_size: number;
+    /** Format: int64 */
+    id: number;
+    image_size: number | null;
+    labels: {
+        [key: string]: string;
+    };
+    name: string | null;
+    /** @enum {string} */
+    os_flavor: "ubuntu" | "centos" | "debian" | "fedora" | "rocky" | "alma" | "opensuse" | "unknown";
+    os_version: string | null;
+    protection: {
+        delete: boolean;
+    };
+    rapid_deploy?: boolean;
+    /** @enum {string} */
+    status: "available" | "creating" | "unavailable";
+    /** @enum {string} */
+    type: "system" | "app" | "snapshot" | "backup";
+};
+type Shared_205fbad0 = (Shared_add2182c & {
+    /** @enum {string} */
+    mode: "primary";
+}) | (Shared_add2182c & {
+    /** @enum {string} */
+    mode: "secondary";
+});
+type Shared_22a020c0 = {
+    id: string;
+    labels: {
+        [key: string]: string;
+    };
+    name: string;
+    protection: {
+        change: boolean;
+    };
+    records: {
+        comment?: string;
+        value: string;
+    }[];
+    ttl: number | null;
+    /** @enum {string} */
+    type: "A" | "AAAA" | "CAA" | "CNAME" | "DS" | "HINFO" | "HTTPS" | "MX" | "NS" | "PTR" | "RP" | "SOA" | "SRV" | "SVCB" | "TLSA" | "TXT";
+    /** Format: int64 */
+    zone: number;
+};
+type Shared_23e0bcf5 = {
+    http: {
+        certificates: number[];
+        /** @default 300 */
+        cookie_lifetime: number;
+        /** @default HCLBSTICKY */
+        cookie_name: string;
+        /** @default false */
+        redirect_http: boolean;
+        /** @default false */
+        sticky_sessions: boolean;
+        /** @default 50 */
+        timeout_idle: number;
+    };
+    /** @enum {string} */
+    protocol?: "https";
+};
+type Shared_2dfbd859 = {
+    backup_window: string | null;
+    /** Format: date-time */
+    created: string;
+    /** Format: int64 */
+    id: number;
+    image: Shared_114ab166 | null;
+    /** Format: int64 */
+    included_traffic: number | null;
+    /** Format: int64 */
+    ingoing_traffic: number | null;
+    iso: {
+        /** @enum {string|null} */
+        architecture: "x86" | "arm" | null;
+        deprecation: {
+            /** Format: date-time */
+            announced: string;
+            /** Format: date-time */
+            unavailable_after: string;
+        } | null;
+        description: string;
+        /** Format: int64 */
+        id: number;
+        name: string | null;
+        /** @enum {string|null} */
+        type: "public" | "private" | null;
+    } | null;
+    labels: {
+        [key: string]: string;
+    };
+    load_balancers?: number[];
+    location: {
+        city: string;
+        country: string;
+        description: string;
+        /** Format: int64 */
+        id: number;
+        /** Format: double */
+        latitude: number;
+        /** Format: double */
+        longitude: number;
+        name: string;
+        network_zone: string;
+    };
+    locked: boolean;
+    name: string;
+    /** Format: int64 */
+    outgoing_traffic: number | null;
+    placement_group?: {
+        /** Format: date-time */
+        created: string;
+        /** Format: int64 */
+        id: number;
+        labels: {
+            [key: string]: string;
+        };
+        name: string;
+        servers: number[];
+        /** @enum {string} */
+        type: "spread";
+    } | null;
+    primary_disk_size: number;
+    private_net: {
+        alias_ips?: string[];
+        ip?: string;
+        mac_address?: string;
+        /** Format: int64 */
+        network?: number;
+    }[];
+    protection: {
+        delete: boolean;
+        rebuild: boolean;
+    };
+    public_net: {
+        firewalls?: {
+            /** Format: int64 */
+            id?: number;
+            /** @enum {string} */
+            status?: "applied" | "pending";
+        }[];
+        floating_ips: number[];
+        ipv4: {
+            blocked: boolean;
+            dns_ptr: string;
+            /** Format: int64 */
+            id?: number;
+            ip: string;
+        } | null;
+        ipv6: {
+            blocked: boolean;
+            dns_ptr: {
+                dns_ptr: string;
+                ip: string;
+            }[] | null;
+            /** Format: int64 */
+            id?: number;
+            ip: string;
+        } | null;
+    };
+    rescue_enabled: boolean;
+    server_type: Shared_fb527d6f;
+    /** @enum {string} */
+    status: "running" | "initializing" | "starting" | "stopping" | "off" | "deleting" | "migrating" | "rebuilding" | "unknown";
+    volumes?: number[];
+};
+type Shared_463de7ed = {
+    /** @enum {string} */
+    detail?: "unspecified" | "layer4_no_connection" | "layer4_timeout" | "layer7_timeout" | "unexpected_http_status" | "unexpected_http_content";
+    http_status_code?: number;
+    listen_port: number;
+    /** @enum {string} */
+    status: "healthy" | "unhealthy" | "unknown";
+};
+type Shared_4b5fdc00 = {
+    health_status: Shared_463de7ed[];
+    server: {
+        /** Format: int64 */
+        id: number;
+        ip: string;
+    };
+    /** @enum {string} */
+    type?: "server";
+    /** @default false */
+    use_private_ip: boolean;
+};
+type Shared_4ff43b0e = {
+    destination_port: number;
+    health_check: {
+        http?: {
+            domain: string | null;
+            path: string;
+            response?: string;
+            /**
+             * @default [
+             *       "2??",
+             *       "3??"
+             *     ]
+             */
+            status_codes?: string[];
+            tls?: boolean;
+        };
+        interval: number;
+        port: number;
+        /** @enum {string} */
+        protocol: "tcp" | "http";
+        retries: number;
+        timeout: number;
+    };
+    listen_port: number;
+    /** @enum {string} */
+    protocol: "tcp" | "http" | "https";
+    proxyprotocol: boolean;
+};
+type Shared_53d2c7ba = {
+    /** Format: int64 */
+    id: number;
+    name: string;
+    prices: Shared_fc52e819[];
+};
+type Shared_541737c7 = {
+    command: string;
+    error: {
+        code: string;
+        message: string;
+    } | null;
+    /** Format: date-time */
+    finished: string | null;
+    /** Format: int64 */
+    id: number;
+    /** Format: int32 */
+    progress: number;
+    resources: {
+        /** Format: int64 */
+        id: number;
+        type: string;
+    }[];
+    /** Format: date-time */
+    started: string;
+    /** @enum {string} */
+    status: "running" | "success" | "error";
+};
+type Shared_6843f168 = {
+    /** Format: int64 */
+    assignee_id: number | null;
+    /** @enum {string} */
+    assignee_type: "server" | "unassigned";
+    /** @default false */
+    auto_delete: boolean;
+    blocked: boolean;
+    /** Format: date-time */
+    created: string;
+    dns_ptr: {
+        dns_ptr: string;
+        ip: string;
+    }[];
+    /** Format: int64 */
+    id: number;
+    ip: string;
+    labels: {
+        [key: string]: string;
+    };
+    location: {
+        city: string;
+        country: string;
+        description: string;
+        /** Format: int64 */
+        id: number;
+        /** Format: double */
+        latitude: number;
+        /** Format: double */
+        longitude: number;
+        name: string;
+        network_zone: string;
+    };
+    name: string;
+    protection: {
+        delete: boolean;
+    };
+    /** @enum {string} */
+    type: "ipv4" | "ipv6";
+};
+type Shared_77b85a11 = {
+    assignee: {
+        /** Format: int64 */
+        id: number;
+        type: string;
+    } | null;
+    /** Format: date-time */
+    created: string;
+    format: string | null;
+    /** Format: int64 */
+    id: number;
+    labels: {
+        [key: string]: string;
+    };
+    linux_device: string;
+    location: {
+        city: string;
+        country: string;
+        description: string;
+        /** Format: int64 */
+        id: number;
+        /** Format: double */
+        latitude: number;
+        /** Format: double */
+        longitude: number;
+        name: string;
+        network_zone: string;
+    };
+    name: string;
+    protection: {
+        delete: boolean;
+    };
+    /**
+     * Format: int64
+     * @deprecated
+     */
+    server: number | null;
+    size: number;
+    /** @enum {string} */
+    status: "available" | "creating";
+};
+type Shared_89b6fdeb = {
+    headers: {
+        [name: string]: unknown;
+    };
+    content: {
+        "application/json": {
+            ssh_key: {
+                /** Format: date-time */
+                created: string;
+                fingerprint: string;
+                /** Format: int64 */
+                id: number;
+                labels: {
+                    [key: string]: string;
+                };
+                name: string;
+                public_key: string;
+            };
+        };
+    };
+};
+type Shared_8d9d1928 = {
+    algorithm: {
+        /** @enum {string} */
+        type: "round_robin" | "least_connections";
+    };
+    /** Format: date-time */
+    created: string;
+    /** Format: int64 */
+    id: number;
+    /** Format: int64 */
+    included_traffic: number;
+    /** Format: int64 */
+    ingoing_traffic: number | null;
+    labels: {
+        [key: string]: string;
+    };
+    load_balancer_type: Shared_b913e689;
+    location: {
+        city: string;
+        country: string;
+        description: string;
+        /** Format: int64 */
+        id: number;
+        /** Format: double */
+        latitude: number;
+        /** Format: double */
+        longitude: number;
+        name: string;
+        network_zone: string;
+    };
+    name: string;
+    /** Format: int64 */
+    outgoing_traffic: number | null;
+    private_net: {
+        ip: string;
+        /** Format: int64 */
+        network: number;
+    }[];
+    protection: {
+        delete: boolean;
+    };
+    public_net: {
+        enabled: boolean;
+        ipv4: {
+            blocked: boolean;
+            dns_ptr: string | null;
+            /** Format: int64 */
+            id: number | null;
+            ip: string | null;
+        };
+        ipv6: {
+            blocked: boolean;
+            dns_ptr: string | null;
+            /** Format: int64 */
+            id: number | null;
+            ip: string | null;
+        };
+    };
+    services: (Shared_a3dff974)[];
+    targets: (({
+        /** @enum {string} */
+        type: "server" | "label_selector" | "ip";
+    } & Shared_4b5fdc00) | ({
+        /** @enum {string} */
+        type: "server" | "label_selector" | "ip";
+    } & Shared_a39cafaa) | ({
+        /** @enum {string} */
+        type: "server" | "label_selector" | "ip";
+    } & Shared_10666f37))[];
+};
+type Shared_93c2a875 = {
+    applied_to: {
+        applied_to_resources?: {
+            server?: {
+                /** Format: int64 */
+                id: number;
+            };
+            /** @enum {string} */
+            type?: "server";
+        }[];
+        label_selector?: {
+            selector: string;
+        };
+        server?: {
+            /** Format: int64 */
+            id: number;
+        };
+        /** @enum {string} */
+        type: "server" | "label_selector";
+    }[];
+    /** Format: date-time */
+    created: string;
+    /** Format: int64 */
+    id: number;
+    labels?: {
+        [key: string]: string;
+    };
+    name: string;
+    rules: {
+        description?: string | null;
+        destination_ips: string[];
+        /** @enum {string} */
+        direction: "in" | "out";
+        port: string | null;
+        /** @enum {string} */
+        protocol: "tcp" | "udp" | "icmp" | "esp" | "gre";
+        source_ips: string[];
+    }[];
+};
+type Shared_94dd631d = {
+    blocked: boolean;
+    /** Format: date-time */
+    created: string;
+    description: string | null;
+    dns_ptr: {
+        dns_ptr: string;
+        ip: string;
+    }[];
+    home_location: {
+        city: string;
+        country: string;
+        description: string;
+        /** Format: int64 */
+        id: number;
+        /** Format: double */
+        latitude: number;
+        /** Format: double */
+        longitude: number;
+        name: string;
+        network_zone: string;
+    };
+    /** Format: int64 */
+    id: number;
+    ip: string;
+    labels: {
+        [key: string]: string;
+    };
+    name: string;
+    protection: {
+        delete: boolean;
+    };
+    /** Format: int64 */
+    server: number | null;
+    /** @enum {string} */
+    type: "ipv4" | "ipv6";
+};
+type Shared_a39cafaa = {
+    label_selector: {
+        selector: string;
+    };
+    targets: {
+        health_status: Shared_463de7ed[];
+        server: {
+            /** Format: int64 */
+            id: number;
+            ip: string;
+        };
+        type: string;
+        /** @default false */
+        use_private_ip: boolean;
+    }[];
+    /** @enum {string} */
+    type?: "label_selector";
+    /** @default false */
+    use_private_ip: boolean;
+};
+type Shared_a3dff974 = (Shared_4ff43b0e & {
+    /** @enum {string} */
+    protocol?: "tcp";
+}) | (Shared_4ff43b0e & {
+    http: {
+        /** @default 300 */
+        cookie_lifetime: number;
+        /** @default HCLBSTICKY */
+        cookie_name: string;
+        /** @default false */
+        sticky_sessions: boolean;
+        /** @default 50 */
+        timeout_idle: number;
+    };
+    /** @enum {string} */
+    protocol?: "http";
+}) | (Shared_4ff43b0e & Shared_23e0bcf5);
+type Shared_add2182c = {
+    authoritative_nameservers: {
+        assigned: string[];
+        delegated: string[];
+        /** Format: date-time */
+        delegation_last_check: string | null;
+        /** @enum {string} */
+        delegation_status?: "valid" | "partially-valid" | "invalid" | "lame" | "unregistered" | "unknown";
+    };
+    /** Format: date-time */
+    created: string;
+    /** Format: int64 */
+    id: number;
+    labels: {
+        [key: string]: string;
+    };
+    name: string;
+    primary_nameservers?: {
+        address: string;
+        /** @default 53 */
+        port?: number;
+        /** @enum {string} */
+        tsig_algorithm?: "hmac-md5" | "hmac-sha1" | "hmac-sha256";
+        tsig_key?: string;
+    }[];
+    protection: {
+        delete: boolean;
+    };
+    record_count: number;
+    /** @enum {string} */
+    registrar: "hetzner" | "other" | "unknown";
+    /** @enum {string} */
+    status: "ok" | "updating" | "error";
+    /** @default 3600 */
+    ttl: number;
+};
+type Shared_b913e689 = {
+    deprecation: {
+        /** Format: date-time */
+        announced: string;
+        /** Format: date-time */
+        unavailable_after: string;
+    } | null;
+    description: string;
+    /** Format: int64 */
+    id: number;
+    /** Format: int64 */
+    max_assigned_certificates: number;
+    /** Format: int64 */
+    max_connections: number;
+    /** Format: int64 */
+    max_services: number;
+    /** Format: int64 */
+    max_targets: number;
+    name: string;
+    prices: Shared_fc52e819[];
+};
+type Shared_c9d2ce6f = {
+    certificate: string | null;
+    /** Format: date-time */
+    created: string;
+    domain_names: string[];
+    fingerprint: string | null;
+    /** Format: int64 */
+    id: number;
+    labels: {
+        [key: string]: string;
+    };
+    name: string;
+    /** Format: date-time */
+    not_valid_after: string | null;
+    /** Format: date-time */
+    not_valid_before: string | null;
+    status?: {
+        error?: {
+            code?: string;
+            message?: string;
+        } | null;
+        /** @enum {string} */
+        issuance?: "pending" | "completed" | "failed";
+        /** @enum {string} */
+        renewal?: "scheduled" | "pending" | "failed" | "unavailable";
+    } | null;
+    /** @enum {string} */
+    type?: "uploaded" | "managed";
+    used_by: {
+        /** Format: int64 */
+        id: number;
+        type: string;
+    }[];
+};
+type Shared_fb527d6f = {
+    /** @enum {string} */
+    architecture: "x86" | "arm";
+    category?: string;
+    cores: number;
+    /** @enum {string} */
+    cpu_type: "shared" | "dedicated";
+    /** @deprecated */
+    deprecation?: {
+        /** Format: date-time */
+        announced: string;
+        /** Format: date-time */
+        unavailable_after: string;
+    } | null;
+    description: string;
+    disk: number;
+    /** Format: int64 */
+    id: number;
+    locations: {
+        available: boolean;
+        deprecation: {
+            /** Format: date-time */
+            announced: string;
+            /** Format: date-time */
+            unavailable_after: string;
+        } | null;
+        /** Format: int64 */
+        id: number;
+        name: string;
+        recommended: boolean;
+    }[];
+    memory: number;
+    name: string;
+    prices: Shared_fc52e819[];
+    /** @enum {string} */
+    storage_type: "local" | "network";
+};
+type Shared_fc52e819 = {
+    /** Format: int64 */
+    included_traffic: number;
+    location: string;
+    price_hourly: {
+        /** Format: decimal */
+        gross: string;
+        /** Format: decimal */
+        net: string;
+    };
+    price_monthly: {
+        /** Format: decimal */
+        gross: string;
+        /** Format: decimal */
+        net: string;
+    };
+    price_per_tb_traffic: {
+        /** Format: decimal */
+        gross: string;
+        /** Format: decimal */
+        net: string;
+    };
+};

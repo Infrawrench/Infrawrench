@@ -525,15 +525,36 @@ export type {
 
 export { isSingleSqlStatement, assertSingleSqlStatement } from "./sql-statements.js";
 
-export { commaSeparated, createApiClient, pathEncode, withPagination } from "./api-client.js";
+export {
+  commaSeparated,
+  createApiClient,
+  nextLinkHeader,
+  parseLinkHeader,
+  pathEncode,
+  unencodedSegment,
+  withCursorPagination,
+  withLinkPagination,
+  withPagination,
+} from "./api-client.js";
 export type {
+  ApiAnswer,
   ApiBody,
   ApiClient,
   ApiClientOptions,
+  ApiFailure,
+  ApiListItem,
   ApiResponse,
+  CursorApiClient,
+  CursorDialect,
+  CursorPagination,
+  ForeignLinks,
+  LinkPagination,
+  NextPage,
   NoSlashString,
+  PageAnswer,
   PageNumberPagination,
   PaginatedApiClient,
+  WebLink,
 } from "./api-client.js";
 export type {
   Hosted,
@@ -625,7 +646,7 @@ export type { DnsRecordDetailOptions } from "./dns.js";
 export { dnsContentField, PICKABLE_DNS_TYPES } from "./dns-helpers.js";
 export type { DnsContentFieldOptions } from "./dns-helpers.js";
 
-export { jsonRestFetch, formatBytes, caCertCredentialField } from "./http.js";
+export { jsonRestFetch, restRequest, formatBytes, caCertCredentialField } from "./http.js";
 export {
   buildResourceShowcase,
   omitLiveShowcaseStats,
@@ -638,7 +659,7 @@ export {
 export type { ResourceShowcase, ShowcaseField, ShowcaseStat, ShowcaseTone } from "./showcase.js";
 export { buildMultipartBody } from "./multipart.js";
 export type { MultipartBody, MultipartPart } from "./multipart.js";
-export type { JsonRestFetchOptions } from "./http.js";
+export type { JsonRestFetchOptions, RestRequestOptions, RestResponse } from "./http.js";
 
 export { streamOpenAiSseChat } from "./chat-stream.js";
 export { decodePromptArgs } from "./prompt-args.js";

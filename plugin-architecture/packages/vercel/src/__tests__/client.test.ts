@@ -82,6 +82,67 @@ describe("caCert + host http service path", () => {
   });
 });
 
+describe("wire format", () => {
+  const paged = (key: string, next: number | string | null) =>
+    jsonResponse({ [key]: [{ id: "x", name: "n", uid: "x", createdAt: 1 }], pagination: { next } });
+  const failing = () => jsonResponse("boom", 500);
+
+  it("sends the page size, then the cursor, then the team", async () => {
+    let page = 0;
+    installFetch(() => paged("domains", page++ === 0 ? 1700 : null));
+    await client({ accessToken: "tok", teamId: "team_x" }).listResources("vercel-domain", ACCOUNT);
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.vercel.com/v5/domains?limit=100&teamId=team_x",
+      "https://api.vercel.com/v5/domains?limit=100&until=1700&teamId=team_x",
+    ]);
+  });
+
+  it("pages projects by `from` and deployments 50 at a time", async () => {
+    let page = 0;
+    installFetch(() => paged("projects", page++ === 0 ? "tok en" : null));
+    await client().listResources("vercel-project", ACCOUNT);
+    expect(calls[1]!.url).toBe("https://api.vercel.com/v10/projects?limit=100&from=tok%20en");
+
+    calls = [];
+    page = 0;
+    installFetch(() => paged("deployments", null));
+    await client().listResources("vercel-deployment", ACCOUNT);
+    expect(calls[0]!.url).toBe("https://api.vercel.com/v7/deployments?limit=50");
+  });
+
+  it("percent-encodes the team, and leaves it out of error messages", async () => {
+    installFetch(failing);
+    await expect(
+      client({ accessToken: "tok", teamId: "team a" }).listResources("vercel-domain", ACCOUNT),
+    ).rejects.toThrow(/^Vercel API error 500 for \/v5\/domains\?limit=100: boom$/);
+    expect(calls[0]!.url).toBe("https://api.vercel.com/v5/domains?limit=100&teamId=team%20a");
+  });
+
+  it("stops at 100 pages on a repeating cursor, returning what it has", async () => {
+    installFetch(() => paged("domains", 7));
+    const res = await client().listResources("vercel-domain", ACCOUNT);
+    expect(calls).toHaveLength(100);
+    expect(res).toHaveLength(100);
+  });
+
+  it("throws on a list with no body rather than reading it as empty", async () => {
+    installFetch(() => jsonResponse(undefined, 204));
+    await expect(client().listResources("vercel-domain", ACCOUNT)).rejects.toThrow(
+      "Cannot read properties of undefined (reading 'domains')",
+    );
+  });
+
+  it("sends the routes it never encoded raw, and the rest encoded", async () => {
+    installFetch(() => jsonResponse({}));
+    await client().deleteResource("vercel-project", "a:vercel-project:a b", ACCOUNT);
+    expect(calls[0]!.url).toBe("https://api.vercel.com/v9/projects/a b");
+
+    calls = [];
+    await client().updateResource("vercel-project", "a:vercel-project:a b", ACCOUNT, {});
+    expect(calls[0]!.url).toBe("https://api.vercel.com/v9/projects/a%20b");
+  });
+});
+
 describe("listResources dispatch + mappers", () => {
   it("maps projects with pagination and derived fields", async () => {
     let page = 0;

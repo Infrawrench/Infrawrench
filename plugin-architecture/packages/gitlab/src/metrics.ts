@@ -20,10 +20,10 @@
  * and the series simply starts later when it is reached.
  */
 
-import type { MetricSeries } from "@infrawrench/plugin-base";
+import type { MetricSeries, NoSlashString } from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
-import { glGraphql, glPaged, glRequest } from "./api.js";
-import type { GlDeployment, GlJob, GlPipeline } from "./types.js";
+import { environmentFilter, gitlabApi, gitlabJobPages, glGraphql } from "./api.js";
+import type { GlDeployment, GlJob, GlPipeline } from "./api.js";
 
 export const DEFAULT_METRICS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -149,80 +149,60 @@ export function deploymentSeries(deployments: GlDeployment[], range: TimeRange):
   return [ok, bad].filter((s) => s.points.some((p) => p.value > 0));
 }
 
-/**
- * Newest-first jobs until the oldest one predates the window. Offset pages
- * are used (keyset would need the `Link` header parsed), bounded by
- * `MAX_JOB_PAGES`.
- */
-export async function jobsSince(
-  ctx: GitLabContext,
-  path: string,
-  startMs: number,
-  query: Record<string, string> = {},
-): Promise<GlJob[]> {
-  const out: GlJob[] = [];
-  for (let page = 1; page <= MAX_JOB_PAGES; page++) {
-    const res = await glRequest(ctx, path, { query: { ...query, per_page: 100, page } });
-    const batch = res.text ? (JSON.parse(res.text) as GlJob[]) : [];
-    if (!Array.isArray(batch) || batch.length === 0) break;
-    out.push(...batch);
-    const oldest = batch[batch.length - 1]?.created_at;
-    if (oldest && Date.parse(oldest) < startMs) break;
-    if (res.headers["x-next-page"] === "" || batch.length < 100) break;
-  }
-  return out;
-}
+/** Newest-first jobs are read until a page's oldest predates the window. */
+const reachesBefore = (startMs: number) => (batch: Array<{ created_at?: string }>) => {
+  const oldest = batch[batch.length - 1]?.created_at;
+  return Boolean(oldest && Date.parse(oldest) < startMs);
+};
 
 export async function projectSeries(
   ctx: GitLabContext,
-  projectId: string,
+  projectId: NoSlashString,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
   const [pipelines, jobs] = await Promise.all([
-    glPaged<GlPipeline>(
-      ctx,
-      `/projects/${projectId}/pipelines`,
-      {
+    gitlabApi(ctx).getAll(`/projects/${projectId}/pipelines`, null, {
+      query: {
         created_after: new Date(range.startMs).toISOString(),
         created_before: new Date(range.endMs).toISOString(),
       },
-      MAX_JOB_PAGES,
-    ),
-    jobsSince(ctx, `/projects/${projectId}/jobs`, range.startMs).catch(() => [] as GlJob[]),
+      maxPages: MAX_JOB_PAGES,
+    }),
+    gitlabJobPages(ctx, MAX_JOB_PAGES)
+      .getAll(`/projects/${projectId}/jobs`, null, { stopWhen: reachesBefore(range.startMs) })
+      .catch((): GlJob[] => []),
   ]);
   return [...pipelineSeries(pipelines, range), ...jobSeries(jobs, range)];
 }
 
 export async function runnerSeries(
   ctx: GitLabContext,
-  runnerId: string,
+  runnerId: NoSlashString,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
-  const jobs = await jobsSince(ctx, `/runners/${runnerId}/jobs`, range.startMs, {
-    order_by: "id",
-    sort: "desc",
+  const jobs = await gitlabJobPages(ctx, MAX_JOB_PAGES).getAll(`/runners/${runnerId}/jobs`, null, {
+    query: { order_by: "id", sort: "desc" },
+    stopWhen: reachesBefore(range.startMs),
   });
   return jobSeries(jobs, range);
 }
 
 export async function environmentSeries(
   ctx: GitLabContext,
-  projectId: string,
+  projectId: NoSlashString,
   environment: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
-  const deployments = await glPaged<GlDeployment>(
-    ctx,
-    `/projects/${projectId}/deployments`,
-    {
-      environment,
+  const deployments = await gitlabApi(ctx).getAll(`/projects/${projectId}/deployments`, null, {
+    query: {
+      ...environmentFilter(environment),
       updated_after: new Date(range.startMs).toISOString(),
       updated_before: new Date(range.endMs).toISOString(),
       order_by: "updated_at",
       sort: "desc",
     },
-    MAX_JOB_PAGES,
-  );
+    maxPages: MAX_JOB_PAGES,
+  });
   return deploymentSeries(deployments, range);
 }
 

@@ -11,14 +11,25 @@
  *   const paged = withPagination(api, { pageParam: "page", sizeParam: "per_page", pageSize: 50 });
  *   const everyServer = await paged.getAll(`/servers`, "servers");
  *
- * Requests go through `jsonRestFetch`, so bastion routing, custom CAs and the
- * error format are what every other plugin call gets.
+ *   const cursors = withCursorPagination(api, {
+ *     cursorParam: "after", sizeParam: "limit", pageSize: 100, maxPages: 50, next: "meta.next_cursor",
+ *   });
+ *   const everyUser = await cursors.getAll(`/users`, "users");
+ *
+ *   const links = withLinkPagination(api, { next: nextLinkHeader(), maxPages: 25, foreignLinks: "follow" });
+ *   const everyApp = await links.getAll(`/apps`, null);
+ *
+ *   const { headers } = await api.getResponse(`/servers`, { query: { per_page: 1 } });
+ *   const { body: log } = await api.getText(`/jobs/${pathEncode(id)}/trace`);
+ *
+ * Requests go through `restRequest`, so bastion routing, custom CAs and the error
+ * format are what every other plugin call gets.
  *
  * This checks what the provider's document promises and nothing more: a response
  * is not validated at runtime, because these documents are often wrong in small
  * ways and a sync that dies on an undocumented enum value helps nobody.
  */
-import { jsonRestFetch } from "./http.js";
+import { restRequest, type RestResponse } from "./http.js";
 import type { HttpHostServices } from "./manifest.js";
 
 /** A path segment known to contain no slashes. Made by {@link pathEncode}. */
@@ -28,6 +39,15 @@ export type NoSlashString = string & { readonly __noSlash: unique symbol };
 export function pathEncode(value: string | number): NoSlashString {
   // Branding is the one thing a cast is for: nothing structural says "encoded".
   return encodeURIComponent(String(value)) as NoSlashString;
+}
+
+/**
+ * A path segment sent exactly as given. Only for keeping a migrated plugin's
+ * requests byte-identical where it never encoded the segment, which is a bug to
+ * fix on its own: a value holding `/` or `?` changes which route gets called.
+ */
+export function unencodedSegment(value: string): NoSlashString {
+  return value as NoSlashString;
 }
 
 type HttpMethod = "get" | "put" | "post" | "delete" | "patch";
@@ -100,7 +120,39 @@ type Caller<P, M extends HttpMethod> = <const Path extends keyof PathsFor<P, M> 
   ...args: Args<PathsFor<P, M>[Path]>
 ) => Promise<ApiResponse<PathsFor<P, M>[Path]>>;
 
-export type ApiClient<P> = { [M in HttpMethod]: Caller<P, M> };
+/** An operation's answer with its status and lower-cased headers, and the URL that was asked. */
+export interface ApiAnswer<Body> extends RestResponse<Body> {
+  url: string;
+}
+
+export type ApiClient<P> = { [M in HttpMethod]: Caller<P, M> } & {
+  /** `get`, answering with the status and headers too: `X-Total`, a rate limit. */
+  getResponse: <const Path extends keyof PathsFor<P, "get"> & string>(
+    path: Path,
+    ...args: Args<PathsFor<P, "get">[Path]>
+  ) => Promise<ApiAnswer<ApiResponse<PathsFor<P, "get">[Path]>>>;
+  /**
+   * `get`, leaving the body as it came: a log, or a call only made for its headers,
+   * which then cannot fail on a body that is not JSON.
+   */
+  getText: <const Path extends keyof PathsFor<P, "get"> & string>(
+    path: Path,
+    ...args: Args<PathsFor<P, "get">[Path]>
+  ) => Promise<ApiAnswer<string>>;
+};
+
+/** A non-2xx answer, for {@link ApiClientOptions.httpError}. */
+export interface ApiFailure {
+  status: number;
+  /** Upper case, as sent. */
+  method: string;
+  /** The path as the call wrote it, with no query. A followed link gives its pathname. */
+  path: string;
+  /** `path` with the call's own query: what the default message names. */
+  target: string;
+  url: string;
+  body: string;
+}
 
 export interface ApiClientOptions {
   /** Vendor name for error messages, e.g. `"Hetzner"`. */
@@ -110,6 +162,27 @@ export interface ApiClientOptions {
     Record<string, string> | (() => Record<string, string> | Promise<Record<string, string>>);
   http?: HttpHostServices | undefined;
   caCert?: string | undefined;
+  /**
+   * Query parameters every request carries, such as the team an account is scoped
+   * to. They go after the call's own and stay out of error messages, so an id in
+   * them does not end up in a log line. A null or undefined value is not sent.
+   */
+  scopeQuery?: Record<string, string | null | undefined> | undefined;
+  /**
+   * How query names and values are encoded. The default is form encoding, as
+   * `URLSearchParams` does it (a space becomes `+`); pass `encodeURIComponent` for
+   * a provider that wants `%20`, or to keep an old client's requests identical.
+   */
+  encodeQuery?: ((value: string) => string) | undefined;
+  /**
+   * Build what a non-2xx answer throws, for a plugin whose callers branch on the
+   * status. The default is `Error("<vendor> API error <status> for <target>: <body>")`.
+   */
+  httpError?: ((failure: ApiFailure) => Error) | undefined;
+  /** `"with-body"` sends `Content-Type` only on a request that has a body. See `restRequest`. */
+  contentType?: "always" | "with-body" | undefined;
+  /** A 2xx with no body is `undefined` in both transports. See `restRequest`. */
+  emptyBodyIsUndefined?: boolean | undefined;
 }
 
 const COMMA_SEPARATED = Symbol("commaSeparated");
@@ -128,21 +201,25 @@ function isCommaSeparated(value: unknown[]): boolean {
 }
 
 /** Form-encode one value the way `URLSearchParams` would, without its separators. */
-const encodeForm = (value: unknown) =>
-  new URLSearchParams({ "": String(value) }).toString().slice(1);
+const encodeForm = (value: string) => new URLSearchParams({ "": value }).toString().slice(1);
 
-function queryString(query: object | undefined): string {
-  if (!query) return "";
+function queryParts(query: object | undefined, encodeText: (value: string) => string): string[] {
+  if (!query) return [];
+  const encode = (value: unknown) => encodeText(String(value));
   const parts: string[] = [];
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined || value === null) continue;
-    const name = encodeForm(key);
-    if (!Array.isArray(value)) parts.push(`${name}=${encodeForm(value)}`);
-    else if (isCommaSeparated(value)) parts.push(`${name}=${value.map(encodeForm).join(",")}`);
-    else for (const item of value) parts.push(`${name}=${encodeForm(item)}`);
+    const name = encode(key);
+    if (!Array.isArray(value)) parts.push(`${name}=${encode(value)}`);
+    else if (isCommaSeparated(value)) parts.push(`${name}=${value.map(encode).join(",")}`);
+    else for (const item of value) parts.push(`${name}=${encode(item)}`);
   }
-  return parts.length > 0 ? `?${parts.join("&")}` : "";
+  return parts;
 }
+
+// An unencoded segment can already hold a `?`, hence looking rather than assuming.
+const withQuery = (target: string, parts: string[]) =>
+  parts.length === 0 ? target : `${target}${target.includes("?") ? "&" : "?"}${parts.join("&")}`;
 
 interface RequestOptions {
   query?: object;
@@ -150,44 +227,100 @@ interface RequestOptions {
   signal?: AbortSignal;
 }
 
+/** A next link, which is sent exactly as the provider wrote it. */
+const isAbsoluteUrl = (value: string) => /^https?:\/\//i.test(value);
+
 /** Build a client for one provider's document. */
 export function createApiClient<P>(options: ApiClientOptions): ApiClient<P> {
-  const send =
+  const encode = options.encodeQuery ?? encodeForm;
+  const scope = queryParts(options.scopeQuery, encode);
+  const { httpError, contentType, emptyBodyIsUndefined, http, caCert, vendor, baseUrl } = options;
+  const send = async (
+    method: HttpMethod,
+    path: string,
+    request: RequestOptions,
+    responseAs?: "text",
+  ): Promise<ApiAnswer<unknown>> => {
+    const headers =
+      typeof options.headers === "function" ? await options.headers() : options.headers;
+    const followed = isAbsoluteUrl(path);
+    const link = followed ? new URL(path) : undefined;
+    const target = link
+      ? `${link.pathname}${link.search}`
+      : withQuery(path, queryParts(request.query, encode));
+    const url = followed ? path : `${baseUrl}${withQuery(target, scope)}`;
+    const verb = method.toUpperCase();
+    const answer = await restRequest<unknown>({
+      vendor,
+      url,
+      // With the query: `/images` fails differently for `?type=system` and `?type=backup`.
+      errorPath: target,
+      headers,
+      init: {
+        method: verb,
+        ...(request.body !== undefined ? { body: JSON.stringify(request.body) } : {}),
+        ...(request.signal ? { signal: request.signal } : {}),
+      },
+      ...(http ? { http } : {}),
+      ...(caCert ? { caCert } : {}),
+      ...(contentType ? { contentType } : {}),
+      ...(emptyBodyIsUndefined ? { emptyBodyIsUndefined } : {}),
+      ...(responseAs ? { responseAs } : {}),
+      ...(httpError
+        ? {
+            httpError: ({ status, body }: { status: number; body: string }) =>
+              httpError({ status, method: verb, path: link?.pathname ?? path, target, url, body }),
+          }
+        : {}),
+    });
+    return { ...answer, url };
+  };
+  const call =
     (method: HttpMethod) =>
-    async (path: string, request: RequestOptions = {}): Promise<unknown> => {
-      const headers =
-        typeof options.headers === "function" ? await options.headers() : options.headers;
-      const target = `${path}${queryString(request.query)}`;
-      return jsonRestFetch<unknown>({
-        vendor: options.vendor,
-        url: `${options.baseUrl}${target}`,
-        // With the query: `/images` fails differently for `?type=system` and `?type=backup`.
-        errorPath: target,
-        headers,
-        init: {
-          method: method.toUpperCase(),
-          ...(request.body !== undefined ? { body: JSON.stringify(request.body) } : {}),
-          ...(request.signal ? { signal: request.signal } : {}),
-        },
-        ...(options.http ? { http: options.http } : {}),
-        ...(options.caCert ? { caCert: options.caCert } : {}),
-      });
-    };
+    async (path: string, request: RequestOptions = {}): Promise<unknown> =>
+      (await send(method, path, request)).body;
   // The generic surface above is the point of this file; the implementation is
   // one function per verb and cannot express it.
   return {
-    get: send("get"),
-    put: send("put"),
-    post: send("post"),
-    delete: send("delete"),
-    patch: send("patch"),
+    get: call("get"),
+    put: call("put"),
+    post: call("post"),
+    delete: call("delete"),
+    patch: call("patch"),
+    getResponse: (path: string, request: RequestOptions = {}) => send("get", path, request),
+    getText: (path: string, request: RequestOptions = {}) => send("get", path, request, "text"),
   } as unknown as ApiClient<P>;
 }
 
-/** The keys of a response that hold an array: what a list can be collected by. */
-type ListKey<Response> = {
-  [K in keyof Response & string]-?: NonNullable<Response[K]> extends readonly unknown[] ? K : never;
-}[keyof Response & string];
+/**
+ * What a list can be collected by: a key holding an array on any member of the
+ * response union, or `null` where the response is itself the array.
+ */
+type ListKey<Response> = Response extends readonly unknown[]
+  ? null
+  : Response extends object
+    ? {
+        [K in keyof Response & string]-?: NonNullable<Response[K]> extends readonly unknown[]
+          ? K
+          : never;
+      }[keyof Response & string]
+    : never;
+
+/** One item of the list at `Key`, across every union member that has it. */
+type ListItem<Response, Key> = Response extends readonly (infer Item)[]
+  ? Key extends null
+    ? Item
+    : never
+  : Response extends object
+    ? Key extends keyof Response
+      ? NonNullable<Response[Key]> extends readonly (infer Item)[]
+        ? Item
+        : never
+      : never
+    : never;
+
+/** One item of an operation's list, for naming what a mapper takes. */
+export type ApiListItem<Op, Key extends ListKey<ApiResponse<Op>>> = ListItem<ApiResponse<Op>, Key>;
 
 type ListOptions<Op, Paging extends string> = ([QueryOf<Op>] extends [never]
   ? object
@@ -200,7 +333,7 @@ type GetAll<P, Paging extends string> = <
   path: Path,
   key: Key,
   options?: ListOptions<PathsFor<P, "get">[Path], Paging>,
-) => Promise<NonNullable<ApiResponse<PathsFor<P, "get">[Path]>[Key]>>;
+) => Promise<ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>[]>;
 
 /** A client that can also walk a page-numbered list to its end. */
 export type PaginatedApiClient<P, Paging extends string> = ApiClient<P> & {
@@ -220,8 +353,8 @@ export interface PageNumberPagination<PageParam extends string, SizeParam extend
 
 /**
  * Add `getAll` for a provider that pages by number. A list ends on an empty or
- * missing batch, a batch shorter than `pageSize`, or on reaching `total`. Cursor
- * and link-header providers need their own strategy; none has been migrated yet.
+ * missing batch, a batch shorter than `pageSize`, or on reaching `total`. Cursors
+ * are {@link withCursorPagination}, next links {@link withLinkPagination}.
  */
 export function withPagination<
   P,
@@ -239,12 +372,12 @@ export function withPagination<
     path: string,
     request: RequestOptions,
   ) => Promise<(Page & Record<string, unknown>) | undefined>;
-  const getAll = async (path: string, key: string, request: RequestOptions = {}) => {
+  const getAll = async (path: string, key: string | null, request: RequestOptions = {}) => {
     const items: unknown[] = [];
     for (let page = 1; ; page++) {
       const query = { ...request.query, [pageParam]: page, [sizeParam]: pageSize };
       const body = await get(path, { ...request, query });
-      const batch = body?.[key];
+      const batch = key === null ? body : body?.[key];
       if (!Array.isArray(batch) || batch.length === 0) return items;
       items.push(...batch);
       const reported = body && total?.(body);
@@ -253,4 +386,396 @@ export function withPagination<
     }
   };
   return { ...client, getAll } as unknown as PaginatedApiClient<P, PageParam | SizeParam>;
+}
+
+/** The value at a dotted path, through whichever union members have it. */
+type FieldAt<T, Path extends string> = T extends readonly unknown[]
+  ? never
+  : T extends object
+    ? Path extends `${infer Head}.${infer Rest}`
+      ? Head extends keyof T
+        ? FieldAt<NonNullable<T[Head]>, Rest>
+        : never
+      : Path extends keyof T
+        ? T[Path]
+        : never
+    : never;
+
+/** One page as it arrived, for a {@link NextPage} to read. */
+export interface PageAnswer {
+  /** Lower-cased names. */
+  headers: Record<string, string>;
+  body: unknown;
+  /** The page's list, empty if the body held none. */
+  items: readonly unknown[];
+  /** The cursor that fetched this page, as a string, or the link it came from. */
+  cursor: string | undefined;
+  pageSize: number | undefined;
+}
+
+/** Work out what follows a page from all of it, where no one field says. Falsy ends the list. */
+export type NextPage = (page: PageAnswer) => string | number | null | undefined;
+
+/**
+ * Where the next cursor is: a field of the response by dotted path, a field of the
+ * page's last item, or anything a function can read from the page. A function is
+ * not checked against the document, so reach for it only when a field will not do.
+ */
+type CursorSource = string | { lastItem: string } | NextPage;
+
+export interface CursorPagination<
+  CursorParam extends string = string,
+  SizeParam extends string = string,
+  Next extends CursorSource = CursorSource,
+  HasMore extends string = string,
+> {
+  /** The query parameter the cursor is sent back in. */
+  cursorParam: CursorParam;
+  /** Sent on the first request, for a provider that numbers pages and expects `page=1`. */
+  firstCursor?: string | number;
+  /** Where each page says what comes next. A falsy value ends the list. */
+  next: Next;
+  /**
+   * The most pages one list may take. A list that reaches it returns what it has,
+   * so this is also what stops a provider repeating a cursor from looping forever.
+   */
+  maxPages: number;
+  /** The query parameter holding the page size, for a provider that takes one. */
+  sizeParam?: SizeParam;
+  pageSize?: number;
+  /** A field that must be truthy for another page to be asked for. */
+  hasMore?: HasMore;
+  /** Pull the cursor out of what `next` found, such as a `page[after]` in a link. */
+  readCursor?: (value: string) => string | null | undefined;
+  /** End on a page shorter than `pageSize`, for a provider with no other signal. */
+  stopOnShortPage?: boolean;
+  /** End when a page hands back the cursor that fetched it. */
+  stopOnRepeatedCursor?: boolean;
+  /** Keep following the cursor past an empty page, as gRPC-backed lists require. */
+  continueOnEmptyPage?: boolean;
+  /**
+   * Read a 2xx with no body as the end of the list. Off by default, so it throws:
+   * the host prunes resources a sync stops seeing, and "no answer" is not "none".
+   */
+  emptyBodyEndsList?: boolean;
+  /** Told when a list stops at `maxPages` with a cursor still in hand. */
+  onTruncated?: (info: { path: string; items: number; maxPages: number }) => void;
+}
+
+/** The parts of a {@link CursorPagination} the types are worked out from. */
+export interface CursorDialect {
+  cursorParam: string;
+  sizeParam: string;
+  next: CursorSource;
+  hasMore: string;
+}
+
+type CursorAt<Response, Key, Source> = Source extends { lastItem: infer Field extends string }
+  ? FieldAt<ListItem<Response, Key>, Field>
+  : Source extends string
+    ? FieldAt<Response, Source>
+    : Source extends NextPage
+      ? string
+      : never;
+
+/** Is `T` a value that is present on some union member, and only ever `Allowed`? */
+type Holds<T, Allowed> = [NonNullable<T>] extends [never]
+  ? false
+  : [NonNullable<T>] extends [Allowed]
+    ? true
+    : false;
+
+/** The lists of a response this pagination can walk: their cursor reads as text or a number. */
+type CursorListKey<Response, Source, Key = ListKey<Response>> = Key extends unknown
+  ? Holds<CursorAt<Response, Key, Source>, string | number> extends true
+    ? Key
+    : never
+  : never;
+
+type QueryHas<Op, Name> = [Name] extends [never]
+  ? true
+  : [QueryOf<Op>] extends [never]
+    ? false
+    : [Name] extends [keyof QueryOf<Op>]
+      ? true
+      : false;
+
+/** The list keys of `Op` under `D`, or `never` where `D` does not describe `Op`. */
+type CursorListsOf<Op, D extends CursorDialect> = [
+  // An absent parameter or `hasMore` is `never`, which asks nothing of `Op`.
+  QueryHas<Op, D["cursorParam"]>,
+  QueryHas<Op, D["sizeParam"]>,
+  [D["hasMore"]] extends [never] ? true : Holds<FieldAt<ApiResponse<Op>, D["hasMore"]>, boolean>,
+] extends [true, true, true]
+  ? CursorListKey<ApiResponse<Op>, D["next"]>
+  : never;
+
+/** The GET operations `D` describes: everything else is a compile error at `getAll`. */
+type CursorPaths<P, D extends CursorDialect> = {
+  [
+    K in keyof PathsFor<P, "get"> & string as [CursorListsOf<PathsFor<P, "get">[K], D>] extends [
+      never,
+    ]
+      ? never
+      : K
+  ]: PathsFor<P, "get">[K];
+};
+
+/** Fails a configuration no operation in the document matches, such as a misspelt field. */
+type DescribesSomething<P, D extends CursorDialect> = [keyof CursorPaths<P, D>] extends [never]
+  ? { next: never }
+  : unknown;
+
+type CursorGetAll<P, D extends CursorDialect> = <
+  const Path extends keyof CursorPaths<P, D> & string,
+  Key extends CursorListsOf<PathsFor<P, "get">[Path], D>,
+>(
+  path: Path,
+  key: Key,
+  options?: ListOptions<PathsFor<P, "get">[Path], D["cursorParam"] | D["sizeParam"]> & {
+    pageSize?: number;
+    maxPages?: number;
+    /** End after a page this says is enough, such as one reaching past a time window. */
+    stopWhen?: (batch: ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>[]) => boolean;
+  },
+) => Promise<ListItem<ApiResponse<PathsFor<P, "get">[Path]>, Key>[]>;
+
+/** A client that can also walk a cursor-paged list to its end. */
+export type CursorApiClient<P, D extends CursorDialect> = ApiClient<P> & {
+  /**
+   * Every item of a list: `getAll("/users", "users")`, or `getAll("/users", null)`
+   * where the response is the array. Typed from the response, and only operations
+   * the pagination's `cursorParam`, `sizeParam`, `next` and `hasMore` fit are allowed.
+   */
+  getAll: CursorGetAll<P, D>;
+};
+
+interface CursorRequest extends RequestOptions {
+  pageSize?: number;
+  maxPages?: number;
+  stopWhen?: (batch: unknown[]) => boolean;
+}
+
+/** Walk a dotted path through a body that has not been validated. */
+function readField(from: unknown, path: string): unknown {
+  let value = from;
+  for (const segment of path.split(".")) {
+    if (value === null || typeof value !== "object") return undefined;
+    value = Reflect.get(value, segment);
+  }
+  return value;
+}
+
+/**
+ * Add `getAll` for a provider that pages by cursor. One provider can have several
+ * dialects, such as a `from` token on one route and an `until` timestamp on the
+ * rest: make one client per dialect, and each only accepts the routes it fits.
+ *
+ *   next: "pagination.next"                                     // a field of the response
+ *   next: { lastItem: "id" }, hasMore: "has_more"               // Stripe-style
+ *   next: "links.next", readCursor: (link) => ...               // a cursor inside a URL
+ *   next: ({ headers }) => headers["x-next-page"]               // anything else on the page
+ *
+ * A list ends on a missing or empty batch, a falsy cursor, a falsy `hasMore`, or at
+ * `maxPages`. A cursor is sent back after the caller's query and the page size.
+ */
+export function withCursorPagination<
+  P,
+  CursorParam extends string,
+  const Next extends CursorSource,
+  SizeParam extends string = never,
+  HasMore extends string = never,
+>(
+  client: ApiClient<P>,
+  pagination: CursorPagination<CursorParam, SizeParam, Next, HasMore> &
+    DescribesSomething<
+      P,
+      { cursorParam: CursorParam; sizeParam: SizeParam; next: Next; hasMore: HasMore }
+    >,
+): CursorApiClient<
+  P,
+  { cursorParam: CursorParam; sizeParam: SizeParam; next: Next; hasMore: HasMore }
+> {
+  const config: CursorPagination = pagination;
+  // The generic surface is what `getAll` promises; the walk takes any path.
+  return { ...client, getAll: walkPages(client, config) } as unknown as CursorApiClient<
+    P,
+    { cursorParam: CursorParam; sizeParam: SizeParam; next: Next; hasMore: HasMore }
+  >;
+}
+
+/** What a list walk reads from its configuration, whichever way it follows a page. */
+type WalkConfig = Omit<CursorPagination, "cursorParam"> & {
+  cursorParam?: string;
+  foreignLinks?: ForeignLinks;
+};
+
+function walkPages<P>(client: ApiClient<P>, config: WalkConfig) {
+  const { cursorParam, sizeParam, next, hasMore, readCursor, onTruncated, foreignLinks } = config;
+  // As in `withPagination`: the implementation walks any path.
+  const getResponse = client.getResponse as unknown as (
+    path: string,
+    request: RequestOptions,
+  ) => Promise<ApiAnswer<Record<string, unknown>>>;
+  return async (path: string, key: string | null, request: CursorRequest = {}) => {
+    const { pageSize = config.pageSize, maxPages = config.maxPages, query, signal } = request;
+    const items: unknown[] = [];
+    let cursor = config.firstCursor === undefined ? undefined : String(config.firstCursor);
+    let origin: string | undefined;
+    for (let page = 0; page < maxPages; page++) {
+      // A link already holds every parameter the list needs.
+      const link = cursorParam === undefined ? cursor : undefined;
+      const { body, headers, url } = await getResponse(link ?? path, {
+        ...(link === undefined
+          ? {
+              query: {
+                ...query,
+                ...(sizeParam !== undefined && pageSize !== undefined
+                  ? { [sizeParam]: pageSize }
+                  : {}),
+                ...(cursorParam !== undefined && cursor !== undefined
+                  ? { [cursorParam]: cursor }
+                  : {}),
+              },
+            }
+          : {}),
+        ...(signal ? { signal } : {}),
+      });
+      origin ??= new URL(url).origin;
+      if (config.emptyBodyEndsList && (body === null || body === undefined)) return items;
+      // Not `body?.[key]`: see `emptyBodyEndsList`.
+      const batch: unknown = key === null ? body : body[key];
+      const list: unknown[] = Array.isArray(batch) ? batch : [];
+      if (list.length === 0 && !config.continueOnEmptyPage) return items;
+      items.push(...list);
+
+      if (request.stopWhen?.(list)) return items;
+      if (hasMore !== undefined && !readField(body, hasMore)) return items;
+      if (config.stopOnShortPage && pageSize !== undefined && list.length < pageSize) return items;
+
+      const found =
+        typeof next === "function"
+          ? next({ headers, body, items: list, cursor, pageSize })
+          : typeof next === "string"
+            ? readField(body, next)
+            : readField(list[list.length - 1], next.lastItem);
+      if (!found) return items;
+      const following = readCursor ? readCursor(String(found)) : String(found);
+      if (!following) return items;
+      const resolved =
+        cursorParam !== undefined || isAbsoluteUrl(following)
+          ? following
+          : new URL(following, url).href;
+      if (config.stopOnRepeatedCursor && resolved === cursor) return items;
+      if (cursorParam === undefined && foreignLinks === "refuse") {
+        const target = new URL(resolved).origin;
+        if (target !== origin) {
+          throw new Error(
+            `Refusing to follow the next page of ${path} from ${origin} to ${target}`,
+          );
+        }
+      }
+      cursor = resolved;
+    }
+    onTruncated?.({ path, items: items.length, maxPages });
+    return items;
+  };
+}
+
+/** What to do about a next link to another host, which would carry the credentials there. */
+export type ForeignLinks = "follow" | "refuse";
+
+export interface LinkPagination<
+  SizeParam extends string = string,
+  Next = string | NextPage,
+> extends Omit<
+  CursorPagination<never, SizeParam>,
+  "cursorParam" | "firstCursor" | "next" | "readCursor" | "hasMore"
+> {
+  /**
+   * Where each page names the next one: {@link nextLinkHeader}, or a field of the
+   * response by dotted path, such as `next_page_uri`. A falsy value ends the list.
+   */
+  next: Next;
+  /**
+   * Whether to follow a link to another origin, with the client's headers on it.
+   * No default: `"follow"` is what the plugins' own loops did, `"refuse"` throws
+   * rather than return part of a list, and a migrator has to say which it wants.
+   */
+  foreignLinks: ForeignLinks;
+}
+
+/**
+ * Add `getAll` for a provider that names the next page by URL. The first request
+ * is the path with its query and page size, and each one after it is the link
+ * exactly as the provider wrote it, so the client's `scopeQuery` is not added to
+ * it. A relative link resolves against the page it came from. Termination and the
+ * per-call options are {@link withCursorPagination}'s.
+ *
+ *   next: nextLinkHeader()                                      // RFC 8288 `rel="next"`
+ *   next: nextLinkHeader({ when: (l) => l["results"] === "true" }) // a link that may be empty
+ *   next: "meta.next_page_url"                                  // a field of the response
+ *
+ * A link whose cursor should go back as a parameter, rather than be followed, is
+ * `withCursorPagination` with `next: nextLinkHeader()` and `readCursor`.
+ */
+export function withLinkPagination<
+  P,
+  const Next extends string | NextPage,
+  SizeParam extends string = never,
+>(
+  client: ApiClient<P>,
+  pagination: LinkPagination<SizeParam, Next> &
+    DescribesSomething<P, { cursorParam: never; sizeParam: SizeParam; next: Next; hasMore: never }>,
+): CursorApiClient<P, { cursorParam: never; sizeParam: SizeParam; next: Next; hasMore: never }> {
+  const config: WalkConfig = pagination;
+  // As in `withCursorPagination`.
+  return { ...client, getAll: walkPages(client, config) } as unknown as CursorApiClient<
+    P,
+    { cursorParam: never; sizeParam: SizeParam; next: Next; hasMore: never }
+  >;
+}
+
+/** One link of an RFC 8288 `Link` header, with its parameters by lower-cased name. */
+export interface WebLink {
+  url: string;
+  params: Record<string, string>;
+}
+
+/**
+ * Parse a `Link` header. Commas and semicolons can sit inside a URL or a quoted
+ * parameter (a cursor like `0:100:0` is usually quoted), so it cannot be split.
+ */
+export function parseLinkHeader(header: string | undefined): WebLink[] {
+  if (!header) return [];
+  const links: WebLink[] = [];
+  const link = /<([^>]*)>((?:\s*;\s*[^\s;,=]+(?:\s*=\s*(?:"[^"]*"|[^\s;,]*))?)*)/g;
+  for (const [, url, rest] of header.matchAll(link)) {
+    const params: Record<string, string> = {};
+    for (const [, name, quoted, plain] of (rest ?? "").matchAll(
+      /;\s*([^\s;,=]+)(?:\s*=\s*(?:"([^"]*)"|([^\s;,]*)))?/g,
+    )) {
+      // RFC 8288: the first occurrence of a parameter wins.
+      params[name!.toLowerCase()] ??= quoted ?? plain ?? "";
+    }
+    links.push({ url: url ?? "", params });
+  }
+  return links;
+}
+
+/**
+ * Read the next page from a `Link` header: the first link whose `rel` holds `rel`
+ * (`next` by default, any case, among several). `when` looks at its parameters, for
+ * a provider that always sends the link and says elsewhere whether it leads anywhere.
+ */
+export function nextLinkHeader(
+  options: { rel?: string; when?: (params: Record<string, string>) => boolean } = {},
+): NextPage {
+  const rel = (options.rel ?? "next").toLowerCase();
+  return ({ headers }) => {
+    const link = parseLinkHeader(headers["link"]).find(({ params }) =>
+      (params["rel"] ?? "").toLowerCase().split(/\s+/).includes(rel),
+    );
+    return link && (!options.when || options.when(link.params)) ? link.url : undefined;
+  };
 }

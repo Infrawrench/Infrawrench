@@ -45,7 +45,8 @@ import {
   normalizeVulnerabilitySeverity,
 } from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
-import { glFetch, glGraphql, statusOf } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import { gitlabApi, glGraphql, statusOf } from "./api.js";
 
 /** Pages of 100 read for a group-scoped account. */
 export const GROUP_MAX_PAGES = 50;
@@ -369,7 +370,7 @@ async function restDenied(
   if (probed.length === 0) return false;
   for (const p of probed) {
     try {
-      await glFetch<unknown>(ctx, `/projects/${p.id}/vulnerability_findings`, {
+      await gitlabApi(ctx).get(`/projects/${pathEncode(p.id)}/vulnerability_findings`, {
         query: { per_page: 1 },
       });
       return false;

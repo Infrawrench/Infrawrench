@@ -9,7 +9,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { caCertCredentialField } from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
-import { glFetch, glPaged, isPermissionError, resolveBaseUrl } from "./api.js";
+import { gitlabApi, isPermissionError, resolveBaseUrl } from "./api.js";
 import { GitLabClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
 import { gitlabRemediationCommands, gitlabSeatRemediationCommands } from "./remediation.js";
@@ -17,7 +17,6 @@ import { GITLAB_PRODUCT } from "./seats.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { gitlabTerraformExport } from "./terraform.js";
-import type { GlGroup, GlUser } from "./types.js";
 import { gitlabDeployEvents } from "./deploy-events.js";
 
 const SCOPES_LINK = {
@@ -179,9 +178,9 @@ async function listCredentialOptions(
   services?: HostServices,
 ): Promise<CredentialFieldOption[]> {
   if (fieldKey !== "group") return [];
-  const ctx = contextFrom(credentials, services);
+  const api = gitlabApi(contextFrom(credentials, services));
   try {
-    await glFetch<GlUser>(ctx, "/user");
+    await api.get("/user");
   } catch (err) {
     if (isPermissionError(err)) {
       throw new Error(
@@ -190,12 +189,10 @@ async function listCredentialOptions(
     }
     throw err;
   }
-  const groups = await glPaged<GlGroup>(
-    ctx,
-    "/groups",
-    { min_access_level: 10, order_by: "path" },
-    5,
-  );
+  const groups = await api.getAll("/groups", null, {
+    query: { min_access_level: 10, order_by: "path" },
+    maxPages: 5,
+  });
   return groups
     .map((g) => ({ id: String(g.id), label: g.full_path, description: g.full_name ?? g.name }))
     .sort((a, b) => a.label.localeCompare(b.label));

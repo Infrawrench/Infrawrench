@@ -1,6 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
-import type { PluginEffect } from "@infrawrench/plugin-base";
+import type { NoSlashString, PluginEffect } from "@infrawrench/plugin-base";
 import type {
   LeakedSecretPage,
   LeakedSecretQuery,
@@ -28,21 +28,19 @@ import type {
   SidebarItemSchema,
   VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
-import { externalIdOf } from "@infrawrench/plugin-base";
+import { externalIdOf, pathEncode, unencodedSegment } from "@infrawrench/plugin-base";
 import type { GitLabContext } from "./api.js";
 import { listSecretDetectionFindings, resolveSecretDetectionFinding } from "./secret-detection.js";
 import {
-  enc,
-  glCount,
-  glFetch,
+  environmentFilter,
+  gitlabApi,
   glGraphql,
-  glPaged,
-  glRequest,
   isAbsent,
   isPermissionError,
   resolveBaseUrl,
   splitScoped,
   statusOf,
+  totalOf,
 } from "./api.js";
 import {
   commaList,
@@ -107,9 +105,8 @@ import type {
   GlRelease,
   GlRunner,
   GlSchedule,
-  GlUser,
   GlVariable,
-} from "./types.js";
+} from "./api.js";
 
 /** Project pages read for the inventory (100 each, most recently active first). */
 const PROJECT_PAGES = 5;
@@ -143,20 +140,19 @@ const scopeOfGroup = (g: GlGroup): Scope => ({
 const enabled = (level: string | undefined) => level !== "disabled";
 
 /** Attach detail-only data to a resource for the renderer. */
-export function stash(r: ResourceInstance, data: Record<string, unknown>): ResourceInstance {
+export function stash(r: ResourceInstance, data: object): ResourceInstance {
   const extra: Record<string, string> = {};
   for (const [k, v] of Object.entries(data)) if (v !== undefined) extra[k] = JSON.stringify(v);
   return { ...r, resolvedOutputs: { ...r.resolvedOutputs, ...extra } };
 }
 
 function fail(message: string, status = 400): never {
-  const err = new Error(`GitLab plugin: ${message}`) as Error & { status: number };
-  err.status = status;
-  throw err;
+  throw Object.assign(new Error(`GitLab plugin: ${message}`), { status });
 }
 
 export class GitLabClient implements PluginClient {
   readonly ctx: GitLabContext;
+  private readonly api: ReturnType<typeof gitlabApi>;
   private readonly groupValue: string;
   private readonly services: HostServices | undefined;
   private projectsCache: Promise<GlProject[]> | undefined;
@@ -172,6 +168,7 @@ export class GitLabClient implements PluginClient {
       ...(caCert ? { caCert } : {}),
       ...(services?.http ? { http: services.http } : {}),
     };
+    this.api = gitlabApi(this.ctx);
     this.groupValue = (credentials["group"] ?? "").trim();
     this.services = services;
   }
@@ -181,37 +178,29 @@ export class GitLabClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   /** The scoped group id, as GitLab accepts it in a path (id or URL-encoded full path). */
-  private get groupRef(): string | undefined {
-    return this.groupValue ? enc(this.groupValue) : undefined;
-  }
-
-  private cached<T>(key: "projectsCache" | "groupsCache", load: () => Promise<T>): Promise<T> {
-    const self = this as unknown as Record<string, Promise<T> | undefined>;
-    self[key] ??= load().catch((err: unknown) => {
-      self[key] = undefined;
-      throw err;
-    });
-    return self[key]!;
+  private get groupRef(): NoSlashString | undefined {
+    return this.groupValue ? pathEncode(this.groupValue) : undefined;
   }
 
   private projects(): Promise<GlProject[]> {
-    return this.cached("projectsCache", async () => {
-      const query = { order_by: "last_activity_at", sort: "desc", statistics: true };
+    const load = async (): Promise<GlProject[]> => {
+      const query = { order_by: "last_activity_at", sort: "desc", statistics: true } as const;
       const list = this.groupRef
-        ? await glPaged<GlProject>(
-            this.ctx,
-            `/groups/${this.groupRef}/projects`,
-            { ...query, include_subgroups: true, with_shared: false },
-            PROJECT_PAGES,
-          )
-        : await glPaged<GlProject>(
-            this.ctx,
-            "/projects",
-            { ...query, membership: true },
-            PROJECT_PAGES,
-          );
+        ? await this.api.getAll(`/groups/${this.groupRef}/projects`, null, {
+            query: { ...query, include_subgroups: true, with_shared: false },
+            maxPages: PROJECT_PAGES,
+          })
+        : await this.api.getAll("/projects", null, {
+            query: { ...query, membership: true },
+            maxPages: PROJECT_PAGES,
+          });
       return list;
+    };
+    this.projectsCache ??= load().catch((err: unknown) => {
+      this.projectsCache = undefined;
+      throw err;
     });
+    return this.projectsCache;
   }
 
   /** The projects whose children are listed. */
@@ -224,36 +213,44 @@ export class GitLabClient implements PluginClient {
   }
 
   private groups(): Promise<GlGroup[]> {
-    return this.cached("groupsCache", async () => {
+    const load = async (): Promise<GlGroup[]> => {
       if (this.groupRef) {
         const [root, descendants] = await Promise.all([
-          glFetch<GlGroup>(this.ctx, `/groups/${this.groupRef}`, {
+          this.api.get(`/groups/${this.groupRef}`, {
             query: { with_projects: false },
           }),
-          glPaged<GlGroup>(this.ctx, `/groups/${this.groupRef}/descendant_groups`, {}, 5).catch(
-            () => [] as GlGroup[],
-          ),
+          this.api
+            .getAll(`/groups/${this.groupRef}/descendant_groups`, null, { maxPages: 5 })
+            .catch((): GlGroup[] => []),
         ]);
         return [root, ...descendants];
       }
-      return glPaged<GlGroup>(this.ctx, "/groups", { min_access_level: 10, order_by: "name" }, 5);
+      return this.api.getAll("/groups", null, {
+        query: { min_access_level: 10, order_by: "name" },
+        maxPages: 5,
+      });
+    };
+    this.groupsCache ??= load().catch((err: unknown) => {
+      this.groupsCache = undefined;
+      throw err;
     });
+    return this.groupsCache;
   }
 
   private async projectScope(projectId: string): Promise<Scope> {
-    const known = (await this.projects().catch(() => [] as GlProject[])).find(
+    const known = (await this.projects().catch((): GlProject[] => [])).find(
       (p) => String(p.id) === projectId,
     );
     if (known) return scopeOfProject(known);
-    return scopeOfProject(await glFetch<GlProject>(this.ctx, `/projects/${enc(projectId)}`));
+    return scopeOfProject(await this.api.get(`/projects/${pathEncode(projectId)}`));
   }
 
   private async groupScope(groupId: string): Promise<Scope> {
-    const known = (await this.groups().catch(() => [] as GlGroup[])).find(
+    const known = (await this.groups().catch((): GlGroup[] => [])).find(
       (g) => String(g.id) === groupId,
     );
     if (known) return scopeOfGroup(known);
-    return scopeOfGroup(await glFetch<GlGroup>(this.ctx, `/groups/${enc(groupId)}`));
+    return scopeOfGroup(await this.api.get(`/groups/${pathEncode(groupId)}`));
   }
 
   /** Every project-scoped list, one project at a time, skipping projects that refuse. */
@@ -294,9 +291,7 @@ export class GitLabClient implements PluginClient {
   }
 
   private async namespace(groupId: number | string): Promise<GlNamespace | undefined> {
-    return glFetch<GlNamespace>(this.ctx, `/namespaces/${enc(String(groupId))}`).catch(
-      () => undefined,
-    );
+    return this.api.get(`/namespaces/${pathEncode(groupId)}`).catch(() => undefined);
   }
 
   // -------------------------------------------------------------------------
@@ -324,9 +319,12 @@ export class GitLabClient implements PluginClient {
           const out: ResourceInstance[] = [];
           for (const p of projects) {
             const mrs = counted.has(p.id)
-              ? await glCount(this.ctx, `/projects/${p.id}/merge_requests`, {
-                  state: "opened",
-                }).catch(() => undefined)
+              ? await this.api
+                  .getText(`/projects/${pathEncode(p.id)}/merge_requests`, {
+                    query: { state: "opened", per_page: 1, page: 1 },
+                  })
+                  .then(totalOf)
+                  .catch(() => undefined)
               : undefined;
             out.push(mapProject(accountId, p, mrs === undefined ? {} : { openMergeRequests: mrs }));
           }
@@ -337,7 +335,7 @@ export class GitLabClient implements PluginClient {
             (p) => enabled(p.builds_access_level) && p.jobs_enabled !== false && !p.empty_repo,
             async (s) =>
               (
-                await glFetch<GlPipeline[]>(this.ctx, `/projects/${s.id}/pipelines`, {
+                await this.api.get(`/projects/${pathEncode(s.id)}/pipelines`, {
                   query: { per_page: PIPELINES_PER_PROJECT, order_by: "id", sort: "desc" },
                 })
               ).map((p) => mapPipeline(accountId, s, p)),
@@ -354,41 +352,44 @@ export class GitLabClient implements PluginClient {
           return this.perProject(
             (p) => enabled(p.environments_access_level),
             async (s) =>
-              (await glPaged<GlEnvironment>(this.ctx, `/projects/${s.id}/environments`, {}, 2)).map(
-                (e) => mapEnvironment(accountId, s, e),
-              ),
+              (
+                await this.api.getAll(`/projects/${pathEncode(s.id)}/environments`, null, {
+                  maxPages: 2,
+                })
+              ).map((e) => mapEnvironment(accountId, s, e)),
           );
         case "protected-branch":
           return this.perProject(
             (p) => !p.empty_repo,
             async (s) =>
               (
-                await glPaged<GlProtectedBranch>(
-                  this.ctx,
-                  `/projects/${s.id}/protected_branches`,
-                  {},
-                  2,
-                )
+                await this.api.getAll(`/projects/${pathEncode(s.id)}/protected_branches`, null, {
+                  maxPages: 2,
+                })
               ).map((b) => mapProtectedBranch(accountId, s, b)),
           );
         case "project-variable":
           return this.perProject(GitLabClient.maintainer, async (s) =>
-            (await glPaged<GlVariable>(this.ctx, `/projects/${s.id}/variables`, {}, 3)).map((v) =>
-              mapVariable(accountId, s, v),
-            ),
+            (
+              await this.api.getAll(`/projects/${pathEncode(s.id)}/variables`, null, {
+                maxPages: 3,
+              })
+            ).map((v) => mapVariable(accountId, s, v)),
           );
         case "group-variable":
           return this.perGroup(async (s) =>
-            (await glPaged<GlVariable>(this.ctx, `/groups/${s.id}/variables`, {}, 3)).map((v) =>
-              mapVariable(accountId, s, v),
-            ),
+            (
+              await this.api.getAll(`/groups/${pathEncode(s.id)}/variables`, null, { maxPages: 3 })
+            ).map((v) => mapVariable(accountId, s, v)),
           );
         case "pipeline-schedule":
           return this.perProject(
             (p) => enabled(p.builds_access_level) && p.jobs_enabled !== false,
             async (s) =>
               (
-                await glPaged<GlSchedule>(this.ctx, `/projects/${s.id}/pipeline_schedules`, {}, 2)
+                await this.api.getAll(`/projects/${pathEncode(s.id)}/pipeline_schedules`, null, {
+                  maxPages: 2,
+                })
               ).map((x) => mapSchedule(accountId, s, x)),
           );
         case "container-repository":
@@ -397,27 +398,25 @@ export class GitLabClient implements PluginClient {
               enabled(p.container_registry_access_level) && p.container_registry_enabled !== false,
             async (s) =>
               (
-                await glPaged<GlRegistryRepository>(
-                  this.ctx,
-                  `/projects/${s.id}/registry/repositories`,
-                  { tags_count: true },
-                  3,
-                )
+                await this.api.getAll(`/projects/${pathEncode(s.id)}/registry/repositories`, null, {
+                  query: { tags_count: true },
+                  maxPages: 3,
+                })
               ).map((r) => mapContainerRepository(accountId, s, r)),
           );
         case "package": {
           if (this.groupRef) {
             // One call for the whole group; each package names its project.
             const projects = new Map((await this.projects()).map((p) => [p.id, p]));
-            const packages = await glPaged<GlPackage>(
-              this.ctx,
-              `/groups/${this.groupRef}/packages`,
-              { order_by: "created_at", sort: "desc" },
-              5,
-            ).catch((err: unknown) => {
-              if (isAbsent(err)) return [] as GlPackage[];
-              throw err;
-            });
+            const packages = await this.api
+              .getAll(`/groups/${this.groupRef}/packages`, null, {
+                query: { order_by: "created_at", sort: "desc" },
+                maxPages: 5,
+              })
+              .catch((err: unknown): GlPackage[] => {
+                if (isAbsent(err)) return [];
+                throw err;
+              });
             return packages.map((pkg) => {
               const p = pkg.project_id ? projects.get(pkg.project_id) : undefined;
               const scope: Scope = p
@@ -434,43 +433,47 @@ export class GitLabClient implements PluginClient {
             (p) => p.packages_enabled !== false,
             async (s) =>
               (
-                await glPaged<GlPackage>(
-                  this.ctx,
-                  `/projects/${s.id}/packages`,
-                  { order_by: "created_at", sort: "desc" },
-                  2,
-                )
+                await this.api.getAll(`/projects/${pathEncode(s.id)}/packages`, null, {
+                  query: { order_by: "created_at", sort: "desc" },
+                  maxPages: 2,
+                })
               ).map((pkg) => mapPackage(accountId, s, pkg)),
           );
         }
         case "deploy-key":
           return this.perProject(GitLabClient.maintainer, async (s) =>
-            (await glPaged<GlDeployKey>(this.ctx, `/projects/${s.id}/deploy_keys`, {}, 2)).map(
-              (k) => mapDeployKey(accountId, s, k),
-            ),
+            (
+              await this.api.getAll(`/projects/${pathEncode(s.id)}/deploy_keys`, null, {
+                maxPages: 2,
+              })
+            ).map((k) => mapDeployKey(accountId, s, k)),
           );
         case "deploy-token":
           return this.perProject(GitLabClient.maintainer, async (s) =>
-            (await glPaged<GlDeployToken>(this.ctx, `/projects/${s.id}/deploy_tokens`, {}, 2)).map(
-              (t) => mapDeployToken(accountId, s, t),
-            ),
+            (
+              await this.api.getAll(`/projects/${pathEncode(s.id)}/deploy_tokens`, null, {
+                maxPages: 2,
+              })
+            ).map((t) => mapDeployToken(accountId, s, t)),
           );
         case "group-deploy-token":
           return this.perGroup(async (s) =>
-            (await glPaged<GlDeployToken>(this.ctx, `/groups/${s.id}/deploy_tokens`, {}, 2)).map(
-              (t) => mapDeployToken(accountId, s, t),
-            ),
+            (
+              await this.api.getAll(`/groups/${pathEncode(s.id)}/deploy_tokens`, null, {
+                maxPages: 2,
+              })
+            ).map((t) => mapDeployToken(accountId, s, t)),
           );
         case "project-webhook":
           return this.perProject(GitLabClient.maintainer, async (s) =>
-            (await glPaged<GlHook>(this.ctx, `/projects/${s.id}/hooks`, {}, 2)).map((h) =>
-              mapHook(accountId, s, h),
-            ),
+            (
+              await this.api.getAll(`/projects/${pathEncode(s.id)}/hooks`, null, { maxPages: 2 })
+            ).map((h) => mapHook(accountId, s, h)),
           );
         case "group-webhook":
           return this.perGroup(async (s) =>
-            (await glPaged<GlHook>(this.ctx, `/groups/${s.id}/hooks`, {}, 2)).map((h) =>
-              mapHook(accountId, s, h),
+            (await this.api.getAll(`/groups/${pathEncode(s.id)}/hooks`, null, { maxPages: 2 })).map(
+              (h) => mapHook(accountId, s, h),
             ),
           );
         case "release":
@@ -478,7 +481,7 @@ export class GitLabClient implements PluginClient {
             (p) => enabled(p.releases_access_level) && !p.empty_repo,
             async (s) =>
               (
-                await glFetch<GlRelease[]>(this.ctx, `/projects/${s.id}/releases`, {
+                await this.api.get(`/projects/${pathEncode(s.id)}/releases`, {
                   query: { per_page: 20 },
                 })
               ).map((r) => mapRelease(accountId, s, r)),
@@ -487,15 +490,17 @@ export class GitLabClient implements PluginClient {
           return this.perProject(
             () => true,
             async (s) =>
-              (await glPaged<GlMember>(this.ctx, `/projects/${s.id}/members`, {}, 3)).map((m) =>
-                mapMember(accountId, s, m),
-              ),
+              (
+                await this.api.getAll(`/projects/${pathEncode(s.id)}/members`, null, {
+                  maxPages: 3,
+                })
+              ).map((m) => mapMember(accountId, s, m)),
           );
         case "group-member":
           return this.perGroup(async (s) =>
-            (await glPaged<GlMember>(this.ctx, `/groups/${s.id}/members`, {}, 5)).map((m) =>
-              mapMember(accountId, s, m),
-            ),
+            (
+              await this.api.getAll(`/groups/${pathEncode(s.id)}/members`, null, { maxPages: 5 })
+            ).map((m) => mapMember(accountId, s, m)),
           );
         case "runner":
           return (await this.runners()).map((r) => mapRunner(accountId, r));
@@ -521,38 +526,38 @@ export class GitLabClient implements PluginClient {
     if (this.groupRef) {
       for (const g of await this.groups()) {
         add(
-          await glPaged<GlRunner>(
-            this.ctx,
-            `/groups/${g.id}/runners`,
-            { type: "group_type" },
-            2,
-          ).catch((err: unknown) => {
-            if (isAbsent(err)) return [] as GlRunner[];
-            throw err;
-          }),
+          await this.api
+            .getAll(`/groups/${pathEncode(g.id)}/runners`, null, {
+              query: { type: "group_type" },
+              maxPages: 2,
+            })
+            .catch((err: unknown): GlRunner[] => {
+              if (isAbsent(err)) return [];
+              throw err;
+            }),
         );
       }
       for (const p of await this.fanout(GitLabClient.maintainer)) {
         add(
-          await glPaged<GlRunner>(
-            this.ctx,
-            `/projects/${p.id}/runners`,
-            { type: "project_type" },
-            1,
-          ).catch((err: unknown) => {
-            if (isAbsent(err)) return [] as GlRunner[];
-            throw err;
-          }),
+          await this.api
+            .getAll(`/projects/${pathEncode(p.id)}/runners`, null, {
+              query: { type: "project_type" },
+              maxPages: 1,
+            })
+            .catch((err: unknown): GlRunner[] => {
+              if (isAbsent(err)) return [];
+              throw err;
+            }),
         );
       }
     } else {
-      add(await glPaged<GlRunner>(this.ctx, "/runners", {}, 5));
+      add(await this.api.getAll("/runners", null, { maxPages: 5 }));
     }
     const out: GlRunner[] = [];
     let read = 0;
     for (const r of byId.values()) {
       if (read++ < RUNNER_DETAIL_LIMIT) {
-        out.push(await glFetch<GlRunner>(this.ctx, `/runners/${r.id}`).catch(() => r));
+        out.push(await this.api.get(`/runners/${pathEncode(r.id)}`).catch(() => r));
       } else out.push(r);
     }
     return out;
@@ -572,16 +577,18 @@ export class GitLabClient implements PluginClient {
       const { scope: ownerId, rest } = splitScoped(id);
       switch (typeId) {
         case "group": {
-          const g = await glFetch<GlGroup>(this.ctx, `/groups/${enc(id)}`, {
+          const g = await this.api.get(`/groups/${pathEncode(id)}`, {
             query: { with_projects: false },
           });
           const rootId = g.parent_id ? undefined : g.id;
           const [ns, storage, subgroups] = await Promise.all([
             rootId ? this.namespace(rootId) : Promise.resolve(undefined),
             rootId ? this.groupStorage(g.full_path) : Promise.resolve(undefined),
-            glFetch<GlGroup[]>(this.ctx, `/groups/${g.id}/subgroups`, {
-              query: { per_page: 50 },
-            }).catch(() => undefined),
+            this.api
+              .get(`/groups/${pathEncode(g.id)}/subgroups`, {
+                query: { per_page: 50 },
+              })
+              .catch(() => undefined),
           ]);
           return stash(mapGroup(accountId, g, ns), {
             [DETAIL_KEYS.storage]: storage,
@@ -593,16 +600,21 @@ export class GitLabClient implements PluginClient {
           });
         }
         case "project": {
-          const p = await glFetch<GlProject>(this.ctx, `/projects/${enc(id)}`, {
+          const p = await this.api.get(`/projects/${pathEncode(id)}`, {
             query: { statistics: true },
           });
           const [mrs, pipelines] = await Promise.all([
-            glCount(this.ctx, `/projects/${p.id}/merge_requests`, { state: "opened" }).catch(
-              () => undefined,
-            ),
-            glFetch<GlPipeline[]>(this.ctx, `/projects/${p.id}/pipelines`, {
-              query: { per_page: 10, order_by: "id", sort: "desc" },
-            }).catch(() => undefined),
+            this.api
+              .getText(`/projects/${pathEncode(p.id)}/merge_requests`, {
+                query: { state: "opened", per_page: 1, page: 1 },
+              })
+              .then(totalOf)
+              .catch(() => undefined),
+            this.api
+              .get(`/projects/${pathEncode(p.id)}/pipelines`, {
+                query: { per_page: 10, order_by: "id", sort: "desc" },
+              })
+              .catch(() => undefined),
           ]);
           return stash(
             mapProject(accountId, p, mrs === undefined ? {} : { openMergeRequests: mrs }),
@@ -615,33 +627,31 @@ export class GitLabClient implements PluginClient {
         case "pipeline": {
           const s = await this.projectScope(ownerId);
           const [p, jobs] = await Promise.all([
-            glFetch<GlPipeline>(this.ctx, `/projects/${s.id}/pipelines/${enc(rest)}`),
-            glPaged<GlJob>(this.ctx, `/projects/${s.id}/pipelines/${enc(rest)}/jobs`, {}, 3).catch(
-              () => undefined,
-            ),
+            this.api.get(`/projects/${pathEncode(s.id)}/pipelines/${pathEncode(rest)}`),
+            this.api
+              .getAll(`/projects/${pathEncode(s.id)}/pipelines/${pathEncode(rest)}/jobs`, null, {
+                maxPages: 3,
+              })
+              .catch(() => undefined),
           ]);
           return stash(mapPipeline(accountId, s, p), { [DETAIL_KEYS.jobs]: jobs?.map(slimJob) });
         }
         case "environment": {
           const s = await this.projectScope(ownerId);
-          const e = await glFetch<GlEnvironment>(
-            this.ctx,
-            `/projects/${s.id}/environments/${enc(rest)}`,
+          const e = await this.api.get(
+            `/projects/${pathEncode(s.id)}/environments/${pathEncode(rest)}`,
           );
-          const deployments = await glFetch<GlDeployment[]>(
-            this.ctx,
-            `/projects/${s.id}/deployments`,
-            {
-              query: { environment: e.name, order_by: "id", sort: "desc", per_page: 15 },
-            },
-          ).catch(() => undefined);
+          const deployments = await this.api
+            .get(`/projects/${pathEncode(s.id)}/deployments`, {
+              query: { ...environmentFilter(e.name), order_by: "id", sort: "desc", per_page: 15 },
+            })
+            .catch(() => undefined);
           return stash(mapEnvironment(accountId, s, e), { [DETAIL_KEYS.deployments]: deployments });
         }
         case "protected-branch": {
           const s = await this.projectScope(ownerId);
-          const b = await glFetch<GlProtectedBranch>(
-            this.ctx,
-            `/projects/${s.id}/protected_branches/${enc(rest)}`,
+          const b = await this.api.get(
+            `/projects/${pathEncode(s.id)}/protected_branches/${pathEncode(rest)}`,
           );
           return mapProtectedBranch(accountId, s, b);
         }
@@ -651,40 +661,39 @@ export class GitLabClient implements PluginClient {
           const s =
             kind === "project" ? await this.projectScope(ownerId) : await this.groupScope(ownerId);
           const { key, envScope } = splitVariable(rest);
-          const v = await glFetch<GlVariable>(this.ctx, `/${kind}s/${s.id}/variables/${enc(key)}`, {
-            query: { "filter[environment_scope]": envScope },
-          });
+          const v = await this.api.get(
+            `/${kind}s/${pathEncode(s.id)}/variables/${pathEncode(key)}`,
+            {
+              query: { "filter[environment_scope]": envScope },
+            },
+          );
           return mapVariable(accountId, s, v);
         }
         case "pipeline-schedule": {
           const s = await this.projectScope(ownerId);
-          const x = await glFetch<GlSchedule>(
-            this.ctx,
-            `/projects/${s.id}/pipeline_schedules/${enc(rest)}`,
+          const x = await this.api.get(
+            `/projects/${pathEncode(s.id)}/pipeline_schedules/${pathEncode(rest)}`,
           );
           return mapSchedule(accountId, s, x);
         }
         case "container-repository": {
           const s = await this.projectScope(ownerId);
-          const r = await glFetch<GlRegistryRepository>(
-            this.ctx,
-            `/registry/repositories/${enc(rest)}`,
-            {
-              query: { tags_count: true, size: true },
-            },
-          );
+          const r = await this.api.get(`/registry/repositories/${pathEncode(rest)}`, {
+            query: { tags_count: true, size: true },
+          });
           return mapContainerRepository(accountId, s, r);
         }
         case "package": {
           const s = await this.projectScope(ownerId);
           const [pkg, files] = await Promise.all([
-            glFetch<GlPackage>(this.ctx, `/projects/${s.id}/packages/${enc(rest)}`),
-            glPaged<GlPackageFile>(
-              this.ctx,
-              `/projects/${s.id}/packages/${enc(rest)}/package_files`,
-              {},
-              2,
-            ).catch(() => undefined),
+            this.api.get(`/projects/${pathEncode(s.id)}/packages/${pathEncode(rest)}`),
+            this.api
+              .getAll(
+                `/projects/${pathEncode(s.id)}/packages/${pathEncode(rest)}/package_files`,
+                null,
+                { maxPages: 2 },
+              )
+              .catch(() => undefined),
           ]);
           return stash(mapPackage(accountId, s, pkg), { [DETAIL_KEYS.files]: files });
         }
@@ -693,7 +702,7 @@ export class GitLabClient implements PluginClient {
           return mapDeployKey(
             accountId,
             s,
-            await glFetch<GlDeployKey>(this.ctx, `/projects/${s.id}/deploy_keys/${enc(rest)}`),
+            await this.api.get(`/projects/${pathEncode(s.id)}/deploy_keys/${pathEncode(rest)}`),
           );
         }
         case "deploy-token":
@@ -704,7 +713,7 @@ export class GitLabClient implements PluginClient {
           return mapDeployToken(
             accountId,
             s,
-            await glFetch<GlDeployToken>(this.ctx, `/${kind}s/${s.id}/deploy_tokens/${enc(rest)}`),
+            await this.api.get(`/${kind}s/${pathEncode(s.id)}/deploy_tokens/${pathEncode(rest)}`),
           );
         }
         case "project-webhook":
@@ -713,10 +722,12 @@ export class GitLabClient implements PluginClient {
           const s =
             kind === "project" ? await this.projectScope(ownerId) : await this.groupScope(ownerId);
           const [h, events] = await Promise.all([
-            glFetch<GlHook>(this.ctx, `/${kind}s/${s.id}/hooks/${enc(rest)}`),
-            glFetch<HookEvent[]>(this.ctx, `/${kind}s/${s.id}/hooks/${enc(rest)}/events`, {
-              query: { per_page: 15 },
-            }).catch(() => undefined),
+            this.api.get(`/${kind}s/${pathEncode(s.id)}/hooks/${pathEncode(rest)}`),
+            this.api
+              .get(`/${kind}s/${pathEncode(s.id)}/hooks/${pathEncode(rest)}/events`, {
+                query: { per_page: 15 },
+              })
+              .catch(() => undefined),
           ]);
           return stash(mapHook(accountId, s, h), {
             [DETAIL_KEYS.hookEvents]: events?.map((e) => ({
@@ -733,7 +744,7 @@ export class GitLabClient implements PluginClient {
           return mapRelease(
             accountId,
             s,
-            await glFetch<GlRelease>(this.ctx, `/projects/${s.id}/releases/${enc(rest)}`),
+            await this.api.get(`/projects/${pathEncode(s.id)}/releases/${pathEncode(rest)}`),
           );
         }
         case "project-member":
@@ -744,15 +755,17 @@ export class GitLabClient implements PluginClient {
           return mapMember(
             accountId,
             s,
-            await glFetch<GlMember>(this.ctx, `/${kind}s/${s.id}/members/${enc(rest)}`),
+            await this.api.get(`/${kind}s/${pathEncode(s.id)}/members/${pathEncode(rest)}`),
           );
         }
         case "runner": {
           const [r, jobs] = await Promise.all([
-            glFetch<GlRunner>(this.ctx, `/runners/${enc(id)}`),
-            glFetch<GlJob[]>(this.ctx, `/runners/${enc(id)}/jobs`, {
-              query: { order_by: "id", sort: "desc", per_page: 15 },
-            }).catch(() => undefined),
+            this.api.get(`/runners/${pathEncode(id)}`),
+            this.api
+              .get(`/runners/${pathEncode(id)}/jobs`, {
+                query: { order_by: "id", sort: "desc", per_page: 15 },
+              })
+              .catch(() => undefined),
           ]);
           return stash(mapRunner(accountId, r), { [DETAIL_KEYS.jobs]: jobs?.map(slimJob) });
         }
@@ -865,18 +878,17 @@ export class GitLabClient implements PluginClient {
       const range = rangeOrDefault(timeRange);
       switch (resourceTypeId) {
         case "project":
-          return projectSeries(this.ctx, enc(id), range);
+          return projectSeries(this.ctx, pathEncode(id), range);
         case "runner":
-          return runnerSeries(this.ctx, enc(id), range);
+          return runnerSeries(this.ctx, pathEncode(id), range);
         case "group":
           return groupSeries(this.ctx, id, range);
         case "environment": {
           const { scope, rest } = splitScoped(id);
-          const e = await glFetch<GlEnvironment>(
-            this.ctx,
-            `/projects/${enc(scope)}/environments/${enc(rest)}`,
+          const e = await this.api.get(
+            `/projects/${pathEncode(scope)}/environments/${pathEncode(rest)}`,
           );
-          return environmentSeries(this.ctx, enc(scope), e.name, range);
+          return environmentSeries(this.ctx, pathEncode(scope), e.name, range);
         }
         default:
           return [];
@@ -902,7 +914,7 @@ export class GitLabClient implements PluginClient {
         const used = ns?.ci_minutes_usage?.total_minutes_used;
         if (typeof base === "number" && base > 0 && typeof used === "number") {
           out.push({
-            id: `compute-minutes/${g.id}`,
+            id: `compute-minutes/${pathEncode(g.id)}`,
             service: "CI/CD",
             name: `Compute minutes (${g.full_path})`,
             limit: base + (ns?.extra_shared_runners_minutes_limit ?? 0),
@@ -918,7 +930,7 @@ export class GitLabClient implements PluginClient {
         const size = storage?.rootStorageStatistics?.storageSize;
         if ((storage?.storageSizeLimit ?? 0) > 0 && typeof size === "number") {
           out.push({
-            id: `storage/${g.id}`,
+            id: `storage/${pathEncode(g.id)}`,
             service: "Storage",
             name: `Namespace storage (${g.full_path})`,
             limit,
@@ -955,7 +967,7 @@ export class GitLabClient implements PluginClient {
       if (this.groupRef) {
         const root = (await this.groups())[0];
         if (!root?.full_path) throw new Error("GitLab plugin: the account's group was not found");
-        const projects = await this.fanout().catch(() => [] as GlProject[]);
+        const projects = await this.fanout().catch((): GlProject[] => []);
         return fetchGitLabVulnerabilities(this.ctx, { groupPath: root.full_path, projects });
       }
       return fetchGitLabVulnerabilities(this.ctx, { projects: await this.fanout() });
@@ -989,11 +1001,7 @@ export class GitLabClient implements PluginClient {
       let scopes: string[] | undefined;
       let identity: string | undefined;
       try {
-        const self = await glFetch<{
-          scopes?: string[];
-          name?: string;
-          expires_at?: string | null;
-        }>(this.ctx, "/personal_access_tokens/self");
+        const self = await this.api.get("/personal_access_tokens/self");
         scopes = self.scopes;
         identity = self.name
           ? `${self.name}${self.expires_at ? ` (expires ${self.expires_at})` : ""}`
@@ -1073,7 +1081,7 @@ export class GitLabClient implements PluginClient {
       if (groups.length === 0) {
         return { capabilityId: "seats", status: "missing", missingPermissions: [ROLE_OWNER] };
       }
-      await glRequest(this.ctx, `/groups/${groups[0]!.id}/billable_members`, {
+      await this.api.getText(`/groups/${pathEncode(groups[0]!.id)}/billable_members`, {
         query: { per_page: 1 },
       });
       return { capabilityId: "seats", status: "ok" };
@@ -1096,7 +1104,7 @@ export class GitLabClient implements PluginClient {
   private async projectOptions(
     filter: (p: GlProject) => boolean = () => true,
   ): Promise<SelectOption[]> {
-    const projects = await this.projects().catch(() => [] as GlProject[]);
+    const projects = await this.projects().catch((): GlProject[] => []);
     return projects
       .filter((p) => !p.archived)
       .filter(filter)
@@ -1104,7 +1112,7 @@ export class GitLabClient implements PluginClient {
   }
 
   private async groupOptions(): Promise<SelectOption[]> {
-    const groups = await this.groups().catch(() => [] as GlGroup[]);
+    const groups = await this.groups().catch((): GlGroup[] => []);
     return groups.map((g) => ({ id: String(g.id), label: g.full_path }));
   }
 
@@ -1145,23 +1153,19 @@ export class GitLabClient implements PluginClient {
       return { ...base, kind: "text", placeholder: "main" };
     }
     const [project, branches, tags] = await Promise.all([
-      glFetch<GlProject>(this.ctx, `/projects/${enc(projectId)}`).catch(() => undefined),
-      glFetch<Array<{ name: string }>>(
-        this.ctx,
-        `/projects/${enc(projectId)}/repository/branches`,
-        {
+      this.api.get(`/projects/${pathEncode(projectId)}`).catch(() => undefined),
+      this.api
+        .get(`/projects/${pathEncode(projectId)}/repository/branches`, {
           query: { per_page: 100 },
-        },
-      ).catch(() => [] as Array<{ name: string }>),
+        })
+        .catch((): Array<{ name: string }> => []),
       opts.tags
-        ? glFetch<Array<{ name: string }>>(
-            this.ctx,
-            `/projects/${enc(projectId)}/repository/tags`,
-            {
+        ? this.api
+            .get(`/projects/${pathEncode(projectId)}/repository/tags`, {
               query: { per_page: 50, order_by: "updated", sort: "desc" },
-            },
-          ).catch(() => [] as Array<{ name: string }>)
-        : Promise.resolve([] as Array<{ name: string }>),
+            })
+            .catch((): Array<{ name: string }> => [])
+        : Promise.resolve<Array<{ name: string }>>([]),
     ]);
     const options: SelectOption[] = [
       ...branches.map((b) => ({ id: b.name, label: b.name, description: "Branch" })),
@@ -1609,12 +1613,12 @@ export class GitLabClient implements PluginClient {
           const projects = await this.projectOptions(GitLabClient.maintainer);
           const scopeOptions: SelectOption[] = [
             ...groups.map((g) => ({
-              id: `group:${g.id}`,
+              id: `group:${pathEncode(g.id)}`,
               label: g.label,
               description: "Group runner",
             })),
             ...projects.map((p) => ({
-              id: `project:${p.id}`,
+              id: `project:${pathEncode(p.id)}`,
               label: p.label,
               description: "Project runner",
             })),
@@ -1707,8 +1711,7 @@ export class GitLabClient implements PluginClient {
         case "pipeline": {
           const s = await this.projectScope(ownerId("project"));
           const variables = parseVariableLines(fields["variables"]);
-          const p = await glFetch<GlPipeline>(this.ctx, `/projects/${s.id}/pipeline`, {
-            method: "POST",
+          const p = await this.api.post(`/projects/${pathEncode(s.id)}/pipeline`, {
             body: {
               ref: need("ref", "Branch or tag"),
               ...(variables.length > 0 ? { variables } : {}),
@@ -1718,8 +1721,7 @@ export class GitLabClient implements PluginClient {
         }
         case "environment": {
           const s = await this.projectScope(ownerId("project"));
-          const e = await glFetch<GlEnvironment>(this.ctx, `/projects/${s.id}/environments`, {
-            method: "POST",
+          const e = await this.api.post(`/projects/${pathEncode(s.id)}/environments`, {
             body: compact({
               name: need("name", "Name"),
               external_url: fields["externalUrl"],
@@ -1750,8 +1752,7 @@ export class GitLabClient implements PluginClient {
           if (!value) fail('"Value" is required');
           const visibility =
             fields["visibility"] ?? (truthy(fields["masked"]) ? "masked" : "visible");
-          const v = await glFetch<GlVariable>(this.ctx, `/${kind}s/${s.id}/variables`, {
-            method: "POST",
+          const v = await this.api.post(`/${kind}s/${pathEncode(s.id)}/variables`, {
             body: compact({
               key: validateVariableKey(need("key", "Key")),
               value,
@@ -1770,8 +1771,7 @@ export class GitLabClient implements PluginClient {
         }
         case "pipeline-schedule": {
           const s = await this.projectScope(ownerId("project"));
-          const x = await glFetch<GlSchedule>(this.ctx, `/projects/${s.id}/pipeline_schedules`, {
-            method: "POST",
+          const x = await this.api.post(`/projects/${pathEncode(s.id)}/pipeline_schedules`, {
             body: compact({
               description: need("description", "Description"),
               ref: need("ref", "Branch or tag"),
@@ -1784,8 +1784,7 @@ export class GitLabClient implements PluginClient {
         }
         case "deploy-key": {
           const s = await this.projectScope(ownerId("project"));
-          const k = await glFetch<GlDeployKey>(this.ctx, `/projects/${s.id}/deploy_keys`, {
-            method: "POST",
+          const k = await this.api.post(`/projects/${pathEncode(s.id)}/deploy_keys`, {
             body: compact({
               title: need("title", "Title"),
               key: need("key", "Public key"),
@@ -1804,8 +1803,7 @@ export class GitLabClient implements PluginClient {
               : await this.groupScope(ownerId(kind));
           const scopes = parseScopes(fields["scopes"]);
           if (scopes.length === 0) fail("pick at least one scope");
-          const t = await glFetch<GlDeployToken>(this.ctx, `/${kind}s/${s.id}/deploy_tokens`, {
-            method: "POST",
+          const t = await this.api.post(`/${kind}s/${pathEncode(s.id)}/deploy_tokens`, {
             body: compact({
               name: need("name", "Name"),
               scopes,
@@ -1823,8 +1821,7 @@ export class GitLabClient implements PluginClient {
             kind === "project"
               ? await this.projectScope(ownerId(kind))
               : await this.groupScope(ownerId(kind));
-          const h = await glFetch<GlHook>(this.ctx, `/${kind}s/${s.id}/hooks`, {
-            method: "POST",
+          const h = await this.api.post(`/${kind}s/${pathEncode(s.id)}/hooks`, {
             body: compact({
               url: need("url", "URL"),
               name: fields["name"],
@@ -1842,8 +1839,7 @@ export class GitLabClient implements PluginClient {
         }
         case "release": {
           const s = await this.projectScope(ownerId("project"));
-          const r = await glFetch<GlRelease>(this.ctx, `/projects/${s.id}/releases`, {
-            method: "POST",
+          const r = await this.api.post(`/projects/${pathEncode(s.id)}/releases`, {
             body: compact({
               tag_name: need("tagName", "Tag"),
               ref: fields["ref"],
@@ -1861,11 +1857,10 @@ export class GitLabClient implements PluginClient {
               ? await this.projectScope(ownerId(kind))
               : await this.groupScope(ownerId(kind));
           const username = need("username", "Username").replace(/^@/, "");
-          const users = await glFetch<GlUser[]>(this.ctx, "/users", { query: { username } });
+          const users = await this.api.get("/users", { query: { username } });
           const user = users?.[0];
           if (!user) fail(`no GitLab user is called "${username}"`, 404);
-          const m = await glFetch<GlMember>(this.ctx, `/${kind}s/${s.id}/members`, {
-            method: "POST",
+          const m = await this.api.post(`/${kind}s/${pathEncode(s.id)}/members`, {
             body: compact({
               user_id: user.id,
               access_level: memberLevelValue(fields["accessLevel"] || "Developer"),
@@ -1878,8 +1873,7 @@ export class GitLabClient implements PluginClient {
           const [kind, id] = (fields["scope"] ?? "").split(":");
           if ((kind !== "group" && kind !== "project") || !id)
             fail("pick where to register the runner");
-          const created = await glFetch<{ id: number; token?: string }>(this.ctx, "/user/runners", {
-            method: "POST",
+          const created = await this.api.post("/user/runners", {
             body: compact({
               runner_type: kind === "group" ? "group_type" : "project_type",
               ...(kind === "group" ? { group_id: Number(id) } : { project_id: Number(id) }),
@@ -1891,9 +1885,9 @@ export class GitLabClient implements PluginClient {
               maximum_timeout: optionalInt(fields["maximumTimeout"], "Maximum job timeout", 600),
             }),
           });
-          const r = await glFetch<GlRunner>(this.ctx, `/runners/${created.id}`).catch(
-            () => ({ id: created.id }) as GlRunner,
-          );
+          const r = await this.api
+            .get(`/runners/${pathEncode(created.id)}`)
+            .catch((): GlRunner => ({ id: created.id }));
           return this.keepToken(mapRunner(accountId, r), created.token);
         }
         default:
@@ -1934,8 +1928,8 @@ export class GitLabClient implements PluginClient {
     name: string,
     o: { push: number; merge: number; force: boolean; codeOwners: boolean },
   ): Promise<GlProtectedBranch> {
-    return glFetch<GlProtectedBranch>(this.ctx, `/projects/${projectId}/protected_branches`, {
-      method: "POST",
+    // Not encoded: `ownerId` reaches here raw on an edit, unlike every other path.
+    return this.api.post(`/projects/${unencodedSegment(String(projectId))}/protected_branches`, {
       body: {
         name,
         push_access_level: o.push,
@@ -1966,7 +1960,7 @@ export class GitLabClient implements PluginClient {
             visibility: text("visibility"),
           });
           if (Object.keys(body).length > 0) {
-            await glFetch(this.ctx, `/groups/${enc(id)}`, { method: "PUT", body });
+            await this.api.put(`/groups/${pathEncode(id)}`, { body });
           }
           break;
         }
@@ -1979,7 +1973,7 @@ export class GitLabClient implements PluginClient {
             ci_config_path: text("ciConfigPath"),
           });
           if (Object.keys(body).length > 0) {
-            await glFetch(this.ctx, `/projects/${enc(id)}`, { method: "PUT", body });
+            await this.api.put(`/projects/${pathEncode(id)}`, { body });
           }
           break;
         }
@@ -1990,26 +1984,27 @@ export class GitLabClient implements PluginClient {
             description: text("description"),
           });
           if (Object.keys(body).length > 0) {
-            await glFetch(this.ctx, `/projects/${enc(ownerId)}/environments/${enc(rest)}`, {
-              method: "PUT",
-              body,
-            });
+            await this.api.put(
+              `/projects/${pathEncode(ownerId)}/environments/${pathEncode(rest)}`,
+              {
+                body,
+              },
+            );
           }
           break;
         }
         case "protected-branch": {
-          const current = await glFetch<GlProtectedBranch>(
-            this.ctx,
-            `/projects/${enc(ownerId)}/protected_branches/${enc(rest)}`,
+          const current = await this.api.get(
+            `/projects/${pathEncode(ownerId)}/protected_branches/${pathEncode(rest)}`,
           );
           if (has("pushAccess") || has("mergeAccess")) {
             // Changing role levels through PATCH is Premium-only, so the rule is
             // re-created with the new levels and every other setting kept.
             const level = (entries: GlProtectedBranch["push_access_levels"]) =>
               entries?.find((e) => typeof e.access_level === "number")?.access_level ?? 40;
-            await glFetch(this.ctx, `/projects/${enc(ownerId)}/protected_branches/${enc(rest)}`, {
-              method: "DELETE",
-            });
+            await this.api.delete(
+              `/projects/${pathEncode(ownerId)}/protected_branches/${pathEncode(rest)}`,
+            );
             await this.protectBranch(ownerId, rest, {
               push: branchLevelValue(fields["pushAccess"]) ?? level(current.push_access_levels),
               merge: branchLevelValue(fields["mergeAccess"]) ?? level(current.merge_access_levels),
@@ -2023,10 +2018,12 @@ export class GitLabClient implements PluginClient {
               code_owner_approval_required: bool("codeOwnerApprovalRequired"),
             });
             if (Object.keys(body).length > 0) {
-              await glFetch(this.ctx, `/projects/${enc(ownerId)}/protected_branches/${enc(rest)}`, {
-                method: "PATCH",
-                body,
-              });
+              await this.api.patch(
+                `/projects/${pathEncode(ownerId)}/protected_branches/${pathEncode(rest)}`,
+                {
+                  body,
+                },
+              );
             }
           }
           break;
@@ -2035,12 +2032,12 @@ export class GitLabClient implements PluginClient {
         case "group-variable": {
           const kind = typeId === "project-variable" ? "projects" : "groups";
           const { key, envScope } = splitVariable(rest);
-          const path = `/${kind}/${enc(ownerId)}/variables/${enc(key)}`;
+          const path = `/${kind}/${pathEncode(ownerId)}/variables/${pathEncode(key)}` as const;
           const filter = { "filter[environment_scope]": envScope };
           // PUT requires the value; keep the current one unless a new one was typed.
           let value = fields["value"] ?? "";
           if (!value) {
-            const current = await glFetch<GlVariable>(this.ctx, path, { query: filter });
+            const current = await this.api.get(path, { query: filter });
             if (current.value === null || current.value === undefined) {
               fail(
                 "this variable is hidden, so GitLab will not return its value. Type the value to change its settings.",
@@ -2048,8 +2045,7 @@ export class GitLabClient implements PluginClient {
             }
             value = current.value;
           }
-          await glFetch(this.ctx, path, {
-            method: "PUT",
+          await this.api.put(path, {
             query: filter,
             body: compactKeepEmpty({
               value,
@@ -2079,18 +2075,19 @@ export class GitLabClient implements PluginClient {
             active: bool("active"),
           });
           if (Object.keys(body).length > 0) {
-            await glFetch(this.ctx, `/projects/${enc(ownerId)}/pipeline_schedules/${enc(rest)}`, {
-              method: "PUT",
-              body,
-            });
+            await this.api.put(
+              `/projects/${pathEncode(ownerId)}/pipeline_schedules/${pathEncode(rest)}`,
+              {
+                body,
+              },
+            );
           }
           break;
         }
         case "deploy-key": {
           const body = compact({ title: text("title") || undefined, can_push: bool("canPush") });
           if (Object.keys(body).length > 0) {
-            await glFetch(this.ctx, `/projects/${enc(ownerId)}/deploy_keys/${enc(rest)}`, {
-              method: "PUT",
+            await this.api.put(`/projects/${pathEncode(ownerId)}/deploy_keys/${pathEncode(rest)}`, {
               body,
             });
           }
@@ -2099,11 +2096,10 @@ export class GitLabClient implements PluginClient {
         case "project-webhook":
         case "group-webhook": {
           const kind = typeId === "project-webhook" ? "project" : "group";
-          const path = `/${kind}s/${enc(ownerId)}/hooks/${enc(rest)}`;
+          const path = `/${kind}s/${pathEncode(ownerId)}/hooks/${pathEncode(rest)}` as const;
           // PUT requires the URL even when it is unchanged.
-          const url = text("url") || (await glFetch<GlHook>(this.ctx, path)).url;
-          await glFetch(this.ctx, path, {
-            method: "PUT",
+          const url = text("url") || (await this.api.get(path)).url;
+          await this.api.put(path, {
             body: compactKeepEmpty({
               url,
               name: text("name"),
@@ -2125,8 +2121,7 @@ export class GitLabClient implements PluginClient {
               : undefined,
           });
           if (Object.keys(body).length > 0) {
-            await glFetch(this.ctx, `/projects/${enc(ownerId)}/releases/${enc(rest)}`, {
-              method: "PUT",
+            await this.api.put(`/projects/${pathEncode(ownerId)}/releases/${pathEncode(rest)}`, {
               body,
             });
           }
@@ -2135,10 +2130,9 @@ export class GitLabClient implements PluginClient {
         case "project-member":
         case "group-member": {
           const kind = typeId === "project-member" ? "projects" : "groups";
-          const path = `/${kind}/${enc(ownerId)}/members/${enc(rest)}`;
-          const current = await glFetch<GlMember>(this.ctx, path);
-          await glFetch(this.ctx, path, {
-            method: "PUT",
+          const path = `/${kind}/${pathEncode(ownerId)}/members/${pathEncode(rest)}` as const;
+          const current = await this.api.get(path);
+          await this.api.put(path, {
             body: {
               access_level: has("accessLevel")
                 ? memberLevelValue(fields["accessLevel"] ?? "")
@@ -2164,7 +2158,7 @@ export class GitLabClient implements PluginClient {
             maintenance_note: text("maintenanceNote"),
           });
           if (Object.keys(body).length > 0) {
-            await glFetch(this.ctx, `/runners/${enc(id)}`, { method: "PUT", body });
+            await this.api.put(`/runners/${pathEncode(id)}`, { body });
           }
           break;
         }
@@ -2179,15 +2173,13 @@ export class GitLabClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       const { scope: o, rest } = splitScoped(id);
-      const del = (path: string, query?: Record<string, string>) =>
-        glFetch(this.ctx, path, { method: "DELETE", ...(query ? { query } : {}) });
       switch (typeId) {
         case "pipeline":
-          await del(`/projects/${enc(o)}/pipelines/${enc(rest)}`);
+          await this.api.delete(`/projects/${pathEncode(o)}/pipelines/${pathEncode(rest)}`);
           return;
         case "environment":
           try {
-            await del(`/projects/${enc(o)}/environments/${enc(rest)}`);
+            await this.api.delete(`/projects/${pathEncode(o)}/environments/${pathEncode(rest)}`);
           } catch (err) {
             if (statusOf(err) === 403 || statusOf(err) === 400) {
               fail(
@@ -2199,54 +2191,58 @@ export class GitLabClient implements PluginClient {
           }
           return;
         case "protected-branch":
-          await del(`/projects/${enc(o)}/protected_branches/${enc(rest)}`);
+          await this.api.delete(
+            `/projects/${pathEncode(o)}/protected_branches/${pathEncode(rest)}`,
+          );
           return;
         case "project-variable":
         case "group-variable": {
           const { key, envScope } = splitVariable(rest);
-          await del(
-            `/${typeId === "project-variable" ? "projects" : "groups"}/${enc(o)}/variables/${enc(key)}`,
-            {
-              "filter[environment_scope]": envScope,
-            },
+          await this.api.delete(
+            `/${typeId === "project-variable" ? "projects" : "groups"}/${pathEncode(o)}/variables/${pathEncode(key)}`,
+            { query: { "filter[environment_scope]": envScope } },
           );
           return;
         }
         case "pipeline-schedule":
-          await del(`/projects/${enc(o)}/pipeline_schedules/${enc(rest)}`);
+          await this.api.delete(
+            `/projects/${pathEncode(o)}/pipeline_schedules/${pathEncode(rest)}`,
+          );
           return;
         case "container-repository":
-          await del(`/projects/${enc(o)}/registry/repositories/${enc(rest)}`);
+          await this.api.delete(
+            `/projects/${pathEncode(o)}/registry/repositories/${pathEncode(rest)}`,
+          );
           return;
         case "package":
-          await del(`/projects/${enc(o)}/packages/${enc(rest)}`);
+          await this.api.delete(`/projects/${pathEncode(o)}/packages/${pathEncode(rest)}`);
           return;
         case "deploy-key":
-          await del(`/projects/${enc(o)}/deploy_keys/${enc(rest)}`);
+          await this.api.delete(`/projects/${pathEncode(o)}/deploy_keys/${pathEncode(rest)}`);
           return;
         case "deploy-token":
-          await del(`/projects/${enc(o)}/deploy_tokens/${enc(rest)}`);
+          await this.api.delete(`/projects/${pathEncode(o)}/deploy_tokens/${pathEncode(rest)}`);
           return;
         case "group-deploy-token":
-          await del(`/groups/${enc(o)}/deploy_tokens/${enc(rest)}`);
+          await this.api.delete(`/groups/${pathEncode(o)}/deploy_tokens/${pathEncode(rest)}`);
           return;
         case "project-webhook":
-          await del(`/projects/${enc(o)}/hooks/${enc(rest)}`);
+          await this.api.delete(`/projects/${pathEncode(o)}/hooks/${pathEncode(rest)}`);
           return;
         case "group-webhook":
-          await del(`/groups/${enc(o)}/hooks/${enc(rest)}`);
+          await this.api.delete(`/groups/${pathEncode(o)}/hooks/${pathEncode(rest)}`);
           return;
         case "release":
-          await del(`/projects/${enc(o)}/releases/${enc(rest)}`);
+          await this.api.delete(`/projects/${pathEncode(o)}/releases/${pathEncode(rest)}`);
           return;
         case "project-member":
-          await del(`/projects/${enc(o)}/members/${enc(rest)}`);
+          await this.api.delete(`/projects/${pathEncode(o)}/members/${pathEncode(rest)}`);
           return;
         case "group-member":
-          await del(`/groups/${enc(o)}/members/${enc(rest)}`);
+          await this.api.delete(`/groups/${pathEncode(o)}/members/${pathEncode(rest)}`);
           return;
         case "runner":
-          await del(`/runners/${enc(id)}`);
+          await this.api.delete(`/runners/${pathEncode(id)}`);
           return;
         default:
           throw new Error(`GitLab plugin: cannot delete "${typeId}" from Infrawrench`);
@@ -2267,76 +2263,85 @@ export class GitLabClient implements PluginClient {
     return attempt(async () => {
       const id = externalIdOf(resourceId);
       const { scope: o, rest } = splitScoped(id);
-      const post = (path: string, body?: unknown) =>
-        glFetch(this.ctx, path, { method: "POST", ...(body !== undefined ? { body } : {}) });
       const [verb, arg] = actionId.split(":");
       switch (typeId) {
         case "project":
           if (actionId === "archive" || actionId === "unarchive") {
-            await post(`/projects/${enc(id)}/${actionId}`);
+            await this.api.post(`/projects/${pathEncode(id)}/${actionId}`);
             return;
           }
           break;
         case "pipeline":
           if (actionId === "retry" || actionId === "cancel") {
-            await post(`/projects/${enc(o)}/pipelines/${enc(rest)}/${actionId}`);
+            await this.api.post(
+              `/projects/${pathEncode(o)}/pipelines/${pathEncode(rest)}/${actionId}`,
+            );
             return;
           }
           if ((verb === "retry-job" || verb === "cancel-job" || verb === "play-job") && arg) {
-            await post(`/projects/${enc(o)}/jobs/${enc(arg)}/${verb.replace("-job", "")}`);
+            const action =
+              verb === "retry-job" ? "retry" : verb === "cancel-job" ? "cancel" : "play";
+            await this.api.post(`/projects/${pathEncode(o)}/jobs/${pathEncode(arg)}/${action}`);
             return;
           }
           break;
         case "environment":
           if (actionId === "stop") {
-            await post(`/projects/${enc(o)}/environments/${enc(rest)}/stop`);
+            await this.api.post(`/projects/${pathEncode(o)}/environments/${pathEncode(rest)}/stop`);
             return;
           }
           if ((verb === "approve-deployment" || verb === "reject-deployment") && arg) {
-            await post(`/projects/${enc(o)}/deployments/${enc(arg)}/approval`, {
-              status: verb === "approve-deployment" ? "approved" : "rejected",
-            });
+            await this.api.post(
+              `/projects/${pathEncode(o)}/deployments/${pathEncode(arg)}/approval`,
+              {
+                body: { status: verb === "approve-deployment" ? "approved" : "rejected" },
+              },
+            );
             return;
           }
           break;
         case "pipeline-schedule":
           if (actionId === "play" || actionId === "take-ownership") {
-            await post(
-              `/projects/${enc(o)}/pipeline_schedules/${enc(rest)}/${actionId.replace("-", "_")}`,
+            const action = actionId === "play" ? "play" : "take_ownership";
+            await this.api.post(
+              `/projects/${pathEncode(o)}/pipeline_schedules/${pathEncode(rest)}/${action}`,
             );
             return;
           }
           if (actionId === "activate" || actionId === "deactivate") {
-            await glFetch(this.ctx, `/projects/${enc(o)}/pipeline_schedules/${enc(rest)}`, {
-              method: "PUT",
-              body: { active: actionId === "activate" },
-            });
+            await this.api.put(
+              `/projects/${pathEncode(o)}/pipeline_schedules/${pathEncode(rest)}`,
+              {
+                body: { active: actionId === "activate" },
+              },
+            );
             return;
           }
           break;
         case "container-repository":
           if (actionId === "cleanup") {
             // Bulk tag deletion runs asynchronously on GitLab's side (202).
-            await glFetch(this.ctx, `/projects/${enc(o)}/registry/repositories/${enc(rest)}/tags`, {
-              method: "DELETE",
-              query: { name_regex_delete: ".*", keep_n: 10, older_than: "30d" },
-            });
+            await this.api.delete(
+              `/projects/${pathEncode(o)}/registry/repositories/${pathEncode(rest)}/tags`,
+              {
+                query: { name_regex_delete: ".*", keep_n: 10, older_than: "30d" },
+              },
+            );
             return;
           }
           break;
         case "project-webhook":
         case "group-webhook":
           if (actionId === "test") {
-            await post(
-              `/${typeId === "project-webhook" ? "projects" : "groups"}/${enc(o)}/hooks/${enc(rest)}/test/push_events`,
+            await this.api.post(
+              `/${typeId === "project-webhook" ? "projects" : "groups"}/${pathEncode(o)}/hooks/${pathEncode(rest)}/test/${pathEncode("push_events")}`,
             );
             return;
           }
           break;
         case "runner":
           if (actionId === "pause" || actionId === "resume") {
-            await glFetch(this.ctx, `/runners/${enc(id)}`, {
-              method: "PUT",
+            await this.api.put(`/runners/${pathEncode(id)}`, {
               body: { paused: actionId === "pause" },
             });
             return;
@@ -2361,11 +2366,10 @@ export class GitLabClient implements PluginClient {
     return attempt(async () => {
       if (typeId !== "pipeline") throw new Error(`GitLab plugin: "${typeId}" has no logs`);
       const { scope: o, rest } = splitScoped(externalIdOf(resourceId));
-      const jobs = await glPaged<GlJob>(
-        this.ctx,
-        `/projects/${enc(o)}/pipelines/${enc(rest)}/jobs`,
-        {},
-        3,
+      const jobs = await this.api.getAll(
+        `/projects/${pathEncode(o)}/pipelines/${pathEncode(rest)}/jobs`,
+        null,
+        { maxPages: 3 },
       );
       const label = (j: GlJob) => `${j.stage ? `${j.stage} / ` : ""}${j.name} #${j.id}`;
       const ordered = [...jobs].sort((a, b) => a.id - b.id);
@@ -2379,9 +2383,9 @@ export class GitLabClient implements PluginClient {
         return { text: "This pipeline has no jobs.\n", containers: [], activeContainer: "" };
       let text: string;
       try {
-        text = await glFetch<string>(this.ctx, `/projects/${enc(o)}/jobs/${pick.id}/trace`, {
-          as: "text",
-        });
+        text = (
+          await this.api.getText(`/projects/${pathEncode(o)}/jobs/${pathEncode(pick.id)}/trace`)
+        ).body;
       } catch (err) {
         if (statusOf(err) !== 404) throw err;
         text = `No log for ${pick.name} (${pick.status}).\n`;
@@ -2403,9 +2407,8 @@ export class GitLabClient implements PluginClient {
       const { scope: o, rest } = splitScoped(externalIdOf(resourceId));
       const page = Number(params?.pageToken ?? "1") || 1;
       if (typeId === "container-repository") {
-        const tags = await glFetch<GlRegistryTag[]>(
-          this.ctx,
-          `/projects/${enc(o)}/registry/repositories/${enc(rest)}/tags`,
+        const tags = await this.api.get(
+          `/projects/${pathEncode(o)}/registry/repositories/${pathEncode(rest)}/tags`,
           { query: { per_page: 50, page } },
         );
         const wanted = (tags ?? []).filter(
@@ -2414,10 +2417,11 @@ export class GitLabClient implements PluginClient {
         // The list has names only; digest, size and date come from each tag.
         const detailed = await Promise.all(
           wanted.map((t) =>
-            glFetch<GlRegistryTag>(
-              this.ctx,
-              `/projects/${enc(o)}/registry/repositories/${enc(rest)}/tags/${enc(t.name)}`,
-            ).catch(() => t),
+            this.api
+              .get(
+                `/projects/${pathEncode(o)}/registry/repositories/${pathEncode(rest)}/tags/${pathEncode(t.name)}`,
+              )
+              .catch((): GlRegistryTag => t),
           ),
         );
         return {
@@ -2433,9 +2437,8 @@ export class GitLabClient implements PluginClient {
         };
       }
       if (typeId === "package") {
-        const files = await glFetch<GlPackageFile[]>(
-          this.ctx,
-          `/projects/${enc(o)}/packages/${enc(rest)}/package_files`,
+        const files = await this.api.get(
+          `/projects/${pathEncode(o)}/packages/${pathEncode(rest)}/package_files`,
           {
             query: { per_page: 100, page },
           },
@@ -2467,11 +2470,7 @@ export class GitLabClient implements PluginClient {
         throw new Error(`GitLab plugin: cannot export "${formatId}" for "${typeId}"`);
       }
       const id = externalIdOf(resourceId);
-      const res = await glFetch<{ token?: string; token_expires_at?: string | null }>(
-        this.ctx,
-        `/runners/${enc(id)}/reset_authentication_token`,
-        { method: "POST" },
-      );
+      const res = await this.api.post(`/runners/${pathEncode(id)}/reset_authentication_token`);
       const token = res?.token;
       if (!token) throw new Error("GitLab did not return a new runner token");
       await this.services?.secrets
@@ -2508,15 +2507,6 @@ export class GitLabClient implements PluginClient {
 // Helpers
 // ---------------------------------------------------------------------------
 
-interface HookEvent {
-  id: number;
-  trigger?: string;
-  response_status?: string | number;
-  execution_duration?: number;
-  created_at?: string;
-  request_data?: { created_at?: string };
-}
-
 export interface GroupStorage {
   storageSizeLimit?: number | null;
   additionalPurchasedStorageSize?: number | null;
@@ -2542,7 +2532,8 @@ function slimJob(j: GlJob) {
     url: j.web_url,
     ref: j.ref,
     createdAt: j.created_at,
-    project: j.project?.path_with_namespace,
+    project:
+      j.project && "path_with_namespace" in j.project ? j.project.path_with_namespace : undefined,
     pipelineId: j.pipeline?.id,
   };
 }
@@ -2557,8 +2548,9 @@ export function splitVariable(rest: string): { key: string; envScope: string } {
 }
 
 /** Drop undefined and empty strings. */
-function compact(body: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+function compact<T extends object>(body: T): T;
+function compact(body: object): object {
+  const out: Record<string, object | string | number | boolean> = {};
   for (const [k, v] of Object.entries(body)) {
     if (v === undefined || v === null) continue;
     if (typeof v === "string" && v.trim() === "") continue;
@@ -2568,8 +2560,9 @@ function compact(body: Record<string, unknown>): Record<string, unknown> {
 }
 
 /** Drop undefined only: an empty string clears a field on edit. */
-function compactKeepEmpty(body: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+function compactKeepEmpty<T extends object>(body: T): T;
+function compactKeepEmpty(body: object): object {
+  const out: Record<string, object | string | number | boolean | null> = {};
   for (const [k, v] of Object.entries(body)) if (v !== undefined) out[k] = v;
   return out;
 }
@@ -2579,7 +2572,7 @@ export function parseListish(raw: string | undefined): string[] {
   const v = (raw ?? "").trim();
   if (v.startsWith("[")) {
     try {
-      const parsed = JSON.parse(v) as unknown;
+      const parsed: unknown = JSON.parse(v);
       if (Array.isArray(parsed))
         return parsed
           .map(String)
@@ -2592,7 +2585,7 @@ export function parseListish(raw: string | undefined): string[] {
   return commaList(v);
 }
 
-const DEPLOY_TOKEN_SCOPES = new Set([
+const DEPLOY_TOKEN_SCOPES = [
   "read_repository",
   "read_registry",
   "write_registry",
@@ -2600,14 +2593,15 @@ const DEPLOY_TOKEN_SCOPES = new Set([
   "write_package_registry",
   "read_virtual_registry",
   "write_virtual_registry",
-]);
+] as const;
 
-function parseScopes(raw: string | undefined): string[] {
-  const scopes = parseListish(raw);
-  for (const s of scopes) {
-    if (!DEPLOY_TOKEN_SCOPES.has(s)) fail(`"${s}" is not a deploy token scope`);
-  }
-  return scopes;
+const isDeployTokenScope = (s: string): s is (typeof DEPLOY_TOKEN_SCOPES)[number] =>
+  DEPLOY_TOKEN_SCOPES.some((scope) => scope === s);
+
+function parseScopes(raw: string | undefined) {
+  return parseListish(raw).map((s) =>
+    isDeployTokenScope(s) ? s : fail(`"${s}" is not a deploy token scope`),
+  );
 }
 
 function hookEventOptions(kind: "project" | "group") {

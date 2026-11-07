@@ -1,6 +1,6 @@
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
-import { GitLabApiError, glPaged, resolveBaseUrl, statusOf } from "../api.js";
+import { GitLabApiError, gitlabApi, resolveBaseUrl, statusOf } from "../api.js";
 import { GitLabClient, cleanTrace, parseListish, splitVariable } from "../client.js";
 import { hookEventFlags, parseVariableLines } from "../inputs.js";
 import { describeLevels, mapVariable } from "../mappers.js";
@@ -54,9 +54,9 @@ describe("transport", () => {
         ? { body: [{ id: 1 }], headers: { "X-Next-Page": "2" } }
         : { body: [{ id: 2 }], headers: { "X-Next-Page": "" } };
     });
-    const out = await glPaged<{ id: number }>(
-      { baseUrl: "https://g.example", token: "tok", http },
+    const out = await gitlabApi({ baseUrl: "https://g.example", token: "tok", http }).getAll(
       "/projects",
+      null,
     );
     expect(out.map((x) => x.id)).toEqual([1, 2]);
     expect(calls).toHaveLength(2);

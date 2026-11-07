@@ -21,10 +21,24 @@ import type {
 import {
   dnsContentField,
   joinSubtitle,
-  jsonRestFetch,
+  pathEncode,
   renderDnsRecordDetail,
   renderDnsRecordSidebar,
+  unencodedSegment,
 } from "@infrawrench/plugin-base";
+import {
+  createVercelApi,
+  type VercelDeployment,
+  type VercelDeploymentDetail,
+  type VercelDeploymentEvent,
+  type VercelDnsRecord,
+  type VercelDomain,
+  type VercelEnvVar,
+  type VercelProject,
+  type VercelResponse,
+  type VercelTeam,
+  type VercelWebhook,
+} from "./api.js";
 import { fetchVercelCostData } from "./cost-data.js";
 import {
   DNS_RECORD_TYPES,
@@ -34,135 +48,9 @@ import {
   frameworkLabel,
 } from "./catalog.js";
 
-interface VercelProject {
-  id: string;
-  name: string;
-  /** Owner of the project: the team id when the project belongs to a team. */
-  accountId?: string;
-  framework?: string | null;
-  nodeVersion?: string;
-  serverlessFunctionRegion?: string;
-  rootDirectory?: string | null;
-  buildCommand?: string | null;
-  outputDirectory?: string | null;
-  createdAt: number;
-  updatedAt?: number;
-  live?: boolean;
-  installCommand?: string | null;
-  devCommand?: string | null;
-  paused?: boolean;
-  security?: { attackModeEnabled?: boolean; attackModeActiveUntil?: number | null } | null;
-  link?: {
-    type?: string;
-    repo?: string;
-    repoId?: number;
-    org?: string;
-  };
-  alias?: Array<{ domain: string }>;
-  latestDeployments?: Array<{
-    url?: string;
-    readyState?: string;
-  }>;
-}
-
-interface VercelDeployment {
-  uid: string;
-  name: string;
-  url: string | null;
-  state?: string;
-  readyState?: string;
-  target?: string | null;
-  source?: string;
-  projectId?: string;
-  created: number;
-  buildingAt?: number;
-  ready?: number;
-  inspectorUrl?: string | null;
-  errorMessage?: string | null;
-  isRollbackCandidate?: boolean | null;
-  meta?: Record<string, string>;
-  creator?: {
-    uid: string;
-    email?: string;
-    username?: string;
-  };
-  projectSettings?: {
-    framework?: string | null;
-  };
-}
-
-interface VercelDomain {
-  id?: string;
-  name: string;
-  verified: boolean;
-  /** Set when the domain belongs to a team rather than a personal account. */
-  teamId?: string | null;
-  serviceType?: string;
-  nameservers?: string[];
-  intendedNameservers?: string[];
-  renew?: boolean;
-  expiresAt: number | null;
-  boughtAt: number | null;
-  createdAt: number;
-}
-
-interface VercelEnvVar {
-  id?: string;
-  key: string;
-  value?: string;
-  type: string;
-  target?: string[] | string;
-  gitBranch?: string;
-  comment?: string;
-  createdAt?: number;
-  updatedAt?: number;
-}
-
-interface VercelDnsRecord {
-  id: string;
-  slug?: string;
-  name?: string;
-  type?: string;
-  value?: string;
-  ttl?: number;
-  mxPriority?: number;
-  priority?: number;
-  comment?: string;
-  creator?: string;
-  createdAt?: number | null;
-  updatedAt?: number | null;
-}
-
-interface VercelWebhook {
-  id: string;
-  url: string;
-  events?: string[];
-  projectIds?: string[];
-  secret?: string;
-  createdAt?: number;
-  updatedAt?: number;
-}
-
-/** One entry of `GET /v3/deployments/{id}/events` (build output). */
-interface VercelDeploymentEvent {
-  type?: string;
-  created?: number;
-  text?: string;
-  payload?: { text?: string; date?: number };
-}
-
 /** Deployment actions: header buttons on the deployment detail view. */
 const DEPLOYMENT_ACTIONS = new Set(["cancel", "redeploy", "promote", "rollback"]);
 const PROJECT_ACTIONS = new Set(["pause", "unpause", "attack-mode-on", "attack-mode-off"]);
-
-interface VercelTeam {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: number;
-  updatedAt: number;
-  membership?: { role: string };
-}
 
 function deploymentStatus(state?: string): ResourceStatus {
   switch (state) {
@@ -211,20 +99,50 @@ function fields(
 /** Default Metrics window: Web Analytics reports by hour or day, so a week reads well. */
 const WEB_ANALYTICS_DEFAULT_RANGE_MS = 7 * 86_400_000;
 
-/** One time bucket of a Web Analytics aggregate grouped by hour/day. */
-interface WebAnalyticsRow {
-  timestamp?: string;
-  pageviews?: number;
-  visitors?: number;
-  count?: number;
-}
+/** GitLab and Bitbucket links have neither `org` nor `repo`; these read as undefined there. */
+type ProjectLink = NonNullable<VercelProject["link"]> & { org?: string; repo?: string };
+
+/**
+ * What `mapDnsRecord` reads. A record just created has only what the form sent, and
+ * the document does not promise it a `uid`.
+ */
+type DnsRecordFields = Partial<Omit<VercelDnsRecord, "id" | "type">> & {
+  id: string | undefined;
+  type?: string;
+};
+
+/**
+ * What `mapDeployment` reads. The list route and the three shapes of the single
+ * route each lack some of it, and only the list route documents `uid` and `created`.
+ */
+type DeploymentFields = Partial<
+  Pick<
+    VercelDeployment,
+    | "name"
+    | "url"
+    | "state"
+    | "readyState"
+    | "target"
+    | "source"
+    | "projectId"
+    | "created"
+    | "ready"
+    | "inspectorUrl"
+    | "errorMessage"
+    | "isRollbackCandidate"
+    | "meta"
+    | "creator"
+    | "projectSettings"
+  >
+> & { uid: string };
 
 export class VercelClient implements PluginClient {
   private readonly accessToken: string;
   private readonly teamId: string | null;
-  private readonly baseUrl = "https://api.vercel.com";
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  private readonly api: ReturnType<typeof createVercelApi>["api"];
+  private readonly projectPages: ReturnType<typeof createVercelApi>["projectPages"];
 
   constructor(credentials: Credentials, services?: HostServices) {
     const token = credentials["accessToken"];
@@ -233,63 +151,18 @@ export class VercelClient implements PluginClient {
     this.teamId = credentials["teamId"] || null;
     this.caCert = credentials["caCert"] ?? "";
     this.services = services;
-  }
-
-  /** Append teamId query param if configured */
-  private teamQuery(path: string): string {
-    if (!this.teamId) return path;
-    const sep = path.includes("?") ? "&" : "?";
-    return `${path}${sep}teamId=${encodeURIComponent(this.teamId)}`;
-  }
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    const url = `${this.baseUrl}${this.teamQuery(path)}`;
-    return jsonRestFetch<T>({
-      vendor: "Vercel",
-      url,
-      errorPath: path,
-      headers: { Authorization: `Bearer ${this.accessToken}` },
-      ...(options ? { init: options } : {}),
-      ...(this.caCert && this.services?.http
-        ? { caCert: this.caCert, http: this.services.http }
-        : {}),
+    const { api, projectPages } = createVercelApi({
+      accessToken: token,
+      teamId: this.teamId,
+      caCert: this.caCert,
+      http: services?.http,
     });
+    this.api = api;
+    this.projectPages = projectPages;
   }
 
-  /**
-   * Paginate Vercel's cursor endpoints. Most take the previous page's
-   * `pagination.next` timestamp as `until`; `GET /v10/projects` returns a
-   * continuation token instead and takes it as `from`.
-   */
-  private async paginate<T>(
-    path: string,
-    dataKey: string,
-    limit = 100,
-    cursorParam: "until" | "from" = "until",
-  ): Promise<T[]> {
-    const results: T[] = [];
-    let cursor: number | string | null = null;
-
-    for (let page = 0; page < 100; page++) {
-      const sep = path.includes("?") ? "&" : "?";
-      let url = `${path}${sep}limit=${limit}`;
-      if (cursor != null) url += `&${cursorParam}=${encodeURIComponent(String(cursor))}`;
-
-      const res = await this.fetch<Record<string, unknown>>(url);
-      const items = res[dataKey];
-      if (!Array.isArray(items) || items.length === 0) break;
-      results.push(...(items as T[]));
-
-      const pagination = res["pagination"] as { next: number | string | null } | undefined;
-      if (!pagination?.next) break;
-      cursor = pagination.next;
-    }
-
-    return results;
-  }
-
-  private listRawProjects(): Promise<VercelProject[]> {
-    return this.paginate<VercelProject>("/v10/projects", "projects", 100, "from");
+  private listRawProjects() {
+    return this.projectPages.getAll("/v10/projects", "projects");
   }
 
   listResources(typeId: string, accountId: string): PluginEffect<ResourceInstance[]> {
@@ -324,13 +197,13 @@ export class VercelClient implements PluginClient {
       const externalId = resourceId.split(":").slice(2).join(":");
 
       if (typeId === "vercel-project") {
-        const project = await this.fetch<VercelProject>(`/v9/projects/${externalId}`);
+        const project = await this.api.get(`/v9/projects/${unencodedSegment(externalId)}`);
         return this.mapProject(project, accountId);
       }
 
       if (typeId === "vercel-deployment") {
-        const deployment = await this.fetch<VercelDeployment & { id?: string }>(
-          `/v13/deployments/${encodeURIComponent(externalId)}`,
+        const deployment: VercelDeploymentDetail & { uid?: string } = await this.api.get(
+          `/v13/deployments/${pathEncode(externalId)}`,
         );
         // The single-deployment route names the id `id`; the list route, `uid`.
         return this.mapDeployment(
@@ -349,9 +222,7 @@ export class VercelClient implements PluginClient {
       }
 
       if (typeId === "vercel-webhook") {
-        const hook = await this.fetch<VercelWebhook>(
-          `/v1/webhooks/${encodeURIComponent(externalId)}`,
-        );
+        const hook = await this.api.get(`/v1/webhooks/${pathEncode(externalId)}`);
         return this.mapWebhook(hook, accountId);
       }
 
@@ -503,23 +374,24 @@ export class VercelClient implements PluginClient {
       const endMs = timeRange?.endMs ?? Date.now();
       const startMs = timeRange?.startMs ?? endMs - WEB_ANALYTICS_DEFAULT_RANGE_MS;
       const bucket = endMs - startMs <= 3 * 86_400_000 ? "hour" : "day";
-      const query = (dataset: "visits" | "events") =>
-        `/v1/query/web-analytics/${dataset}/aggregate?projectId=${encodeURIComponent(projectId)}` +
-        `&by=${bucket}&since=${startMs}&until=${endMs}`;
+      const query = { projectId, by: [bucket], since: startMs, until: endMs };
 
-      const read = async (dataset: "visits" | "events"): Promise<WebAnalyticsRow[]> => {
+      const read = async <Row>(request: () => Promise<{ data: Row[] }>): Promise<Row[]> => {
         try {
-          const res = await this.fetch<{ data?: unknown }>(query(dataset));
-          return Array.isArray(res.data) ? (res.data as WebAnalyticsRow[]) : [];
+          const res = await request();
+          return Array.isArray(res.data) ? res.data : [];
         } catch {
           return [];
         }
       };
-      const [visits, events] = await Promise.all([read("visits"), read("events")]);
+      const [visits, events] = await Promise.all([
+        read(() => this.api.get("/v1/query/web-analytics/visits/aggregate", { query })),
+        read(() => this.api.get("/v1/query/web-analytics/events/aggregate", { query })),
+      ]);
 
-      const toSeries = (
-        rows: WebAnalyticsRow[],
-        key: "pageviews" | "visitors" | "count",
+      const toSeries = <Row extends { timestamp: string }>(
+        rows: Row[],
+        key: keyof Row,
         label: string,
         unit: string,
       ): MetricSeries | null => {
@@ -583,7 +455,8 @@ export class VercelClient implements PluginClient {
     let status: ResourceStatus = "info";
 
     if (resource.resourceTypeId === "vercel-deployment") {
-      status = deploymentStatus(resource.fields["state"] as string | undefined);
+      const state = resource.fields["state"];
+      status = deploymentStatus(typeof state === "string" ? state : undefined);
     } else if (resource.resourceTypeId === "vercel-domain") {
       const verified =
         resource.fields["verified"] === "true" || resource.fields["verified"] === true;
@@ -705,7 +578,7 @@ export class VercelClient implements PluginClient {
                 label: "Domain",
                 kind: "select" as const,
                 required: true,
-                options: (await this.paginate<VercelDomain>("/v5/domains", "domains")).map((d) => ({
+                options: (await this.api.getAll("/v5/domains", "domains")).map((d) => ({
                   id: d.name,
                   label: d.name,
                 })),
@@ -751,7 +624,7 @@ export class VercelClient implements PluginClient {
       }
 
       if (typeId === "vercel-webhook") {
-        const projects = await this.listRawProjects().catch(() => [] as VercelProject[]);
+        const projects = await this.listRawProjects().catch(() => []);
         return {
           fields: [
             {
@@ -817,26 +690,26 @@ export class VercelClient implements PluginClient {
           (parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "");
         if (!domain) throw new Error("Vercel plugin: a domain is required to create a DNS record");
         const type = fields["type"] || "A";
-        const body: Record<string, unknown> = {
-          type,
-          name: fields["name"] ?? "",
-          value: fields["value"] ?? "",
-        };
-        if (fields["ttl"]) body["ttl"] = Number(fields["ttl"]);
-        if (type === "MX") body["mxPriority"] = Number(fields["mxPriority"] || 10);
-        if (fields["comment"]) body["comment"] = fields["comment"];
-        const res = await this.fetch<{ uid: string }>(
-          `/v2/domains/${encodeURIComponent(domain)}/records`,
-          { method: "POST", body: JSON.stringify(body) },
-        );
+        const ttl = fields["ttl"] ? Number(fields["ttl"]) : undefined;
+        const mxPriority = type === "MX" ? Number(fields["mxPriority"] || 10) : undefined;
+        const res = await this.api.post(`/v2/domains/${pathEncode(domain)}/records`, {
+          body: {
+            type,
+            name: fields["name"] ?? "",
+            value: fields["value"] ?? "",
+            ttl,
+            mxPriority,
+            comment: fields["comment"] || undefined,
+          },
+        });
         return this.mapDnsRecord(
           {
             id: res.uid,
             name: fields["name"] ?? "",
             type,
             value: fields["value"] ?? "",
-            ...(body["ttl"] != null ? { ttl: Number(body["ttl"]) } : {}),
-            ...(type === "MX" ? { mxPriority: Number(body["mxPriority"]) } : {}),
+            ...(ttl != null ? { ttl } : {}),
+            ...(mxPriority !== undefined ? { mxPriority } : {}),
             ...(fields["comment"] ? { comment: fields["comment"] } : {}),
             createdAt: Date.now(),
           },
@@ -849,13 +722,12 @@ export class VercelClient implements PluginClient {
         const events = parseJsonIds(fields["events"]);
         if (events.length === 0) throw new Error("Vercel plugin: pick at least one webhook event");
         const projectIds = parseJsonIds(fields["projectIds"]);
-        const hook = await this.fetch<VercelWebhook>("/v1/webhooks", {
-          method: "POST",
-          body: JSON.stringify({
+        const hook = await this.api.post("/v1/webhooks", {
+          body: {
             url: fields["url"] ?? "",
             events,
             ...(projectIds.length > 0 ? { projectIds } : {}),
-          }),
+          },
         });
         const mapped = this.mapWebhook(hook, accountId);
         return {
@@ -868,36 +740,30 @@ export class VercelClient implements PluginClient {
       }
 
       if (typeId === "vercel-project") {
-        const body: Record<string, unknown> = { name: fields["name"] };
-        if (fields["framework"]) body["framework"] = fields["framework"];
-        if (fields["buildCommand"]) body["buildCommand"] = fields["buildCommand"];
-        if (fields["outputDirectory"]) body["outputDirectory"] = fields["outputDirectory"];
-        if (fields["rootDirectory"]) body["rootDirectory"] = fields["rootDirectory"];
-        if (fields["installCommand"]) body["installCommand"] = fields["installCommand"];
-        if (fields["serverlessFunctionRegion"]) {
-          body["serverlessFunctionRegion"] = fields["serverlessFunctionRegion"];
-        }
-
-        const project = await this.fetch<VercelProject>("/v11/projects", {
-          method: "POST",
-          body: JSON.stringify(body),
+        const project = await this.api.post("/v11/projects", {
+          body: {
+            name: fields["name"],
+            framework: fields["framework"] || undefined,
+            buildCommand: fields["buildCommand"] || undefined,
+            outputDirectory: fields["outputDirectory"] || undefined,
+            rootDirectory: fields["rootDirectory"] || undefined,
+            installCommand: fields["installCommand"] || undefined,
+            serverlessFunctionRegion: fields["serverlessFunctionRegion"] || undefined,
+          },
         });
 
         return this.mapProject(project, accountId);
       }
 
       if (typeId === "vercel-domain") {
-        const data = await this.fetch<Record<string, unknown>>("/v7/domains", {
-          method: "POST",
-          body: JSON.stringify({ name: fields["name"], method: "add" }),
+        const data = await this.api.post("/v7/domains", {
+          body: { name: fields["name"], method: "add" },
         });
-        const domain = (data["domain"] ?? data) as Record<string, unknown>;
-        const name = String(domain["name"] ?? fields["name"]);
-        const nameservers = Array.isArray(domain["nameservers"])
-          ? domain["nameservers"].join(", ")
-          : "";
-        const intendedNameservers = Array.isArray(domain["intendedNameservers"])
-          ? domain["intendedNameservers"].join(", ")
+        const domain = data.domain ?? data;
+        const name = String(domain.name ?? fields["name"]);
+        const nameservers = Array.isArray(domain.nameservers) ? domain.nameservers.join(", ") : "";
+        const intendedNameservers = Array.isArray(domain.intendedNameservers)
+          ? domain.intendedNameservers.join(", ")
           : "";
         const now = new Date().toISOString();
         return {
@@ -908,35 +774,37 @@ export class VercelClient implements PluginClient {
           displayName: name,
           fields: {
             name,
-            verified: String(domain["verified"] ?? false),
-            serviceType: String(domain["serviceType"] ?? ""),
+            verified: String(domain.verified ?? false),
+            serviceType: String(domain.serviceType ?? ""),
             nameservers,
             intendedNameservers,
-            renew: String(domain["renew"] ?? false),
-            expiresAt: String(domain["expiresAt"] ?? ""),
-            boughtAt: String(domain["boughtAt"] ?? ""),
-            createdAt: String(domain["createdAt"] ?? now),
+            renew: String(domain.renew ?? false),
+            expiresAt: String(domain.expiresAt ?? ""),
+            boughtAt: String(domain.boughtAt ?? ""),
+            createdAt: String(domain.createdAt ?? now),
           },
           resolvedOutputs: { domainName: name, nameservers },
           secretStates: [],
           externalId: name,
-          createdAt: String(domain["createdAt"] ?? now),
+          createdAt: String(domain.createdAt ?? now),
           updatedAt: now,
         };
       }
 
       if (typeId === "vercel-env-var") {
         const projectId = fields["projectId"] ?? "";
-        const data = await this.fetch<Record<string, unknown>>(`/v10/projects/${projectId}/env`, {
-          method: "POST",
-          body: JSON.stringify({
-            key: fields["key"] ?? "",
-            value: fields["value"] ?? "",
-            type: fields["type"] ?? "encrypted",
-            target: [fields["target"] ?? "production"],
-          }),
-        });
-        const envId = String(data["id"] ?? `${projectId}/${fields["key"]}`);
+        const data: VercelResponse<"createProjectEnv"> & { id?: string } = await this.api.post(
+          `/v10/projects/${unencodedSegment(projectId)}/env`,
+          {
+            body: {
+              key: fields["key"] ?? "",
+              value: fields["value"] ?? "",
+              type: fields["type"] ?? "encrypted",
+              target: [fields["target"] ?? "production"],
+            },
+          },
+        );
+        const envId = String(data.id ?? `${projectId}/${fields["key"]}`);
         const now = new Date().toISOString();
         return {
           id: `${accountId}:vercel-env-var:${envId}`,
@@ -966,10 +834,7 @@ export class VercelClient implements PluginClient {
       if (typeId === "vercel-team") {
         const name = fields["name"] ?? "";
         const slug = fields["slug"] ?? "";
-        const result = await this.fetch<{ id: string; slug: string; name: string }>("/v1/teams", {
-          method: "POST",
-          body: JSON.stringify({ slug, name }),
-        });
+        const result = await this.api.post("/v1/teams", { body: { slug, name } });
         const now = new Date().toISOString();
         return {
           id: `${accountId}:vercel-team:${result.id}`,
@@ -995,33 +860,28 @@ export class VercelClient implements PluginClient {
       const externalId = resourceId.split(":").slice(2).join(":");
 
       if (typeId === "vercel-project") {
-        await this.fetch<unknown>(`/v9/projects/${externalId}`, { method: "DELETE" });
+        await this.api.delete(`/v9/projects/${unencodedSegment(externalId)}`);
         return;
       }
 
       if (typeId === "vercel-deployment") {
-        await this.fetch<unknown>(`/v13/deployments/${externalId}`, { method: "DELETE" });
+        await this.api.delete(`/v13/deployments/${unencodedSegment(externalId)}`);
         return;
       }
 
       if (typeId === "vercel-domain") {
-        await this.fetch<unknown>(`/v6/domains/${externalId}`, { method: "DELETE" });
+        await this.api.delete(`/v6/domains/${unencodedSegment(externalId)}`);
         return;
       }
 
       if (typeId === "vercel-dns-record") {
         const { domain, recordId } = splitRecordId(externalId);
-        await this.fetch<unknown>(
-          `/v2/domains/${encodeURIComponent(domain)}/records/${encodeURIComponent(recordId)}`,
-          { method: "DELETE" },
-        );
+        await this.api.delete(`/v2/domains/${pathEncode(domain)}/records/${pathEncode(recordId)}`);
         return;
       }
 
       if (typeId === "vercel-webhook") {
-        await this.fetch<unknown>(`/v1/webhooks/${encodeURIComponent(externalId)}`, {
-          method: "DELETE",
-        });
+        await this.api.delete(`/v1/webhooks/${pathEncode(externalId)}`);
         return;
       }
 
@@ -1034,7 +894,9 @@ export class VercelClient implements PluginClient {
         const projectId = compound.slice(0, slashIdx);
         const envId = compound.slice(slashIdx + 1);
         if (!projectId || !envId) throw new Error("Invalid env var resource ID");
-        await this.fetch<unknown>(`/v9/projects/${projectId}/env/${envId}`, { method: "DELETE" });
+        await this.api.delete(
+          `/v9/projects/${unencodedSegment(projectId)}/env/${unencodedSegment(envId)}`,
+        );
         return;
       }
 
@@ -1052,70 +914,60 @@ export class VercelClient implements PluginClient {
       const externalId = resourceId.split(":").slice(2).join(":");
 
       if (typeId === "vercel-project") {
-        const body: Record<string, unknown> = {};
-        for (const key of [
-          "name",
-          "framework",
-          "nodeVersion",
-          "serverlessFunctionRegion",
-          "buildCommand",
-          "installCommand",
-          "devCommand",
-          "outputDirectory",
-          "rootDirectory",
-        ]) {
-          if (fields[key] === undefined) continue;
-          // Blank clears an override back to the framework default (`null`).
-          body[key] = fields[key] === "" && key !== "name" ? null : fields[key];
-        }
-        const project = await this.fetch<VercelProject>(
-          `/v9/projects/${encodeURIComponent(externalId)}`,
-          { method: "PATCH", body: JSON.stringify(body) },
-        );
+        // Blank clears an override back to the framework default (`null`).
+        const override = (key: string) => (fields[key] === "" ? null : fields[key]);
+        const project = await this.api.patch(`/v9/projects/${pathEncode(externalId)}`, {
+          body: {
+            name: fields["name"],
+            framework: override("framework"),
+            nodeVersion: override("nodeVersion"),
+            serverlessFunctionRegion: override("serverlessFunctionRegion"),
+            buildCommand: override("buildCommand"),
+            installCommand: override("installCommand"),
+            devCommand: override("devCommand"),
+            outputDirectory: override("outputDirectory"),
+            rootDirectory: override("rootDirectory"),
+          },
+        });
         return this.mapProject(project, accountId);
       }
 
       if (typeId === "vercel-env-var") {
         const { projectId, envId } = splitEnvId(externalId);
-        const body: Record<string, unknown> = {};
-        if (fields["newValue"]) body["value"] = fields["newValue"];
-        if (fields["type"]) body["type"] = fields["type"];
-        if (fields["target"] !== undefined) {
-          body["target"] = fields["target"]
-            .split(",")
-            .map((t) => t.trim())
-            .filter(Boolean);
-        }
-        if (fields["gitBranch"] !== undefined) body["gitBranch"] = fields["gitBranch"];
-        if (fields["comment"] !== undefined) body["comment"] = fields["comment"];
-        await this.fetch<unknown>(
-          `/v9/projects/${encodeURIComponent(projectId)}/env/${encodeURIComponent(envId)}`,
-          { method: "PATCH", body: JSON.stringify(body) },
-        );
+        await this.api.patch(`/v9/projects/${pathEncode(projectId)}/env/${pathEncode(envId)}`, {
+          body: {
+            value: fields["newValue"] || undefined,
+            type: fields["type"] || undefined,
+            target: fields["target"]
+              ?.split(",")
+              .map((t) => t.trim())
+              .filter(Boolean),
+            gitBranch: fields["gitBranch"],
+            comment: fields["comment"],
+          },
+        });
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
 
       if (typeId === "vercel-domain") {
         if (fields["renew"] !== undefined) {
-          await this.fetch<unknown>(
-            `/v1/registrar/domains/${encodeURIComponent(externalId)}/auto-renew`,
-            { method: "PATCH", body: JSON.stringify({ autoRenew: fields["renew"] === "true" }) },
-          );
+          await this.api.patch(`/v1/registrar/domains/${pathEncode(externalId)}/auto-renew`, {
+            body: { autoRenew: fields["renew"] === "true" },
+          });
         }
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
 
       if (typeId === "vercel-dns-record") {
         const { recordId } = splitRecordId(externalId);
-        const body: Record<string, unknown> = {};
-        if (fields["name"] !== undefined) body["name"] = fields["name"];
-        if (fields["content"] !== undefined) body["value"] = fields["content"];
-        if (fields["ttl"]) body["ttl"] = Number(fields["ttl"]);
-        if (fields["priority"]) body["mxPriority"] = Number(fields["priority"]);
-        if (fields["comment"] !== undefined) body["comment"] = fields["comment"];
-        await this.fetch<unknown>(`/v1/domains/records/${encodeURIComponent(recordId)}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
+        await this.api.patch(`/v1/domains/records/${pathEncode(recordId)}`, {
+          body: {
+            name: fields["name"],
+            value: fields["content"],
+            ttl: fields["ttl"] ? Number(fields["ttl"]) : undefined,
+            mxPriority: fields["priority"] ? Number(fields["priority"]) : undefined,
+            comment: fields["comment"],
+          },
         });
         return runPluginEffect(this.getResource(typeId, resourceId, accountId));
       }
@@ -1134,48 +986,45 @@ export class VercelClient implements PluginClient {
       const externalId = resourceId.split(":").slice(2).join(":");
 
       if (typeId === "vercel-deployment" && DEPLOYMENT_ACTIONS.has(actionId)) {
-        const id = encodeURIComponent(externalId);
+        const id = pathEncode(externalId);
         if (actionId === "cancel") {
-          await this.fetch<unknown>(`/v12/deployments/${id}/cancel`, { method: "PATCH" });
+          await this.api.patch(`/v12/deployments/${id}/cancel`);
           return;
         }
         const deployment = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
         const projectId = String(deployment.fields["projectId"] ?? "");
         if (actionId === "redeploy") {
           const target = String(deployment.fields["target"] ?? "");
-          await this.fetch<unknown>("/v13/deployments", {
-            method: "POST",
-            body: JSON.stringify({
+          await this.api.post("/v13/deployments", {
+            body: {
               name: String(deployment.fields["name"] ?? ""),
               deploymentId: externalId,
               ...(projectId ? { project: projectId } : {}),
               ...(target === "production" ? { target: "production" } : {}),
-            }),
+            },
           });
           return;
         }
         if (!projectId) throw new Error("Vercel plugin: deployment has no project");
-        const path =
-          actionId === "promote"
-            ? `/v10/projects/${encodeURIComponent(projectId)}/promote/${id}`
-            : `/v1/projects/${encodeURIComponent(projectId)}/rollback/${id}`;
-        await this.fetch<unknown>(path, { method: "POST" });
+        const project = pathEncode(projectId);
+        if (actionId === "promote") {
+          await this.api.post(`/v10/projects/${project}/promote/${id}`);
+        } else {
+          await this.api.post(`/v1/projects/${project}/rollback/${id}`);
+        }
         return;
       }
 
       if (typeId === "vercel-project" && PROJECT_ACTIONS.has(actionId)) {
         if (actionId === "pause" || actionId === "unpause") {
-          await this.fetch<unknown>(`/v1/projects/${encodeURIComponent(externalId)}/${actionId}`, {
-            method: "POST",
-          });
+          await this.api.post(`/v1/projects/${pathEncode(externalId)}/${actionId}`);
           return;
         }
-        await this.fetch<unknown>("/v1/security/attack-mode", {
-          method: "POST",
-          body: JSON.stringify({
+        await this.api.post("/v1/security/attack-mode", {
+          body: {
             projectId: externalId,
             attackModeEnabled: actionId === "attack-mode-on",
-          }),
+          },
         });
         return;
       }
@@ -1199,18 +1048,18 @@ export class VercelClient implements PluginClient {
       if (typeId !== "vercel-deployment") return { text: "", containers: [], activeContainer: "" };
       const externalId = resourceId.split(":").slice(2).join(":");
       const limit = Math.min(Math.max(params.tailLines ?? 500, 1), 2000);
-      const events = await this.fetch<VercelDeploymentEvent[]>(
-        `/v3/deployments/${encodeURIComponent(externalId)}/events?builds=1&direction=backward&limit=${limit}`,
-      );
+      const events = await this.api.get(`/v3/deployments/${pathEncode(externalId)}/events`, {
+        query: { builds: 1, direction: "backward", limit },
+      });
       const lines = (Array.isArray(events) ? events : [])
         .filter(
-          (e) =>
+          (e: VercelDeploymentEvent) =>
             e.type === "stdout" ||
             e.type === "stderr" ||
             e.type === "command" ||
             e.type === "fatal",
         )
-        .map((e) => ({
+        .map((e: VercelDeploymentEvent) => ({
           at: e.created ?? e.payload?.date ?? 0,
           text: e.text ?? e.payload?.text ?? "",
         }))
@@ -1227,8 +1076,8 @@ export class VercelClient implements PluginClient {
     return attempt(async () => {
       if (resource.resourceTypeId !== "vercel-domain") return resource;
       try {
-        const config = await this.fetch<{ misconfigured?: boolean; configuredBy?: string | null }>(
-          `/v6/domains/${encodeURIComponent(resource.externalId ?? "")}/config`,
+        const config = await this.api.get(
+          `/v6/domains/${pathEncode(resource.externalId ?? "")}/config`,
         );
         return {
           ...resource,
@@ -1262,9 +1111,8 @@ export class VercelClient implements PluginClient {
         if (!domainName || !projectIdOrName) {
           throw new Error("Cannot determine Vercel domain or project identity for attachment");
         }
-        await this.fetch<unknown>(`/v10/projects/${encodeURIComponent(projectIdOrName)}/domains`, {
-          method: "POST",
-          body: JSON.stringify({ name: domainName }),
+        await this.api.post(`/v10/projects/${pathEncode(projectIdOrName)}/domains`, {
+          body: { name: domainName },
         });
         return;
       }
@@ -1281,14 +1129,13 @@ export class VercelClient implements PluginClient {
             "Cannot determine Vercel deployment URL or project identity for env import",
           );
         }
-        await this.fetch<unknown>(`/v10/projects/${encodeURIComponent(projectIdOrName)}/env`, {
-          method: "POST",
-          body: JSON.stringify({
+        await this.api.post(`/v10/projects/${pathEncode(projectIdOrName)}/env`, {
+          body: {
             key: "VERCEL_DEPLOYMENT_URL",
             value: deploymentUrl,
             type: "plain",
             target: ["production"],
-          }),
+          },
         });
         return;
       }
@@ -1305,12 +1152,12 @@ export class VercelClient implements PluginClient {
   }
 
   private async listDeployments(accountId: string): Promise<ResourceInstance[]> {
-    const deployments = await this.paginate<VercelDeployment>("/v7/deployments", "deployments", 50);
+    const deployments = await this.api.getAll("/v7/deployments", "deployments", { pageSize: 50 });
     return deployments.map((d) => this.mapDeployment(d, accountId));
   }
 
   private async listDomains(accountId: string): Promise<ResourceInstance[]> {
-    const domains = await this.paginate<VercelDomain>("/v5/domains", "domains");
+    const domains = await this.api.getAll("/v5/domains", "domains");
     return domains.map((d) => this.mapDomain(d, accountId));
   }
 
@@ -1321,8 +1168,8 @@ export class VercelClient implements PluginClient {
 
     for (const project of projects) {
       try {
-        const data = await this.fetch<{ envs: VercelEnvVar[] }>(`/v10/projects/${project.id}/env`);
-        const envs = data.envs ?? [];
+        const data = await this.api.get(`/v10/projects/${unencodedSegment(project.id)}/env`);
+        const envs = "envs" in data ? (data.envs ?? []) : [];
         for (const env of envs) {
           results.push(this.mapEnvVar(env, project, accountId));
         }
@@ -1338,17 +1185,14 @@ export class VercelClient implements PluginClient {
     domain: string,
     accountId: string,
   ): Promise<ResourceInstance[]> {
-    const records = await this.paginate<VercelDnsRecord>(
-      `/v5/domains/${encodeURIComponent(domain)}/records`,
-      "records",
-    );
+    const records = await this.api.getAll(`/v5/domains/${pathEncode(domain)}/records`, "records");
     return records.map((r) => this.mapDnsRecord(r, domain, accountId));
   }
 
   private async listAllDnsRecords(accountId: string): Promise<ResourceInstance[]> {
     // Only domains on Vercel's nameservers have records here; the rest
     // answer with an error, which just means "no records to show".
-    const domains = await this.paginate<VercelDomain>("/v5/domains", "domains");
+    const domains = await this.api.getAll("/v5/domains", "domains");
     const batches = await Promise.all(
       domains.map((d) => this.listDnsRecordsForDomain(d.name, accountId).catch(() => [])),
     );
@@ -1356,12 +1200,11 @@ export class VercelClient implements PluginClient {
   }
 
   private async listWebhooks(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<VercelWebhook[] | { webhooks?: VercelWebhook[] }>("/v1/webhooks");
-    const hooks = Array.isArray(data) ? data : (data.webhooks ?? []);
+    const hooks = webhooksIn(await this.api.get("/v1/webhooks"));
     return hooks.map((h) => this.mapWebhook(h, accountId));
   }
 
-  private mapDnsRecord(r: VercelDnsRecord, domain: string, accountId: string): ResourceInstance {
+  private mapDnsRecord(r: DnsRecordFields, domain: string, accountId: string): ResourceInstance {
     const created = formatTimestamp(r.createdAt ?? null);
     const priority = r.mxPriority ?? r.priority;
     return {
@@ -1414,7 +1257,7 @@ export class VercelClient implements PluginClient {
 
   private async listTeams(accountId: string): Promise<ResourceInstance[]> {
     try {
-      const data = await this.fetch<{ teams: VercelTeam[] }>("/v2/teams");
+      const data = await this.api.get("/v2/teams");
       const teams = data.teams ?? [];
       return teams.map((t) => this.mapTeam(t, accountId));
     } catch {
@@ -1424,9 +1267,8 @@ export class VercelClient implements PluginClient {
   }
 
   private mapProject(p: VercelProject, accountId: string): ResourceInstance {
-    const gitRepo = p.link
-      ? `${p.link.org ?? ""}/${p.link.repo ?? ""}`.replace(/^\//, "")
-      : undefined;
+    const link: ProjectLink | undefined = p.link;
+    const gitRepo = link ? `${link.org ?? ""}/${link.repo ?? ""}`.replace(/^\//, "") : undefined;
     const productionAlias = p.alias?.find((a) => a.domain)?.domain;
     const productionUrl = productionAlias
       ? `https://${productionAlias}`
@@ -1467,7 +1309,7 @@ export class VercelClient implements PluginClient {
     };
   }
 
-  private mapDeployment(d: VercelDeployment, accountId: string): ResourceInstance {
+  private mapDeployment(d: DeploymentFields, accountId: string): ResourceInstance {
     const meta = d.meta ?? {};
     const state = d.readyState ?? d.state ?? "UNKNOWN";
 
@@ -2120,6 +1962,11 @@ export class VercelClient implements PluginClient {
   }
 }
 
+/** The document says a bare array; `{ webhooks }` is an older shape the plugin still reads. */
+function webhooksIn(data: VercelWebhook[] | { webhooks?: VercelWebhook[] }): VercelWebhook[] {
+  return Array.isArray(data) ? data : (data.webhooks ?? []);
+}
+
 /** `{domain}/{recordId}`: the DNS record's external id. */
 function splitRecordId(externalId: string): { domain: string; recordId: string } {
   const slash = externalId.lastIndexOf("/");
@@ -2140,7 +1987,7 @@ function splitEnvId(compound: string): { projectId: string; envId: string } {
 function parseJsonIds(raw: string | undefined): string[] {
   if (!raw) return [];
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
   } catch {
     /* fall through to comma-separated */

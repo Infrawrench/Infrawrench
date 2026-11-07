@@ -14,20 +14,12 @@
  */
 
 import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
+import type { operations } from "./api-types.gen.js";
 
-/** FOCUS v1.3 charge row, only the fields this module consumes. */
-interface FocusChargeRow {
-  BilledCost?: number;
-  BillingCurrency?: string;
-  /** Usage / Credit / Tax / Adjustment / Purchase */
-  ChargeCategory?: string;
-  /** Inclusive start of the charge period, ISO 8601 UTC. */
-  ChargePeriodStart?: string;
-  ServiceName?: string;
-  RegionId?: string;
-  /** Carries the Vercel ProjectId / ProjectName for project-scoped charges. */
-  Tags?: Record<string, string> | null;
-}
+/** A FOCUS v1.3 charge row. `Partial` because a row is read leniently, not validated. */
+type FocusChargeRow = Partial<
+  operations["listBillingCharges"]["responses"][200]["content"]["application/jsonl"]
+>;
 
 export interface VercelCostFetchOptions {
   accessToken: string;
@@ -115,7 +107,7 @@ export async function fetchVercelCostData(
     if (!trimmed) continue;
     let row: FocusChargeRow;
     try {
-      row = JSON.parse(trimmed) as FocusChargeRow;
+      row = JSON.parse(trimmed);
     } catch {
       throw new Error(
         `Vercel API returned a malformed JSONL line from /v1/billing/charges: ${trimmed.slice(0, 200)}`,
