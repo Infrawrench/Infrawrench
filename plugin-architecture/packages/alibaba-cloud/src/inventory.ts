@@ -1,11 +1,9 @@
-import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import {
-  AliApiError,
-  isPermissionGap,
-  isServiceUnavailable,
-  mapLimit,
-  type AliApi,
-} from "./api.js";
+  ListTruncatedError,
+  reportUnreadListPart,
+  requireListPage,
+} from "@infrawrench/plugin-base";
+import { isPermissionGap, isServiceUnavailable, mapLimit, type AliApi } from "./api.js";
 import { ALI_REGIONS, DEFAULT_REGION, productInRegion, type AliProduct } from "./regions.js";
 
 /**
@@ -80,11 +78,21 @@ export interface CallerIdentity {
 }
 
 /**
- * Run `fn` in every region the product is served in. A region where the
- * credential lacks permission or the service is not activated lists empty;
- * any other failure fails the listing (a silently missing region would read
- * as resources having been deleted). When every region is refused, the
- * refusal is thrown so the account shows why it lists nothing.
+ * For a list the credential is refused as a whole. Restricted keys are normal, so this
+ * must not fail on every poll: the type's stored rows stay. A host that keeps no track
+ * (the desktop) answers false, and there the refusal should still show.
+ */
+export function keepRowsWhenRefused(err: unknown): never[] {
+  if (!isPermissionGap(err)) throw err;
+  if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+  return [];
+}
+
+/**
+ * Run `fn` in every region the product is served in. A region where the credential lacks
+ * permission or the service is not activated lists empty; any other failure fails the
+ * listing (a silently missing region would read as resources having been deleted). When
+ * no region answered and at least one refused, the credential is refused the type.
  */
 export async function perRegion<T>(
   inventory: Inventory,
@@ -94,23 +102,22 @@ export async function perRegion<T>(
 ): Promise<T[]> {
   const regions = await inventory.regionsFor(product, regionHint);
   let refused: unknown = null;
-  let refusedCount = 0;
+  let answered = false;
   const results = await mapLimit(regions, 6, async (region) => {
     try {
-      return await fn(region);
+      const rows = await fn(region);
+      answered = true;
+      return rows;
     } catch (err) {
       if (isServiceUnavailable(err)) return [];
       if (isPermissionGap(err)) {
         refused = err;
-        refusedCount++;
         return [];
       }
       throw err;
     }
   });
-  if (regions.length > 0 && refusedCount === regions.length && refused instanceof AliApiError) {
-    throw refused;
-  }
+  if (refused && !answered) return keepRowsWhenRefused(refused);
   return results.flat();
 }
 

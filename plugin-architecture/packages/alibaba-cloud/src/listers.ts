@@ -1,11 +1,19 @@
 import {
   ListPageError,
   ListTruncatedError,
+  reportUnreadListPart,
   requireListPage,
   type ResourceInstance,
 } from "@infrawrench/plugin-base";
 import { isPermissionGap, mapLimit, noDetail, type AliApi } from "./api.js";
-import { VENDOR, nextTokens, pageNumbers, perRegion, type Inventory } from "./inventory.js";
+import {
+  VENDOR,
+  keepRowsWhenRefused,
+  nextTokens,
+  pageNumbers,
+  perRegion,
+  type Inventory,
+} from "./inventory.js";
 import { OSS_REGIONS, ossEndpoint } from "./regions.js";
 
 /**
@@ -1006,9 +1014,10 @@ export function mapBucket(
 }
 
 export async function listBuckets(ctx: ListContext): Promise<ResourceInstance[]> {
-  const all = (await listBucketSummaries(ctx.api, ctx.inventory.homeRegion)).filter(
-    (b) => !ctx.regionHint || b.region === ctx.regionHint,
+  const summaries = await listBucketSummaries(ctx.api, ctx.inventory.homeRegion).catch(
+    keepRowsWhenRefused,
   );
+  const all = summaries.filter((b) => !ctx.regionHint || b.region === ctx.regionHint);
   return mapLimit(all, 6, async (b) => {
     const info = await bucketInfo(ctx.api, b.region, b.name).catch(noDetail);
     return mapBucket(ctx.accountId, b, info ?? undefined);
@@ -1150,8 +1159,12 @@ export async function listNodePools(ctx: ListContext): Promise<ResourceInstance[
     const clusters = await clustersIn(ctx.api, region);
     const pools = await mapLimit(clusters, 4, (c) =>
       nodePoolsOf(ctx, region, c.cluster_id).catch((err: unknown) => {
-        if (isPermissionGap(err)) return [] as ResourceInstance[];
-        throw err;
+        if (!isPermissionGap(err)) throw err;
+        // Access can be per cluster, so this one says nothing about its pools being gone.
+        reportUnreadListPart({
+          parentResourceIds: [`${ctx.accountId}:ack-cluster:${region}/${c.cluster_id}`],
+        });
+        return [] as ResourceInstance[];
       }),
     );
     return pools.flat();
@@ -1268,7 +1281,7 @@ export async function describeDomains(api: AliApi): Promise<DnsDomain[]> {
 }
 
 export async function listDomains(ctx: ListContext): Promise<ResourceInstance[]> {
-  const domains = await describeDomains(ctx.api);
+  const domains = await describeDomains(ctx.api).catch(keepRowsWhenRefused);
   return domains.map((d) =>
     makeResource(
       ctx.accountId,
@@ -1342,8 +1355,12 @@ export async function recordsOf(ctx: ListContext, domain: string): Promise<Resou
 }
 
 export async function listRecords(ctx: ListContext): Promise<ResourceInstance[]> {
-  const domains = await describeDomains(ctx.api);
-  return (await mapLimit(domains, 4, (d) => recordsOf(ctx, d.DomainName))).flat();
+  try {
+    const domains = await describeDomains(ctx.api);
+    return (await mapLimit(domains, 4, (d) => recordsOf(ctx, d.DomainName))).flat();
+  } catch (err) {
+    return keepRowsWhenRefused(err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1424,6 +1441,11 @@ export async function ramUserResource(
 const MAX_RAM_USER_PAGES = 50;
 
 export async function listRamUsers(ctx: ListContext): Promise<ResourceInstance[]> {
+  const users = await ramUsers(ctx).catch(keepRowsWhenRefused);
+  return mapLimit(users, 4, (u) => ramUserResource(ctx, u, noDetail));
+}
+
+async function ramUsers(ctx: ListContext): Promise<RamUser[]> {
   const where = { vendor: VENDOR, path: "ListUsers", key: "Users.User" };
   const users: RamUser[] = [];
   let marker: string | undefined;
@@ -1434,7 +1456,7 @@ export async function listRamUsers(ctx: ListContext): Promise<ResourceInstance[]
       Marker?: string;
     }>("ram", "", "ListUsers", { MaxItems: 1000, Marker: marker });
     users.push(...requireListPage(res.Users?.User, where));
-    if (!res.IsTruncated) return mapLimit(users, 4, (u) => ramUserResource(ctx, u, noDetail));
+    if (!res.IsTruncated) return users;
     if (!res.Marker) {
       throw new ListPageError({ ...where, found: undefined, saysMoreWith: "no cursor" });
     }

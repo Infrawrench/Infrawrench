@@ -22,9 +22,16 @@ export class AliApiError extends Error {
   }
 }
 
+/** A bad credential or clock, whatever status the product sends it with. OSS uses 403. */
+const CREDENTIAL_PROBLEM =
+  /^(InvalidAccessKey|SignatureDoesNotMatch|IncompleteSignature|InvalidSecurityToken|InvalidTimeStamp|RequestTimeTooSkewed|Forbidden\.AccessKey)/i;
+
 /** True for the answers Alibaba gives when the RAM identity lacks a permission. */
 export function isPermissionGap(err: unknown): boolean {
   if (!(err instanceof AliApiError)) return false;
+  if (err.status === 401 || CREDENTIAL_PROBLEM.test(err.code) || /^Throttling/i.test(err.code)) {
+    return false;
+  }
   if (err.status === 403) return true;
   return /^(Forbidden|NoPermission|Unauthorized|NotAuthorized)/i.test(err.code);
 }
@@ -36,10 +43,6 @@ export function isServiceUnavailable(err: unknown): boolean {
     err.code,
   );
 }
-
-/** A bad credential or clock, whatever status the product sends it with. */
-const CREDENTIAL_PROBLEM =
-  /^(InvalidAccessKey|SignatureDoesNotMatch|IncompleteSignature|InvalidSecurityToken|InvalidTimeStamp|RequestTimeTooSkewed|Forbidden\.AccessKey)/i;
 
 /**
  * For a per-row detail read during a list: the credential cannot read it, or the row went
