@@ -1,3 +1,5 @@
+import { reportUnreadListPart, type UnreadListPart } from "@infrawrench/plugin-base";
+
 export interface ListerContext {
   get: <T>(url: string) => Promise<T>;
   paginate: <T>(baseUrl: string, key: string, params?: Record<string, string>) => Promise<T[]>;
@@ -55,4 +57,105 @@ export async function paginateAggregated<T>(
     pageToken = page.nextPageToken;
   } while (pageToken);
   return results;
+}
+
+function statusOf(err: unknown): number | undefined {
+  if (typeof err !== "object" || err === null || !("status" in err)) return undefined;
+  return typeof err.status === "number" ? err.status : undefined;
+}
+
+/**
+ * Google sends some throttles as a 403: BigQuery documents `quotaExceeded` and
+ * `rateLimitExceeded` there, and Compute and Cloud DNS do the same. Those say nothing
+ * about what this credential may see.
+ */
+const THROTTLED_403 = /limit.?exceeded|quota.?exceeded|RESOURCE_EXHAUSTED/i;
+
+function isPermissionRefusal(err: unknown): boolean {
+  return statusOf(err) === 403 && !(err instanceof Error && THROTTLED_403.test(err.message));
+}
+
+/** Whether a read that failed says nothing is there, or that the credential can't see. */
+type FanOutAnswer = "gone" | "refused" | "failed";
+
+/** A parent the API just named: a 404 means it went away since, and took its children. */
+function answerOfParent(err: unknown): FanOutAnswer {
+  if (statusOf(err) === 404) return "gone";
+  return isPermissionRefusal(err) ? "refused" : "failed";
+}
+
+/**
+ * A region or location: the same path works elsewhere, so only the region can be the
+ * problem with a missing endpoint or a rejected location. Never a throttle, a 5xx or an
+ * expired credential, which say nothing about the region.
+ */
+function answerOfRegion(err: unknown): FanOutAnswer {
+  const status = statusOf(err);
+  if (status === 400 || status === 404 || status === 501) return "refused";
+  return isPermissionRefusal(err) ? "refused" : "failed";
+}
+
+async function readFanOut<P, T>(
+  parents: readonly P[],
+  read: (parent: P) => Promise<T[]>,
+  answerOf: (err: unknown) => FanOutAnswer,
+  options: FanOutOptions<P>,
+): Promise<T[]> {
+  let answered = false;
+  let refusal: { err: unknown } | undefined;
+  const readOne = async (parent: P): Promise<T[]> => {
+    try {
+      const rows = await read(parent);
+      answered = true;
+      return rows;
+    } catch (err) {
+      const answer = answerOf(err);
+      if (answer === "failed") throw err;
+      if (answer === "refused") {
+        refusal ??= { err };
+        reportUnreadListPart(options.unread(parent));
+      }
+      return [];
+    }
+  };
+  const perParent: T[][] = [];
+  if (options.sequential) {
+    for (const parent of parents) perParent.push(await readOne(parent));
+  } else {
+    perParent.push(...(await Promise.all(parents.map(readOne))));
+  }
+  // Every parent refusing is the credential or a disabled API, not the parents, and
+  // an empty list would read as "all of it is gone".
+  if (refusal && !answered) throw refusal.err;
+  return perParent.flat();
+}
+
+export interface FanOutOptions<P> {
+  /** The rows a refused read could not vouch for, which a sync then leaves unpruned. */
+  unread: (parent: P) => UnreadListPart;
+  /** One at a time, where the old loop was, to stay clear of a per-minute limit. */
+  sequential?: boolean;
+}
+
+/**
+ * Read each parent's children. A parent gone since it was listed has none. One refusing
+ * this credential costs that parent's rows a refresh, not their existence, and the
+ * others still read. Anything else, a throttle or a 5xx above all, fails the whole type
+ * so that stored rows stay: reading it as none would prune that parent's children.
+ */
+export function readEachParent<P, T>(
+  parents: readonly P[],
+  read: (parent: P) => Promise<T[]>,
+  options: FanOutOptions<P>,
+): Promise<T[]> {
+  return readFanOut(parents, read, answerOfParent, options);
+}
+
+/** {@link readEachParent} over regions or locations, where an unavailable one has none. */
+export function readEachRegion<R, T>(
+  regions: readonly R[],
+  read: (region: R) => Promise<T[]>,
+  options: FanOutOptions<R>,
+): Promise<T[]> {
+  return readFanOut(regions, read, answerOfRegion, options);
 }

@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { type ListerContext } from "./shared.js";
+import { readEachRegion, type ListerContext } from "./shared.js";
 
 export async function listPubSubTopics(
   ctx: ListerContext,
@@ -84,51 +84,51 @@ export async function listCloudTasksQueues(
     `https://cloudtasks.googleapis.com/v2/projects/${p}/locations`,
   );
   const locations = locData.locations ?? [];
-  const results: ResourceInstance[] = [];
-  await Promise.all(
-    locations.map(async (loc) => {
-      try {
-        const items = await ctx.paginate<Record<string, unknown>>(
-          `https://cloudtasks.googleapis.com/v2/${loc.name}/queues`,
-          "queues",
-        );
-        for (const queue of items) {
-          const fullName = String(queue["name"]);
-          const name = fullName.split("/").pop() ?? "";
-          const rateLimits = queue["rateLimits"] as Record<string, unknown> | undefined;
-          const retryConfig = queue["retryConfig"] as Record<string, unknown> | undefined;
-          results.push({
-            id: ctx.id(accountId, "cloud-tasks-queue", fullName),
-            pluginId: "gcp",
-            resourceTypeId: "cloud-tasks-queue",
-            accountId,
-            displayName: name,
-            fields: {
-              name,
-              region: loc.locationId,
-              state: String(queue["state"] ?? ""),
-              maxDispatchesPerSecond: Number(rateLimits?.["maxDispatchesPerSecond"] ?? 0),
-              maxConcurrentDispatches: Number(rateLimits?.["maxConcurrentDispatches"] ?? 0),
-              maxBurstSize: Number(rateLimits?.["maxBurstSize"] ?? 0),
-              maxAttempts: Number(retryConfig?.["maxAttempts"] ?? 0),
-              minBackoff: String(retryConfig?.["minBackoff"] ?? ""),
-              maxBackoff: String(retryConfig?.["maxBackoff"] ?? ""),
-              maxDoublings: Number(retryConfig?.["maxDoublings"] ?? 0),
-              maxRetryDuration: String(retryConfig?.["maxRetryDuration"] ?? ""),
-            },
-            resolvedOutputs: {},
-            secretStates: [],
-            externalId: fullName,
-            createdAt: ctx.now(),
-            updatedAt: ctx.now(),
-          });
-        }
-      } catch {
-        // Skip locations we can't access
-      }
-    }),
+  return readEachRegion(
+    locations,
+    async (loc) => {
+      const items = await ctx.paginate<Record<string, unknown>>(
+        `https://cloudtasks.googleapis.com/v2/${loc.name}/queues`,
+        "queues",
+      );
+      return items.map((queue) => {
+        const fullName = String(queue["name"]);
+        const name = fullName.split("/").pop() ?? "";
+        const rateLimits = queue["rateLimits"] as Record<string, unknown> | undefined;
+        const retryConfig = queue["retryConfig"] as Record<string, unknown> | undefined;
+        return {
+          id: ctx.id(accountId, "cloud-tasks-queue", fullName),
+          pluginId: "gcp",
+          resourceTypeId: "cloud-tasks-queue",
+          accountId,
+          displayName: name,
+          fields: {
+            name,
+            region: loc.locationId,
+            state: String(queue["state"] ?? ""),
+            maxDispatchesPerSecond: Number(rateLimits?.["maxDispatchesPerSecond"] ?? 0),
+            maxConcurrentDispatches: Number(rateLimits?.["maxConcurrentDispatches"] ?? 0),
+            maxBurstSize: Number(rateLimits?.["maxBurstSize"] ?? 0),
+            maxAttempts: Number(retryConfig?.["maxAttempts"] ?? 0),
+            minBackoff: String(retryConfig?.["minBackoff"] ?? ""),
+            maxBackoff: String(retryConfig?.["maxBackoff"] ?? ""),
+            maxDoublings: Number(retryConfig?.["maxDoublings"] ?? 0),
+            maxRetryDuration: String(retryConfig?.["maxRetryDuration"] ?? ""),
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: fullName,
+          createdAt: ctx.now(),
+          updatedAt: ctx.now(),
+        };
+      });
+    },
+    {
+      unread: (loc) => ({
+        idPrefixes: [ctx.id(accountId, "cloud-tasks-queue", `${loc.name}/`)],
+      }),
+    },
   );
-  return results;
 }
 
 export async function listCloudSchedulerJobs(
@@ -140,63 +140,63 @@ export async function listCloudSchedulerJobs(
     `https://cloudscheduler.googleapis.com/v1/projects/${p}/locations`,
   );
   const locations = locData.locations ?? [];
-  const results: ResourceInstance[] = [];
-  await Promise.all(
-    locations.map(async (loc) => {
-      try {
-        const items = await ctx.paginate<Record<string, unknown>>(
-          `https://cloudscheduler.googleapis.com/v1/${loc.name}/jobs`,
-          "jobs",
-        );
-        for (const job of items) {
-          const fullName = String(job["name"]);
-          const name = fullName.split("/").pop() ?? "";
-          const httpTarget = job["httpTarget"] as Record<string, unknown> | undefined;
-          const pubsubTarget = job["pubsubTarget"] as Record<string, unknown> | undefined;
-          const appEngineTarget = job["appEngineHttpTarget"] as Record<string, unknown> | undefined;
-          let targetType = "unknown";
-          let targetUri = "";
-          if (httpTarget) {
-            targetType = "HTTP";
-            targetUri = String(httpTarget["uri"] ?? "");
-          } else if (pubsubTarget) {
-            targetType = "Pub/Sub";
-            targetUri =
-              String(pubsubTarget["topicName"] ?? "")
-                .split("/")
-                .pop() ?? "";
-          } else if (appEngineTarget) {
-            targetType = "App Engine";
-            targetUri = String(appEngineTarget["relativeUri"] ?? "");
-          }
-          results.push({
-            id: ctx.id(accountId, "cloud-scheduler-job", fullName),
-            pluginId: "gcp",
-            resourceTypeId: "cloud-scheduler-job",
-            accountId,
-            displayName: name,
-            fields: {
-              name,
-              region: loc.locationId,
-              schedule: String(job["schedule"] ?? ""),
-              timeZone: String(job["timeZone"] ?? ""),
-              state: String(job["state"] ?? ""),
-              targetType,
-              targetUri,
-              lastAttemptTime: String(job["lastAttemptTime"] ?? ""),
-              scheduleTime: String(job["scheduleTime"] ?? ""),
-            },
-            resolvedOutputs: {},
-            secretStates: [],
-            externalId: fullName,
-            createdAt: ctx.now(),
-            updatedAt: ctx.now(),
-          });
+  return readEachRegion(
+    locations,
+    async (loc) => {
+      const items = await ctx.paginate<Record<string, unknown>>(
+        `https://cloudscheduler.googleapis.com/v1/${loc.name}/jobs`,
+        "jobs",
+      );
+      return items.map((job) => {
+        const fullName = String(job["name"]);
+        const name = fullName.split("/").pop() ?? "";
+        const httpTarget = job["httpTarget"] as Record<string, unknown> | undefined;
+        const pubsubTarget = job["pubsubTarget"] as Record<string, unknown> | undefined;
+        const appEngineTarget = job["appEngineHttpTarget"] as Record<string, unknown> | undefined;
+        let targetType = "unknown";
+        let targetUri = "";
+        if (httpTarget) {
+          targetType = "HTTP";
+          targetUri = String(httpTarget["uri"] ?? "");
+        } else if (pubsubTarget) {
+          targetType = "Pub/Sub";
+          targetUri =
+            String(pubsubTarget["topicName"] ?? "")
+              .split("/")
+              .pop() ?? "";
+        } else if (appEngineTarget) {
+          targetType = "App Engine";
+          targetUri = String(appEngineTarget["relativeUri"] ?? "");
         }
-      } catch {
-        // Skip locations we can't access
-      }
-    }),
+        return {
+          id: ctx.id(accountId, "cloud-scheduler-job", fullName),
+          pluginId: "gcp",
+          resourceTypeId: "cloud-scheduler-job",
+          accountId,
+          displayName: name,
+          fields: {
+            name,
+            region: loc.locationId,
+            schedule: String(job["schedule"] ?? ""),
+            timeZone: String(job["timeZone"] ?? ""),
+            state: String(job["state"] ?? ""),
+            targetType,
+            targetUri,
+            lastAttemptTime: String(job["lastAttemptTime"] ?? ""),
+            scheduleTime: String(job["scheduleTime"] ?? ""),
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: fullName,
+          createdAt: ctx.now(),
+          updatedAt: ctx.now(),
+        };
+      });
+    },
+    {
+      unread: (loc) => ({
+        idPrefixes: [ctx.id(accountId, "cloud-scheduler-job", `${loc.name}/`)],
+      }),
+    },
   );
-  return results;
 }

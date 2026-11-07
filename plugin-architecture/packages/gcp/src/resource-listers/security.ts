@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { type ListerContext } from "./shared.js";
+import { readEachParent, readEachRegion, type ListerContext } from "./shared.js";
 
 export async function listServiceAccounts(
   ctx: ListerContext,
@@ -104,52 +104,52 @@ export async function listSecretManagerSecrets(
   });
 }
 
+function listKmsLocations(
+  ctx: ListerContext,
+  p: string,
+): Promise<Array<{ name: string; locationId: string }>> {
+  return ctx.paginate(`https://cloudkms.googleapis.com/v1/projects/${p}/locations`, "locations");
+}
+
 export async function listKmsKeyRings(
   ctx: ListerContext,
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const locations = await ctx
-    .paginate<{
-      name: string;
-      locationId: string;
-    }>(`https://cloudkms.googleapis.com/v1/projects/${p}/locations`, "locations")
-    .catch(() => []);
-  const results: ResourceInstance[] = [];
-  await Promise.all(
-    locations.map(async (loc) => {
-      try {
-        const items = await ctx.paginate<Record<string, unknown>>(
-          `https://cloudkms.googleapis.com/v1/${loc.name}/keyRings`,
-          "keyRings",
-        );
-        for (const kr of items) {
-          const fullName = String(kr["name"]);
-          const name = fullName.split("/").pop() ?? "";
-          results.push({
-            id: ctx.id(accountId, "kms-key-ring", fullName),
-            pluginId: "gcp",
-            resourceTypeId: "kms-key-ring",
-            accountId,
-            displayName: name,
-            fields: {
-              name,
-              location: loc.locationId,
-              keyCount: 0,
-            },
-            resolvedOutputs: {},
-            secretStates: [],
-            externalId: fullName,
-            createdAt: String(kr["createTime"] ?? ctx.now()),
-            updatedAt: ctx.now(),
-          });
-        }
-      } catch {
-        // Skip locations we can't access
-      }
-    }),
+  const locations = await listKmsLocations(ctx, p);
+  return readEachRegion(
+    locations,
+    async (loc) => {
+      const items = await ctx.paginate<Record<string, unknown>>(
+        `https://cloudkms.googleapis.com/v1/${loc.name}/keyRings`,
+        "keyRings",
+      );
+      return items.map((kr) => {
+        const fullName = String(kr["name"]);
+        const name = fullName.split("/").pop() ?? "";
+        return {
+          id: ctx.id(accountId, "kms-key-ring", fullName),
+          pluginId: "gcp",
+          resourceTypeId: "kms-key-ring",
+          accountId,
+          displayName: name,
+          fields: {
+            name,
+            location: loc.locationId,
+            keyCount: 0,
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: fullName,
+          createdAt: String(kr["createTime"] ?? ctx.now()),
+          updatedAt: ctx.now(),
+        };
+      });
+    },
+    {
+      unread: (loc) => ({ idPrefixes: [ctx.id(accountId, "kms-key-ring", `${loc.name}/`)] }),
+    },
   );
-  return results;
 }
 
 export async function listKmsKeys(
@@ -157,64 +157,61 @@ export async function listKmsKeys(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const locations = await ctx
-    .paginate<{
-      name: string;
-      locationId: string;
-    }>(`https://cloudkms.googleapis.com/v1/projects/${p}/locations`, "locations")
-    .catch(() => []);
-  const results: ResourceInstance[] = [];
-  await Promise.all(
-    locations.map(async (loc) => {
-      try {
-        const keyRings = await ctx.paginate<Record<string, unknown>>(
-          `https://cloudkms.googleapis.com/v1/${loc.name}/keyRings`,
-          "keyRings",
-        );
-        for (const kr of keyRings) {
-          const krName = String(kr["name"]);
+  const locations = await listKmsLocations(ctx, p);
+  return readEachRegion(
+    locations,
+    async (loc) => {
+      const keyRings = await ctx.paginate<Record<string, unknown>>(
+        `https://cloudkms.googleapis.com/v1/${loc.name}/keyRings`,
+        "keyRings",
+      );
+      return readEachParent(
+        keyRings.map((kr) => String(kr["name"])),
+        async (krName) => {
           const krShort = krName.split("/").pop() ?? "";
-          try {
-            const keys = await ctx.paginate<Record<string, unknown>>(
-              `https://cloudkms.googleapis.com/v1/${krName}/cryptoKeys`,
-              "cryptoKeys",
-            );
-            for (const key of keys) {
-              const fullName = String(key["name"]);
-              const keyName = fullName.split("/").pop() ?? "";
-              const primary = key["primary"] as Record<string, unknown> | undefined;
-              results.push({
-                id: ctx.id(accountId, "kms-key", fullName),
-                pluginId: "gcp",
-                resourceTypeId: "kms-key",
-                accountId,
-                displayName: keyName,
-                fields: {
-                  name: keyName,
-                  keyRing: krShort,
-                  location: loc.locationId,
-                  purpose: String(key["purpose"] ?? ""),
-                  algorithm: String(primary?.["algorithm"] ?? ""),
-                  protectionLevel: String(primary?.["protectionLevel"] ?? ""),
-                  state: String(primary?.["state"] ?? ""),
-                  rotationPeriod: String(key["rotationPeriod"] ?? ""),
-                },
-                resolvedOutputs: {},
-                secretStates: [],
-                externalId: fullName,
-                parentResourceId: ctx.id(accountId, "kms-key-ring", krName),
-                createdAt: String(key["createTime"] ?? ctx.now()),
-                updatedAt: ctx.now(),
-              });
-            }
-          } catch {
-            // Skip key rings we can't list keys for
-          }
-        }
-      } catch {
-        // Skip locations we can't access
-      }
-    }),
+          const keys = await ctx.paginate<Record<string, unknown>>(
+            `https://cloudkms.googleapis.com/v1/${krName}/cryptoKeys`,
+            "cryptoKeys",
+          );
+          return keys.map((key) => {
+            const fullName = String(key["name"]);
+            const keyName = fullName.split("/").pop() ?? "";
+            const primary = key["primary"] as Record<string, unknown> | undefined;
+            return {
+              id: ctx.id(accountId, "kms-key", fullName),
+              pluginId: "gcp",
+              resourceTypeId: "kms-key",
+              accountId,
+              displayName: keyName,
+              fields: {
+                name: keyName,
+                keyRing: krShort,
+                location: loc.locationId,
+                purpose: String(key["purpose"] ?? ""),
+                algorithm: String(primary?.["algorithm"] ?? ""),
+                protectionLevel: String(primary?.["protectionLevel"] ?? ""),
+                state: String(primary?.["state"] ?? ""),
+                rotationPeriod: String(key["rotationPeriod"] ?? ""),
+              },
+              resolvedOutputs: {},
+              secretStates: [],
+              externalId: fullName,
+              parentResourceId: ctx.id(accountId, "kms-key-ring", krName),
+              createdAt: String(key["createTime"] ?? ctx.now()),
+              updatedAt: ctx.now(),
+            };
+          });
+        },
+        {
+          sequential: true,
+          unread: (krName) => ({
+            parentResourceIds: [ctx.id(accountId, "kms-key-ring", krName)],
+          }),
+        },
+      );
+    },
+    {
+      unread: (loc) => ({ idPrefixes: [ctx.id(accountId, "kms-key", `${loc.name}/`)] }),
+    },
   );
-  return results;
 }

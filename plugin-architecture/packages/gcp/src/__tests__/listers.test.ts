@@ -288,17 +288,6 @@ describe("database listers", () => {
     expect(rs[0]!.parentResourceId).toBe(`${ACCT}:spanner-instance:s1`);
   });
 
-  it("listSpannerDatabases swallows per-instance errors", async () => {
-    const ctx = makeCtx({
-      paginate: (url) => {
-        if (url.includes("/databases")) throw new Error("403");
-        return [];
-      },
-    });
-    const rs = await listers.listSpannerDatabases(ctx, ACCT, PROJ, "s1");
-    expect(rs).toEqual([]);
-  });
-
   it("listSpannerBackups discovers instances then backups", async () => {
     const ctx = makeCtx({
       paginate: (url) => {
@@ -679,16 +668,6 @@ describe("serverless + messaging listers", () => {
     const sj = await listers.listCloudSchedulerJobs(sched, ACCT, PROJ);
     expect(sj[0]!.fields.targetType).toBe("Pub/Sub");
     expect(sj[0]!.fields.targetUri).toBe("t1");
-  });
-
-  it("listCloudTasksQueues swallows per-location errors", async () => {
-    const ctx = makeCtx({
-      get: () => ({ locations: [{ name: "loc1", locationId: "l1" }] }),
-      paginate: () => {
-        throw new Error("denied");
-      },
-    });
-    expect(await listers.listCloudTasksQueues(ctx, ACCT, PROJ)).toEqual([]);
   });
 });
 

@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { type ListerContext } from "./shared.js";
+import { readEachParent, type ListerContext } from "./shared.js";
 
 export async function listCloudDnsZones(
   ctx: ListerContext,
@@ -49,17 +49,17 @@ export async function listCloudDnsRecordSets(
     `https://dns.googleapis.com/dns/v1/projects/${p}/managedZones`,
     "managedZones",
   );
-  const results: ResourceInstance[] = [];
-  for (const zone of zones) {
-    const zoneName = String(zone["name"]);
-    const dnsName = String(zone["dnsName"] ?? "");
-    const displayZone = dnsName.replace(/\.$/, "") || zoneName;
-    try {
+  return readEachParent(
+    zones,
+    async (zone) => {
+      const zoneName = String(zone["name"]);
+      const dnsName = String(zone["dnsName"] ?? "");
+      const displayZone = dnsName.replace(/\.$/, "") || zoneName;
       const rrsets = await ctx.paginate<Record<string, unknown>>(
         `https://dns.googleapis.com/dns/v1/projects/${p}/managedZones/${zoneName}/rrsets`,
         "rrsets",
       );
-      for (const rr of rrsets) {
+      return rrsets.map((rr) => {
         const type = String(rr["type"] ?? "");
         const name = String(rr["name"] ?? "");
         const rrdatas = Array.isArray(rr["rrdatas"]) ? (rr["rrdatas"] as string[]).join(", ") : "";
@@ -67,7 +67,7 @@ export async function listCloudDnsRecordSets(
         // Use type+name as a composite ID since Cloud DNS doesn't expose record IDs
         const recordKey = `${type}:${name}`;
         const shortName = name.replace(/\.$/, "");
-        results.push({
+        return {
           id: ctx.id(accountId, "cloud-dns-record-set", `${zoneName}/${recordKey}`),
           pluginId: "gcp",
           resourceTypeId: "cloud-dns-record-set",
@@ -86,11 +86,14 @@ export async function listCloudDnsRecordSets(
           parentResourceId: ctx.id(accountId, "cloud-dns-zone", zoneName),
           createdAt: ctx.now(),
           updatedAt: ctx.now(),
-        });
-      }
-    } catch {
-      // Skip zones we can't read records for
-    }
-  }
-  return results;
+        };
+      });
+    },
+    {
+      sequential: true,
+      unread: (zone) => ({
+        parentResourceIds: [ctx.id(accountId, "cloud-dns-zone", String(zone["name"]))],
+      }),
+    },
+  );
 }

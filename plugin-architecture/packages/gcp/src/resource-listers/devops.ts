@@ -1,13 +1,11 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { CLOUD_BUILD_REGIONS } from "../regions.js";
-import { type ListerContext } from "./shared.js";
+import { readEachRegion, type ListerContext } from "./shared.js";
 
 /**
  * Cloud Build triggers can live either at the global scope or in any of
  * ~16 supported regions. The REST API has no `/locations/-/triggers`
  * aggregate, so we fan out across `CLOUD_BUILD_REGIONS` in parallel.
- * Failures per-region are swallowed (region might not have the API
- * enabled, or the project might not have any triggers there).
  *
  * The resulting `externalId` is `"<region>/<triggerId>"` so that
  * detail/delete handlers can recover the region and hit the matching
@@ -18,21 +16,22 @@ export async function listCloudBuildTriggers(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const perRegion = await Promise.all(
-    CLOUD_BUILD_REGIONS.map(async (region) => {
+  return readEachRegion(
+    CLOUD_BUILD_REGIONS,
+    async (region) => {
       const url =
         region === "global"
           ? `https://cloudbuild.googleapis.com/v1/projects/${p}/triggers`
           : `https://cloudbuild.googleapis.com/v1/projects/${p}/locations/${region}/triggers`;
-      try {
-        const items = await ctx.paginate<Record<string, unknown>>(url, "triggers");
-        return items.map((trigger) => buildTriggerInstance(ctx, accountId, region, trigger));
-      } catch {
-        return [] as ResourceInstance[];
-      }
-    }),
+      const items = await ctx.paginate<Record<string, unknown>>(url, "triggers");
+      return items.map((trigger) => buildTriggerInstance(ctx, accountId, region, trigger));
+    },
+    {
+      unread: (region) => ({
+        idPrefixes: [ctx.id(accountId, "cloud-build-trigger", `${region}/`)],
+      }),
+    },
   );
-  return perRegion.flat();
 }
 
 function buildTriggerInstance(

@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { lastSegment, type ListerContext } from "./shared.js";
+import { lastSegment, readEachParent, type ListerContext } from "./shared.js";
 import { engineInfoFromVersion } from "../cloudsql-engine.js";
 import { cloudSqlTierVcpus } from "../extended-support.js";
 
@@ -121,49 +121,51 @@ export async function listSpannerDatabases(
   instanceFilter?: string,
 ): Promise<ResourceInstance[]> {
   const instanceIds = instanceFilter ? [instanceFilter] : await listSpannerInstanceIds(ctx, p);
-  const all: ResourceInstance[] = [];
-  for (const instance of instanceIds) {
-    let dbs: Array<Record<string, unknown>> = [];
-    try {
-      dbs = await ctx.paginate<Record<string, unknown>>(
+  return readEachParent(
+    instanceIds,
+    async (instance) => {
+      const dbs = await ctx.paginate<Record<string, unknown>>(
         `https://spanner.googleapis.com/v1/projects/${p}/instances/${instance}/databases`,
         "databases",
       );
-    } catch {
-      continue;
-    }
-    for (const db of dbs) {
-      const name = String(db["name"]).split("/").pop() ?? "";
-      const encryption = db["encryptionConfig"] as Record<string, unknown> | undefined;
-      const encryptionConfig = encryption?.["kmsKeyName"] ? String(encryption["kmsKeyName"]) : "";
-      all.push({
-        id: ctx.id(accountId, "spanner-database", `${instance}/${name}`),
-        pluginId: "gcp",
-        resourceTypeId: "spanner-database",
-        accountId,
-        displayName: name,
-        parentResourceId: ctx.id(accountId, "spanner-instance", instance),
-        fields: {
-          name,
-          instance,
-          state: String(db["state"] ?? ""),
-          dialect: String(db["databaseDialect"] ?? "GOOGLE_STANDARD_SQL"),
-          versionRetentionPeriod: String(db["versionRetentionPeriod"] ?? ""),
-          earliestVersionTime: String(db["earliestVersionTime"] ?? ""),
-          createTime: String(db["createTime"] ?? ""),
-          enableDropProtection: Boolean(db["enableDropProtection"] ?? false),
-          encryptionConfig,
-          defaultLeader: String(db["defaultLeader"] ?? ""),
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: `${instance}/${name}`,
-        createdAt: String(db["createTime"] ?? ctx.now()),
-        updatedAt: ctx.now(),
+      return dbs.map((db) => {
+        const name = String(db["name"]).split("/").pop() ?? "";
+        const encryption = db["encryptionConfig"] as Record<string, unknown> | undefined;
+        const encryptionConfig = encryption?.["kmsKeyName"] ? String(encryption["kmsKeyName"]) : "";
+        return {
+          id: ctx.id(accountId, "spanner-database", `${instance}/${name}`),
+          pluginId: "gcp",
+          resourceTypeId: "spanner-database",
+          accountId,
+          displayName: name,
+          parentResourceId: ctx.id(accountId, "spanner-instance", instance),
+          fields: {
+            name,
+            instance,
+            state: String(db["state"] ?? ""),
+            dialect: String(db["databaseDialect"] ?? "GOOGLE_STANDARD_SQL"),
+            versionRetentionPeriod: String(db["versionRetentionPeriod"] ?? ""),
+            earliestVersionTime: String(db["earliestVersionTime"] ?? ""),
+            createTime: String(db["createTime"] ?? ""),
+            enableDropProtection: Boolean(db["enableDropProtection"] ?? false),
+            encryptionConfig,
+            defaultLeader: String(db["defaultLeader"] ?? ""),
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: `${instance}/${name}`,
+          createdAt: String(db["createTime"] ?? ctx.now()),
+          updatedAt: ctx.now(),
+        };
       });
-    }
-  }
-  return all;
+    },
+    {
+      sequential: true,
+      unread: (instance) => ({
+        parentResourceIds: [ctx.id(accountId, "spanner-instance", instance)],
+      }),
+    },
+  );
 }
 
 export async function listSpannerBackups(
@@ -173,56 +175,58 @@ export async function listSpannerBackups(
   instanceFilter?: string,
 ): Promise<ResourceInstance[]> {
   const instanceIds = instanceFilter ? [instanceFilter] : await listSpannerInstanceIds(ctx, p);
-  const all: ResourceInstance[] = [];
-  for (const instance of instanceIds) {
-    let backups: Array<Record<string, unknown>> = [];
-    try {
-      backups = await ctx.paginate<Record<string, unknown>>(
+  return readEachParent(
+    instanceIds,
+    async (instance) => {
+      const backups = await ctx.paginate<Record<string, unknown>>(
         `https://spanner.googleapis.com/v1/projects/${p}/instances/${instance}/backups`,
         "backups",
       );
-    } catch {
-      continue;
-    }
-    for (const b of backups) {
-      const fullName = String(b["name"] ?? "");
-      const name = fullName.split("/").pop() ?? "";
-      const database =
-        String(b["database"] ?? "")
-          .split("/")
-          .pop() ?? "";
-      all.push({
-        id: ctx.id(accountId, "spanner-backup", `${instance}/${name}`),
-        pluginId: "gcp",
-        resourceTypeId: "spanner-backup",
-        accountId,
-        displayName: name,
-        parentResourceId: ctx.id(accountId, "spanner-instance", instance),
-        fields: {
-          name,
-          instance,
-          database,
-          state: String(b["state"] ?? ""),
-          sizeBytes: String(b["sizeBytes"] ?? "0"),
-          createTime: String(b["createTime"] ?? ""),
-          expireTime: String(b["expireTime"] ?? ""),
-          versionTime: String(b["versionTime"] ?? ""),
-          backupSchedules: Array.isArray(b["backupSchedules"])
-            ? (b["backupSchedules"] as unknown[])
-                .map((s) => String(s).split("/").pop() ?? "")
-                .filter(Boolean)
-                .join(", ")
-            : "",
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: `${instance}/${name}`,
-        createdAt: String(b["createTime"] ?? ctx.now()),
-        updatedAt: ctx.now(),
+      return backups.map((b) => {
+        const fullName = String(b["name"] ?? "");
+        const name = fullName.split("/").pop() ?? "";
+        const database =
+          String(b["database"] ?? "")
+            .split("/")
+            .pop() ?? "";
+        return {
+          id: ctx.id(accountId, "spanner-backup", `${instance}/${name}`),
+          pluginId: "gcp",
+          resourceTypeId: "spanner-backup",
+          accountId,
+          displayName: name,
+          parentResourceId: ctx.id(accountId, "spanner-instance", instance),
+          fields: {
+            name,
+            instance,
+            database,
+            state: String(b["state"] ?? ""),
+            sizeBytes: String(b["sizeBytes"] ?? "0"),
+            createTime: String(b["createTime"] ?? ""),
+            expireTime: String(b["expireTime"] ?? ""),
+            versionTime: String(b["versionTime"] ?? ""),
+            backupSchedules: Array.isArray(b["backupSchedules"])
+              ? (b["backupSchedules"] as unknown[])
+                  .map((s) => String(s).split("/").pop() ?? "")
+                  .filter(Boolean)
+                  .join(", ")
+              : "",
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: `${instance}/${name}`,
+          createdAt: String(b["createTime"] ?? ctx.now()),
+          updatedAt: ctx.now(),
+        };
       });
-    }
-  }
-  return all;
+    },
+    {
+      sequential: true,
+      unread: (instance) => ({
+        parentResourceIds: [ctx.id(accountId, "spanner-instance", instance)],
+      }),
+    },
+  );
 }
 
 export async function listBigtableInstances(
@@ -462,21 +466,22 @@ export async function listAlloyDbInstances(
     `https://alloydb.googleapis.com/v1/projects/${p}/locations/-/clusters`,
     "clusters",
   );
-  const perCluster = await Promise.all(
-    clusters.map(async (c) => {
-      const fullName = String(c["name"]);
-      try {
-        const instances = await ctx.paginate<Record<string, unknown>>(
-          `https://alloydb.googleapis.com/v1/${fullName}/instances`,
-          "instances",
-        );
-        return instances.map((inst) => ({ inst, parentFullName: fullName }));
-      } catch {
-        return [];
-      }
-    }),
+  const perCluster = await readEachParent(
+    clusters.map((c) => String(c["name"])),
+    async (fullName) => {
+      const instances = await ctx.paginate<Record<string, unknown>>(
+        `https://alloydb.googleapis.com/v1/${fullName}/instances`,
+        "instances",
+      );
+      return instances.map((inst) => ({ inst, parentFullName: fullName }));
+    },
+    {
+      unread: (fullName) => ({
+        parentResourceIds: [ctx.id(accountId, "alloydb-cluster", fullName)],
+      }),
+    },
   );
-  return perCluster.flat().map(({ inst, parentFullName }) => {
+  return perCluster.map(({ inst, parentFullName }) => {
     const fullName = String(inst["name"]);
     const name = fullName.split("/").pop() ?? "";
     const ipAddress = String(inst["ipAddress"] ?? "");

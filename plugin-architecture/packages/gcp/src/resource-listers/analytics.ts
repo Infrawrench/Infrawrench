@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { type ListerContext } from "./shared.js";
+import { readEachParent, readEachRegion, type ListerContext } from "./shared.js";
 
 /** BigQuery returns millisecond-epoch strings in most timestamp fields. */
 function formatBqTimestamp(value: unknown): string {
@@ -206,24 +206,23 @@ export async function listBigQueryTables(
       .filter(Boolean);
   }
 
-  const all: ResourceInstance[] = [];
-  for (const datasetId of datasetIds) {
-    let tables: Array<Record<string, unknown>> = [];
-    try {
-      tables = await ctx.paginate<Record<string, unknown>>(
+  return readEachParent(
+    datasetIds,
+    async (datasetId) => {
+      const tables = await ctx.paginate<Record<string, unknown>>(
         `https://bigquery.googleapis.com/bigquery/v2/projects/${p}/datasets/${datasetId}/tables`,
         "tables",
       );
-    } catch {
-      continue;
-    }
-    // Hydrate each table with GET: list endpoint omits storage + schema.
-    const hydrated = await Promise.all(
-      tables.map((t) => hydrateBqTable(ctx, accountId, p, datasetId, t)),
-    );
-    all.push(...hydrated);
-  }
-  return all;
+      // Hydrate each table with GET: list endpoint omits storage + schema.
+      return Promise.all(tables.map((t) => hydrateBqTable(ctx, accountId, p, datasetId, t)));
+    },
+    {
+      sequential: true,
+      unread: (datasetId) => ({
+        parentResourceIds: [ctx.id(accountId, "bigquery-dataset", `${p}:${datasetId}`)],
+      }),
+    },
+  );
 }
 
 export async function listDataflowJobs(
@@ -278,47 +277,45 @@ export async function listVertexAiEndpoints(
     "asia-east1",
     "asia-northeast1",
   ];
-  const results: ResourceInstance[] = [];
-  await Promise.all(
-    regions.map(async (region) => {
-      try {
-        const items = await ctx.paginate<Record<string, unknown>>(
-          `https://${region}-aiplatform.googleapis.com/v1/projects/${p}/locations/${region}/endpoints`,
-          "endpoints",
-        );
-        for (const ep of items) {
-          const fullName = String(ep["name"]);
-          const name = fullName.split("/").pop() ?? "";
-          const displayName = String(ep["displayName"] ?? name);
-          const deployedModels = ep["deployedModels"] as unknown[] | undefined;
-          const trafficSplit = ep["trafficSplit"] as Record<string, number> | undefined;
-          results.push({
-            id: ctx.id(accountId, "vertex-ai-endpoint", fullName),
-            pluginId: "gcp",
-            resourceTypeId: "vertex-ai-endpoint",
-            accountId,
+  return readEachRegion(
+    regions,
+    async (region) => {
+      const items = await ctx.paginate<Record<string, unknown>>(
+        `https://${region}-aiplatform.googleapis.com/v1/projects/${p}/locations/${region}/endpoints`,
+        "endpoints",
+      );
+      return items.map((ep) => {
+        const fullName = String(ep["name"]);
+        const name = fullName.split("/").pop() ?? "";
+        const displayName = String(ep["displayName"] ?? name);
+        const deployedModels = ep["deployedModels"] as unknown[] | undefined;
+        const trafficSplit = ep["trafficSplit"] as Record<string, number> | undefined;
+        return {
+          id: ctx.id(accountId, "vertex-ai-endpoint", fullName),
+          pluginId: "gcp",
+          resourceTypeId: "vertex-ai-endpoint",
+          accountId,
+          displayName,
+          fields: {
+            name: fullName,
             displayName,
-            fields: {
-              name: fullName,
-              displayName,
-              region,
-              state: String(ep["state"] ?? ""),
-              deployedModelCount: Array.isArray(deployedModels) ? deployedModels.length : 0,
-              trafficSplit: trafficSplit ? JSON.stringify(trafficSplit) : "",
-            },
-            resolvedOutputs: {},
-            secretStates: [],
-            externalId: fullName,
-            createdAt: String(ep["createTime"] ?? ctx.now()),
-            updatedAt: String(ep["updateTime"] ?? ctx.now()),
-          });
-        }
-      } catch {
-        // Skip regions where Vertex AI is not enabled
-      }
-    }),
+            region,
+            state: String(ep["state"] ?? ""),
+            deployedModelCount: Array.isArray(deployedModels) ? deployedModels.length : 0,
+            trafficSplit: trafficSplit ? JSON.stringify(trafficSplit) : "",
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: fullName,
+          createdAt: String(ep["createTime"] ?? ctx.now()),
+          updatedAt: String(ep["updateTime"] ?? ctx.now()),
+        };
+      });
+    },
+    // Google writes the project's number into these names, not the id this holds, so a
+    // region's rows can't be told by prefix.
+    { unread: () => ({ idPrefixes: [ctx.id(accountId, "vertex-ai-endpoint", "")] }) },
   );
-  return results;
 }
 
 export async function listComposerEnvironments(
