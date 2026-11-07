@@ -32,28 +32,27 @@ export interface FanOut<V> {
   rows: V[];
   /** Ids of parents whose children were not read: past the budget, or refused. */
   unread: string[];
-  /** Set when every parent read was refused, for a host that keeps no track. */
-  refusedThroughout?: unknown;
+  /** Why the first refused parent was, if one was. */
+  refusal?: unknown;
 }
 
 /**
- * Read `read(parent)` for the parents inside this poll's window. A 403 is a role that
- * does not reach that parent, and a 404 one deleted since it was listed: neither fails the
- * type. Anything else (a throttle, a 5xx, a cut-short list) does, so stored rows stay.
+ * Read `read(parent)` for the parents inside this poll's window, or for every parent when
+ * `whole`. A 403 is a role that does not reach that parent, and a 404 one deleted since it
+ * was listed: neither fails the type. Anything else (a throttle, a 5xx, a cut-short list)
+ * does, so stored rows stay.
  */
 export async function readPerParent<P, V>(
   parents: P[],
   idOf: (p: P) => string,
   read: (p: P) => Promise<V[]>,
+  whole = false,
 ): Promise<FanOut<V>> {
-  const { now, later } = fanOutWindow(parents, idOf);
+  const { now, later } = fanOutWindow(parents, idOf, whole ? Infinity : MAX_FANOUT_READS);
   const rows: V[] = [];
   const unread = later.map(idOf);
-  let reads = 0;
-  let refusals = 0;
   let refusal: unknown;
   for (const p of now) {
-    reads++;
     try {
       rows.push(...(await read(p)));
     } catch (err) {
@@ -61,24 +60,23 @@ export async function readPerParent<P, V>(
       if (status === 404) continue;
       if (status !== 403) throw err;
       unread.push(idOf(p));
-      refusals++;
-      refusal = err;
+      refusal ??= err;
     }
   }
-  return {
-    rows,
-    unread,
-    ...(reads > 0 && refusals === reads ? { refusedThroughout: refusal } : {}),
-  };
+  return { rows, unread, ...(refusal !== undefined ? { refusal } : {}) };
 }
 
 /**
  * Name the parents a fan-out did not read, so their children go stale rather than
- * deleted. A host that keeps no track (the desktop) prunes nothing, and there a type its
- * role refuses throughout should still show the refusal.
+ * deleted, and say whether the host keeps them. One that keeps no track (the desktop)
+ * answers false: there a refusal shows, and the caller reads again with no budget.
  */
-export function reportUnreadParents(fan: FanOut<unknown>, parentId: (id: string) => string): void {
-  if (fan.unread.length === 0) return;
-  const tracked = reportUnreadListPart({ parentResourceIds: fan.unread.map(parentId) });
-  if (!tracked && fan.refusedThroughout !== undefined) throw fan.refusedThroughout;
+export function reportUnreadParents(
+  fan: FanOut<unknown>,
+  parentId: (id: string) => string,
+): boolean {
+  if (fan.unread.length === 0) return true;
+  if (reportUnreadListPart({ parentResourceIds: fan.unread.map(parentId) })) return true;
+  if (fan.refusal !== undefined) throw fan.refusal;
+  return false;
 }

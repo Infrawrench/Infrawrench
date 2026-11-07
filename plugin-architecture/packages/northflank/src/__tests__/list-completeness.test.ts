@@ -129,6 +129,36 @@ describe("list completeness", () => {
     expect(parts).toEqual([{ parentResourceIds: [`${ACC}:nf-project:p1`] }]);
   });
 
+  it("shows a refused project where the host keeps no track", async () => {
+    stubFetch({
+      "/v1/projects": () => page("projects", [{ id: "p1" }, { id: "p2" }]),
+      "/v1/projects/p1/jobs": () => refused(403),
+      "/v1/projects/p2/jobs": () => page("jobs", [{ id: "j2" }]),
+    });
+    await expect(client().listResources("nf-job", ACC)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("reads every project's children and details where the host keeps no track", async () => {
+    const ids = Array.from({ length: 45 }, (_, i) => `p${String(i).padStart(2, "0")}`);
+    stubFetch({
+      "/v1/projects": () =>
+        page(
+          "projects",
+          ids.map((id) => ({ id })),
+        ),
+      ...Object.fromEntries(
+        ids.flatMap((id) => [
+          [`/v1/projects/${id}/addons`, () => page("addons", [{ id: "a" }])],
+          [`/v1/projects/${id}`, () => ({ data: { id, deployment: { region: "eu" } } })],
+        ]),
+      ),
+    });
+    await expect(client().listResources("nf-addon", ACC)).resolves.toHaveLength(45);
+    const projects = await client().listResources("nf-project", ACC);
+    expect(projects).toHaveLength(45);
+    expect(projects.every((p) => p.fields["region"] === "eu")).toBe(true);
+  });
+
   it("reads children for a budget of projects a poll and names the rest", async () => {
     const parts = trackUnread();
     const ids = Array.from({ length: 45 }, (_, i) => `p${String(i).padStart(2, "0")}`);
@@ -215,6 +245,18 @@ describe("list completeness", () => {
     const subs = await client().listResources("nf-subdomain", ACC);
     expect(subs.map((s) => s.externalId)).toEqual(["b.com/www"]);
     expect(parts).toEqual([{ parentResourceIds: [`${ACC}:nf-domain:a.com`] }]);
+  });
+
+  it("shows a domain whose details are refused where the host keeps no track", async () => {
+    stubFetch({
+      "/v1/domains": () => page("domains", [{ name: "a.com" }, { name: "b.com" }]),
+      "/v1/domains/a.com": () => refused(403),
+      "/v1/domains/b.com": () => ({ data: { name: "b.com", subdomains: [{ name: "www" }] } }),
+      "/v1/domains/b.com/subdomains/www": () => ({ data: { name: "www", verified: true } }),
+    });
+    await expect(client().listResources("nf-subdomain", ACC)).rejects.toMatchObject({
+      status: 403,
+    });
   });
 });
 

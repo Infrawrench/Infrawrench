@@ -190,10 +190,10 @@ export class NorthflankClient implements PluginClient {
    * projects inside this poll's window. `unread` names the ones past it, which carry only
    * what the listing says.
    */
-  private projects(): Promise<{ all: NfProject[]; unread: Set<string> }> {
-    return this.cached("projects", async () => {
+  private projects(whole = false): Promise<{ all: NfProject[]; unread: Set<string> }> {
+    return this.cached(whole ? "projects:whole" : "projects", async () => {
       const list = await this.projectList();
-      const { now, later } = fanOutWindow(list, (p) => p.id ?? "");
+      const { now, later } = fanOutWindow(list, (p) => p.id ?? "", whole ? Infinity : undefined);
       const detailed = new Map<string, NfProject>();
       for (const p of now) {
         if (!p.id) continue;
@@ -215,8 +215,9 @@ export class NorthflankClient implements PluginClient {
   private perProject<V>(
     key: string,
     load: (projectId: string) => Promise<V[]>,
+    whole = false,
   ): Promise<FanOut<{ projectId: string; item: V }>> {
-    return this.cached(key, async () => {
+    return this.cached(whole ? `${key}:whole` : key, async () => {
       const projects = (await this.projectList()).filter((p) => p.id);
       return readPerParent(
         projects,
@@ -225,23 +226,32 @@ export class NorthflankClient implements PluginClient {
           const projectId = p.id ?? "";
           return (await load(projectId)).map((item) => ({ projectId, item }));
         },
+        whole,
       );
     });
   }
 
-  /** Rows of a per-project type, naming the projects it did not read this poll. */
+  /**
+   * Rows of a per-project type, naming the projects it did not read this poll. A host that
+   * keeps no track of those has no poll to outlast, so there every project is read.
+   */
   private async projectChildren<V>(
     accountId: string,
-    fan: Promise<FanOut<{ projectId: string; item: V }>>,
+    fan: (whole: boolean) => Promise<FanOut<{ projectId: string; item: V }>>,
   ): Promise<Array<{ projectId: string; item: V }>> {
-    const read = await fan;
-    reportUnreadParents(read, (id) => `${accountId}:${T.project}:${id}`);
-    return read.rows;
+    const parentId = (id: string) => `${accountId}:${T.project}:${id}`;
+    const read = await fan(false);
+    if (reportUnreadParents(read, parentId)) return read.rows;
+    const whole = await fan(true);
+    reportUnreadParents(whole, parentId);
+    return whole.rows;
   }
 
-  private serviceFan() {
-    return this.perProject<NfService>("services", (pid) =>
-      nfList<NfService>(this.ctx, this.p(pid, "/services"), "services"),
+  private serviceFan(whole = false) {
+    return this.perProject<NfService>(
+      "services",
+      (pid) => nfList<NfService>(this.ctx, this.p(pid, "/services"), "services"),
+      whole,
     );
   }
 
@@ -313,70 +323,84 @@ export class NorthflankClient implements PluginClient {
         return [mapAccount(accountId, res?.data ?? {}, this.ctx.teamId)];
       }
       case T.project: {
-        const { all, unread } = await this.projects();
-        if (unread.size > 0) {
-          reportUnreadListPart({
+        let { all, unread } = await this.projects();
+        // A host that keeps no track answers false, and has no poll to outlast: it reads all.
+        if (
+          unread.size > 0 &&
+          !reportUnreadListPart({
             idPrefixes: [...unread].map((id) => `${accountId}:${T.project}:${id}`),
-          });
+          })
+        ) {
+          ({ all, unread } = await this.projects(true));
         }
         return all.filter((p) => !unread.has(p.id ?? "")).map((p) => mapProject(accountId, p));
       }
       case T.service:
-        return (await this.projectChildren(accountId, this.serviceFan())).map(
+        return (await this.projectChildren(accountId, (whole) => this.serviceFan(whole))).map(
           ({ projectId, item }) => mapService(accountId, projectId, item),
         );
       case T.job:
         return (
-          await this.projectChildren(
-            accountId,
-            this.perProject<NfJob>("jobs", (pid) =>
-              nfList<NfJob>(this.ctx, this.p(pid, "/jobs"), "jobs"),
+          await this.projectChildren(accountId, (whole) =>
+            this.perProject<NfJob>(
+              "jobs",
+              (pid) => nfList<NfJob>(this.ctx, this.p(pid, "/jobs"), "jobs"),
+              whole,
             ),
           )
         ).map(({ projectId, item }) => mapJob(accountId, projectId, item));
       case T.addon:
         return (
-          await this.projectChildren(
-            accountId,
-            this.perProject<NfAddon>("addons", (pid) =>
-              nfList<NfAddon>(this.ctx, this.p(pid, "/addons"), "addons"),
+          await this.projectChildren(accountId, (whole) =>
+            this.perProject<NfAddon>(
+              "addons",
+              (pid) => nfList<NfAddon>(this.ctx, this.p(pid, "/addons"), "addons"),
+              whole,
             ),
           )
         ).map(({ projectId, item }) => mapAddon(accountId, projectId, item));
       case T.secretGroup:
         return (
-          await this.projectChildren(
-            accountId,
-            this.perProject<NfSecretGroup>("secrets", (pid) =>
-              nfList<NfSecretGroup>(this.ctx, this.p(pid, "/secrets"), "secrets"),
+          await this.projectChildren(accountId, (whole) =>
+            this.perProject<NfSecretGroup>(
+              "secrets",
+              (pid) => nfList<NfSecretGroup>(this.ctx, this.p(pid, "/secrets"), "secrets"),
+              whole,
             ),
           )
         ).map(({ projectId, item }) => mapSecretGroup(accountId, projectId, item));
       case T.volume:
         return (
-          await this.projectChildren(
-            accountId,
-            this.perProject<NfVolume>("volumes", (pid) =>
-              // Documented as an array in `data`; `{ volumes }` is the older answer.
-              nfList<NfVolume>(this.ctx, this.p(pid, "/volumes"), null, { alsoKey: "volumes" }),
+          await this.projectChildren(accountId, (whole) =>
+            this.perProject<NfVolume>(
+              "volumes",
+              (pid) =>
+                // Documented as an array in `data`; `{ volumes }` is the older answer.
+                nfList<NfVolume>(this.ctx, this.p(pid, "/volumes"), null, { alsoKey: "volumes" }),
+              whole,
             ),
           )
         ).map(({ projectId, item }) => mapVolume(accountId, projectId, item));
       case T.pipeline:
         return (
-          await this.projectChildren(
-            accountId,
-            this.perProject<NfPipeline>("pipelines", (pid) =>
-              nfList<NfPipeline>(this.ctx, this.p(pid, "/pipelines"), "pipelines"),
+          await this.projectChildren(accountId, (whole) =>
+            this.perProject<NfPipeline>(
+              "pipelines",
+              (pid) => nfList<NfPipeline>(this.ctx, this.p(pid, "/pipelines"), "pipelines"),
+              whole,
             ),
           )
         ).map(({ projectId, item }) => mapPipeline(accountId, projectId, item));
       case T.domain: {
-        const { all, unread } = await this.domains();
-        if (unread.size > 0) {
-          reportUnreadListPart({
+        let { all, unread } = await this.domains();
+        // A host that keeps no track answers false, and has no poll to outlast: it reads all.
+        if (
+          unread.size > 0 &&
+          !reportUnreadListPart({
             idPrefixes: [...unread].map((name) => `${accountId}:${T.domain}:${name}`),
-          });
+          })
+        ) {
+          ({ all, unread } = await this.domains(true));
         }
         return all
           .filter(({ domain }) => !unread.has(domain.name ?? ""))
@@ -398,14 +422,14 @@ export class NorthflankClient implements PluginClient {
    * the domains inside this poll's window. `unread` names the ones past it; `refused` the
    * ones whose details the token's role refuses, which keep the listing's fields.
    */
-  private domains(): Promise<{
+  private domains(whole = false): Promise<{
     all: Array<{ domain: NfDomain; detailed: boolean }>;
     unread: Set<string>;
     refused: unknown;
   }> {
-    return this.cached("domains", async () => {
+    return this.cached(whole ? "domains:whole" : "domains", async () => {
       const list = await nfList<NfDomain>(this.ctx, "/v1/domains", "domains");
-      const { now, later } = fanOutWindow(list, (d) => d.name ?? "");
+      const { now, later } = fanOutWindow(list, (d) => d.name ?? "", whole ? Infinity : undefined);
       const all: Array<{ domain: NfDomain; detailed: boolean }> = [];
       let refused: unknown;
       const inWindow = new Set(now);
@@ -431,9 +455,9 @@ export class NorthflankClient implements PluginClient {
     });
   }
 
-  private async listSubdomains(accountId: string): Promise<ResourceInstance[]> {
+  private async listSubdomains(accountId: string, whole = false): Promise<ResourceInstance[]> {
     const out: ResourceInstance[] = [];
-    const { all, refused } = await this.domains();
+    const { all, refused } = await this.domains(whole);
     const unread: string[] = [];
     for (const { domain: d, detailed } of all) {
       const domain = d.name ?? "";
@@ -458,12 +482,12 @@ export class NorthflankClient implements PluginClient {
         out.push(mapSubdomain(accountId, domain, detail));
       }
     }
-    const refusedThroughout = refused !== undefined && all.every((d) => !d.detailed);
-    reportUnreadParents(
-      { rows: out, unread, ...(refusedThroughout ? { refusedThroughout: refused } : {}) },
+    const tracked = reportUnreadParents(
+      { rows: out, unread, ...(refused !== undefined ? { refusal: refused } : {}) },
       (name) => `${accountId}:${T.domain}:${name}`,
     );
-    return out;
+    // A host that keeps no track has no poll to outlast, so there every domain is read.
+    return tracked ? out : this.listSubdomains(accountId, true);
   }
 
   getResource(
