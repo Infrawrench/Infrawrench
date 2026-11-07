@@ -138,7 +138,7 @@ describe("auth and transport", () => {
     const listCall = calls[1]!;
     expect(listCall.url.href).toBe("https://api004.backblazeb2.com/b2api/v4/b2_list_buckets");
     expect(listCall.headers["Authorization"]).toBe("tok-1");
-    expect(listCall.body).toEqual({ accountId: "acct1" });
+    expect(listCall.body).toEqual({ accountId: "acct1", bucketTypes: ["all"] });
   });
 
   it("re-authorizes once on an expired token", async () => {
