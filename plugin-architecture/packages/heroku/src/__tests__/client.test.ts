@@ -467,3 +467,106 @@ describe("a parent whose children are refused", () => {
     expect(unread).not.toHaveBeenCalled();
   });
 });
+
+describe("the request pool", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  const unread = vi.fn();
+  const left = (n: number) => ({ "RateLimit-Remaining": String(n) });
+  const appsOf = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ ...APP, id: `a${i}`, name: `app-${i}` }));
+  const domainReads = () => calls.filter((c) => c.path.endsWith("/domains")).map((c) => c.path);
+  const named = () => unread.mock.calls.flatMap(([part]) => part.parentResourceIds ?? []);
+  function serveDomains(apps: { id: string }[], remaining: number) {
+    for (const a of apps) {
+      routes[`GET /apps/${a.id}/domains`] = () =>
+        reply(
+          [{ id: `d-${a.id}`, hostname: `${a.id}.example`, kind: "custom" }],
+          200,
+          left(remaining),
+        );
+    }
+  }
+
+  beforeEach(() => {
+    unread.mockReset();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    vi.restoreAllMocks();
+  });
+
+  it("reads every app with no note while the pool has room", async () => {
+    const apps = appsOf(20);
+    routes["GET /apps"] = () => reply(apps, 200, left(4400));
+    serveDomains(apps, 4300);
+    const rows = await client().listResources("domain", ACCOUNT);
+    expect(rows).toHaveLength(20);
+    expect(unread).not.toHaveBeenCalled();
+  });
+
+  it("reads no children and names every app when the pool is already low", async () => {
+    const apps = appsOf(3);
+    routes["GET /apps"] = () => reply(apps, 200, left(900));
+    serveDomains(apps, 899);
+    expect(await client().listResources("domain", ACCOUNT)).toEqual([]);
+    expect(domainReads()).toEqual([]);
+    expect(named().sort()).toEqual(["acct:app:a0", "acct:app:a1", "acct:app:a2"]);
+  });
+
+  it("stops when the pool falls low mid-read, and names exactly what it left", async () => {
+    const apps = appsOf(20);
+    routes["GET /apps"] = () => reply(apps, 200, left(4400));
+    serveDomains(apps, 999);
+    const rows = await client().listResources("domain", ACCOUNT);
+    // The six workers already in flight finish, and nothing new starts.
+    expect(domainReads()).toHaveLength(6);
+    expect(rows).toHaveLength(6);
+    expect(named()).toHaveLength(14);
+    const readIds = rows.map((r) => `acct:app:${r.externalId!.split("/")[0]}`);
+    expect([...readIds, ...named()].sort()).toEqual(apps.map((a) => `acct:app:${a.id}`).sort());
+  });
+
+  it("moves its start between polls, so every app is reached over time", async () => {
+    const apps = appsOf(40);
+    routes["GET /apps"] = () => reply(apps, 200, left(4400));
+    serveDomains(apps, 999);
+    const reached = new Set<string>();
+    const now = vi.spyOn(Date, "now");
+    for (let poll = 0; poll < 96; poll++) {
+      now.mockReturnValue(1_800_000_000_000 + poll * 15 * 60_000);
+      calls = [];
+      await client().listResources("domain", ACCOUNT);
+      for (const path of domainReads()) reached.add(path);
+    }
+    expect(reached.size).toBe(40);
+  });
+
+  it("keeps a pipeline row it does not reach, which has no parent to name", async () => {
+    routes["GET /pipelines"] = () => reply([{ id: "p1", name: "shop" }], 200, left(900));
+    expect(await client().listResources("pipeline", ACCOUNT)).toEqual([]);
+    expect(calls.filter((c) => c.path.includes("couplings"))).toEqual([]);
+    expect(unread).toHaveBeenCalledWith({ idPrefixes: ["acct:pipeline:p1"] });
+  });
+
+  it("names the pipeline for the children of one it does not reach", async () => {
+    routes["GET /pipelines"] = () => reply([{ id: "p1", name: "shop" }], 200, left(900));
+    expect(await client().listResources("review-app", ACCOUNT)).toEqual([]);
+    expect(named()).toEqual(["acct:pipeline:p1"]);
+  });
+
+  it("keeps reading on a host that keeps no track, where a partial list would just look short", async () => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+    const apps = appsOf(3);
+    routes["GET /apps"] = () => reply(apps, 200, left(900));
+    serveDomains(apps, 899);
+    expect(await client().listResources("domain", ACCOUNT)).toHaveLength(3);
+  });
+
+  it("ignores a header it cannot read", async () => {
+    const apps = appsOf(2);
+    routes["GET /apps"] = () => reply(apps, 200, { "RateLimit-Remaining": "soon" });
+    serveDomains(apps, 4000);
+    expect(await client().listResources("domain", ACCOUNT)).toHaveLength(2);
+  });
+});

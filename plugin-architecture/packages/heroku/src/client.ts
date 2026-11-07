@@ -16,6 +16,7 @@ import type {
   ResourceTypeDefinition,
   SelectOption,
   SidebarItemSchema,
+  UnreadListPart,
 } from "@infrawrench/plugin-base";
 import {
   CreditAccessError,
@@ -32,6 +33,7 @@ import {
   mapLimit,
   parseFormArg,
   parseScopedId,
+  rotatedByClock,
   str,
   type Cached,
 } from "./kit.js";
@@ -145,24 +147,25 @@ export class HerokuClient implements PluginClient {
   }
 
   /**
-   * Each parent's children. A 404 means the parent has gone, so it has none. A 403 only
-   * means this key may not read them (a `read` scoped token and config vars, a locked
-   * app), so the parent is named and its stored rows stay.
+   * Each parent's children, from a rotating start, for as many parents as Heroku's request
+   * pool has room for, so every parent is reached over time. A parent past that is named,
+   * so its stored rows stay, as is one this key may not read (a `read` scoped token and
+   * config vars, a locked app). A 404 means the parent has gone, so it has none. On a host
+   * that keeps no track, a parent past the pool is read anyway: nothing there would say the
+   * list came back short.
    */
-  private async perParent<P extends { id: string }>(
+  private async perParent<P>(
     parents: P[],
-    parentTypeId: "app" | "pipeline",
-    accountId: string,
+    unreadPart: (parent: P) => UnreadListPart,
     load: (parent: P) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    const lists = await mapLimit(parents, FAN_OUT, async (parent) => {
+    const lists = await mapLimit(rotatedByClock(parents), FAN_OUT, async (parent) => {
+      if (this.api.poolIsLow() && reportUnreadListPart(unreadPart(parent))) return [];
       try {
         return await load(parent);
       } catch (e) {
         if (isStatus(e, 403)) {
-          reportUnreadListPart({
-            parentResourceIds: [`${accountId}:${parentTypeId}:${parent.id}`],
-          });
+          reportUnreadListPart(unreadPart(parent));
           return [];
         }
         if (isStatus(e, 404)) return [];
@@ -176,7 +179,11 @@ export class HerokuClient implements PluginClient {
     accountId: string,
     load: (app: HkApp) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    return this.perParent(await this.apps(), "app", accountId, load);
+    return this.perParent(
+      await this.apps(),
+      (a) => ({ parentResourceIds: [`${accountId}:app:${a.id}`] }),
+      load,
+    );
   }
 
   private async pipelines(): Promise<HkPipeline[]> {
@@ -199,8 +206,11 @@ export class HerokuClient implements PluginClient {
   private async perPipeline(
     accountId: string,
     load: (p: HkPipeline) => Promise<ResourceInstance[]>,
+    unreadPart: (p: HkPipeline) => UnreadListPart = (p) => ({
+      parentResourceIds: [`${accountId}:pipeline:${p.id}`],
+    }),
   ): Promise<ResourceInstance[]> {
-    return this.perParent(await this.pipelines(), "pipeline", accountId, load);
+    return this.perParent(await this.pipelines(), unreadPart, load);
   }
 
   // ── Listing ──────────────────────────────────────────────────────────
@@ -268,22 +278,27 @@ export class HerokuClient implements PluginClient {
             ),
           );
         case "pipeline":
-          return this.perPipeline(accountId, async (p) => {
-            const [couplings, review] = await Promise.all([
-              this.couplingsOrNone(p.id),
-              this.api
-                .request<HkReviewAppConfig>(`/pipelines/${enc(p.id)}/review-app-config`)
-                .catch(() => null),
-            ]);
-            return [
-              mapPipeline(
-                p,
-                couplings.length,
-                review ? review.automatic_review_apps === true : undefined,
-                accountId,
-              ),
-            ];
-          });
+          return this.perPipeline(
+            accountId,
+            async (p) => {
+              const [couplings, review] = await Promise.all([
+                this.couplingsOrNone(p.id),
+                this.api
+                  .request<HkReviewAppConfig>(`/pipelines/${enc(p.id)}/review-app-config`)
+                  .catch(() => null),
+              ]);
+              return [
+                mapPipeline(
+                  p,
+                  couplings.length,
+                  review ? review.automatic_review_apps === true : undefined,
+                  accountId,
+                ),
+              ];
+            },
+            // A pipeline row has no parent to name.
+            (p) => ({ idPrefixes: [`${accountId}:pipeline:${p.id}`] }),
+          );
         case "pipeline-coupling": {
           const apps = await this.apps().catch((err: unknown) => {
             rethrowIncompleteList(err);

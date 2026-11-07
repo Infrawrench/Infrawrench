@@ -20,6 +20,11 @@ const ACCEPT = "application/vnd.heroku+json; version=3";
 const VENDOR = "Heroku";
 /** 100,000 rows at the documented maximum of 1,000 a page. */
 const MAX_PAGES = 100;
+/**
+ * Tokens a poll leaves in the user's pool for their own CLI, deploys and actions taken
+ * here. The pool holds 4,500 and refills at about 75 a minute.
+ */
+const POOL_RESERVE = 1000;
 
 export interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -29,6 +34,8 @@ export interface RequestOptions {
 }
 
 export class HerokuApi {
+  private poolLeft: number | undefined;
+
   constructor(
     private readonly token: string,
     private readonly caCert: string,
@@ -52,10 +59,17 @@ export class HerokuApi {
       headers,
       ...(body !== undefined ? { body } : {}),
     });
+    const left = Number(res.headers["ratelimit-remaining"] || NaN);
+    if (Number.isFinite(left)) this.poolLeft = left;
     if (res.status < 200 || res.status >= 300) {
       throw new HerokuApiError(res.status, method, path, res.body);
     }
     return res;
+  }
+
+  /** Whether the last answer's `RateLimit-Remaining` is down to what a poll should leave. */
+  poolIsLow(): boolean {
+    return this.poolLeft !== undefined && this.poolLeft <= POOL_RESERVE;
   }
 
   async request<T>(path: string, opts: RequestOptions = {}): Promise<T> {

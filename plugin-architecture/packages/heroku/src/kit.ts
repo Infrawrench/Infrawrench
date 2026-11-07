@@ -110,6 +110,16 @@ export async function mapLimit<T, R>(
   return out;
 }
 
+/**
+ * `items` from a start that moves with the clock. Polls share nothing, and the golden
+ * ratio spreads the starts evenly over the list however long it is.
+ */
+export function rotatedByClock<T>(items: T[]): T[] {
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * items.length);
+  return [...items.slice(start), ...items.slice(0, start)];
+}
+
 export interface Cached<T> {
   at: number;
   value: Promise<T>;
