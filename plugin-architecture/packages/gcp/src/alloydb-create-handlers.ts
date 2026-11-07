@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { GCP_REGIONS } from "./regions.js";
 import type { GcpCreateContext } from "./create-context.js";
@@ -117,7 +118,8 @@ export const alloydbCreateResourceHandlers: Record<
     const networkPath =
       projectsIdx >= 0 ? network.slice(projectsIdx) : `projects/${p}/global/networks/${network}`;
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://alloydb.googleapis.com/v1/projects/${p}/locations/${location}/clusters?clusterId=${clusterId}`,
       {
         method: "POST",
@@ -171,7 +173,8 @@ export const alloydbCreateResourceHandlers: Record<
       throw new Error(`Invalid AlloyDB cluster reference: ${parentResourceId}`);
     }
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://alloydb.googleapis.com/v1/${clusterFullName}/instances?instanceId=${instanceId}`,
       {
         method: "POST",

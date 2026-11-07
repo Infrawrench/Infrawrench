@@ -1,5 +1,6 @@
 import type { ResourceStatus } from "@infrawrench/plugin-base";
 import { describeDisabledApi } from "./api-error.js";
+import { hostedFetch, type GcpHostContext } from "./host-fetch.js";
 
 /**
  * Authenticated fetch against a GCP REST endpoint. Adds the OAuth token from
@@ -8,12 +9,12 @@ import { describeDisabledApi } from "./api-error.js";
  * status before/after reading the body.
  */
 export async function gcpFetch(
-  ctx: { token: () => Promise<string> },
+  ctx: GcpHostContext & { token: () => Promise<string> },
   url: string,
   init?: RequestInit,
 ): Promise<Response> {
   const tok = await ctx.token();
-  return fetch(url, {
+  return hostedFetch(ctx, url, {
     ...init,
     headers: {
       Authorization: `Bearer ${tok}`,

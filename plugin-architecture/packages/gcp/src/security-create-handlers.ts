@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type {
   CreateResourceConfig,
   PolicyOption,
@@ -202,7 +203,8 @@ export const securityCreateResourceHandlers: Record<
     const name = fields["name"] ?? "";
     const initialValue = fields["initialValue"] ?? "";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://secretmanager.googleapis.com/v1/projects/${p}/secrets?secretId=${name}`,
       {
         method: "POST",
@@ -214,7 +216,8 @@ export const securityCreateResourceHandlers: Record<
     const secretName = `projects/${p}/secrets/${name}`;
     let versionCount = 0;
     if (initialValue) {
-      const addRes = await fetch(
+      const addRes = await hostedFetch(
+        ctx,
         `https://secretmanager.googleapis.com/v1/${secretName}:addVersion`,
         {
           method: "POST",
@@ -249,7 +252,8 @@ export const securityCreateResourceHandlers: Record<
     const name = fields["name"] ?? "";
     const location = fields["location"] ?? "";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://cloudkms.googleapis.com/v1/projects/${p}/locations/${location}/keyRings?keyRingId=${name}`,
       {
         method: "POST",
@@ -302,7 +306,8 @@ export const securityCreateResourceHandlers: Record<
           ? "RSA_DECRYPT_OAEP_2048_SHA256"
           : "GOOGLE_SYMMETRIC_ENCRYPTION";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://cloudkms.googleapis.com/v1/projects/${p}/locations/${keyRingLocation}/keyRings/${keyRing}/cryptoKeys?cryptoKeyId=${name}`,
       {
         method: "POST",
@@ -350,14 +355,18 @@ export const securityCreateResourceHandlers: Record<
     const accountIdField = fields["accountId"] ?? "";
     const displayName = fields["displayName"] ?? "";
 
-    const res = await fetch(`https://iam.googleapis.com/v1/projects/${p}/serviceAccounts`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        accountId: accountIdField,
-        serviceAccount: { displayName },
-      }),
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://iam.googleapis.com/v1/projects/${p}/serviceAccounts`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: accountIdField,
+          serviceAccount: { displayName },
+        }),
+      },
+    );
     if (!res.ok) throw new Error(await formatGcpError("Create service account", res));
     const data = (await res.json()) as Record<string, unknown>;
     const email = String(data["email"] ?? `${accountIdField}@${p}.iam.gserviceaccount.com`);
@@ -375,7 +384,7 @@ export const securityCreateResourceHandlers: Record<
 
     if (grantedRoles.length > 0) {
       const crmBase = `https://cloudresourcemanager.googleapis.com/v1/projects/${p}`;
-      const getRes = await fetch(`${crmBase}:getIamPolicy`, {
+      const getRes = await hostedFetch(ctx, `${crmBase}:getIamPolicy`, {
         method: "POST",
         headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
         body: JSON.stringify({ options: { requestedPolicyVersion: 3 } }),
@@ -398,7 +407,7 @@ export const securityCreateResourceHandlers: Record<
           bindings.push({ role, members: [member] });
         }
       }
-      const setRes = await fetch(`${crmBase}:setIamPolicy`, {
+      const setRes = await hostedFetch(ctx, `${crmBase}:setIamPolicy`, {
         method: "POST",
         headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
         body: JSON.stringify({

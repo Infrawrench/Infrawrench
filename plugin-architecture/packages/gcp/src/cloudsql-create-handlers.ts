@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { GCP_REGIONS } from "./regions.js";
 import { engineInfoFromVersion } from "./cloudsql-engine.js";
@@ -168,22 +169,26 @@ export const cloudsqlCreateResourceHandlers: Record<
       if (authorizedNetworks.length > 0) ipConfig.authorizedNetworks = authorizedNetworks;
     }
 
-    const res = await fetch(`https://sqladmin.googleapis.com/v1/projects/${p}/instances`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        databaseVersion,
-        region,
-        rootPassword,
-        settings: {
-          tier,
-          edition: "ENTERPRISE",
-          dataDiskSizeGb: diskSizeGb,
-          ipConfiguration: ipConfig,
-        },
-      }),
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://sqladmin.googleapis.com/v1/projects/${p}/instances`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          databaseVersion,
+          region,
+          rootPassword,
+          settings: {
+            tier,
+            edition: "ENTERPRISE",
+            dataDiskSizeGb: diskSizeGb,
+            ipConfiguration: ipConfig,
+          },
+        }),
+      },
+    );
     if (!res.ok) throw new Error(`Cloud SQL API ${res.status}: ${await res.text()}`);
     const now = ctx.now();
     return {

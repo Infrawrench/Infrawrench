@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type {
   SecretVersion,
   SecretVersionMutation,
@@ -115,24 +116,32 @@ export async function addSecretVersion(
     // KMS generates new material server-side: the `value` argument is ignored.
     const resource = await ctx.getResource("kms-key", resourceId, accountId);
     const keyName = resource.externalId ?? "";
-    const res = await fetch(`https://cloudkms.googleapis.com/v1/${keyName}/cryptoKeyVersions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: "{}",
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://cloudkms.googleapis.com/v1/${keyName}/cryptoKeyVersions`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: "{}",
+      },
+    );
     if (!res.ok) throw new Error(`KMS API ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as Record<string, unknown>;
     return mapKmsKeyVersion(data);
   }
   const resource = await ctx.getResource("secret-manager-secret", resourceId, accountId);
   const secretName = resource.externalId ?? "";
-  const res = await fetch(`https://secretmanager.googleapis.com/v1/${secretName}:addVersion`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      payload: { data: btoa(unescape(encodeURIComponent(value))) },
-    }),
-  });
+  const res = await hostedFetch(
+    ctx,
+    `https://secretmanager.googleapis.com/v1/${secretName}:addVersion`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        payload: { data: btoa(unescape(encodeURIComponent(value))) },
+      }),
+    },
+  );
   if (!res.ok) throw new Error(`Secret Manager API ${res.status}: ${await res.text()}`);
   const data = (await res.json()) as Record<string, unknown>;
   return mapSecretVersion(data);
@@ -159,7 +168,7 @@ export async function modifySecretVersion(
       action === "destroy"
         ? "{}"
         : JSON.stringify({ state: action === "enable" ? "ENABLED" : "DISABLED" });
-    const res = await fetch(url, {
+    const res = await hostedFetch(ctx, url, {
       method: action === "destroy" ? "POST" : "PATCH",
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       body,
@@ -171,7 +180,8 @@ export async function modifySecretVersion(
   const resource = await ctx.getResource("secret-manager-secret", resourceId, accountId);
   const secretName = resource.externalId ?? "";
   const verb = action === "enable" ? "enable" : action === "disable" ? "disable" : "destroy";
-  const res = await fetch(
+  const res = await hostedFetch(
+    ctx,
     `https://secretmanager.googleapis.com/v1/${secretName}/versions/${encodeURIComponent(versionId)}:${verb}`,
     {
       method: "POST",

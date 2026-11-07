@@ -1,6 +1,7 @@
+import { hostedFetch, type GcpHostContext } from "./host-fetch.js";
 import type { PublishMessagePayload, PublishMessageResult } from "@infrawrench/plugin-base";
 
-interface PublishContext {
+interface PublishContext extends GcpHostContext {
   token: () => Promise<string>;
   project: string;
 }
@@ -54,7 +55,7 @@ export async function publishPubsubTopic(
   if (orderingKey.trim()) body["orderingKey"] = orderingKey;
 
   const tok = await ctx.token();
-  const res = await fetch(`https://pubsub.googleapis.com/v1/${topicName}:publish`, {
+  const res = await hostedFetch(ctx, `https://pubsub.googleapis.com/v1/${topicName}:publish`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({ messages: [body] }),
@@ -106,7 +107,7 @@ export async function publishCloudTasksQueue(
   }
 
   const tok = await ctx.token();
-  const res = await fetch(`https://cloudtasks.googleapis.com/v2/${queueName}/tasks`, {
+  const res = await hostedFetch(ctx, `https://cloudtasks.googleapis.com/v2/${queueName}/tasks`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({ task: { httpRequest } }),

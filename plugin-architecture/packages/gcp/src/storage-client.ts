@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { StorageObject, ArtifactEntry } from "@infrawrench/plugin-base";
 import type { GcpClientContext } from "./shared.js";
 
@@ -56,7 +57,8 @@ export async function deleteStorageObject(
 
     await Promise.all(
       allKeys.map((k) =>
-        fetch(
+        hostedFetch(
+          ctx,
           `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(k)}`,
           { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
         ),
@@ -65,7 +67,8 @@ export async function deleteStorageObject(
     return;
   }
 
-  const res = await fetch(
+  const res = await hostedFetch(
+    ctx,
     `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(key)}`,
     { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
   );
@@ -82,7 +85,7 @@ export async function makeStorageFolder(
   const tok = await ctx.token();
   const folderKey = key.endsWith("/") ? key : `${key}/`;
   const url = `https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucket)}/o?uploadType=media&name=${encodeURIComponent(folderKey)}`;
-  const res = await fetch(url, {
+  const res = await hostedFetch(ctx, url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${tok}`,

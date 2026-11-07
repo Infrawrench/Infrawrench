@@ -55,6 +55,7 @@ import {
   revokeGcpJitAccess,
   type GcpJitContext,
 } from "./jit-access.js";
+import { hostFetch } from "@infrawrench/plugin-base";
 import type { HostServices, PreflightResult } from "@infrawrench/plugin-base";
 import { runGcpPreflight } from "./preflight.js";
 import {
@@ -229,17 +230,21 @@ export class GcpClient implements PluginClient {
   }
 
   private token(): Promise<string> {
-    return fetchAccessToken(this.key);
+    return fetchAccessToken(this.key, this.hostServices?.http);
+  }
+
+  private request(url: string, init?: RequestInit): Promise<Response> {
+    return hostFetch({ http: this.hostServices?.http }, url, init);
   }
 
   private async get<T>(url: string): Promise<T> {
     let tok = await this.token();
-    let res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
+    let res = await this.request(url, { headers: { Authorization: `Bearer ${tok}` } });
     if (res.status === 401) {
       // Cached token may have been revoked early: invalidate and retry once.
       invalidateAccessToken(this.key);
       tok = await this.token();
-      res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
+      res = await this.request(url, { headers: { Authorization: `Bearer ${tok}` } });
     }
     if (!res.ok) {
       throw gcpApiError(res.status, url, await res.text(), this.project);
@@ -298,6 +303,7 @@ export class GcpClient implements PluginClient {
   private get firestoreCtx(): FirestoreContext {
     return {
       project: this.project,
+      hostServices: this.hostServices,
       token: () => this.token(),
     };
   }
@@ -305,6 +311,7 @@ export class GcpClient implements PluginClient {
   private get cloudRunCtx(): CloudRunContext {
     return {
       project: this.project,
+      hostServices: this.hostServices,
       token: () => this.token(),
     };
   }
@@ -312,6 +319,7 @@ export class GcpClient implements PluginClient {
   private get cloudArmorCtx(): CloudArmorContext {
     return {
       project: this.project,
+      hostServices: this.hostServices,
       token: () => this.token(),
     };
   }
@@ -319,6 +327,7 @@ export class GcpClient implements PluginClient {
   private get bqSpannerCtx(): BigQuerySpannerContext {
     return {
       project: this.project,
+      hostServices: this.hostServices,
       token: () => this.token(),
       get: this.get.bind(this),
     };
@@ -328,6 +337,7 @@ export class GcpClient implements PluginClient {
     return {
       get: this.get.bind(this),
       paginate: this.paginate.bind(this),
+      hostServices: this.hostServices,
       token: () => this.token(),
       project: this.project,
       id: this.id.bind(this),
@@ -346,7 +356,12 @@ export class GcpClient implements PluginClient {
 
   verifyCredentials(): PluginEffect<PreflightResult> {
     return attempt(async () => {
-      return runGcpPreflight(this.key, this.project, this.billingExportTable);
+      return runGcpPreflight(
+        this.key,
+        this.project,
+        this.billingExportTable,
+        this.hostServices?.http,
+      );
     });
   }
 
@@ -717,7 +732,7 @@ export class GcpClient implements PluginClient {
       const externalId = resourceId.split(":").slice(2).join(":");
       if (typeId === "pubsub-topic") {
         return publishPubsubTopic(
-          { token: () => this.token(), project: this.project },
+          { hostServices: this.hostServices, token: () => this.token(), project: this.project },
           externalId,
           payload,
         );
@@ -725,7 +740,7 @@ export class GcpClient implements PluginClient {
       if (typeId === "cloud-tasks-queue") {
         const resource = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
         return publishCloudTasksQueue(
-          { token: () => this.token(), project: this.project },
+          { hostServices: this.hostServices, token: () => this.token(), project: this.project },
           {
             ...(resource.externalId !== undefined ? { externalId: resource.externalId } : {}),
             fields: resource.fields,
@@ -1036,7 +1051,7 @@ export class GcpClient implements PluginClient {
 
         // Fetch the current rrset so the deletion matches exactly and we keep
         // the existing TTL unless the caller changed it.
-        const getRes = await fetch(
+        const getRes = await this.request(
           `https://dns.googleapis.com/dns/v1/projects/${p}/managedZones/${zoneName}/rrsets/${encodeURIComponent(name)}/${type}`,
           { headers: { Authorization: `Bearer ${tok}` } },
         );
@@ -1054,7 +1069,7 @@ export class GcpClient implements PluginClient {
                 .filter(Boolean)
             : ((current["rrdatas"] as string[]) ?? []);
 
-        const changeRes = await fetch(
+        const changeRes = await this.request(
           `https://dns.googleapis.com/dns/v1/projects/${p}/managedZones/${zoneName}/changes`,
           {
             method: "POST",
@@ -1149,7 +1164,7 @@ export class GcpClient implements PluginClient {
         const params = new URLSearchParams({ name: username });
         if (host) params.set("host", host);
         const url = `https://sqladmin.googleapis.com/v1/projects/${this.project}/instances/${name}/users?${params}`;
-        const res = await fetch(url, {
+        const res = await this.request(url, {
           method: "PUT",
           headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
           body: JSON.stringify({ password: plaintext }),
@@ -1189,6 +1204,7 @@ export class GcpClient implements PluginClient {
       const rows = await fetchGcpCostData(
         {
           project: this.project,
+          hostServices: this.hostServices,
           token: () => this.token(),
           billingExportTable: this.billingExportTable,
         },
@@ -1202,7 +1218,7 @@ export class GcpClient implements PluginClient {
   }
 
   private get businessMetricCtx(): BigQueryMetricContext {
-    return { project: this.project, token: () => this.token() };
+    return { project: this.project, hostServices: this.hostServices, token: () => this.token() };
   }
 
   listBusinessMetricSourceOptions(
@@ -1250,7 +1266,7 @@ export class GcpClient implements PluginClient {
   /** Authenticated JSON POST with the same 401 retry as `get`. */
   private async post<T>(url: string, body: unknown): Promise<T> {
     const send = async (tok: string) =>
-      fetch(url, {
+      this.request(url, {
         method: "POST",
         headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -1472,7 +1488,7 @@ export class GcpClient implements PluginClient {
 
     let res: Response;
     try {
-      res = await fetch(endpoint, {
+      res = await hostFetch({ http: this.hostServices?.http, stream: true }, endpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1532,7 +1548,7 @@ export class GcpClient implements PluginClient {
       const { project, datasetId } = parseBigQueryDatasetExternalId(resourceId);
       const tok = await this.token();
 
-      const res = await fetch(
+      const res = await this.request(
         `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/jobs`,
         {
           method: "POST",

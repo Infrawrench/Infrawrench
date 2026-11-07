@@ -14,7 +14,9 @@
  * missing table is reported as a `missing` check with setup guidance, the
  * same signal `fetchCostData` raises as a `CostSetupError` later.
  */
+import { hostFetch } from "@infrawrench/plugin-base";
 import type {
+  HttpHostServices,
   PolicyTemplate,
   PreflightCapabilityCheck,
   PreflightDeclaration,
@@ -210,12 +212,14 @@ async function testIamPermissions(
   key: ServiceAccountKey,
   project: string,
   permissions: string[],
+  http: HttpHostServices | undefined,
 ): Promise<Set<string>> {
-  const token = await fetchAccessToken(key);
+  const token = await fetchAccessToken(key, http);
   const granted = new Set<string>();
   for (let i = 0; i < permissions.length; i += TEST_CHUNK) {
     const chunk = permissions.slice(i, i + TEST_CHUNK);
-    const res = await fetch(
+    const res = await hostFetch(
+      { http },
       `https://cloudresourcemanager.googleapis.com/v3/projects/${encodeURIComponent(project)}:testIamPermissions`,
       {
         method: "POST",
@@ -241,13 +245,14 @@ export async function runGcpPreflight(
   key: ServiceAccountKey,
   project: string,
   billingExportTable: string,
+  http?: HttpHostServices,
 ): Promise<PreflightResult> {
   const capabilities = gcpPreflight.capabilities;
   const allPermissions = capabilities.flatMap((c) => c.requiredPermissions.map((p) => p.id));
 
   let granted: Set<string>;
   try {
-    granted = await testIamPermissions(key, project, allPermissions);
+    granted = await testIamPermissions(key, project, allPermissions, http);
   } catch (e) {
     return {
       identity: key.client_email,

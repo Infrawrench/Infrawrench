@@ -1,7 +1,8 @@
+import type { GcpHostContext } from "./host-fetch.js";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { gcpFetch, parseFormArg } from "./utils.js";
 
-export interface CloudArmorContext {
+export interface CloudArmorContext extends GcpHostContext {
   project: string;
   token: () => Promise<string>;
 }

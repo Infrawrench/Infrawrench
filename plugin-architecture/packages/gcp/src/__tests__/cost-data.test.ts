@@ -7,6 +7,7 @@ const range = { fromDate: "2026-07-01", toDate: "2026-07-25" };
 function ctx(billingExportTable: string) {
   return {
     project: "consummate-atom-503516-h4",
+    hostServices: undefined,
     token: () => Promise.resolve("token"),
     billingExportTable,
   };

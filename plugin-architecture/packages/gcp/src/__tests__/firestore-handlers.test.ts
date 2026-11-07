@@ -15,7 +15,11 @@ import {
   executeFirestoreCommand,
 } from "../firestore-handlers.js";
 
-const ctx: FirestoreContext = { project: "proj", token: async () => "tok" };
+const ctx: FirestoreContext = {
+  project: "proj",
+  hostServices: undefined,
+  token: async () => "tok",
+};
 
 function res(over: Partial<ResourceInstance> = {}): ResourceInstance {
   return {

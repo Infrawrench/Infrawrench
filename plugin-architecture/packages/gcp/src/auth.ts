@@ -1,3 +1,4 @@
+import { hostFetch, type HttpHostServices } from "@infrawrench/plugin-base";
 import { z } from "zod";
 
 export const serviceAccountKeySchema = z.object({
@@ -90,9 +91,10 @@ function cacheKey(key: ServiceAccountKey): string {
 
 async function fetchAccessTokenRaw(
   key: ServiceAccountKey,
+  http: HttpHostServices | undefined,
 ): Promise<{ token: string; expiresInSec: number }> {
   const jwt = await makeJwt(key);
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const res = await hostFetch({ http }, "https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -107,7 +109,10 @@ async function fetchAccessTokenRaw(
   return { token: data.access_token, expiresInSec: data.expires_in ?? 3600 };
 }
 
-export async function fetchAccessToken(key: ServiceAccountKey): Promise<string> {
+export async function fetchAccessToken(
+  key: ServiceAccountKey,
+  http?: HttpHostServices,
+): Promise<string> {
   const k = cacheKey(key);
   const now = Date.now();
   const cached = tokenCache.get(k);
@@ -118,7 +123,7 @@ export async function fetchAccessToken(key: ServiceAccountKey): Promise<string> 
 
   const promise = (async () => {
     try {
-      const { token, expiresInSec } = await fetchAccessTokenRaw(key);
+      const { token, expiresInSec } = await fetchAccessTokenRaw(key, http);
       tokenCache.set(k, { token, expiresAt: Date.now() + expiresInSec * 1000 });
       return token;
     } finally {

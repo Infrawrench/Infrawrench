@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { GCP_REGIONS } from "./regions.js";
 import type { GcpCreateContext } from "./create-context.js";
@@ -322,7 +323,8 @@ export const cloudFunctionsCreateResourceHandlers: Record<
     }
 
     // Step 1: Generate upload URL (default environment is GEN_2 for v2 API)
-    const uploadUrlRes = await fetch(
+    const uploadUrlRes = await hostedFetch(
+      ctx,
       `https://cloudfunctions.googleapis.com/v2/projects/${p}/locations/${region}/functions:generateUploadUrl`,
       {
         method: "POST",
@@ -346,7 +348,7 @@ export const cloudFunctionsCreateResourceHandlers: Record<
     // Only Content-Type is required per Google's docs: adding
     // x-goog-content-length-range is not (and trips CORS preflight on the
     // signed URL bucket from the desktop renderer).
-    const uploadRes = await fetch(uploadUrl, {
+    const uploadRes = await hostedFetch(ctx, uploadUrl, {
       method: "PUT",
       headers: { "Content-Type": "application/zip" },
       body: zipBuffer as BodyInit,
@@ -397,7 +399,8 @@ export const cloudFunctionsCreateResourceHandlers: Record<
       buildConfig,
       serviceConfig,
     };
-    const createRes = await fetch(
+    const createRes = await hostedFetch(
+      ctx,
       `https://cloudfunctions.googleapis.com/v2/projects/${p}/locations/${region}/functions?functionId=${encodeURIComponent(name)}`,
       {
         method: "POST",

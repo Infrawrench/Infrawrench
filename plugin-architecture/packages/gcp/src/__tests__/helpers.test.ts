@@ -83,7 +83,7 @@ describe("gcpFetch", () => {
       return new Response("{}");
     }) as typeof fetch;
     try {
-      await gcpFetch({ token: async () => "tok" }, "https://x", {
+      await gcpFetch({ hostServices: undefined, token: async () => "tok" }, "https://x", {
         method: "POST",
         headers: { "X-Test": "1" },
       });

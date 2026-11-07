@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { GcpClientContext } from "./shared.js";
 
 /**
@@ -24,7 +25,8 @@ export async function deleteResource(
         "",
     );
     if (!zone || !name) throw new Error("Cannot determine zone or instance name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -38,7 +40,8 @@ export async function deleteResource(
     const name = resource.externalId ?? resource.displayName;
     if (!location || !name)
       throw new Error("Cannot determine location or cluster name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://container.googleapis.com/v1/projects/${p}/locations/${location}/clusters/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -51,7 +54,8 @@ export async function deleteResource(
     const zone = String(resource.fields["zone"] ?? "");
     const name = String(resource.fields["name"] ?? "");
     if (!zone || !name) throw new Error("Cannot determine zone or disk name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/disks/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -72,11 +76,15 @@ export async function deleteResource(
     const timer = setTimeout(() => controller.abort(), 30_000);
     let res: Response;
     try {
-      res = await fetch(`https://sqladmin.googleapis.com/v1/projects/${p}/instances/${name}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${tok}` },
-        signal: controller.signal,
-      });
+      res = await hostedFetch(
+        ctx,
+        `https://sqladmin.googleapis.com/v1/projects/${p}/instances/${name}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${tok}` },
+          signal: controller.signal,
+        },
+      );
     } catch (err) {
       if (controller.signal.aborted) {
         throw new Error(
@@ -95,7 +103,7 @@ export async function deleteResource(
   if (typeId === "cloud-run-service") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    const res = await fetch(`https://run.googleapis.com/v2/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://run.googleapis.com/v2/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -106,7 +114,7 @@ export async function deleteResource(
   if (typeId === "cloud-function") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    const res = await fetch(`https://cloudfunctions.googleapis.com/v2/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://cloudfunctions.googleapis.com/v2/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -117,7 +125,7 @@ export async function deleteResource(
   if (typeId === "pubsub-topic") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    const res = await fetch(`https://pubsub.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://pubsub.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -128,7 +136,7 @@ export async function deleteResource(
   if (typeId === "pubsub-subscription") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    const res = await fetch(`https://pubsub.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://pubsub.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -139,7 +147,7 @@ export async function deleteResource(
   if (typeId === "secret-manager-secret") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    const res = await fetch(`https://secretmanager.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://secretmanager.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -150,7 +158,8 @@ export async function deleteResource(
   if (typeId === "firewall-rule") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.fields["name"] ?? resource.externalId ?? "");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/firewalls/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -163,7 +172,8 @@ export async function deleteResource(
     const name = String(resource.fields["name"] ?? "");
     const region = String(resource.fields["region"] ?? "");
     if (!name || !region) throw new Error("Cannot determine name or region for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/addresses/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -174,7 +184,7 @@ export async function deleteResource(
   if (typeId === "cloud-scheduler-job") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    const res = await fetch(`https://cloudscheduler.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://cloudscheduler.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -185,7 +195,7 @@ export async function deleteResource(
   if (typeId === "cloud-tasks-queue") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    const res = await fetch(`https://cloudtasks.googleapis.com/v2/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://cloudtasks.googleapis.com/v2/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -196,7 +206,7 @@ export async function deleteResource(
   if (typeId === "artifact-registry-repo") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    const res = await fetch(`https://artifactregistry.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://artifactregistry.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -207,7 +217,7 @@ export async function deleteResource(
   if (typeId === "workflow") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    const res = await fetch(`https://workflows.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://workflows.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -218,7 +228,7 @@ export async function deleteResource(
   if (typeId === "filestore-instance") {
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
-    const res = await fetch(`https://file.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://file.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -230,7 +240,7 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.fields["name"] ?? resource.externalId ?? "");
     if (!name) throw new Error("Cannot determine bucket name for deletion");
-    const res = await fetch(`https://storage.googleapis.com/storage/v1/b/${name}`, {
+    const res = await hostedFetch(ctx, `https://storage.googleapis.com/storage/v1/b/${name}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -242,10 +252,14 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.externalId ?? resource.fields["name"] ?? "");
     if (!name) throw new Error("Cannot determine Spanner instance name for deletion");
-    const res = await fetch(`https://spanner.googleapis.com/v1/projects/${p}/instances/${name}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${tok}` },
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://spanner.googleapis.com/v1/projects/${p}/instances/${name}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      },
+    );
     if (!res.ok) throw new Error(`Spanner API ${res.status}: ${await res.text()}`);
     return;
   }
@@ -256,7 +270,8 @@ export async function deleteResource(
     const [instance, name] = extId.split("/");
     if (!instance || !name)
       throw new Error("Cannot determine Spanner database identity for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://spanner.googleapis.com/v1/projects/${p}/instances/${instance}/databases/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -270,7 +285,8 @@ export async function deleteResource(
     const [instance, name] = extId.split("/");
     if (!instance || !name)
       throw new Error("Cannot determine Spanner backup identity for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://spanner.googleapis.com/v1/projects/${p}/instances/${instance}/backups/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -282,7 +298,8 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.externalId ?? resource.fields["name"] ?? "");
     if (!name) throw new Error("Cannot determine Bigtable instance name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://bigtableadmin.googleapis.com/v2/projects/${p}/instances/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -294,10 +311,14 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.externalId ?? resource.fields["name"] ?? "");
     if (!name) throw new Error("Cannot determine Firestore database name for deletion");
-    const res = await fetch(`https://firestore.googleapis.com/v1/projects/${p}/databases/${name}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${tok}` },
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://firestore.googleapis.com/v1/projects/${p}/databases/${name}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      },
+    );
     if (!res.ok) throw new Error(`Firestore API ${res.status}: ${await res.text()}`);
     return;
   }
@@ -306,7 +327,7 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
     if (!fullName) throw new Error("Cannot determine Redis instance name for deletion");
-    const res = await fetch(`https://redis.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://redis.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -318,7 +339,7 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
     if (!fullName) throw new Error("Cannot determine Valkey instance name for deletion");
-    const res = await fetch(`https://memorystore.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://memorystore.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -330,7 +351,7 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
     if (!fullName) throw new Error("Cannot determine Cloud Run job name for deletion");
-    const res = await fetch(`https://run.googleapis.com/v2/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://run.googleapis.com/v2/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -342,7 +363,7 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
     if (!fullName) throw new Error("Cannot determine AlloyDB cluster name for deletion");
-    const res = await fetch(`https://alloydb.googleapis.com/v1/${fullName}?force=true`, {
+    const res = await hostedFetch(ctx, `https://alloydb.googleapis.com/v1/${fullName}?force=true`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -354,7 +375,7 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
     if (!fullName) throw new Error("Cannot determine AlloyDB instance name for deletion");
-    const res = await fetch(`https://alloydb.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://alloydb.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -366,7 +387,7 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
     if (!fullName) throw new Error("Cannot determine Memcached instance name for deletion");
-    const res = await fetch(`https://memcache.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://memcache.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -378,7 +399,8 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.fields["name"] ?? "");
     if (!name) throw new Error("Cannot determine VPC network name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/networks/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -391,7 +413,8 @@ export async function deleteResource(
     const name = String(resource.fields["name"] ?? "");
     const region = String(resource.fields["region"] ?? "");
     if (!name || !region) throw new Error("Cannot determine name or region for subnet deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/subnetworks/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -404,7 +427,8 @@ export async function deleteResource(
     const name = String(resource.fields["name"] ?? "");
     const region = String(resource.fields["region"] ?? "");
     if (!name || !region) throw new Error("Cannot determine name or region for router deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/routers/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -421,7 +445,7 @@ export async function deleteResource(
       throw new Error("Cannot determine region, router, or NAT name for deletion");
     // Cloud NAT is a sub-resource of the router: fetch the router, remove this NAT, then patch
     const routerUrl = `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/routers/${routerName}`;
-    const routerRes = await fetch(routerUrl, {
+    const routerRes = await hostedFetch(ctx, routerUrl, {
       method: "GET",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -430,7 +454,7 @@ export async function deleteResource(
     const routerData = (await routerRes.json()) as Record<string, unknown>;
     const nats = routerData["nats"] as Array<Record<string, unknown>> | undefined;
     routerData["nats"] = (nats ?? []).filter((n) => String(n["name"]) !== natName);
-    const patchRes = await fetch(routerUrl, {
+    const patchRes = await hostedFetch(ctx, routerUrl, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${tok}`,
@@ -447,7 +471,8 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.fields["name"] ?? "");
     if (!name) throw new Error("Cannot determine Cloud Armor policy name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/securityPolicies/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -459,7 +484,8 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.fields["name"] ?? resource.externalId ?? "");
     if (!name) throw new Error("Cannot determine backend service name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/backendServices/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -476,7 +502,7 @@ export async function deleteResource(
       region && region !== "global"
         ? `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/forwardingRules/${name}`
         : `https://compute.googleapis.com/compute/v1/projects/${p}/global/forwardingRules/${name}`;
-    const res = await fetch(url, {
+    const res = await hostedFetch(ctx, url, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -488,7 +514,8 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.fields["name"] ?? resource.externalId ?? "");
     if (!name) throw new Error("Cannot determine health check name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/healthChecks/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -500,7 +527,8 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.fields["name"] ?? resource.externalId ?? "");
     if (!name) throw new Error("Cannot determine SSL certificate name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/sslCertificates/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -512,7 +540,8 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.externalId ?? resource.fields["name"] ?? "");
     if (!name) throw new Error("Cannot determine DNS zone name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://dns.googleapis.com/dns/v1/projects/${p}/managedZones/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -534,7 +563,8 @@ export async function deleteResource(
       throw new Error("Cannot determine zone, type, or name for DNS record set deletion");
     // Cloud DNS requires the trailing dot on the record name
     const fqdn = rrName.endsWith(".") ? rrName : `${rrName}.`;
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://dns.googleapis.com/dns/v1/projects/${p}/managedZones/${zoneName}/rrsets/${fqdn}/${rrType}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -548,7 +578,8 @@ export async function deleteResource(
     const extId = resource.externalId ?? "";
     const datasetId = extId.split(":").pop() ?? String(resource.fields["name"] ?? "");
     if (!datasetId) throw new Error("Cannot determine dataset ID for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://bigquery.googleapis.com/bigquery/v2/projects/${p}/datasets/${datasetId}?deleteContents=true`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -564,7 +595,8 @@ export async function deleteResource(
     const [datasetId, tableId] = (rest ?? "").split("/");
     const proj = projectPart || p;
     if (!datasetId || !tableId) throw new Error("Cannot determine table ID for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://bigquery.googleapis.com/bigquery/v2/projects/${proj}/datasets/${datasetId}/tables/${tableId}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -581,7 +613,7 @@ export async function deleteResource(
     const url = region
       ? `https://dataflow.googleapis.com/v1b3/projects/${p}/locations/${region}/jobs/${jobId}`
       : `https://dataflow.googleapis.com/v1b3/projects/${p}/jobs/${jobId}`;
-    const res = await fetch(url, {
+    const res = await hostedFetch(ctx, url, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${tok}`,
@@ -607,7 +639,7 @@ export async function deleteResource(
       region === "global"
         ? `https://cloudbuild.googleapis.com/v1/projects/${p}/triggers/${triggerId}`
         : `https://cloudbuild.googleapis.com/v1/projects/${p}/locations/${region}/triggers/${triggerId}`;
-    const res = await fetch(url, {
+    const res = await hostedFetch(ctx, url, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -619,10 +651,14 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
     if (!fullName) throw new Error("Cannot determine Cloud Deploy pipeline name for deletion");
-    const res = await fetch(`https://clouddeploy.googleapis.com/v1/${fullName}?force=true`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${tok}` },
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://clouddeploy.googleapis.com/v1/${fullName}?force=true`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      },
+    );
     if (!res.ok) throw new Error(`Cloud Deploy API ${res.status}: ${await res.text()}`);
     return;
   }
@@ -631,7 +667,7 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
     if (!fullName) throw new Error("Cannot determine Composer environment name for deletion");
-    const res = await fetch(`https://composer.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://composer.googleapis.com/v1/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -648,10 +684,14 @@ export async function deleteResource(
     );
     if (!fullName || !region)
       throw new Error("Cannot determine Vertex AI endpoint name or region for deletion");
-    const res = await fetch(`https://${region}-aiplatform.googleapis.com/v1/${fullName}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${tok}` },
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://${region}-aiplatform.googleapis.com/v1/${fullName}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      },
+    );
     if (!res.ok) throw new Error(`Vertex AI API ${res.status}: ${await res.text()}`);
     return;
   }
@@ -660,7 +700,8 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const email = String(resource.externalId ?? resource.fields["email"] ?? "");
     if (!email) throw new Error("Cannot determine service account email for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://iam.googleapis.com/v1/projects/${p}/serviceAccounts/${email}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -672,10 +713,14 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = String(resource.externalId ?? resource.fields["name"] ?? "");
     if (!name) throw new Error("Cannot determine log sink name for deletion");
-    const res = await fetch(`https://logging.googleapis.com/v2/projects/${p}/sinks/${name}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${tok}` },
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://logging.googleapis.com/v2/projects/${p}/sinks/${name}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      },
+    );
     if (!res.ok) throw new Error(`Logging API ${res.status}: ${await res.text()}`);
     return;
   }
@@ -684,7 +729,7 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const fullName = resource.externalId ?? "";
     if (!fullName) throw new Error("Cannot determine alert policy name for deletion");
-    const res = await fetch(`https://monitoring.googleapis.com/v3/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://monitoring.googleapis.com/v3/${fullName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -706,7 +751,7 @@ export async function deleteResource(
         : (() => {
             throw new Error("Cannot determine zone or region for instance group deletion");
           })();
-    const res = await fetch(url, {
+    const res = await hostedFetch(ctx, url, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     });
@@ -730,7 +775,7 @@ export async function deleteResource(
     if (active.length === 0) return;
     const results = await Promise.all(
       active.map((v) =>
-        fetch(`https://cloudkms.googleapis.com/v1/${v.name}:destroy`, {
+        hostedFetch(ctx, `https://cloudkms.googleapis.com/v1/${v.name}:destroy`, {
           method: "POST",
           headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
           body: "{}",
@@ -753,7 +798,8 @@ export async function deleteResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const name = resource.externalId ?? String(resource.fields["name"] ?? "");
     if (!name) throw new Error("Cannot determine instance template name for deletion");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/instanceTemplates/${name}`,
       { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
     );

@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CredentialExport } from "@infrawrench/plugin-base";
 import { buildConnectionUrl, engineInfoFromVersion } from "./cloudsql-engine.js";
 import { formatGcpError } from "./utils.js";
@@ -163,7 +164,8 @@ export async function resolveOutput(
     if (outputKey === "serviceAccountKey") {
       const tok = await ctx.token();
       const email = ctx.serviceAccountKey.client_email;
-      const res = await fetch(
+      const res = await hostedFetch(
+        ctx,
         `https://iam.googleapis.com/v1/projects/${ctx.project}/serviceAccounts/${encodeURIComponent(email)}/keys`,
         {
           method: "POST",
@@ -301,7 +303,8 @@ export async function exportCredential(
     const privateKeyType =
       formatId === "p12-key" ? "TYPE_PKCS12_FILE" : "TYPE_GOOGLE_CREDENTIALS_FILE";
     const tok = await ctx.token();
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://iam.googleapis.com/v1/projects/${ctx.project}/serviceAccounts/${encodeURIComponent(email)}/keys`,
       {
         method: "POST",

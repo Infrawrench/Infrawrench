@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import type { GcpCreateContext } from "./create-context.js";
 
@@ -160,7 +161,7 @@ export const observabilityCreateResourceHandlers: Record<
     const destination = fields["destination"] ?? "";
     const filter = fields["filter"] ?? "";
 
-    const res = await fetch(`https://logging.googleapis.com/v2/projects/${p}/sinks`, {
+    const res = await hostedFetch(ctx, `https://logging.googleapis.com/v2/projects/${p}/sinks`, {
       method: "POST",
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       body: JSON.stringify({ name, destination, filter }),
@@ -199,25 +200,29 @@ export const observabilityCreateResourceHandlers: Record<
     const comparisonType = fields["comparisonType"] ?? "COMPARISON_GT";
     const duration = fields["duration"] ?? "60";
 
-    const res = await fetch(`https://monitoring.googleapis.com/v3/projects/${p}/alertPolicies`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        displayName,
-        combiner: "OR",
-        conditions: [
-          {
-            displayName: conditionDisplayName,
-            conditionThreshold: {
-              filter: `metric.type="${metricType}" AND resource.type="${resourceType}"`,
-              comparison: comparisonType,
-              thresholdValue,
-              duration: `${duration}s`,
+    const res = await hostedFetch(
+      ctx,
+      `https://monitoring.googleapis.com/v3/projects/${p}/alertPolicies`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName,
+          combiner: "OR",
+          conditions: [
+            {
+              displayName: conditionDisplayName,
+              conditionThreshold: {
+                filter: `metric.type="${metricType}" AND resource.type="${resourceType}"`,
+                comparison: comparisonType,
+                thresholdValue,
+                duration: `${duration}s`,
+              },
             },
-          },
-        ],
-      }),
-    });
+          ],
+        }),
+      },
+    );
     if (!res.ok) throw new Error(`Monitoring API ${res.status}: ${await res.text()}`);
     const data = (await res.json()) as Record<string, unknown>;
     const fullName = String(data["name"] ?? "");

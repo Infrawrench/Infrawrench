@@ -69,6 +69,7 @@
  * with CUD credit types but no `cost_at_list` still blends.
  */
 
+import { hostedFetch, type GcpHostContext } from "./host-fetch.js";
 import {
   allocateProportionally,
   CostSetupError,
@@ -76,7 +77,7 @@ import {
   type CostRow,
 } from "@infrawrench/plugin-base";
 
-export interface GcpCostContext {
+export interface GcpCostContext extends GcpHostContext {
   /** Project the query job runs in: needs `bigquery.jobUser`. */
   project: string;
   token: () => Promise<string>;
@@ -411,7 +412,7 @@ async function runCostQuery(
   // jobs.query submits and (usually) returns the first page synchronously;
   // dates go through real query parameters, not string interpolation.
   const submit = (query: string) =>
-    fetch(`${BQ_BASE}/projects/${ctx.project}/queries`, {
+    hostedFetch(ctx, `${BQ_BASE}/projects/${ctx.project}/queries`, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -457,7 +458,7 @@ async function runCostQuery(
   // Poll getQueryResults until the job completes (long queries return
   // jobComplete=false with no rows from the initial call).
   while (!page.jobComplete) {
-    const r = await fetch(resultsUrl(), { headers });
+    const r = await hostedFetch(ctx, resultsUrl(), { headers });
     if (!r.ok) throw new Error(`GCP cost query poll failed ${r.status}: ${await r.text()}`);
     page = (await r.json()) as BqQueryResponse;
   }
@@ -469,7 +470,7 @@ async function runCostQuery(
   // Follow pageToken across getQueryResults pages.
   let pageToken = page.pageToken;
   while (pageToken) {
-    const r = await fetch(resultsUrl(pageToken), { headers });
+    const r = await hostedFetch(ctx, resultsUrl(pageToken), { headers });
     if (!r.ok) throw new Error(`GCP cost query page failed ${r.status}: ${await r.text()}`);
     const next = (await r.json()) as BqQueryResponse;
     collectRows(next, columns, lines);

@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { GCP_REGIONS } from "./regions.js";
 import type { GcpCreateContext } from "./create-context.js";
@@ -121,7 +122,8 @@ export const tasksSchedulerCreateResourceHandlers: Record<
     const name = fields["name"] ?? "";
     const location = fields["location"] ?? "";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://cloudtasks.googleapis.com/v2/projects/${p}/locations/${location}/queues`,
       {
         method: "POST",
@@ -165,7 +167,8 @@ export const tasksSchedulerCreateResourceHandlers: Record<
     const httpUri = fields["httpUri"] ?? "";
     const httpMethod = fields["httpMethod"] ?? "POST";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://cloudscheduler.googleapis.com/v1/projects/${p}/locations/${location}/jobs`,
       {
         method: "POST",
@@ -211,7 +214,8 @@ export const tasksSchedulerCreateResourceHandlers: Record<
     const region = fields["region"] ?? "us-central1";
     const sourceContents = fields["sourceContents"] ?? "";
     const tok = await ctx.token();
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://workflows.googleapis.com/v1/projects/${p}/locations/${region}/workflows?workflowId=${encodeURIComponent(name)}`,
       {
         method: "POST",

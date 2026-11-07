@@ -1,4 +1,5 @@
-import type { HostServices, ResourceInstance } from "@infrawrench/plugin-base";
+import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { GcpHostContext } from "./host-fetch.js";
 import type { ServiceAccountKey } from "./auth.js";
 
 /**
@@ -11,10 +12,9 @@ import type { ServiceAccountKey } from "./auth.js";
  * fakes and prevents the accidental coupling that the previous god-class
  * encouraged.
  */
-export interface GcpClientContext {
+export interface GcpClientContext extends GcpHostContext {
   readonly project: string;
   readonly serviceAccountKey: ServiceAccountKey;
-  readonly hostServices: HostServices | undefined;
   token(): Promise<string>;
   get<T>(url: string): Promise<T>;
   paginate<T>(baseUrl: string, key: string, params?: Record<string, string>): Promise<T[]>;

@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { regionOption } from "./regions.js";
 import type { GcpCreateContext } from "./create-context.js";
@@ -121,7 +122,8 @@ export const firestoreCreateResourceHandlers: Record<
       }
     }
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://firestore.googleapis.com/v1/projects/${p}/databases?databaseId=${name}`,
       {
         method: "POST",

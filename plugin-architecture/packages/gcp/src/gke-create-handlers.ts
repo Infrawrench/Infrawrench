@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { SizeOption, CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { REGION_INFO } from "./regions.js";
 import type { GcpCreateContext } from "./create-context.js";
@@ -201,7 +202,8 @@ export const gkeCreateResourceHandlers: Record<
           : {}),
       },
     };
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://container.googleapis.com/v1/projects/${p}/locations/${location}/clusters`,
       {
         method: "POST",

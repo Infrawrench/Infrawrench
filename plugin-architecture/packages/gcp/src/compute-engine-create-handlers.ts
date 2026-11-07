@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type {
   SizeOption,
   ImageOption,
@@ -687,7 +688,8 @@ export const computeEngineCreateResourceHandlers: Record<
       ...(metadata ? { metadata } : {}),
       ...(tagItems.length > 0 ? { tags: { items: tagItems } } : {}),
     };
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances`,
       {
         method: "POST",
@@ -735,7 +737,8 @@ export const computeEngineCreateResourceHandlers: Record<
     const sizeGb = fields["sizeGb"] ?? "50";
     const diskType = fields["type"] ?? "pd-balanced";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/disks`,
       {
         method: "POST",
@@ -775,7 +778,8 @@ export const computeEngineCreateResourceHandlers: Record<
     const name = fields["name"] ?? "";
     const region = fields["region"] ?? "";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/addresses`,
       {
         method: "POST",
@@ -855,7 +859,8 @@ export const computeEngineCreateResourceHandlers: Record<
       ...(description ? { description } : {}),
       properties,
     };
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/instanceTemplates`,
       {
         method: "POST",
@@ -894,7 +899,8 @@ export const computeEngineCreateResourceHandlers: Record<
     const instanceTemplate = fields["instanceTemplate"] ?? "";
     const targetSize = Number(fields["targetSize"] ?? "1");
     const tok = await ctx.token();
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instanceGroupManagers`,
       {
         method: "POST",

@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { GcpClientContext } from "./shared.js";
 import { formatGcpError } from "./utils.js";
@@ -23,7 +24,7 @@ export interface CloudRunJobExecutionSummary {
 
 async function post(ctx: GcpClientContext, url: string, action: string): Promise<void> {
   const tok = await ctx.token();
-  const res = await fetch(url, {
+  const res = await hostedFetch(ctx, url, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: "{}",
@@ -144,7 +145,7 @@ export async function updateCloudRunJob(
   job["template"] = execTemplate;
 
   const tok = await ctx.token();
-  const res = await fetch(`${RUN_API}/${fullName}`, {
+  const res = await hostedFetch(ctx, `${RUN_API}/${fullName}`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify(job),
@@ -201,10 +202,14 @@ export async function updateMemorystoreValkey(
   if (mask.length === 0) return;
 
   const tok = await ctx.token();
-  const res = await fetch(`${MEMORYSTORE_API}/${fullName}?updateMask=${mask.join(",")}`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const res = await hostedFetch(
+    ctx,
+    `${MEMORYSTORE_API}/${fullName}?updateMask=${mask.join(",")}`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
   if (!res.ok) throw new Error(await formatGcpError("Update Memorystore Valkey instance", res));
 }

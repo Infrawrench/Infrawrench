@@ -15,6 +15,7 @@
  * - jobs.getQueryResults: https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs/getQueryResults
  * - projects.list / datasets.list / tables.list for the pickers.
  */
+import { hostedFetch, type GcpHostContext } from "./host-fetch.js";
 import {
   assertBusinessMetricSql,
   bindBusinessMetricSqlRange,
@@ -88,7 +89,7 @@ export const gcpBusinessMetricSource: BusinessMetricSourceDeclaration = {
   ],
 };
 
-export interface BigQueryMetricContext {
+export interface BigQueryMetricContext extends GcpHostContext {
   /** The account's project, the fallback when no project is picked or listable. */
   project: string;
   token(): Promise<string>;
@@ -141,7 +142,7 @@ async function bq<T>(
   init: { method?: string; body?: unknown; signal?: AbortSignal | undefined } = {},
 ): Promise<T> {
   const tok = await ctx.token();
-  const res = await fetch(url, {
+  const res = await hostedFetch(ctx, url, {
     method: init.method ?? "GET",
     headers: {
       Authorization: `Bearer ${tok}`,

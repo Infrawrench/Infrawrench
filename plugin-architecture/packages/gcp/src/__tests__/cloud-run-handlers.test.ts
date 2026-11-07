@@ -11,7 +11,7 @@ import {
   serviceToYaml,
 } from "../cloud-run-handlers.js";
 
-const ctx: CloudRunContext = { project: "proj", token: async () => "tok" };
+const ctx: CloudRunContext = { project: "proj", hostServices: undefined, token: async () => "tok" };
 const EXT = "projects/proj/locations/us-central1/services/svc";
 
 function res(over: Partial<ResourceInstance> = {}): ResourceInstance {

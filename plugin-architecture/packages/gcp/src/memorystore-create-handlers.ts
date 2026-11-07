@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { GCP_REGIONS } from "./regions.js";
 import { VALKEY_ENGINE_VERSIONS } from "./resources/memorystore-valkey.js";
@@ -238,7 +239,8 @@ export const memorystoreCreateResourceHandlers: Record<
     const tier = fields["tier"] ?? "BASIC";
     const memorySizeGb = Number(fields["memorySizeGb"] || 1);
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://redis.googleapis.com/v1/projects/${p}/locations/${location}/instances?instanceId=${name}`,
       {
         method: "POST",
@@ -282,7 +284,8 @@ export const memorystoreCreateResourceHandlers: Record<
     const memorySizeMb = Number(fields["memorySizeMb"] ?? "1024");
     const memcacheVersion = fields["memcacheVersion"] ?? "MEMCACHE_1_5";
     const tok = await ctx.token();
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://memcache.googleapis.com/v1/projects/${p}/locations/${location}/instances?instanceId=${encodeURIComponent(name)}`,
       {
         method: "POST",
@@ -341,7 +344,8 @@ export const memorystoreCreateResourceHandlers: Record<
     const transitEncryptionMode = fields["transitEncryptionMode"] || "TRANSIT_ENCRYPTION_DISABLED";
     const deletionProtectionEnabled = fields["deletionProtectionEnabled"] === "true";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://memorystore.googleapis.com/v1/projects/${p}/locations/${location}/instances?instanceId=${encodeURIComponent(name)}`,
       {
         method: "POST",

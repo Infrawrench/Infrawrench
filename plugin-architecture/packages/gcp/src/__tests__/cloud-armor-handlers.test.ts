@@ -7,7 +7,11 @@ import {
   executeCloudArmorCommand,
 } from "../cloud-armor-handlers.js";
 
-const ctx: CloudArmorContext = { project: "proj", token: async () => "tok" };
+const ctx: CloudArmorContext = {
+  project: "proj",
+  hostServices: undefined,
+  token: async () => "tok",
+};
 
 function res(over: Partial<ResourceInstance> = {}): ResourceInstance {
   return {

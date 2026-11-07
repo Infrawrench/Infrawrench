@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import type { GcpCreateContext } from "./create-context.js";
 
@@ -76,7 +77,7 @@ export const pubsubCreateResourceHandlers: Record<
     const name = fields["name"] ?? "";
     const fullName = `projects/${p}/topics/${name}`;
 
-    const res = await fetch(`https://pubsub.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://pubsub.googleapis.com/v1/${fullName}`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -109,7 +110,7 @@ export const pubsubCreateResourceHandlers: Record<
     const ackDeadlineSeconds = Number(fields["ackDeadlineSeconds"] || 10);
     const fullName = `projects/${p}/subscriptions/${name}`;
 
-    const res = await fetch(`https://pubsub.googleapis.com/v1/${fullName}`, {
+    const res = await hostedFetch(ctx, `https://pubsub.googleapis.com/v1/${fullName}`, {
       method: "PUT",
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       body: JSON.stringify({ topic, ackDeadlineSeconds }),

@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type {
   RegionOption,
   CreateResourceConfig,
@@ -205,7 +206,8 @@ export const cloudRunCreateResourceHandlers: Record<
       };
     }
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://run.googleapis.com/v2/projects/${p}/locations/${region}/services?serviceId=${encodeURIComponent(name)}`,
       {
         method: "POST",
@@ -271,7 +273,8 @@ export const cloudRunCreateResourceHandlers: Record<
         },
       },
     };
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://run.googleapis.com/v2/projects/${p}/locations/${region}/jobs?jobId=${encodeURIComponent(name)}`,
       {
         method: "POST",

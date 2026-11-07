@@ -277,10 +277,14 @@ describe("secret-versions-client", () => {
 describe("publish-handlers", () => {
   it("publishPubsubTopic encodes body + attributes", async () => {
     fetchSpy.mockResolvedValue(ok({ messageIds: ["m1"] }));
-    const res = await publishPubsubTopic({ token: async () => "tok", project: "proj" }, "topic1", {
-      body: "hi",
-      extras: { attributes: { a: "b", "": "skip" }, orderingKey: "ok" },
-    });
+    const res = await publishPubsubTopic(
+      { hostServices: undefined, token: async () => "tok", project: "proj" },
+      "topic1",
+      {
+        body: "hi",
+        extras: { attributes: { a: "b", "": "skip" }, orderingKey: "ok" },
+      },
+    );
     expect(res.id).toBe("m1");
     const body = JSON.parse((fetchSpy.mock.calls[0]![1] as RequestInit).body as string);
     expect(body.messages[0].attributes).toEqual({ a: "b" });
@@ -289,11 +293,15 @@ describe("publish-handlers", () => {
 
   it("publishPubsubTopic tags an event subscription delivery with event attributes", async () => {
     fetchSpy.mockResolvedValue(ok({ messageIds: ["m2"] }));
-    await publishPubsubTopic({ token: async () => "tok", project: "proj" }, "topic1", {
-      body: "{}",
-      extras: {},
-      event: { type: "incident.declared", version: 1, id: "evt_2", source: "infrawrench" },
-    });
+    await publishPubsubTopic(
+      { hostServices: undefined, token: async () => "tok", project: "proj" },
+      "topic1",
+      {
+        body: "{}",
+        extras: {},
+        event: { type: "incident.declared", version: 1, id: "evt_2", source: "infrawrench" },
+      },
+    );
     const body = JSON.parse((fetchSpy.mock.calls[0]![1] as RequestInit).body as string);
     expect(body.messages[0].attributes).toEqual({
       eventType: "incident.declared",
@@ -306,14 +314,17 @@ describe("publish-handlers", () => {
   it("publishPubsubTopic throws on error", async () => {
     fetchSpy.mockResolvedValue(err(403));
     await expect(
-      publishPubsubTopic({ token: async () => "t", project: "p" }, "t1", { body: "x", extras: {} }),
+      publishPubsubTopic({ hostServices: undefined, token: async () => "t", project: "p" }, "t1", {
+        body: "x",
+        extras: {},
+      }),
     ).rejects.toThrow("Pub/Sub publish 403");
   });
 
   it("publishCloudTasksQueue requires url + builds http request", async () => {
     await expect(
       publishCloudTasksQueue(
-        { token: async () => "t", project: "p" },
+        { hostServices: undefined, token: async () => "t", project: "p" },
         { fields: {} },
         { body: "", extras: {} },
       ),
@@ -321,7 +332,7 @@ describe("publish-handlers", () => {
 
     fetchSpy.mockResolvedValue(ok({ name: "projects/p/locations/l/queues/q/tasks/t1" }));
     const res = await publishCloudTasksQueue(
-      { token: async () => "t", project: "p" },
+      { hostServices: undefined, token: async () => "t", project: "p" },
       { externalId: "projects/p/locations/l/queues/q", fields: {} },
       {
         body: "payload",

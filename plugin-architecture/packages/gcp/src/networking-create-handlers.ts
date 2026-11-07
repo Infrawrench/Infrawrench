@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { GCP_REGIONS } from "./regions.js";
 import type { GcpCreateContext } from "./create-context.js";
@@ -450,7 +451,8 @@ export const networkingCreateResourceHandlers: Record<
     const name = fields["name"] ?? "";
     const autoCreateSubnetworks = fields["autoCreateSubnetworks"] ?? "true";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/networks`,
       {
         method: "POST",
@@ -488,7 +490,8 @@ export const networkingCreateResourceHandlers: Record<
     const network = fields["network"] ?? "";
     const ipCidrRange = fields["ipCidrRange"] ?? "";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/subnetworks`,
       {
         method: "POST",
@@ -557,7 +560,8 @@ export const networkingCreateResourceHandlers: Record<
       body.sourceRanges = sourceRanges.split(",").map((s) => s.trim());
     }
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/firewalls`,
       {
         method: "POST",
@@ -605,7 +609,8 @@ export const networkingCreateResourceHandlers: Record<
       : `projects/${p}/global/networks/${networkRaw}`;
     const networkShort = networkRaw.split("/").pop() ?? networkRaw;
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/routers`,
       {
         method: "POST",
@@ -666,7 +671,8 @@ export const networkingCreateResourceHandlers: Record<
       natIpAllocateOption,
       sourceSubnetworkIpRangesToNat,
     });
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/routers/${routerName}`,
       {
         method: "PATCH",
@@ -706,7 +712,8 @@ export const networkingCreateResourceHandlers: Record<
       .map((d) => d.trim())
       .filter(Boolean);
     const tok = await ctx.token();
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/sslCertificates`,
       {
         method: "POST",
@@ -791,7 +798,8 @@ export const networkingCreateResourceHandlers: Record<
     }
 
     const tok = await ctx.token();
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/backendServices`,
       {
         method: "POST",
@@ -837,7 +845,8 @@ export const networkingCreateResourceHandlers: Record<
     const ipProtocol = fields["IPProtocol"] ?? "TCP";
     const portRange = fields["portRange"] ?? "";
     const tok = await ctx.token();
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/forwardingRules`,
       {
         method: "POST",
@@ -900,7 +909,8 @@ export const networkingCreateResourceHandlers: Record<
       body.tcpHealthCheck = { port };
     }
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/healthChecks`,
       {
         method: "POST",

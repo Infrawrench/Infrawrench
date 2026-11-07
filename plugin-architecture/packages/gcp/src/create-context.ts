@@ -1,4 +1,5 @@
-export interface GcpCreateContext {
+import type { GcpHostContext } from "./host-fetch.js";
+export interface GcpCreateContext extends GcpHostContext {
   get<T>(url: string): Promise<T>;
   paginate<T>(baseUrl: string, key: string, params?: Record<string, string>): Promise<T[]>;
   token(): Promise<string>;

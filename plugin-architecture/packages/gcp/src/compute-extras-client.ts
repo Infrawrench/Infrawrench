@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { formatGcpError } from "./utils.js";
 import { gcpApiError } from "./api-error.js";
@@ -31,7 +32,7 @@ export async function listManagedInstances(
     ? `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instanceGroupManagers/${groupName}`
     : `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/instanceGroupManagers/${groupName}`;
   const tok = await ctx.token();
-  const res = await fetch(`${base}/listManagedInstances`, {
+  const res = await hostedFetch(ctx, `${base}/listManagedInstances`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: "{}",
@@ -209,7 +210,8 @@ export async function setGceInstancePower(
     throw new Error("Cannot determine zone/name for VM instance");
   }
   const tok = await ctx.token();
-  const res = await fetch(
+  const res = await hostedFetch(
+    ctx,
     `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}/${verb}`,
     { method: "POST", headers: { Authorization: `Bearer ${tok}` } },
   );
@@ -235,7 +237,8 @@ export async function setGceInstanceMachineType(
     throw new Error("Cannot determine zone/name for VM instance");
   }
   const tok = await ctx.token();
-  const res = await fetch(
+  const res = await hostedFetch(
+    ctx,
     `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}/setMachineType`,
     {
       method: "POST",
@@ -271,7 +274,7 @@ export async function restartReplaceInstanceGroup(
     ? `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instanceGroupManagers/${groupName}`
     : `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/instanceGroupManagers/${groupName}`;
   const tok = await ctx.token();
-  const res = await fetch(`${base}/applyUpdatesToInstances`, {
+  const res = await hostedFetch(ctx, `${base}/applyUpdatesToInstances`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -323,7 +326,8 @@ async function applyFirewallToInstance(
   const currentTags = inst.tags?.items ?? [];
   const merged = Array.from(new Set([...currentTags, ...targetTags]));
   if (merged.length === currentTags.length) return; // all tags already present
-  const res = await fetch(
+  const res = await hostedFetch(
+    ctx,
     `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${instanceZone}/instances/${instanceName}/setTags`,
     {
       method: "POST",
@@ -377,7 +381,7 @@ async function addInstanceGroupToBackendService(
   }>(serviceUrl);
   const backends = current.backends ?? [];
   if (backends.some((backend) => String(backend["group"]) === groupUrl)) return;
-  const res = await fetch(serviceUrl, {
+  const res = await hostedFetch(ctx, serviceUrl, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -424,7 +428,8 @@ export async function attachResource(
       throw new Error("Cannot determine disk or instance name");
     }
     const diskSelfLink = `https://www.googleapis.com/compute/v1/projects/${p}/zones/${diskZone}/disks/${diskName}`;
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${instanceZone}/instances/${instanceName}/attachDisk`,
       {
         method: "POST",
@@ -456,7 +461,7 @@ export async function attachResource(
     }
     // Attach static IP to the VM's NIC using addAccessConfig (nic0)
     const url = `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${instanceZone}/instances/${instanceName}/addAccessConfig`;
-    const res = await fetch(url, {
+    const res = await hostedFetch(ctx, url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${tok}`,
@@ -531,7 +536,7 @@ export async function attachResource(
     ];
     nats[idx] = target;
 
-    const res = await fetch(routerUrl, {
+    const res = await hostedFetch(ctx, routerUrl, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       body: JSON.stringify({ nats }),

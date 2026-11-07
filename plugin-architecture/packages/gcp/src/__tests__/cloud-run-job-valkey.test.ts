@@ -58,6 +58,7 @@ function clientCtx(over: Partial<GcpClientContext> = {}): GcpClientContext {
 
 function createCtx(over: Partial<GcpCreateContext> = {}): GcpCreateContext {
   return {
+    hostServices: undefined,
     get: vi.fn(async () => ({}) as never),
     paginate: vi.fn(async () => []),
     token: vi.fn(async () => "tok"),

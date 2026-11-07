@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import type { GcpCreateContext } from "./create-context.js";
 
@@ -47,7 +48,8 @@ export const cloudArmorCreateResourceHandlers: Record<
     const description = fields["description"] ?? "";
     const type = fields["type"] ?? "CLOUD_ARMOR";
     const tok = await ctx.token();
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/securityPolicies`,
       {
         method: "POST",

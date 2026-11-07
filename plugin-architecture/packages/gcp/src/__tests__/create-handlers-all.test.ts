@@ -11,6 +11,7 @@ function ctx(over: CtxOver = {}): GcpCreateContext {
   return {
     get: vi.fn(async () => ({}) as never),
     paginate: vi.fn(async () => []),
+    hostServices: undefined,
     token: vi.fn(async () => "tok"),
     project: "proj",
     id: (a, t, e) => `${a}:${t}:${e}`,

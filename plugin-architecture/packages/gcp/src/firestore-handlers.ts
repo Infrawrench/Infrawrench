@@ -1,7 +1,8 @@
+import { hostedFetch, type GcpHostContext } from "./host-fetch.js";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { formatGcpError, parseFormArg } from "./utils.js";
 
-export interface FirestoreContext {
+export interface FirestoreContext extends GcpHostContext {
   project: string;
   token: () => Promise<string>;
 }
@@ -129,7 +130,7 @@ export async function listFirestoreCollections(
   for (let i = 0; i < 20; i++) {
     const body: Record<string, unknown> = isEnterprise ? {} : { pageSize: 100 };
     if (pageToken && !isEnterprise) body["pageToken"] = pageToken;
-    const res = await fetch(url, {
+    const res = await hostedFetch(ctx, url, {
       method: "POST",
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -220,7 +221,7 @@ async function listFirestoreIndexesForGroup(
       if (pageToken) qs.set("pageToken", pageToken);
     }
     const fullUrl = qs.toString() ? `${url}?${qs.toString()}` : url;
-    const res = await fetch(fullUrl, {
+    const res = await hostedFetch(ctx, fullUrl, {
       headers: { Authorization: `Bearer ${tok}` },
     });
     if (!res.ok) {
@@ -274,7 +275,7 @@ export async function listFirestoreBackupSchedules(
   if (!dbId) return [];
   const tok = await ctx.token();
   const url = `https://firestore.googleapis.com/v1/projects/${p}/databases/${dbId}/backupSchedules`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
+  const res = await hostedFetch(ctx, url, { headers: { Authorization: `Bearer ${tok}` } });
   if (!res.ok) {
     if (res.status === 404) return [];
     throw new Error(`Firestore list backup schedules ${res.status}: ${await res.text()}`);
@@ -325,7 +326,7 @@ export async function listFirestoreTtlConfigs(
     const qs = new URLSearchParams({ filter: "ttlConfig:*" });
     if (!isEnterprise) qs.set("pageSize", "100");
     const url = `${base}/collectionGroups/${encodeURIComponent(collectionGroup)}/fields?${qs.toString()}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
+    const res = await hostedFetch(ctx, url, { headers: { Authorization: `Bearer ${tok}` } });
     if (!res.ok) return;
     const data = (await res.json()) as {
       fields?: Array<{ name?: string; ttlConfig?: { state?: string } }>;
@@ -378,7 +379,7 @@ export async function listFirestoreOperations(
   if (!dbId) return [];
   const tok = await ctx.token();
   const url = `https://firestore.googleapis.com/v1/projects/${p}/databases/${dbId}/operations`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
+  const res = await hostedFetch(ctx, url, { headers: { Authorization: `Bearer ${tok}` } });
   if (!res.ok) return [];
   const data = (await res.json()) as {
     operations?: Array<{
@@ -427,7 +428,8 @@ export async function fetchFirestoreRules(
   const releaseName =
     dbId === "(default)" ? "cloud.firestore" : `cloud.firestore/${encodeURIComponent(dbId)}`;
   try {
-    const relRes = await fetch(
+    const relRes = await hostedFetch(
+      ctx,
       `https://firebaserules.googleapis.com/v1/projects/${p}/releases/${releaseName}`,
       { headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -446,9 +448,13 @@ export async function fetchFirestoreRules(
       updateTime?: string;
     };
     if (!rel.rulesetName) return empty;
-    const rsRes = await fetch(`https://firebaserules.googleapis.com/v1/${rel.rulesetName}`, {
-      headers: { Authorization: `Bearer ${tok}` },
-    });
+    const rsRes = await hostedFetch(
+      ctx,
+      `https://firebaserules.googleapis.com/v1/${rel.rulesetName}`,
+      {
+        headers: { Authorization: `Bearer ${tok}` },
+      },
+    );
     if (!rsRes.ok) {
       return {
         ...empty,
@@ -483,9 +489,13 @@ export async function listFirestoreBackups(
   const dbId = String(resource.fields["name"] ?? "");
   if (!dbId) return [];
   const tok = await ctx.token();
-  const res = await fetch(`https://firestore.googleapis.com/v1/projects/${p}/locations/-/backups`, {
-    headers: { Authorization: `Bearer ${tok}` },
-  });
+  const res = await hostedFetch(
+    ctx,
+    `https://firestore.googleapis.com/v1/projects/${p}/locations/-/backups`,
+    {
+      headers: { Authorization: `Bearer ${tok}` },
+    },
+  );
   if (!res.ok) return [];
   const data = (await res.json()) as {
     backups?: Array<{
@@ -532,7 +542,8 @@ export async function fetchFirestoreDatabaseExtras(
   };
   if (!dbId) return empty;
   const tok = await ctx.token();
-  const res = await fetch(
+  const res = await hostedFetch(
+    ctx,
     `https://firestore.googleapis.com/v1/projects/${p}/databases/${encodeURIComponent(dbId)}`,
     { headers: { Authorization: `Bearer ${tok}` } },
   );
@@ -594,7 +605,8 @@ export async function fetchFirestoreUsageMetrics(
     qs.set("aggregation.alignmentPeriod", "86400s");
     qs.set("aggregation.perSeriesAligner", aligner);
     qs.set("aggregation.crossSeriesReducer", "REDUCE_SUM");
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://monitoring.googleapis.com/v3/projects/${p}/timeSeries?${qs.toString()}`,
       { headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -681,7 +693,8 @@ export async function fetchFirestoreIamBindings(ctx: FirestoreContext): Promise<
   const empty: FirestoreIamInfo = { bindings: [], etag: "", error: "" };
   const p = ctx.project;
   const tok = await ctx.token();
-  const res = await fetch(
+  const res = await hostedFetch(
+    ctx,
     `https://cloudresourcemanager.googleapis.com/v1/projects/${p}:getIamPolicy`,
     {
       method: "POST",
@@ -872,13 +885,17 @@ async function firestoreDeployRules(
   if (!source.trim()) throw new Error("Rules source is empty");
   const p = ctx.project;
   const tok = await ctx.token();
-  const createRes = await fetch(`https://firebaserules.googleapis.com/v1/projects/${p}/rulesets`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      source: { files: [{ name: "firestore.rules", content: source }] },
-    }),
-  });
+  const createRes = await hostedFetch(
+    ctx,
+    `https://firebaserules.googleapis.com/v1/projects/${p}/rulesets`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: { files: [{ name: "firestore.rules", content: source }] },
+      }),
+    },
+  );
   if (!createRes.ok) {
     const body = await createRes.text();
     throw new Error(`Create ruleset: ${googleApiErrorMessage(body) || `HTTP ${createRes.status}`}`);
@@ -892,13 +909,17 @@ async function firestoreDeployRules(
   // Releases can only be PATCHed via updateMask when they already exist:
   // the first deployment has to go through POST /releases instead. Try
   // PATCH first and fall back to POST on 404.
-  const patchRes = await fetch(`https://firebaserules.googleapis.com/v1/${releaseFull}`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      release: { name: releaseFull, rulesetName: ruleset.name },
-    }),
-  });
+  const patchRes = await hostedFetch(
+    ctx,
+    `https://firebaserules.googleapis.com/v1/${releaseFull}`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        release: { name: releaseFull, rulesetName: ruleset.name },
+      }),
+    },
+  );
   if (patchRes.ok) {
     return { rulesetName: ruleset.name, releaseName: releaseFull };
   }
@@ -906,11 +927,15 @@ async function firestoreDeployRules(
     const body = await patchRes.text();
     throw new Error(`Update release: ${googleApiErrorMessage(body) || `HTTP ${patchRes.status}`}`);
   }
-  const postRes = await fetch(`https://firebaserules.googleapis.com/v1/projects/${p}/releases`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ name: releaseFull, rulesetName: ruleset.name }),
-  });
+  const postRes = await hostedFetch(
+    ctx,
+    `https://firebaserules.googleapis.com/v1/projects/${p}/releases`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: releaseFull, rulesetName: ruleset.name }),
+    },
+  );
   if (!postRes.ok) {
     const body = await postRes.text();
     throw new Error(`Create release: ${googleApiErrorMessage(body) || `HTTP ${postRes.status}`}`);
@@ -935,7 +960,7 @@ async function firestoreGrantIamRole(
   const p = ctx.project;
   const tok = await ctx.token();
   const crmBase = `https://cloudresourcemanager.googleapis.com/v1/projects/${p}`;
-  const getRes = await fetch(`${crmBase}:getIamPolicy`, {
+  const getRes = await hostedFetch(ctx, `${crmBase}:getIamPolicy`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({ options: { requestedPolicyVersion: 3 } }),
@@ -957,7 +982,7 @@ async function firestoreGrantIamRole(
   } else {
     bindings.push({ role, members: [member] });
   }
-  const setRes = await fetch(`${crmBase}:setIamPolicy`, {
+  const setRes = await hostedFetch(ctx, `${crmBase}:setIamPolicy`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({ policy: { ...policy, bindings } }),
@@ -977,7 +1002,7 @@ async function firestoreRevokeIamMember(
   const p = ctx.project;
   const tok = await ctx.token();
   const crmBase = `https://cloudresourcemanager.googleapis.com/v1/projects/${p}`;
-  const getRes = await fetch(`${crmBase}:getIamPolicy`, {
+  const getRes = await hostedFetch(ctx, `${crmBase}:getIamPolicy`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({ options: { requestedPolicyVersion: 3 } }),
@@ -997,7 +1022,7 @@ async function firestoreRevokeIamMember(
       return { ...b, members };
     })
     .filter((b) => (b.members?.length ?? 0) > 0 || b.condition);
-  const setRes = await fetch(`${crmBase}:setIamPolicy`, {
+  const setRes = await hostedFetch(ctx, `${crmBase}:setIamPolicy`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({ policy: { ...policy, bindings } }),
@@ -1019,7 +1044,7 @@ async function firestoreSetTtl(
   }
   const tok = await ctx.token();
   const url = `${base}/collectionGroups/${encodeURIComponent(collectionGroup)}/fields/${encodeURIComponent(fieldPath)}?updateMask=ttlConfig`;
-  const res = await fetch(url, {
+  const res = await hostedFetch(ctx, url, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({ ttlConfig: {} }),
@@ -1036,7 +1061,7 @@ async function firestoreUnsetTtl(
   if (!fieldFullName) throw new Error("unsetTtl requires the field resource name");
   const tok = await ctx.token();
   const url = `https://firestore.googleapis.com/v1/${fieldFullName}?updateMask=ttlConfig`;
-  const res = await fetch(url, {
+  const res = await hostedFetch(ctx, url, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     // Omitting ttlConfig from the body while including it in the update
@@ -1059,7 +1084,7 @@ async function firestoreExportDocuments(
     .map((s) => s.trim())
     .filter(Boolean);
   const tok = await ctx.token();
-  const res = await fetch(`${base}:exportDocuments`, {
+  const res = await hostedFetch(ctx, `${base}:exportDocuments`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1083,7 +1108,7 @@ async function firestoreImportDocuments(
     .map((s) => s.trim())
     .filter(Boolean);
   const tok = await ctx.token();
-  const res = await fetch(`${base}:importDocuments`, {
+  const res = await hostedFetch(ctx, `${base}:importDocuments`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1105,7 +1130,7 @@ async function firestoreListCollections(
   for (let i = 0; i < 20; i++) {
     const body: Record<string, unknown> = { pageSize: 100 };
     if (pageToken) body["pageToken"] = pageToken;
-    const res = await fetch(`${base}/documents:listCollectionIds`, {
+    const res = await hostedFetch(ctx, `${base}/documents:listCollectionIds`, {
       method: "POST",
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -1134,7 +1159,8 @@ async function firestoreFind(
   for (let i = 0; i < 20 && docs.length < want + 1; i++) {
     const qs = new URLSearchParams({ pageSize: String(Math.min(300, want - docs.length + 1)) });
     if (pageToken) qs.set("pageToken", pageToken);
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `${base}/documents/${encodeURIComponent(collection)}?${qs.toString()}`,
       { headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -1163,7 +1189,7 @@ async function firestoreCount(
   const tok = await ctx.token();
   // Use the structured aggregation query (runAggregationQuery) for an
   // efficient COUNT without streaming every doc.
-  const res = await fetch(`${base}/documents:runAggregationQuery`, {
+  const res = await hostedFetch(ctx, `${base}/documents:runAggregationQuery`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1187,7 +1213,7 @@ async function firestoreGetDocument(
   docPath: string,
 ): Promise<Record<string, unknown>> {
   const tok = await ctx.token();
-  const res = await fetch(`${base}/documents/${docPath}`, {
+  const res = await hostedFetch(ctx, `${base}/documents/${docPath}`, {
     headers: { Authorization: `Bearer ${tok}` },
   });
   if (!res.ok) throw new Error(`Firestore get doc ${res.status}: ${await res.text()}`);
@@ -1204,7 +1230,7 @@ async function firestoreInsertDocument(
   if (!collection) throw new Error("insertDocument requires a collection");
   const parsed = JSON.parse(docJson) as Record<string, unknown>;
   const tok = await ctx.token();
-  const res = await fetch(`${base}/documents/${encodeURIComponent(collection)}`, {
+  const res = await hostedFetch(ctx, `${base}/documents/${encodeURIComponent(collection)}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({ fields: plainToFirestoreFields(parsed) }),
@@ -1223,7 +1249,7 @@ async function firestoreUpdateDocument(
   const parsed = JSON.parse(docJson) as Record<string, unknown>;
   const tok = await ctx.token();
   // PATCH with no updateMask replaces the document's fields entirely.
-  const res = await fetch(`${base}/documents/${docPath}`, {
+  const res = await hostedFetch(ctx, `${base}/documents/${docPath}`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({ fields: plainToFirestoreFields(parsed) }),
@@ -1239,7 +1265,7 @@ async function firestoreDeleteDocument(
   docPath: string,
 ): Promise<{ ok: true }> {
   const tok = await ctx.token();
-  const res = await fetch(`${base}/documents/${docPath}`, {
+  const res = await hostedFetch(ctx, `${base}/documents/${docPath}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${tok}` },
   });
@@ -1285,7 +1311,8 @@ async function firestoreCreateIndex(
     arrayConfig?: string;
   }>;
   const tok = await ctx.token();
-  const res = await fetch(
+  const res = await hostedFetch(
+    ctx,
     `${base}/collectionGroups/${encodeURIComponent(collectionGroup)}/indexes`,
     {
       method: "POST",
@@ -1318,7 +1345,7 @@ async function firestoreDeleteIndex(
 ): Promise<{ ok: true }> {
   if (!indexFullName) throw new Error("deleteIndex requires the index name");
   const tok = await ctx.token();
-  const res = await fetch(`https://firestore.googleapis.com/v1/${indexFullName}`, {
+  const res = await hostedFetch(ctx, `https://firestore.googleapis.com/v1/${indexFullName}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${tok}` },
   });
@@ -1342,7 +1369,7 @@ async function firestoreCreateBackupSchedule(
     body["dailyRecurrence"] = {};
   }
   const tok = await ctx.token();
-  const res = await fetch(`${base}/backupSchedules`, {
+  const res = await hostedFetch(ctx, `${base}/backupSchedules`, {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -1357,7 +1384,7 @@ async function firestoreDeleteBackupSchedule(
 ): Promise<{ ok: true }> {
   if (!scheduleFullName) throw new Error("deleteBackupSchedule requires the schedule name");
   const tok = await ctx.token();
-  const res = await fetch(`https://firestore.googleapis.com/v1/${scheduleFullName}`, {
+  const res = await hostedFetch(ctx, `https://firestore.googleapis.com/v1/${scheduleFullName}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${tok}` },
   });

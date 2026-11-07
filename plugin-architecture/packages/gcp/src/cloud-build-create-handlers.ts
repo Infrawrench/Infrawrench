@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import yaml from "js-yaml";
 import type {
   CreateFieldConfig,
@@ -482,7 +483,7 @@ export const cloudBuildCreateResourceHandlers: Record<
         .slice(0, 63)
         .replace(/^-+|-+$/g, "");
       const linkUrl = `https://cloudbuild.googleapis.com/v2/${connectionPath}/repositories?repositoryId=${encodeURIComponent(repoId)}`;
-      const linkRes = await fetch(linkUrl, {
+      const linkRes = await hostedFetch(ctx, linkUrl, {
         method: "POST",
         headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -718,7 +719,7 @@ export const cloudBuildCreateResourceHandlers: Record<
         ? `https://cloudbuild.googleapis.com/v1/projects/${p}/triggers`
         : `https://cloudbuild.googleapis.com/v1/projects/${p}/locations/${region}/triggers`;
     const bodyJson = JSON.stringify(body);
-    const res = await fetch(url, {
+    const res = await hostedFetch(ctx, url, {
       method: "POST",
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       body: bodyJson,

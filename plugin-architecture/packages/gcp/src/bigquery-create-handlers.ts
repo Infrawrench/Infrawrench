@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { regionOption } from "./regions.js";
 import type { GcpCreateContext } from "./create-context.js";
@@ -97,14 +98,18 @@ export const bigqueryCreateResourceHandlers: Record<
     const datasetId = fields["datasetId"] ?? "";
     const location = fields["location"] ?? "US";
 
-    const res = await fetch(`https://bigquery.googleapis.com/bigquery/v2/projects/${p}/datasets`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        datasetReference: { projectId: p, datasetId },
-        location,
-      }),
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${p}/datasets`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          datasetReference: { projectId: p, datasetId },
+          location,
+        }),
+      },
+    );
     if (!res.ok) throw new Error(`BigQuery API ${res.status}: ${await res.text()}`);
     const now = ctx.now();
     return {
@@ -153,7 +158,8 @@ export const bigqueryCreateResourceHandlers: Record<
       body["schema"] = { fields: parsed };
     }
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://bigquery.googleapis.com/bigquery/v2/projects/${p}/datasets/${datasetId}/tables`,
       {
         method: "POST",

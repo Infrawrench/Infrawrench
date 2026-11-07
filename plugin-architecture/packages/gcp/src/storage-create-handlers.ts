@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { GCP_REGIONS, regionOption } from "./regions.js";
 import type { GcpCreateContext } from "./create-context.js";
@@ -163,7 +164,7 @@ export const storageCreateResourceHandlers: Record<
     const location = fields["location"] ?? "US";
     const storageClass = fields["storageClass"] ?? "STANDARD";
 
-    const res = await fetch(`https://storage.googleapis.com/storage/v1/b?project=${p}`, {
+    const res = await hostedFetch(ctx, `https://storage.googleapis.com/storage/v1/b?project=${p}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
       body: JSON.stringify({ name, location, storageClass }),
@@ -201,7 +202,8 @@ export const storageCreateResourceHandlers: Record<
     const location = fields["location"] ?? "";
     const format = fields["format"] ?? "DOCKER";
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://artifactregistry.googleapis.com/v1/projects/${p}/locations/${location}/repositories?repositoryId=${name}`,
       {
         method: "POST",
@@ -241,7 +243,8 @@ export const storageCreateResourceHandlers: Record<
     const fileShareName = fields["fileShareName"] ?? "";
     const capacityGb = Number(fields["capacityGb"] || 1024);
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://file.googleapis.com/v1/projects/${p}/locations/${location}/instances?instanceId=${name}`,
       {
         method: "POST",

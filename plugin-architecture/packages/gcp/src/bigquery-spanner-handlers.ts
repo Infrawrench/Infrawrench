@@ -1,6 +1,7 @@
+import { hostedFetch, type GcpHostContext } from "./host-fetch.js";
 import type { SqlTableMeta } from "@infrawrench/plugin-base";
 
-export interface BigQuerySpannerContext {
+export interface BigQuerySpannerContext extends GcpHostContext {
   project: string;
   token: () => Promise<string>;
   get: <T>(url: string) => Promise<T>;
@@ -40,7 +41,8 @@ export async function executeBigQueryQuery(
   const start = Date.now();
 
   // Submit query job
-  const jobRes = await fetch(
+  const jobRes = await hostedFetch(
+    ctx,
     `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/jobs`,
     {
       method: "POST",
@@ -65,7 +67,8 @@ export async function executeBigQueryQuery(
   // Poll until complete (BigQuery Jobs.getQueryResults has built-in timeout)
   let data: Record<string, unknown>;
   for (;;) {
-    const r = await fetch(
+    const r = await hostedFetch(
+      ctx,
       `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/queries/${jobId}?location=${encodeURIComponent(location ?? "")}&maxResults=1000&timeoutMs=10000`,
       { headers: { Authorization: `Bearer ${tok}` } },
     );
@@ -155,11 +158,15 @@ async function spannerRunSql(
   const dbPath = `projects/${p}/instances/${instance}/databases/${database}`;
 
   // 1. Create session
-  const sessionRes = await fetch(`https://spanner.googleapis.com/v1/${dbPath}/sessions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
+  const sessionRes = await hostedFetch(
+    ctx,
+    `https://spanner.googleapis.com/v1/${dbPath}/sessions`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
   if (!sessionRes.ok) {
     throw new Error(`Spanner session error ${sessionRes.status}: ${await sessionRes.text()}`);
   }
@@ -168,11 +175,15 @@ async function spannerRunSql(
 
   try {
     // 2. Execute SQL
-    const execRes = await fetch(`https://spanner.googleapis.com/v1/${sessionName}:executeSql`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ sql }),
-    });
+    const execRes = await hostedFetch(
+      ctx,
+      `https://spanner.googleapis.com/v1/${sessionName}:executeSql`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ sql }),
+      },
+    );
     if (!execRes.ok) {
       throw new Error(`Spanner error ${execRes.status}: ${await execRes.text()}`);
     }
@@ -200,7 +211,7 @@ async function spannerRunSql(
     return { rows, columns, durationMs: Date.now() - start };
   } finally {
     // 3. Delete session (fire-and-forget: don't block on cleanup)
-    fetch(`https://spanner.googleapis.com/v1/${sessionName}`, {
+    hostedFetch(ctx, `https://spanner.googleapis.com/v1/${sessionName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
     }).catch((err: unknown) => {

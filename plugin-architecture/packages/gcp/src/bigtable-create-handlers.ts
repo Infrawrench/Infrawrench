@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { regionOption } from "./regions.js";
 import type { GcpCreateContext } from "./create-context.js";
@@ -76,15 +77,19 @@ export const bigtableCreateResourceHandlers: Record<
       clusterBody.serveNodes = 3;
     }
 
-    const res = await fetch(`https://bigtableadmin.googleapis.com/v2/projects/${p}/instances`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        instanceId,
-        instance: { displayName, type: instanceType },
-        clusters: { [`${instanceId}-cluster`]: clusterBody },
-      }),
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://bigtableadmin.googleapis.com/v2/projects/${p}/instances`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instanceId,
+          instance: { displayName, type: instanceType },
+          clusters: { [`${instanceId}-cluster`]: clusterBody },
+        }),
+      },
+    );
     if (!res.ok) throw new Error(`Bigtable API ${res.status}: ${await res.text()}`);
     const now = ctx.now();
     return {

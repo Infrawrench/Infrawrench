@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import type { GcpCreateContext } from "./create-context.js";
 
@@ -151,18 +152,22 @@ export const spannerCreateResourceHandlers: Record<
     const config = fields["config"] ?? "regional-us-central1";
     const nodeCount = Math.max(1, Number(fields["nodeCount"] ?? 1));
 
-    const res = await fetch(`https://spanner.googleapis.com/v1/projects/${p}/instances`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        instanceId: name,
-        instance: {
-          displayName,
-          config: `projects/${p}/instanceConfigs/${config}`,
-          nodeCount,
-        },
-      }),
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://spanner.googleapis.com/v1/projects/${p}/instances`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instanceId: name,
+          instance: {
+            displayName,
+            config: `projects/${p}/instanceConfigs/${config}`,
+            nodeCount,
+          },
+        }),
+      },
+    );
     if (!res.ok) throw new Error(`Spanner API ${res.status}: ${await res.text()}`);
     const now = ctx.now();
     return {
@@ -212,7 +217,8 @@ export const spannerCreateResourceHandlers: Record<
       body["extraStatements"] = extraStatements;
     }
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://spanner.googleapis.com/v1/projects/${p}/instances/${instance}/databases`,
       {
         method: "POST",
@@ -261,7 +267,8 @@ export const spannerCreateResourceHandlers: Record<
         "Spanner backup creation requires instance, name, source database, and expire time",
       );
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://spanner.googleapis.com/v1/projects/${p}/instances/${instance}/backups?backupId=${encodeURIComponent(name)}`,
       {
         method: "POST",

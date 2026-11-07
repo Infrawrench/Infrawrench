@@ -130,6 +130,7 @@ type CreateCtxOver = Partial<Omit<GcpCreateContext, "get" | "paginate">> & {
 describe("create-handlers dispatch", () => {
   function ctx(over: CreateCtxOver = {}): GcpCreateContext {
     return {
+      hostServices: undefined,
       get: vi.fn(async () => ({}) as never),
       paginate: vi.fn(async () => []),
       token: vi.fn(async () => "tok"),

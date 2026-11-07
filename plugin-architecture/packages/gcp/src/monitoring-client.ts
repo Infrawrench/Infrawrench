@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type {
   DashboardStat,
   MetricSeries,
@@ -977,7 +978,7 @@ export async function getLogs(
 
   const tok = await ctx.token();
   const tail = Math.max(1, Math.min(params.tailLines ?? 200, 1000));
-  const res = await fetch("https://logging.googleapis.com/v2/entries:list", {
+  const res = await hostedFetch(ctx, "https://logging.googleapis.com/v2/entries:list", {
     method: "POST",
     headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
     body: JSON.stringify({

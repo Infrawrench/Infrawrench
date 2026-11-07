@@ -9,7 +9,11 @@ import {
 } from "../business-metric-source";
 import { plugin } from "../plugin";
 
-const ctx = { project: "acct-project", token: () => Promise.resolve("tok") };
+const ctx = {
+  project: "acct-project",
+  hostServices: undefined,
+  token: () => Promise.resolve("tok"),
+};
 const range = {
   from: "2026-09-01",
   to: "2026-09-02",

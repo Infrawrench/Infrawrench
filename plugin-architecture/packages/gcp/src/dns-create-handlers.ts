@@ -1,3 +1,4 @@
+import { hostedFetch } from "./host-fetch.js";
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { dnsContentField } from "@infrawrench/plugin-base";
 import type { GcpCreateContext } from "./create-context.js";
@@ -114,11 +115,15 @@ export const dnsCreateResourceHandlers: Record<
     const dnsName = fields["dnsName"] ?? "";
     const description = fields["description"] ?? "";
 
-    const res = await fetch(`https://dns.googleapis.com/dns/v1/projects/${p}/managedZones`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name, dnsName, description, visibility: "public" }),
-    });
+    const res = await hostedFetch(
+      ctx,
+      `https://dns.googleapis.com/dns/v1/projects/${p}/managedZones`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, dnsName, description, visibility: "public" }),
+      },
+    );
     if (!res.ok) throw new Error(`Cloud DNS API ${res.status}: ${await res.text()}`);
     const zone = (await res.json()) as Record<string, unknown>;
     const now = ctx.now();
@@ -160,7 +165,8 @@ export const dnsCreateResourceHandlers: Record<
       .map((s) => s.trim())
       .filter(Boolean);
 
-    const res = await fetch(
+    const res = await hostedFetch(
+      ctx,
       `https://dns.googleapis.com/dns/v1/projects/${p}/managedZones/${managedZone}/changes`,
       {
         method: "POST",
