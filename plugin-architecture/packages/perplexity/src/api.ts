@@ -10,6 +10,7 @@ import type {
   paths as orchestratorPaths,
 } from "./api-types.orchestrator.gen.js";
 import type {
+  components as platformComponents,
   operations as platformOperations,
   paths as platformPaths,
 } from "./api-types.platform.gen.js";
@@ -37,6 +38,8 @@ export type ListedModel = Omit<RouterModel, "pricing"> & { pricing?: RouterModel
 /** The widest of the two: a list row is a summary with no `response` or `error_message`. */
 export type AsyncRequest =
   PlatformResponse<"get_async_chat_completion_response_async_chat_completions__api_request__get">;
+/** A completion's message content: text, typed chunks, or nothing. */
+export type MessageContent = platformComponents["schemas"]["ChatMessage-Output"]["content"];
 /** The widest of the two: a list row has no `description`. */
 export type Skill = PlatformResponse<"getSkill">;
 

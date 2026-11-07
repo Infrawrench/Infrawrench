@@ -28,6 +28,7 @@ import {
   statusErrors,
   type AsyncRequest,
   type ListedModel,
+  type MessageContent,
   type PlatformApi,
   type RouterApi,
   type Skill,
@@ -113,6 +114,13 @@ export function agentOutputText(output: AgentOutputItem[] | undefined): string {
     for (const c of item.content ?? []) if (typeof c.text === "string") parts.push(c.text);
   }
   return parts.join("");
+}
+
+/** The text of a completion's message. Image, file and video chunks have none to show. */
+function messageText(content: MessageContent | undefined): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.flatMap((chunk) => (chunk.type === "text" ? [chunk.text] : [])).join("");
 }
 
 /**
@@ -243,7 +251,7 @@ export class PerplexityClient implements PluginClient {
 
   private mapAsync(accountId: string, r: AsyncRequest): ResourceInstance {
     const id = s(r.id);
-    const answer = s(r.response?.choices?.[0]?.message?.content);
+    const answer = messageText(r.response?.choices?.[0]?.message?.content);
     return this.instance(
       accountId,
       "perplexity-async-request",

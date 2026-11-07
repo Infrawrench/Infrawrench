@@ -105,6 +105,53 @@ describe("Perplexity", () => {
     expect(r.fields["cost"]).toBe(0.0123);
   });
 
+  it("reads a structured async answer's text chunks, not [object Object]", async () => {
+    const { http } = host(() => ({
+      body: {
+        id: "req-1",
+        model: "sonar-pro",
+        status: "COMPLETED",
+        created_at: 1760000000,
+        response: {
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: [
+                  { type: "text", text: "First " },
+                  { type: "image_url", image_url: { url: "https://a/i.png" } },
+                  { type: "text", text: "second" },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    }));
+    const r = await hostClient(new PerplexityClient({ apiKey: "k" }, { http })).getResource(
+      "perplexity-async-request",
+      `${ACCOUNT}:perplexity-async-request:req-1`,
+      ACCOUNT,
+    );
+    expect(r.fields["answer"]).toBe("First second");
+  });
+
+  it("shows no answer for null content", async () => {
+    const { http } = host(() => ({
+      body: {
+        id: "req-1",
+        status: "COMPLETED",
+        response: { choices: [{ message: { role: "assistant", content: null } }] },
+      },
+    }));
+    const r = await hostClient(new PerplexityClient({ apiKey: "k" }, { http })).getResource(
+      "perplexity-async-request",
+      `${ACCOUNT}:perplexity-async-request:req-1`,
+      ACCOUNT,
+    );
+    expect(r.fields["answer"]).toBeUndefined();
+  });
+
   it("deletes a skill guarded by its current revision", async () => {
     const { http, calls } = host((url, method) =>
       method === "GET" ? { body: { skill_id: "sk1", revision: "rev-9" } } : { body: {} },
