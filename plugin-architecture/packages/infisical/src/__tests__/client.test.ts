@@ -541,6 +541,30 @@ describe("certificates read by id", () => {
   });
 });
 
+describe("integrations read by id", () => {
+  const INTEGRATION = {
+    id: "i1",
+    integration: "vercel",
+    envId: "env-prod",
+    environment: { id: "env-prod", slug: "prod", name: "Production" },
+  };
+
+  it("takes the project from the environment, as a listing has it", async () => {
+    const c = client(() => ({ body: { integration: INTEGRATION } }));
+    const resource = await c.getResource("integration", `${ACCOUNT}:integration:i1`, ACCOUNT);
+    expect(resource.parentResourceId).toBe(`${ACCOUNT}:project:proj-1`);
+  });
+
+  it("still reads the integration when no project holds the environment", async () => {
+    const c = client(() => ({
+      body: { integration: { ...INTEGRATION, envId: "gone", environment: { id: "gone" } } },
+    }));
+    const resource = await c.getResource("integration", `${ACCOUNT}:integration:i1`, ACCOUNT);
+    expect(resource.externalId).toBe("i1");
+    expect(resource.parentResourceId).toBeUndefined();
+  });
+});
+
 describe("mutations", () => {
   it("renames and re-values a secret through the v4 PATCH", async () => {
     const c = client((call) => {

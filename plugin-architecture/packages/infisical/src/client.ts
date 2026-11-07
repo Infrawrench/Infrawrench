@@ -522,7 +522,11 @@ export class InfisicalClient implements PluginClient {
           const body = await this.api.rest.get(`/api/v1/integration/${pathEncode(id)}`);
           if (!body.integration) throw notFound("integration", id);
           const integration: InfIntegration = body.integration;
-          return this.mapIntegration(accountId, str(integration.projectId), integration);
+          return this.mapIntegration(
+            accountId,
+            str(integration.projectId) || (await this.projectOfEnvironment(integration)),
+            integration,
+          );
         }
         case "machine-identity": {
           const body = await this.api.rest.get(`/api/v1/identities/${pathEncode(id)}`);
@@ -573,6 +577,15 @@ export class InfisicalClient implements PluginClient {
       if (row) return str(row.projectId) || str(project.id);
     }
     return "";
+  }
+
+  /** The document gives an integration no project, only its environment, which names one. */
+  private async projectOfEnvironment(integration: InfIntegration): Promise<string> {
+    const envId = str(integration.envId) || str(integration.environment?.id);
+    if (!envId) return "";
+    const projects = await this.projects().catch((): InfProject[] => []);
+    const project = projects.find((p) => (p.environments ?? []).some((e) => e.id === envId));
+    return str(project?.id);
   }
 
   private async fetchSecret(secretId: string): Promise<InfSecret> {
