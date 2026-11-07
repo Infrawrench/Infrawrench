@@ -1,27 +1,37 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import {
+  pathEncode,
+  unencodedSegment,
+  type ApiListItem,
+  type ApiResponse,
+  type ResourceInstance,
+} from "@infrawrench/plugin-base";
 import { isPermissionGap, mapLimit, type IbmApi } from "./api.js";
+import type {
+  components as CodeEngineComponents,
+  operations as CodeEngineOperations,
+} from "./api-types.code-engine.gen.js";
+import type { operations as ContainersOperations } from "./api-types.containers.gen.js";
+import type { operations as DatabasesOperations } from "./api-types.databases.gen.js";
+import type {
+  components as ResourceControllerComponents,
+  operations as ResourceControllerOperations,
+} from "./api-types.resource-controller.gen.js";
+import type { operations as ResourceManagerOperations } from "./api-types.resource-manager.gen.js";
+import type { components as VpcComponents } from "./api-types.vpc.gen.js";
 import {
   CODE_ENGINE_REGIONS,
-  CONTAINERS,
-  COS_CONFIG,
   DEFAULT_REGION,
   IBM_REGIONS,
   RESOURCE_CONTROLLER,
-  VPC_API_VERSION,
-  codeEngineBase,
+  VPC_QUERY,
   cosEndpoint,
   crnService,
-  databasesBase,
   parseLocationConstraint,
-  vpcBase,
 } from "./regions.js";
 
 /**
- * Listers. Response field names follow IBM's own Go SDKs (vpc-go-sdk
- * `vpcv1`, platform-services-go-sdk `resourcecontrollerv2` /
- * `resourcemanagerv2`, code-engine-go-sdk `codeenginev2`,
- * cloud-databases-go-sdk `clouddatabasesv5`, container-services-go-sdk
- * `kubernetesserviceapiv1`), which are generated from the API definitions.
+ * Listers. Response types come from each service's own OpenAPI document
+ * (`plugingen.json`).
  */
 
 export const PLUGIN_ID = "ibm-cloud";
@@ -40,13 +50,8 @@ export class Inventory {
     if (this.configured.length) return Promise.resolve(this.configured);
     if (!this.regionsPromise) {
       this.regionsPromise = this.api
-        .get<{ regions?: Array<{ name: string; status?: string }> }>(
-          `${vpcBase(this.homeRegion)}/regions`,
-          {
-            version: VPC_API_VERSION,
-            generation: 2,
-          },
-        )
+        .vpc(this.homeRegion)
+        .get("/regions", { query: VPC_QUERY })
         .then((r) => {
           const names = (r.regions ?? [])
             .filter((x) => x.status !== "unavailable")
@@ -148,35 +153,28 @@ async function vpcRegions(ctx: ListContext): Promise<string[]> {
   return ctx.regionHint ? [ctx.regionHint] : ctx.inventory.regions();
 }
 
-/** Page a VPC collection by following `next.href`'s `start` token. */
-export async function vpcList<T>(
-  api: IbmApi,
-  region: string,
-  path: string,
-  key: string,
-  query: Record<string, string | number | undefined> = {},
-): Promise<T[]> {
-  const out: T[] = [];
+/** What a VPC list call adds to its query, before the page's own `start`. */
+export const VPC_LIST_QUERY = { ...VPC_QUERY, limit: 100 };
+
+/**
+ * Page a VPC collection by following `next.href`'s `start` token. `page` asks for
+ * one page and `items` reads the list out of it, so both stay typed by the route.
+ */
+export async function vpcList<Page extends { next?: { href?: string } }, Item>(
+  page: (paging: { start?: string }) => Promise<Page>,
+  items: (page: Page) => readonly Item[] | undefined,
+): Promise<Item[]> {
+  const out: Item[] = [];
   let start: string | undefined;
-  for (let page = 0; page < 100; page++) {
-    const res = await api.get<Record<string, unknown>>(`${vpcBase(region)}${path}`, {
-      version: VPC_API_VERSION,
-      generation: 2,
-      limit: 100,
-      ...query,
-      ...(start ? { start } : {}),
-    });
-    out.push(...((res[key] as T[] | undefined) ?? []));
-    const href = (res["next"] as { href?: string } | undefined)?.href;
+  for (let n = 0; n < 100; n++) {
+    const res = await page(start ? { start } : {});
+    out.push(...(items(res) ?? []));
+    const href = res.next?.href;
     if (!href) break;
     start = new URL(href).searchParams.get("start") ?? undefined;
     if (!start) break;
   }
   return out;
-}
-
-export async function vpcGet<T>(api: IbmApi, region: string, path: string): Promise<T> {
-  return api.get<T>(`${vpcBase(region)}${path}`, { version: VPC_API_VERSION, generation: 2 });
 }
 
 const ref = (v: { id?: string; name?: string } | undefined | null) => v?.id ?? "";
@@ -204,22 +202,13 @@ export async function listAccount(ctx: ListContext): Promise<ResourceInstance[]>
   ];
 }
 
-export interface ResourceGroup {
-  id: string;
-  name: string;
-  state?: string;
-  default?: boolean;
-  created_at?: string;
-}
-
-export async function resourceGroups(api: IbmApi): Promise<ResourceGroup[]> {
+export async function resourceGroups(
+  api: IbmApi,
+): Promise<ApiListItem<ResourceManagerOperations["list_resource_groups"], "resources">[]> {
   const accountId = await api.accountId();
-  const res = await api.get<{ resources?: ResourceGroup[] }>(
-    `${RESOURCE_CONTROLLER}/v2/resource_groups`,
-    {
-      account_id: accountId,
-    },
-  );
+  const res = await api.resourceManager.get("/v2/resource_groups", {
+    query: { account_id: accountId },
+  });
   return res.resources ?? [];
 }
 
@@ -240,37 +229,14 @@ export async function listResourceGroups(ctx: ListContext): Promise<ResourceInst
 // ---------------------------------------------------------------------------
 // VPC
 
-interface VpcInstance {
-  id: string;
-  name: string;
-  status?: string;
-  zone?: { name?: string };
-  profile?: { name?: string };
-  vcpu?: { count?: number };
-  memory?: number;
-  gpu?: { count?: number };
-  image?: { id?: string; name?: string };
-  vpc?: { id?: string };
-  primary_network_interface?: {
-    id?: string;
-    primary_ip?: { address?: string };
-    subnet?: { id?: string };
-  };
-  boot_volume_attachment?: { volume?: { id?: string } };
-  resource_group?: { id?: string };
-  created_at?: string;
-}
+type VpcSchemas = VpcComponents["schemas"];
 
-interface FloatingIp {
-  id: string;
-  name: string;
-  address?: string;
-  status?: string;
-  zone?: { name?: string };
-  target?: { id?: string; name?: string; resource_type?: string; href?: string } | null;
-  resource_group?: { id?: string };
-  created_at?: string;
-}
+export type VpcInstance = VpcSchemas["Instance"];
+
+/** A floating IP as a mapper reads it: what its target is depends on what it is bound to. */
+type FloatingIp = Omit<VpcSchemas["FloatingIP"], "target"> & {
+  target?: { id?: string; name?: string; href?: string } | null | undefined;
+};
 
 /** Map a floating IP target (a network interface) back to the server that owns it. */
 function instanceIdFromTarget(target: FloatingIp["target"]): string {
@@ -317,19 +283,28 @@ export function mapInstance(
   );
 }
 
+function listFloatingIpsIn(api: IbmApi, region: string): Promise<FloatingIp[]> {
+  return vpcList(
+    (paging) => api.vpc(region).get("/floating_ips", { query: { ...VPC_LIST_QUERY, ...paging } }),
+    (p) => p.floating_ips,
+  );
+}
+
 async function floatingByNic(api: IbmApi, region: string): Promise<Map<string, string>> {
-  const ips = await vpcList<FloatingIp>(api, region, "/floating_ips", "floating_ips").catch(
-    () => [] as FloatingIp[],
-  );
-  return new Map(
-    ips.filter((f) => f.target?.id && f.address).map((f) => [f.target!.id!, f.address!]),
-  );
+  const ips = await listFloatingIpsIn(api, region).catch((): FloatingIp[] => []);
+  const byNic = new Map<string, string>();
+  for (const f of ips) if (f.target?.id && f.address) byNic.set(f.target.id, f.address);
+  return byNic;
 }
 
 export async function listInstances(ctx: ListContext): Promise<ResourceInstance[]> {
   return perRegion(ctx, await vpcRegions(ctx), async (region) => {
     const [instances, floating] = await Promise.all([
-      vpcList<VpcInstance>(ctx.api, region, "/instances", "instances"),
+      vpcList(
+        (paging) =>
+          ctx.api.vpc(region).get("/instances", { query: { ...VPC_LIST_QUERY, ...paging } }),
+        (p) => p.instances,
+      ),
       floatingByNic(ctx.api, region),
     ]);
     return instances.map((i) => mapInstance(ctx.accountId, region, i, floating));
@@ -342,28 +317,21 @@ export async function getInstance(
   id: string,
 ): Promise<ResourceInstance> {
   const [i, floating] = await Promise.all([
-    vpcGet<VpcInstance>(ctx.api, region, `/instances/${id}`),
+    ctx.api.vpc(region).get(`/instances/${unencodedSegment(id)}`, { query: VPC_QUERY }),
     floatingByNic(ctx.api, region),
   ]);
   return mapInstance(ctx.accountId, region, i, floating);
 }
 
 export async function listVolumes(ctx: ListContext): Promise<ResourceInstance[]> {
-  interface Volume {
-    id: string;
-    name: string;
-    capacity?: number;
-    iops?: number;
-    profile?: { name?: string };
-    status?: string;
-    attachment_state?: string;
-    zone?: { name?: string };
-    volume_attachments?: Array<{ instance?: { id?: string } }>;
-    resource_group?: { id?: string };
-    created_at?: string;
-  }
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
-    (await vpcList<Volume>(ctx.api, region, "/volumes", "volumes")).map((v) =>
+    (
+      await vpcList(
+        (paging) =>
+          ctx.api.vpc(region).get("/volumes", { query: { ...VPC_LIST_QUERY, ...paging } }),
+        (p) => p.volumes,
+      )
+    ).map((v) =>
       makeResource(
         ctx.accountId,
         "volume",
@@ -393,17 +361,13 @@ export async function listVolumes(ctx: ListContext): Promise<ResourceInstance[]>
 }
 
 export async function listVpcs(ctx: ListContext): Promise<ResourceInstance[]> {
-  interface Vpc {
-    id: string;
-    name: string;
-    status?: string;
-    classic_access?: boolean;
-    default_security_group?: { id?: string };
-    resource_group?: { id?: string };
-    created_at?: string;
-  }
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
-    (await vpcList<Vpc>(ctx.api, region, "/vpcs", "vpcs")).map((v) =>
+    (
+      await vpcList(
+        (paging) => ctx.api.vpc(region).get("/vpcs", { query: { ...VPC_LIST_QUERY, ...paging } }),
+        (p) => p.vpcs,
+      )
+    ).map((v) =>
       makeResource(
         ctx.accountId,
         "vpc",
@@ -426,21 +390,14 @@ export async function listVpcs(ctx: ListContext): Promise<ResourceInstance[]> {
 }
 
 export async function listSubnets(ctx: ListContext): Promise<ResourceInstance[]> {
-  interface Subnet {
-    id: string;
-    name: string;
-    status?: string;
-    zone?: { name?: string };
-    vpc?: { id?: string };
-    ipv4_cidr_block?: string;
-    available_ipv4_address_count?: number;
-    total_ipv4_address_count?: number;
-    public_gateway?: { id?: string } | null;
-    resource_group?: { id?: string };
-    created_at?: string;
-  }
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
-    (await vpcList<Subnet>(ctx.api, region, "/subnets", "subnets")).map((s) =>
+    (
+      await vpcList(
+        (paging) =>
+          ctx.api.vpc(region).get("/subnets", { query: { ...VPC_LIST_QUERY, ...paging } }),
+        (p) => p.subnets,
+      )
+    ).map((s) =>
       makeResource(
         ctx.accountId,
         "subnet",
@@ -513,17 +470,14 @@ export function analyseRules(rules: SgRule[]): {
 }
 
 export async function listSecurityGroups(ctx: ListContext): Promise<ResourceInstance[]> {
-  interface Sg {
-    id: string;
-    name: string;
-    vpc?: { id?: string };
-    rules?: SgRule[];
-    targets?: unknown[];
-    resource_group?: { id?: string };
-    created_at?: string;
-  }
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
-    (await vpcList<Sg>(ctx.api, region, "/security_groups", "security_groups")).map((g) => {
+    (
+      await vpcList(
+        (paging) =>
+          ctx.api.vpc(region).get("/security_groups", { query: { ...VPC_LIST_QUERY, ...paging } }),
+        (p) => p.security_groups,
+      )
+    ).map((g) => {
       const a = analyseRules(g.rules ?? []);
       return makeResource(
         ctx.accountId,
@@ -551,7 +505,7 @@ export async function listSecurityGroups(ctx: ListContext): Promise<ResourceInst
 
 export async function listFloatingIps(ctx: ListContext): Promise<ResourceInstance[]> {
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
-    (await vpcList<FloatingIp>(ctx.api, region, "/floating_ips", "floating_ips")).map((f) =>
+    (await listFloatingIpsIn(ctx.api, region)).map((f) =>
       makeResource(
         ctx.accountId,
         "floating-ip",
@@ -576,22 +530,14 @@ export async function listFloatingIps(ctx: ListContext): Promise<ResourceInstanc
 }
 
 export async function listLoadBalancers(ctx: ListContext): Promise<ResourceInstance[]> {
-  interface Lb {
-    id: string;
-    name: string;
-    hostname?: string;
-    is_public?: boolean;
-    operating_status?: string;
-    provisioning_status?: string;
-    profile?: { name?: string };
-    listeners?: unknown[];
-    pools?: unknown[];
-    subnets?: Array<{ id?: string }>;
-    resource_group?: { id?: string };
-    created_at?: string;
-  }
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
-    (await vpcList<Lb>(ctx.api, region, "/load_balancers", "load_balancers")).map((l) =>
+    (
+      await vpcList(
+        (paging) =>
+          ctx.api.vpc(region).get("/load_balancers", { query: { ...VPC_LIST_QUERY, ...paging } }),
+        (p) => p.load_balancers,
+      )
+    ).map((l) =>
       makeResource(
         ctx.accountId,
         "load-balancer",
@@ -621,20 +567,17 @@ export async function listLoadBalancers(ctx: ListContext): Promise<ResourceInsta
   );
 }
 
-export interface VpcKey {
-  id: string;
-  name: string;
-  type?: string;
-  fingerprint?: string;
-  length?: number;
-  public_key?: string;
-  resource_group?: { id?: string };
-  created_at?: string;
+/** Every key of a region, which a create also looks through. */
+export function listKeysIn(api: IbmApi, region: string) {
+  return vpcList(
+    (paging) => api.vpc(region).get("/keys", { query: { ...VPC_LIST_QUERY, ...paging } }),
+    (p) => p.keys,
+  );
 }
 
 export async function listKeys(ctx: ListContext): Promise<ResourceInstance[]> {
   return perRegion(ctx, await vpcRegions(ctx), async (region) =>
-    (await vpcList<VpcKey>(ctx.api, region, "/keys", "keys")).map((k) =>
+    (await listKeysIn(ctx.api, region)).map((k) =>
       makeResource(
         ctx.accountId,
         "ssh-key",
@@ -659,22 +602,7 @@ export async function listKeys(ctx: ListContext): Promise<ResourceInstance[]> {
 // ---------------------------------------------------------------------------
 // Kubernetes Service
 
-interface Cluster {
-  id: string;
-  name: string;
-  region?: string;
-  type?: string;
-  provider?: string;
-  masterKubeVersion?: string;
-  targetVersion?: string;
-  state?: string;
-  status?: string;
-  workerCount?: number;
-  masterURL?: string;
-  versionEOS?: string;
-  resourceGroup?: string;
-  createdDate?: string;
-}
+type Cluster = ApiListItem<ContainersOperations["vpcGetClusters"], null>;
 
 export function mapCluster(accountId: string, c: Cluster): ResourceInstance {
   return makeResource(
@@ -703,9 +631,9 @@ export function mapCluster(accountId: string, c: Cluster): ResourceInstance {
 
 export async function listClusters(ctx: ListContext): Promise<ResourceInstance[]> {
   const [vpc, classic] = await Promise.all([
-    ctx.api.get<Cluster[]>(`${CONTAINERS}/v2/vpc/getClusters`, { provider: "vpc-gen2" }),
-    ctx.api.get<Cluster[]>(`${CONTAINERS}/v2/classic/getClusters`).catch((err: unknown) => {
-      if (isPermissionGap(err)) return [] as Cluster[];
+    ctx.api.containers.get("/v2/vpc/getClusters", { query: { provider: "vpc-gen2" } }),
+    ctx.api.containers.get("/v2/classic/getClusters").catch((err: unknown): Cluster[] => {
+      if (isPermissionGap(err)) return [];
       throw err;
     }),
   ]);
@@ -717,24 +645,13 @@ export async function listClusters(ctx: ListContext): Promise<ResourceInstance[]
 }
 
 export async function getCluster(ctx: ListContext, id: string): Promise<ResourceInstance> {
-  const c = await ctx.api.get<Cluster>(`${CONTAINERS}/v2/getCluster`, { cluster: id });
+  const c = await ctx.api.containers.get("/v2/getCluster", { query: { cluster: id } });
   return mapCluster(ctx.accountId, c);
 }
 
-interface WorkerPool {
-  id: string;
-  poolName?: string;
-  flavor?: string;
-  workerCount?: number;
-  autoscaleEnabled?: boolean;
-  operatingSystem?: string;
-  zones?: Array<{ id?: string; workerCount?: number }>;
-  lifecycle?: { actualState?: string };
-}
-
 export async function poolsOf(ctx: ListContext, clusterId: string): Promise<ResourceInstance[]> {
-  const pools = await ctx.api.get<WorkerPool[]>(`${CONTAINERS}/v2/getWorkerPools`, {
-    cluster: clusterId,
+  const pools = await ctx.api.containers.get("/v2/getWorkerPools", {
+    query: { cluster: clusterId },
   });
   return (pools ?? []).map((p) => {
     const zones = p.zones ?? [];
@@ -768,8 +685,8 @@ export async function listWorkerPools(ctx: ListContext): Promise<ResourceInstanc
   const clusters = await listClusters(ctx);
   return (
     await mapLimit(clusters, 4, (c) =>
-      poolsOf(ctx, c.externalId!).catch((err: unknown) => {
-        if (isPermissionGap(err)) return [] as ResourceInstance[];
+      poolsOf(ctx, c.externalId!).catch((err: unknown): ResourceInstance[] => {
+        if (isPermissionGap(err)) return [];
         throw err;
       }),
     )
@@ -779,25 +696,23 @@ export async function listWorkerPools(ctx: ListContext): Promise<ResourceInstanc
 // ---------------------------------------------------------------------------
 // Code Engine
 
-interface CeProject {
-  id: string;
-  name: string;
-  region?: string;
-  status?: string;
-  resource_group_id?: string;
-  created_at?: string;
-}
+type CeSchemas = CodeEngineComponents["schemas"];
 
-export async function ceList<T>(api: IbmApi, url: string, key: string): Promise<T[]> {
-  const out: T[] = [];
+/** What a create form knows of a project is less than a list row. */
+type CeProject = Pick<CeSchemas["Project"], "id" | "name"> &
+  Partial<Pick<CeSchemas["Project"], "status" | "resource_group_id" | "created_at">>;
+
+/** Page a Code Engine list, by the `start` in each page's `next`. */
+async function ceList<Page extends { next?: { start?: string } }, Item>(
+  page: (query: { limit: number; start?: string }) => Promise<Page>,
+  items: (page: Page) => readonly Item[] | undefined,
+): Promise<Item[]> {
+  const out: Item[] = [];
   let start: string | undefined;
-  for (let page = 0; page < 50; page++) {
-    const res = await api.get<Record<string, unknown>>(url, {
-      limit: 100,
-      ...(start ? { start } : {}),
-    });
-    out.push(...((res[key] as T[] | undefined) ?? []));
-    start = (res["next"] as { start?: string } | undefined)?.start;
+  for (let n = 0; n < 50; n++) {
+    const res = await page({ limit: 100, ...(start ? { start } : {}) });
+    out.push(...(items(res) ?? []));
+    start = res.next?.start;
     if (!start) break;
   }
   return out;
@@ -825,34 +740,25 @@ async function ceRegions(ctx: ListContext): Promise<string[]> {
   return (await vpcRegions(ctx)).filter((r) => CODE_ENGINE_REGIONS.has(r));
 }
 
-export async function listProjects(ctx: ListContext): Promise<ResourceInstance[]> {
-  return perRegion(ctx, await ceRegions(ctx), async (region) =>
-    (await ceList<CeProject>(ctx.api, `${codeEngineBase(region)}/projects`, "projects")).map((p) =>
-      mapProject(ctx.accountId, region, p),
-    ),
+function ceProjects(api: IbmApi, region: string) {
+  return ceList(
+    (query) => api.codeEngine(region).get("/projects", { query }),
+    (p) => p.projects,
   );
 }
 
-export interface CeApp {
-  name: string;
-  project_id?: string;
-  status?: string;
-  endpoint?: string;
-  endpoint_internal?: string;
-  image_reference?: string;
-  image_port?: number;
-  scale_min_instances?: number;
-  scale_max_instances?: number;
-  scale_cpu_limit?: string;
-  scale_memory_limit?: string;
-  entity_tag?: string;
-  created_at?: string;
+export async function listProjects(ctx: ListContext): Promise<ResourceInstance[]> {
+  return perRegion(ctx, await ceRegions(ctx), async (region) =>
+    (await ceProjects(ctx.api, region)).map((p) => mapProject(ctx.accountId, region, p)),
+  );
 }
+
+export type CeApp = ApiResponse<CodeEngineOperations["get_app"]>;
 
 export function mapApp(
   accountId: string,
-  region: string,
-  projectId: string,
+  region: string | undefined,
+  projectId: string | undefined,
   a: CeApp,
 ): ResourceInstance {
   return makeResource(
@@ -883,15 +789,15 @@ export function mapApp(
 
 export async function listApps(ctx: ListContext): Promise<ResourceInstance[]> {
   return perRegion(ctx, await ceRegions(ctx), async (region) => {
-    const projects = await ceList<CeProject>(
-      ctx.api,
-      `${codeEngineBase(region)}/projects`,
-      "projects",
-    );
+    const projects = await ceProjects(ctx.api, region);
     const apps = await mapLimit(projects, 4, async (p) =>
-      (await ceList<CeApp>(ctx.api, `${codeEngineBase(region)}/projects/${p.id}/apps`, "apps")).map(
-        (a) => mapApp(ctx.accountId, region, p.id, a),
-      ),
+      (
+        await ceList(
+          (query) =>
+            ctx.api.codeEngine(region).get(`/projects/${unencodedSegment(p.id)}/apps`, { query }),
+          (page) => page.apps,
+        )
+      ).map((a) => mapApp(ctx.accountId, region, p.id, a)),
     );
     return apps.flat();
   });
@@ -900,30 +806,19 @@ export async function listApps(ctx: ListContext): Promise<ResourceInstance[]> {
 // ---------------------------------------------------------------------------
 // Resource Controller (service instances, databases, COS)
 
-export interface ResourceInstanceRc {
-  id: string;
-  guid?: string;
-  crn?: string;
-  name: string;
-  region_id?: string;
-  resource_group_id?: string;
-  resource_id?: string;
-  resource_plan_id?: string;
-  state?: string;
-  type?: string;
-  dashboard_url?: string;
-  created_at?: string;
-}
+export type ResourceInstanceRc = ResourceControllerComponents["schemas"]["ResourceInstance"];
+
+type ResourceInstanceList = ApiResponse<ResourceControllerOperations["list_resource_instances"]>;
 
 export async function resourceInstances(api: IbmApi): Promise<ResourceInstanceRc[]> {
   const out: ResourceInstanceRc[] = [];
-  let url: string | undefined = `${RESOURCE_CONTROLLER}/v2/resource_instances?limit=100`;
-  for (let page = 0; page < 100 && url; page++) {
-    const res: { resources?: ResourceInstanceRc[]; next_url?: string | null } = await api.get(url);
+  let res = await api.resourceController.get("/v2/resource_instances", { query: { limit: 100 } });
+  for (let page = 1; ; page++) {
     out.push(...(res.resources ?? []));
-    url = res.next_url ? `${RESOURCE_CONTROLLER}${res.next_url}` : undefined;
+    if (!res.next_url || page === 100) return out;
+    // The next link is a path on this host, which an old loop concatenated.
+    res = await api.followLink<ResourceInstanceList>(`${RESOURCE_CONTROLLER}${res.next_url}`);
   }
-  return out;
 }
 
 export const isDatabaseService = (service: string) =>
@@ -964,18 +859,10 @@ export async function listServiceInstances(ctx: ListContext): Promise<ResourceIn
     .map((r) => mapServiceInstance(ctx.accountId, r));
 }
 
-interface DbGroup {
-  id: string;
-  members?: { allocation_count?: number };
-  memory?: { allocation_mb?: number };
-  disk?: { allocation_mb?: number };
-  cpu?: { allocation_count?: number };
-}
+type DbGroup = ApiListItem<DatabasesOperations["listDeploymentScalingGroups"], "groups">;
 
 export async function databaseGroups(api: IbmApi, region: string, crn: string): Promise<DbGroup[]> {
-  const res = await api.get<{ groups?: DbGroup[] }>(
-    `${databasesBase(region)}/deployments/${encodeURIComponent(crn)}/groups`,
-  );
+  const res = await api.databases(region).get(`/deployments/${pathEncode(crn)}/groups`);
   return res.groups ?? [];
 }
 
@@ -987,11 +874,10 @@ export async function databaseResource(
   const region = r.region_id ?? DEFAULT_REGION;
   const [info, groups] = await Promise.all([
     ctx.api
-      .get<{ deployment?: { version?: string } }>(
-        `${databasesBase(region)}/deployments/${encodeURIComponent(crn)}`,
-      )
+      .databases(region)
+      .get(`/deployments/${pathEncode(crn)}`)
       .catch(() => undefined),
-    databaseGroups(ctx.api, region, crn).catch(() => [] as DbGroup[]),
+    databaseGroups(ctx.api, region, crn).catch((): DbGroup[] => []),
   ]);
   const member = groups.find((g) => g.id === "member") ?? groups[0];
   return makeResource(
@@ -1054,22 +940,17 @@ export async function listBuckets(ctx: ListContext): Promise<ResourceInstance[]>
     (r) => crnService(r.crn ?? r.id) === "cloud-object-storage" && r.guid,
   );
   const perInstance = await mapLimit(instances, 4, async (inst) => {
-    const res = await ctx.api.request<string>({
+    const xml = await ctx.api.requestXml({
       // The extended listing adds each bucket's LocationConstraint; any
       // endpoint lists every bucket of the instance.
       url: `https://${cosEndpoint("us")}/?extended`,
       headers: { "ibm-service-instance-id": inst.guid!, accept: "application/xml" },
-      text: true,
     });
-    return parseBucketList(res.data).map((b) => ({ ...b, instance: inst.guid! }));
+    return parseBucketList(xml).map((b) => ({ ...b, instance: inst.guid! }));
   });
   const buckets = perInstance.flat();
   return mapLimit(buckets, 6, async (b) => {
-    const config = await ctx.api
-      .get<{ object_count?: number; bytes_used?: number }>(
-        `${COS_CONFIG}/b/${encodeURIComponent(b.name)}`,
-      )
-      .catch(() => undefined);
+    const config = await ctx.api.cosConfig.get(`/b/${pathEncode(b.name)}`).catch(() => undefined);
     return makeResource(
       ctx.accountId,
       "cos-bucket",

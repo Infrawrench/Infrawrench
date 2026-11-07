@@ -11,13 +11,7 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { IbmApi } from "./api.js";
 import { IbmCloudClient } from "./client.js";
 import { LOGO_SVG } from "./logo.js";
-import {
-  DEFAULT_REGION,
-  HOME_REGION_OPTIONS,
-  VPC_API_VERSION,
-  regionInfo,
-  vpcBase,
-} from "./regions.js";
+import { DEFAULT_REGION, HOME_REGION_OPTIONS, VPC_QUERY, regionInfo } from "./regions.js";
 import { RESOURCE_TYPES } from "./resource-types.js";
 import { parseStatusFeed, statusFeed } from "./status-feed.js";
 import { ibmTerraformExport } from "./terraform.js";
@@ -88,10 +82,7 @@ async function listRegionOptions(
   if (!apiKey) throw new Error("Enter the API key first.");
   const api = new IbmApi(apiKey, services?.http, credentials["caCert"] ?? "");
   const home = (credentials["region"] ?? "").trim() || DEFAULT_REGION;
-  const res = await api.get<{ regions?: Array<{ name: string }> }>(`${vpcBase(home)}/regions`, {
-    version: VPC_API_VERSION,
-    generation: 2,
-  });
+  const res = await api.vpc(home).get("/regions", { query: VPC_QUERY });
   return (res.regions ?? []).map((r) => ({
     id: r.name,
     label: regionInfo(r.name)?.label ?? r.name,
