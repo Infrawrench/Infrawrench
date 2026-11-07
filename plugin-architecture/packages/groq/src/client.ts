@@ -1,5 +1,6 @@
 import type { Credentials } from "./plugin.js";
 import { attempt, runPluginEffect } from "@infrawrench/plugin-base/effect";
+import { hostFetch } from "@infrawrench/plugin-base";
 import type { PluginEffect } from "@infrawrench/plugin-base";
 import type {
   CreateResourceConfig,
@@ -926,14 +927,18 @@ export class GroqClient implements PluginClient {
       const model = voiceModel ?? selected ?? ORPHEUS_ENGLISH_MODEL;
 
       const started = Date.now();
-      const response = await fetch(`${OPENAI_BASE}/audio/speech`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
+      const response = await hostFetch(
+        { http: this.services?.http, caCert: this.caCert },
+        `${OPENAI_BASE}/audio/speech`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ model, input: text, voice, response_format: "wav" }),
         },
-        body: JSON.stringify({ model, input: text, voice, response_format: "wav" }),
-      });
+      );
       if (!response.ok) {
         throw new Error(
           `Groq API error ${response.status} for /audio/speech: ${await response.text()}`,
@@ -997,11 +1002,15 @@ export class GroqClient implements PluginClient {
       if (payload.language) form.append("language", payload.language);
 
       const started = Date.now();
-      const response = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${this.apiKey}` },
-        body: form,
-      });
+      const response = await hostFetch(
+        { http: this.services?.http, caCert: this.caCert },
+        `${OPENAI_BASE}/audio/transcriptions`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.apiKey}` },
+          body: form,
+        },
+      );
       if (!response.ok) {
         throw new Error(
           `Groq API error ${response.status} for /audio/transcriptions: ${await response.text()}`,
