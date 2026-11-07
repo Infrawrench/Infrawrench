@@ -48,7 +48,7 @@
 
 import type { CostFetchRange, CostRow, HttpHostServices } from "@infrawrench/plugin-base";
 import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
-import { createDeepgramApis, type DeepgramApi } from "./api.js";
+import { createDeepgramApis, httpStatusOf, type DeepgramApi } from "./api.js";
 
 const CONSOLE_HELP = {
   label: "Open the Deepgram Console",
@@ -67,13 +67,6 @@ export interface DeepgramCostContext {
   caCert?: string;
   /** Host HTTP service: bastion egress routing and custom-CA support. */
   http?: HttpHostServices;
-}
-
-/** HTTP status recovered from the message the API client throws. */
-function httpStatusOf(err: unknown): number | undefined {
-  const message = err instanceof Error ? err.message : String(err);
-  const match = /^Deepgram API error (\d{3}) /.exec(message);
-  return match?.[1] ? Number(match[1]) : undefined;
 }
 
 /**
@@ -148,7 +141,9 @@ export async function fetchDeepgramCostData(
       })
       .catch((err: unknown) => {
         // One project the key can list but not bill for shouldn't empty the
-        // account; only a clean sweep of failures is worth surfacing.
+        // account. Any other failure throws: the host replaces the range, so
+        // skipping the project would erase its spend.
+        if (!asScopeError(err)) throw err;
         firstFailure ??= err;
         return undefined;
       });

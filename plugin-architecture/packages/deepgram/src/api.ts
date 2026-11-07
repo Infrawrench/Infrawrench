@@ -41,6 +41,23 @@ export function createDeepgramApis(options: {
 
 export type DeepgramApi = ReturnType<typeof createDeepgramApis>["api"];
 
+/** HTTP status recovered from the message the API client throws. */
+export function httpStatusOf(err: unknown): number | undefined {
+  const message = err instanceof Error ? err.message : String(err);
+  const match = /^Deepgram API error (\d{3}) /.exec(message);
+  return match?.[1] ? Number(match[1]) : undefined;
+}
+
+/**
+ * Whether a read of one project's child list means "none here": 401/403 is a key
+ * without the scope, 404 a surface this project does not have. Anything else says
+ * nothing about the rows, and a sync would prune them if it read as none.
+ */
+export function meansNoneForThisProject(err: unknown): boolean {
+  const status = httpStatusOf(err);
+  return status === 401 || status === 403 || status === 404;
+}
+
 /** Named by the widest response: `mip_opt_out` only comes from a single read. */
 export type DgProject = ApiResponse<operations["projects_get"]>;
 

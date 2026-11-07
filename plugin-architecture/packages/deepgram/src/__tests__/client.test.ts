@@ -1345,3 +1345,97 @@ describe("speech over the host's HTTP service", () => {
     ).rejects.toThrow(/too large \(413\).*payload too large/);
   });
 });
+
+describe("a read that cannot say it has every row", () => {
+  const TWO_PROJECTS = {
+    projects: [
+      { project_id: "p-a", name: "A" },
+      { project_id: "p-b", name: "B" },
+    ],
+  };
+
+  it.each([
+    ["api-key", "/keys", { api_keys: [] }],
+    ["member", "/members", { members: [] }],
+    ["invite", "/invites", { invites: [] }],
+    ["balance", "/balances", { balances: [] }],
+    ["model", "/models", { stt: [], tts: [] }],
+    ["agent-config", "/agents", { agents: [] }],
+    ["agent-variable", "/agent-variables", { variables: [] }],
+    ["purchase", "/purchases", { orders: [] }],
+    ["distribution-credential", "/credentials", { distribution_credentials: [] }],
+  ])(
+    "%s: a 500 on one project fails the list rather than dropping its rows",
+    async (type, _, ok) => {
+      installFetch((url) => {
+        if (url.endsWith("/v1/projects")) return jsonResponse(TWO_PROJECTS);
+        if (url.includes("/p-b/")) return jsonResponse({ err_msg: "boom" }, 500);
+        if (url.endsWith("/v1/models")) return jsonResponse(ok);
+        return jsonResponse(ok);
+      });
+      await expect(client().listResources(type, ACCOUNT)).rejects.toThrow(/Deepgram API error 500/);
+    },
+  );
+
+  it.each([401, 403, 404])("a %i on one project reads as none for that project", async (status) => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/projects")) return jsonResponse(TWO_PROJECTS);
+      if (url.includes("/p-b/")) return jsonResponse({ err_msg: "no" }, status);
+      return jsonResponse({ invites: [{ email: "a@b.co", scope: "member" }] });
+    });
+    const invites = await client().listResources("invite", ACCOUNT);
+    expect(invites.map((i) => i.fields["email"])).toEqual(["a@b.co"]);
+  });
+
+  it("does not delete a project's balance pots on a 500", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/projects")) return jsonResponse(TWO_PROJECTS);
+      if (url.includes("/p-b/")) return jsonResponse({ err_msg: "boom" }, 500);
+      return jsonResponse({ balances: [{ balance_id: "b1", amount: 5, units: "usd" }] });
+    });
+    await expect(client().fetchCreditBalance()).rejects.toThrow(/Deepgram API error 500/);
+  });
+
+  it("still reads a project the key cannot see balances for as no pots", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/projects")) return jsonResponse(TWO_PROJECTS);
+      if (url.includes("/p-b/")) return jsonResponse({ err_msg: "no" }, 403);
+      return jsonResponse({ balances: [{ balance_id: "b1", amount: 5, units: "usd" }] });
+    });
+    const pots = await client().fetchCreditBalance();
+    expect(pots.map((p) => p.key)).toEqual(["p-a:b1"]);
+  });
+
+  it("does not replace a project's models with the public catalogue on a 500", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/projects")) return jsonResponse(PROJECT_LIST);
+      if (url.endsWith("/v1/models")) return jsonResponse(MODEL_LIST);
+      return jsonResponse({ err_msg: "boom" }, 500);
+    });
+    await expect(client().listResources("model", ACCOUNT)).rejects.toThrow(
+      /Deepgram API error 500/,
+    );
+  });
+
+  it("still falls back to the public catalogue when the project route is refused", async () => {
+    installFetch((url) => {
+      if (url.endsWith("/v1/projects")) return jsonResponse(PROJECT_LIST);
+      if (url.endsWith("/v1/models")) return jsonResponse(MODEL_LIST);
+      return jsonResponse({ err_msg: "no" }, 403);
+    });
+    const models = await client().listResources("model", ACCOUNT);
+    expect(models.length).toBeGreaterThan(0);
+  });
+
+  it("keeps the speech pickers' public-catalogue fallback on any project-route failure", async () => {
+    installFetch((url) => {
+      if (url.endsWith(`/v1/projects/${PROJECT}`)) {
+        return jsonResponse({ project_id: PROJECT, name: "Prod" });
+      }
+      if (url.endsWith("/v1/models")) return jsonResponse(MODEL_LIST);
+      return jsonResponse({ err_msg: "boom" }, 500);
+    });
+    const project = await client().getResource("project", `${ACCOUNT}:project:${PROJECT}`, ACCOUNT);
+    expect(project.resolvedOutputs["__models__"]).toContain("nova-3");
+  });
+});

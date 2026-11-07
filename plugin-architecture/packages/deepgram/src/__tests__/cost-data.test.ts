@@ -273,6 +273,18 @@ describe("fetchDeepgramCostData", () => {
     expect((err as Error).message).toContain("Deepgram API error 500");
   });
 
+  it("fails rather than dropping one project's spend when its breakdown answers 500", async () => {
+    const { http } = makeHttp((url) => {
+      if (url.endsWith("/v1/projects")) return { body: projectList(PROJECT_A, PROJECT_B) };
+      if (url.includes(PROJECT_B)) return { status: 500, body: { err_msg: "boom" } };
+      return { body: breakdown([bucket()]) };
+    });
+
+    await expect(fetchDeepgramCostData({ ...ctx, http }, RANGE)).rejects.toThrow(
+      "Deepgram API error 500",
+    );
+  });
+
   it("refuses to guess a day when amounts arrive without a bucket start", async () => {
     const { http } = singleProject([{ dollars: 5, grouping: { line_item: "streaming::nova-3" } }]);
 

@@ -33,6 +33,7 @@ import {
 } from "@infrawrench/plugin-base";
 import {
   createDeepgramApis,
+  meansNoneForThisProject,
   type CreateKeyBody,
   type DeepgramApi,
   type DgApiKeyEntry,
@@ -262,15 +263,30 @@ export class DeepgramClient implements PluginClient {
 
   /**
    * Fan out a child listing across every project the key can see. A project
-   * the key lacks scope for fails individually rather than emptying the list.
+   * the key lacks scope for counts as having none; any other failure throws,
+   * because a sync prunes whatever the list stops returning.
    */
   private async listForEachProject(
     accountId: string,
     load: (projectId: string) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
     const projects = await this.fetchProjects();
-    const settled = await Promise.allSettled(projects.map((p) => load(p.project_id)));
-    return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+    return this.acrossProjects(projects, (p) => load(p.project_id));
+  }
+
+  private async acrossProjects<T>(
+    projects: DgProject[],
+    load: (project: DgProject) => Promise<T[]>,
+  ): Promise<T[]> {
+    const rows = await Promise.all(
+      projects.map((p) =>
+        load(p).catch((err: unknown): T[] => {
+          if (meansNoneForThisProject(err)) return [];
+          throw err;
+        }),
+      ),
+    );
+    return rows.flat();
   }
 
   /**
@@ -283,27 +299,23 @@ export class DeepgramClient implements PluginClient {
    *
    * `units` is Deepgram's own word for what the amount is denominated in
    * ("usd"); anything else is passed through uppercased rather than assumed to
-   * be dollars. Projects the key lacks scope for fail individually, the same
+   * be dollars. Projects the key lacks scope for read as no pots, the same
    * stance `listForEachProject` takes: a member-scoped key sees no balances
-   * at all, which is a permission gap rather than a zero balance.
+   * at all, which is a permission gap rather than a zero balance. Any other
+   * failure throws, because the host deletes a pot that stops being reported.
    */
   fetchCreditBalance(): PluginEffect<CreditBalance[]> {
     return attempt(async () => {
       const projects = await this.fetchProjects();
-      const settled = await Promise.allSettled(
-        projects.map(async (project) => {
-          const data = await this.api.get(
-            `/v1/projects/${pathEncode(project.project_id)}/balances`,
-          );
-          return (data.balances ?? []).map((b): CreditBalance => ({
-            key: `${project.project_id}:${b.balance_id}`,
-            label: `${project.name ?? project.project_id} balance`,
-            remaining: Number(b.amount ?? 0),
-            currency: (b.units ?? "usd").toUpperCase(),
-          }));
-        }),
-      );
-      return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+      return this.acrossProjects(projects, async (project) => {
+        const data = await this.api.get(`/v1/projects/${pathEncode(project.project_id)}/balances`);
+        return (data.balances ?? []).map((b): CreditBalance => ({
+          key: `${project.project_id}:${b.balance_id}`,
+          label: `${project.name ?? project.project_id} balance`,
+          remaining: Number(b.amount ?? 0),
+          currency: (b.units ?? "usd").toUpperCase(),
+        }));
+      });
     });
   }
 
@@ -359,7 +371,14 @@ export class DeepgramClient implements PluginClient {
   }
 
   private async listModels(accountId: string, projectId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetchModels(projectId);
+    // Only a route the key cannot read falls back. On a 500 the public catalogue
+    // would replace the project's entitled models, and the sync would prune them.
+    const data = await this.api
+      .get(`/v1/projects/${pathEncode(projectId)}/models`)
+      .catch((err: unknown) => {
+        if (!meansNoneForThisProject(err)) throw err;
+        return this.api.get("/v1/models");
+      });
     return [
       ...(data.stt ?? []).map((m) => this.mapModel(accountId, projectId, m, "stt")),
       ...(data.tts ?? []).map((m) => this.mapModel(accountId, projectId, m, "tts")),
