@@ -56,7 +56,8 @@ const nsParent = (accountId: string, ns: string) => `${accountId}:dockerhub-name
 /** Split `a/b` (or `a/b:c`) on its first slash: namespace names never contain one. */
 export function splitScoped(id: string): { ns: string; rest: string } {
   const i = id.indexOf("/");
-  if (i <= 0) throw new Error(`Docker Hub plugin: "${id}" is not a namespaced id`);
+  if (i <= 0 || i === id.length - 1)
+    throw new Error(`Docker Hub plugin: "${id}" is not a namespaced id`);
   return { ns: id.slice(0, i), rest: id.slice(i + 1) };
 }
 
@@ -64,7 +65,8 @@ export function splitScoped(id: string): { ns: string; rest: string } {
 export function splitTagId(id: string): { ns: string; repo: string; tag: string } {
   const { ns, rest } = splitScoped(id);
   const i = rest.lastIndexOf(":");
-  if (i <= 0) throw new Error(`Docker Hub plugin: "${id}" is not a tag id`);
+  if (i <= 0 || i === rest.length - 1)
+    throw new Error(`Docker Hub plugin: "${id}" is not a tag id`);
   return { ns, repo: rest.slice(0, i), tag: rest.slice(i + 1) };
 }
 

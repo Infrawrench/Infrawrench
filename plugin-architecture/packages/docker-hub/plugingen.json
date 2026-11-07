@@ -406,7 +406,7 @@
       "value": {
         "type": "string"
       },
-      "why": "Sent on create in this document but left out of what comes back, and the plugin shows it when it is there."
+      "why": "Sent on create and update in this document but left out of what comes back. Docker's own Terraform client reads it from the answer, and the plugin shows it when it is there."
     },
     {
       "pointer": "/components/schemas/createOrgAccessTokenResponse/allOf/0",
@@ -414,13 +414,6 @@
         "$ref": "#/components/schemas/orgAccessToken"
       },
       "why": "An inline copy of `orgAccessToken` with fewer fields, which the plugin maps the same way."
-    },
-    {
-      "pointer": "/components/schemas/updateOrgAccessTokenRequest/properties/description",
-      "value": {
-        "type": "string"
-      },
-      "why": "Not in the document, but the edit form sends it."
     }
   ],
   "paths": {

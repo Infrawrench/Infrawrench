@@ -100,3 +100,59 @@ describe("editing immutable tag rules", () => {
     });
   });
 });
+
+describe("a blank id", () => {
+  const client = () => {
+    const { http, calls } = makeHttp((call: Call) =>
+      call.url.pathname === "/v2/auth/token" ? { access_token: "jwt-1" } : {},
+    );
+    return {
+      c: hostClient(
+        new DockerHubClient({ username: "alice", token: "dckr_pat_x", namespaces: "alice" }, {
+          http,
+        } as never),
+      ),
+      calls,
+    };
+  };
+
+  it.each([
+    ["dockerhub-access-token", "acct:dockerhub-access-token:"],
+    ["dockerhub-invite", "acct:dockerhub-invite:"],
+    ["dockerhub-repository", "acct:dockerhub-repository:acme/"],
+    ["dockerhub-team", "acct:dockerhub-team:acme/"],
+    ["dockerhub-member", "acct:dockerhub-member:acme/"],
+    ["dockerhub-org-access-token", "acct:dockerhub-org-access-token:acme/"],
+  ])("refuses to delete %s", async (type, id) => {
+    const { c, calls } = client();
+    await expect(c.deleteResource(type, id, ACCOUNT)).rejects.toThrow(/id/);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to change settings or act on nothing", async () => {
+    const { c, calls } = client();
+    await expect(
+      c.updateResource("dockerhub-namespace", "acct:dockerhub-namespace:", ACCOUNT, {
+        restrictedImages: "true",
+      }),
+    ).rejects.toThrow(/id/);
+    await expect(
+      c.invokeAction(
+        "dockerhub-access-token",
+        "acct:dockerhub-access-token:",
+        "deactivate",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/id/);
+    await expect(
+      c.executeNoSqlCommand(
+        "dockerhub-repository",
+        "acct:dockerhub-repository:acme/",
+        ACCOUNT,
+        "grant-team-access",
+        [JSON.stringify({ teamId: "7", permission: "read" })],
+      ),
+    ).rejects.toThrow(/id/);
+    expect(calls).toEqual([]);
+  });
+});

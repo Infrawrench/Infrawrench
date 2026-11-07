@@ -101,6 +101,13 @@ const EXPIRY_OPTIONS = [
   { id: "", label: "Never" },
 ];
 
+/** The id a write acts on. A blank one would otherwise address a whole collection. */
+function writeId(resourceId: string): string {
+  const id = externalIdOf(resourceId);
+  if (!id.trim()) throw new Error(`Docker Hub plugin: "${resourceId}" has no id`);
+  return id;
+}
+
 const bool = (raw: string | undefined): boolean => /^(true|yes|1|on)$/i.test((raw ?? "").trim());
 
 const list = (raw: string | undefined): string[] =>
@@ -1080,7 +1087,7 @@ export class DockerHubClient implements PluginClient {
     fields: Record<string, string>,
   ): PluginEffect<ResourceInstance> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       const has = (k: string) => k in fields;
       const text = (k: string) => (fields[k] ?? "").trim();
       switch (typeId) {
@@ -1227,7 +1234,7 @@ export class DockerHubClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string, _accountId: string): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       switch (typeId) {
         case "dockerhub-repository": {
           const { ns, rest } = splitScoped(id);
@@ -1273,7 +1280,7 @@ export class DockerHubClient implements PluginClient {
     _accountId: string,
   ): PluginEffect<void> {
     return attempt(async () => {
-      const id = externalIdOf(resourceId);
+      const id = writeId(resourceId);
       const active = actionId === "activate";
       if (actionId === "activate" || actionId === "deactivate") {
         if (typeId === "dockerhub-access-token") {
