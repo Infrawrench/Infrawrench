@@ -12,7 +12,14 @@ import type {
   DashboardStat,
   CreditBalance,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch, externalIdOf, formatBytes } from "@infrawrench/plugin-base";
+import {
+  jsonRestFetch,
+  externalIdOf,
+  formatBytes,
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 
 /**
  * DeepSeek's canonical base URL. The documented paths carry **no `/v1`
@@ -22,6 +29,9 @@ import { jsonRestFetch, externalIdOf, formatBytes } from "@infrawrench/plugin-ba
  * https://api-docs.deepseek.com/
  */
 const BASE_URL = "https://api.deepseek.com";
+
+/** `GET /files` pages of 1,000: 20,000 files, twice the 10,000 an account can hold. */
+const MAX_FILE_PAGES = 20;
 
 /**
  * DeepSeek does not rate-limit by requests or tokens per minute. It caps
@@ -308,26 +318,44 @@ export class DeepSeekClient implements PluginClient {
    *
    * Cursor pagination: `after` takes the last file id of the previous page and
    * `has_more` says whether to keep going. `limit` maxes out at 1000, which is
-   * also the default, and an account holds at most 10,000 files, so the guard
-   * below is never the thing that stops the loop on a real account.
+   * also the default, and an account holds at most 10,000 files, so the cap
+   * of 20 pages is twice what a real account can need. Past it the list
+   * throws, since a part of it would read the rest as deleted.
    */
   private async listFiles(accountId: string): Promise<ResourceInstance[]> {
+    const path = "/files";
     const files: DeepSeekFile[] = [];
     let after = "";
-    for (let page = 0; page < 20; page += 1) {
+    for (let page = 0; page < MAX_FILE_PAGES; page += 1) {
       const params = new URLSearchParams({ limit: "1000", order: "desc" });
       if (after) params.set("after", after);
-      const body = await this.fetch<DeepSeekFileList>(`/files?${params.toString()}`);
-      const items = body.data ?? [];
+      const body = await this.fetch<DeepSeekFileList>(`${path}?${params.toString()}`);
+      const items = requireListPage(body?.data, { vendor: "DeepSeek", path, key: "data" });
       files.push(...items);
+      if (!body.has_more) {
+        const now = new Date().toISOString();
+        return files
+          .filter((file) => Boolean(file.id))
+          .map((file) => this.mapFile(accountId, file, now));
+      }
       const next = str(body.last_id) || str(items[items.length - 1]?.id);
-      if (!body.has_more || !next || next === after) break;
+      if (!next || next === after) {
+        throw new ListPageError({
+          vendor: "DeepSeek",
+          path,
+          key: "data",
+          found: items,
+          saysMoreWith: items.length === 0 ? "no rows" : "no cursor",
+        });
+      }
       after = next;
     }
-    const now = new Date().toISOString();
-    return files
-      .filter((file) => Boolean(file.id))
-      .map((file) => this.mapFile(accountId, file, now));
+    throw new ListTruncatedError({
+      vendor: "DeepSeek",
+      path,
+      items: files.length,
+      maxPages: MAX_FILE_PAGES,
+    });
   }
 
   private mapFile(accountId: string, file: DeepSeekFile, now: string): ResourceInstance {

@@ -304,6 +304,57 @@ describe("files", () => {
     expect(files[1]!.fields["expiresAt"]).toBe("");
   });
 
+  it("throws past 20 pages instead of returning part of the files", async () => {
+    let n = 0;
+    installFetch(() => {
+      n += 1;
+      return jsonResponse({
+        object: "list",
+        data: [{ id: `file-${n}`, object: "file", bytes: 1, created_at: 1, purpose: "user_data" }],
+        last_id: `file-${n}`,
+        has_more: true,
+      });
+    });
+
+    await expect(client().listResources("file", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(20);
+  });
+
+  it("refuses a page whose data is not a list, first or later", async () => {
+    installFetch(() => jsonResponse({ object: "list", files: [], has_more: false }));
+    await expect(client().listResources("file", ACCOUNT)).rejects.toThrow("is not a list");
+
+    vi.restoreAllMocks();
+    installFetch((url) =>
+      url.includes("after=")
+        ? jsonResponse({ object: "list", files: [], has_more: false })
+        : jsonResponse({
+            object: "list",
+            data: [{ id: "file-a", object: "file", bytes: 1, created_at: 1 }],
+            last_id: "file-a",
+            has_more: true,
+          }),
+    );
+    await expect(client().listResources("file", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("throws when has_more is set but the cursor does not move", async () => {
+    installFetch(() =>
+      jsonResponse({
+        object: "list",
+        data: [{ id: "file-a", object: "file", bytes: 1, created_at: 1 }],
+        last_id: "file-a",
+        has_more: true,
+      }),
+    );
+    await expect(client().listResources("file", ACCOUNT)).rejects.toThrow(
+      "says there is more, with no cursor",
+    );
+    expect(calls).toHaveLength(2);
+  });
+
   it("deletes a file with DELETE /files/{id}", async () => {
     installFetch(() => jsonResponse({ id: "file-api-a", object: "file", deleted: true }));
 
