@@ -33,4 +33,16 @@ describe("lists that are not a list", () => {
     await expect(c.listResources("variable", ACC)).rejects.toThrow(NOT_A_LIST);
     await expect(c.listResources("shared-variable", ACC)).rejects.toThrow(NOT_A_LIST);
   });
+
+  it("refuses a usage answer with no list instead of reading it as no cost", async () => {
+    const { c } = client(
+      routes(
+        () => project({}),
+        (call) => (call.query.includes("query Usage(") ? { data: { other: [] } } : undefined),
+      ),
+    );
+    await expect(
+      c.fetchCostData(ACC, { fromDate: "2026-10-01", toDate: "2026-10-01" }),
+    ).rejects.toThrow(NOT_A_LIST);
+  });
 });

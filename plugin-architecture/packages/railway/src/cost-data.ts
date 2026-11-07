@@ -1,4 +1,5 @@
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import { requireListPage } from "@infrawrench/plugin-base";
 import type { RailwayApi } from "./api.js";
 import { round2 } from "./mappers.js";
 import { Q_ESTIMATED_USAGE, Q_USAGE } from "./queries.js";
@@ -111,7 +112,13 @@ export async function fetchRailwayCostData(
         startDate: start,
         endDate: end,
       });
-      out.push(...usageToRows(day, res.usage ?? [], names));
+      const rows = requireListPage(res.usage, {
+        vendor: "Railway",
+        path: "usage",
+        key: "usage",
+        page: res,
+      });
+      out.push(...usageToRows(day, rows, names));
     }
   }
   return out;
