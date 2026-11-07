@@ -168,6 +168,124 @@ describe("listResources — Google-standard pagination", () => {
   });
 });
 
+describe("a list it cannot finish", () => {
+  const LISTS: Array<[string, string, string, number]> = [
+    ["model", "models", "nextPageToken", 25],
+    ["tuned-model", "tunedModels", "nextPageToken", 25],
+    ["file", "files", "nextPageToken", 250],
+    ["cached-content", "cachedContents", "nextPageToken", 25],
+    ["batch", "operations", "nextPageToken", 250],
+    ["file-search-store", "fileSearchStores", "nextPageToken", 1250],
+    ["webhook", "webhooks", "next_page_token", 25],
+    ["voice", "voices", "next_page_token", 25],
+  ];
+
+  it.each(LISTS)("%s throws past its cap, after exactly that many requests", async (...row) => {
+    const [typeId, key, tokenKey, maxPages] = row;
+    let page = 0;
+    installFetch(() => {
+      page += 1;
+      return jsonResponse({ [key]: [], [tokenKey]: `t${page}` });
+    });
+
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(maxPages);
+  });
+
+  it("throws past the cap on a store's documents, through the fan-out's catch", async () => {
+    let page = 0;
+    installFetch((url) => {
+      if (!url.includes("/documents")) {
+        return jsonResponse({ fileSearchStores: [{ name: "fileSearchStores/s1" }] });
+      }
+      page += 1;
+      return jsonResponse({ documents: [], nextPageToken: `t${page}` });
+    });
+
+    await expect(client().listResources("file-search-document", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(page).toBe(1250);
+  });
+
+  it.each(LISTS)("%s rejects a renamed key on the first page", async (typeId) => {
+    installFetch(() => jsonResponse({ renamed: [{ name: "x/y", id: "y" }] }));
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each(LISTS)("%s rejects a renamed key on a later page", async (...row) => {
+    const [typeId, key, tokenKey] = row;
+    installFetch((url) =>
+      calls.length === 1
+        ? jsonResponse({ [key]: [{ name: "x/y", id: "y" }], [tokenKey]: "t2" })
+        : jsonResponse({ renamed: [{ name: url }] }),
+    );
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it.each(LISTS)("%s rejects a list that is not an array", async (...row) => {
+    const [typeId, key] = row;
+    installFetch(() => jsonResponse({ [key]: { name: "x/y" } }));
+    await expect(client().listResources(typeId, ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("rejects an error wrapped in a 200, and a whole answer of null", async () => {
+    const c = client();
+    installFetch(() => jsonResponse({ error: { code: 500, message: "backend" } }));
+    await expect(c.listResources("model", ACCOUNT)).rejects.toThrow("is not a list");
+    installFetch(() => jsonResponse(null));
+    await expect(c.listResources("webhook", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
+  it("the document fan-out does not swallow a page that is not a list", async () => {
+    installFetch((url) =>
+      url.includes("/documents")
+        ? jsonResponse({ renamed: [] })
+        : jsonResponse({ fileSearchStores: [{ name: "fileSearchStores/s1" }] }),
+    );
+    await expect(client().listResources("file-search-document", ACCOUNT)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  // proto3 JSON leaves an empty repeated field out, so this is how an empty account answers.
+  it.each(LISTS)("%s reads an answer of {} as an empty account", async (typeId) => {
+    installFetch(() => jsonResponse({}));
+    await expect(client().listResources(typeId, ACCOUNT)).resolves.toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("keeps walking past a page that only holds a token", async () => {
+    installFetch((url) =>
+      url.includes("pageToken=t2")
+        ? jsonResponse({ models: [{ name: "models/b" }] })
+        : jsonResponse({ nextPageToken: "t2" }),
+    );
+    const models = await client().listResources("model", ACCOUNT);
+    expect(models.map((m) => m.externalId)).toEqual(["b"]);
+  });
+});
+
+describe("create-form pickers", () => {
+  it("offer what they read instead of failing on a long list", async () => {
+    let page = 0;
+    installFetch((url) => {
+      page += 1;
+      if (url.includes("/models")) return jsonResponse({ models: [] });
+      return jsonResponse({
+        files: [{ name: `files/f${page}`, mimeType: "application/jsonl" }],
+        nextPageToken: `t${page}`,
+      });
+    });
+
+    const config = await client().getCreateConfig!("batch");
+    const fileField = config.fields.find((f) => f.options?.some((o) => o.id.startsWith("files/")));
+    expect(fileField?.options).toHaveLength(25);
+  });
+});
+
 describe("model mapping", () => {
   it("shortens models/x into a usable id and keeps the token limits", async () => {
     installFetch(() =>
@@ -235,10 +353,9 @@ describe("batches are an Operations API", () => {
     expect(batch!.fields["outputFileName"]).toBe("files/out1");
   });
 
-  it("does not look for a batches[] key", async () => {
+  it("does not read a batches[] key as an empty list", async () => {
     installFetch(() => jsonResponse({ batches: [{ name: "batches/wrong" }] }));
-    const batches = await client().listResources("batch", ACCOUNT);
-    expect(batches).toEqual([]);
+    await expect(client().listResources("batch", ACCOUNT)).rejects.toThrow("is not a list");
   });
 });
 

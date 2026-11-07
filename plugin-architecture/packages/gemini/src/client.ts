@@ -51,7 +51,9 @@ import {
   createGeminiApi,
   geminiHeaders,
   listPages,
+  listSnakePages,
   modelSegment,
+  PICKER_LIST,
   type BatchOperation,
   type CachedContent,
   type FileSearchDocument,
@@ -59,6 +61,7 @@ import {
   type GeminiApi,
   type GeminiFile,
   type GeminiModel,
+  type ListBound,
   type PageQuery,
   type TunedModel,
 } from "./api.js";
@@ -155,29 +158,6 @@ export class GeminiClient implements PluginClient {
     });
   }
 
-  /**
-   * The walk in `listPages`, for the newer snake_case surfaces (webhooks, voices),
-   * which take `page_size` / `page_token` and answer with `next_page_token`.
-   */
-  private async paginateSnake<TItem, TResponse extends { next_page_token?: string }>(
-    path: string,
-    pageSize: number,
-    pick: (response: TResponse) => TItem[] | undefined,
-    extraParams: Array<[string, string]> = [],
-  ): Promise<TItem[]> {
-    const items: TItem[] = [];
-    let pageToken: string | undefined;
-    for (let page = 0; page < 25; page += 1) {
-      const params = new URLSearchParams([["page_size", String(pageSize)], ...extraParams]);
-      if (pageToken) params.set("page_token", pageToken);
-      const data = await this.fetch<TResponse>(`${path}?${params.toString()}`);
-      items.push(...(pick(data) ?? []));
-      if (!data.next_page_token) break;
-      pageToken = data.next_page_token;
-    }
-    return items;
-  }
-
   // ---------------------------------------------------------------------------
   // Resource listing
   // ---------------------------------------------------------------------------
@@ -225,7 +205,7 @@ export class GeminiClient implements PluginClient {
         const resource = await this.findResource(typeId, resourceId, accountId);
         const [sttModels, customVoices] = await Promise.all([
           this.safely(() => this.fetchAudioCapableModelOptions(), []),
-          this.safely<Voice[]>(() => this.fetchCustomVoices(), []),
+          this.safely<Voice[]>(() => this.fetchCustomVoices(PICKER_LIST), []),
         ]);
         const voiceOptions: SpeechPanelOption[] = customVoices
           .filter((v) => Boolean(v.id))
@@ -271,9 +251,9 @@ export class GeminiClient implements PluginClient {
    * `GET /v1beta/models`: https://ai.google.dev/api/models
    * `pageSize` defaults to 50 and the endpoint returns at most 1000 per page.
    */
-  private async fetchModels(): Promise<GeminiModel[]> {
+  private async fetchModels(bound?: ListBound): Promise<GeminiModel[]> {
     return listPages(
-      1000,
+      { path: "/models", key: "models", pageSize: 1000, ...bound },
       (query) => this.api.get("/models", { query }),
       (r) => r.models,
     );
@@ -323,7 +303,7 @@ export class GeminiClient implements PluginClient {
    */
   private async fetchTunedModels(): Promise<TunedModel[]> {
     return listPages(
-      1000,
+      { path: "/tunedModels", key: "tunedModels", pageSize: 1000 },
       (query) => this.api.get("/tunedModels", { query }),
       (r) => r.tunedModels,
     );
@@ -375,9 +355,9 @@ export class GeminiClient implements PluginClient {
    * `GET /v1beta/files`: https://ai.google.dev/api/files
    * ⚠️ `pageSize` defaults to 10 and caps at **100** here.
    */
-  private async fetchFiles(): Promise<GeminiFile[]> {
+  private async fetchFiles(bound?: ListBound): Promise<GeminiFile[]> {
     return listPages(
-      100,
+      { path: "/files", key: "files", pageSize: 100, ...bound },
       (query) => this.api.get("/files", { query }),
       (r) => r.files,
     );
@@ -427,7 +407,7 @@ export class GeminiClient implements PluginClient {
    */
   private async fetchCachedContents(): Promise<CachedContent[]> {
     return listPages(
-      1000,
+      { path: "/cachedContents", key: "cachedContents", pageSize: 1000 },
       (query) => this.api.get("/cachedContents", { query }),
       (r) => r.cachedContents,
     );
@@ -476,7 +456,7 @@ export class GeminiClient implements PluginClient {
    */
   private async fetchBatches(): Promise<BatchOperation[]> {
     return listPages(
-      100,
+      { path: "/batches", key: "operations", pageSize: 100 },
       (query) => this.api.get("/batches", { query }),
       (r) => r.operations,
     );
@@ -529,9 +509,9 @@ export class GeminiClient implements PluginClient {
    * `GET /v1beta/fileSearchStores`: https://ai.google.dev/api/file-search
    * ⚠️ `pageSize` defaults to 10 and caps at **20** for stores and documents.
    */
-  private async fetchFileSearchStores(): Promise<FileSearchStore[]> {
+  private async fetchFileSearchStores(bound?: ListBound): Promise<FileSearchStore[]> {
     return listPages(
-      20,
+      { path: "/fileSearchStores", key: "fileSearchStores", pageSize: 20, ...bound },
       (query) => this.api.get("/fileSearchStores", { query }),
       (r) => r.fileSearchStores,
     );
@@ -583,7 +563,7 @@ export class GeminiClient implements PluginClient {
    */
   private async fetchFileSearchDocuments(storeName: string): Promise<FileSearchDocument[]> {
     return listPages(
-      20,
+      { path: `/${storeName}/documents`, key: "documents", pageSize: 20 },
       ({ pageSize, pageToken }: PageQuery) => {
         const params = new URLSearchParams({ pageSize: String(pageSize) });
         if (pageToken !== undefined) params.set("pageToken", pageToken);
@@ -609,7 +589,7 @@ export class GeminiClient implements PluginClient {
       if (!storeName) continue;
       // A store deleted since the store list has no documents. Any other failure throws,
       // because a sync prunes what a list stops returning.
-      const documents = await this.fetchFileSearchDocuments(storeName).catch((error: unknown) => {
+      const documents = await this.fetchFileSearchDocuments(storeName).catch((error) => {
         if (error instanceof Error && error.message.startsWith("Gemini API error 404 ")) return [];
         throw error;
       });
@@ -656,9 +636,14 @@ export class GeminiClient implements PluginClient {
 
   /** `GET /v1beta/webhooks`: https://ai.google.dev/api/webhooks (max 1000 per page). */
   private async listWebhooks(accountId: string): Promise<ResourceInstance[]> {
-    const hooks = await this.paginateSnake<Webhook, ListWebhooksResponse>(
-      "/webhooks",
-      1000,
+    const pageSize = 1000;
+    const hooks = await listSnakePages(
+      { path: "/webhooks", key: "webhooks", pageSize },
+      (pageToken) => {
+        const params = new URLSearchParams({ page_size: String(pageSize) });
+        if (pageToken) params.set("page_token", pageToken);
+        return this.fetch<ListWebhooksResponse>(`/webhooks?${params.toString()}`);
+      },
       (r) => r.webhooks,
     );
     const now = new Date().toISOString();
@@ -700,11 +685,21 @@ export class GeminiClient implements PluginClient {
    * https://ai.google.dev/api/voices. Filtering by type drops the prebuilt
    * catalogue, which the list otherwise appends after the custom voices.
    */
-  private fetchCustomVoices(): Promise<Voice[]> {
-    return this.paginateSnake<Voice, ListVoicesResponse>("/voices", 1000, (r) => r.voices, [
-      ["type", "prompted"],
-      ["type", "replicated"],
-    ]);
+  private fetchCustomVoices(bound?: ListBound): Promise<Voice[]> {
+    const pageSize = 1000;
+    return listSnakePages(
+      { path: "/voices", key: "voices", pageSize, ...bound },
+      (pageToken) => {
+        const params = new URLSearchParams([
+          ["page_size", String(pageSize)],
+          ["type", "prompted"],
+          ["type", "replicated"],
+        ]);
+        if (pageToken) params.set("page_token", pageToken);
+        return this.fetch<ListVoicesResponse>(`/voices?${params.toString()}`);
+      },
+      (r) => r.voices,
+    );
   }
 
   private async listVoices(accountId: string): Promise<ResourceInstance[]> {
@@ -823,7 +818,7 @@ export class GeminiClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case "file-search-store": {
-          const models = await this.safely<GeminiModel[]>(() => this.fetchModels(), []);
+          const models = await this.safely<GeminiModel[]>(() => this.fetchModels(PICKER_LIST), []);
           const embeddingModels = models
             .filter((m) => Boolean(m.name))
             .filter((m) => (m.supportedGenerationMethods ?? []).includes("embedContent"))
@@ -853,8 +848,8 @@ export class GeminiClient implements PluginClient {
 
         case "file-search-document": {
           const [stores, files] = await Promise.all([
-            this.fetchFileSearchStores(),
-            this.fetchFiles(),
+            this.fetchFileSearchStores(PICKER_LIST),
+            this.fetchFiles(PICKER_LIST),
           ]);
           const parentStore = parentResourceId
             ? `fileSearchStores/${externalIdOf(parentResourceId)}`
@@ -923,7 +918,10 @@ export class GeminiClient implements PluginClient {
         }
 
         case "batch": {
-          const [models, files] = await Promise.all([this.fetchModels(), this.fetchFiles()]);
+          const [models, files] = await Promise.all([
+            this.fetchModels(PICKER_LIST),
+            this.fetchFiles(PICKER_LIST),
+          ]);
           const batchModels = models
             .filter((m) => Boolean(m.name))
             .filter((m) => (m.supportedGenerationMethods ?? []).includes("batchGenerateContent"))
@@ -2272,7 +2270,7 @@ export class GeminiClient implements PluginClient {
    * means the picker keeps working as the model lineup rotates.
    */
   private async fetchAudioCapableModelOptions(): Promise<SpeechPanelOption[]> {
-    const models = await this.fetchModels();
+    const models = await this.fetchModels(PICKER_LIST);
     return models
       .filter((m) => Boolean(m.name))
       .filter((m) => (m.supportedGenerationMethods ?? []).includes("generateContent"))
