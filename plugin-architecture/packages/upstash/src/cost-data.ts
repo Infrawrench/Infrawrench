@@ -1,7 +1,7 @@
 import type { CostFetchRange, CostFetchResult, CostRow } from "@infrawrench/plugin-base";
 import type { UpstashContext } from "./api.js";
-import { pathEncode } from "@infrawrench/plugin-base";
-import { dev } from "./api.js";
+import { pathEncode, rethrowIncompleteList } from "@infrawrench/plugin-base";
+import { dev, listOf } from "./api.js";
 import { parseUpstashTime } from "./mappers.js";
 import type { Point, UpQStashUser, UpRedis } from "./types.js";
 
@@ -49,16 +49,22 @@ export async function fetchUpstashCostData(
   const rows: CostRow[] = [];
   let degraded = false;
   const [dbs, qstash] = await Promise.all([
-    dev(ctx, (api) => api.get("/redis/databases")).catch((): UpRedis[] => {
-      degraded = true;
-      return [];
-    }),
-    dev(ctx, (api) => api.get("/qstash/users")).catch((): UpQStashUser[] => {
-      degraded = true;
-      return [];
-    }),
+    dev(ctx, (api) => api.get("/redis/databases"))
+      .then((answer) => listOf("Upstash", "/redis/databases", answer))
+      .catch((err): UpRedis[] => {
+        rethrowIncompleteList(err);
+        degraded = true;
+        return [];
+      }),
+    dev(ctx, (api) => api.get("/qstash/users"))
+      .then((answer) => listOf("Upstash", "/qstash/users", answer))
+      .catch((err): UpQStashUser[] => {
+        rethrowIncompleteList(err);
+        degraded = true;
+        return [];
+      }),
   ]);
-  for (const db of dbs ?? []) {
+  for (const db of dbs) {
     if (!db.database_id || db.type === "free") continue;
     try {
       const id = pathEncode(db.database_id);
@@ -75,7 +81,7 @@ export async function fetchUpstashCostData(
       degraded = true;
     }
   }
-  for (const q of qstash ?? []) {
+  for (const q of qstash) {
     if (!q.id || q.type === "free") continue;
     try {
       const id = pathEncode(q.id);

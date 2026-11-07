@@ -25,10 +25,11 @@ import {
   externalIdOf,
   pathEncode,
   requireListPage,
+  rethrowIncompleteList,
   withMetricsCapability,
 } from "@infrawrench/plugin-base";
 import type { DeveloperClient, QStashClient, UpstashContext } from "./api.js";
-import { dev, qstash, qstashBase, qstashPost, statusOf } from "./api.js";
+import { dev, listOf, qstash, qstashBase, qstashPost, statusOf } from "./api.js";
 import { fetchUpstashCostData } from "./cost-data.js";
 import {
   iso,
@@ -176,27 +177,31 @@ export class UpstashClient implements PluginClient {
   // -------------------------------------------------------------------------
 
   private redisList() {
-    return this.listings.redis.get(
-      async () => (await this.dev((api) => api.get("/redis/databases"))) ?? [],
+    return this.listings.redis.get(async () =>
+      listOf("Upstash", "/redis/databases", await this.dev((api) => api.get("/redis/databases"))),
     );
   }
   private vectorList() {
-    return this.listings.vector.get(
-      async () => (await this.dev((api) => api.get("/vector/index"))) ?? [],
+    return this.listings.vector.get(async () =>
+      listOf("Upstash", "/vector/index", await this.dev((api) => api.get("/vector/index"))),
     );
   }
   private searchList() {
-    return this.listings.search.get(
-      async () => (await this.dev((api) => api.get("/search"))) ?? [],
+    return this.listings.search.get(async () =>
+      listOf("Upstash", "/search", await this.dev((api) => api.get("/search"))),
     );
   }
   private teams() {
-    return this.listings.teams.get(async () => (await this.dev((api) => api.get("/teams"))) ?? []);
+    return this.listings.teams.get(async () =>
+      listOf("Upstash", "/teams", await this.dev((api) => api.get("/teams"))),
+    );
   }
   /** Regional QStash accounts, including their tokens. */
   qstashUsers() {
     return this.listings.qstash.get(async () =>
-      ((await this.dev((api) => api.get("/qstash/users"))) ?? []).filter((u) => !u.deletion_time),
+      listOf("Upstash", "/qstash/users", await this.dev((api) => api.get("/qstash/users"))).filter(
+        (u) => !u.deletion_time,
+      ),
     );
   }
 
@@ -232,29 +237,32 @@ export class UpstashClient implements PluginClient {
   }
 
   private async perQStash<V>(
+    path: string,
     load: (id: string) => Promise<V[] | undefined>,
   ): Promise<QStashChild<V>[]> {
     const out: QStashChild<V>[] = [];
     for (const u of await this.qstashUsers()) {
       if (!u.id) continue;
-      for (const item of (await load(u.id)) ?? []) out.push({ qstashId: u.id, item });
+      for (const item of listOf("QStash", path, await load(u.id))) {
+        out.push({ qstashId: u.id, item });
+      }
     }
     return out;
   }
 
   private schedules() {
     return this.listings.schedules.get(() =>
-      this.perQStash((id) => this.q(id, (api) => api.get("/v2/schedules"))),
+      this.perQStash("/v2/schedules", (id) => this.q(id, (api) => api.get("/v2/schedules"))),
     );
   }
   private queues() {
     return this.listings.queues.get(() =>
-      this.perQStash((id) => this.q(id, (api) => api.get("/v2/queues"))),
+      this.perQStash("/v2/queues", (id) => this.q(id, (api) => api.get("/v2/queues"))),
     );
   }
   private urlGroups() {
     return this.listings.groups.get(() =>
-      this.perQStash((id) => this.q(id, (api) => api.get("/v2/topics"))),
+      this.perQStash("/v2/topics", (id) => this.q(id, (api) => api.get("/v2/topics"))),
     );
   }
 
@@ -262,11 +270,16 @@ export class UpstashClient implements PluginClient {
     return attempt(async () => {
       switch (typeId) {
         case T.account: {
+          const count = <V>(load: Promise<V[]>) =>
+            load.catch((err): undefined => {
+              rethrowIncompleteList(err);
+              return undefined;
+            });
           const [redis, vector, search, teams] = await Promise.all([
-            this.redisList().catch(() => undefined),
-            this.vectorList().catch(() => undefined),
-            this.searchList().catch(() => undefined),
-            this.teams().catch(() => undefined),
+            count(this.redisList()),
+            count(this.vectorList()),
+            count(this.searchList()),
+            count(this.teams()),
           ]);
           return [
             instance(accountId, T.account, this.ctx.email, this.ctx.email, {
@@ -304,7 +317,10 @@ export class UpstashClient implements PluginClient {
             teams.map(async (t) => {
               const members = await this.dev((api) =>
                 api.get(`/teams/${pathEncode(t.team_id ?? "")}`),
-              ).catch(() => undefined);
+              ).catch((err): undefined => {
+                rethrowIncompleteList(err);
+                return undefined;
+              });
               const me = members?.find(
                 (m) => m.member_email?.toLowerCase() === this.ctx.email.toLowerCase(),
               );

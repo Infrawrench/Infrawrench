@@ -1,5 +1,10 @@
 import type { ApiClient, ApiResponse, HttpHostServices } from "@infrawrench/plugin-base";
-import { createApiClient, jsonRestFetch, utf8ToBase64 } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  jsonRestFetch,
+  requireListPage,
+  utf8ToBase64,
+} from "@infrawrench/plugin-base";
 import type { paths as DeveloperPaths } from "./api-types.developer.gen.js";
 import type { paths as QStashPaths } from "./api-types.qstash.gen.js";
 
@@ -98,6 +103,21 @@ async function answered<T>(vendor: string, call: () => Promise<T>): Promise<T | 
     if (err instanceof SyntaxError) return undefined;
     rethrow(err, vendor);
   }
+}
+
+/**
+ * What a list read answered. `answered` gives `undefined` for a 2xx that is not JSON,
+ * which is fine for a write and not for a list: a sync prunes whatever a list stops
+ * returning. A JSON `null` stays empty: the Go timestamps in these APIs point to a Go
+ * backend, where an empty slice can marshal that way, and the document does not rule
+ * it out for an account with nothing in it.
+ */
+export function listOf<T>(
+  vendor: string,
+  path: string,
+  answer: readonly T[] | null | undefined,
+): T[] {
+  return answer === null ? [] : requireListPage(answer, { vendor, path, key: null });
 }
 
 /** A Developer API call (Basic auth). */

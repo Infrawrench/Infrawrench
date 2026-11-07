@@ -412,6 +412,113 @@ describe("QStash message log", () => {
   });
 });
 
+describe("a list answer that is not a list", () => {
+  const html = () =>
+    new Response("<html>gateway</html>", {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    });
+  const users = [{ id: "q1", token: "qtok", region: "us-east-1" }];
+
+  it.each([
+    ["upstash-redis", `GET ${API}/redis/databases`],
+    ["upstash-vector", `GET ${API}/vector/index`],
+    ["upstash-search", `GET ${API}/search`],
+    ["upstash-team", `GET ${API}/teams`],
+    ["upstash-qstash", `GET ${API}/qstash/users`],
+    ["upstash-qstash-schedule", "GET qstash-us-east-1.upstash.io/v2/schedules"],
+    ["upstash-qstash-queue", "GET qstash-us-east-1.upstash.io/v2/queues"],
+    ["upstash-qstash-url-group", "GET qstash-us-east-1.upstash.io/v2/topics"],
+  ])("fails %s rather than emptying it, on a 200 that is not JSON", async (type, route) => {
+    mockFetch({ [`GET ${API}/qstash/users`]: users, [route]: html });
+    await expect(hostClient(new UpstashClient(creds)).listResources(type, ACC)).rejects.toThrow(
+      "is not a list",
+    );
+  });
+
+  it("fails on an empty body and on an object, through the host transport too", async () => {
+    const request = vi.fn(async () => ({ status: 200, headers: {}, body: "" }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        throw new Error("fetch must not be called");
+      }),
+    );
+    await expect(
+      hostClient(new UpstashClient(creds, { http: { request } })).listResources(
+        "upstash-redis",
+        ACC,
+      ),
+    ).rejects.toThrow("is not a list");
+    expect(request).toHaveBeenCalledTimes(1);
+
+    mockFetch({ [`GET ${API}/redis/databases`]: { databases: [] } });
+    await expect(
+      hostClient(new UpstashClient(creds)).listResources("upstash-redis", ACC),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("keeps reading [] and a JSON null as an empty list", async () => {
+    mockFetch({
+      [`GET ${API}/redis/databases`]: null,
+      [`GET ${API}/vector/index`]: [],
+    });
+    const c = hostClient(new UpstashClient(creds));
+    expect(await c.listResources("upstash-redis", ACC)).toEqual([]);
+    expect(await c.listResources("upstash-vector", ACC)).toEqual([]);
+  });
+
+  it("does not swallow it on the account row", async () => {
+    mockFetch({
+      [`GET ${API}/redis/databases`]: html,
+      [`GET ${API}/vector/index`]: [],
+      [`GET ${API}/search`]: [],
+      [`GET ${API}/teams`]: [],
+    });
+    await expect(
+      hostClient(new UpstashClient(creds)).listResources("upstash-account", ACC),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("still lists the account row when one product is refused", async () => {
+    mockFetch({
+      [`GET ${API}/redis/databases`]: [{ database_id: "db1" }],
+      [`GET ${API}/vector/index`]: new Response("no", { status: 403 }),
+      [`GET ${API}/search`]: [],
+      [`GET ${API}/teams`]: [],
+    });
+    const [row] = await hostClient(new UpstashClient(creds)).listResources("upstash-account", ACC);
+    expect(row!.fields["redisCount"]).toBe(1);
+    expect(row!.fields["vectorCount"]).toBeUndefined();
+  });
+
+  it("fails a cost pass rather than reporting no spend", async () => {
+    mockFetch({
+      [`GET ${API}/redis/databases`]: html,
+      [`GET ${API}/qstash/users`]: [],
+    });
+    await expect(
+      hostClient(new UpstashClient(creds)).fetchCostData(ACC, {
+        fromDate: "2026-10-01",
+        toDate: "2026-10-05",
+      }),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("keeps a refused cost list degraded, not empty", async () => {
+    mockFetch({
+      [`GET ${API}/redis/databases`]: new Response("no", { status: 403 }),
+      [`GET ${API}/qstash/users`]: [],
+    });
+    expect(
+      await hostClient(new UpstashClient(creds)).fetchCostData(ACC, {
+        fromDate: "2026-10-01",
+        toDate: "2026-10-05",
+      }),
+    ).toEqual({ rows: [], degraded: true });
+  });
+});
+
 describe("helpers", () => {
   it("parses Go timestamps", () => {
     expect(parseUpstashTime("2025-09-04 15:12:52.76649148 +0000 UTC")).toBe(
