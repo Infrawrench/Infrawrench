@@ -16,10 +16,23 @@ import type {
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { joinSubtitle, jsonRestFetch, streamOpenAiSseChat } from "@infrawrench/plugin-base";
+import {
+  joinSubtitle,
+  pathEncode,
+  streamOpenAiSseChat,
+  unencodedSegment,
+} from "@infrawrench/plugin-base";
+import {
+  API_BASE,
+  createPerplexityApis,
+  statusErrors,
+  type AsyncRequest,
+  type ListedModel,
+  type PlatformApi,
+  type RouterApi,
+  type Skill,
+} from "./api.js";
 
-/** https://docs.perplexity.ai/openapi.json (and openapi-gateway-chat.json), Oct 2026. */
-export const API_BASE = "https://api.perplexity.ai";
 const CONSOLE_URL = "https://console.perplexity.ai/project/settings";
 
 /**
@@ -36,45 +49,6 @@ export const SONAR_MODELS: Array<{ id: string; description: string }> = [
   },
 ];
 
-interface ListedModel {
-  id?: string;
-  created?: number;
-  owned_by?: string;
-  pricing?: {
-    input?: number;
-    output?: number;
-    cache_write?: number;
-    cache_read?: number;
-    unit?: string;
-  };
-}
-
-interface AsyncRequest {
-  id?: string;
-  model?: string;
-  status?: string;
-  created_at?: number;
-  started_at?: number | null;
-  completed_at?: number | null;
-  failed_at?: number | null;
-  error_message?: string | null;
-  response?: {
-    choices?: Array<{ message?: { content?: string } }>;
-    citations?: string[];
-    search_results?: Array<{ title?: string; url?: string }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: { total_cost?: number } };
-  } | null;
-}
-
-interface Skill {
-  skill_id?: string;
-  name?: string;
-  description?: string;
-  revision?: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
 function s(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
 }
@@ -88,20 +62,6 @@ function externalIdOf(resourceId: string, accountId: string, typeId: string): st
   if (resourceId.startsWith(prefix)) return resourceId.slice(prefix.length);
   const at = resourceId.indexOf(`:${typeId}:`);
   return at >= 0 ? resourceId.slice(at + typeId.length + 2) : resourceId;
-}
-
-function withStatus(err: unknown): unknown {
-  if (!(err instanceof Error)) return err;
-  const m = /API error (\d{3})\b/.exec(err.message);
-  if (!m) return err;
-  const status = Number(m[1]);
-  const hint =
-    status === 401
-      ? " Check the API key under API Keys in the Perplexity API console."
-      : status === 402
-        ? " The project is out of credits: top up on the Billing page."
-        : "";
-  return Object.assign(new Error(`${err.message}${hint}`), { status });
 }
 
 function section(title: string, children: SchemaNode[]): SectionNode {
@@ -139,13 +99,18 @@ export function asyncStatus(status: string): ResourceStatus {
   }
 }
 
+/** What this reads of an Agent API output item, which is one of a dozen kinds. */
+interface AgentOutputItem {
+  type?: string;
+  content?: Array<{ type?: string; text?: string }>;
+}
+
 /** Pull the assistant text out of an Agent API `output[]`. */
-export function agentOutputText(output: unknown): string {
+export function agentOutputText(output: AgentOutputItem[] | undefined): string {
   const parts: string[] = [];
   for (const item of Array.isArray(output) ? output : []) {
-    const it = item as { type?: string; content?: Array<{ type?: string; text?: string }> };
-    if (it.type !== "message") continue;
-    for (const c of it.content ?? []) if (typeof c.text === "string") parts.push(c.text);
+    if (item.type !== "message") continue;
+    for (const c of item.content ?? []) if (typeof c.text === "string") parts.push(c.text);
   }
   return parts.join("");
 }
@@ -158,31 +123,20 @@ export function agentOutputText(output: unknown): string {
  */
 export class PerplexityClient implements PluginClient {
   private readonly apiKey: string;
-  private readonly caCert: string;
-  private readonly http: HttpHostServices | undefined;
+  private readonly api: PlatformApi;
+  private readonly router: RouterApi;
 
   constructor(credentials: Credentials, services?: HostServices) {
     const apiKey = (credentials["apiKey"] ?? "").trim();
     if (!apiKey) throw new Error("Perplexity plugin: missing apiKey credential");
     this.apiKey = apiKey;
-    this.caCert = credentials["caCert"] ?? "";
-    this.http = services?.http;
-  }
-
-  private async fetch<T>(path: string, init?: RequestInit): Promise<T> {
-    try {
-      return await jsonRestFetch<T>({
-        vendor: "Perplexity",
-        url: `${API_BASE}${path}`,
-        errorPath: path.split("?")[0] ?? path,
-        headers: { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json" },
-        ...(init ? { init } : {}),
-        ...(this.caCert ? { caCert: this.caCert } : {}),
-        ...(this.http ? { http: this.http } : {}),
-      });
-    } catch (err) {
-      throw withStatus(err);
-    }
+    const { platform, router } = createPerplexityApis({
+      apiKey,
+      caCert: credentials["caCert"] ?? "",
+      http: services?.http,
+    });
+    this.api = platform;
+    this.router = router;
   }
 
   private instance(
@@ -230,14 +184,14 @@ export class PerplexityClient implements PluginClient {
           );
         case "perplexity-agent-model": {
           // GET /v1/models: models usable with POST /v1/agent.
-          const res = await this.fetch<{ data?: ListedModel[] }>("/v1/models");
+          const res = await statusErrors(this.api.get("/v1/models"));
           return (res.data ?? [])
             .filter((m) => m.id)
             .map((m) => this.mapListed(accountId, typeId, m, "/v1/agent"));
         }
         case "perplexity-router-model": {
           // GET /router/v1/models: OpenAI-compatible router catalogue with prices per 1M tokens.
-          const res = await this.fetch<{ data?: ListedModel[] }>("/router/v1/models");
+          const res = await statusErrors(this.router.get("/models"));
           return (res.data ?? [])
             .filter((m) => m.id)
             .map((m) => this.mapListed(accountId, typeId, m, "/router/v1/chat/completions"));
@@ -283,9 +237,7 @@ export class PerplexityClient implements PluginClient {
    * documents no query parameter to send it back with, so one page is read.
    */
   private async listAsync(accountId: string): Promise<ResourceInstance[]> {
-    const res = await this.fetch<{ requests?: AsyncRequest[]; next_token?: string | null }>(
-      "/v1/async/sonar",
-    );
+    const res = await statusErrors(this.api.get("/v1/async/sonar"));
     return (res.requests ?? []).filter((r) => r.id).map((r) => this.mapAsync(accountId, r));
   }
 
@@ -321,8 +273,11 @@ export class PerplexityClient implements PluginClient {
     const out: Skill[] = [];
     let token = "";
     for (let page = 0; page < 20; page++) {
-      const res = await this.fetch<{ skills?: Skill[]; next_page_token?: string }>(
-        `/v1/skills?limit=200${token ? `&page_token=${encodeURIComponent(token)}` : ""}`,
+      const res = await statusErrors(
+        this.api.get("/v1/skills", {
+          // `String`: a token that is not text has always gone back flattened.
+          query: { limit: 200, ...(token ? { page_token: String(token) } : {}) },
+        }),
       );
       out.push(...(res.skills ?? []));
       if (!res.next_page_token) break;
@@ -362,13 +317,13 @@ export class PerplexityClient implements PluginClient {
       if (typeId === "perplexity-async-request") {
         return this.mapAsync(
           accountId,
-          await this.fetch<AsyncRequest>(`/v1/async/sonar/${encodeURIComponent(id)}`),
+          await statusErrors(this.api.get(`/v1/async/sonar/${pathEncode(id)}`)),
         );
       }
       if (typeId === "perplexity-skill") {
         return this.mapSkill(
           accountId,
-          await this.fetch<Skill>(`/v1/skills/${encodeURIComponent(id)}`),
+          await statusErrors(this.api.get(`/v1/skills/${pathEncode(id)}`)),
         );
       }
       if (typeId === "perplexity-router-model") {
@@ -376,7 +331,7 @@ export class PerplexityClient implements PluginClient {
         return this.mapListed(
           accountId,
           typeId,
-          await this.fetch<ListedModel>(`/router/v1/models/${id}`),
+          await statusErrors(this.router.get(`/models/${unencodedSegment(id)}`)),
           "/router/v1/chat/completions",
         );
       }
@@ -407,11 +362,9 @@ export class PerplexityClient implements PluginClient {
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (resource.resourceTypeId !== "perplexity-skill") return resource;
-      const res = await this.fetch<{
-        revisions?: Array<{ revision?: string; created_at?: string }>;
-      }>(`/v1/skills/${encodeURIComponent(resource.externalId ?? "")}/revisions`).catch(() => ({
-        revisions: [],
-      }));
+      const res = await statusErrors(
+        this.api.get(`/v1/skills/${pathEncode(resource.externalId ?? "")}/revisions`),
+      ).catch(() => ({ revisions: [] }));
       return {
         ...resource,
         resolvedOutputs: {
@@ -480,16 +433,19 @@ export class PerplexityClient implements PluginClient {
         throw new Error(`Perplexity plugin: ${typeId} cannot be created`);
       const prompt = (fields["prompt"] ?? "").trim();
       if (!prompt) throw new Error("Perplexity plugin: a question is required");
-      const created = await this.fetch<AsyncRequest>("/v1/async/sonar", {
-        method: "POST",
-        body: JSON.stringify({
-          request: {
-            model: fields["model"] || "sonar-deep-research",
-            messages: [{ role: "user", content: prompt }],
-            ...(fields["searchRecency"] ? { search_recency_filter: fields["searchRecency"] } : {}),
+      const created = await statusErrors(
+        this.api.post("/v1/async/sonar", {
+          body: {
+            request: {
+              model: fields["model"] || "sonar-deep-research",
+              messages: [{ role: "user", content: prompt }],
+              ...(fields["searchRecency"]
+                ? { search_recency_filter: fields["searchRecency"] }
+                : {}),
+            },
           },
         }),
-      });
+      );
       return this.mapAsync(accountId, created);
     });
   }
@@ -500,10 +456,11 @@ export class PerplexityClient implements PluginClient {
       if (typeId !== "perplexity-skill")
         throw new Error(`Perplexity plugin: ${typeId} cannot be deleted`);
       const id = externalIdOf(resourceId, accountId, typeId);
-      const current = await this.fetch<Skill>(`/v1/skills/${encodeURIComponent(id)}`);
-      await this.fetch(
-        `/v1/skills/${encodeURIComponent(id)}?expected_revision=${encodeURIComponent(s(current.revision))}`,
-        { method: "DELETE" },
+      const current = await statusErrors(this.api.get(`/v1/skills/${pathEncode(id)}`));
+      await statusErrors(
+        this.api.delete(`/v1/skills/${pathEncode(id)}`, {
+          query: { expected_revision: s(current.revision) },
+        }),
       );
     });
   }
@@ -522,11 +479,9 @@ export class PerplexityClient implements PluginClient {
       // POST /v1/agent, non-streaming: its stream is typed Responses events,
       // not chat-completion deltas, so one full reply is yielded instead.
       try {
-        const res = await this.fetch<{
-          output?: unknown;
-          usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
-          error?: { message?: string };
-        }>("/v1/agent", { method: "POST", body: JSON.stringify({ model, input: turns }) });
+        const res = await statusErrors(
+          this.api.post("/v1/agent", { body: { model, input: turns } }),
+        );
         if (res.error?.message) {
           yield { kind: "error", message: res.error.message };
           return;
