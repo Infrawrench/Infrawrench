@@ -279,6 +279,30 @@ describe("runUsageExport", () => {
     ).rejects.toThrow(/failed: too big/);
   });
 
+  it("refuses a completed export that names no files, rather than read it as no usage", async () => {
+    const { http } = makeHttp((call) =>
+      call.method === "POST"
+        ? { usage_export_job_id: "j", state: "completed" }
+        : { status: 500, body: { message: "unexpected" } },
+    );
+    await expect(
+      runUsageExport(ctxWith(http), "o", new Date(0), new Date(86_400_000), { sleep: noSleep }),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("reads a completed export whose files are null or empty as no usage", async () => {
+    for (const download_urls of [null, []]) {
+      const { http } = makeHttp(() => ({
+        usage_export_job_id: "j",
+        state: "completed",
+        download_urls,
+      }));
+      await expect(
+        runUsageExport(ctxWith(http), "o", new Date(0), new Date(86_400_000), { sleep: noSleep }),
+      ).resolves.toEqual([]);
+    }
+  });
+
   it("gives up after the wait budget", async () => {
     const { http } = makeHttp(() => ({
       usage_export_job_id: "j",

@@ -26,7 +26,7 @@
  */
 
 import type { ApiResponse, CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError, pathEncode } from "@infrawrench/plugin-base";
+import { CostSetupError, pathEncode, requireListPage } from "@infrawrench/plugin-base";
 import type { CircleContext } from "./api.js";
 import { circleApi, downloadExport, isPermissionError, statusOf } from "./api.js";
 import type { operations } from "./api-types.v2.gen.js";
@@ -128,7 +128,14 @@ export async function runUsageExport(
   }
 
   const rows: Array<Record<string, string>> = [];
-  for (const url of job.download_urls ?? []) {
+  // The document requires the field, so one left out is not an export with no usage.
+  const files = requireListPage(job.download_urls, {
+    vendor: "CircleCI",
+    path: base,
+    key: "download_urls",
+    page: job,
+  });
+  for (const url of files) {
     rows.push(...parseCsv(await downloadExport(ctx, url)));
   }
   return rows;
