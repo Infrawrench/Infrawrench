@@ -19,7 +19,14 @@ import type {
 } from "@infrawrench/plugin-base";
 import { QuotaAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
 import type { AxiomApi, AxiomContext } from "./api.js";
-import { EDGE_DEPLOYMENTS, isPersonalToken, managementApi, mapPooled, statusOf } from "./api.js";
+import {
+  EDGE_DEPLOYMENTS,
+  isPersonalToken,
+  managementApi,
+  mapPooled,
+  statusOf,
+  withOffsetLists,
+} from "./api.js";
 import { aplDataset, firstRows, runApl } from "./apl.js";
 import {
   datasetEdgeUrl,
@@ -52,14 +59,12 @@ import {
 import { verifyAxiomCredentials } from "./preflight.js";
 import { MONITOR_HISTORY_KEY, renderAxiomDetail, renderAxiomSidebar } from "./render.js";
 import type {
-  AxDashboard,
   AxDataset,
   AxDatasetCapability,
   AxMonitor,
   AxNotifierProperties,
   AxNotifierRow,
   AxOrg,
-  AxStarredQuery,
 } from "./types.js";
 
 const TOKEN_SECRET_FIELD = "token";
@@ -219,6 +224,7 @@ export function logLine(row: Record<string, unknown>): string {
 export class AxiomClient implements PluginClient {
   private readonly ctx: AxiomContext;
   private readonly api: AxiomApi;
+  private readonly lists: ReturnType<typeof withOffsetLists>;
   private readonly secrets: SecretHostServices | undefined;
   private orgCache: Promise<AxOrg> | undefined;
   private datasetCache: { at: number; value: Promise<AxDataset[]> } | undefined;
@@ -238,6 +244,7 @@ export class AxiomClient implements PluginClient {
       ...(services?.http ? { http: services.http } : {}),
     };
     this.api = managementApi(this.ctx);
+    this.lists = withOffsetLists(this.api);
     this.secrets = services?.secrets;
   }
 
@@ -373,33 +380,19 @@ export class AxiomClient implements PluginClient {
             ((await this.api.get("/notifiers")) ?? []).map((n) => mapNotifier(accountId, n)),
           );
         case "dashboard":
-          return this.scoped(async () => {
-            const out: AxDashboard[] = [];
-            for (let offset = 0; offset < 5000; offset += 100) {
-              const page =
-                (await this.api.get("/dashboards", { query: { limit: 100, offset } })) ?? [];
-              out.push(...page);
-              if (page.length < 100) break;
-            }
-            return out.map((d) => mapDashboard(accountId, d));
-          });
+          return this.scoped(async () =>
+            (await this.lists.getAll("/dashboards", null)).map((d) => mapDashboard(accountId, d)),
+          );
         case "view":
           return this.scoped(async () =>
             ((await this.api.get("/views")) ?? []).map((v) => mapView(accountId, v)),
           );
         case "starred-query":
-          return this.scoped(async () => {
-            const out: AxStarredQuery[] = [];
-            for (let offset = 0; offset < 5000; offset += 100) {
-              const page =
-                (await this.api.get("/apl-starred-queries", {
-                  query: { who: "all", limit: 100, offset },
-                })) ?? [];
-              out.push(...page);
-              if (page.length < 100) break;
-            }
-            return out.map((q) => mapStarredQuery(accountId, q));
-          });
+          return this.scoped(async () =>
+            (await this.lists.getAll("/apl-starred-queries", null, { query: { who: "all" } })).map(
+              (q) => mapStarredQuery(accountId, q),
+            ),
+          );
         case "annotation":
           // No time filter: the document answers all of them without one, and a window
           // would prune an annotation from the inventory as it aged out of it.

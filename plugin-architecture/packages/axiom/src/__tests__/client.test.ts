@@ -400,3 +400,78 @@ describe("annotations", () => {
     expect(calls[0]?.url.search).toBe("");
   });
 });
+
+describe("offset lists", () => {
+  const LISTS = [
+    ["dashboard", "/v2/dashboards"],
+    ["starred-query", "/v2/apl-starred-queries"],
+  ] as const;
+
+  const rowsFor = (url: URL, count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `${url.searchParams.get("offset")}-${i}`,
+      uid: `${url.searchParams.get("offset")}-${i}`,
+      name: "n",
+    }));
+
+  for (const [type, path] of LISTS) {
+    it(`reads ${type}s past the old 5,000 row stop, at the largest page size`, async () => {
+      const { c, calls } = client((url) => {
+        if (url.pathname !== path) return { status: 404 };
+        const offset = Number(url.searchParams.get("offset"));
+        return { body: rowsFor(url, offset < 6000 ? 1000 : 3) };
+      });
+      expect(await c.listResources(type, ACCOUNT)).toHaveLength(6003);
+      expect(calls.map((x) => x.url.searchParams.get("offset"))).toEqual([
+        "0",
+        "1000",
+        "2000",
+        "3000",
+        "4000",
+        "5000",
+        "6000",
+      ]);
+      expect(calls.every((x) => x.url.searchParams.get("limit") === "1000")).toBe(true);
+    });
+
+    it(`refuses a ${type} list that never ends, after 50 pages`, async () => {
+      const { c, calls } = client((url) =>
+        url.pathname === path ? { body: rowsFor(url, 1000) } : { status: 404 },
+      );
+      await expect(c.listResources(type, ACCOUNT)).rejects.toThrow(
+        "has more than Infrawrench reads",
+      );
+      expect(calls.filter((x) => x.url.pathname === path)).toHaveLength(50);
+    });
+
+    it(`refuses a ${type} page that is not a list, first and later`, async () => {
+      const first = client((url) =>
+        url.pathname === path ? { body: { message: "no" } } : { status: 404 },
+      );
+      await expect(first.c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+      const later = client((url) => {
+        if (url.pathname !== path) return { status: 404 };
+        return url.searchParams.get("offset") === "0"
+          ? { body: rowsFor(url, 1000) }
+          : { body: { message: "no" } };
+      });
+      await expect(later.c.listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    });
+  }
+
+  it("still asks for everyone's saved queries", async () => {
+    const { c, calls } = client((url) =>
+      url.pathname === "/v2/apl-starred-queries" ? { body: [] } : { status: 404 },
+    );
+    await c.listResources("starred-query", ACCOUNT);
+    expect(calls[0]?.url.searchParams.get("who")).toBe("all");
+  });
+
+  it("lists a 403 offset list empty when the token itself works", async () => {
+    const { c } = client((url) => {
+      if (url.pathname === "/v2/orgs") return { body: [ORG] };
+      return { status: 403, body: { message: "forbidden" } };
+    });
+    expect(await c.listResources("dashboard", ACCOUNT)).toEqual([]);
+  });
+});

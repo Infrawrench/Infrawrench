@@ -5,6 +5,7 @@ import {
   type ApiFailure,
   type HttpHostServices,
   type ParamValue,
+  withCursorPagination,
 } from "@infrawrench/plugin-base";
 import type { paths as EdgePaths } from "./api-types.edge.gen.js";
 import type { paths as V1Paths } from "./api-types.v1.gen.js";
@@ -110,6 +111,22 @@ export type AxiomApi = ApiClient<V2Paths>;
 /** The management API, `api.axiom.co/v2`. */
 export function managementApi(ctx: AxiomContext, errorPath?: ErrorPath): AxiomApi {
   return createApiClient<V2Paths>(clientOptions(ctx, API_URL, "/v2", errorPath));
+}
+
+/** The document's largest `limit`. */
+const OFFSET_PAGE_SIZE = 1000;
+
+/** `limit`/`offset` lists answering a bare array: 50 pages, so 50,000 rows at most. */
+export function withOffsetLists(api: AxiomApi) {
+  return withCursorPagination(api, {
+    cursorParam: "offset",
+    firstCursor: 0,
+    sizeParam: "limit",
+    pageSize: OFFSET_PAGE_SIZE,
+    maxPages: 50,
+    next: ({ cursor }) => Number(cursor) + OFFSET_PAGE_SIZE,
+    stopOnShortPage: true,
+  });
 }
 
 /** The older query route, `api.axiom.co/v1`, which personal access tokens can use. */
