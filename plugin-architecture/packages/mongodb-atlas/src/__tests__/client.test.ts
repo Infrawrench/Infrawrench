@@ -1,5 +1,5 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetAuthCaches } from "../api.js";
 import { MongoDBAtlasClient, withCredentials } from "../client.js";
 import { parseRoles, rolesToString } from "../mappers.js";
@@ -133,10 +133,13 @@ describe("listing", () => {
         ? reply({ status: 403, body: {} })
         : undefined,
     );
+    // A sync keeps that project's rows; elsewhere the refusal fails the list.
+    vi.stubGlobal(Symbol.for("infrawrench.unreadListPart"), () => true);
     const users = await hostClient(new MongoDBAtlasClient(CREDS, { http })).listResources(
       "database-user",
       ACCOUNT,
     );
+    vi.unstubAllGlobals();
     expect(users).toEqual([]);
   });
 
@@ -263,6 +266,28 @@ describe("a cluster whose children cannot be read", () => {
       const { http } = atlas((call) => (call.path.startsWith(USERS) ? refuse(status) : undefined));
       expect(await listing(http, "database-user")).toEqual([]);
       expect(namedParents()).toEqual(["acct:project:g1"]);
+    });
+
+    it("shows a refused project, cluster or provider where the host keeps no track", async () => {
+      Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+      const users = atlas((call) => (call.path.startsWith(USERS) ? refuse(403) : undefined));
+      await expect(listing(users.http, "database-user")).rejects.toThrow("403");
+      const snapshots = withClusters([running], (call) =>
+        call.path.startsWith(SNAPSHOTS) ? refuse(403) : undefined,
+      );
+      await expect(listing(snapshots.http, "backup-snapshot")).rejects.toThrow("403");
+      const clusters = atlas((call) =>
+        call.path.split("?")[0] === CLUSTERS ? refuse(403) : undefined,
+      );
+      await expect(listing(clusters.http, "cluster")).rejects.toThrow("403");
+      const endpoints = atlas((call) =>
+        call.path.endsWith("/privateEndpoint/AWS/endpointService")
+          ? refuse(403)
+          : call.path.includes("/endpointService")
+            ? []
+            : undefined,
+      );
+      await expect(listing(endpoints.http, "private-endpoint-service")).rejects.toThrow("403");
     });
 
     it("reads a 404 on a project's list as a project that is gone", async () => {

@@ -125,25 +125,34 @@ interface ClusterRead {
   clusters: ProjectCluster[];
   /** Projects whose cluster list the credential was refused. */
   refused: ProjectRef[];
+  /** Why the first of them was. */
+  refusal: unknown;
 }
 
-/** Keeps the stored rows under these parents. Where a host keeps no track, this does nothing. */
-function nameUnread(parentResourceIds: string[]): void {
-  if (parentResourceIds.length > 0) reportUnreadListPart({ parentResourceIds });
+/**
+ * Keeps the stored rows under these parents, and says whether the host does. One that keeps
+ * no track (the desktop) answers false.
+ */
+function nameUnread(parentResourceIds: string[]): boolean {
+  return parentResourceIds.length === 0 || reportUnreadListPart({ parentResourceIds });
 }
 
 /**
  * A 404 says this project or cluster has none. A refusal says nothing about its rows, so
  * `onRefused` names it and they stay. That includes a 401: every caller got here through
  * the project list, which does not come through here and fails on a rejected credential.
+ * Where nothing keeps them, `onRefused` answers false and the refusal fails the list.
  */
-async function tolerant<T>(onRefused: () => void, load: () => Promise<T[]>): Promise<T[]> {
+async function tolerant<T>(
+  onRefused: (err: unknown) => boolean,
+  load: () => Promise<T[]>,
+): Promise<T[]> {
   try {
     return await load();
   } catch (err) {
     if (statusOf(err) === 404) return [];
     if (!isPermissionError(err)) throw err;
-    onRefused();
+    if (!onRefused(err)) throw err;
     return [];
   }
 }
@@ -285,9 +294,15 @@ export class MongoDBAtlasClient implements PluginClient {
     this.clustersCache ??= this.refs()
       .then(async (refs) => {
         const refused: ProjectRef[] = [];
+        let refusal: unknown;
         const lists = await mapLimit(refs, CONCURRENCY, (p) =>
           tolerant(
-            () => refused.push(p),
+            (err) => {
+              refused.push(p);
+              refusal ??= err;
+              // Named by each type that reads this, in `listedClusters`.
+              return true;
+            },
             async () =>
               (
                 await this.api.getAll(`/groups/${pathEncode(p.groupId)}/clusters`, "results", {
@@ -298,7 +313,7 @@ export class MongoDBAtlasClient implements PluginClient {
                 .map((cluster) => ({ project: p, cluster })),
           ),
         );
-        return { clusters: lists.flat(), refused };
+        return { clusters: lists.flat(), refused, refusal };
       })
       .catch((err: unknown) => {
         this.clustersCache = undefined;
@@ -316,8 +331,8 @@ export class MongoDBAtlasClient implements PluginClient {
    * needs telling on its own which projects were refused, or their rows prune.
    */
   private async listedClusters(accountId: string): Promise<ProjectCluster[]> {
-    const { clusters, refused } = await this.clusterRead();
-    nameUnread(refused.map((p) => projectParent(accountId, p.groupId)));
+    const { clusters, refused, refusal } = await this.clusterRead();
+    if (!nameUnread(refused.map((p) => projectParent(accountId, p.groupId)))) throw refusal;
     return clusters;
   }
 
@@ -334,6 +349,7 @@ export class MongoDBAtlasClient implements PluginClient {
     load: (project: ProjectRef, clusterName: string, cluster: AtlasCluster) => Promise<T[]>,
   ): Promise<T[]> {
     const named = (await this.listedClusters(accountId)).filter(({ cluster }) => cluster.name);
+    // Where nothing keeps them, a paused cluster has none to show, so this goes unchecked.
     nameUnread(
       named
         .filter(({ cluster }) => cluster.paused)
@@ -445,7 +461,7 @@ export class MongoDBAtlasClient implements PluginClient {
             return snapshots().catch((err: unknown) => {
               const status = statusOf(err);
               if (status < 400 || status >= 500 || status === 429) throw err;
-              nameUnread([clusterParent(accountId, p.groupId, name)]);
+              if (!nameUnread([clusterParent(accountId, p.groupId, name)])) throw err;
               return [];
             });
           });
