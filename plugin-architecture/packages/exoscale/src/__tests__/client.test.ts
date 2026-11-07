@@ -426,6 +426,100 @@ describe("instance details (#405)", () => {
   });
 });
 
+describe("failed reads during a sync", () => {
+  blockFetch();
+
+  const zones = { zones: [{ name: "ch-gva-2" }, { name: "es-mad-1" }] };
+
+  it("fails the sync when a zone's read fails, rather than prune that zone", async () => {
+    const { services } = host((c) => {
+      const url = new URL(c.url);
+      if (url.pathname === "/v2/zone") return { body: zones };
+      if (url.hostname.includes("es-mad-1")) return { status: 503, body: "busy" };
+      return { body: { "private-networks": [{ id: "n1", name: "n1" }] } };
+    });
+    await expect(clientOver(services).listResources("private-network", "acct")).rejects.toThrow(
+      /503/,
+    );
+  });
+
+  it("fails the sync on a rejected key, rather than prune everything", async () => {
+    const { services } = host((c) =>
+      new URL(c.url).pathname === "/v2/zone"
+        ? { body: zones }
+        : { status: 401, body: { message: "bad key" } },
+    );
+    await expect(clientOver(services).listResources("private-network", "acct")).rejects.toThrow(
+      /401/,
+    );
+  });
+
+  it("reads a zone or service the key's role cannot use as having nothing", async () => {
+    const { services } = host((c) => {
+      const url = new URL(c.url);
+      if (url.pathname === "/v2/zone") return { body: zones };
+      if (url.hostname.includes("es-mad-1")) return { status: 403, body: { message: "denied" } };
+      return { body: { "private-networks": [{ id: "n1", name: "n1" }] } };
+    });
+    const rows = await clientOver(services).listResources("private-network", "acct");
+    expect(rows.map((r) => r.externalId)).toEqual(["ch-gva-2/n1"]);
+  });
+
+  it("fails the sync when the zone list cannot be read, because a snapshot misses zones", async () => {
+    const { services } = host((c) => {
+      if (new URL(c.url).pathname === "/v2/zone") return { status: 500, body: "boom" };
+      return { body: { "private-networks": [] } };
+    });
+    await expect(clientOver(services).listResources("private-network", "acct")).rejects.toThrow(
+      /500/,
+    );
+  });
+
+  it("fails the sync when the zone list holds no zones", async () => {
+    const { services } = host(() => ({ body: {} }));
+    await expect(clientOver(services).listResources("private-network", "acct")).rejects.toThrow(
+      /zone/,
+    );
+  });
+
+  it("still offers known zones to a form when the zone list cannot be read", async () => {
+    const { services } = host(() => ({ status: 500, body: "boom" }));
+    const api = createExoscaleApi({ apiKey: "k", apiSecret: "s", services });
+    expect(await api.zones()).toContain("ch-gva-2");
+  });
+
+  it("fails the sync when a domain's records fail, rather than prune them", async () => {
+    const { services } = host((c) => {
+      const path = new URL(c.url).pathname;
+      if (path === "/v2/dns-domain") return { body: { "dns-domains": [{ id: "d1" }] } };
+      if (path === "/v2/dns-domain/d1/record") return { status: 500, body: "boom" };
+      throw new Error(`unexpected request ${path}`);
+    });
+    await expect(clientOver(services).listResources("dns-record", "acct")).rejects.toThrow(/500/);
+  });
+
+  it("reads a domain deleted since the list as having no records", async () => {
+    const { services } = host((c) => {
+      const path = new URL(c.url).pathname;
+      if (path === "/v2/dns-domain") return { body: { "dns-domains": [{ id: "d1" }] } };
+      if (path === "/v2/dns-domain/d1/record") return { status: 404, body: { message: "gone" } };
+      throw new Error(`unexpected request ${path}`);
+    });
+    expect(await clientOver(services).listResources("dns-record", "acct")).toEqual([]);
+  });
+
+  it("fails the sync when a DBaaS service's read fails, rather than prune its users", async () => {
+    const { services } = host((c) => {
+      const path = new URL(c.url).pathname;
+      if (path === "/v2/dbaas-service")
+        return { body: { "dbaas-services": [{ name: "db", type: "pg", zone: "ch-gva-2" }] } };
+      if (path === "/v2/dbaas-postgres/db") return { status: 500, body: "boom" };
+      throw new Error(`unexpected request ${path}`);
+    });
+    await expect(clientOver(services).listResources("dbaas-user", "acct")).rejects.toThrow(/500/);
+  });
+});
+
 describe("account balance (#406)", () => {
   blockFetch();
 

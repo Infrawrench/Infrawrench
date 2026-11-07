@@ -1,7 +1,7 @@
 /**
  * Listing: Exoscale API v2 objects to `ResourceInstance`s. Zonal listers
- * fan out across the account's zones (four at a time) and skip a zone that
- * fails; account-wide ones (security groups, anti-affinity groups, SSH keys,
+ * fan out across the account's zones (four at a time) and skip a zone the key
+ * cannot use; account-wide ones (security groups, anti-affinity groups, SSH keys,
  * DNS, DBaaS) are read once from the default zone's endpoint.
  *
  * Fields an orphan/posture rule reads are written whenever they were read, and left
@@ -74,17 +74,28 @@ export function instance(
   };
 }
 
-/** Run a per-zone listing across every zone, skipping zones that fail. */
+/**
+ * The failures that really mean nothing is there: a role scoped to some services or zones
+ * answers 403, and something removed after the list answers 404. Any other failure must
+ * throw, because a sync prunes what a list stops returning.
+ */
+const meansNothingThere = (err: unknown) => {
+  const status = statusOf(err);
+  return status === 403 || status === 404;
+};
+
+/** Run a per-zone listing across every zone, skipping zones the key cannot use. */
 export async function perZone<T>(
   api: ExoscaleApi,
   fn: (zone: string) => Promise<T[]>,
 ): Promise<Array<{ zone: string; item: T }>> {
-  const zones = await api.zones();
+  const zones = await api.liveZones();
   const rows = await mapPooled(zones, 4, async (zone) => {
     try {
       return (await fn(zone)).map((item) => ({ zone, item }));
-    } catch {
-      return [];
+    } catch (err) {
+      if (meansNothingThere(err)) return [];
+      throw err;
     }
   });
   return rows.flat();
@@ -764,7 +775,10 @@ async function dbaasDetails(api: ExoscaleApi, types: string[]): Promise<DbaasSer
     const full: DbaasService = await api
       .at(zone)
       .get(`/dbaas-${rawId(dbaasPath(str(s["type"])))}/${rawId(str(s["name"]))}`)
-      .catch(() => ({}));
+      .catch((err): DbaasService => {
+        if (meansNothingThere(err)) return {};
+        throw err;
+      });
     return { ...s, ...full };
   });
 }
@@ -838,7 +852,10 @@ export async function listRecords(api: ExoscaleApi, accountId: string) {
   const rows = await mapPooled(arr(res["dns-domains"]), 6, async (d) =>
     domainRecords(api, str(d["id"]))
       .then((records) => records.map((r) => mapRecord(r, d, accountId)))
-      .catch(() => []),
+      .catch((err) => {
+        if (meansNothingThere(err)) return [];
+        throw err;
+      }),
   );
   return rows.flat();
 }

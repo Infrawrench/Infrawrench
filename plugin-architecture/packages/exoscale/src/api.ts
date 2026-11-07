@@ -133,8 +133,10 @@ export interface ExoscaleApi {
   readonly apiKey: string;
   readonly apiSecret: string;
   at(zone: string): ZoneApi;
-  /** Zones the account can use, from the public zone list (cached). */
+  /** Zones to offer on a form: the public zone list (cached), or a known list if it fails. */
   zones(): Promise<string[]>;
+  /** The public zone list, or a throw: a sync over a known list would prune any zone it lacks. */
+  liveZones(): Promise<string[]>;
 }
 
 export interface ExoscaleApiConfig {
@@ -247,23 +249,29 @@ export function createExoscaleApi(config: ExoscaleApiConfig): ExoscaleApi {
     return zoned;
   }
 
+  function liveZones(): Promise<string[]> {
+    if (!zoneList) {
+      const read = at(DEFAULT_ZONE)
+        .get("/zone")
+        .then((r) => {
+          const names = (r.zones ?? []).map((z): string => z.name ?? "").filter(Boolean);
+          if (!names.length) throw new Error("Exoscale's zone list holds no zones");
+          return names;
+        });
+      read.catch(() => {
+        zoneList = null;
+      });
+      zoneList = read;
+    }
+    return zoneList;
+  }
+
   return {
     apiKey: config.apiKey,
     apiSecret: config.apiSecret,
     at,
-    zones() {
-      if (!zoneList) {
-        zoneList = at(DEFAULT_ZONE)
-          .get("/zone")
-          .then((r) => (r.zones ?? []).map((z): string => z.name ?? "").filter(Boolean))
-          .then((z) => (z.length ? z : [DEFAULT_ZONE]))
-          .catch(() => {
-            zoneList = null;
-            return [...KNOWN_ZONES];
-          });
-      }
-      return zoneList;
-    },
+    liveZones,
+    zones: () => liveZones().catch(() => [...KNOWN_ZONES]),
   };
 }
 
@@ -276,6 +284,7 @@ export const KNOWN_ZONES = [
   "at-vie-2",
   "bg-sof-1",
   "hr-zag-1",
+  "es-mad-1",
 ];
 
 export function zonal(resourceId: string): { zone: string; id: string } {
