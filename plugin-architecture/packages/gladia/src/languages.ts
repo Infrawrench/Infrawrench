@@ -147,7 +147,8 @@ export const GLADIA_MODEL_OPTIONS: SpeechPanelOption[] = [
   {
     id: "solaria-3",
     label: "Solaria-3",
-    description: "Latest generation, pre-recorded (async) only",
+    description:
+      "Latest generation, pre-recorded only. English, French, German, Spanish or Italian",
   },
   {
     id: "solaria-fusion",

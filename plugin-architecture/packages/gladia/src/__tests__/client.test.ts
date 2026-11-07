@@ -2,6 +2,7 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import type { HostedMethods } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GladiaClient } from "../client.js";
+import { GLADIA_MODEL_OPTIONS } from "../languages.js";
 
 const ACCOUNT = "acct-1";
 
@@ -582,5 +583,14 @@ describe("deleteResource with no id", () => {
       "no job id",
     );
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("Speech panel options", () => {
+  it("says which languages Solaria-3 is documented to take", () => {
+    const solaria3 = GLADIA_MODEL_OPTIONS.find((model) => model.id === "solaria-3");
+    for (const language of ["English", "French", "German", "Spanish", "Italian"]) {
+      expect(solaria3?.description).toContain(language);
+    }
   });
 });
