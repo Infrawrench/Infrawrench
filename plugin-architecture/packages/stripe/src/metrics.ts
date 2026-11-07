@@ -1,8 +1,8 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
-import type { StripeContext } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import type { StripeApi } from "./api.js";
 import { fromMinor, listV1 } from "./api.js";
 import { dailyVolume, daysBetween, mapLimit, transactionsForDay } from "./balance.js";
-import type { StripePrice } from "./mappers.js";
 
 /** Days charted on the account Metrics tab, at most. Each is one or more requests. */
 const MAX_METRIC_DAYS = 90;
@@ -19,7 +19,7 @@ const dayMs = (day: string) => Date.parse(`${day}T00:00:00Z`);
  * rate (fees / gross).
  */
 export async function accountMetrics(
-  ctx: StripeContext,
+  api: StripeApi,
   startMs: number,
   endMs: number,
 ): Promise<MetricSeries[]> {
@@ -28,7 +28,7 @@ export async function accountMetrics(
   const from = new Date(earliest).toISOString().slice(0, 10);
   const days = daysBetween(from, to);
   const perDay = await mapLimit(days, 4, (day) =>
-    transactionsForDay(ctx, day, METRIC_PAGES_PER_DAY),
+    transactionsForDay(api, day, METRIC_PAGES_PER_DAY),
   );
   const volume = dailyVolume(perDay.flat());
 
@@ -72,16 +72,6 @@ export async function accountMetrics(
   return series;
 }
 
-interface MeterSummary {
-  aggregated_value?: number;
-  start_time?: number;
-}
-
-interface SubscriptionWithCustomer {
-  id?: string;
-  customer?: string | { id?: string; name?: string | null; email?: string | null };
-}
-
 /**
  * Meter usage per customer. `GET /v1/billing/meters/{id}/event_summaries`
  * requires a `customer`, so there is no meter-wide total to ask for: the
@@ -92,32 +82,41 @@ interface SubscriptionWithCustomer {
  * the range is widened to whole days (or hours for ranges under two days).
  */
 export async function meterMetrics(
-  ctx: StripeContext,
+  api: StripeApi,
   meterId: string,
   startMs: number,
   endMs: number,
 ): Promise<MetricSeries[]> {
-  const prices = await listV1<StripePrice>(
-    ctx,
-    "/v1/prices",
-    { active: true, type: "recurring" },
+  const prices = await listV1(
+    (paging) =>
+      api.get("/v1/prices", { query: { limit: 100, active: true, type: "recurring", ...paging } }),
     10,
   );
   const meterPrices = prices.filter((p) => p.recurring?.meter === meterId && p.id);
   const customers = new Map<string, string>();
   for (const price of meterPrices) {
     if (customers.size >= MAX_METER_CUSTOMERS) break;
-    const subs = await listV1<SubscriptionWithCustomer>(
-      ctx,
-      "/v1/subscriptions",
-      { price: String(price.id), status: "active", "expand[]": "data.customer" },
+    const subs = await listV1(
+      (paging) =>
+        api.get("/v1/subscriptions", {
+          query: {
+            limit: 100,
+            price: String(price.id),
+            status: "active",
+            "expand[]": "data.customer",
+            ...paging,
+          },
+        }),
       1,
     );
     for (const sub of subs) {
       const c = sub.customer;
       const id = typeof c === "string" ? c : (c?.id ?? "");
       if (!id || customers.has(id)) continue;
-      const label = typeof c === "object" && c ? c.name || c.email || id : id;
+      const label =
+        typeof c === "object" && c
+          ? ("name" in c && c.name) || ("email" in c && c.email) || id
+          : id;
       customers.set(id, label);
       if (customers.size >= MAX_METER_CUSTOMERS) break;
     }
@@ -129,23 +128,26 @@ export async function meterMetrics(
   const start = Math.floor(startMs / unit) * unit;
   const end = Math.ceil(Math.min(endMs, Date.now()) / unit) * unit;
   const results = await mapLimit([...customers.entries()], 4, async ([id, label]) => {
-    const summaries = await listV1<MeterSummary & { id?: string }>(
-      ctx,
-      `/v1/billing/meters/${encodeURIComponent(meterId)}/event_summaries`,
-      {
-        customer: id,
-        start_time: Math.floor(start / 1000),
-        end_time: Math.floor(end / 1000),
-        value_grouping_window: hourly ? "hour" : "day",
-      },
+    const summaries = await listV1(
+      (paging) =>
+        api.get(`/v1/billing/meters/${pathEncode(meterId)}/event_summaries`, {
+          query: {
+            limit: 100,
+            customer: id,
+            start_time: Math.floor(start / 1000),
+            end_time: Math.floor(end / 1000),
+            value_grouping_window: hourly ? "hour" : "day",
+            ...paging,
+          },
+        }),
       5,
-    ).catch(() => [] as MeterSummary[]);
+    ).catch(() => []);
     return {
       label,
       points: summaries
         .filter((s) => typeof s.start_time === "number")
         .map((s) => ({
-          timestamp: (s.start_time as number) * 1000,
+          timestamp: s.start_time * 1000,
           value: s.aggregated_value ?? 0,
         }))
         .sort((a, b) => a.timestamp - b.timestamp),

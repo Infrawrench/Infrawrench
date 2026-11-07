@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { currencyExponent, dashboardUrl, formatMoney, keyMode } from "./api.js";
+import type { components } from "./api-types.gen.js";
 import {
   ACCOUNT,
   CONNECTED_ACCOUNT,
@@ -15,213 +16,20 @@ import {
 
 // ------------------------------------------------------------------ wire types
 
-export interface StripeRequirements {
-  currently_due?: string[] | null;
-  past_due?: string[] | null;
-  eventually_due?: string[] | null;
-  current_deadline?: number | null;
-  disabled_reason?: string | null;
-}
+type Schemas = components["schemas"];
 
-export interface StripeAccount {
-  id?: string;
-  object?: string;
-  type?: string;
-  email?: string | null;
-  country?: string;
-  default_currency?: string;
-  business_type?: string | null;
-  charges_enabled?: boolean;
-  payouts_enabled?: boolean;
-  details_submitted?: boolean;
-  created?: number;
-  business_profile?: { name?: string | null; url?: string | null } | null;
-  settings?: {
-    dashboard?: { display_name?: string | null } | null;
-    payments?: { statement_descriptor?: string | null } | null;
-    payouts?: {
-      schedule?: {
-        interval?: string;
-        delay_days?: number;
-        weekly_anchor?: string;
-        monthly_anchor?: number;
-      };
-    } | null;
-  } | null;
-  controller?: {
-    type?: string;
-    is_controller?: boolean;
-    requirement_collection?: string;
-    losses?: { payments?: string };
-    fees?: { payer?: string };
-    stripe_dashboard?: { type?: string };
-  } | null;
-  requirements?: StripeRequirements | null;
-}
-
-export interface StripeBalanceAmount {
-  amount: number;
-  currency: string;
-}
-
-export interface StripeBalance {
-  available?: StripeBalanceAmount[];
-  pending?: StripeBalanceAmount[];
-  instant_available?: StripeBalanceAmount[];
-  connect_reserved?: StripeBalanceAmount[];
-}
-
-export interface StripeWebhookEndpoint {
-  id?: string;
-  url?: string;
-  description?: string | null;
-  enabled_events?: string[];
-  status?: string;
-  api_version?: string | null;
-  application?: string | null;
-  created?: number;
-  secret?: string;
-  metadata?: Record<string, string>;
-}
-
-export interface StripeEventDestination {
-  id?: string;
-  name?: string;
-  description?: string | null;
-  type?: string;
-  event_payload?: string;
-  enabled_events?: string[];
-  events_from?: string[] | null;
-  snapshot_api_version?: string | null;
-  status?: string;
-  status_details?: { disabled?: { reason?: string } | null } | null;
-  webhook_endpoint?: { url?: string | null; signing_secret?: string | null } | null;
-  amazon_eventbridge?: {
-    aws_account_id?: string;
-    aws_region?: string;
-    aws_event_source_arn?: string;
-    aws_event_source_status?: string;
-  } | null;
-  azure_event_grid?: {
-    azure_region?: string;
-    azure_resource_group_name?: string;
-    azure_subscription_id?: string;
-    azure_partner_topic_name?: string;
-    azure_partner_topic_status?: string;
-  } | null;
-  created?: string;
-  updated?: string;
-}
-
-export interface StripeProduct {
-  id?: string;
-  name?: string;
-  description?: string | null;
-  active?: boolean;
-  type?: string;
-  unit_label?: string | null;
-  statement_descriptor?: string | null;
-  tax_code?: string | { id?: string } | null;
-  url?: string | null;
-  default_price?: string | { id?: string } | null;
-  created?: number;
-  updated?: number;
-}
-
-export interface StripePrice {
-  id?: string;
-  product?: string | { id?: string };
-  nickname?: string | null;
-  currency?: string;
-  unit_amount?: number | null;
-  unit_amount_decimal?: string | null;
-  billing_scheme?: string;
-  type?: string;
-  active?: boolean;
-  lookup_key?: string | null;
-  tax_behavior?: string | null;
-  recurring?: {
-    interval?: string;
-    interval_count?: number;
-    usage_type?: string;
-    meter?: string | null;
-  } | null;
-  custom_unit_amount?: unknown;
-  tiers_mode?: string | null;
-  created?: number;
-}
-
-export interface StripeMeter {
-  id?: string;
-  display_name?: string;
-  event_name?: string;
-  status?: string;
-  default_aggregation?: { formula?: string };
-  customer_mapping?: { event_payload_key?: string; type?: string };
-  value_settings?: { event_payload_key?: string };
-  event_time_window?: string | null;
-  status_transitions?: { deactivated_at?: number | null };
-  created?: number;
-  updated?: number;
-}
-
-export interface StripePayout {
-  id?: string;
-  amount?: number;
-  currency?: string;
-  status?: string;
-  arrival_date?: number;
-  method?: string;
-  type?: string;
-  automatic?: boolean;
-  destination?: string | { id?: string } | null;
-  reconciliation_status?: string;
-  failure_code?: string | null;
-  failure_message?: string | null;
-  statement_descriptor?: string | null;
-  description?: string | null;
-  created?: number;
-}
-
-export interface StripeFile {
-  id?: string;
-  size?: number;
-  filename?: string | null;
-  url?: string | null;
-}
-
-export interface StripeReportRun {
-  id?: string;
-  report_type?: string;
-  status?: string;
-  error?: string | null;
-  parameters?: { interval_start?: number; interval_end?: number; currency?: string };
-  result?: StripeFile | null;
-  succeeded_at?: number | null;
-  created?: number;
-}
-
-export interface StripeSigmaRun {
-  id?: string;
-  title?: string;
-  status?: string;
-  sql?: string;
-  data_load_time?: number;
-  result_available_until?: number;
-  file?: StripeFile | null;
-  error?: { message?: string } | null;
-  created?: number;
-}
-
-export interface StripeEvent {
-  id?: string;
-  type?: string;
-  created?: number;
-  pending_webhooks?: number;
-  account?: string;
-  request?: { id?: string | null } | null;
-  data?: { object?: { id?: string; object?: string } };
-}
+export type StripeAccount = Schemas["account"];
+export type StripeBalanceAmount = Pick<Schemas["balance_amount"], "amount" | "currency">;
+export type StripeBalance = Schemas["balance"];
+export type StripeWebhookEndpoint = Schemas["webhook_endpoint"];
+export type StripeEventDestination = Schemas["v2.core.event_destination"];
+export type StripeProduct = Schemas["product"];
+export type StripePrice = Schemas["price"];
+export type StripeMeter = Schemas["billing.meter"];
+export type StripePayout = Schemas["payout"];
+export type StripeReportRun = Schemas["reporting.report_run"];
+export type StripeSigmaRun = Schemas["scheduled_query_run"];
+export type StripeEvent = Schemas["event"];
 
 // ---------------------------------------------------------------------- helpers
 
@@ -297,7 +105,7 @@ export function mapAccount(
   balance: StripeBalance | null,
 ): ResourceInstance {
   const id = acct.id ?? "";
-  const req = acct.requirements ?? {};
+  const req: Partial<NonNullable<StripeAccount["requirements"]>> = acct.requirements ?? {};
   return instance(
     accountId,
     ACCOUNT,
@@ -334,7 +142,7 @@ export function mapConnectedAccount(
   acct: StripeAccount,
 ): ResourceInstance {
   const id = acct.id ?? "";
-  const req = acct.requirements ?? {};
+  const req: Partial<NonNullable<StripeAccount["requirements"]>> = acct.requirements ?? {};
   return instance(
     accountId,
     CONNECTED_ACCOUNT,
@@ -394,8 +202,11 @@ export function mapEventDestination(
   dest: StripeEventDestination,
 ): ResourceInstance {
   const id = dest.id ?? "";
-  const eb = dest.amazon_eventbridge ?? {};
-  const az = dest.azure_event_grid ?? {};
+  const eb: Partial<NonNullable<StripeEventDestination["amazon_eventbridge"]>> & {
+    aws_region?: string;
+  } = dest.amazon_eventbridge ?? {};
+  const az: Partial<NonNullable<StripeEventDestination["azure_event_grid"]>> =
+    dest.azure_event_grid ?? {};
   return instance(
     accountId,
     EVENT_DESTINATION,

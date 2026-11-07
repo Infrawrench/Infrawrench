@@ -1,4 +1,11 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  restRequest,
+  type ApiClient,
+  type HttpHostServices,
+  type ParamValue,
+} from "@infrawrench/plugin-base";
+import type { paths } from "./api-types.gen.js";
 
 /**
  * Stripe REST API (https://docs.stripe.com/api, OpenAPI spec at
@@ -44,8 +51,8 @@ export class StripeApiError extends Error {
 
 export function statusOf(err: unknown): number {
   if (err instanceof StripeApiError) return err.status;
-  const status = (err as { status?: unknown } | null)?.status;
-  return typeof status === "number" ? status : 0;
+  if (typeof err !== "object" || err === null || !("status" in err)) return 0;
+  return typeof err.status === "number" ? err.status : 0;
 }
 
 /** 401/403: the key is wrong, or a restricted key lacks the permission. */
@@ -68,17 +75,14 @@ export function isFeatureUnavailable(err: unknown): boolean {
   return false;
 }
 
-export type FormValue =
-  string | number | boolean | null | undefined | FormValue[] | { [key: string]: FormValue };
-
 /**
  * Stripe's v1 form encoding: nested objects as `a[b]`, arrays indexed as
  * `a[0]`. `undefined` is skipped; `""` is sent, which is how v1 unsets a
  * field (for instance `description=`).
  */
-export function encodeForm(body: Record<string, FormValue>): string {
+export function encodeForm(body: Record<string, ParamValue>): string {
   const params = new URLSearchParams();
-  const walk = (prefix: string, value: FormValue) => {
+  const walk = (prefix: string, value: ParamValue) => {
     if (value === undefined) return;
     if (value === null) {
       params.append(prefix, "");
@@ -98,17 +102,26 @@ export function encodeForm(body: Record<string, FormValue>): string {
   return params.toString();
 }
 
-export type Query = Record<string, string | number | boolean | undefined | Array<string | number>>;
-
-export function buildQuery(query: Query = {}): string {
+/**
+ * Stripe's query dialect, without the leading `?`: nested objects as `a[b]`,
+ * arrays indexed as `a[0]`, and `undefined`, `null` and `""` left out.
+ */
+export function buildQuery(query: Record<string, ParamValue> = {}): string {
   const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query)) {
-    if (v === undefined || v === "") continue;
-    if (Array.isArray(v)) v.forEach((item, i) => params.append(`${k}[${i}]`, String(item)));
-    else params.set(k, String(v));
-  }
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
+  const walk = (prefix: string, value: ParamValue) => {
+    if (value === undefined || value === null || value === "") return;
+    if (Array.isArray(value)) {
+      value.forEach((item, i) => walk(`${prefix}[${i}]`, item));
+      return;
+    }
+    if (typeof value === "object") {
+      for (const [k, v] of Object.entries(value)) walk(`${prefix}[${k}]`, v);
+      return;
+    }
+    params.set(prefix, String(value));
+  };
+  for (const [k, v] of Object.entries(query)) walk(k, v);
+  return params.toString();
 }
 
 interface StripeErrorBody {
@@ -117,8 +130,8 @@ interface StripeErrorBody {
 
 function parseError(text: string): { message: string; type: string; code: string } {
   try {
-    const parsed = JSON.parse(text) as StripeErrorBody;
-    const e = parsed.error;
+    const parsed: StripeErrorBody | null = JSON.parse(text);
+    const e = parsed?.error;
     if (e && typeof e.message === "string") {
       return {
         message: e.param ? `${e.message} (${e.param})` : e.message,
@@ -132,68 +145,44 @@ function parseError(text: string): { message: string; type: string; code: string
   return { message: text.slice(0, 500), type: "", code: "" };
 }
 
-export interface RequestOptions {
-  method?: string;
-  query?: Query;
-  /** v1: form-encoded. Ignored on GET. */
-  form?: Record<string, FormValue>;
-  /** v2: JSON body. */
-  json?: unknown;
+function stripeError(status: number, path: string, body: string): StripeApiError {
+  const { message, type, code } = parseError(body);
+  return new StripeApiError(
+    status,
+    `Stripe API error ${status} for ${path}: ${message}`,
+    type,
+    code,
+  );
 }
 
-/**
- * One request. Routed through the host HTTP service whenever there is one:
- * that is the only path that honours bastion egress and a custom CA.
- */
-export async function stripeFetch<T>(
-  ctx: StripeContext,
-  path: string,
-  opts: RequestOptions = {},
-): Promise<T> {
-  const url = path.startsWith("http") ? path : `${API_BASE}${path}${buildQuery(opts.query)}`;
-  const method = opts.method ?? "GET";
-  const headers: Record<string, string> = {
+function stripeHeaders(ctx: StripeContext): Record<string, string> {
+  return {
     Authorization: `Bearer ${ctx.apiKey}`,
     Accept: "application/json",
     "Stripe-Version": STRIPE_API_VERSION,
   };
-  let body: string | undefined;
-  if (opts.json !== undefined) {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(opts.json);
-  } else if (opts.form !== undefined && method !== "GET") {
-    headers["Content-Type"] = "application/x-www-form-urlencoded";
-    body = encodeForm(opts.form);
-  }
+}
 
-  let status: number;
-  let text: string;
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url,
-      method,
-      headers,
-      ...(body !== undefined ? { body } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-    status = res.status;
-    text = res.body;
-  } else {
-    const res = await fetch(url, { method, headers, ...(body !== undefined ? { body } : {}) });
-    status = res.status;
-    text = await res.text();
-  }
-  if (status < 200 || status >= 300) {
-    const { message, type, code } = parseError(text);
-    const label = path.startsWith("http") ? new URL(path).pathname : path;
-    throw new StripeApiError(
-      status,
-      `Stripe API error ${status} for ${label}: ${message}`,
-      type,
-      code,
-    );
-  }
-  return (status === 204 || !text ? undefined : JSON.parse(text)) as T;
+export type StripeApi = ApiClient<paths>;
+
+/**
+ * Both API generations, from one document: it says form for v1 bodies and JSON
+ * for v2 ones. Routed through the host HTTP service whenever there is one: that
+ * is the only path that honours bastion egress and a custom CA.
+ */
+export function stripeApi(ctx: StripeContext): StripeApi {
+  return createApiClient<paths>({
+    vendor: "Stripe",
+    baseUrl: API_BASE,
+    headers: stripeHeaders(ctx),
+    http: ctx.http,
+    caCert: ctx.caCert,
+    contentType: "with-body",
+    emptyBodyIsUndefined: true,
+    serializeQuery: buildQuery,
+    serializeForm: encodeForm,
+    httpError: ({ status, path, body }) => stripeError(status, path, body),
+  });
 }
 
 interface V1List<T> {
@@ -203,20 +192,23 @@ interface V1List<T> {
 
 /**
  * Every page of a v1 list, up to `maxPages` × 100 objects, so a huge account
- * cannot turn one listing into thousands of requests.
+ * cannot turn one listing into thousands of requests. `fetchPage` makes the
+ * request, spreading `paging` last in its query.
+ *
+ * A loop rather than `withCursorPagination`, for two things that helper does
+ * differently. This has always sent `limit`, the caller's query, then
+ * `starting_after`, and the helper puts the query at one end. And it reads a
+ * `data` that is not an array as the end of the list, where this throws, so a
+ * sync fails rather than prunes everything it stopped seeing.
  */
 export async function listV1<T extends { id?: string }>(
-  ctx: StripeContext,
-  path: string,
-  query: Query = {},
+  fetchPage: (paging: { starting_after?: string }) => Promise<V1List<T> | undefined>,
   maxPages = 10,
 ): Promise<T[]> {
   const out: T[] = [];
   let startingAfter: string | undefined;
   for (let page = 0; page < maxPages; page++) {
-    const res = await stripeFetch<V1List<T>>(ctx, path, {
-      query: { limit: 100, ...query, ...(startingAfter ? { starting_after: startingAfter } : {}) },
-    });
+    const res = await fetchPage(startingAfter ? { starting_after: startingAfter } : {});
     const data = res?.data ?? [];
     out.push(...data);
     const last = data[data.length - 1]?.id;
@@ -231,18 +223,34 @@ interface V2List<T> {
   next_page_url?: string | null;
 }
 
-/** Every page of a v2 list by following `next_page_url`, up to `maxPages`. */
+/**
+ * Every page of a v2 list by following `next_page_url`, up to `maxPages`.
+ * `firstPage` makes the first request; each one after is the link as written,
+ * prefixed with the host unless it starts with `http`, wherever that leads.
+ * A link is no route of the document, hence `restRequest` for those.
+ */
 export async function listV2<T>(
   ctx: StripeContext,
-  path: string,
-  query: Query = {},
+  firstPage: () => Promise<V2List<T> | undefined>,
   maxPages = 10,
 ): Promise<T[]> {
+  const first = await firstPage();
   const out: T[] = [];
-  let next: string | null | undefined = `${path}${buildQuery({ limit: 100, ...query })}`;
-  for (let page = 0; page < maxPages && next; page++) {
+  out.push(...(first?.data ?? []));
+  let next = first?.next_page_url ?? null;
+  for (let page = 1; page < maxPages && next; page++) {
     const url: string = next.startsWith("http") ? next : `${API_BASE}${next}`;
-    const res: V2List<T> = await stripeFetch<V2List<T>>(ctx, url);
+    const { body: res } = await restRequest<V2List<T> | undefined>({
+      vendor: "Stripe",
+      url,
+      headers: stripeHeaders(ctx),
+      init: { method: "GET" },
+      ...(ctx.http ? { http: ctx.http } : {}),
+      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
+      contentType: "with-body",
+      emptyBodyIsUndefined: true,
+      httpError: ({ status, body }) => stripeError(status, new URL(url).pathname, body),
+    });
     out.push(...(res?.data ?? []));
     next = res?.next_page_url ?? null;
   }

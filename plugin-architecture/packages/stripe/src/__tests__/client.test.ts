@@ -1,6 +1,14 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
-import { STRIPE_API_VERSION, encodeForm, formatMoney, fromMinor, listV1, toMinor } from "../api.js";
+import {
+  STRIPE_API_VERSION,
+  encodeForm,
+  formatMoney,
+  fromMinor,
+  listV1,
+  stripeApi,
+  toMinor,
+} from "../api.js";
 import { feeRows, serviceFromFeeDescription } from "../balance.js";
 import { StripeClient, parseEventList, summariseSubscriptions } from "../client.js";
 import { plugin } from "../plugin.js";
@@ -48,7 +56,10 @@ describe("api", () => {
       if (!after) return { data: [{ id: "a" }, { id: "b" }], has_more: true };
       return { data: [{ id: "c" }], has_more: false };
     });
-    const out = await listV1<{ id: string }>({ apiKey: "k", http }, "/v1/products");
+    const api = stripeApi({ apiKey: "k", http });
+    const out = await listV1((paging) =>
+      api.get("/v1/products", { query: { limit: 100, ...paging } }),
+    );
     expect(out.map((x) => x.id)).toEqual(["a", "b", "c"]);
     expect(calls[1]?.url.searchParams.get("starting_after")).toBe("b");
     expect(calls[0]?.url.searchParams.get("limit")).toBe("100");
@@ -399,7 +410,7 @@ describe("fees as cost", () => {
         description: "Billing - Usage Fee (2026-08-01 - 2026-08-31)",
       },
       { type: "stripe_fx_fee", currency: "eur", created: day, amount: -100 },
-    ]);
+    ] as never);
     const find = (service: string, chargeType?: string) =>
       rows.find((r) => r.service === service && r.chargeType === chargeType);
     expect(find("Payments")?.amount).toBe(3.2);
@@ -463,7 +474,7 @@ describe("subscriptions overview", () => {
         },
         { status: "canceled", cancel_at_period_end: false, items: { data: [] } },
         { status: "trialing", cancel_at_period_end: true, items: { data: [] } },
-      ],
+      ] as never,
       false,
     );
     expect(out.byStatus).toEqual({ active: 1, canceled: 1, trialing: 1 });
