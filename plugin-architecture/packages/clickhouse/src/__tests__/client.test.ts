@@ -164,10 +164,9 @@ describe("cloudApi (via listResources ch-service)", () => {
     );
   });
 
-  it("returns empty object body for empty response text", async () => {
+  it("refuses an empty answer to a list, which would read as no services", async () => {
     router([[() => true, ""]]);
-    const res = await client().listResources("ch-service", ACCOUNT);
-    expect(res).toEqual([]);
+    await expect(client().listResources("ch-service", ACCOUNT)).rejects.toThrow("is not a list");
   });
 
   it("routes through host http and forwards optional CA when supplied", async () => {

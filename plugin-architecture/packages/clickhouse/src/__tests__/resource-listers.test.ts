@@ -95,9 +95,9 @@ describe("listServices", () => {
     expect(res[0]!.resolvedOutputs["nativePort"]).toBe("9000");
   });
 
-  it("returns empty when result missing", async () => {
+  it("refuses an answer with no list in it", async () => {
     const ctx = makeCtx({ cloudApi: vi.fn(async () => ({})) as never });
-    expect(await listServices(ctx, ACCOUNT)).toEqual([]);
+    await expect(listServices(ctx, ACCOUNT)).rejects.toThrow("is not a list");
   });
 });
 

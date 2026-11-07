@@ -1,4 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
+
+const VENDOR = "ClickHouse Cloud";
 
 export interface ListerContext {
   cloudApi<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T>;
@@ -6,6 +9,35 @@ export interface ListerContext {
   id(accountId: string, typeId: string, externalId: string): string;
   now(): string;
   organizationId: string;
+}
+
+/** Past the 10,000 rows a list must reach, at the keys route's default 250 a page. */
+const MAX_LIST_PAGES = 1000;
+
+/**
+ * Every row of a Cloud API list. `/keys` documents `limit`, `cursor` and `nextCursor`
+ * (250 a page by default, and no maximum stated, so no `limit` is sent), and
+ * `/clickpipes` returns everything when it is sent neither. The rest document no paging,
+ * so their answer has no `nextCursor` and this stops at the first.
+ */
+async function listAll<T>(ctx: ListerContext, path: string): Promise<T[]> {
+  const out: T[] = [];
+  let cursor: string | null | undefined;
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
+    const data = await ctx.cloudApi<{ result?: T[] | null; nextCursor?: string | null }>(
+      "GET",
+      cursor ? `${path}?cursor=${encodeURIComponent(cursor)}` : path,
+    );
+    out.push(...requireListPage(data.result, { vendor: VENDOR, path, key: "result" }));
+    cursor = data.nextCursor;
+    if (!cursor) return out;
+  }
+  throw new ListTruncatedError({
+    vendor: VENDOR,
+    path,
+    items: out.length,
+    maxPages: MAX_LIST_PAGES,
+  });
 }
 
 interface CloudEndpoint {
@@ -51,10 +83,10 @@ export async function listServices(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.cloudApi<{
-    result?: CloudService[];
-  }>("GET", `/v1/organizations/${ctx.organizationId}/services`);
-  const services = data.result ?? [];
+  const services = await listAll<CloudService>(
+    ctx,
+    `/v1/organizations/${ctx.organizationId}/services`,
+  );
 
   return services.map((s) => {
     const httpsEndpoint = s.endpoints?.find((e) => e.protocol === "https");
@@ -172,11 +204,11 @@ export async function listBackups(
   accountId: string,
   serviceId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.cloudApi<{ result?: CloudBackup[] }>(
-    "GET",
+  const backups = await listAll<CloudBackup>(
+    ctx,
     `/v1/organizations/${ctx.organizationId}/services/${serviceId}/backups`,
   );
-  return (data.result ?? []).map((b) => ({
+  return backups.map((b) => ({
     id: ctx.id(accountId, "ch-backup", b.id),
     pluginId: "clickhouse",
     resourceTypeId: "ch-backup",
@@ -263,11 +295,11 @@ export async function listClickPipes(
   accountId: string,
   serviceId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.cloudApi<{ result?: CloudClickPipe[] }>(
-    "GET",
+  const pipes = await listAll<CloudClickPipe>(
+    ctx,
     `/v1/organizations/${ctx.organizationId}/services/${serviceId}/clickpipes`,
   );
-  return (data.result ?? []).map((p) => clickPipeToResource(ctx, accountId, serviceId, p));
+  return pipes.map((p) => clickPipeToResource(ctx, accountId, serviceId, p));
 }
 
 interface AssignedRole {
@@ -338,11 +370,8 @@ export async function listApiKeys(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.cloudApi<{ result?: CloudApiKey[] }>(
-    "GET",
-    `/v1/organizations/${ctx.organizationId}/keys`,
-  );
-  return (data.result ?? []).map((k) => apiKeyToResource(ctx, accountId, k));
+  const keys = await listAll<CloudApiKey>(ctx, `/v1/organizations/${ctx.organizationId}/keys`);
+  return keys.map((k) => apiKeyToResource(ctx, accountId, k));
 }
 
 interface CloudMember {
@@ -358,11 +387,11 @@ export async function listMembers(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.cloudApi<{ result?: CloudMember[] }>(
-    "GET",
+  const members = await listAll<CloudMember>(
+    ctx,
     `/v1/organizations/${ctx.organizationId}/members`,
   );
-  return (data.result ?? []).map((m) => {
+  return members.map((m) => {
     const roles = roleNames(m.assignedRoles, m.role ? [m.role] : []);
     return {
       id: ctx.id(accountId, "ch-member", m.userId),
@@ -452,8 +481,7 @@ export async function listPostgres(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const base = `/v1/organizations/${ctx.organizationId}/postgres`;
-  const data = await ctx.cloudApi<{ result?: CloudPostgres[] }>("GET", base);
-  const items = data.result ?? [];
+  const items = await listAll<CloudPostgres>(ctx, base);
   const detailed = await Promise.all(
     items.map(async (pg) => {
       try {

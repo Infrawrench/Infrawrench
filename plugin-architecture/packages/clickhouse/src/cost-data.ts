@@ -16,6 +16,7 @@
  */
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import { requireListPage } from "@infrawrench/plugin-base";
 
 /** Minimal slice of the client context needed for cost collection. */
 export interface CostContext {
@@ -36,7 +37,7 @@ interface UsageCostRecord {
 interface UsageCostResponse {
   result?: {
     grandTotalCHC?: number;
-    costs?: UsageCostRecord[];
+    costs?: UsageCostRecord[] | null;
   };
 }
 
@@ -75,8 +76,19 @@ export async function fetchClickHouseCostData(
     `?from_date=${range.fromDate}&to_date=${range.toDate}`;
   const data = await ctx.cloudApi<UsageCostResponse>("GET", path);
 
+  // The document requires neither field, so only a zero total vouches for no records.
+  const report = data.result;
+  const records =
+    report?.costs === undefined && report?.grandTotalCHC === 0
+      ? []
+      : requireListPage(report?.costs, {
+          vendor: "ClickHouse Cloud",
+          path: `/v1/organizations/${ctx.organizationId}/usageCost`,
+          key: "result.costs",
+        });
+
   const rows: CostRow[] = [];
-  for (const record of data.result?.costs ?? []) {
+  for (const record of records) {
     const date = record.date;
     if (!date) continue;
     // entityId (a stable UUID) keys the resource dimension: entityName is
