@@ -174,6 +174,7 @@ export class AliApi {
       headers: Record<string, string>;
       body?: string;
     }>,
+    textAnswerAllowed = false,
   ): Promise<T> {
     for (let attempt = 1; ; attempt++) {
       const req = await build();
@@ -184,7 +185,9 @@ export class AliApi {
         try {
           data = JSON.parse(res.body);
         } catch {
-          return res.body as T;
+          if (textAnswerAllowed) return res.body as T;
+          // A gateway's page, not an answer. Read as one, a list would have no rows.
+          throw new AliApiError(502, "InvalidResponse", "the answer was not JSON", action);
         }
         // BSS and a few others answer 200 with `Success: false`.
         if (data && typeof data === "object" && (data as { Success?: unknown }).Success === false) {
@@ -253,25 +256,29 @@ export class AliApi {
       if (v !== undefined && v !== "") query[k] = String(v);
     }
     const body = req.body === undefined ? "" : JSON.stringify(req.body);
-    return this.signedJson<T>(req.action, async () => {
-      const { headers } = await signAcs3(this.creds, {
-        method: req.method,
-        host,
-        path: req.path,
-        query,
-        action: req.action,
-        version: API_VERSIONS[req.product],
-        body,
-        ...(req.body !== undefined ? { contentType: "application/json" } : {}),
-      });
-      const qs = canonicalQuery(query);
-      return {
-        url: `https://${host}${encodePath(req.path)}${qs ? `?${qs}` : ""}`,
-        method: req.method,
-        headers: { ...headers, accept: "application/json" },
-        ...(req.body !== undefined ? { body } : {}),
-      };
-    });
+    return this.signedJson<T>(
+      req.action,
+      async () => {
+        const { headers } = await signAcs3(this.creds, {
+          method: req.method,
+          host,
+          path: req.path,
+          query,
+          action: req.action,
+          version: API_VERSIONS[req.product],
+          body,
+          ...(req.body !== undefined ? { contentType: "application/json" } : {}),
+        });
+        const qs = canonicalQuery(query);
+        return {
+          url: `https://${host}${encodePath(req.path)}${qs ? `?${qs}` : ""}`,
+          method: req.method,
+          headers: { ...headers, accept: "application/json" },
+          ...(req.body !== undefined ? { body } : {}),
+        };
+      },
+      req.method !== "GET",
+    );
   }
 
   /**
