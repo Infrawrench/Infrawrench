@@ -1164,7 +1164,7 @@ export class GitHubClient implements PluginClient {
                   alert_recipients:
                     "alertRecipients" in fields
                       ? list(fields["alertRecipients"])
-                      : (current?.budget_alerting?.alert_recipients ?? []),
+                      : [...(current?.budget_alerting?.alert_recipients ?? [])],
                 },
               }
             : {}),
