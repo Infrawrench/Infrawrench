@@ -107,8 +107,8 @@ const nextPage: NextPage = ({ headers }) => nextPageUrl(headers["link"]);
 
 /**
  * The API, with `getAll` for cursor-paginated lists: 100 rows a page, the most the
- * document allows, up to `maxPages` (20 unless a call says otherwise), so a
- * misbehaving cursor cannot spin forever. Sentry pages with a `Link` header and
+ * document allows, up to `maxPages` (50,000 rows unless a call says otherwise), past
+ * which a list throws rather than come back short. Sentry pages with a `Link` header and
  * reports totals in `X-Hits`; `getResponse` is what reads the second.
  *
  * Next links are written on `system.url-prefix` rather than the host asked. For
@@ -123,7 +123,7 @@ export function sentryApi(ctx: SentryContext) {
     next: nextPage,
     sizeParam: "per_page",
     pageSize: 100,
-    maxPages: 20,
+    maxPages: 500,
     // The pagination guide ends a list at `results=false`, so an empty page does not.
     continueOnEmptyPage: true,
     foreignLinks: ctx.instance.selfHosted ? "refuse" : linkHostsUnder("sentry.io"),

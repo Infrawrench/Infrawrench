@@ -1,7 +1,8 @@
 import { showcaseFields } from "@infrawrench/plugin-base";
-import { hostClient } from "@infrawrench/plugin-base/effect";
+import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SentryClient } from "../client.js";
+import { plugin } from "../plugin.js";
 import { ProjectResourceType } from "../resource-types.js";
 import type { Call } from "./helpers.js";
 import { makeHttp, stats } from "./helpers.js";
@@ -29,7 +30,92 @@ function endless(call: Call) {
   };
 }
 
+describe("page caps", () => {
+  it("reads an inventory list past the old 20 pages", async () => {
+    const { c, calls } = client((call) => {
+      const page = Number(call.url.searchParams.get("cursor") ?? 0);
+      return {
+        body: [{ id: String(page), slug: `team-${page}` }],
+        headers: nextLink(`https://us.sentry.io${ORG}/teams/?cursor=${page + 1}`, page < 149),
+      };
+    });
+    await expect(c.listResources("team", ACCOUNT)).resolves.toHaveLength(150);
+    expect(calls).toHaveLength(150);
+    expect(calls[0]!.url.searchParams.get("per_page")).toBe("100");
+  });
+
+  it("throws rather than return part of an inventory list, after exactly 500 pages", async () => {
+    const { c, calls } = client(endless);
+    await expect(c.listResources("team", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(500);
+  });
+
+  it("offers every organization in the picker, past the old 5 pages", async () => {
+    const { http, calls } = makeHttp((call) => {
+      const page = Number(call.url.searchParams.get("cursor") ?? 0);
+      return {
+        body: [{ slug: `org-${page}`, name: `Org ${page}` }],
+        headers: nextLink(`https://us.sentry.io/api/0/organizations/?cursor=${page + 1}`, page < 7),
+      };
+    });
+    const options = await hostPlugin(plugin).listCredentialOptions!(
+      "organization",
+      { region: "us", authToken: "sntryu_X" },
+      { http } as never,
+    );
+    expect(options).toHaveLength(8);
+    expect(calls).toHaveLength(8);
+  });
+
+  it("charts the newest ten pages of check-ins and stops there", async () => {
+    const { c, calls } = client((call) => {
+      const page = Number(call.url.searchParams.get("cursor") ?? 0);
+      return {
+        body: [
+          { id: String(page), status: "ok", duration: 1000, dateCreated: new Date().toISOString() },
+        ],
+        headers: nextLink(`https://us.sentry.io${call.url.pathname}?cursor=${page + 1}`),
+      };
+    });
+    const series = await c.fetchMetricSeries!(
+      "cron-monitor",
+      `${ACCOUNT}:cron-monitor:nightly`,
+      ACCOUNT,
+    );
+    expect(calls).toHaveLength(10);
+    expect(series.find((s) => s.label === "Run duration")?.points).toHaveLength(10);
+  });
+
+  it("lists the newest page of releases, and fails on one that is not a list", async () => {
+    const { c, calls } = client(() => ({
+      body: [{ version: "1.0.0" }],
+      headers: nextLink(`https://us.sentry.io${ORG}/releases/?cursor=1`),
+    }));
+    await expect(c.listResources("release", ACCOUNT)).resolves.toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url.searchParams.get("per_page")).toBe("100");
+    const bad = client(() => ({ results: [] }));
+    await expect(bad.c.listResources("release", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+});
+
 describe("pages that are not lists", () => {
+  it("fails on the first page and on a later one", async () => {
+    const first = client(() => ({ teams: [] }));
+    await expect(first.c.listResources("team", ACCOUNT)).rejects.toThrow("is not a list");
+    const later = client((call) =>
+      call.url.searchParams.get("cursor")
+        ? { teams: [] }
+        : {
+            body: [{ id: "1", slug: "a" }],
+            headers: nextLink(`https://us.sentry.io${ORG}/teams/?cursor=1`),
+          },
+    );
+    await expect(later.c.listResources("team", ACCOUNT)).rejects.toThrow("is not a list");
+  });
+
   it("keeps walking past an empty page while the link says there are results", async () => {
     const { c, calls } = client((call) => {
       const cursor = call.url.searchParams.get("cursor");

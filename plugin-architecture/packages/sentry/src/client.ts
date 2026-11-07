@@ -288,9 +288,11 @@ export class SentryClient implements PluginClient {
             mapTeam(accountId, this.org, t),
           );
         case "release":
+          // Rolling window: the newest 100. Older rows falling off is what this type means.
           return (
-            await this.api.get(`/organizations/${this.o}/releases/`, {
-              query: { per_page: 100 },
+            await this.api.getAll(`/organizations/${this.o}/releases/`, null, {
+              maxPages: 1,
+              partial: true,
             })
           ).map((r) => mapRelease(accountId, r));
         case "issue":

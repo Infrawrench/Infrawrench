@@ -244,7 +244,7 @@ async function listCredentialOptions(
     ...(services?.http ? { http: services.http } : {}),
   };
   try {
-    const orgs = await sentryApi(ctx).getAll("/organizations/", null, { maxPages: 5 });
+    const orgs = await sentryApi(ctx).getAll("/organizations/", null);
     if (orgs.length === 0) {
       throw new Error(
         `The token can see no organizations in the ${ctx.instance.label} region. Check the region (Organization Settings shows the data storage location).`,

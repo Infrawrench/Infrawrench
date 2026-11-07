@@ -137,25 +137,20 @@ export async function cronSeries(
   slug: string,
   range: TimeRange,
 ): Promise<MetricSeries[]> {
-  // Ten pages are charted. When the tenth has a next link an eleventh is asked
-  // for and dropped, which is what this walk has always put on the wire.
-  let pages = 0;
-  let charted = 0;
+  // A chart: the newest pages draw it, and older check-ins are not stored anywhere.
   const rows = await sentryApi(ctx).getAll(
     `/organizations/${pathEncode(org)}/monitors/${pathEncode(slug)}/checkins/`,
     null,
     {
-      maxPages: CHECKIN_PAGES + 1,
+      maxPages: CHECKIN_PAGES,
+      partial: true,
       stopWhen: (batch) => {
-        pages += 1;
-        if (pages <= CHECKIN_PAGES) charted += batch.length;
         const oldest = batch[batch.length - 1]?.dateCreated;
         return !!oldest && Date.parse(oldest) < range.startMs;
       },
     },
   );
   const inRange = rows
-    .slice(0, charted)
     .filter((c) => c.dateCreated && Date.parse(c.dateCreated) >= range.startMs)
     .filter((c) => Date.parse(c.dateCreated!) <= range.endMs)
     .sort((a, b) => Date.parse(a.dateCreated!) - Date.parse(b.dateCreated!));
