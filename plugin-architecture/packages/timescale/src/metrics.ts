@@ -75,11 +75,11 @@ export function toSeries(pick: MetricPick, raw: TgMetricSeries[]): MetricSeries[
       label: `${pick.label}${suffix}`,
       ...(pick.unit ? { unit: pick.unit } : {}),
       points: (s.data ?? [])
-        .filter((p) => p.time && typeof p.value === "number" && Number.isFinite(p.value))
-        .map((p) => ({
-          timestamp: Date.parse(p.time!),
-          value: round((p.value as number) * (pick.scale ?? 1)),
-        }))
+        .flatMap((p) =>
+          p.time && typeof p.value === "number" && Number.isFinite(p.value)
+            ? [{ timestamp: Date.parse(p.time), value: round(p.value * (pick.scale ?? 1)) }]
+            : [],
+        )
         .filter((p) => Number.isFinite(p.timestamp)),
     };
   });

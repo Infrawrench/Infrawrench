@@ -1,11 +1,12 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { jsonRestFetch, utf8ToBase64 } from "@infrawrench/plugin-base";
+import type { ApiClient, HttpHostServices } from "@infrawrench/plugin-base";
+import { createApiClient, utf8ToBase64 } from "@infrawrench/plugin-base";
+import type { components, paths } from "./api-types.gen.js";
 
 /**
  * Tiger Cloud REST API (`https://console.cloud.tigerdata.com/public/api/v1`;
  * the older `console.cloud.timescale.com` host answers the same paths).
- * Verified 2026-10 against the OpenAPI document Tiger Data ships with its own
- * CLI (github.com/timescale/tiger-cli, `openapi.yaml`).
+ * Typed from the OpenAPI document Tiger Data ships with its own CLI
+ * (github.com/timescale/tiger-cli, `openapi.yaml`); see `plugingen.json`.
  *
  * Auth is HTTP Basic with a project-scoped client credential (PAT):
  * `base64(<public key>:<secret key>)`. A PAT sees exactly one project.
@@ -33,40 +34,28 @@ export class TigerApiError extends Error {
 
 const STATUS_IN_MESSAGE = /Tiger Cloud API error (\d{3})/;
 
-export async function tigerFetch<T>(
-  ctx: TigerContext,
-  method: string,
-  path: string,
-  body?: unknown,
-  query?: Array<[string, string | number | undefined]>,
-): Promise<T> {
-  const params = new URLSearchParams();
-  for (const [k, v] of query ?? []) {
-    if (v !== undefined && v !== "") params.append(k, String(v));
-  }
-  const qs = params.toString();
-  try {
-    return await jsonRestFetch<T>({
-      vendor: "Tiger Cloud",
-      url: `${ctx.baseUrl ?? TIGER_API}${path}${qs ? `?${qs}` : ""}`,
-      errorPath: path,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Basic ${utf8ToBase64(`${ctx.accessKey}:${ctx.secretKey}`)}`,
-      },
-      init: {
-        method,
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      },
-      ...(ctx.http ? { http: ctx.http } : {}),
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
-    if (status) throw new TigerApiError(status, friendlyError(status, message));
-    throw err;
-  }
+export type TigerApi = ApiClient<paths>;
+
+export function createTigerApi(ctx: TigerContext): TigerApi {
+  return createApiClient<paths>({
+    vendor: "Tiger Cloud",
+    baseUrl: ctx.baseUrl ?? TIGER_API,
+    headers: {
+      Accept: "application/json",
+      Authorization: `Basic ${utf8ToBase64(`${ctx.accessKey}:${ctx.secretKey}`)}`,
+    },
+    http: ctx.http,
+    httpError: ({ status, path, body }) => {
+      const message = `Tiger Cloud API error ${status} for ${path}: ${body}`;
+      // Only a three-digit status counts, read back from the text it was always read from.
+      const known = Number(STATUS_IN_MESSAGE.exec(message)?.[1] ?? 0);
+      return known ? new TigerApiError(known, friendlyError(known, message)) : new Error(message);
+    },
+  });
 }
+
+/** The document's error body, plus the `details` the API sends beside it. */
+type ErrorBody = components["schemas"]["Error"] & { details?: string };
 
 /** Prefer the API's own `message` over the raw body. */
 export function friendlyError(status: number, raw: string): string {
@@ -76,7 +65,7 @@ export function friendlyError(status: number, raw: string): string {
   const jsonStart = raw.indexOf("{");
   if (jsonStart >= 0) {
     try {
-      const parsed = JSON.parse(raw.slice(jsonStart)) as { message?: string; details?: string };
+      const parsed: ErrorBody = JSON.parse(raw.slice(jsonStart));
       if (parsed.message) {
         return `Tiger Cloud API error ${status}: ${parsed.message}${parsed.details ? ` (${parsed.details})` : ""}`;
       }

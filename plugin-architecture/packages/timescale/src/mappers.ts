@@ -1,13 +1,15 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { components } from "./api-types.gen.js";
 import { sizeId } from "./catalog.js";
 import { T } from "./resource-types.js";
 import type {
   TgAllowList,
   TgBackup,
   TgExporter,
+  TgExporterConfigView,
   TgPeering,
+  TgPendingReplicaSet,
   TgProject,
-  TgReadReplicaSet,
   TgService,
   TgVpc,
 } from "./types.js";
@@ -51,6 +53,8 @@ export function instance(
 }
 
 /** Split a composite external id (`project/service/...`) into its parts. */
+export function splitExternalId(externalId: string, parts: 2): [string, string];
+export function splitExternalId(externalId: string, parts: 3): [string, string, string];
 export function splitExternalId(externalId: string, parts: number): string[] {
   const out = externalId.split("/");
   if (out.length !== parts || out.some((p) => !p)) {
@@ -75,7 +79,7 @@ export function mapProject(
 }
 
 /** The primary node's spec: the first resource carrying one. */
-export function serviceSpec(s: TgService) {
+export function serviceSpec(s: TgService): components["schemas"]["ResourceSpec"] {
   return s.resources?.find((r) => r.spec)?.spec ?? {};
 }
 
@@ -138,7 +142,11 @@ export function mapService(
   );
 }
 
-export function mapReplica(accountId: string, s: TgService, r: TgReadReplicaSet): ResourceInstance {
+export function mapReplica(
+  accountId: string,
+  s: TgService,
+  r: TgPendingReplicaSet,
+): ResourceInstance {
   return instance(
     accountId,
     T.replica,
@@ -211,7 +219,7 @@ export function mapExporter(
   e: TgExporter,
   attached: string[],
 ): ResourceInstance {
-  const c = e.config ?? {};
+  const c: TgExporterConfigView = e.config ?? {};
   const creds = c.credentials;
   return instance(
     accountId,
