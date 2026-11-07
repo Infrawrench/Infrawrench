@@ -165,6 +165,46 @@ describe("Perplexity", () => {
     expect(calls[1]?.url).toBe("https://api.perplexity.ai/v1/skills/sk1?expected_revision=rev-9");
   });
 
+  async function chat(model: string, reply: object) {
+    const { http, calls } = host(() => ({ body: reply }));
+    const stream = hostClient(new PerplexityClient({ apiKey: "k" }, { http })).streamChatMessage?.(
+      "perplexity-agent-model",
+      `${ACCOUNT}:perplexity-agent-model:${model}`,
+      ACCOUNT,
+      [{ role: "user", content: "Hi" }],
+    );
+    const events = [];
+    for await (const event of stream ?? []) events.push(event);
+    return { events, sent: JSON.parse(calls[0]?.body ?? "{}") };
+  }
+
+  const AGENT_REPLY = {
+    status: "completed",
+    output: [{ type: "message", content: [{ type: "output_text", text: "Hello" }] }],
+  };
+
+  it("caps an anthropic Agent API reply, which the API requires", async () => {
+    const { sent } = await chat("anthropic/claude-sonnet-5-5", AGENT_REPLY);
+    expect(sent.model).toBe("anthropic/claude-sonnet-5-5");
+    expect(sent.max_output_tokens).toBe(8192);
+  });
+
+  it("leaves other Agent API models on their own limit", async () => {
+    const { sent } = await chat("openai/gpt-5.6-terra", AGENT_REPLY);
+    expect(sent).not.toHaveProperty("max_output_tokens");
+  });
+
+  it("says so when an Agent API reply was cut short", async () => {
+    const { events } = await chat("anthropic/claude-sonnet-5-5", {
+      ...AGENT_REPLY,
+      status: "incomplete",
+    });
+    expect(events.at(-1)).toMatchObject({
+      kind: "done",
+      message: { content: expect.stringMatching(/^Hello\n\n.*incomplete/) },
+    });
+  });
+
   it("attaches the HTTP status to errors", async () => {
     const { http } = host(() => ({ status: 401, body: { error: "bad key" } }));
     await expect(

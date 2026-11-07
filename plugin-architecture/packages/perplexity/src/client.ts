@@ -50,6 +50,13 @@ export const SONAR_MODELS: Array<{ id: string; description: string }> = [
   },
 ];
 
+/**
+ * The API answers 400 for an `anthropic/*` model with no `max_output_tokens`, and
+ * recommends no value. This is what its fallback example sends. Other models keep
+ * their own limit.
+ */
+const ANTHROPIC_MAX_OUTPUT_TOKENS = 8192;
+
 function s(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
 }
@@ -488,13 +495,25 @@ export class PerplexityClient implements PluginClient {
       // not chat-completion deltas, so one full reply is yielded instead.
       try {
         const res = await statusErrors(
-          this.api.post("/v1/agent", { body: { model, input: turns } }),
+          this.api.post("/v1/agent", {
+            body: {
+              model,
+              input: turns,
+              ...(model.startsWith("anthropic/")
+                ? { max_output_tokens: ANTHROPIC_MAX_OUTPUT_TOKENS }
+                : {}),
+            },
+          }),
         );
         if (res.error?.message) {
           yield { kind: "error", message: res.error.message };
           return;
         }
-        const text = agentOutputText(res.output);
+        const output = agentOutputText(res.output);
+        const text =
+          res.status === "incomplete"
+            ? `${output}\n\n(Perplexity marked this reply incomplete, so it stops early.)`
+            : output;
         yield { kind: "delta", text };
         yield {
           kind: "done",
