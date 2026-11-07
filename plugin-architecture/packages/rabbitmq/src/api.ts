@@ -1,5 +1,10 @@
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-import { utf8ToBase64 } from "@infrawrench/plugin-base";
+import {
+  ListPageError,
+  ListTruncatedError,
+  requireListPage,
+  utf8ToBase64,
+} from "@infrawrench/plugin-base";
 
 /**
  * Everything one RabbitMQ management API request needs. The API lives under
@@ -160,6 +165,8 @@ export async function rmqFetch<T>(
   }
 }
 
+const VENDOR = "RabbitMQ";
+
 /** A list endpoint that 404s when its plugin is disabled (shovels, federation). */
 export async function rmqOptionalList<T>(ctx: RabbitContext, path: string): Promise<T[]> {
   try {
@@ -177,27 +184,44 @@ interface Page<T> {
   page_count?: number;
 }
 
+/** The documented maximum page size for the paginated lists. */
+const PAGE_SIZE = 500;
+
+export interface PagedOptions {
+  /** Rows to read before the list counts as too long. */
+  max: number;
+  query?: Query;
+  /** For a picker: answer the rows read so far at the cap instead of throwing. */
+  partial?: boolean;
+}
+
 /**
- * Walk a paginated list (queues, exchanges, connections, channels). The
- * documented maximum page size is 500. Stops at `max` items.
+ * Walk a paginated list (queues, exchanges, connections, channels). Past
+ * `max` rows it throws {@link ListTruncatedError}, since a sync reads a short
+ * list as deletions, unless `partial` is set.
  */
 export async function rmqPaged<T>(
   ctx: RabbitContext,
   path: string,
-  max = 2000,
-  query: Query = {},
+  { max, query = {}, partial = false }: PagedOptions,
 ): Promise<T[]> {
   const out: T[] = [];
-  for (let page = 1; out.length < max; page++) {
-    const res = await rmqFetch<Page<T> | T[]>(ctx, path, {
-      query: { ...query, page, page_size: 500, pagination: true },
+  const maxPages = Math.ceil(max / PAGE_SIZE);
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await rmqFetch<Page<T> | T[] | undefined>(ctx, path, {
+      query: { ...query, page, page_size: PAGE_SIZE, pagination: true },
     });
-    // Very old servers ignore the pagination params and answer a bare array.
-    if (Array.isArray(res)) return res.slice(0, max);
-    out.push(...(res?.items ?? []));
-    if (!res?.page_count || page >= res.page_count) break;
+    // Very old servers ignore the pagination params and answer the whole list as a bare array.
+    if (Array.isArray(res)) return res;
+    out.push(...requireListPage(res?.items, { vendor: VENDOR, path, key: "items" }));
+    const pageCount = res?.page_count;
+    if (typeof pageCount !== "number") {
+      throw new ListPageError({ vendor: VENDOR, path, key: "page_count", found: pageCount });
+    }
+    if (page >= pageCount) return out;
   }
-  return out.slice(0, max);
+  if (partial) return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages });
 }
 
 /** Composite ids: each part percent-encoded, joined by `/`, so vhost `/` stays unambiguous. */

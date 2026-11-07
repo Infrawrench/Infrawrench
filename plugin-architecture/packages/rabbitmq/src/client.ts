@@ -18,8 +18,8 @@ import type {
   ResourceInstance,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { decodePromptArgs, externalIdOf } from "@infrawrench/plugin-base";
-import type { RabbitContext } from "./api.js";
+import { decodePromptArgs, externalIdOf, withinListCap } from "@infrawrench/plugin-base";
+import type { PagedOptions, RabbitContext } from "./api.js";
 import {
   buildContext,
   RabbitApiError,
@@ -74,10 +74,12 @@ import {
   USER_TAGS,
 } from "./resource-types.js";
 
-const MAX_QUEUES = 5000;
-const MAX_EXCHANGES = 2000;
-const MAX_CONNECTIONS = 1000;
-const MAX_CHANNELS = 2000;
+// 100 pages of the documented 500-row maximum per list.
+const MAX_LIST = 50_000;
+const LIST: PagedOptions = { max: MAX_LIST };
+// Pickers show what fits rather than nothing.
+const PICKER_QUEUES = 5000;
+const PICKER_EXCHANGES: PagedOptions = { max: 2000, partial: true };
 const PEEK_COUNT = 10;
 
 const yesNo = [
@@ -196,13 +198,25 @@ export class RabbitClient implements PluginClient {
     return new Map(rows.map((r) => [r.vhost ?? "/", r.value ?? {}]));
   }
 
-  private async queues(): Promise<Queue[]> {
+  /** Every vhost's queues, under one cap for the lot. */
+  private async queues({ max, partial = false, query }: PagedOptions = LIST): Promise<Queue[]> {
     const out: Queue[] = [];
     for (const v of await this.vhosts()) {
-      if (out.length >= MAX_QUEUES) break;
-      out.push(...(await rmqPaged<Queue>(this.ctx, `/queues/${seg(v.name ?? "/")}`, MAX_QUEUES)));
+      const left = max - out.length;
+      if (partial && left <= 0) break;
+      const path = `/queues/${seg(v.name ?? "/")}`;
+      // At least one page each, so an empty vhost after the cap is reached is not read as more.
+      out.push(
+        ...(await rmqPaged<Queue>(this.ctx, path, {
+          max: Math.max(left, 1),
+          partial,
+          ...(query ? { query } : {}),
+        })),
+      );
     }
-    return out.slice(0, MAX_QUEUES);
+    return partial
+      ? out.slice(0, max)
+      : withinListCap(out, max, { vendor: "RabbitMQ", path: "/queues" });
   }
 
   private async bindings(): Promise<Binding[]> {
@@ -283,7 +297,7 @@ export class RabbitClient implements PluginClient {
           return vhosts.map((v) => mapVhost(accountId, v, limits.get(v.name ?? "/")));
         }
         case "rabbitmq-exchange":
-          return (await rmqPaged<Exchange>(this.ctx, "/exchanges", MAX_EXCHANGES))
+          return (await rmqPaged<Exchange>(this.ctx, "/exchanges", LIST))
             .filter((x) => x.name !== "")
             .map((x) => mapExchange(accountId, x));
         case "rabbitmq-queue":
@@ -309,11 +323,11 @@ export class RabbitClient implements PluginClient {
             mapTopicPermission(accountId, p),
           );
         case "rabbitmq-connection":
-          return (await rmqPaged<Connection>(this.ctx, "/connections", MAX_CONNECTIONS)).map((c) =>
+          return (await rmqPaged<Connection>(this.ctx, "/connections", LIST)).map((c) =>
             mapConnection(accountId, c),
           );
         case "rabbitmq-channel":
-          return (await rmqPaged<Channel>(this.ctx, "/channels", MAX_CHANNELS)).map((c) =>
+          return (await rmqPaged<Channel>(this.ctx, "/channels", LIST)).map((c) =>
             mapChannel(accountId, c),
           );
         case "rabbitmq-shovel":
@@ -700,8 +714,9 @@ export class RabbitClient implements PluginClient {
       const limits = await this.vhostLimits();
       if (limits.size) {
         const queues = await this.queues();
-        const conns = await rmqPaged<Connection>(this.ctx, "/connections", MAX_CONNECTIONS, {
-          columns: "vhost",
+        const conns = await rmqPaged<Connection>(this.ctx, "/connections", {
+          ...LIST,
+          query: { columns: "vhost" },
         });
         for (const [vhost, value] of limits) {
           const mq = value["max-queues"];
@@ -968,12 +983,16 @@ export class RabbitClient implements PluginClient {
           };
         case "rabbitmq-binding": {
           const [exchanges, queues] = await Promise.all([
-            rmqPaged<Exchange>(this.ctx, "/exchanges", MAX_EXCHANGES).catch(() => [] as Exchange[]),
+            rmqPaged<Exchange>(this.ctx, "/exchanges", PICKER_EXCHANGES).catch(
+              () => [] as Exchange[],
+            ),
             (parentVhost !== undefined
-              ? rmqPaged<Queue>(this.ctx, `/queues/${seg(parentVhost)}`, MAX_QUEUES, {
-                  columns: "name,vhost",
+              ? rmqPaged<Queue>(this.ctx, `/queues/${seg(parentVhost)}`, {
+                  max: PICKER_QUEUES,
+                  partial: true,
+                  query: { columns: "name,vhost" },
                 })
-              : this.queues()
+              : this.queues({ max: PICKER_QUEUES, partial: true })
             ).catch(() => [] as Queue[]),
           ]);
           const xs = inVhost(exchanges).filter((x) => x.name);
@@ -1099,7 +1118,7 @@ export class RabbitClient implements PluginClient {
           const topicExchanges =
             typeId === "rabbitmq-topic-permission"
               ? inVhost(
-                  await rmqPaged<Exchange>(this.ctx, "/exchanges", MAX_EXCHANGES).catch(
+                  await rmqPaged<Exchange>(this.ctx, "/exchanges", PICKER_EXCHANGES).catch(
                     () => [] as Exchange[],
                   ),
                 ).filter((x) => x.type === "topic")
