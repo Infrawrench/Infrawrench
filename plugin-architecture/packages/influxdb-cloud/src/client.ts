@@ -20,18 +20,37 @@ import {
   QuotaAccessError,
   decodePromptArgs,
   externalIdOf,
+  pathEncode,
   withMetricsCapability,
+  type ApiBody,
 } from "@infrawrench/plugin-base";
-import type { Transport } from "./api.js";
+import type {
+  AlertRow,
+  Authorization,
+  Bucket,
+  CloudApi,
+  DedicatedApi,
+  DedicatedDatabase,
+  DedicatedPermission,
+  DedicatedToken,
+  Limits,
+  Permission,
+  RetentionRule,
+  Task,
+  Transport,
+} from "./api.js";
 import {
-  DEDICATED_API,
+  cloudApi,
+  dedicatedApi,
   hostFor,
-  influxJson,
+  influxCall,
   influxText,
   isUnavailable,
   parseAnnotatedCsv,
   statusOf,
+  usageApi,
 } from "./api.js";
+import type { operations } from "./api-types.cloud.gen.js";
 import { ENRICH, renderInfluxDetail, renderInfluxSidebar } from "./render.js";
 import { RESOURCE_TYPES, T } from "./resource-types.js";
 
@@ -60,69 +79,30 @@ export const PERMISSION_TYPES = [
 
 type Fields = Record<string, string | number | boolean>;
 
-interface V2Bucket {
-  id: string;
-  name?: string;
-  description?: string;
-  orgID?: string;
-  retentionRules?: Array<{ everySeconds?: number }>;
-  schemaType?: string;
-  type?: string;
-  createdAt?: string;
+/** One cached answer, kept for {@link CACHE_MS}; a failure is forgotten rather than cached. */
+class Cached<V> {
+  private slot: { at: number; value: Promise<V> } | null = null;
+
+  get(load: () => Promise<V>): Promise<V> {
+    if (this.slot && Date.now() - this.slot.at < CACHE_MS) return this.slot.value;
+    const value = load();
+    this.slot = { at: Date.now(), value };
+    value.catch(() => {
+      this.slot = null;
+    });
+    return value;
+  }
+
+  clear(): void {
+    this.slot = null;
+  }
 }
-interface V2Auth {
-  id: string;
-  description?: string;
-  status?: string;
-  createdAt?: string;
-  user?: string;
-  token?: string;
-  permissions?: Array<{
-    action?: string;
-    resource?: { type?: string; id?: string; name?: string };
-  }>;
-}
-interface V2Task {
-  id: string;
-  name?: string;
-  status?: string;
-  every?: string;
-  cron?: string;
-  offset?: string;
-  description?: string;
-  flux?: string;
-  lastRunStatus?: string;
-  lastRunError?: string;
-  latestCompleted?: string;
-}
-interface V2Alert {
-  id: string;
-  name?: string;
-  description?: string;
-  status?: string;
-  type?: string;
-  every?: string;
-  endpointID?: string;
-  url?: string;
-  lastRunStatus?: string;
-  lastRunError?: string;
-}
-interface DedicatedDb {
-  name: string;
-  clusterId?: string;
-  maxTables?: number;
-  maxColumnsPerTable?: number;
-  retentionPeriod?: number;
-  partitionTemplate?: Array<{ type?: string; value?: unknown }>;
-}
-interface DedicatedToken {
-  id: string;
-  description?: string;
-  permissions?: Array<{ action?: string; resource?: string }>;
-  createdAt?: string;
-  expiresAt?: string;
-  revokedAt?: string;
-  accessToken?: string;
+
+/** What an update to a check, notification rule or notification endpoint can change. */
+interface AlertUpdate {
+  name?: string | undefined;
+  description?: string | undefined;
+  status?: string | undefined;
 }
 
 function compact(fields: Record<string, string | number | boolean | null | undefined>): Fields {
@@ -139,7 +119,7 @@ function csv(raw: string | undefined): string[] {
   const text = String(raw ?? "").trim();
   if (text.startsWith("[")) {
     try {
-      const parsed = JSON.parse(text) as unknown;
+      const parsed: unknown = JSON.parse(text);
       if (Array.isArray(parsed))
         return parsed
           .map(String)
@@ -162,9 +142,11 @@ function nonNegative(raw: string | undefined, label: string): number {
 }
 
 function notFound(what: string): Error {
-  const err = new Error(`InfluxDB Cloud plugin: ${what} not found`) as Error & { status: number };
-  err.status = 404;
-  return err;
+  return Object.assign(new Error(`InfluxDB Cloud plugin: ${what} not found`), { status: 404 });
+}
+
+function retentionRules(days: number): RetentionRule[] {
+  return days > 0 ? [{ type: "expire", everySeconds: Math.round(days * DAY) }] : [];
 }
 
 /** Flux when the text pipes (`|>`) or imports; InfluxQL otherwise. */
@@ -174,20 +156,37 @@ export function isFlux(query: string): boolean {
 
 export class InfluxClient implements PluginClient {
   private readonly t: Transport;
-  private readonly cloud: { host: string; token: string; orgId: string; region: string } | null;
-  private readonly dedicated: { accountId: string; clusterId: string; token: string } | null;
-  private cache = new Map<string, { at: number; value: Promise<unknown> }>();
+  private readonly cloud: {
+    host: string;
+    token: string;
+    orgId: string;
+    region: string;
+    api: CloudApi;
+  } | null;
+  private readonly dedicated: { clusterId: string; api: DedicatedApi } | null;
+  private readonly orgIdCache = new Cached<string>();
+  private readonly bucketCache = new Cached<Bucket[]>();
+  private readonly storageCache = new Cached<Map<string, number>>();
+  private readonly limitsCache = new Cached<Limits>();
 
   constructor(credentials: Credentials, services?: HostServices) {
     this.t = services?.http ? { http: services.http } : {};
     const token = (credentials["token"] ?? "").trim();
     const region = (credentials["region"] ?? "").trim();
     const orgId = (credentials["orgId"] ?? "").trim();
-    this.cloud = token && region ? { host: hostFor(region), token, orgId, region } : null;
+    if (token && region) {
+      const host = hostFor(region);
+      this.cloud = { host, token, orgId, region, api: cloudApi(this.t, host, token) };
+    } else {
+      this.cloud = null;
+    }
     const accountId = (credentials["dedicatedAccountId"] ?? "").trim();
     const clusterId = (credentials["dedicatedClusterId"] ?? "").trim();
     const mgmt = (credentials["dedicatedManagementToken"] ?? "").trim();
-    this.dedicated = accountId && clusterId && mgmt ? { accountId, clusterId, token: mgmt } : null;
+    this.dedicated =
+      accountId && clusterId && mgmt
+        ? { clusterId, api: dedicatedApi(this.t, accountId, clusterId, mgmt) }
+        : null;
     if (!this.cloud && !this.dedicated) {
       throw new Error(
         "InfluxDB Cloud plugin: give a region and API token, or the three Cloud Dedicated fields",
@@ -199,17 +198,11 @@ export class InfluxClient implements PluginClient {
   // Plumbing
   // -------------------------------------------------------------------------
 
-  private cached<V>(key: string, load: () => Promise<V>): Promise<V> {
-    const hit = this.cache.get(key);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.value as Promise<V>;
-    const value = load();
-    this.cache.set(key, { at: Date.now(), value });
-    value.catch(() => this.cache.delete(key));
-    return value;
-  }
-
   private invalidate(): void {
-    this.cache.clear();
+    this.orgIdCache.clear();
+    this.bucketCache.clear();
+    this.storageCache.clear();
+    this.limitsCache.clear();
   }
 
   private requireCloud() {
@@ -223,51 +216,104 @@ export class InfluxClient implements PluginClient {
     return this.dedicated;
   }
 
-  private v2<V>(method: string, path: string, body?: unknown): Promise<V> {
-    const c = this.requireCloud();
-    return influxJson<V>(this.t, method, `${c.host}${path}`, `Token ${c.token}`, body);
+  private v2<V>(call: (api: CloudApi) => Promise<V>): Promise<V> {
+    const { api } = this.requireCloud();
+    return influxCall(() => call(api));
   }
 
-  private mgmt<V>(method: string, path: string, body?: unknown): Promise<V> {
-    const d = this.requireDedicated();
-    return influxJson<V>(
-      this.t,
-      method,
-      `${DEDICATED_API}/accounts/${encodeURIComponent(d.accountId)}/clusters/${encodeURIComponent(d.clusterId)}${path}`,
-      `Bearer ${d.token}`,
-      body,
-    );
+  private mgmt<V>(call: (api: DedicatedApi) => Promise<V>): Promise<V> {
+    const { api } = this.requireDedicated();
+    return influxCall(() => call(api));
   }
 
   /** The organization: the configured one, or the token's only one. */
   async orgId(): Promise<string> {
     const c = this.requireCloud();
     if (c.orgId) return c.orgId;
-    return this.cached("org-id", async () => {
-      const res = await this.v2<{ orgs?: Array<{ id: string }> }>("GET", "/api/v2/orgs");
+    return this.orgIdCache.get(async () => {
+      const res = await this.v2((api) => api.get("/api/v2/orgs"));
       const id = res?.orgs?.[0]?.id;
       if (!id) throw new Error("The token can see no organization.");
       return id;
     });
   }
 
-  private async paged<V>(path: string, key: string, extra = ""): Promise<V[]> {
+  /**
+   * Walk an offset-paged list. By hand rather than `getAll`, which reads a list
+   * that is not an array as the end of it: this has always failed on one, and the
+   * host prunes what a sync stops seeing.
+   */
+  private async paged<V>(
+    page: (orgID: string, offset: number) => Promise<readonly V[] | undefined>,
+  ): Promise<V[]> {
     const org = await this.orgId();
     const out: V[] = [];
-    for (let page = 0; page < 50; page++) {
-      const res = await this.v2<Record<string, V[] | undefined>>(
-        "GET",
-        `${path}?orgID=${encodeURIComponent(org)}&limit=100&offset=${page * 100}${extra}`,
-      );
-      const batch = res?.[key] ?? [];
+    for (let at = 0; at < 50; at++) {
+      const batch = (await page(org, at * 100)) ?? [];
       out.push(...batch);
       if (batch.length < 100) break;
     }
     return out;
   }
 
-  buckets(): Promise<V2Bucket[]> {
-    return this.cached("buckets", () => this.paged<V2Bucket>("/api/v2/buckets", "buckets"));
+  buckets(): Promise<Bucket[]> {
+    return this.bucketCache.get(() =>
+      this.paged((orgID, offset) =>
+        this.v2(
+          async (api) =>
+            (await api.get("/api/v2/buckets", { query: { orgID, limit: 100, offset } }))?.buckets,
+        ),
+      ),
+    );
+  }
+
+  private tasks() {
+    return this.paged((orgID, offset) =>
+      this.v2(
+        async (api) =>
+          (await api.get("/api/v2/tasks", { query: { orgID, limit: 100, offset, type: "basic" } }))
+            ?.tasks,
+      ),
+    );
+  }
+
+  private checks() {
+    return this.paged((orgID, offset) =>
+      this.v2(
+        async (api) =>
+          (await api.get("/api/v2/checks", { query: { orgID, limit: 100, offset } }))?.checks,
+      ),
+    );
+  }
+
+  private notificationRules() {
+    return this.paged((orgID, offset) =>
+      this.v2(
+        async (api) =>
+          (await api.get("/api/v2/notificationRules", { query: { orgID, limit: 100, offset } }))
+            ?.notificationRules,
+      ),
+    );
+  }
+
+  private notificationEndpoints() {
+    return this.paged((orgID, offset) =>
+      this.v2(
+        async (api) =>
+          (await api.get("/api/v2/notificationEndpoints", { query: { orgID, limit: 100, offset } }))
+            ?.notificationEndpoints,
+      ),
+    );
+  }
+
+  private dashboards() {
+    return this.paged((orgID, offset) =>
+      this.v2(
+        async (api) =>
+          (await api.get("/api/v2/dashboards", { query: { orgID, limit: 100, offset } }))
+            ?.dashboards,
+      ),
+    );
   }
 
   private async optionalList<V>(load: () => Promise<V[]>): Promise<V[]> {
@@ -281,7 +327,7 @@ export class InfluxClient implements PluginClient {
 
   /** Latest stored bytes per bucket from the usage CSV, empty when the endpoint refuses. */
   private storageByBucket(): Promise<Map<string, number>> {
-    return this.cached("storage", async () => {
+    return this.storageCache.get(async () => {
       const out = new Map<string, { at: string; value: number }>();
       try {
         const now = Math.floor(Date.now() / 1000);
@@ -304,13 +350,11 @@ export class InfluxClient implements PluginClient {
   private async usageRows(start: number, stop: number): Promise<Record<string, string>[]> {
     const c = this.requireCloud();
     const org = await this.orgId();
-    const text = await influxText(
-      this.t,
-      "GET",
-      `${c.host}/api/v2/orgs/${encodeURIComponent(org)}/usage?start=${start}&stop=${stop}`,
-      { Authorization: `Token ${c.token}`, Accept: "text/csv" },
+    const { body } = await usageApi(this.t, c.host, c.token).getText(
+      `/api/v2/orgs/${pathEncode(org)}/usage`,
+      { query: { start, stop } },
     );
-    return parseAnnotatedCsv(text);
+    return parseAnnotatedCsv(body);
   }
 
   private inst(
@@ -340,7 +384,7 @@ export class InfluxClient implements PluginClient {
   // Mappers
   // -------------------------------------------------------------------------
 
-  private mapBucket(accountId: string, b: V2Bucket, storage?: number): ResourceInstance {
+  private mapBucket(accountId: string, b: Bucket, storage?: number): ResourceInstance {
     const every = b.retentionRules?.[0]?.everySeconds;
     return this.inst(
       accountId,
@@ -362,7 +406,7 @@ export class InfluxClient implements PluginClient {
     );
   }
 
-  private describePermissions(a: V2Auth): { text: string; allAccess: boolean } {
+  private describePermissions(a: Authorization): { text: string; allAccess: boolean } {
     const perms = a.permissions ?? [];
     const types = new Set(
       perms
@@ -383,7 +427,7 @@ export class InfluxClient implements PluginClient {
     return { text, allAccess };
   }
 
-  private mapAuth(accountId: string, a: V2Auth): ResourceInstance {
+  private mapAuth(accountId: string, a: Authorization): ResourceInstance {
     const { text, allAccess } = this.describePermissions(a);
     return this.inst(
       accountId,
@@ -403,7 +447,7 @@ export class InfluxClient implements PluginClient {
     );
   }
 
-  private mapTask(accountId: string, t: V2Task): ResourceInstance {
+  private mapTask(accountId: string, t: Task): ResourceInstance {
     return this.inst(
       accountId,
       T.task,
@@ -425,7 +469,7 @@ export class InfluxClient implements PluginClient {
     );
   }
 
-  private mapAlert(accountId: string, typeId: string, a: V2Alert): ResourceInstance {
+  private mapAlert(accountId: string, typeId: string, a: AlertRow): ResourceInstance {
     return this.inst(
       accountId,
       typeId,
@@ -446,7 +490,7 @@ export class InfluxClient implements PluginClient {
     );
   }
 
-  private mapDedicatedDb(accountId: string, d: DedicatedDb): ResourceInstance {
+  private mapDedicatedDb(accountId: string, d: DedicatedDatabase): ResourceInstance {
     return this.inst(
       accountId,
       T.dedicatedDatabase,
@@ -501,13 +545,7 @@ export class InfluxClient implements PluginClient {
         case T.org: {
           const org = await this.orgId();
           const [o, limits] = await Promise.all([
-            this.v2<{
-              id: string;
-              name?: string;
-              defaultStorageType?: string;
-              status?: string;
-              createdAt?: string;
-            }>("GET", `/api/v2/orgs/${encodeURIComponent(org)}`),
+            this.v2((api) => api.get(`/api/v2/orgs/${pathEncode(org)}`)),
             this.limits().catch(() => undefined),
           ]);
           const l = limits?.limits;
@@ -550,46 +588,29 @@ export class InfluxClient implements PluginClient {
         }
         case T.token: {
           const org = await this.orgId();
-          const res = await this.v2<{ authorizations?: V2Auth[] }>(
-            "GET",
-            `/api/v2/authorizations?orgID=${encodeURIComponent(org)}`,
+          const res = await this.v2((api) =>
+            api.get("/api/v2/authorizations", { query: { orgID: org } }),
           );
           return (res?.authorizations ?? []).map((a) => this.mapAuth(accountId, a));
         }
         case T.task:
-          return (
-            await this.optionalList(() =>
-              this.paged<V2Task>("/api/v2/tasks", "tasks", "&type=basic"),
-            )
-          ).map((t) => this.mapTask(accountId, t));
+          return (await this.optionalList(() => this.tasks())).map((t) =>
+            this.mapTask(accountId, t),
+          );
         case T.check:
-          return (
-            await this.optionalList(() => this.paged<V2Alert>("/api/v2/checks", "checks"))
-          ).map((a) => this.mapAlert(accountId, T.check, a));
+          return (await this.optionalList(() => this.checks())).map((a) =>
+            this.mapAlert(accountId, T.check, a),
+          );
         case T.rule:
-          return (
-            await this.optionalList(() =>
-              this.paged<V2Alert>("/api/v2/notificationRules", "notificationRules"),
-            )
-          ).map((a) => this.mapAlert(accountId, T.rule, a));
+          return (await this.optionalList(() => this.notificationRules())).map((a) =>
+            this.mapAlert(accountId, T.rule, a),
+          );
         case T.endpoint:
-          return (
-            await this.optionalList(() =>
-              this.paged<V2Alert>("/api/v2/notificationEndpoints", "notificationEndpoints"),
-            )
-          ).map((a) => this.mapAlert(accountId, T.endpoint, a));
+          return (await this.optionalList(() => this.notificationEndpoints())).map((a) =>
+            this.mapAlert(accountId, T.endpoint, a),
+          );
         case T.dashboard:
-          return (
-            await this.optionalList(() =>
-              this.paged<{
-                id: string;
-                name?: string;
-                description?: string;
-                cells?: unknown[];
-                meta?: { updatedAt?: string };
-              }>("/api/v2/dashboards", "dashboards"),
-            )
-          ).map((d) =>
+          return (await this.optionalList(() => this.dashboards())).map((d) =>
             this.inst(
               accountId,
               T.dashboard,
@@ -607,14 +628,9 @@ export class InfluxClient implements PluginClient {
         case T.telegraf: {
           const org = await this.orgId();
           const res = await this.optionalList(async () => {
-            const r = await this.v2<{
-              configurations?: Array<{
-                id: string;
-                name?: string;
-                description?: string;
-                metadata?: { buckets?: string[] };
-              }>;
-            }>("GET", `/api/v2/telegrafs?orgID=${encodeURIComponent(org)}`);
+            const r = await this.v2((api) =>
+              api.get("/api/v2/telegrafs", { query: { orgID: org } }),
+            );
             return r?.configurations ?? [];
           });
           return res.map((t) =>
@@ -633,11 +649,11 @@ export class InfluxClient implements PluginClient {
           );
         }
         case T.dedicatedDatabase:
-          return ((await this.mgmt<DedicatedDb[]>("GET", "/databases")) ?? []).map((d) =>
+          return ((await this.mgmt((api) => api.get("/databases"))) ?? []).map((d) =>
             this.mapDedicatedDb(accountId, d),
           );
         case T.dedicatedToken:
-          return ((await this.mgmt<DedicatedToken[]>("GET", "/tokens")) ?? [])
+          return ((await this.mgmt((api) => api.get("/tokens"))) ?? [])
             .filter((t) => !t.revokedAt)
             .map((t) => this.mapDedicatedToken(accountId, t));
         default:
@@ -647,18 +663,9 @@ export class InfluxClient implements PluginClient {
   }
 
   private limits() {
-    return this.cached("limits", async () => {
+    return this.limitsCache.get(async () => {
       const org = await this.orgId();
-      return this.v2<{
-        limits?: {
-          bucket?: { maxBuckets?: number; maxRetentionDuration?: number };
-          check?: { maxChecks?: number };
-          dashboard?: { maxDashboards?: number };
-          task?: { maxTasks?: number };
-          notificationRule?: { maxNotifications?: number };
-          rate?: { writeKBs?: number; readKBs?: number; cardinality?: number };
-        };
-      }>("GET", `/api/v2/orgs/${encodeURIComponent(org)}/limits`);
+      return this.v2((api) => api.get(`/api/v2/orgs/${pathEncode(org)}/limits`));
     });
   }
 
@@ -691,9 +698,8 @@ export class InfluxClient implements PluginClient {
   enrichDetail(resource: ResourceInstance): PluginEffect<ResourceInstance> {
     return attempt(async () => {
       if (resource.resourceTypeId !== T.task) return resource;
-      const task = await this.v2<V2Task>(
-        "GET",
-        `/api/v2/tasks/${encodeURIComponent(resource.externalId ?? "")}`,
+      const task = await this.v2((api) =>
+        api.get(`/api/v2/tasks/${pathEncode(resource.externalId ?? "")}`),
       );
       return {
         ...resource,
@@ -850,7 +856,7 @@ export class InfluxClient implements PluginClient {
             ],
           };
         case T.dedicatedToken: {
-          const dbs = ((await this.mgmt<DedicatedDb[]>("GET", "/databases")) ?? []).map((d) => ({
+          const dbs = ((await this.mgmt((api) => api.get("/databases"))) ?? []).map((d) => ({
             id: d.name,
             label: d.name,
           }));
@@ -886,18 +892,22 @@ export class InfluxClient implements PluginClient {
       switch (typeId) {
         case T.bucket: {
           const days = nonNegative(fields["retentionDays"] ?? "0", "Retention");
-          const b = await this.v2<V2Bucket>("POST", "/api/v2/buckets", {
-            orgID: await this.orgId(),
-            name: (fields["name"] ?? "").trim(),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            retentionRules:
-              days > 0 ? [{ type: "expire", everySeconds: Math.round(days * DAY) }] : [],
-          });
+          const orgID = await this.orgId();
+          const b = await this.v2((api) =>
+            api.post("/api/v2/buckets", {
+              body: {
+                orgID,
+                name: (fields["name"] ?? "").trim(),
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+                retentionRules: retentionRules(days),
+              },
+            }),
+          );
           return this.mapBucket(accountId, b);
         }
         case T.token: {
           const org = await this.orgId();
-          const permissions: Array<{ action: string; resource: Record<string, string> }> = [];
+          const permissions: Permission[] = [];
           for (const id of csv(fields["readBuckets"]))
             permissions.push({ action: "read", resource: { type: "buckets", id, orgID: org } });
           for (const id of csv(fields["writeBuckets"]))
@@ -907,11 +917,15 @@ export class InfluxClient implements PluginClient {
             if (type && action) permissions.push({ action, resource: { type, orgID: org } });
           }
           if (!permissions.length) throw new Error("Pick at least one permission.");
-          const a = await this.v2<V2Auth>("POST", "/api/v2/authorizations", {
-            orgID: org,
-            description: (fields["description"] ?? "").trim(),
-            permissions,
-          });
+          const a = await this.v2((api) =>
+            api.post("/api/v2/authorizations", {
+              body: {
+                orgID: org,
+                description: (fields["description"] ?? "").trim(),
+                permissions,
+              },
+            }),
+          );
           const r = this.mapAuth(accountId, a);
           if (a.token) r.resolvedOutputs["token"] = a.token;
           return {
@@ -930,27 +944,33 @@ export class InfluxClient implements PluginClient {
           if (!fields["every"] && !fields["cron"] && !/option\s+task/.test(flux)) {
             throw new Error("Give Every or Cron, or an `option task = {…}` block in the Flux.");
           }
-          const t = await this.v2<V2Task>("POST", "/api/v2/tasks", {
-            orgID: await this.orgId(),
-            flux,
-            ...(fields["name"] ? { name: fields["name"] } : {}),
-            ...(fields["every"] ? { every: fields["every"] } : {}),
-            ...(fields["cron"] ? { cron: fields["cron"] } : {}),
-            ...(fields["offset"] ? { offset: fields["offset"] } : {}),
-            ...(fields["description"] ? { description: fields["description"] } : {}),
-            status: "active",
-          });
+          const orgID = await this.orgId();
+          const t = await this.v2((api) =>
+            api.post("/api/v2/tasks", {
+              body: {
+                orgID,
+                flux,
+                ...(fields["name"] ? { name: fields["name"] } : {}),
+                ...(fields["every"] ? { every: fields["every"] } : {}),
+                ...(fields["cron"] ? { cron: fields["cron"] } : {}),
+                ...(fields["offset"] ? { offset: fields["offset"] } : {}),
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+                status: "active",
+              },
+            }),
+          );
           return this.mapTask(accountId, t);
         }
         case T.dashboard: {
-          const d = await this.v2<{ id: string; name?: string; description?: string }>(
-            "POST",
-            "/api/v2/dashboards",
-            {
-              orgID: await this.orgId(),
-              name: (fields["name"] ?? "").trim(),
-              ...(fields["description"] ? { description: fields["description"] } : {}),
-            },
+          const orgID = await this.orgId();
+          const d = await this.v2((api) =>
+            api.post("/api/v2/dashboards", {
+              body: {
+                orgID,
+                name: (fields["name"] ?? "").trim(),
+                ...(fields["description"] ? { description: fields["description"] } : {}),
+              },
+            }),
           );
           return this.inst(
             accountId,
@@ -967,27 +987,39 @@ export class InfluxClient implements PluginClient {
         }
         case T.dedicatedDatabase: {
           const days = nonNegative(fields["retentionDays"] || "0", "Retention");
-          const d = await this.mgmt<DedicatedDb>("POST", "/databases", {
-            name: (fields["name"] ?? "").trim(),
-            retentionPeriod: Math.round(days * NS_PER_DAY),
-            ...(fields["maxTables"] ? { maxTables: Number(fields["maxTables"]) } : {}),
-            ...(fields["maxColumnsPerTable"]
-              ? { maxColumnsPerTable: Number(fields["maxColumnsPerTable"]) }
-              : {}),
-          });
+          const d = await this.mgmt((api) =>
+            api.post("/databases", {
+              body: {
+                name: (fields["name"] ?? "").trim(),
+                retentionPeriod: Math.round(days * NS_PER_DAY),
+                ...(fields["maxTables"] ? { maxTables: Number(fields["maxTables"]) } : {}),
+                ...(fields["maxColumnsPerTable"]
+                  ? { maxColumnsPerTable: Number(fields["maxColumnsPerTable"]) }
+                  : {}),
+              },
+            }),
+          );
           return this.mapDedicatedDb(accountId, d);
         }
         case T.dedicatedToken: {
+          const permission = (action: string, resource: string): DedicatedPermission => ({
+            action,
+            resource,
+          });
           const permissions = [
-            ...csv(fields["read"]).map((resource) => ({ action: "read", resource })),
-            ...csv(fields["write"]).map((resource) => ({ action: "write", resource })),
+            ...csv(fields["read"]).map((resource) => permission("read", resource)),
+            ...csv(fields["write"]).map((resource) => permission("write", resource)),
           ];
           if (!permissions.length) throw new Error("Pick at least one database to read or write.");
-          const t = await this.mgmt<DedicatedToken>("POST", "/tokens", {
-            description: (fields["description"] ?? "").trim(),
-            permissions,
-            ...(fields["expiresAt"] ? { expiresAt: fields["expiresAt"] } : {}),
-          });
+          const t = await this.mgmt((api) =>
+            api.post("/tokens", {
+              body: {
+                description: (fields["description"] ?? "").trim(),
+                permissions,
+                ...(fields["expiresAt"] ? { expiresAt: fields["expiresAt"] } : {}),
+              },
+            }),
+          );
           const r = this.mapDedicatedToken(accountId, t);
           if (t.accessToken) r.resolvedOutputs["token"] = t.accessToken;
           return {
@@ -1010,14 +1042,30 @@ export class InfluxClient implements PluginClient {
   // Update / delete
   // -------------------------------------------------------------------------
 
-  private alertPath(typeId: string, id: string): string {
-    const base =
-      typeId === T.check
-        ? "checks"
-        : typeId === T.rule
-          ? "notificationRules"
-          : "notificationEndpoints";
-    return `/api/v2/${base}/${encodeURIComponent(id)}`;
+  private patchAlert(typeId: string, id: string, body: AlertUpdate): Promise<void> {
+    const segment = pathEncode(id);
+    return this.v2(async (api) => {
+      if (typeId === T.check) await api.patch(`/api/v2/checks/${segment}`, { body });
+      else if (typeId === T.rule) await api.patch(`/api/v2/notificationRules/${segment}`, { body });
+      else await api.patch(`/api/v2/notificationEndpoints/${segment}`, { body });
+    });
+  }
+
+  private deleteAlert(typeId: string, id: string): Promise<void> {
+    const segment = pathEncode(id);
+    return this.v2(async (api) => {
+      if (typeId === T.check) await api.delete(`/api/v2/checks/${segment}`);
+      else if (typeId === T.rule) await api.delete(`/api/v2/notificationRules/${segment}`);
+      else await api.delete(`/api/v2/notificationEndpoints/${segment}`);
+    });
+  }
+
+  private patchToken(id: string, body: ApiBody<operations["PatchAuthorizationsID"]>) {
+    return this.v2((api) => api.patch(`/api/v2/authorizations/${pathEncode(id)}`, { body }));
+  }
+
+  private patchTask(id: string, body: ApiBody<operations["PatchTasksID"]>) {
+    return this.v2((api) => api.patch(`/api/v2/tasks/${pathEncode(id)}`, { body }));
   }
 
   updateResource(
@@ -1029,63 +1077,77 @@ export class InfluxClient implements PluginClient {
     return attempt(async () => {
       const ext = externalIdOf(resourceId);
       this.invalidate();
-      const pick = (keys: string[]) =>
-        Object.fromEntries(keys.filter((k) => fields[k] !== undefined).map((k) => [k, fields[k]]));
+      const segment = pathEncode(ext);
       switch (typeId) {
         case T.bucket: {
-          const body: Record<string, unknown> = pick(["name", "description"]);
-          if (fields["retentionDays"] !== undefined && fields["retentionDays"] !== "") {
-            const days = nonNegative(fields["retentionDays"], "Retention");
-            body["retentionRules"] =
-              days > 0 ? [{ type: "expire", everySeconds: Math.round(days * DAY) }] : [];
-          }
-          await this.v2("PATCH", `/api/v2/buckets/${encodeURIComponent(ext)}`, body);
+          const rules =
+            fields["retentionDays"] !== undefined && fields["retentionDays"] !== ""
+              ? retentionRules(nonNegative(fields["retentionDays"], "Retention"))
+              : undefined;
+          await this.v2((api) =>
+            api.patch(`/api/v2/buckets/${segment}`, {
+              body: {
+                name: fields["name"],
+                description: fields["description"],
+                retentionRules: rules,
+              },
+            }),
+          );
           break;
         }
         case T.token:
-          await this.v2(
-            "PATCH",
-            `/api/v2/authorizations/${encodeURIComponent(ext)}`,
-            pick(["description", "status"]),
-          );
+          await this.patchToken(ext, {
+            description: fields["description"],
+            status: fields["status"],
+          });
           break;
         case T.task:
-          await this.v2(
-            "PATCH",
-            `/api/v2/tasks/${encodeURIComponent(ext)}`,
-            pick(["name", "status", "every", "cron", "offset", "description"]),
-          );
+          await this.patchTask(ext, {
+            name: fields["name"],
+            status: fields["status"],
+            every: fields["every"],
+            cron: fields["cron"],
+            offset: fields["offset"],
+            description: fields["description"],
+          });
           break;
         case T.check:
         case T.rule:
         case T.endpoint:
-          await this.v2(
-            "PATCH",
-            this.alertPath(typeId, ext),
-            pick(["name", "description", "status"]),
-          );
+          await this.patchAlert(typeId, ext, {
+            name: fields["name"],
+            description: fields["description"],
+            status: fields["status"],
+          });
           break;
         case T.dashboard:
-          await this.v2(
-            "PATCH",
-            `/api/v2/dashboards/${encodeURIComponent(ext)}`,
-            pick(["name", "description"]),
+          await this.v2((api) =>
+            api.patch(`/api/v2/dashboards/${segment}`, {
+              body: { name: fields["name"], description: fields["description"] },
+            }),
           );
           break;
         case T.dedicatedDatabase: {
-          const body: Record<string, number> = {};
-          if (fields["retentionDays"])
-            body["retentionPeriod"] = Math.round(
-              nonNegative(fields["retentionDays"], "Retention") * NS_PER_DAY,
-            );
-          if (fields["maxTables"]) body["maxTables"] = Number(fields["maxTables"]);
-          if (fields["maxColumnsPerTable"])
-            body["maxColumnsPerTable"] = Number(fields["maxColumnsPerTable"]);
-          await this.mgmt("PATCH", `/databases/${encodeURIComponent(ext)}`, body);
+          const retentionPeriod = fields["retentionDays"]
+            ? Math.round(nonNegative(fields["retentionDays"], "Retention") * NS_PER_DAY)
+            : undefined;
+          await this.mgmt((api) =>
+            api.patch(`/databases/${segment}`, {
+              body: {
+                retentionPeriod,
+                maxTables: fields["maxTables"] ? Number(fields["maxTables"]) : undefined,
+                maxColumnsPerTable: fields["maxColumnsPerTable"]
+                  ? Number(fields["maxColumnsPerTable"])
+                  : undefined,
+              },
+            }),
+          );
           break;
         }
         case T.dedicatedToken:
-          await this.mgmt("PATCH", `/tokens/${encodeURIComponent(ext)}`, pick(["description"]));
+          await this.mgmt((api) =>
+            api.patch(`/tokens/${segment}`, { body: { description: fields["description"] } }),
+          );
           break;
         default:
           throw new Error(`InfluxDB Cloud plugin: updating "${typeId}" is not supported`);
@@ -1097,27 +1159,27 @@ export class InfluxClient implements PluginClient {
 
   deleteResource(typeId: string, resourceId: string): PluginEffect<void> {
     return attempt(async () => {
-      const ext = encodeURIComponent(externalIdOf(resourceId));
+      const ext = pathEncode(externalIdOf(resourceId));
       this.invalidate();
       switch (typeId) {
         case T.bucket:
-          return void (await this.v2("DELETE", `/api/v2/buckets/${ext}`));
+          return void (await this.v2((api) => api.delete(`/api/v2/buckets/${ext}`)));
         case T.token:
-          return void (await this.v2("DELETE", `/api/v2/authorizations/${ext}`));
+          return void (await this.v2((api) => api.delete(`/api/v2/authorizations/${ext}`)));
         case T.task:
-          return void (await this.v2("DELETE", `/api/v2/tasks/${ext}`));
+          return void (await this.v2((api) => api.delete(`/api/v2/tasks/${ext}`)));
         case T.check:
         case T.rule:
         case T.endpoint:
-          return void (await this.v2("DELETE", this.alertPath(typeId, externalIdOf(resourceId))));
+          return this.deleteAlert(typeId, externalIdOf(resourceId));
         case T.dashboard:
-          return void (await this.v2("DELETE", `/api/v2/dashboards/${ext}`));
+          return void (await this.v2((api) => api.delete(`/api/v2/dashboards/${ext}`)));
         case T.telegraf:
-          return void (await this.v2("DELETE", `/api/v2/telegrafs/${ext}`));
+          return void (await this.v2((api) => api.delete(`/api/v2/telegrafs/${ext}`)));
         case T.dedicatedDatabase:
-          return void (await this.mgmt("DELETE", `/databases/${ext}`));
+          return void (await this.mgmt((api) => api.delete(`/databases/${ext}`)));
         case T.dedicatedToken:
-          return void (await this.mgmt("DELETE", `/tokens/${ext}`));
+          return void (await this.mgmt((api) => api.delete(`/tokens/${ext}`)));
         default:
           throw new Error(`InfluxDB Cloud plugin: deleting "${typeId}" is not supported`);
       }
@@ -1130,17 +1192,13 @@ export class InfluxClient implements PluginClient {
       this.invalidate();
       if (actionId === "activate" || actionId === "deactivate") {
         const status = actionId === "activate" ? "active" : "inactive";
-        const path =
-          typeId === T.token
-            ? `/api/v2/authorizations/${encodeURIComponent(ext)}`
-            : typeId === T.task
-              ? `/api/v2/tasks/${encodeURIComponent(ext)}`
-              : this.alertPath(typeId, ext);
-        await this.v2("PATCH", path, { status });
+        if (typeId === T.token) await this.patchToken(ext, { status });
+        else if (typeId === T.task) await this.patchTask(ext, { status });
+        else await this.patchAlert(typeId, ext, { status });
         return;
       }
       if (typeId === T.task && actionId === "run") {
-        await this.v2("POST", `/api/v2/tasks/${encodeURIComponent(ext)}/runs`, {});
+        await this.v2((api) => api.post(`/api/v2/tasks/${pathEncode(ext)}/runs`, { body: {} }));
         return;
       }
       throw new Error(`InfluxDB Cloud plugin: unknown action "${actionId}"`);
@@ -1159,9 +1217,7 @@ export class InfluxClient implements PluginClient {
       this.invalidate();
       if (typeId === T.task && command === "set-flux") {
         if (!form["flux"]?.trim()) throw new Error("The Flux cannot be empty.");
-        await this.v2("PATCH", `/api/v2/tasks/${encodeURIComponent(externalIdOf(resourceId))}`, {
-          flux: form["flux"],
-        });
+        await this.patchTask(externalIdOf(resourceId), { flux: form["flux"] });
         return { ok: true, message: "Flux saved." };
       }
       throw new Error(`InfluxDB Cloud plugin: command "${command}" is not supported`);
@@ -1201,26 +1257,13 @@ export class InfluxClient implements PluginClient {
             query,
             type: "flux",
             dialect: { annotations: ["datatype", "group", "default"] },
-          }),
+          } satisfies ApiBody<operations["PostQuery"]>),
         );
         return { rows: parseAnnotatedCsv(text), durationMs: Date.now() - started };
       }
       const db = await this.bucketName(resourceId);
-      const res = await influxJson<{
-        results?: Array<{
-          error?: string;
-          series?: Array<{
-            name?: string;
-            columns?: string[];
-            values?: unknown[][];
-            tags?: Record<string, string>;
-          }>;
-        }>;
-      }>(
-        this.t,
-        "GET",
-        `${c.host}/query?db=${encodeURIComponent(db)}&epoch=ms&q=${encodeURIComponent(query)}`,
-        `Token ${c.token}`,
+      const res = await influxCall(() =>
+        c.api.get("/query", { query: { db, epoch: "ms", q: query } }),
       );
       const rows: Record<string, unknown>[] = [];
       for (const result of res?.results ?? []) {
@@ -1375,9 +1418,9 @@ export class InfluxClient implements PluginClient {
     return attempt(async () => {
       const containers = ["Task log"];
       if (typeId !== T.task) return { text: "", containers, activeContainer: "Task log" };
-      const res = await this.v2<{
-        events?: Array<{ time?: string; runID?: string; message?: string }>;
-      }>("GET", `/api/v2/tasks/${encodeURIComponent(externalIdOf(resourceId))}/logs`);
+      const res = await this.v2((api) =>
+        api.get(`/api/v2/tasks/${pathEncode(externalIdOf(resourceId))}/logs`),
+      );
       const events = (res?.events ?? []).slice(-(params.tailLines ?? 100));
       const text = events
         .map(
@@ -1423,30 +1466,24 @@ export class InfluxClient implements PluginClient {
           limits?.bucket?.maxBuckets,
           async () => (await this.buckets()).filter((b) => b.type !== "system").length,
         )(),
-        push(
-          "tasks",
-          "Tasks",
-          limits?.task?.maxTasks,
-          async () => (await this.paged<V2Task>("/api/v2/tasks", "tasks", "&type=basic")).length,
-        )(),
+        push("tasks", "Tasks", limits?.task?.maxTasks, async () => (await this.tasks()).length)(),
         push(
           "checks",
           "Checks",
           limits?.check?.maxChecks,
-          async () => (await this.paged<V2Alert>("/api/v2/checks", "checks")).length,
+          async () => (await this.checks()).length,
         )(),
         push(
           "dashboards",
           "Dashboards",
           limits?.dashboard?.maxDashboards,
-          async () => (await this.paged<V2Alert>("/api/v2/dashboards", "dashboards")).length,
+          async () => (await this.dashboards()).length,
         )(),
         push(
           "notification-rules",
           "Notification rules",
           limits?.notificationRule?.maxNotifications,
-          async () =>
-            (await this.paged<V2Alert>("/api/v2/notificationRules", "notificationRules")).length,
+          async () => (await this.notificationRules()).length,
         )(),
       ]);
       return out;
