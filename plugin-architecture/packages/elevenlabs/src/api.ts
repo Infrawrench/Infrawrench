@@ -113,27 +113,47 @@ export interface PagedList<Page, Item> {
   next: (page: Page) => string | null | undefined;
 }
 
+/** The newest rows of a list, and whether they are all of it. */
+export interface ListWindow<Item> {
+  items: Item[];
+  complete: boolean;
+}
+
 /**
  * Walk a list on `has_more`, which the document says to rely on: an empty page is not
- * the end while it is set, and neither is one with no cursor to follow, which throws
- * rather than read what it cannot reach as deleted. Not `getAll`, which ends on both.
+ * the end while it is set, and neither is one with no cursor to follow.
+ * Not `getAll`, which ends on both.
  */
-export async function readPagedList<Page extends { has_more: boolean }, Item>(
+async function walkPagedList<Page extends { has_more: boolean }, Item>(
   list: PagedList<Page, Item>,
-): Promise<Item[]> {
+): Promise<{ items: Item[]; stoppedBy: "end" | "cap" | "no-cursor" }> {
   const place = { vendor: VENDOR, path: list.path };
   const items: Item[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < list.maxPages; page += 1) {
     const answer: Page = await list.read(cursor);
     items.push(...requireListPage(list.rows(answer), { ...place, key: list.key }));
-    if (!answer.has_more) return items;
+    if (!answer.has_more) return { items, stoppedBy: "end" };
     cursor = list.next(answer) ?? null;
-    if (!cursor) {
-      if (list.partial) return items;
-      throw new ListTruncatedError({ ...place, items: items.length });
-    }
+    if (!cursor) return { items, stoppedBy: "no-cursor" };
   }
-  if (list.partial) return items;
-  throw new ListTruncatedError({ ...place, items: items.length, maxPages: list.maxPages });
+  return { items, stoppedBy: "cap" };
+}
+
+/** Every row of a list, or a throw rather than read what it cannot reach as deleted. */
+export async function readPagedList<Page extends { has_more: boolean }, Item>(
+  list: PagedList<Page, Item>,
+): Promise<Item[]> {
+  const { items, stoppedBy } = await walkPagedList(list);
+  if (stoppedBy === "end" || list.partial) return items;
+  const place = { vendor: VENDOR, path: list.path, items: items.length };
+  throw new ListTruncatedError(stoppedBy === "cap" ? { ...place, maxPages: list.maxPages } : place);
+}
+
+/** What a list has up to its cap, for a read that can say it stopped short. */
+export async function readListWindow<Page extends { has_more: boolean }, Item>(
+  list: PagedList<Page, Item>,
+): Promise<ListWindow<Item>> {
+  const { items, stoppedBy } = await walkPagedList(list);
+  return { items, complete: stoppedBy === "end" };
 }

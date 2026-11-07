@@ -359,6 +359,106 @@ describe("reading a whole list", () => {
     expect(pagesOf("/v1/convai/conversations")).toHaveLength(20);
   });
 
+  describe("a conversation list longer than its cap", () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const today = Date.UTC(2026, 8, 7);
+    const conversation = (startMs: number) => ({
+      conversation_id: `c-${startMs}`,
+      start_time_unix_secs: startMs / 1000,
+      call_duration_secs: 60,
+      call_successful: "success",
+    });
+    const windowPages = () =>
+      calls.filter(
+        (c) =>
+          new URL(c.url).pathname === "/v1/convai/conversations" &&
+          new URL(c.url).searchParams.get("page_size") === "100",
+      );
+
+    function installConversations(page: (index: number) => unknown) {
+      let index = 0;
+      return installFetch((url) => {
+        const parsed = new URL(url);
+        if (parsed.pathname === "/v1/convai/conversations") {
+          // The detail read behind the stats asks for 20 rows; only the window read counts.
+          return parsed.searchParams.get("page_size") === "100"
+            ? jsonResponse(page(index++))
+            : jsonResponse({ conversations: [], has_more: false });
+        }
+        if (url.includes("/v1/convai/agents/")) return jsonResponse({ agent_id: "a", name: "A" });
+        return jsonResponse({}, 404);
+      });
+    }
+
+    const stats = () => client().fetchDashboardStats("agent", `${ACCOUNT}:agent:a`, ACCOUNT);
+    const valueOf = (rows: { label: string; value: string }[], label: string) =>
+      rows.find((row) => row.label === label)?.value;
+
+    it("says the seven day figures are a floor at the cap", async () => {
+      installConversations((index) => ({
+        conversations: Array.from({ length: 100 }, () => conversation(today)),
+        has_more: true,
+        next_cursor: `next-${index}`,
+      }));
+
+      const rows = await stats();
+
+      expect(windowPages()).toHaveLength(5);
+      expect(valueOf(rows, "Conversations (7 d)")).toBe("500+");
+      expect(valueOf(rows, "Talk Time (7 d)")).toBe("500m 0s+");
+      expect(valueOf(rows, "Success Rate (newest 500)")).toBe("100%");
+      expect(valueOf(rows, "Avg Duration (newest 500)")).toBe("1m 0s");
+      expect(valueOf(rows, "Success Rate (7 d)")).toBeUndefined();
+    });
+
+    it("says so too when has_more is set with no cursor to follow", async () => {
+      installConversations(() => ({
+        conversations: [conversation(today)],
+        has_more: true,
+        next_cursor: null,
+      }));
+
+      expect(valueOf(await stats(), "Conversations (7 d)")).toBe("1+");
+    });
+
+    it("leaves the figures plain when the whole week was read", async () => {
+      installConversations(() => ({
+        conversations: [conversation(today), conversation(today)],
+        has_more: false,
+      }));
+
+      const rows = await stats();
+
+      expect(valueOf(rows, "Conversations (7 d)")).toBe("2");
+      expect(valueOf(rows, "Talk Time (7 d)")).toBe("2m 0s");
+      expect(valueOf(rows, "Success Rate (7 d)")).toBe("100%");
+      expect(valueOf(rows, "Avg Duration")).toBe("1m 0s");
+    });
+
+    it("charts no point for a day it did not finish reading", async () => {
+      // 1,000 rows on the newest day, then 1,000 on the day before when the cap hits.
+      installConversations((index) => ({
+        conversations: Array.from({ length: 100 }, () =>
+          conversation(index < 10 ? today + DAY - 1000 : today - 1000),
+        ),
+        has_more: true,
+        next_cursor: `next-${index}`,
+      }));
+
+      const series = await client().fetchMetricSeries("agent", `${ACCOUNT}:agent:a`, ACCOUNT, {
+        startMs: today - 5 * DAY,
+        endMs: today + DAY - 1,
+      });
+
+      expect(windowPages()).toHaveLength(20);
+      expect(series).toHaveLength(4);
+      for (const line of series) {
+        expect(line.points.map((point) => point.timestamp)).toEqual([today]);
+      }
+      expect(series.find((line) => line.label === "Conversations")?.points[0]?.value).toBe(1000);
+    });
+  });
+
   it.each([
     ["model", "/v1/models"],
     ["phone-number", "/v1/convai/phone-numbers"],

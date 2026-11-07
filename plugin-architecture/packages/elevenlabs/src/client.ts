@@ -38,6 +38,7 @@ import {
   API_BASE,
   createElevenLabsApis,
   LIST_MAX_PAGES,
+  readListWindow,
   readPagedList,
   VENDOR,
   type AgentConfigInput,
@@ -47,6 +48,7 @@ import {
   type AgentDetailWire,
   type AgentSummaryWire,
   type ConversationWire,
+  type ListWindow,
   type DictionaryRule,
   type EditVoiceResponse,
   type ElevenLabsApi,
@@ -382,7 +384,8 @@ export class ElevenLabsClient implements PluginClient {
    * `GET /v1/convai/conversations` for one agent, newest first, from
    * `afterUnix` onward. Bounded by `maxPages` of 100 so a busy agent's
    * metrics cost at most that many requests. Only charts, stats and the detail
-   * view's recent table read this, so part of the list is fine.
+   * view's recent table read this, so part of the list is fine, and `complete`
+   * says whether it is part. The route has no total and no aggregate counterpart.
    * https://elevenlabs.io/docs/api-reference/conversations/list
    */
   private fetchConversations(
@@ -390,12 +393,11 @@ export class ElevenLabsClient implements PluginClient {
     afterUnix: number | undefined,
     maxPages: number,
     pageSize = 100,
-  ): Promise<ConversationWire[]> {
-    return readPagedList({
+  ): Promise<ListWindow<ConversationWire>> {
+    return readListWindow({
       path: "/v1/convai/conversations",
       key: "conversations",
       maxPages,
-      partial: true,
       read: (cursor) =>
         this.formQueryApi.get("/v1/convai/conversations", {
           query: {
@@ -687,7 +689,9 @@ export class ElevenLabsClient implements PluginClient {
         // `renderDetail` cannot call the API.
         const [detail, conversations] = await Promise.all([
           this.fetchAgent(externalId),
-          this.fetchConversations(externalId, undefined, 1, 20).catch((): ConversationWire[] => []),
+          this.fetchConversations(externalId, undefined, 1, 20)
+            .then((window) => window.items)
+            .catch((): ConversationWire[] => []),
         ]);
         const instance = mapAgent(undefined, detail, accountId);
         instance.resolvedOutputs["__conversations__"] = JSON.stringify(conversations);
@@ -847,7 +851,7 @@ export class ElevenLabsClient implements PluginClient {
           const weekAgo = Math.floor((Date.now() - 7 * DAY_MS) / 1000);
           const [recent, live] = await Promise.all([
             this.fetchConversations(agentId, weekAgo, 5).catch(
-              (): ConversationWire[] | null => null,
+              (): ListWindow<ConversationWire> | null => null,
             ),
             // GET /v1/convai/analytics/live-count: conversations in progress now.
             this.api
@@ -900,8 +904,8 @@ export class ElevenLabsClient implements PluginClient {
    * `usage-metrics.ts`. Agents chart conversation analytics, bucketed by UTC day from
    * `GET /v1/convai/conversations`. Capped at 20 pages (2,000 conversations)
    * per range so a busy agent cannot turn a chart refresh into hundreds of
-   * requests; the newest conversations come first, so a capped range loses
-   * its oldest days rather than its most recent.
+   * requests; the newest conversations come first, so a capped range has no
+   * points for its oldest days rather than zeros.
    */
   fetchMetricSeries(
     resourceTypeId: string,

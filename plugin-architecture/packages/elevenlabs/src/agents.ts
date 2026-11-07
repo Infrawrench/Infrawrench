@@ -12,6 +12,7 @@ import type {
   AgentSummaryWire,
   ConversationWire,
   KnowledgeBaseDocumentWire,
+  ListWindow,
   PhoneNumberWire,
 } from "./api.js";
 
@@ -234,10 +235,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * Daily series over the agent's conversations: count, successful count,
  * average duration and total talk time. Buckets are UTC days so they line up
- * with the cost graphs.
+ * with the cost graphs. A window cut short by its cap leaves out the days it did not
+ * finish, the oldest of the rows it read included: an undercount there charts as a dip
+ * and a zero before it as a quiet day. The labels stay as they are, because the poller
+ * stores points under them.
  */
 export function conversationSeries(
-  conversations: ConversationWire[],
+  conversations: ListWindow<ConversationWire>,
   startMs: number,
   endMs: number,
 ): MetricSeries[] {
@@ -246,9 +250,11 @@ export function conversationSeries(
   for (let day = firstDay; day <= endMs; day += DAY_MS) {
     buckets.set(day, { count: 0, success: 0, seconds: 0 });
   }
-  for (const conversation of conversations) {
+  let oldestRead = Infinity;
+  for (const conversation of conversations.items) {
     const startedMs = (conversation.start_time_unix_secs ?? 0) * 1000;
     if (startedMs < startMs || startedMs > endMs) continue;
+    oldestRead = Math.min(oldestRead, startedMs);
     const day = Math.floor(startedMs / DAY_MS) * DAY_MS;
     const bucket = buckets.get(day) ?? { count: 0, success: 0, seconds: 0 };
     bucket.count += 1;
@@ -256,7 +262,10 @@ export function conversationSeries(
     bucket.seconds += conversation.call_duration_secs ?? 0;
     buckets.set(day, bucket);
   }
-  const days = [...buckets.entries()].sort(([a], [b]) => a - b);
+  const oldestReadDay = Math.floor(oldestRead / DAY_MS) * DAY_MS;
+  const days = [...buckets.entries()]
+    .filter(([day]) => conversations.complete || day > oldestReadDay)
+    .sort(([a], [b]) => a - b);
   return [
     {
       label: "Conversations",
@@ -287,26 +296,32 @@ export function conversationSeries(
   ];
 }
 
-/** Dashboard stats over a window of conversations (the client passes 7 days). */
-export function conversationStats(conversations: ConversationWire[]): DashboardStat[] {
+/**
+ * Dashboard stats over a window of conversations (the client passes 7 days). Cut short
+ * by its cap, the totals are floors and the averages describe only the newest rows.
+ */
+export function conversationStats(window: ListWindow<ConversationWire>): DashboardStat[] {
+  const conversations = window.items;
   const total = conversations.length;
+  const floor = window.complete ? "" : "+";
+  const averagedOver = window.complete ? "" : ` (newest ${total})`;
   const judged = conversations.filter(
     (c) => c.call_successful === "success" || c.call_successful === "failure",
   );
   const successes = judged.filter((c) => c.call_successful === "success").length;
   const seconds = conversations.reduce((sum, c) => sum + (c.call_duration_secs ?? 0), 0);
-  const stats: DashboardStat[] = [{ label: "Conversations (7 d)", value: String(total) }];
+  const stats: DashboardStat[] = [{ label: "Conversations (7 d)", value: `${total}${floor}` }];
   if (judged.length) {
     const rate = successes / judged.length;
     stats.push({
-      label: "Success Rate (7 d)",
+      label: `Success Rate${averagedOver || " (7 d)"}`,
       value: `${Math.round(rate * 100)}%`,
       variant: rate >= 0.8 ? "status-healthy" : rate >= 0.5 ? "status-degraded" : "status-error",
     });
   }
   if (total) {
-    stats.push({ label: "Avg Duration", value: formatDuration(seconds / total) });
-    stats.push({ label: "Talk Time (7 d)", value: formatDuration(seconds) });
+    stats.push({ label: `Avg Duration${averagedOver}`, value: formatDuration(seconds / total) });
+    stats.push({ label: "Talk Time (7 d)", value: `${formatDuration(seconds)}${floor}` });
   }
   return stats;
 }
