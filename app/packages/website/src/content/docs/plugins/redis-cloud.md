@@ -19,7 +19,7 @@ Use this plugin to manage your Redis Cloud account. It's separate from the [Redi
   - **Upgrade Redis version**, to the versions Redis Cloud offers for that database.
   - **Tags**, which carry through to the cost report and so to cost allocation here.
   - **Flush** (Pro).
-- **Redis tab**: the console and key browser of the [Redis](./redis.md) plugin, signed in as the database's default user. It needs a reachable endpoint: the public endpoint, or a [bastion](../features/bastion-vms.md) inside the network you peered with Redis Cloud.
+- **Redis tab**: the console and key browser of the [Redis](./redis.md) plugin, signed in as the database's default user. It needs a reachable endpoint. The web app uses the public endpoint, because database connections don't go through a [bastion](../features/bastion-vms.md). For a private endpoint, use the desktop app on a machine inside the network you peered with Redis Cloud.
 - **VPC peerings** (AWS and Google Cloud): create with a region picker, edit the routed CIDRs (AWS), delete. Pending peerings tell you what to do on your side.
 - **Transit Gateways** (AWS): attach, detach and edit routed CIDRs.
 - **Private Service Connect endpoints** (Google Cloud): create (the service is set up for you if the subscription has none), see the gcloud creation and deletion scripts, accept, delete.

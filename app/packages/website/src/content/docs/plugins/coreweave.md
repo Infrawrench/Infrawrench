@@ -70,5 +70,5 @@ Clusters, VPCs and buckets export to the official `coreweave/coreweave` provider
 - **Instance type is fixed.** You can't change a Node Pool's instance type; create a new pool instead.
 - **Scale to zero doesn't hold capacity.** Nodes released by scaling to zero go back to CoreWeave, and **Restore size** waits for capacity like any scale-up.
 - **Prices are dated.** List prices are CoreWeave's published North America on-demand rates at the time this version shipped. The instance type page shows the date. Negotiated rates always win.
-- **Private clusters.** Node Pools and the Kubernetes tab need the cluster's API server to be reachable. Make it public, or attach a [bastion](../features/bastion-vms.md) in the cluster's VPC to the account.
+- **Private clusters.** Node Pools and the Kubernetes tab need the cluster's API server to be reachable. In the web app, turn on **Public API Server**: the Kubernetes tab connects to the API server directly, not through a [bastion](../features/bastion-vms.md). The desktop app also works from a machine that can reach the private endpoint, such as one on the cluster's Tailscale proxy. Node Pools of a cluster Infrawrench can't reach keep their last values.
 - **Provider status** follows CoreWeave's status page, including maintenance windows once they start.

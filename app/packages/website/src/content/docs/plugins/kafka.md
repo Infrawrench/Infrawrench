@@ -64,5 +64,5 @@ If you've already added a managed Kafka resource (Aiven, Confluent Cloud, MSK), 
 
 - Internal topics that start with `__` (like `__consumer_offsets`) are hidden from the topic list.
 - Replication factor can't be more than the number of brokers, or topic creation fails.
-- For private clusters (AWS MSK in a VPC, on-prem brokers), bind the account to a bastion so Kafka traffic goes through it.
+- Private clusters (AWS MSK in a VPC, on-prem brokers) work from the desktop app on a machine that can reach the brokers. The web app connects to brokers directly, never through a [bastion](../features/bastion-vms.md), so there they need public addresses.
 - Clients built on native binaries (librdkafka) aren't supported.

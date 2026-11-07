@@ -84,7 +84,17 @@ You see the reason in these places:
 
 If your organization has paging on, a list that keeps being refused opens a [sync failure incident](../features/mobile-push-notifications.md#sync-failure-incidents) like any other failing section.
 
-A few plugins read only part of a list on purpose, because the provider's rate limit wouldn't allow more, such as [GitLab](../plugins/gitlab.md) past its 100 most recently active projects. Those rows stay as last read instead of being removed, and the plugin's page says so.
+Each list has a limit sized so that a sync finishes in time, usually up to 100,000 rows or 1,000 requests to the provider, whichever comes first. A longer list is refused as above rather than read in part. There's no limit on an account as a whole: an account with tens of thousands of resources across its sections, past 65,534 in all, syncs the same way as a small one.
+
+### Large accounts refresh in turns
+
+Some sections need a separate request for each parent, such as each app's config vars or each project's variables. When an account has more parents than the provider's rate limit allows in one sync, Infrawrench reads as many as fit and starts from a different place next time, so everything is refreshed over several syncs. The rest keep their last values until their turn comes, without a warning, and something deleted at the provider disappears once its turn comes. [GitLab](../plugins/gitlab.md) past its 100 most recently active projects is one example, and each plugin's page says where this applies. The desktop app reads everything, or shows the section as failed if it can't.
+
+### Keys that can't read a whole section
+
+Restricted keys are normal, so when the provider refuses a key an entire section (a missing scope, or every region answering "access denied"), the web app doesn't treat that as a failed sync. The section keeps the rows it already had, or stays empty, and you don't get a warning or a [sync failure incident](../features/mobile-push-notifications.md#sync-failure-incidents) on every poll. To see what the key is missing, use **Check credentials** on the account page where the plugin supports it (see [Credential preflight](./credential-preflight.md)). The desktop app shows the provider's refusal on the section instead, so you can see there which permission to add.
+
+This only covers a refusal. A rate limit, a provider outage or a key the provider rejects outright still fails the section as described above.
 
 ### Providers with a single root
 

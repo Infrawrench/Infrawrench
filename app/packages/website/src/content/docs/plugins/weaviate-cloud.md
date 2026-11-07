@@ -26,6 +26,7 @@ You can use either without the other. A sign-in alone lists your clusters and le
 
 - **REST Endpoint** and **API Key** (optional): one cluster to connect directly. In the [Weaviate Cloud console](https://console.weaviate.cloud/), open the cluster and copy the **REST Endpoint** from its details panel. Then open **API Keys**, choose **New key** and copy it (it's shown once). An **Admin** key, or the key of a user with the `admin` role, lets Infrawrench manage everything. A **ReadOnly** key lists everything but can't change it. For a self-hosted cluster, use its base URL. Leave the key empty only if it allows anonymous access.
 - **More Clusters** (optional): more clusters, one per line, written as the REST endpoint, a space, and the cluster's API key. Clusters you connect by endpoint from Infrawrench are added here, and deleting a line disconnects that cluster.
+- **Self-Hosted Cluster Hosts** (advanced, optional): only for an account that goes through a [bastion](../features/bastion-vms.md). Pick the self-hosted clusters from **More Clusters** so the bastion lets their traffic through. Clusters on `weaviate.cloud` don't need picking. A bastion only reaches public addresses.
 - **CA certificate** (advanced): for self-hosted clusters behind a private CA.
 
 Fill in a sign-in, an endpoint, or both.
