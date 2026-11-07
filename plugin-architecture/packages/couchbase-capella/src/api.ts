@@ -1,5 +1,7 @@
 import {
   createApiClient,
+  ListTruncatedError,
+  requireListPage,
   type ApiBody,
   type ApiClient,
   type ApiFailure,
@@ -18,6 +20,7 @@ import type { operations, paths } from "./api-types.gen.js";
  * is 100 requests a minute per key.
  */
 export const CAPELLA_API = "https://cloudapi.cloud.couchbase.com";
+const VENDOR = "Capella";
 
 export type CapellaApi = ApiClient<paths>;
 
@@ -92,7 +95,7 @@ export function createCapellaApi(
   ctx: Pick<CapellaContext, "apiKey" | "http" | "baseUrl">,
 ): CapellaApi {
   return createApiClient<paths>({
-    vendor: "Capella",
+    vendor: VENDOR,
     baseUrl: ctx.baseUrl ?? CAPELLA_API,
     headers: { Accept: "application/json", Authorization: `Bearer ${ctx.apiKey}` },
     http: ctx.http,
@@ -105,23 +108,39 @@ interface Page<Row> {
   cursor?: { pages?: { page?: number; last?: number } };
 }
 
+// The document gives no maximum for `perPage`, so this stays the size already sent.
+const PER_PAGE = 100;
+const MAX_PAGES = 100;
+
 /**
- * Walk `page`/`perPage` until `cursor.pages.last`, up to 50 pages. A hand loop,
- * because this one runs on past a short page and `getAll` would read a `data` that
- * is not a list as an empty one, and an empty list is what the host prunes on.
+ * Walk `page`/`perPage` until `cursor.pages.last`, up to 10,000 rows. A hand loop,
+ * because `last` is what this has always ended on, and `getAll` would end on a short
+ * page, `next` or `totalItems` instead, none of them checked against a live answer.
  */
-export async function capellaList<Row>(
-  fetchPage: (query: { page: number; perPage: number }) => Promise<Page<Row> | undefined>,
-  maxPages = 50,
+export async function capellaList<Path extends string, Row>(
+  path: Path,
+  fetchPage: (
+    path: Path,
+    query: { page: number; perPage: number },
+  ) => Promise<Page<Row> | undefined>,
 ): Promise<Row[]> {
   const out: Row[] = [];
-  for (let page = 1; page <= maxPages; page++) {
-    const res = await fetchPage({ page, perPage: 100 });
-    out.push(...(res?.data ?? []));
-    const last = res?.cursor?.pages?.last ?? page;
-    if (page >= last || !(res?.data ?? []).length) break;
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const res = await fetchPage(path, { page, perPage: PER_PAGE });
+    const rows = requireListPage(res?.data, { vendor: VENDOR, path, key: "data", page: res });
+    out.push(...rows);
+    if (page >= (res?.cursor?.pages?.last ?? page) || !rows.length) return out;
   }
-  return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path, items: out.length, maxPages: MAX_PAGES });
+}
+
+/** The list in an answer from a route with no paging, which answers all of it at once. */
+export function rowsAt<Key extends string, Row>(
+  path: string,
+  key: Key,
+  answer: { readonly [K in Key]?: readonly Row[] } | undefined,
+): Row[] {
+  return requireListPage(answer?.[key], { vendor: VENDOR, path, key, page: answer });
 }
 
 /** Composite external ids: each part URI-encoded (bucket ids are base64 and may hold `/`). */

@@ -359,6 +359,121 @@ describe("CapellaClient", () => {
   });
 });
 
+describe("list reads the host prunes on", () => {
+  const client = () => hostClient(new CapellaClient({ apiKey: "k", organizationId: "org-1" }));
+  const OLD_CAP = 50;
+
+  it("reads past the old 50 page cap", async () => {
+    const { calls } = mockFetch({
+      [`GET ${O}/projects`]: (url: URL) => {
+        const n = Number(url.searchParams.get("page"));
+        return page([{ id: `p${n}` }], OLD_CAP + 1, n);
+      },
+    });
+    const projects = await client().listResources(T.project, "acc");
+    expect(projects).toHaveLength(OLD_CAP + 1);
+    expect(calls).toHaveLength(OLD_CAP + 1);
+  });
+
+  it("refuses a list that never ends, after exactly 100 pages", async () => {
+    const { calls } = mockFetch({
+      [`GET ${O}/projects`]: (url: URL) => {
+        const n = Number(url.searchParams.get("page"));
+        return page([{ id: `p${n}` }], n + 1, n);
+      },
+    });
+    await expect(client().listResources(T.project, "acc")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls).toHaveLength(100);
+  });
+
+  it("refuses a first page with its key renamed", async () => {
+    mockFetch({ [`GET ${O}/projects`]: { items: [{ id: "p1" }] } });
+    await expect(client().listResources(T.project, "acc")).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a later page with its key renamed", async () => {
+    mockFetch({
+      [`GET ${O}/projects`]: (url: URL) =>
+        url.searchParams.get("page") === "1" ? page([{ id: "p1" }], 2, 1) : { items: [] },
+    });
+    await expect(client().listResources(T.project, "acc")).rejects.toThrow("is not a list");
+  });
+
+  it("carries the refusal through the catches around a cluster's lists", async () => {
+    mockFetch({
+      [`GET ${O}/projects`]: page([{ id: "p1" }]),
+      [`GET ${P}/clusters`]: page([CLUSTER]),
+      [`GET ${P}/clusters/c1/users`]: { items: [] },
+    });
+    await expect(client().listResources(T.credential, "acc")).rejects.toThrow("is not a list");
+  });
+
+  it("carries the refusal through the catch around a project's clusters", async () => {
+    mockFetch({
+      [`GET ${O}/projects`]: page([{ id: "p1" }]),
+      [`GET ${P}/clusters`]: { items: [] },
+    });
+    await expect(client().listResources(T.cluster, "acc")).rejects.toThrow("is not a list");
+  });
+
+  it.each([
+    ["buckets", T.bucket, `${P}/clusters/c1/buckets`],
+    ["backups", T.backup, `${P}/clusters/c1/backups`],
+    ["private endpoints", T.privateEndpoint, `${P}/clusters/c1/privateEndpointService/endpoints`],
+  ])("refuses %s answered without their list", async (_name, typeId, route) => {
+    mockFetch({
+      [`GET ${O}/projects`]: page([{ id: "p1" }]),
+      [`GET ${P}/clusters`]: page([CLUSTER]),
+      [`GET ${route}`]: { items: [] },
+    });
+    await expect(client().listResources(typeId, "acc")).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a free cluster's buckets answered without their list", async () => {
+    mockFetch({
+      [`GET ${O}/projects`]: page([{ id: "p1" }]),
+      [`GET ${P}/clusters`]: page([FREE]),
+      [`GET ${P}/clusters/f1/buckets/freeTier`]: { items: [] },
+    });
+    await expect(client().listResources(T.bucket, "acc")).rejects.toThrow("is not a list");
+  });
+
+  it("refuses a bucket's scopes answered without their list", async () => {
+    mockFetch({
+      [`GET ${O}/projects`]: page([{ id: "p1" }]),
+      [`GET ${P}/clusters`]: page([CLUSTER]),
+      [`GET ${P}/clusters/c1/buckets`]: { data: [{ id: "YjE=", name: "b1" }] },
+      [`GET ${P}/clusters/c1/buckets/YjE%3D/scopes`]: { items: [] },
+    });
+    await expect(client().listResources(T.scope, "acc")).rejects.toThrow("is not a list");
+  });
+
+  it("still reads a list the key may not see as empty", async () => {
+    mockFetch({
+      [`GET ${O}/projects`]: page([{ id: "p1" }]),
+      [`GET ${P}/clusters`]: page([CLUSTER]),
+      [`GET ${P}/clusters/c1/buckets`]: new Response('{"message":"forbidden"}', { status: 403 }),
+    });
+    expect(await client().listResources(T.bucket, "acc")).toEqual([]);
+  });
+
+  it("lists a cluster's backups past the old 50", async () => {
+    const data = Array.from({ length: 60 }, (_, i) => ({
+      id: `b${i}`,
+      bucketName: `bucket-${i}`,
+      date: `2026-09-${String((i % 28) + 1).padStart(2, "0")}T00:00:00Z`,
+    }));
+    mockFetch({
+      [`GET ${O}/projects`]: page([{ id: "p1" }]),
+      [`GET ${P}/clusters`]: page([CLUSTER]),
+      [`GET ${P}/clusters/c1/backups`]: { data },
+    });
+    expect(await client().listResources(T.backup, "acc")).toHaveLength(60);
+  });
+});
+
 describe("status and terraform", () => {
   it("maps AWS components to regions and products to types", () => {
     expect(mapComponent("AWS ec2-us-east-1")).toMatchObject({ regions: ["us-east-1"] });

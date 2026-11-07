@@ -36,7 +36,15 @@ import type {
   OrgPath,
   ProjectPath,
 } from "./api.js";
-import { capellaList, createCapellaApi, isUnavailable, joinId, splitId, statusOf } from "./api.js";
+import {
+  capellaList,
+  createCapellaApi,
+  isUnavailable,
+  joinId,
+  rowsAt,
+  splitId,
+  statusOf,
+} from "./api.js";
 import {
   APP_SERVICE_COMPUTE,
   BILLING_CATEGORIES,
@@ -270,7 +278,7 @@ export class CapellaClient implements PluginClient {
 
   projects(): Promise<CapellaRow<"listProjects">[]> {
     return this.projectLoads.get("projects", () =>
-      capellaList((query) => this.api.get(`${this.org}/projects`, { query })),
+      capellaList(`${this.org}/projects`, (path, query) => this.api.get(path, { query })),
     );
   }
 
@@ -282,8 +290,8 @@ export class CapellaClient implements PluginClient {
     return this.clusterLoads.get(`clusters-${projectId}`, async () => {
       const list = await this.optional(
         () =>
-          capellaList((query) =>
-            this.api.get(`${this.projectPath(projectId)}/clusters`, { query }),
+          capellaList(`${this.projectPath(projectId)}/clusters`, (path, query) =>
+            this.api.get(path, { query }),
           ),
         [],
       );
@@ -309,22 +317,24 @@ export class CapellaClient implements PluginClient {
   }
 
   private bucketsOf(ref: ClusterRef): Promise<BucketRow[]> {
+    const cluster = this.sub(ref.projectId, ref.clusterId);
     return this.bucketLoads.get(`buckets-${ref.clusterId}`, () =>
-      this.optional<BucketRow[]>(
-        async () =>
-          (ref.free
-            ? await this.api.get(`${this.sub(ref.projectId, ref.clusterId)}/buckets/freeTier`)
-            : await this.api.get(`${this.sub(ref.projectId, ref.clusterId)}/buckets`)
-          )?.data ?? [],
-        [],
-      ),
+      this.optional<BucketRow[]>(async () => {
+        if (ref.free) {
+          const path = `${cluster}/buckets/freeTier` as const;
+          return rowsAt(path, "data", await this.api.get(path));
+        }
+        const path = `${cluster}/buckets` as const;
+        return rowsAt(path, "data", await this.api.get(path));
+      }, []),
     );
   }
 
   private appServices(): Promise<AppServiceRow[]> {
     return this.appServiceLoads.get("app-services", () =>
       this.optional<AppServiceRow[]>(
-        () => capellaList((query) => this.api.get(`${this.org}/appservices`, { query })),
+        () =>
+          capellaList(`${this.org}/appservices`, (path, query) => this.api.get(path, { query })),
         [],
       ),
     );
@@ -388,14 +398,13 @@ export class CapellaClient implements PluginClient {
         return this.perCluster(async (r) => {
           const out: ResourceInstance[] = [];
           for (const b of await this.bucketsOf(r)) {
-            const res = await this.optional<Partial<CapellaResponse<"getScopes">>>(
-              () =>
-                this.api.get(
-                  `${this.sub(r.projectId, r.clusterId)}/buckets/${pathEncode(b.id)}/scopes`,
-                ),
-              {},
+            const path =
+              `${this.sub(r.projectId, r.clusterId)}/buckets/${pathEncode(b.id)}/scopes` as const;
+            const scopes = await this.optional<CapellaResponse<"getScopes">["scopes"]>(
+              async () => rowsAt(path, "scopes", await this.api.get(path)),
+              [],
             );
-            for (const s of res.scopes ?? []) {
+            for (const s of scopes) {
               if (!s.name) continue;
               const bucketExt = joinId(r.projectId, r.clusterId, b.id);
               const scopeExt = joinId(r.projectId, r.clusterId, b.id, s.name);
@@ -442,8 +451,8 @@ export class CapellaClient implements PluginClient {
         return this.perCluster(
           async (r) =>
             (
-              await capellaList((query) =>
-                this.api.get(`${this.sub(r.projectId, r.clusterId)}/users`, { query }),
+              await capellaList(`${this.sub(r.projectId, r.clusterId)}/users`, (path, query) =>
+                this.api.get(path, { query }),
               )
             ).map((c) => mapCredential(accountId, r.projectId, r.clusterId, c)),
           false,
@@ -452,27 +461,27 @@ export class CapellaClient implements PluginClient {
         return this.perCluster(
           async (r) =>
             (
-              await capellaList((query) =>
-                this.api.get(`${this.sub(r.projectId, r.clusterId)}/allowedcidrs`, { query }),
+              await capellaList(
+                `${this.sub(r.projectId, r.clusterId)}/allowedcidrs`,
+                (path, query) => this.api.get(path, { query }),
               )
             ).map((c) => mapCidr(accountId, r.projectId, r.clusterId, c)),
           false,
         );
       case T.backup:
-        return this.perCluster(
-          async (r) =>
-            ((await this.api.get(`${this.sub(r.projectId, r.clusterId)}/backups`))?.data ?? [])
-              .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")))
-              .slice(0, 50)
-              .map((b) => mapBackup(accountId, r.projectId, r.clusterId, b)),
-          false,
-        );
+        return this.perCluster(async (r) => {
+          const path = `${this.sub(r.projectId, r.clusterId)}/backups` as const;
+          return rowsAt(path, "data", await this.api.get(path))
+            .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")))
+            .map((b) => mapBackup(accountId, r.projectId, r.clusterId, b));
+        }, false);
       case T.replication:
         return this.perCluster(
           async (r) =>
             (
-              await capellaList((query) =>
-                this.api.get(`${this.sub(r.projectId, r.clusterId)}/replications`, { query }),
+              await capellaList(
+                `${this.sub(r.projectId, r.clusterId)}/replications`,
+                (path, query) => this.api.get(path, { query }),
               )
             ).map((x) =>
               instance(
@@ -498,8 +507,9 @@ export class CapellaClient implements PluginClient {
         return this.perCluster(
           async (r) =>
             (
-              await capellaList((query) =>
-                this.api.get(`${this.sub(r.projectId, r.clusterId)}/networkPeers`, { query }),
+              await capellaList(
+                `${this.sub(r.projectId, r.clusterId)}/networkPeers`,
+                (path, query) => this.api.get(path, { query }),
               )
             ).map((x) =>
               instance(
@@ -522,10 +532,10 @@ export class CapellaClient implements PluginClient {
         );
       case T.privateEndpoint:
         return this.perCluster(async (r) => {
-          const res = await this.api.get(
-            `${this.sub(r.projectId, r.clusterId)}/privateEndpointService/endpoints`,
-          );
-          return (res?.endpoints ?? []).map((e) =>
+          const path =
+            `${this.sub(r.projectId, r.clusterId)}/privateEndpointService/endpoints` as const;
+          const res = await this.api.get(path);
+          return rowsAt(path, "endpoints", res).map((e) =>
             instance(
               accountId,
               T.privateEndpoint,
@@ -545,7 +555,7 @@ export class CapellaClient implements PluginClient {
         const names = await this.projectNames();
         return (
           await this.optional<CapellaRow<"listUsers">[]>(
-            () => capellaList((query) => this.api.get(`${this.org}/users`, { query })),
+            () => capellaList(`${this.org}/users`, (path, query) => this.api.get(path, { query })),
             [],
           )
         ).map((u) => mapUser(accountId, u, names));
@@ -554,7 +564,8 @@ export class CapellaClient implements PluginClient {
         const names = await this.projectNames();
         return (
           await this.optional<CapellaRow<"listOrganizationAPIKeys">[]>(
-            () => capellaList((query) => this.api.get(`${this.org}/apikeys`, { query })),
+            () =>
+              capellaList(`${this.org}/apikeys`, (path, query) => this.api.get(path, { query })),
             [],
           )
         ).map((k) => mapApiKey(accountId, k, names));
@@ -1866,7 +1877,7 @@ export class CapellaClient implements PluginClient {
       }
       if (typeId === T.user && command === "set-roles") {
         const user = (
-          await capellaList((query) => this.api.get(`${this.org}/users`, { query }))
+          await capellaList(`${this.org}/users`, (path, query) => this.api.get(path, { query }))
         ).find((u) => u.id === ext);
         if (!user) throw notFound(`user ${ext}`);
         const wanted = csv(form["organizationRoles"]);
