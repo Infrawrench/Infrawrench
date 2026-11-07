@@ -188,3 +188,45 @@ describe("build runs", () => {
     expect(runs[0]!.fields["started"]).toBe("2026-01-28T04:00:00Z");
   });
 });
+
+describe("one detail request per row", () => {
+  it.each([
+    ["jfrog-group", "/access/api/v2/groups", "groups", "group_name"],
+    ["jfrog-permission", "/access/api/v2/permissions", "permissions", "name"],
+  ])("%s reads a poll's budget and names the rest", async (type, path, key, nameKey) => {
+    const parts = trackUnread();
+    const { c, calls } = client((call) => {
+      if (call.url.pathname === path)
+        return { [key]: names(500).map((name) => ({ [nameKey]: name })) };
+      return { name: call.url.pathname.split("/").pop(), members: ["alice"] };
+    });
+    const rows = await c.listResources(type, ACCOUNT);
+    expect(rows).toHaveLength(200);
+    expect(calls.filter((x) => x.url.pathname !== path)).toHaveLength(200);
+
+    const unread = parts.flatMap((p) => p.idPrefixes ?? []);
+    expect(unread).toHaveLength(300);
+    for (const r of rows) expect(unread).not.toContain(r.id);
+    for (const prefix of unread) expect(prefix.startsWith(`${ACCOUNT}:${type}:n`)).toBe(true);
+  });
+
+  it("reads every group where the host keeps no track", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname === "/access/api/v2/groups")
+        return { groups: names(250).map((name) => ({ group_name: name })) };
+      return { name: call.url.pathname.split("/").pop() };
+    });
+    expect(await c.listResources("jfrog-group", ACCOUNT)).toHaveLength(250);
+  });
+
+  it("does not blank a row the budget did not reach", async () => {
+    trackUnread();
+    const { c } = client((call) => {
+      if (call.url.pathname === "/access/api/v2/groups")
+        return { groups: names(300).map((name) => ({ group_name: name })) };
+      return { name: call.url.pathname.split("/").pop(), members: ["alice"] };
+    });
+    const rows = await c.listResources("jfrog-group", ACCOUNT);
+    for (const r of rows) expect(r.fields["members"]).toBe("alice");
+  });
+});

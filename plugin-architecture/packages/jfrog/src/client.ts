@@ -466,9 +466,10 @@ export class JfrogClient implements PluginClient {
           });
         }
         case "jfrog-group": {
-          const names = await this.groupNames();
-          return mapLimit(names, 8, async (name) =>
-            mapGroup(accountId, await this.group(name).catch(() => ({ name }))),
+          return readWithinBudget(
+            await this.groupNames(),
+            (rest) => ({ idPrefixes: rest.map((name) => `${accountId}:jfrog-group:${name}`) }),
+            async (name) => mapGroup(accountId, await this.group(name).catch(() => ({ name }))),
           );
         }
         case "jfrog-permission": {
@@ -477,12 +478,16 @@ export class JfrogClient implements PluginClient {
             "/access/api/v2/permissions",
             "permissions",
           );
-          return mapLimit(perms, 8, async (p) => {
-            const full = await this.permission(p.name).catch(
-              () => ({ name: p.name }) as AccessPermission,
-            );
-            return this.withGrants(mapPermission(accountId, full), full);
-          });
+          return readWithinBudget(
+            perms,
+            (rest) => ({ idPrefixes: rest.map((p) => `${accountId}:jfrog-permission:${p.name}`) }),
+            async (p) => {
+              const full = await this.permission(p.name).catch(
+                () => ({ name: p.name }) as AccessPermission,
+              );
+              return this.withGrants(mapPermission(accountId, full), full);
+            },
+          );
         }
         default:
           throw new Error(`JFrog plugin: unknown resource type "${typeId}"`);
