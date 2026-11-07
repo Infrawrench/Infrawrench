@@ -1,0 +1,210 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "documents": [
+    {
+      "name": "management",
+      "specUrl": "https://raw.githubusercontent.com/get-convex/convex-backend/main/npm-packages/@convex-dev/platform/management-openapi.json",
+      "patches": [
+        {
+          "pointer": "/paths/~1teams~1{team_id}~1list_members/get/parameters/1",
+          "value": {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" }
+          },
+          "why": "The plugin walks this list with the same loop as the paged ones, so it sends a `limit` the document does not list."
+        },
+        {
+          "pointer": "/paths/~1teams~1{team_id}~1list_members/get/parameters/2",
+          "value": {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          "why": "The plugin walks this list with the same loop as the paged ones, and would send a cursor if a page offered one."
+        },
+        {
+          "pointer": "/paths/~1teams~1{team_id}~1list_pending_invites/get/parameters/1",
+          "value": {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" }
+          },
+          "why": "The plugin walks this list with the same loop as the paged ones, so it sends a `limit` the document does not list."
+        },
+        {
+          "pointer": "/paths/~1teams~1{team_id}~1list_pending_invites/get/parameters/2",
+          "value": {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          "why": "The plugin walks this list with the same loop as the paged ones, and would send a cursor if a page offered one."
+        },
+        {
+          "pointer": "/paths/~1projects~1{project_id}~1list_default_environment_variables/get/parameters/3",
+          "value": {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer" }
+          },
+          "why": "The response has `pagination` but the document lists no paging parameters. The plugin sends them."
+        },
+        {
+          "pointer": "/paths/~1projects~1{project_id}~1list_default_environment_variables/get/parameters/4",
+          "value": {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          "why": "The response has `pagination` but the document lists no paging parameters. The plugin sends them."
+        },
+        {
+          "pointer": "/components/schemas/RegionName",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field, and our region picker is filled from list_deployment_regions, so the plugin does not hold its own copy of the enum."
+        },
+        {
+          "pointer": "/components/schemas/CreateDeploymentType",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field; our select offers the valid values and Convex validates whatever else arrives."
+        },
+        {
+          "pointer": "/components/schemas/DeploymentType",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field or a composite resource id; Convex validates whatever arrives."
+        },
+        {
+          "pointer": "/components/schemas/RoleStatementAction",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field and carried over from a role as listed; Convex validates whatever arrives."
+        },
+        {
+          "pointer": "/components/schemas/PlatformCreateDeployKeyArgs/properties/allowedActions/items",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field; our select offers the valid values and Convex validates whatever else arrives."
+        },
+        {
+          "pointer": "/components/schemas/PlatformDeleteCustomDomainArgs/properties/requestDestination",
+          "value": { "type": "string" },
+          "why": "Read back out of a composite resource id, which is text; Convex validates it."
+        },
+        {
+          "pointer": "/components/schemas/UpdateTeamMemberRoleArgs/properties/role",
+          "value": { "type": ["string", "null"] },
+          "why": "Passed through from a form field; our select offers the valid values and Convex validates whatever else arrives."
+        },
+        {
+          "pointer": "/components/schemas/CreateInvitationArgs/properties/customRoles/items",
+          "value": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/CustomRoleId" },
+              { "$ref": "#/components/schemas/TeamMemberCustomRole" }
+            ]
+          },
+          "why": "The document asks for role ids here, but resending an invite passes on what list_pending_invites returned, which it documents as objects (#546). Remove this with the fix."
+        }
+      ],
+      "paths": {
+        "/deployments/{deployment_name}": ["get", "patch"],
+        "/deployments/{deployment_name}/create_custom_domain": ["post"],
+        "/deployments/{deployment_name}/create_deploy_key": ["post"],
+        "/deployments/{deployment_name}/custom_domains": ["get"],
+        "/deployments/{deployment_name}/delete": ["post"],
+        "/deployments/{deployment_name}/delete_custom_domain": ["post"],
+        "/deployments/{deployment_name}/delete_deploy_key": ["post"],
+        "/deployments/{deployment_name}/list_deploy_keys": ["get"],
+        "/projects/{project_id}": ["get", "patch"],
+        "/projects/{project_id}/create_deployment": ["post"],
+        "/projects/{project_id}/create_preview_deploy_key": ["post"],
+        "/projects/{project_id}/delete": ["post"],
+        "/projects/{project_id}/delete_preview_deploy_key": ["post"],
+        "/projects/{project_id}/list_default_environment_variables": ["get"],
+        "/projects/{project_id}/list_preview_deploy_keys": ["get"],
+        "/projects/{project_id}/update_default_environment_variables": ["post"],
+        "/teams/{team_id}/cancel_team_member_invite": ["post"],
+        "/teams/{team_id}/create_custom_role": ["post"],
+        "/teams/{team_id}/create_project": ["post"],
+        "/teams/{team_id}/delete_access_token": ["post"],
+        "/teams/{team_id}/delete_custom_role": ["post"],
+        "/teams/{team_id}/invite_team_member": ["post"],
+        "/teams/{team_id}/list_access_tokens": ["get"],
+        "/teams/{team_id}/list_custom_roles": ["get"],
+        "/teams/{team_id}/list_deployment_classes": ["get"],
+        "/teams/{team_id}/list_deployment_regions": ["get"],
+        "/teams/{team_id}/list_deployments": ["get"],
+        "/teams/{team_id}/list_members": ["get"],
+        "/teams/{team_id}/list_pending_invites": ["get"],
+        "/teams/{team_id}/projects": ["get"],
+        "/teams/{team_id}/update_custom_role": ["post"],
+        "/teams/{team_id}/update_team_member_role": ["post"],
+        "/token_details": ["get"]
+      }
+    },
+    {
+      "name": "deployment",
+      "specUrl": "https://raw.githubusercontent.com/get-convex/convex-backend/main/npm-packages/@convex-dev/platform/deployment-openapi.json",
+      "patches": [
+        {
+          "pointer": "/components/schemas/UsageLimitMetric",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field; our select offers the valid values and Convex validates whatever else arrives."
+        },
+        {
+          "pointer": "/components/schemas/LogTopic",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field; our select offers the valid values and Convex validates whatever else arrives."
+        },
+        {
+          "pointer": "/components/schemas/WebhookFormat",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field; our select offers the valid values and Convex validates whatever else arrives."
+        },
+        {
+          "pointer": "/components/schemas/DatadogSiteLocation",
+          "value": { "type": "string" },
+          "why": "Passed through from a form field; our select offers the valid values and Convex validates whatever else arrives."
+        },
+        {
+          "pointer": "/components/schemas/UpdateLogStreamArgs",
+          "value": {
+            "type": "object",
+            "required": ["logStreamType"],
+            "properties": {
+              "logStreamType": { "type": "string" },
+              "url": { "type": "string" },
+              "format": { "type": "string" },
+              "service": { "type": ["string", "null"] },
+              "datasetName": { "type": "string" }
+            }
+          },
+          "why": "A union with one member per stream type. The plugin only learns the type at run time and sends the fields the edit form filled in, so one flat object is what it can say."
+        }
+      ],
+      "paths": {
+        "/create_log_stream": ["post"],
+        "/create_usage_limit": ["post"],
+        "/delete_log_stream/{id}": ["post"],
+        "/delete_usage_limit/{id}": ["post"],
+        "/get_canonical_urls": ["get"],
+        "/get_current_usage": ["get"],
+        "/get_log_stream/{id}": ["get"],
+        "/list_environment_variables": ["get"],
+        "/list_log_streams": ["get"],
+        "/list_usage_limits": ["get"],
+        "/pause_deployment": ["post"],
+        "/rotate_webhook_secret/{id}": ["post"],
+        "/unpause_deployment": ["post"],
+        "/update_environment_variables": ["post"],
+        "/update_log_stream/{id}": ["post"],
+        "/update_usage_limit/{id}": ["post"]
+      }
+    }
+  ]
+}

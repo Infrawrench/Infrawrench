@@ -3,12 +3,12 @@ import type {
   CreateResourceConfig,
   RegionOption,
 } from "@infrawrench/plugin-base";
-import type { ConvexContext, CvDeployment, CvProject } from "./api.js";
-import { enc, mgmt } from "./api.js";
+import { pathEncode } from "@infrawrench/plugin-base";
+import type { CvDeployment, CvProject, ManagementApi } from "./api.js";
 import { DEPLOY_KEY_ACTIONS, USAGE_METRICS } from "./resource-types.js";
 
 export interface CreateDeps {
-  ctx: ConvexContext;
+  api: ManagementApi;
   teamId(): Promise<number>;
   projects(): Promise<CvProject[]>;
   deployments(): Promise<CvDeployment[]>;
@@ -22,9 +22,9 @@ const REGION_LOCATIONS: Record<string, [string, string]> = {
 };
 
 async function regionOptions(deps: CreateDeps): Promise<RegionOption[]> {
-  const res = await mgmt<{
-    items?: Array<{ name: string; displayName: string; available: boolean }>;
-  }>(deps.ctx, "GET", `/teams/${enc(await deps.teamId())}/list_deployment_regions`);
+  const res = await deps.api.get(
+    `/teams/${pathEncode(await deps.teamId())}/list_deployment_regions`,
+  );
   return (res?.items ?? [])
     .filter((r) => r.available)
     .map((r) => ({
@@ -36,10 +36,8 @@ async function regionOptions(deps: CreateDeps): Promise<RegionOption[]> {
 }
 
 async function classOptions(deps: CreateDeps): Promise<Array<{ id: string; label: string }>> {
-  const res = await mgmt<{ items?: Array<{ type: string; available: boolean }> }>(
-    deps.ctx,
-    "GET",
-    `/teams/${enc(await deps.teamId())}/list_deployment_classes`,
+  const res = await deps.api.get(
+    `/teams/${pathEncode(await deps.teamId())}/list_deployment_classes`,
   );
   return [
     { id: "", label: "Team default" },

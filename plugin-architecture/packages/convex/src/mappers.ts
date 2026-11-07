@@ -186,7 +186,7 @@ export function streamName(type: string): string {
   return STREAM_NAMES[type] ?? type;
 }
 
-function str(v: unknown): string {
+function str(v: string | null | undefined): string {
   return typeof v === "string" ? v : "";
 }
 
@@ -196,14 +196,12 @@ export function toLogStream(
   accountId: string,
 ): ResourceInstance {
   const target =
-    str(s["url"]) ||
-    str(s["datasetName"]) ||
-    (s["siteLocation"] ? `Datadog ${str(s["siteLocation"])}` : "") ||
-    (s["bucket"] ? `s3://${str(s["bucket"])}/${str(s["prefix"])}` : "") ||
-    str(s["host"]);
-  const topics = Array.isArray(s["topics"])
-    ? (s["topics"] as unknown[]).map(String).join(", ")
-    : "";
+    str(s.url) ||
+    str(s.datasetName) ||
+    (s.siteLocation ? `Datadog ${str(s.siteLocation)}` : "") ||
+    (s.bucket ? `s3://${str(s.bucket)}/${str(s.prefix)}` : "") ||
+    str(s.host);
+  const topics = Array.isArray(s.topics) ? s.topics.map(String).join(", ") : "";
   return instance(
     accountId,
     "convex-log-stream",
@@ -215,10 +213,10 @@ export function toLogStream(
       status: s.status.type,
       failureReason: s.status.type === "failed" ? s.status.reason : "",
       target,
-      url: str(s["url"]),
-      format: str(s["format"]),
-      service: str(s["service"]),
-      datasetName: str(s["datasetName"]),
+      url: str(s.url),
+      format: str(s.format),
+      service: str(s.service),
+      datasetName: str(s.datasetName),
       topics,
     },
     { parentTypeId: "convex-deployment", parentExternalId: deployment },

@@ -1,8 +1,24 @@
-import type { HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  createApiClient,
+  type ApiBody,
+  type ApiClient,
+  type ApiClientOptions,
+  type ApiListItem,
+  type ApiResponse,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
+import type {
+  operations as deploymentOperations,
+  paths as deploymentPaths,
+} from "./api-types.deployment.gen.js";
+import type {
+  operations as managementOperations,
+  paths as managementPaths,
+} from "./api-types.management.gen.js";
 
 /**
  * Convex has two HTTP APIs, both verified against their OpenAPI documents
- * (2026-10):
+ * (2026-10), which `plugingen.json` generates the types from:
  *
  * - The **Management API** at `https://api.convex.dev/v1`
  *   (`/v1/openapi.json`): teams, projects, deployments, deploy keys, custom
@@ -18,6 +34,24 @@ import type { HttpHostServices } from "@infrawrench/plugin-base";
  * verbs, except `PATCH /projects/{id}` and `PATCH /deployments/{name}`.
  */
 export const CONVEX_API = "https://api.convex.dev/v1";
+
+export type ManagementApi = ApiClient<managementPaths>;
+export type DeploymentApi = ApiClient<deploymentPaths>;
+
+/** A Management API operation's response, by its `operationId`. */
+type ManagementResponse<Op extends keyof managementOperations> = ApiResponse<
+  managementOperations[Op]
+>;
+/** A Deployment API operation's response, by its `operationId`. */
+type DeploymentResponse<Op extends keyof deploymentOperations> = ApiResponse<
+  deploymentOperations[Op]
+>;
+
+export type UpdateDeploymentBody = ApiBody<managementOperations["update deployment"]>;
+export type UpdateProjectBody = ApiBody<managementOperations["update project"]>;
+export type UpdateLogStreamBody = ApiBody<deploymentOperations["update_log_stream"]>;
+export type CreateLogStreamBody = ApiBody<deploymentOperations["create_log_stream"]>;
+export type UsageLimitBody = ApiBody<deploymentOperations["create_usage_limit"]>;
 
 export interface ConvexContext {
   token: string;
@@ -43,67 +77,12 @@ export function statusOf(err: unknown): number {
   return err instanceof ConvexApiError ? err.status : 0;
 }
 
-export type Query = Record<string, string | number | boolean | undefined>;
-
-function withQuery(url: string, query?: Query): string {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) {
-    if (v !== undefined && v !== "") params.set(k, String(v));
-  }
-  const qs = params.toString();
-  return qs ? `${url}?${qs}` : url;
-}
-
-async function request(
-  ctx: ConvexContext,
-  method: string,
-  url: string,
-  authorization: string,
-  body: unknown,
-  label: string,
-): Promise<unknown> {
-  const headers: Record<string, string> = {
-    Authorization: authorization,
-    Accept: "application/json",
-    ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-  };
-  const payload = body !== undefined ? JSON.stringify(body) : undefined;
-  let status: number;
-  let text: string;
-  if (ctx.http) {
-    const res = await ctx.http.request({
-      url,
-      method,
-      headers,
-      ...(payload !== undefined ? { body: payload } : {}),
-      ...(ctx.caCert ? { caCert: ctx.caCert } : {}),
-    });
-    status = res.status;
-    text = res.body;
-  } else {
-    const res = await fetch(url, {
-      method,
-      headers,
-      ...(payload !== undefined ? { body: payload } : {}),
-    });
-    status = res.status;
-    text = await res.text();
-  }
-  if (status < 200 || status >= 300) throw toError(status, label, text);
-  if (!text) return undefined;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
 /** Convex errors are `{code, message}`. */
 export function toError(status: number, label: string, raw: string): ConvexApiError {
   let code = "";
   let message = "";
   try {
-    const parsed = JSON.parse(raw) as { code?: unknown; message?: unknown };
+    const parsed: { code?: string; message?: string } = JSON.parse(raw);
     code = typeof parsed.code === "string" ? parsed.code : "";
     message = typeof parsed.message === "string" ? parsed.message : "";
   } catch {
@@ -123,52 +102,94 @@ export function toError(status: number, label: string, raw: string): ConvexApiEr
   );
 }
 
-/** Management API call. */
-export async function mgmt<T>(
-  ctx: ConvexContext,
-  method: string,
-  path: string,
-  body?: unknown,
-  query?: Query,
-): Promise<T> {
-  return (await request(
-    ctx,
-    method,
-    withQuery(`${ctx.baseUrl ?? CONVEX_API}${path}`, query),
-    `Bearer ${ctx.token}`,
-    body,
-    path,
-  )) as T;
+/** A 2xx that is not JSON reaches the caller as its text, rather than failing on the parse. */
+function jsonOrText(text: string): string {
+  try {
+    JSON.parse(text);
+    return text;
+  } catch {
+    return JSON.stringify(text);
+  }
 }
 
-/** Deployment API call against one deployment's own URL. */
-export async function deploymentApi<T>(
-  ctx: ConvexContext,
-  deploymentUrl: string,
-  method: string,
-  path: string,
-  body?: unknown,
-  query?: Query,
-): Promise<T> {
-  return (await request(
-    ctx,
-    method,
-    withQuery(`${deploymentUrl.replace(/\/+$/, "")}/api/v1${path}`, query),
-    `Convex ${ctx.token}`,
-    body,
-    path,
-  )) as T;
+/** The host service when there is one, otherwise `fetch`, which has no way to use a custom CA. */
+function transport(ctx: ConvexContext): HttpHostServices {
+  return {
+    async request(req) {
+      const res = ctx.http
+        ? await ctx.http.request(req)
+        : await fetch(req.url, {
+            method: req.method,
+            headers: req.headers,
+            ...(typeof req.body === "string" ? { body: req.body } : {}),
+          }).then(async (answer) => ({
+            status: answer.status,
+            headers: {},
+            body: await answer.text(),
+          }));
+      return res.body && res.status >= 200 && res.status < 300
+        ? { ...res, body: jsonOrText(res.body) }
+        : res;
+    },
+  };
 }
 
-/** Drain a `{items, pagination: {hasMore, nextCursor}}` listing. */
-export async function paged<T>(ctx: ConvexContext, path: string, query: Query = {}): Promise<T[]> {
+function shared(ctx: ConvexContext): Omit<ApiClientOptions, "baseUrl" | "headers"> {
+  return {
+    vendor: "Convex",
+    http: transport(ctx),
+    caCert: ctx.caCert,
+    contentType: "with-body",
+    httpError: ({ status, path, body }) => toError(status, path, body),
+  };
+}
+
+/** The Management API. */
+export function managementApi(ctx: ConvexContext): ManagementApi {
+  return createApiClient<managementPaths>({
+    ...shared(ctx),
+    baseUrl: ctx.baseUrl ?? CONVEX_API,
+    headers: { Authorization: `Bearer ${ctx.token}`, Accept: "application/json" },
+  });
+}
+
+/** The Deployment API, on one deployment's own URL. */
+export function deploymentApi(ctx: ConvexContext, deploymentUrl: string): DeploymentApi {
+  return createApiClient<deploymentPaths>({
+    ...shared(ctx),
+    baseUrl: `${deploymentUrl.replace(/\/+$/, "")}/api/v1`,
+    headers: { Authorization: `Convex ${ctx.token}`, Accept: "application/json" },
+  });
+}
+
+/** What {@link paged} adds to each request. */
+export interface Paging {
+  limit: number;
+  cursor?: string;
+}
+
+interface Page<T> {
+  items?: readonly T[] | null;
+  pagination?: { hasMore?: boolean; nextCursor?: string | null } | null;
+}
+
+/**
+ * Drain a `{items, pagination: {hasMore, nextCursor}}` listing, asking for each
+ * page through `fetchPage`, which puts `paging` in the query:
+ *
+ *   paged((query) => api.get(`/teams/${team}/projects`, { query }));
+ *
+ * A loop rather than `withCursorPagination`, whose `getAll` reads an `items` that
+ * is not an array as an empty page; this fails on it, as it always has.
+ */
+export async function paged<T>(
+  fetchPage: (paging: Paging) => Promise<Page<T> | undefined>,
+): Promise<T[]> {
   const out: T[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < 100; page++) {
-    const res = await mgmt<{
-      items?: T[];
-      pagination?: { hasMore?: boolean; nextCursor?: string | null };
-    }>(ctx, "GET", path, undefined, { ...query, limit: 100, ...(cursor ? { cursor } : {}) });
+    // `String`: a cursor that is not the string the document promises still goes as text.
+    const res = await fetchPage({ limit: 100, ...(cursor ? { cursor: String(cursor) } : {}) });
     out.push(...(res?.items ?? []));
     cursor = res?.pagination?.nextCursor ?? undefined;
     if (!res?.pagination?.hasMore || !cursor) return out;
@@ -176,133 +197,52 @@ export async function paged<T>(ctx: ConvexContext, path: string, query: Query = 
   return out;
 }
 
-export function enc(s: string | number): string {
-  return encodeURIComponent(String(s));
-}
-
 // ---- wire shapes ---------------------------------------------------------------
 
-export type DeploymentType = "dev" | "prod" | "preview" | "custom";
+type RawDeployment = ManagementResponse<"platform_get_deployment">;
+type CloudDeployment = Extract<RawDeployment, { kind: "cloud" }>;
 
-export interface CvTokenDetails {
-  type: "teamToken" | "projectToken";
-  id: number;
-  teamId?: number;
-  projectId?: number;
-  name: string;
-  createTime: number;
-}
+/**
+ * Either kind of deployment. A local one has none of the cloud fields, which is
+ * how the mappers read it, so they can take both without asking which it is.
+ */
+export type CvDeployment =
+  | CloudDeployment
+  | (Extract<RawDeployment, { kind: "local" }> &
+      Partial<
+        Pick<
+          CloudDeployment,
+          | "lastDeployTime"
+          | "region"
+          | "isDefault"
+          | "reference"
+          | "dashboardEditConfirmation"
+          | "deploymentUrl"
+          | "expiresAt"
+          | "class"
+          | "sendLogsToClient"
+        >
+      >);
 
-export interface CvProject {
-  id: number;
-  name: string;
-  slug: string;
-  teamId: number;
-  teamSlug: string;
-  createTime: number;
-  prodDeploymentName?: string | null;
-  devDeploymentName?: string | null;
-}
+export type CvProject = ManagementResponse<"get project by id">;
+export type CvDeployKey = ApiListItem<managementOperations["list deploy keys"], null>;
+export type CvCustomDomain = ApiListItem<managementOperations["list custom domains"], "domains">;
+export type CvUsageLimit = ApiListItem<deploymentOperations["list_usage_limits"], "usageLimits">;
+export type CvUsage = DeploymentResponse<"get_current_usage">;
 
-export interface CvDeployment {
-  kind: "cloud" | "local";
-  id?: number;
-  name: string;
-  createTime: number;
-  lastDeployTime?: number | null;
-  deploymentType: DeploymentType;
-  projectId: number;
-  creator?: number | null;
-  previewIdentifier?: string | null;
-  region?: string;
-  isDefault?: boolean;
-  reference?: string;
-  dashboardEditConfirmation?: boolean | null;
-  deploymentUrl?: string;
-  expiresAt?: number | null;
-  class?: string;
-  sendLogsToClient?: boolean | null;
-}
+/** A log stream of any type, with the fields only some types have readable on all of them. */
+export type CvLogStream = DeploymentResponse<"get_log_stream"> & {
+  url?: string;
+  hmacSecret?: string;
+  format?: string;
+  service?: string | null;
+  datasetName?: string;
+  siteLocation?: string;
+  bucket?: string;
+  prefix?: string | null;
+  host?: string | null;
+  topics?: string[] | null;
+};
 
-export interface CvDeployKey {
-  id: number;
-  name: string;
-  creationTime: number;
-  lastUsedTime?: number | null;
-  expiresAt?: number | null;
-  creator?: number | null;
-  managedBy?: unknown;
-  allowedActions: string[];
-}
-
-export interface CvCustomDomain {
-  creationTime: number;
-  deploymentName: string;
-  requestDestination: "convexCloud" | "convexSite";
-  domain: string;
-  verificationTime?: number | null;
-}
-
-export interface CvMember {
-  id: number;
-  name?: string | null;
-  email: string;
-  role: "admin" | "developer" | "custom";
-  customRoles?: number[] | null;
-}
-
-export interface CvInvite {
-  email: string;
-  expired: boolean;
-  role: string;
-  customRoles?: number[] | null;
-}
-
-export interface CvCustomRole {
-  id: number;
-  teamId: number;
-  name: string;
-  description?: string | null;
-  statements: Array<{ effect: string; actions: string | string[]; resource: string }>;
-  creator?: number | null;
-  createTime: number;
-}
-
-export interface CvAccessToken {
-  id: number;
-  name: string;
-  creationTime: number;
-  lastUsedTime?: number | null;
-  expiresAt?: number | null;
-  creator?: number | null;
-}
-
-export interface CvDefaultEnvVar {
-  name: string;
-  value: string;
-  deploymentTypes: DeploymentType[];
-}
-
-export interface CvUsageLimit {
-  id: string;
-  metric: string;
-  window: "day" | "month";
-  limitType: "warning" | "disable";
-  limit: number;
-  enabled: boolean;
-}
-
-export interface CvUsage {
-  metrics: Record<string, { unit: string; usage: { current_day: number; current_month: number } }>;
-  seedStatus: "pending" | "partial" | "complete" | "failed";
-}
-
-export type CvLogStreamStatus =
-  { type: "pending" | "restarting" | "active" | "deleting" } | { type: "failed"; reason: string };
-
-export interface CvLogStream {
-  logStreamType: string;
-  id: string;
-  status: CvLogStreamStatus;
-  [key: string]: unknown;
-}
+/** What creating a log stream answers; only a webhook has a secret. */
+export type CvCreatedLogStream = DeploymentResponse<"create_log_stream"> & { hmacSecret?: string };
