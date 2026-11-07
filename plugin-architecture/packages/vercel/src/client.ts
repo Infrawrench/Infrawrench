@@ -943,18 +943,23 @@ export class VercelClient implements PluginClient {
       if (typeId === "vercel-project") {
         // Blank clears an override back to the framework default (`null`).
         const override = (key: string) => (fields[key] === "" ? null : fields[key]);
-        const project = await this.api.patch(`/v9/projects/${pathEncode(externalId)}`, {
-          body: {
-            name: fields["name"],
-            framework: override("framework"),
-            nodeVersion: override("nodeVersion"),
-            serverlessFunctionRegion: override("serverlessFunctionRegion"),
-            buildCommand: override("buildCommand"),
-            installCommand: override("installCommand"),
-            devCommand: override("devCommand"),
-            outputDirectory: override("outputDirectory"),
-            rootDirectory: override("rootDirectory"),
-          },
+        const path = `/v9/projects/${pathEncode(externalId)}` as const;
+        const body = {
+          name: fields["name"],
+          framework: override("framework"),
+          nodeVersion: override("nodeVersion"),
+          serverlessFunctionRegion: override("serverlessFunctionRegion"),
+          buildCommand: override("buildCommand"),
+          installCommand: override("installCommand"),
+          devCommand: override("devCommand"),
+          outputDirectory: override("outputDirectory"),
+          rootDirectory: override("rootDirectory"),
+        };
+        const project = await this.api.patch(path, { body }).catch((err: unknown) => {
+          // The document allows no null here, though it does elsewhere, and a project always
+          // has a version. If Vercel holds to that, the other fields should still go through.
+          if (body.nodeVersion !== null || !hasStatus(err, 400)) throw err;
+          return this.api.patch(path, { body: { ...body, nodeVersion: undefined } });
         });
         return this.mapProject(project, accountId);
       }

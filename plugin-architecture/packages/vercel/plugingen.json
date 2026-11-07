@@ -30,7 +30,7 @@
         "type": "string",
         "nullable": true
       },
-      "why": "Passed through from a form field; our select offers the valid values and Vercel validates whatever else arrives, so the plugin does not hold its own copy of the enum. Blank sends null, which the document does not allow; reported as drift."
+      "why": "Passed through from a form field; our select offers the valid values and Vercel validates whatever else arrives, so the plugin does not hold its own copy of the enum. Blank sends null, which the document does not allow; a 400 for it is retried without the field."
     },
     {
       "pointer": "/paths/~1v9~1projects~1{idOrName}~1env~1{id}/patch/requestBody/content/application~1json/schema/properties/type",

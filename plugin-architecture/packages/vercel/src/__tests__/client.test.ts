@@ -1630,6 +1630,39 @@ describe("project editing and actions", () => {
     expect(res.fields["nodeVersion"]).toBe("22.x");
   });
 
+  it("sends a blank Node.js version as null, and leaves it alone if that is refused", async () => {
+    const edit = { nodeVersion: "", buildCommand: "npm run b" };
+    const id = "acct-1:vercel-project:p1";
+    const bodies = () => calls.map((call) => JSON.parse(String(call.init?.body)));
+    const saved = { id: "p1", name: "proj", createdAt: 1, nodeVersion: "22.x" };
+
+    installFetch(() => jsonResponse(saved));
+    await client().updateResource("vercel-project", id, ACCOUNT, edit);
+    expect(bodies()).toEqual([{ nodeVersion: null, buildCommand: "npm run b" }]);
+
+    calls = [];
+    installFetch((_url, init) =>
+      String(init?.body).includes("nodeVersion")
+        ? jsonResponse("invalid nodeVersion", 400)
+        : jsonResponse(saved),
+    );
+    const res = await client().updateResource("vercel-project", id, ACCOUNT, edit);
+    expect(bodies()).toEqual([
+      { nodeVersion: null, buildCommand: "npm run b" },
+      { buildCommand: "npm run b" },
+    ]);
+    expect(res.fields["nodeVersion"]).toBe("22.x");
+  });
+
+  it("does not retry an edit refused for another reason", async () => {
+    const id = "acct-1:vercel-project:p1";
+    installFetch(() => jsonResponse("name taken", 400));
+    await expect(
+      client().updateResource("vercel-project", id, ACCOUNT, { name: "x" }),
+    ).rejects.toThrow("name taken");
+    expect(calls).toHaveLength(1);
+  });
+
   it("pauses, unpauses, and toggles attack challenge mode", async () => {
     installFetch(() => jsonResponse({}));
     await client().invokeAction("vercel-project", "acct-1:vercel-project:p1", "pause", ACCOUNT);
