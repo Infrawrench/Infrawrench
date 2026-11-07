@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, notInArray } from "drizzle-orm";
 
 import {
+  ListTruncatedError,
   normalizeVulnerabilityFindings,
   type VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
@@ -30,8 +31,26 @@ export interface VulnerabilityCollectionResult {
   droppedCount: number;
 }
 
-/** Hard ceiling on stored findings per account: a runaway scanner must not fill the table. */
-export const MAX_FINDINGS_PER_ACCOUNT = 20_000;
+/**
+ * Hard ceiling on stored findings per account: a runaway scanner must not fill the
+ * table, and the prune below binds one parameter per finding, up to Postgres's 65,535.
+ */
+export const MAX_FINDINGS_PER_ACCOUNT = 50_000;
+
+/**
+ * The list as given, or a refusal when it is over the ceiling. Storing only part
+ * of it would delete the stored findings past the cut, which reads as them being
+ * fixed, so the account keeps what it last read and shows why instead.
+ */
+export function requireStorableFindings<T>(findings: T[], scanner: string): T[] {
+  if (findings.length <= MAX_FINDINGS_PER_ACCOUNT) return findings;
+  throw new ListTruncatedError({
+    vendor: scanner,
+    path: "vulnerability findings",
+    items: findings.length,
+    maxItems: MAX_FINDINGS_PER_ACCOUNT,
+  });
+}
 
 function parseInstant(value: string | undefined): Date | null {
   if (!value) return null;
@@ -83,7 +102,10 @@ export async function collectAccountVulnerabilities(
 
   const listFindings = client.listVulnerabilityFindings.bind(client);
   const raw = await runListChecked(() => listFindings(accountId));
-  const findings = normalizeVulnerabilityFindings(raw).slice(0, MAX_FINDINGS_PER_ACCOUNT);
+  const findings = requireStorableFindings(
+    normalizeVulnerabilityFindings(raw),
+    plugin.manifest.vulnerabilities.label,
+  );
   const collectedAt = new Date();
 
   await db.transaction(async (tx) => {
@@ -126,8 +148,8 @@ export async function collectAccountVulnerabilities(
         firstSeenAt: accountVulnerabilityFindings.firstSeenAt,
         createdAt: accountVulnerabilityFindings.createdAt,
       });
-    // The time-to-fix log. Only a complete read may say a finding was fixed:
-    // a truncated one drops findings that are still open.
+    // The time-to-fix log. Only a read with nothing dropped may say a finding was
+    // fixed: `normalizeVulnerabilityFindings` drops the ones it cannot use.
     if (pruned.length > 0 && raw.length === findings.length) {
       await tx.insert(vulnerabilityResolutions).values(
         pruned.map((p) => ({

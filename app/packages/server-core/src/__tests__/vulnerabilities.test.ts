@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { VulnerabilityFindingRow } from "@infrawrench/client-core";
+import { ListTruncatedError } from "@infrawrench/plugin-base";
 import { fakePostgres } from "./helpers/fake-postgres";
 
 const pg = fakePostgres();
@@ -8,7 +9,8 @@ vi.mock("../db/client", () => ({ db: pg.db }));
 const { parseKevFeed } = await import("../vulnerabilities/kev");
 const { formatVulnerabilityAlert, vulnerabilityEventBatch } =
   await import("../vulnerabilities/alerts");
-const { findingColumns } = await import("../vulnerabilities/collect");
+const { findingColumns, MAX_FINDINGS_PER_ACCOUNT, requireStorableFindings } =
+  await import("../vulnerabilities/collect");
 
 describe("parseKevFeed", () => {
   // Shape copied from the live feed (2026-10-08 catalog).
@@ -167,5 +169,21 @@ describe("vulnerabilityEventBatch", () => {
     const input = Array.from({ length: 5 }, (_, i) => row({ key: String(i) }));
     expect(vulnerabilityEventBatch(input, 2).map((f) => f.key)).toEqual(["0", "1"]);
     expect(input.map((f) => f.key)).toEqual(["0", "1", "2", "3", "4"]);
+  });
+});
+
+describe("requireStorableFindings", () => {
+  const finding = (id: number) => ({ id: `f-${id}` });
+
+  it("hands back a list the host can store whole", () => {
+    const list = [finding(1), finding(2)];
+    expect(requireStorableFindings(list, "Scanner")).toBe(list);
+    const full = Array.from({ length: MAX_FINDINGS_PER_ACCOUNT }, (_, i) => finding(i));
+    expect(requireStorableFindings(full, "Scanner")).toBe(full);
+  });
+
+  it("refuses a longer list, because cutting it would read the rest as fixed", () => {
+    const over = Array.from({ length: MAX_FINDINGS_PER_ACCOUNT + 1 }, (_, i) => finding(i));
+    expect(() => requireStorableFindings(over, "Scanner")).toThrow(ListTruncatedError);
   });
 });
