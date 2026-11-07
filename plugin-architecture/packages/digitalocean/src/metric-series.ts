@@ -11,8 +11,8 @@ import type { DoApi, DoResponse } from "./api.js";
 type MonitoringResponse = DoResponse<"monitoring_get_DropletCpuMetrics">;
 
 /**
- * The agent usage fields this module reads. None of them are in the document,
- * which has `measurements` instead (#412).
+ * An older shape of the answer, read after what the document describes, which is
+ * `measurements` over the whole window.
  */
 type AgentUsage = DoResponse<"genai_get_agent_usage">["usage"] & {
   usage?: Array<{
@@ -29,6 +29,35 @@ type AgentUsage = DoResponse<"genai_get_agent_usage">["usage"] & {
   latency_seconds?: number | string;
   time_to_first_token_seconds?: number | string;
 };
+
+type AgentUsageWindow = NonNullable<DoResponse<"genai_get_agent_usage">["usage"]>;
+
+/** `input_tokens` -> `Input tokens`. */
+function usageLabel(usageType: string): string {
+  const words = usageType.replace(/_/g, " ").trim();
+  const label = `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+  return /tokens?$/i.test(label) ? label : `${label} tokens`;
+}
+
+/**
+ * One line per usage type. The route totals the whole window rather than breaking it
+ * down over time, so each is one point, at the window's end.
+ */
+function measuredSeries(window: AgentUsageWindow | undefined, prefix = ""): MetricSeries[] {
+  const totals = new Map<string, number>();
+  for (const { tokens, usage_type: usageType } of window?.measurements ?? []) {
+    const count = Number(tokens);
+    if (!usageType || !Number.isFinite(count)) continue;
+    totals.set(usageType, (totals.get(usageType) ?? 0) + count);
+  }
+  const stop = Date.parse(window?.stop ?? "");
+  const timestamp = Number.isFinite(stop) ? stop : Date.now();
+  return [...totals].map(([usageType, value]) => ({
+    label: `${prefix}${usageLabel(usageType)}`,
+    unit: "tokens",
+    points: [{ timestamp, value }],
+  }));
+}
 
 /** The slice of `DigitalOceanClient` the metric fetchers need. */
 export interface DoMetricContext {
@@ -329,6 +358,10 @@ export async function fetchDoMetricSeries(
         query: { start: startIso, stop: stopIso },
       });
       const usage: AgentUsage = resp.usage ?? {};
+      const measured = [
+        ...measuredSeries(resp.usage),
+        ...measuredSeries(resp.log_insights_usage, "Log insights: "),
+      ];
       const buckets = Array.isArray(usage.usage) ? usage.usage : [];
 
       // Convert a bucket array to a MetricSeries: DO returns one row per
@@ -381,9 +414,9 @@ export async function fetchDoMetricSeries(
           flatSeries("Total output tokens", "tokens", usage.total_output_tokens),
           flatSeries("Total tokens", "tokens", usage.total_tokens),
         ].filter((s): s is MetricSeries => s != null);
-        return [...totals, ...series];
+        return [...measured, ...totals, ...series];
       }
-      return series;
+      return [...measured, ...series];
     } catch {
       // /usage 404s for agents that have never received a request: that's
       // a legitimate empty state, not an error. The host renders an

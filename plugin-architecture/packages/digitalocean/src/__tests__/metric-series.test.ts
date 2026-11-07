@@ -194,3 +194,53 @@ describe("fetchDoMetricSeries — gen-ai-agent", () => {
     );
   });
 });
+
+describe("fetchDoMetricSeries — what the document says an agent's usage is (#412)", () => {
+  const usage = {
+    usage: {
+      resource_uuid: "a-1",
+      start: "2026-01-01T00:00:00Z",
+      stop: "2026-01-02T00:00:00Z",
+      measurements: [
+        { usage_type: "input_tokens", tokens: 120 },
+        { usage_type: "output_tokens", tokens: 80 },
+        { usage_type: "input_tokens", tokens: 30 },
+      ],
+    },
+    log_insights_usage: {
+      stop: "2026-01-02T00:00:00Z",
+      measurements: [{ usage_type: "ingested", tokens: 5 }],
+    },
+  };
+  const ctx = (body: object) => ({
+    api: fakeApi(async () => body),
+    getResource: async () => {
+      throw new Error("not used");
+    },
+  });
+
+  it("charts a line per usage type, at the end of the window", async () => {
+    const series = await fetchDoMetricSeries(
+      ctx(usage),
+      "gen-ai-agent",
+      "acc:gen-ai-agent:a-1",
+      "acc",
+    );
+    const stop = Date.parse("2026-01-02T00:00:00Z");
+    expect(series).toEqual([
+      { label: "Input tokens", unit: "tokens", points: [{ timestamp: stop, value: 150 }] },
+      { label: "Output tokens", unit: "tokens", points: [{ timestamp: stop, value: 80 }] },
+      {
+        label: "Log insights: Ingested tokens",
+        unit: "tokens",
+        points: [{ timestamp: stop, value: 5 }],
+      },
+    ]);
+  });
+
+  it("charts nothing for an agent with no measurements", async () => {
+    await expect(
+      fetchDoMetricSeries(ctx({ usage: {} }), "gen-ai-agent", "acc:gen-ai-agent:a-1", "acc"),
+    ).resolves.toEqual([]);
+  });
+});
