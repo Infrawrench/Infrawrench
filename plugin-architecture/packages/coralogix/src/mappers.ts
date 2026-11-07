@@ -1,10 +1,12 @@
 /**
- * Coralogix API response shapes (the fields this plugin reads; verified
- * against the published OpenAPI document `/mgmt/openapi/5/openapi.yaml`,
- * 2026-10) and their mapping to `ResourceInstance`s.
+ * Coralogix API response shapes, from the published OpenAPI document
+ * (`/mgmt/openapi/5/openapi.yaml`), and their mapping to `ResourceInstance`s.
  */
 
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { components } from "./api-types.v5.gen.js";
+
+type Schemas = components["schemas"];
 
 export const PLUGIN_ID = "coralogix";
 
@@ -59,35 +61,9 @@ export function humanEnum(value: string | undefined, prefix: string): string {
 // Alerts: GET /alerts/alerts/v3
 // ---------------------------------------------------------------------------
 
-export type AlertPriority =
-  | "ALERT_DEF_PRIORITY_P5_OR_UNSPECIFIED"
-  | "ALERT_DEF_PRIORITY_P4"
-  | "ALERT_DEF_PRIORITY_P3"
-  | "ALERT_DEF_PRIORITY_P2"
-  | "ALERT_DEF_PRIORITY_P1";
+export type AlertPriority = Schemas["AlertDefPriority"];
 
-export interface CxAlertDefProperties {
-  name?: string;
-  description?: string;
-  enabled?: boolean;
-  priority?: AlertPriority;
-  type?: string;
-  groupByKeys?: string[];
-  entityLabels?: Record<string, string>;
-  phantomMode?: boolean;
-  deleted?: boolean;
-  [key: string]: unknown;
-}
-
-export interface CxAlertDef {
-  id?: string;
-  alertVersionId?: string;
-  alertDefProperties?: CxAlertDefProperties;
-  status?: string;
-  createdTime?: string;
-  updatedTime?: string;
-  lastTriggeredTime?: string;
-}
+export type CxAlertDef = Schemas["AlertDef"];
 
 /** P1..P5 in the UI; the API spells P5 as "P5 or unspecified". */
 export function alertPriorityLabel(p: string | undefined): string {
@@ -156,19 +132,7 @@ export function mapAlert(accountId: string, a: CxAlertDef): ResourceInstance {
 // Dashboards: GET /dashboards/dashboards/v1/catalog/list
 // ---------------------------------------------------------------------------
 
-export interface CxDashboardCatalogItem {
-  id?: string;
-  name?: string;
-  description?: string;
-  slugName?: string;
-  authorId?: string;
-  createTime?: string;
-  updateTime?: string;
-  isDefault?: boolean;
-  isPinned?: boolean;
-  isLocked?: boolean;
-  folder?: { id?: string; name?: string; parentId?: string };
-}
+export type CxDashboardCatalogItem = Schemas["DashboardCatalogItem"];
 
 export function mapDashboard(accountId: string, d: CxDashboardCatalogItem): ResourceInstance {
   const id = d.id ?? "";
@@ -196,47 +160,15 @@ export function mapDashboard(accountId: string, d: CxDashboardCatalogItem): Reso
 // TCO policies: GET /dataplans/policies/v1
 // ---------------------------------------------------------------------------
 
-export type PolicyPriority =
-  | "PRIORITY_TYPE_UNSPECIFIED"
-  | "PRIORITY_TYPE_BLOCK"
-  | "PRIORITY_TYPE_LOW"
-  | "PRIORITY_TYPE_MEDIUM"
-  | "PRIORITY_TYPE_HIGH";
+export type PolicyPriority = Schemas["quota.v1.Priority"];
 
-export interface CxRule {
-  name?: string;
-  ruleTypeId?: string;
-}
+export type CxRule = Schemas["quota.v1.Rule"];
 
-export interface CxPolicy {
-  id?: string;
-  /** The team id, which Coralogix's API calls the company id. */
-  companyId?: number | string;
-  name?: string;
-  description?: string;
-  enabled?: boolean;
-  deleted?: boolean;
-  order?: number;
-  priority?: PolicyPriority;
-  applicationRule?: CxRule;
-  subsystemRule?: CxRule;
-  archiveRetention?: { id?: string };
-  logRules?: { severities?: string[]; dpxlExpression?: string };
-  spanRules?: {
-    serviceRule?: CxRule;
-    actionRule?: CxRule;
-    tagRules?: Array<{ tagName?: string; tagValue?: string; ruleTypeId?: string }>;
-    dpxlExpression?: string;
-  };
-  rumRules?: { severities?: string[]; dpxlExpression?: string };
-  priorityOverride?: unknown;
-  priorityOverrideStatus?: {
-    quotaBased?: { currentPriority?: PolicyPriority; currentUsage?: number; dailyLimit?: number };
-  };
-  targets?: unknown[];
-  createdAt?: string;
-  updatedAt?: string;
-}
+/**
+ * A policy as read, or as what a replace wrote where the answer did not carry it,
+ * which can leave any field unset.
+ */
+export type CxPolicy = { [K in keyof Schemas["Policy"]]?: Schemas["Policy"][K] | undefined };
 
 /** The TCO Optimizer's names for each priority. */
 export const POLICY_PRIORITY_LABELS: Record<string, string> = {
@@ -335,38 +267,9 @@ export function mapPolicy(accountId: string, p: CxPolicy): ResourceInstance {
 // Parsing rule groups: GET /parsing-rules/rule-groups/v1
 // ---------------------------------------------------------------------------
 
-export interface CxParsingRule {
-  id?: string;
-  name?: string;
-  description?: string;
-  enabled?: boolean;
-  order?: number;
-  sourceField?: string;
-  parameters?: Record<string, unknown>;
-}
+export type CxParsingRule = Schemas["rules.v1.Rule"];
 
-export interface CxRuleSubgroup {
-  id?: string;
-  enabled?: boolean;
-  order?: number;
-  rules?: CxParsingRule[];
-}
-
-export interface CxRuleGroup {
-  id?: string;
-  name?: string;
-  description?: string;
-  creator?: string;
-  enabled?: boolean;
-  hidden?: boolean;
-  order?: number;
-  ruleMatchers?: Array<{
-    applicationName?: { value?: string };
-    subsystemName?: { value?: string };
-    severity?: { value?: string };
-  }>;
-  ruleSubgroups?: CxRuleSubgroup[];
-}
+export type CxRuleGroup = Schemas["RuleGroup"];
 
 /** "Parse", "Block", ... from a rule's parameters key (`parseParameters` → "Parse"). */
 export function ruleKind(rule: CxParsingRule): string {
@@ -415,29 +318,9 @@ export function mapRuleGroup(accountId: string, g: CxRuleGroup): ResourceInstanc
 // Enrichments: GET /enrichment-rules/enrichment-rules/v1 and custom enrichments
 // ---------------------------------------------------------------------------
 
-export interface CxEnrichment {
-  id?: number;
-  fieldName?: string;
-  enrichedFieldName?: string;
-  selectedColumns?: string[];
-  enrichmentType?: {
-    geoIp?: { withAsn?: boolean };
-    suspiciousIp?: Record<string, never>;
-    aws?: { resourceType?: string };
-    customEnrichment?: { id?: number };
-  };
-  targets?: Array<{ dataset?: string }>;
-}
+export type CxEnrichment = Schemas["Enrichment"];
 
-export interface CxCustomEnrichment {
-  id?: number;
-  name?: string;
-  description?: string;
-  fileName?: string;
-  fileSize?: number;
-  version?: number;
-  isQueryOnly?: boolean;
-}
+export type CxCustomEnrichment = Schemas["CustomEnrichment"];
 
 export function enrichmentKind(e: CxEnrichment): string {
   const t = e.enrichmentType ?? {};
@@ -501,15 +384,7 @@ export function mapCustomEnrichment(accountId: string, c: CxCustomEnrichment): R
 // Outgoing webhooks: GET /integrations/webhooks/v1
 // ---------------------------------------------------------------------------
 
-export interface CxWebhookSummary {
-  id?: string;
-  externalId?: number;
-  name?: string;
-  type?: string;
-  url?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
+export type CxWebhookSummary = Schemas["OutgoingWebhookExtendedSummary"];
 
 const WEBHOOK_TYPES: Record<string, string> = {
   GENERIC: "Generic webhook",
@@ -549,22 +424,9 @@ export function mapWebhook(accountId: string, w: CxWebhookSummary): ResourceInst
 // Quota rules: GET /dataplan/quota-rules/v1
 // ---------------------------------------------------------------------------
 
-export interface CxQuotaRule {
-  entityType?: string;
-  allocation?: number;
-  allocationType?:
-    | "QUOTA_ALLOCATION_TYPE_UNSPECIFIED"
-    | "QUOTA_ALLOCATION_TYPE_PERCENTAGE"
-    | "QUOTA_ALLOCATION_TYPE_LOCKED_UNITS";
-  canOverflow?: boolean;
-  cxManaged?: boolean;
-  enabled?: boolean;
-}
+export type CxQuotaRule = Schemas["QuotaAllocationEntityTypeRule"];
 
-export interface CxQuotaRuleSet {
-  id?: string;
-  rules?: CxQuotaRule[];
-}
+export type CxQuotaRuleSet = Schemas["QuotaAllocationEntityTypeRuleSet"];
 
 export function allocationTypeLabel(t: string | undefined): string {
   if (t === "QUOTA_ALLOCATION_TYPE_LOCKED_UNITS") return "Locked units";
@@ -597,32 +459,7 @@ export function mapQuotaRule(accountId: string, r: CxQuotaRule): ResourceInstanc
 // Events2Metrics: GET /events2metrics/events2metrics/v2
 // ---------------------------------------------------------------------------
 
-export interface CxE2M {
-  id?: string;
-  name?: string;
-  description?: string;
-  type?: string;
-  createTime?: string;
-  updateTime?: string;
-  logsQuery?: {
-    lucene?: string;
-    alias?: string;
-    applicationnameFilters?: string[];
-    subsystemnameFilters?: string[];
-    severityFilters?: string[];
-  };
-  spansQuery?: {
-    lucene?: string;
-    applicationnameFilters?: string[];
-    subsystemnameFilters?: string[];
-    serviceFilters?: string[];
-    actionFilters?: string[];
-  };
-  metricFields?: Array<{ targetBaseMetricName?: string; sourceField?: string }>;
-  metricLabels?: Array<{ targetLabel?: string; sourceField?: string }>;
-  permutations?: { limit?: number; hasExceededLimit?: boolean };
-  isInternal?: boolean;
-}
+export type CxE2M = Schemas["E2M"];
 
 export function mapE2M(accountId: string, e: CxE2M): ResourceInstance {
   const id = e.id ?? "";
@@ -655,9 +492,4 @@ export function mapE2M(accountId: string, e: CxE2M): ResourceInstance {
 // Team: GET /aaa/teams/v2 (deprecated, still served)
 // ---------------------------------------------------------------------------
 
-export interface CxTeam {
-  teamId?: { id?: number };
-  teamName?: string;
-  dailyQuota?: number;
-  retention?: number;
-}
+export type CxTeam = Schemas["ListTeamsResponse.TeamInfo"];

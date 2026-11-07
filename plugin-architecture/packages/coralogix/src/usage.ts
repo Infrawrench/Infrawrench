@@ -36,7 +36,8 @@
  */
 
 import type { CoralogixContext } from "./api.js";
-import { cxFetch, isMissingRoute } from "./api.js";
+import { apiV4, apiV5, isMissingRoute } from "./api.js";
+import type { components } from "./api-types.v4.gen.js";
 
 export type Pillar = "logs" | "metrics" | "traces" | "binary" | "profiles" | "ai" | "other";
 export type Priority = "high" | "medium" | "low" | "blocked";
@@ -75,48 +76,17 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   blocked: "Blocked",
 };
 
-interface Value {
-  value?: number;
-}
+type Value = components["schemas"]["v2.Unit"];
 
-/** One row of `daily/units` (field names per the version 4 OpenAPI document). */
-export interface DailyUnitsRow {
-  statsDate?: string;
-  totalUnits?: Value;
-  blockedUnits?: Value;
-  lowLogsUnits?: Value;
-  mediumLogsUnits?: Value;
-  highLogsUnits?: Value;
-  highMetricsUnits?: Value;
-  lowTracingUnits?: Value;
-  mediumTracingUnits?: Value;
-  highTracingUnits?: Value;
-  lowSessionRecordingUnits?: Value;
-  evaluationUnits?: Value;
-  cpuProfilesUnits?: Value;
-  blockedMetricsUnits?: Value;
-}
+/** One row of `daily/units`. */
+export type DailyUnitsRow = components["schemas"]["DetailedDailyUnits"];
 
 /** One row of `daily/processed-gbs`. */
-export interface DailyGbsRow {
-  statsDate?: string;
-  totalGbs?: Value;
-  blockedGbs?: Value;
-  lowLogsGbs?: Value;
-  mediumLogsGbs?: Value;
-  highLogsGbs?: Value;
-  highMetricsGbs?: Value;
-  lowTracingGbs?: Value;
-  mediumTracingGbs?: Value;
-  highTracingGbs?: Value;
-  lowSessionRecordingGbs?: Value;
-  cpuProfilesGbs?: Value;
-  blockedMetricsGbs?: Value;
-}
+export type DailyGbsRow = components["schemas"]["DetailedDailyProcessedGbs"];
 
 interface FieldMap {
-  units: keyof DailyUnitsRow;
-  gb?: keyof DailyGbsRow;
+  units: Exclude<keyof DailyUnitsRow, "statsDate">;
+  gb?: Exclude<keyof DailyGbsRow, "statsDate">;
   pillar: Pillar;
   priority?: Priority;
 }
@@ -173,8 +143,8 @@ export function cellsFromDailyRows(units: DailyUnitsRow, gbs?: DailyGbsRow): Usa
   let unitSum = 0;
   let gbSum = 0;
   for (const f of FIELDS) {
-    const u = num(units[f.units] as Value | undefined);
-    const g = f.gb && gbs ? num(gbs[f.gb] as Value | undefined) : undefined;
+    const u = num(units[f.units]);
+    const g = f.gb && gbs ? num(gbs[f.gb]) : undefined;
     unitSum += u;
     gbSum += g ?? 0;
     if (u <= EPSILON && (g ?? 0) <= EPSILON) continue;
@@ -239,16 +209,10 @@ async function fetchV4(ctx: CoralogixContext, range: DayRange): Promise<UsageCel
     },
   };
   const [units, gbs] = await Promise.all([
-    cxFetch<{ units?: DailyUnitsRow[] }>(ctx, "/dataplans/data-usage/v2/daily/units", {
-      method: "POST",
-      body,
-      version: 4,
-    }),
-    cxFetch<{ gbs?: DailyGbsRow[] }>(ctx, "/dataplans/data-usage/v2/daily/processed-gbs", {
-      method: "POST",
-      body,
-      version: 4,
-    }).catch(() => ({ gbs: [] as DailyGbsRow[] })),
+    apiV4(ctx).post("/dataplans/data-usage/v2/daily/units", { body }),
+    apiV4(ctx)
+      .post("/dataplans/data-usage/v2/daily/processed-gbs", { body })
+      .catch((): { gbs: DailyGbsRow[] } => ({ gbs: [] })),
   ]);
   const gbByDay = new Map<string, DailyGbsRow>();
   for (const row of gbs?.gbs ?? []) {
@@ -267,24 +231,6 @@ async function fetchV4(ctx: CoralogixContext, range: DayRange): Promise<UsageCel
 // ---------------------------------------------------------------------------
 // Version 5 fallback
 // ---------------------------------------------------------------------------
-
-interface CapabilityLabel {
-  key?: string;
-}
-
-interface QueryEntry {
-  labels?: Array<{ key?: string; value?: string }>;
-  measurements?: Array<{
-    kind?: string;
-    cxQuotaUnits?: { value?: string };
-    measuredUnit?: string;
-    measuredValue?: string;
-  }>;
-}
-
-interface QueryResponse {
-  buckets?: Array<{ range?: { start?: string }; entries?: QueryEntry[] }>;
-}
 
 const PILLAR_KEYS = ["pillar"];
 const PRIORITY_KEYS = ["priority", "tco_priority", "tier", "tco_tier", "pipeline"];
@@ -311,22 +257,18 @@ export function normalisePriority(raw: string | undefined): Priority | undefined
 }
 
 function ymd(date: string): { year: number; month: number; day: number } {
-  const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+  const [year = 0, month = 0, day = 0] = date.split("-").map(Number);
   return { year, month, day };
 }
 
 async function fetchV5(ctx: CoralogixContext, range: DayRange): Promise<UsageCell[]> {
-  const caps = await cxFetch<{ supportedLabels?: CapabilityLabel[] }>(
-    ctx,
-    "/dataplan/data-usage/v1/capabilities",
-  );
+  const caps = await apiV5(ctx).get("/dataplan/data-usage/v1/capabilities");
   const keys = new Set((caps?.supportedLabels ?? []).map((l) => l.key ?? "").filter(Boolean));
   const pillarKey = PILLAR_KEYS.find((k) => keys.has(k));
   const priorityKey = PRIORITY_KEYS.find((k) => keys.has(k));
   const groupBy = [pillarKey, priorityKey].filter((k): k is string => !!k);
   const end = nextDayIso(range.toDate).slice(0, 10);
-  const res = await cxFetch<QueryResponse>(ctx, "/dataplan/data-usage/v1/query", {
-    method: "POST",
+  const res = await apiV5(ctx).post("/dataplan/data-usage/v1/query", {
     body: {
       daily: { dateRange: { start: ymd(range.fromDate), end: ymd(end) } },
       ...(groupBy.length > 0 ? { groupBy: { keys: groupBy } } : {}),

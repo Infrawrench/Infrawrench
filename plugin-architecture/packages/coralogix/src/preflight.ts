@@ -23,14 +23,14 @@ import type {
   PreflightResult,
 } from "@infrawrench/plugin-base";
 import type { CoralogixContext } from "./api.js";
-import { cxFetch, statusOf } from "./api.js";
+import { apiV4, apiV5, statusOf } from "./api.js";
 import { nextDayIso } from "./usage.js";
 
 interface CapabilityProbe {
   capability: PreflightCapability;
   /** Presets that grant the capability, for the template. */
   presets: string[];
-  run: (ctx: CoralogixContext) => Promise<unknown>;
+  run: (ctx: CoralogixContext) => Promise<object | undefined>;
 }
 
 const perm = (id: string, label: string) => ({ id, label });
@@ -53,9 +53,7 @@ const PROBES: CapabilityProbe[] = [
     },
     presets: ["DataUsage"],
     run: (ctx) =>
-      cxFetch(ctx, "/dataplans/data-usage/v2/daily/units", {
-        method: "POST",
-        version: 4,
+      apiV4(ctx).post("/dataplans/data-usage/v2/daily/units", {
         body: { dateRange: { fromDate: `${today()}T00:00:00.000Z`, toDate: nextDayIso(today()) } },
       }),
   },
@@ -71,7 +69,7 @@ const PROBES: CapabilityProbe[] = [
       ],
     },
     presets: ["Alerts"],
-    run: (ctx) => cxFetch(ctx, "/alerts/alerts/v3", { query: { "pagination.pageSize": 1 } }),
+    run: (ctx) => apiV5(ctx).get("/alerts/alerts/v3", { query: { pagination: { pageSize: 1 } } }),
   },
   {
     capability: {
@@ -83,7 +81,7 @@ const PROBES: CapabilityProbe[] = [
       ],
     },
     presets: ["Dashboards"],
-    run: (ctx) => cxFetch(ctx, "/dashboards/dashboards/v1/catalog/list"),
+    run: (ctx) => apiV5(ctx).get("/dashboards/dashboards/v1/catalog/list"),
   },
   {
     capability: {
@@ -98,7 +96,7 @@ const PROBES: CapabilityProbe[] = [
       ],
     },
     presets: ["TCOPolicies"],
-    run: (ctx) => cxFetch(ctx, "/dataplans/policies/v1"),
+    run: (ctx) => apiV5(ctx).get("/dataplans/policies/v1"),
   },
   {
     capability: {
@@ -110,7 +108,7 @@ const PROBES: CapabilityProbe[] = [
       ],
     },
     presets: ["ParsingRules"],
-    run: (ctx) => cxFetch(ctx, "/parsing-rules/rule-groups/v1"),
+    run: (ctx) => apiV5(ctx).get("/parsing-rules/rule-groups/v1"),
   },
   {
     capability: {
@@ -126,7 +124,7 @@ const PROBES: CapabilityProbe[] = [
       ],
     },
     presets: ["Enrichments"],
-    run: (ctx) => cxFetch(ctx, "/enrichment-rules/enrichment-rules/v1"),
+    run: (ctx) => apiV5(ctx).get("/enrichment-rules/enrichment-rules/v1"),
   },
   {
     capability: {
@@ -138,7 +136,7 @@ const PROBES: CapabilityProbe[] = [
       ],
     },
     presets: ["OutboundWebhooks"],
-    run: (ctx) => cxFetch(ctx, "/integrations/webhooks/v1"),
+    run: (ctx) => apiV5(ctx).get("/integrations/webhooks/v1"),
   },
   {
     capability: {
@@ -151,7 +149,7 @@ const PROBES: CapabilityProbe[] = [
       ],
     },
     presets: [],
-    run: (ctx) => cxFetch(ctx, "/dataplan/quota-rules/v1"),
+    run: (ctx) => apiV5(ctx).get("/dataplan/quota-rules/v1"),
   },
   {
     capability: {
@@ -164,7 +162,7 @@ const PROBES: CapabilityProbe[] = [
       ],
     },
     presets: ["Events2Metrics"],
-    run: (ctx) => cxFetch(ctx, "/events2metrics/events2metrics/v2"),
+    run: (ctx) => apiV5(ctx).get("/events2metrics/events2metrics/v2"),
   },
 ];
 

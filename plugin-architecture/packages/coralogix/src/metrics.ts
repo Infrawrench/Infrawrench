@@ -12,9 +12,10 @@
  *   being applied to, which is what decides whether changing it is worth it.
  */
 
-import type { MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
+import type { ApiBody, MetricSeries, MetricSeriesPoint } from "@infrawrench/plugin-base";
 import type { CoralogixContext } from "./api.js";
-import { cxFetch } from "./api.js";
+import { apiV5 } from "./api.js";
+import type { operations } from "./api-types.v5.gen.js";
 import type { CxPolicy } from "./mappers.js";
 import type { Pillar, Priority, UsageCell } from "./usage.js";
 import { PILLAR_LABELS, PRIORITY_LABELS, fetchUsageCells } from "./usage.js";
@@ -106,11 +107,6 @@ export async function teamSeries(
   return out;
 }
 
-interface AlertEventsResponse {
-  events?: Array<{ cxEventTimestamp?: string; cxEventType?: string }>;
-  pagination?: { nextPageToken?: string };
-}
-
 const MAX_EVENT_PAGES = 10;
 
 /** Trigger events for one alert version, bucketed by hour or day. */
@@ -124,13 +120,14 @@ export async function alertSeries(
   const counts = new Map<number, number>();
   let token: string | undefined;
   for (let page = 0; page < MAX_EVENT_PAGES; page++) {
-    const res = await cxFetch<AlertEventsResponse>(ctx, "/alerts/alerts/v3/all/events", {
+    const res = await apiV5(ctx).get("/alerts/alerts/v3/all/events", {
       query: {
         alert_ids: [alertVersionId],
-        "timestamp_range.from": new Date(range.startMs).toISOString(),
-        "timestamp_range.to": new Date(range.endMs).toISOString(),
-        "pagination.pageSize": 500,
-        ...(token ? { "pagination.pageToken": token } : {}),
+        timestamp_range: {
+          from: new Date(range.startMs).toISOString(),
+          to: new Date(range.endMs).toISOString(),
+        },
+        pagination: { pageSize: 500, ...(token ? { pageToken: token } : {}) },
       },
     });
     for (const e of res?.events ?? []) {
@@ -149,13 +146,11 @@ export async function alertSeries(
   return [{ label: "Trigger events", unit: "events", points }];
 }
 
-interface ForecastResponse {
-  estimatedBytes?: string;
-  usageBuckets?: Array<{ bucketStartMs?: string; bytes?: string }>;
-}
-
 /** The request body that forecasts a policy's own rules. */
-export function forecastBody(p: CxPolicy, bucketMs: number): Record<string, unknown> {
+export function forecastBody(
+  p: CxPolicy,
+  bucketMs: number,
+): ApiBody<operations["PoliciesService_ForecastPolicyUsage"]> {
   return {
     ...(p.applicationRule ? { applicationRule: p.applicationRule } : {}),
     ...(p.subsystemRule ? { subsystemRule: p.subsystemRule } : {}),
@@ -171,8 +166,7 @@ const POLICY_BUCKET_MS = 6 * 3_600_000;
 
 /** GB a policy's rules matched over the last week, in six-hour buckets. */
 export async function policySeries(ctx: CoralogixContext, p: CxPolicy): Promise<MetricSeries[]> {
-  const res = await cxFetch<ForecastResponse>(ctx, "/dataplans/policies/v1/all/forecast-usage", {
-    method: "POST",
+  const res = await apiV5(ctx).post("/dataplans/policies/v1/all/forecast-usage", {
     body: forecastBody(p, POLICY_BUCKET_MS),
   });
   const points: MetricSeriesPoint[] = [];
