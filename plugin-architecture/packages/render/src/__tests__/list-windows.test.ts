@@ -167,3 +167,83 @@ describe("recent deploys and jobs in either order", () => {
     expect(state.calls.filter((c) => c.path.endsWith("deploys"))).toHaveLength(1);
   });
 });
+
+describe("fan-out per poll", () => {
+  const services = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      service: { id: `srv-${String(i).padStart(3, "0")}`, name: `s${i}`, type: "web_service" },
+      cursor: `c${i}`,
+    }));
+
+  function captureUnread(): string[] {
+    const named: string[] = [];
+    Reflect.set(globalThis, UNREAD_HOOK, (part: { parentResourceIds?: string[] }) =>
+      named.push(...(part.parentResourceIds ?? [])),
+    );
+    return named;
+  }
+
+  it.each([
+    ["deploy", "deploys"],
+    ["env-var", "env-vars"],
+    ["custom-domain", "custom-domains"],
+    ["job", "jobs"],
+  ])("reads %s rows for part of a large workspace and names the rest", async (typeId, seg) => {
+    const named = captureUnread();
+    const all = services(150);
+    route("GET", "/services", (call: Call) =>
+      call.query.get("cursor") ? all.slice(100) : all.slice(0, 100),
+    );
+    for (let i = 0; i < 150; i++) {
+      route("GET", `/services/srv-${String(i).padStart(3, "0")}/${seg}`, []);
+    }
+    await client().listResources(typeId, ACCOUNT);
+    const read = state.calls.filter((c) => c.path.endsWith(`/${seg}`));
+    expect(read.length).toBeLessThanOrEqual(60);
+    expect(read.length + named.length).toBe(150);
+    const readIds = new Set(read.map((c) => `acct:service:${c.path.split("/")[2]}`));
+    for (const id of named) expect(readIds.has(id)).toBe(false);
+  });
+
+  it("reads every service of a small workspace and names none", async () => {
+    const named = captureUnread();
+    route("GET", "/services", services(40));
+    await client().listResources("deploy", ACCOUNT);
+    expect(state.calls.filter((c) => c.path.endsWith("/deploys"))).toHaveLength(40);
+    expect(named).toEqual([]);
+  });
+
+  it("reads variables for part of a large set of groups and names the rest", async () => {
+    const named = captureUnread();
+    const all = groups(150).map((g, i) => ({ envGroup: g, cursor: `c${i}` }));
+    route("GET", "/env-groups", (call: Call) =>
+      call.query.get("cursor") ? all.slice(100) : all.slice(0, 100),
+    );
+    for (const { envGroup } of all) {
+      route("GET", `/env-groups/${envGroup.id}`, { ...envGroup, envVars: [] });
+    }
+    await client().listResources("env-group-var", ACCOUNT);
+    const read = state.calls.filter((c) => /^\/env-groups\/evg-/.test(c.path));
+    expect(read.length).toBeLessThanOrEqual(60);
+    expect(read.length + named.length).toBe(150);
+    expect(named.every((id) => id.startsWith("acct:env-group:evg-"))).toBe(true);
+  });
+
+  it("reads environments for part of a large set of projects and names the rest", async () => {
+    const named = captureUnread();
+    route(
+      "GET",
+      "/projects",
+      Array.from({ length: 90 }, (_, i) => ({
+        project: { id: `prj-${i}`, name: `p${i}`, ownerId: "tea-1", environmentIds: [] },
+        cursor: `c${i}`,
+      })),
+    );
+    route("GET", "/environments", []);
+    await client().listResources("environment", ACCOUNT);
+    const read = state.calls.filter((c) => c.path === "/environments");
+    expect(read.length).toBeLessThanOrEqual(60);
+    expect(read.length + named.length).toBe(90);
+    expect(named.every((id) => id.startsWith("acct:project:prj-"))).toBe(true);
+  });
+});

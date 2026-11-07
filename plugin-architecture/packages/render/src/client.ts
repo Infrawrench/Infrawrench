@@ -17,6 +17,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   pathEncode,
+  reportUnreadListPart,
   requireListPage,
   rethrowIncompleteList,
   withMetricsCapability,
@@ -93,6 +94,35 @@ const LIST_TTL_MS = 30_000;
 const FAN_OUT = 6;
 const DEPLOYS_PER_SERVICE = 10;
 const JOBS_PER_SERVICE = 20;
+/**
+ * Parents a type reads children for in one poll. Render allows 400 GETs a minute per
+ * user, and five types fan out (four per service, one per group), so past this the rest
+ * wait for a later poll.
+ */
+const MAX_FANOUT_PARENTS = 60;
+
+/**
+ * The parents to read this poll, after naming the rest so a sync keeps their children.
+ * Polls share nothing, so the start moves with the clock by the golden ratio, which
+ * spreads evenly over the list however long it is.
+ */
+function fanOutWindow<P extends { id: string }>(
+  parents: P[],
+  parentType: string,
+  accountId: string,
+): P[] {
+  if (parents.length <= MAX_FANOUT_PARENTS) return parents;
+  const sorted = [...parents].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const minute = Math.floor(Date.now() / 60_000);
+  const start = Math.floor(((minute * 0.618_033_988_75) % 1) * sorted.length);
+  const rotated = [...sorted.slice(start), ...sorted.slice(0, start)];
+  reportUnreadListPart({
+    parentResourceIds: rotated
+      .slice(MAX_FANOUT_PARENTS)
+      .map((p) => `${accountId}:${parentType}:${p.id}`),
+  });
+  return rotated.slice(0, MAX_FANOUT_PARENTS);
+}
 
 /** For a list read only to label rows: no names is fine, a list cut short is not. */
 const namesUnavailable = <T>(err: unknown): T[] => {
@@ -159,10 +189,11 @@ export class RenderClient implements PluginClient {
   }
 
   private async perService(
+    accountId: string,
     filter: (s: RenderService) => boolean,
     load: (s: RenderService) => Promise<ResourceInstance[]>,
   ): Promise<ResourceInstance[]> {
-    const services = (await this.services()).filter(filter);
+    const services = fanOutWindow((await this.services()).filter(filter), "service", accountId);
     const lists = await mapLimit(services, FAN_OUT, async (s) => {
       try {
         return await load(s);
@@ -178,8 +209,12 @@ export class RenderClient implements PluginClient {
     return listProjects(this.api, this.ownerQuery());
   }
 
-  private async environments(): Promise<Array<{ env: RenderEnvironment; projectName: string }>> {
-    const projects = await this.projects();
+  /** With `accountId`, for a sync: at most a poll's worth of projects, naming the rest. */
+  private async environments(
+    accountId?: string,
+  ): Promise<Array<{ env: RenderEnvironment; projectName: string }>> {
+    const all = await this.projects();
+    const projects = accountId ? fanOutWindow(all, "project", accountId) : all;
     const lists = await mapLimit(projects, FAN_OUT, async (p) => {
       const envs = await listEnvironments(this.api, p.id);
       return envs.map((env) => ({ env, projectName: p.name }));
@@ -198,6 +233,7 @@ export class RenderClient implements PluginClient {
           return (await this.services()).map((s) => mapService(s, accountId));
         case "deploy":
           return this.perService(
+            accountId,
             () => true,
             async (s) => {
               const deploys = await listRecentDeploys(this.api, s.id, DEPLOYS_PER_SERVICE);
@@ -206,11 +242,13 @@ export class RenderClient implements PluginClient {
           );
         case "env-var":
           return this.perService(
+            accountId,
             () => true,
             async (s) => (await listEnvVars(this.api, s.id)).map((v) => mapEnvVar(v, s, accountId)),
           );
         case "custom-domain":
           return this.perService(
+            accountId,
             (s) => DOMAIN_TYPES.has(s.type),
             async (s) =>
               (await listCustomDomains(this.api, s.id)).map((c) =>
@@ -219,6 +257,7 @@ export class RenderClient implements PluginClient {
           );
         case "job":
           return this.perService(
+            accountId,
             (s) => s.type !== "static_site",
             async (s) => {
               const jobs = await listRecentJobs(this.api, s.id, JOBS_PER_SERVICE);
@@ -246,7 +285,8 @@ export class RenderClient implements PluginClient {
             mapEnvGroup(g, accountId),
           );
         case "env-group-var": {
-          const groups = await listEnvGroups(this.api, this.ownerQuery());
+          const all = await listEnvGroups(this.api, this.ownerQuery());
+          const groups = fanOutWindow(all, "env-group", accountId);
           const lists = await mapLimit(groups, FAN_OUT, async (g) => {
             const full = await this.api.get(`/env-groups/${pathEncode(g.id)}`);
             const vars = requireListPage(full?.envVars, {
@@ -262,7 +302,7 @@ export class RenderClient implements PluginClient {
         case "project":
           return (await this.projects()).map((p) => mapProject(p, accountId));
         case "environment":
-          return (await this.environments()).map(({ env, projectName }) =>
+          return (await this.environments(accountId)).map(({ env, projectName }) =>
             mapEnvironment(env, projectName, accountId),
           );
         case "blueprint":
