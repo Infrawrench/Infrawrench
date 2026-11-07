@@ -121,15 +121,17 @@ const TTL_MS = 6 * 60 * 60 * 1000;
  * One catalog per client, refreshed every six hours. Each endpoint is fetched
  * independently and a failure leaves its slice empty: an unreachable
  * reserved-IP price must not take Linode plan prices down with it. Callers
- * treat a missing price as "cannot price", never as zero.
+ * treat a missing price as "cannot price", never as zero. A load with a slice
+ * missing answers its caller and is not kept.
  */
 export function createPriceCatalogCache(api: LinodeApi): PriceCatalogCache {
   let cached: { at: number; value: Promise<PriceCatalog> } | null = null;
 
-  async function load(): Promise<PriceCatalog> {
+  async function load(forget: () => void): Promise<PriceCatalog> {
     const pick = <T>(r: PromiseSettledResult<T[]>): T[] => {
       if (r.status === "fulfilled") return r.value;
       rethrowIncompleteList(r.reason);
+      forget();
       return [];
     };
     const [linodeTypes, volumes, nbs, lke, obj, transfer, reserved, dbs] = await Promise.allSettled(
@@ -160,12 +162,13 @@ export function createPriceCatalogCache(api: LinodeApi): PriceCatalogCache {
     get() {
       const now = Date.now();
       if (!cached || now - cached.at > TTL_MS) {
-        const value = load();
+        const forget = () => {
+          if (cached?.value === value) cached = null;
+        };
+        const value: Promise<PriceCatalog> = load(forget);
         cached = { at: now, value };
         // A failed load must not be cached for six hours.
-        value.catch(() => {
-          if (cached?.value === value) cached = null;
-        });
+        value.catch(forget);
       }
       return cached.value;
     },
