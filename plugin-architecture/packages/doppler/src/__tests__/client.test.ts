@@ -502,6 +502,35 @@ describe("a list that cannot be read whole", () => {
   });
 
   describe("other lists read per parent", () => {
+    it("reads service tokens for 100 configs a poll from a random start and names the rest", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0.9);
+      const parts = trackUnread();
+      const names = Array.from({ length: 150 }, (_, i) => `c${i}`);
+      const configId = (name: string) => `${ACCOUNT}:doppler-config:backend.${name}`;
+      const { c, calls } = client(withConfigs(names, () => ({ tokens: [{ slug: "t" }] })));
+      const rows = await c.listResources("doppler-service-token", ACCOUNT);
+      expect(count(calls, "/v3/configs/config/tokens")).toBe(100);
+      const read = new Set(rows.map((r) => r.parentResourceId));
+      expect(read.size).toBe(100);
+      expect(read.has(configId("c135"))).toBe(true);
+      expect(read.has(configId("c84"))).toBe(true);
+      expect(read.has(configId("c85"))).toBe(false);
+      expect(parts).toHaveLength(1);
+      expect(parts[0]!.parentResourceIds).toHaveLength(50);
+      expect(parts[0]!.parentResourceIds).toContain(configId("c85"));
+      expect(parts[0]!.parentResourceIds).not.toContain(configId("c135"));
+    });
+
+    it("reads every config's service tokens and names nothing when they fit", async () => {
+      vi.spyOn(Math, "random").mockReturnValue(0.9);
+      const parts = trackUnread();
+      const names = Array.from({ length: 100 }, (_, i) => `c${i}`);
+      const { c, calls } = client(withConfigs(names, () => ({ tokens: [] })));
+      await c.listResources("doppler-service-token", ACCOUNT);
+      expect(count(calls, "/v3/configs/config/tokens")).toBe(100);
+      expect(parts).toEqual([]);
+    });
+
     it("fails service tokens on a failed read and keeps a refused config's", async () => {
       trackUnread();
       await expect(

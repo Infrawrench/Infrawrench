@@ -64,10 +64,10 @@ import {
 import { COMMANDS, ROLES_KEY, renderDopplerDetail, renderDopplerSidebar } from "./render.js";
 
 /**
- * Configs whose secrets one poll reads, at a request each. Doppler allows 120 secret reads
- * a minute on its Developer plan, 240 on Team and 480 on Enterprise.
+ * Configs one poll reads a type's children for, at a request each. Doppler allows 120 secret
+ * reads and 240 other reads a minute on its Developer plan, and types are read at the same time.
  */
-const MAX_SECRET_CONFIGS = 100;
+const MAX_CONFIG_READS = 100;
 /** The most rows one poll can read and write. */
 const MAX_SECRETS = 100_000;
 /** The document does not say how long a page is. 10,000 rows at the 20 its other lists default to. */
@@ -315,7 +315,7 @@ export class DopplerClient implements PluginClient {
               mapSecret(accountId, project, config.name, name, v),
             );
           },
-          { maxReads: MAX_SECRET_CONFIGS, maxRows: MAX_SECRETS },
+          { maxReads: MAX_CONFIG_READS, maxRows: MAX_SECRETS },
         );
       case "doppler-service-token":
         return readPerParent(
@@ -331,6 +331,7 @@ export class DopplerClient implements PluginClient {
                 { project, config: config.name },
               )
             ).map((t) => mapServiceToken(accountId, project, config.name, t)),
+          { maxReads: MAX_CONFIG_READS },
         );
       case "doppler-integration":
         return (
