@@ -14,7 +14,7 @@ export const TranscriptResourceType = rt({
   name: "Transcript",
   id: "transcript",
   description:
-    "A speech-to-text job submitted to AssemblyAI. Transcripts are retained for 90 days and then purged, so this list is a rolling 90-day window rather than a complete inventory of everything the account has ever transcribed.",
+    "A speech-to-text job submitted to AssemblyAI. AssemblyAI deletes transcripts after 30 days by default, or sooner under a shorter retention setting, and its list reaches back 30 days, so this is a rolling window rather than a complete inventory of everything the account has ever transcribed.",
   fields: [
     f("status", "Status", {
       showcase: true,

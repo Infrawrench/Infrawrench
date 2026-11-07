@@ -43,9 +43,9 @@ const TRANSCRIPT_TYPE = "transcript";
 /**
  * The singleton pseudo-resource that stands in for the API key itself.
  *
- * Transcripts only exist once the key has been used, and are purged after 90
- * days, so they cannot be the only place the Speech tab lives: a fresh (or
- * long-idle) account would have nothing to open. `listResources` always returns
+ * Transcripts only exist once the key has been used, and are deleted after 30
+ * days by default, so they cannot be the only place the Speech tab lives: a fresh
+ * (or long-idle) account would have nothing to open. `listResources` always returns
  * exactly one of these, whatever else is in the account.
  */
 const ACCOUNT_TYPE = "account";
@@ -53,6 +53,14 @@ const ACCOUNT_ID = "default";
 
 /** How many jobs the "Recent activity" counts sample. Nothing is stored or pruned from it. */
 const SAMPLE_LIMIT = 100;
+/**
+ * Named for what it is. `GET /v2/transcript` reaches back 30 days, and final transcripts
+ * are deleted from 30 days on unless a shorter TTL applies:
+ * https://www.assemblyai.com/docs/api-reference/transcripts/list
+ * https://www.assemblyai.com/docs/faq/how-long-are-outputs-retained
+ */
+const RECENT_ACTIVITY_TITLE = "Recent activity (last 30 days)";
+const RECENT_ACTIVITY_NOTE = `AssemblyAI has no usage or billing API. This counts the newest ${SAMPLE_LIMIT} jobs at most from the last 30 days, not billed usage.`;
 /** `GET /v2/transcript` caps `limit` at 200. */
 const JOB_PAGE_SIZE = 200;
 /**
@@ -464,7 +472,7 @@ export class AssemblyAIClient implements PluginClient {
       if (resource.resourceTypeId !== TRANSCRIPT_TYPE) return resource;
       const items = await this.recentTranscripts();
       // The list endpoint doesn't carry audio_duration, so the only honest
-      // cheap number here is how many jobs are in the retention window and how
+      // cheap number here is how many recent jobs there are and how
       // they landed. Anything spend-shaped would need per-transcript fan-out.
       const counts = { completed: 0, error: 0, pending: 0 };
       for (const item of items) {
@@ -660,10 +668,9 @@ export class AssemblyAIClient implements PluginClient {
         },
         {
           kind: "section",
-          // Named for what it actually is. AssemblyAI has no usage, billing or
-          // quota endpoint, so this counts jobs in the 90-day retention window:
-          // it is not a spend figure and does not include anything already purged.
-          title: "Recent activity (90-day retention window)",
+          // AssemblyAI has no usage, billing or quota endpoint, so this is a job
+          // count, not a spend figure, and leaves out anything already deleted.
+          title: RECENT_ACTIVITY_TITLE,
           children: [
             {
               kind: "key-value-list",
@@ -677,8 +684,7 @@ export class AssemblyAIClient implements PluginClient {
             },
             {
               kind: "text",
-              content:
-                "AssemblyAI has no usage or billing API. This counts jobs still in the 90-day retention window, not billed usage.",
+              content: RECENT_ACTIVITY_NOTE,
               variant: "muted",
             },
           ],
@@ -758,10 +764,9 @@ export class AssemblyAIClient implements PluginClient {
     if (activity) {
       sections.push({
         kind: "section",
-        // Named for what it actually is. AssemblyAI has no usage, billing or
-        // quota endpoint, so this counts jobs in the 90-day retention window:
-        // it is not a spend figure and does not include anything already purged.
-        title: "Recent activity (90-day retention window)",
+        // AssemblyAI has no usage, billing or quota endpoint, so this is a job
+        // count, not a spend figure, and leaves out anything already deleted.
+        title: RECENT_ACTIVITY_TITLE,
         children: [
           {
             kind: "key-value-list",
@@ -774,8 +779,7 @@ export class AssemblyAIClient implements PluginClient {
           },
           {
             kind: "text",
-            content:
-              "AssemblyAI has no usage or billing API. This counts jobs still in the 90-day retention window, not billed usage.",
+            content: RECENT_ACTIVITY_NOTE,
             variant: "muted",
           },
         ],
@@ -966,7 +970,7 @@ export class AssemblyAIClient implements PluginClient {
    * The singleton account resource.
    *
    * There is no endpoint that describes an AssemblyAI key, so the only honest
-   * content is the same retention-window count `enrichDetail` computes. A
+   * content is the same recent job count `enrichDetail` computes. A
    * listing failure is swallowed on purpose: the account has to stay navigable
    * (and the Speech tab usable) on a key that has never transcribed anything.
    */

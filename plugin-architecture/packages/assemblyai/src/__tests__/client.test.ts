@@ -621,7 +621,7 @@ describe("account (the singleton that hosts the Speech tab)", () => {
     expect(client().renderDetail(resources[0]!).speechPanel).toBeDefined();
   });
 
-  it("counts the retention window and the oldest transcript sampled", async () => {
+  it("counts the recent jobs and the oldest transcript sampled", async () => {
     installFetch(() =>
       jsonResponse({
         transcripts: [
@@ -689,7 +689,7 @@ describe("getResource / resolveOutput / deleteResource", () => {
 });
 
 describe("enrichDetail", () => {
-  it("stashes a retention-window job count for the synchronous renderer", async () => {
+  it("stashes a recent job count for the synchronous renderer", async () => {
     installFetch(() =>
       jsonResponse({
         transcripts: [

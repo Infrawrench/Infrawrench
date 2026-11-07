@@ -5,6 +5,7 @@ import { runPluginRenderingTests } from "@infrawrench/plugin-base/test-harness";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { AssemblyAIClient } from "../client.js";
 import { plugin } from "../plugin.js";
+import { TranscriptResourceType } from "../resources/transcript.js";
 
 runPluginRenderingTests(plugin);
 
@@ -80,7 +81,7 @@ describe("renderDetail — account", () => {
     ]);
   });
 
-  it("shows the retention-window counts, labelled as a job count and not spend", () => {
+  it("shows the recent job counts, labelled as a job count and not spend", () => {
     const schema = client().renderDetail(
       account({
         sampledTranscripts: 12,
@@ -90,9 +91,7 @@ describe("renderDetail — account", () => {
         oldestSampledAt: "2026-05-01T00:00:00.000Z",
       }),
     );
-    expect(schema.sections.map((s) => s.title)).toContain(
-      "Recent activity (90-day retention window)",
-    );
+    expect(schema.sections.map((s) => s.title)).toContain("Recent activity (last 30 days)");
     const flat = JSON.stringify(schema.sections);
     expect(flat).toContain("2026-05-01T00:00:00.000Z");
     expect(flat).toContain("not billed usage");
@@ -156,7 +155,7 @@ describe("renderDetail", () => {
     expect(JSON.stringify(schema.sections)).toContain("Transcoding failed");
   });
 
-  it("renders the recent-activity block from the enriched output, labelled as a retention window", () => {
+  it("renders the recent-activity block from the enriched output, labelled as the last 30 days", () => {
     const schema = client().renderDetail(
       transcript({
         resolvedOutputs: {
@@ -170,15 +169,37 @@ describe("renderDetail", () => {
       }),
     );
     const titles = schema.sections.map((s) => s.title);
-    expect(titles).toContain("Recent activity (90-day retention window)");
+    expect(titles).toContain("Recent activity (last 30 days)");
     expect(JSON.stringify(schema.sections)).toContain("not billed usage");
   });
 
   it("omits the recent-activity block when enrichDetail has not run", () => {
     const schema = client().renderDetail(transcript());
-    expect(schema.sections.map((s) => s.title)).not.toContain(
-      "Recent activity (90-day retention window)",
+    expect(schema.sections.map((s) => s.title)).not.toContain("Recent activity (last 30 days)");
+  });
+});
+
+describe("the transcript window", () => {
+  // https://www.assemblyai.com/docs/api-reference/transcripts/list and
+  // https://www.assemblyai.com/docs/faq/how-long-are-outputs-retained both say 30 days.
+  const activity = { sampled: 1, completed: 1, error: 0, pending: 0 };
+
+  it("says 30 days everywhere the window is named, never 90", () => {
+    const accountView = JSON.stringify(client().renderDetail(account({ sampledTranscripts: 1 })));
+    const job = JSON.stringify(
+      client().renderDetail(
+        transcript({ resolvedOutputs: { __recentActivity__: JSON.stringify(activity) } }),
+      ),
     );
+    for (const text of [accountView, job, TranscriptResourceType.description ?? ""]) {
+      expect(text).toMatch(/\b30 days\b/);
+      expect(text).not.toMatch(/\b90\b/);
+    }
+  });
+
+  it("names the sample size, since the counts stop at the newest 100 jobs", () => {
+    const flat = JSON.stringify(client().renderDetail(account({ sampledTranscripts: 100 })));
+    expect(flat).toContain("newest 100 jobs");
   });
 });
 
