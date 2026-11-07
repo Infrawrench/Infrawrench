@@ -18,7 +18,9 @@ The bastion only carries **cloud API traffic** (AWS API, GCP API, DigitalOcean A
 
 - The bastion **connects out** to Infrawrench over a secure WebSocket. It works behind NAT and you don't need to open any inbound firewall ports.
 - Traffic is encrypted end to end between Infrawrench and your cloud provider's API. The bastion only passes encrypted bytes along. It never holds or sees your cloud credentials.
-- The bastion only connects to the API hostnames your bound accounts need (for example `*.amazonaws.com` for AWS or `*.googleapis.com` for GCP). It refuses any other destination.
+- The bastion only connects to the API hostnames your bound accounts need (for example `*.amazonaws.com` for AWS or `*.googleapis.com` for GCP), and to the host an account was configured with, such as a self-hosted Vault's address or a self-managed GitLab's URL. It refuses any other destination.
+- A configured host has to be public. The bastion looks up the name each time it connects and refuses if any address is loopback, link-local, private or otherwise not routable, so it can't be pointed at its own cloud metadata endpoint or at your internal network. Use an [SSH tunnel](./ssh-tunnels.md) to reach a private host.
+- One account's calls can only reach its own configured host, even if another account on the same bastion has a different one.
 
 ## Register a bastion
 
@@ -72,6 +74,18 @@ Check the container logs with `docker logs infrawrench-bastion`. The usual cause
 - Wrong `INFRAWRENCH_URL`. It must start with `wss://` (not `https://`) and end in `/api/bastions/agent`.
 - Outbound HTTPS is blocked on the bastion's host.
 - A typo in the token. Copy it from the modal again. Tokens work once, so if you closed the modal without copying, revoke the bastion and create a new one.
+
+**A self-hosted account fails with "Update the bastion agent"**
+
+Bastion agents older than version 0.2.0 refuse hosts an account was configured with. Pull the latest image and start the container again:
+
+```sh
+docker pull registry.infrawrench.com/bastion-agent:latest
+```
+
+**A self-hosted account fails with "resolves to a non-public address"**
+
+The bastion looked the host up and got a private, loopback or link-local address. A bastion doesn't connect to those. Use an [SSH tunnel](./ssh-tunnels.md) instead.
 
 **API calls fail with `BastionDisconnectedError`**
 

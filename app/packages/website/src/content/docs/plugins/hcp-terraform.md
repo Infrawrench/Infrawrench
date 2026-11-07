@@ -61,4 +61,4 @@ Download a workspace's state with **Get credentials** and upload it under [IaC](
 - Features outside your plan (agents, policies, run tasks, the private registry) simply list nothing.
 - HCP Terraform allows 30 API requests a second per user.
 - Provider status comes from HashiCorp's status page, filtered to incidents about HCP Terraform. Terraform Enterprise has no public status.
-- Bastion egress for HCP Terraform accounts allows `app.terraform.io` and other `terraform.io` hosts, which serve run logs and state downloads. A Terraform Enterprise hostname is your own and is not on that list.
+- Bastion egress for HCP Terraform accounts allows `app.terraform.io` and other `terraform.io` hosts, which serve run logs and state downloads. It also allows a Terraform Enterprise hostname, as long as it resolves to public addresses.

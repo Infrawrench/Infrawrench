@@ -23,7 +23,8 @@ The token cannot be recovered after the modal closes — copy it now. To rotate,
 
 ## What it does (and doesn't)
 
-- ✅ Opens TCP streams **only to hostnames the backend allowlists** at handshake time. The allowlist is derived from the plugins of accounts bound to this bastion.
+- ✅ Opens TCP streams **only to hostnames the backend allowlists** at handshake time. The allowlist is derived from the plugins of accounts bound to this bastion, and from the hosts those accounts configured, such as a self-hosted Vault's address.
+- ✅ Refuses a configured host unless every address it resolves to on the agent's network is public, checked on the connection it dials. Loopback, link-local (cloud metadata) and private addresses are not reachable that way.
 - ✅ Forwards bytes; lets the backend handle TLS to the cloud API.
 - ✅ Reconnects with exponential backoff if the WebSocket drops.
 - ❌ Does not accept inbound connections.

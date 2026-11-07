@@ -33,6 +33,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "domain",
+      providerHost: true,
       label: "Tenant Domain",
       description:
         "Your tenant's canonical Auth0 domain, shown under Settings → General as the tenant domain, e.g. acme.us.auth0.com. Use it even if you have a custom domain: the Management API only answers on the canonical one.",

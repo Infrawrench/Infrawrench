@@ -44,5 +44,5 @@ Connect a Vault cluster, self-hosted or HCP Vault Dedicated, to browse and manag
 - The full Metrics tab needs a token allowed to read `sys/metrics` (or unauthenticated metrics access). Without it, you only see seal and standby state and client counts.
 - Client counts need Vault 1.6 or later. On Vault Community, they're tracked once client counting is enabled.
 - Provider status comes from HashiCorp's status page and only covers HCP Vault. A self-hosted cluster is never affected by those incidents.
-- A cluster you can only reach through a bastion isn't supported yet.
+- A [bastion](../features/bastion-vms.md) can carry this account's calls to a public address. A cluster on a private address isn't reachable through one.
 - [Export to Terraform](../features/terraform-export.md) writes secrets engines, auth methods, policies, audit devices and PKI roles for the `hashicorp/vault` provider, with import ids. Secret values are never exported.

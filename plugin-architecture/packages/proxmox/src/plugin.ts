@@ -24,6 +24,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "url",
+      providerHost: true,
       label: "Proxmox VE URL",
       description:
         "Address of any node's web interface or of a load balancer in front of the cluster, including the port (8006 by default). Private addresses work from the desktop app, through a bastion, or through an SSH tunnel on the account.",

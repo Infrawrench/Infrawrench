@@ -51,6 +51,11 @@ const hostServicesMock = {
 vi.mock("@/services/host-services", () => hostServicesMock);
 vi.mock("@infrawrench/server-core/host-services", () => hostServicesMock);
 
+const mockRefreshAllowlist = vi.hoisted(() => vi.fn(async (_bastionId: string) => undefined));
+vi.mock("@infrawrench/server-core/bastion/registry", () => ({
+  refreshAllowlistById: mockRefreshAllowlist,
+}));
+
 vi.mock("@infrawrench/server-core/tunnel-resolver", () => ({
   rewriteCredentialsThroughTunnel: vi.fn().mockResolvedValue(undefined),
 }));
@@ -276,14 +281,24 @@ describe("Account routes", () => {
 
   describe("DELETE /:id — delete an account", () => {
     it("deletes the account and returns ok", async () => {
-      const where = vi.fn().mockResolvedValue(undefined);
-      mockDelete.mockReturnValue({ where });
+      const returning = vi.fn().mockResolvedValue([{ bastionId: null }]);
+      mockDelete.mockReturnValue({ where: vi.fn(() => ({ returning })) });
 
       const app = buildApp();
       const res = await app.request("/a1", { method: "DELETE" });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.ok).toBe(true);
+      expect(mockRefreshAllowlist).not.toHaveBeenCalled();
+    });
+
+    it("takes a bastion-bound account's hosts off the bastion's allowlist", async () => {
+      const returning = vi.fn().mockResolvedValue([{ bastionId: "b1" }]);
+      mockDelete.mockReturnValue({ where: vi.fn(() => ({ returning })) });
+
+      const res = await buildApp().request("/a1", { method: "DELETE" });
+      expect(res.status).toBe(200);
+      expect(mockRefreshAllowlist).toHaveBeenCalledWith("b1");
     });
   });
 
@@ -402,6 +417,22 @@ describe("Account routes", () => {
       });
       return { txSet };
     }
+
+    it("PUT /:id/credentials refreshes the bastion's allowlist, for a host that moved", async () => {
+      mockGetPlugin.mockResolvedValue({ plugin: { manifest: oauthManifest } });
+      mockSelect.mockReturnValue(
+        chainMock([{ id: "a1", pluginId: "acme", oauthStatus: null, bastionId: "b1" }]),
+      );
+      lockedRow({ token: "at" });
+
+      const res = await buildApp().request("/a1/credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credentials: { token: "at", url: "https://moved.acme.example" } }),
+      });
+      expect(res.status).toBe(200);
+      expect(mockRefreshAllowlist).toHaveBeenCalledWith("b1");
+    });
 
     it("PUT /:id/credentials keeps the stored grant when only a picker changed", async () => {
       mockGetPlugin.mockResolvedValue({ plugin: { manifest: oauthManifest } });

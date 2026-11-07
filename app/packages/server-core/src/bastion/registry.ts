@@ -9,10 +9,13 @@
  * works from any session gateway replica and from the Lambdas alike.
  */
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { accounts, bastionVms } from "../db/schema.js";
+import { buildAad, decrypt } from "../encryption.js";
 import { getPlugin } from "../plugin-loader.js";
+import { providerHostsOf } from "./account-hosts.js";
+import { PUBLIC_ONLY_PREFIX } from "./protocol.js";
 import { BastionAgentConnection } from "./dispatcher.js";
 import { remoteDispatcherFor, updateRemoteAllowlist } from "./remote.js";
 import { realtimeEnabled, realtimeFetch } from "../realtime/client.js";
@@ -112,7 +115,7 @@ export async function bastionLiveStatuses(ids: string[]): Promise<Map<string, Ba
 
 /**
  * Recompute and push the destination allowlist to the agent. Called when
- * accounts referencing this bastion change.
+ * accounts referencing this bastion change, or the host one of them configured.
  */
 export async function refreshAllowlistFromDb(conn: BastionAgentConnection): Promise<void> {
   conn.setAllowlist(await computeAllowlist(conn.bastionId));
@@ -121,10 +124,52 @@ export async function refreshAllowlistFromDb(conn: BastionAgentConnection): Prom
 /** The destination allowlist for a bastion, from the accounts that reference it. */
 export async function computeAllowlist(bastionId: string): Promise<string[]> {
   const rows = await db
-    .select({ pluginId: accounts.pluginId })
+    .select({
+      id: accounts.id,
+      pluginId: accounts.pluginId,
+      encryptedCredentials: accounts.encryptedCredentials,
+      credentialsIv: accounts.credentialsIv,
+    })
     .from(accounts)
-    .where(and(eq(accounts.bastionId, bastionId)));
-  return allowlistForPlugins(new Set(rows.map((r) => r.pluginId)));
+    .where(and(eq(accounts.bastionId, bastionId), isNull(accounts.deletedAt)));
+  const [manifestHosts, ownHosts] = await Promise.all([
+    allowlistForPlugins(new Set(rows.map((r) => r.pluginId))),
+    Promise.all(rows.map(accountOwnHosts)),
+  ]);
+  const own = [...new Set(ownHosts.flat())];
+  return [...manifestHosts, ...own.map((host) => `${PUBLIC_ONLY_PREFIX}${host}`)];
+}
+
+/**
+ * The hosts this account's credentials name, for a plugin with a field marked
+ * `providerHost`. One account that cannot be read must not take the rest of the
+ * bastion's accounts down with it, so its host is left off and its calls are refused.
+ */
+async function accountOwnHosts(row: {
+  id: string;
+  pluginId: string;
+  encryptedCredentials: string;
+  credentialsIv: string;
+}): Promise<string[]> {
+  const loaded = await getPlugin(row.pluginId);
+  const fields = loaded?.plugin.manifest.credentialFields ?? [];
+  if (!fields.some((field) => field.providerHost)) return [];
+  try {
+    const credentials = JSON.parse(
+      await decrypt(
+        row.encryptedCredentials,
+        row.credentialsIv,
+        buildAad("account", row.id, "credentials"),
+      ),
+    ) as Record<string, string>;
+    return providerHostsOf(fields, credentials);
+  } catch (err) {
+    console.error(
+      `[bastion] reading the configured host of account ${row.id} failed:`,
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
 }
 
 /** Record an agent connect: `status` active and `lastSeenAt` now. */
@@ -139,7 +184,8 @@ export async function markBastionActive(bastionId: string): Promise<void> {
  * Map plugin ids → wildcard hostnames the agent should permit. Conservative
  * by design: each plugin contributes only the cloud-control-plane suffixes
  * it actually calls, so a compromised backend can't ask the agent to fetch
- * `169.254.169.254` or arbitrary user URLs.
+ * `169.254.169.254` or arbitrary user URLs. A host a user typed comes from
+ * `computeAllowlist` instead, under a prefix the agent treats as public only.
  *
  * Entries starting with `*.` are suffix matches.
  */

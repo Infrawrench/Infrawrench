@@ -20,6 +20,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "orgUrl",
+      providerHost: true,
       label: "Okta Org URL",
       description:
         "Your Okta org's address, e.g. https://acme.okta.com (the admin console address works too).",

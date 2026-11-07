@@ -15,6 +15,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "endpoint",
+      providerHost: true,
       label: "Endpoint",
       description: "Base URL of the OpenSearch cluster, e.g. https://search.example.com:9200",
       placeholder: "https://host:9200",

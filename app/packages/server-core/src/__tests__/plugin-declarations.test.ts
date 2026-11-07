@@ -45,6 +45,60 @@ describe("what plugins declare for the hosts", () => {
     });
   });
 
+  it("names the fields that hold a provider's own host", () => {
+    const declared = manifests().flatMap((m) =>
+      m.credentialFields.filter((f) => f.providerHost).map((f) => `${m.id}.${f.key}`),
+    );
+    expect(declared.sort()).toEqual([
+      "auth0.domain",
+      "clickhouse.chHost",
+      "consul.address",
+      "databricks.host",
+      "dynatrace.environmentUrl",
+      "gitlab.url",
+      "hashicorp-vault.address",
+      "hcp-terraform.hostname",
+      "infisical.siteUrl",
+      "jfrog.baseUrl",
+      "nats.url",
+      "nomad.address",
+      "okta.orgUrl",
+      "opensearch.endpoint",
+      "openstack.authUrl",
+      "posthog.host",
+      "prometheus.alertmanagerUrl",
+      "prometheus.url",
+      "proxmox.url",
+      "pulumi-cloud.apiUrl",
+      "rabbitmq.url",
+      "s3-compatible.endpoint",
+      "sentry.baseUrl",
+      "spacelift.endpoint",
+      "vsphere.url",
+      "weaviate-cloud.endpoint",
+    ]);
+  });
+
+  it("never marks a sensitive field as a host, which would put a secret on the allowlist", () => {
+    const marked = manifests().flatMap((m) =>
+      m.credentialFields.filter((f) => f.providerHost && f.sensitive).map((f) => f.key),
+    );
+    expect(marked).toEqual([]);
+  });
+
+  it("marks any field that asks for a URL as the provider's host", () => {
+    const asksForUrl = /^https?:\/\//;
+    const unmarked = manifests().flatMap((m) =>
+      m.credentialFields
+        .filter(
+          (f) => asksForUrl.test(f.placeholder ?? "") || asksForUrl.test(f.defaultValue ?? ""),
+        )
+        .filter((f) => !f.providerHost && !f.sensitive)
+        .map((f) => `${m.id}.${f.key}`),
+    );
+    expect(unmarked).toEqual([]);
+  });
+
   it("has one plugin whose accounts are jump hosts", () => {
     expect(manifests().flatMap((m) => (m.jumpHost ? [m.id] : []))).toEqual(["ssh"]);
   });

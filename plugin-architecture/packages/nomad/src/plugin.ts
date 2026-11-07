@@ -18,6 +18,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "address",
+      providerHost: true,
       label: "Nomad Address",
       description:
         "Any server or client agent's HTTP address with its port, the same value as NOMAD_ADDR: https://nomad.example.com:4646. For a cluster on a private network, add an SSH tunnel to this account.",

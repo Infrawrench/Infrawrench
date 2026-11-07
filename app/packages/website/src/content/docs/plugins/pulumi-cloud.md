@@ -57,4 +57,4 @@ Pulumi Cloud accounts feed [cost graphs & budgets](../features/cloud-costs.md) w
 - Opening an ESC environment to read its values is recorded in Pulumi Cloud's audit log, the same as when the CLI does it.
 - Deployments need settings on the stack (or inherited from a template). Add them in the stack's **Settings** tab before you use **Deploy**.
 - Pulumi Cloud has no Terraform provider, so these resources aren't part of Export to Terraform.
-- Bastion egress for Pulumi Cloud accounts allows `api.pulumi.com`. A self-hosted API URL isn't on that list.
+- Bastion egress for Pulumi Cloud accounts allows `api.pulumi.com` and a self-hosted API URL, as long as it resolves to public addresses.

@@ -69,6 +69,7 @@ export const manifest = {
     },
     {
       key: "apiUrl",
+      providerHost: true,
       label: "API URL (self-hosted only)",
       description:
         "Leave empty for Pulumi Cloud. For self-hosted Pulumi Cloud, the API service URL.",

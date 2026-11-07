@@ -72,6 +72,12 @@ describe("allowlist", () => {
     expect(out).toContain("api.example.com");
     expect(out).toContain("*.amazonaws.com");
   });
+
+  it("keeps an account's own host marked, so the agent knows to check where it resolves", () => {
+    const conn = newConn(makeWs());
+    conn.setAllowlist(["public:Vault.Acme.Example"]);
+    expect(conn.currentAllowlist()).toEqual(["public:vault.acme.example"]);
+  });
 });
 
 describe("openStream via connect()", () => {
@@ -88,6 +94,83 @@ describe("openStream via connect()", () => {
     const { err, sock } = await open("evil.example.com");
     expect(sock).toBeNull();
     expect(err?.message).toMatch(/not allowlisted/);
+  });
+
+  describe("an account's own host", () => {
+    const opens = (ws: FakeWs) => ws.sent().filter((m) => (m as { op: string }).op === "open");
+
+    it("opens it, and asks the agent for the name as written", async () => {
+      const ws = makeWs();
+      const conn = newConn(ws);
+      conn.setAllowlist(["public:vault.acme.example"]);
+      const p = open("vault.acme.example", 8200);
+      expect(opens(ws)).toMatchObject([{ host: "vault.acme.example", port: 8200 }]);
+      conn.handleMessage({ op: "open-failed", streamId: 1, reason: "stop here" });
+      expect((await p).err?.message).toMatch(/stop here/);
+    });
+
+    it("refuses a subdomain of it, because the entry is not a wildcard", async () => {
+      const ws = makeWs();
+      newConn(ws).setAllowlist(["public:vault.acme.example"]);
+      const { err } = await open("sub.vault.acme.example");
+      expect(err?.message).toMatch(/not allowlisted/);
+      expect(opens(ws)).toEqual([]);
+    });
+
+    it.each(["169.254.169.254", "10.0.0.5", "127.0.0.1", "[::1]", "[::ffff:169.254.169.254]"])(
+      "refuses %s even if something put it on the list",
+      async (host) => {
+        const ws = makeWs();
+        newConn(ws).setAllowlist([`public:${host}`]);
+        const { err } = await open(host);
+        expect(err?.message).toMatch(/not allowlisted/);
+        expect(opens(ws)).toEqual([]);
+      },
+    );
+
+    it("opens a public IPv6 literal without the URL's brackets", async () => {
+      const ws = makeWs();
+      const conn = newConn(ws);
+      conn.setAllowlist(["public:2606:4700:4700::1111"]);
+      const p = open("[2606:4700:4700::1111]");
+      expect(opens(ws)).toMatchObject([{ host: "2606:4700:4700::1111" }]);
+      conn.handleMessage({ op: "open-failed", streamId: 1, reason: "stop here" });
+      await p;
+    });
+
+    it("says to update the agent when an old one refuses what the backend allowed", async () => {
+      const ws = makeWs();
+      const conn = newConn(ws);
+      conn.setAllowlist(["public:vault.acme.example"]);
+      const p = open("vault.acme.example");
+      conn.handleMessage({
+        op: "open-failed",
+        streamId: 1,
+        reason: "destination not allowlisted: vault.acme.example",
+      });
+      expect((await p).err?.message).toMatch(/update the bastion agent/i);
+    });
+
+    it("asks once more before refusing, because another process may have changed the list", async () => {
+      const ws = makeWs();
+      const conn = newConn(ws);
+      const reload = vi.fn(async () => conn.setAllowlist(["public:vault.acme.example"]));
+      conn.reloadAllowlist = reload;
+      const p = open("vault.acme.example");
+      await vi.waitFor(() => expect(opens(ws)).toHaveLength(1));
+      expect(reload).toHaveBeenCalledTimes(1);
+      conn.handleMessage({ op: "open-failed", streamId: 1, reason: "stop here" });
+      await p;
+    });
+
+    it("still refuses when asking again changes nothing, or fails", async () => {
+      const conn = newConn(makeWs());
+      conn.reloadAllowlist = vi.fn(async () => {
+        throw new Error("database down");
+      });
+      const { err } = await open("vault.acme.example");
+      expect(err?.message).toMatch(/not allowlisted/);
+    });
   });
 
   it("opens a stream and resolves once the agent confirms 'opened'", async () => {

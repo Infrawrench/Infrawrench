@@ -25,6 +25,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "environmentUrl",
+      providerHost: true,
       label: "Environment URL",
       description:
         "The address of your Dynatrace environment, as shown in the browser: https://<id>.apps.dynatrace.com or https://<id>.live.dynatrace.com for SaaS, https://<host>/e/<environment-id> for Managed or an Environment ActiveGate.",

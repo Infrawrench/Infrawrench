@@ -98,6 +98,8 @@ async function connect(
         void allowlist()
           .then((hosts) => {
             ready.setAllowlist(hosts);
+            // This process is not told when another one changes the list. The agent is.
+            ready.reloadAllowlist = async () => ready.setAllowlist(await allowlist());
             conn = ready;
             finish(ready);
           })

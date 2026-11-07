@@ -13,6 +13,8 @@ import { authenticateApiRequest, requireScope } from "../../auth/api-auth";
 import { encrypt, buildAad } from "../../services/encryption";
 import { logAudit } from "../../services/audit";
 import { stripOAuthGrantState } from "@infrawrench/plugin-base";
+import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 
 const app = new Hono();
 
@@ -246,7 +248,7 @@ app.post("/push", async (c) => {
         JSON.stringify(stripOAuthGrantState(acct.credentials)),
         buildAad("account", acct.id, "credentials"),
       );
-      await db
+      const [written] = await db
         .insert(accounts)
         .values({
           id: acct.id,
@@ -272,7 +274,17 @@ app.post("/push", async (c) => {
             updatedAt: new Date(acct.updatedAt),
           },
           where: eq(accounts.organizationId, orgId),
-        });
+        })
+        .returning({ bastionId: accounts.bastionId });
+      // A pushed credential set may have moved the host this account configured.
+      if (written?.bastionId) {
+        const { bastionId } = written;
+        void keepAlive(
+          refreshAllowlistById(bastionId).catch((err) => {
+            console.error(`[sync] refreshAllowlistById(${bastionId}) failed:`, err);
+          }),
+        );
+      }
     }
   }
 

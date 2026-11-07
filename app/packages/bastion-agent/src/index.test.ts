@@ -110,7 +110,11 @@ vi.mock("ws", () => ({
 }));
 
 const netConnect = vi.fn((opts: unknown) => new FakeSocket(opts));
+const dnsLookup = vi.fn();
+vi.mock("node:dns", () => ({ lookup: dnsLookup }));
+
 vi.mock("node:net", () => ({
+  isIP: (host: string) => (/^[0-9.]+$/.test(host) ? 4 : host.includes(":") ? 6 : 0),
   connect: (opts: unknown) => netConnect(opts),
 }));
 
@@ -183,7 +187,7 @@ describe("handshake & heartbeat", () => {
   it("sends agent-info on open and starts the heartbeat", async () => {
     const ws = await loadAgent();
     ws.emit("open");
-    expect(ws.lastSent).toEqual({ op: "agent-info", agentVersion: "0.1.0" });
+    expect(ws.lastSent).toEqual({ op: "agent-info", agentVersion: "0.2.0" });
     // heartbeat ping fires after 10s
     ws.sent.length = 0;
     vi.advanceTimersByTime(10_000);
@@ -267,6 +271,134 @@ describe("message handling", () => {
     ws.emit("message", JSON.stringify({ op: "open", streamId: 1, host: "evil.com", port: 443 }));
     expect(ws.lastSent).toMatchObject({ op: "open-failed", streamId: 1 });
     expect(netConnect).not.toHaveBeenCalled();
+  });
+
+  describe("a host an account configured", () => {
+    type Lookup = (
+      hostname: string,
+      options: { all?: boolean },
+      callback: (err: Error | null, ...rest: unknown[]) => void,
+    ) => void;
+
+    function lookupOf(socket: FakeSocket): Lookup {
+      return (socket.connectArgs as { lookup: Lookup }).lookup;
+    }
+
+    function dnsAnswers(...addresses: string[]) {
+      dnsLookup.mockImplementation(
+        (
+          _hostname: string,
+          _options: unknown,
+          callback: (err: Error | null, answers: unknown[]) => void,
+        ) =>
+          callback(
+            null,
+            addresses.map((address) => ({ address, family: 4 })),
+          ),
+      );
+    }
+
+    async function opened(host: string) {
+      const ws = await loadAgent();
+      helloFor(ws, [`public:${host}`]);
+      ws.emit("message", JSON.stringify({ op: "open", streamId: 1, host, port: 8200 }));
+      return ws;
+    }
+
+    it("dials a name through the resolver that checks it", async () => {
+      await opened("vault.acme.example");
+      expect(FakeSocket.instances).toHaveLength(1);
+      expect(FakeSocket.instances[0]!.connectArgs).toMatchObject({
+        host: "vault.acme.example",
+        port: 8200,
+      });
+    });
+
+    it("hands a public answer on, in the shape the socket asked for", async () => {
+      await opened("vault.acme.example");
+      dnsAnswers("93.184.216.34", "1.1.1.1");
+      const lookup = lookupOf(FakeSocket.instances[0]!);
+
+      const all = vi.fn();
+      lookup("vault.acme.example", { all: true }, all);
+      expect(all).toHaveBeenCalledWith(null, [
+        { address: "93.184.216.34", family: 4 },
+        { address: "1.1.1.1", family: 4 },
+      ]);
+
+      const one = vi.fn();
+      lookup("vault.acme.example", {}, one);
+      expect(one).toHaveBeenCalledWith(null, "93.184.216.34", 4);
+    });
+
+    it.each(["169.254.169.254", "10.0.0.5", "127.0.0.1", "192.168.1.1", "100.64.0.1"])(
+      "fails the dial when the name resolves to %s",
+      async (address) => {
+        await opened("rebind.acme.example");
+        dnsAnswers(address);
+        const callback = vi.fn();
+        lookupOf(FakeSocket.instances[0]!)("rebind.acme.example", { all: true }, callback);
+        expect((callback.mock.calls[0]![0] as Error).message).toMatch(/non-public address/);
+      },
+    );
+
+    it("fails the dial when only one of the answers is private", async () => {
+      await opened("straddle.acme.example");
+      dnsAnswers("93.184.216.34", "169.254.169.254");
+      const callback = vi.fn();
+      lookupOf(FakeSocket.instances[0]!)("straddle.acme.example", {}, callback);
+      expect((callback.mock.calls[0]![0] as Error).message).toMatch(/non-public address/);
+    });
+
+    it("passes a resolver failure on", async () => {
+      await opened("nx.acme.example");
+      dnsLookup.mockImplementation(
+        (_hostname: string, _options: unknown, callback: (err: Error) => void) =>
+          callback(new Error("ENOTFOUND")),
+      );
+      const callback = vi.fn();
+      lookupOf(FakeSocket.instances[0]!)("nx.acme.example", {}, callback);
+      expect((callback.mock.calls[0]![0] as Error).message).toBe("ENOTFOUND");
+    });
+
+    it.each(["169.254.169.254", "10.0.0.5", "127.0.0.1", "::1", "fe80::1", "::ffff:10.0.0.5"])(
+      "refuses the address %s without dialling, because no lookup would run",
+      async (host) => {
+        const ws = await opened(host);
+        expect(FakeSocket.instances).toHaveLength(0);
+        expect(ws.lastSent).toEqual({
+          op: "open-failed",
+          streamId: 1,
+          reason: `${host} is not a public address`,
+        });
+      },
+    );
+
+    it("dials a public address as it is", async () => {
+      await opened("93.184.216.34");
+      expect(FakeSocket.instances).toHaveLength(1);
+    });
+
+    it("does not treat the entry as a wildcard", async () => {
+      const ws = await loadAgent();
+      helloFor(ws, ["public:vault.acme.example"]);
+      ws.emit(
+        "message",
+        JSON.stringify({ op: "open", streamId: 1, host: "sub.vault.acme.example", port: 443 }),
+      );
+      expect(FakeSocket.instances).toHaveLength(0);
+      expect(ws.lastSent).toMatchObject({ op: "open-failed" });
+    });
+
+    it("leaves a host the plugin declared to the system resolver, as before", async () => {
+      const ws = await loadAgent();
+      helloFor(ws, ["api.aws.com"]);
+      ws.emit(
+        "message",
+        JSON.stringify({ op: "open", streamId: 1, host: "api.aws.com", port: 443 }),
+      );
+      expect(FakeSocket.instances[0]!.connectArgs).not.toHaveProperty("lookup");
+    });
   });
 
   it("opens an exact-match allowlisted destination and reports opened", async () => {

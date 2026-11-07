@@ -28,6 +28,12 @@ export interface BastionHelloMessage {
    * Wildcards are supported as a leading `*.` (e.g. `*.amazonaws.com`).
    * Empty array means "no destinations allowed yet": useful for the first
    * connect before any accounts are bound.
+   *
+   * A `public:` prefix marks a host an account's user typed, which is exact (never
+   * a wildcard), and the agent refuses it unless every address it resolves to is
+   * public, on the connection it dials. An agent too old to know the prefix reads it
+   * as a name no request will ever match, so it refuses the host rather than dialling
+   * it unchecked.
    */
   allowlist: string[];
   /** Application-level heartbeat interval in milliseconds. */
@@ -101,3 +107,15 @@ export type BastionMessage =
   | BastionPingMessage
   | BastionPongMessage
   | BastionAgentInfoMessage;
+
+/** Marks an allowlist entry that may only reach public addresses. See `BastionHelloMessage`. */
+export const PUBLIC_ONLY_PREFIX = "public:";
+
+/** Whether `host` is one of `patterns`: exact names, or `*.suffix` wildcards. Case-insensitive. */
+export function hostMatches(host: string, patterns: readonly string[]): boolean {
+  const lower = host.toLowerCase();
+  return patterns.some((pattern) => {
+    const candidate = pattern.toLowerCase();
+    return candidate.startsWith("*.") ? lower.endsWith(candidate.slice(1)) : lower === candidate;
+  });
+}

@@ -9,7 +9,7 @@ import { vaultTerraformExport } from "./terraform.js";
 
 export const manifest = {
   id: "hashicorp-vault",
-  // Vault address is user-supplied (self-hosted or HCP Vault); v1 doesn't bastion-route Vault
+  // Vault address is user-supplied (self-hosted or HCP Vault); a bastion gets it from `providerHost` on `address`
   egressHosts: [],
   displayName: "HashiCorp Vault",
   description:
@@ -35,6 +35,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "address",
+      providerHost: true,
       label: "Vault Address",
       description:
         "The address you reach Vault at, including the port: https://vault.example.com:8200, or the public or private address of an HCP Vault Dedicated cluster (HCP portal, Vault Dedicated, the cluster's Overview page).",

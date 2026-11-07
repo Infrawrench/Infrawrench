@@ -59,6 +59,7 @@ export const manifest = {
     },
     {
       key: "chHost",
+      providerHost: true,
       label: "Service Hostname (for SQL)",
       description:
         "HTTPS endpoint of a ClickHouse service for running SQL queries (e.g. abc123.us-east-1.aws.clickhouse.cloud). Leave blank to skip SQL.",

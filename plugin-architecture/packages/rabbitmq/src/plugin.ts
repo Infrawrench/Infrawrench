@@ -18,6 +18,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "url",
+      providerHost: true,
       label: "Management API URL",
       description:
         "Where the management plugin listens, including the port: http://mq.example.com:15672 or https://mq.example.com:15671 (rabbitmq-plugins enable rabbitmq_management). For a broker on a private network, add an SSH tunnel or a bastion to this account.",

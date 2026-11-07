@@ -18,11 +18,16 @@
 
 // First, so tls distrusts the compromised eMudhra intermediates before anything connects.
 import "kill-emudhra";
+import * as dns from "node:dns";
 import * as net from "node:net";
 import { WebSocket } from "ws";
 
-const AGENT_VERSION = "0.1.0";
+import { isPublicAddress } from "./public-address";
+
+const AGENT_VERSION = "0.2.0";
 const SUBPROTOCOL = "infrawrench-bastion-v1";
+/** Marks an allowlist entry a user typed, which may only reach public addresses. */
+const PUBLIC_ONLY_PREFIX = "public:";
 const RECONNECT_INITIAL_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 60_000;
@@ -63,11 +68,42 @@ function vlog(...args: unknown[]): void {
   if (verbose) log(...args);
 }
 
+/**
+ * The resolver for a host a user typed. It runs on the connection being dialled, so
+ * the address it clears is the one the socket uses and a short-lived record cannot
+ * swap it afterwards. Every answer has to be public, not just the one chosen, so a
+ * name cannot straddle the check.
+ */
+const publicOnlyLookup: net.LookupFunction = (hostname, options, callback) => {
+  dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) {
+      callback(err, "", 0);
+      return;
+    }
+    const refused = addresses.find((answer) => !isPublicAddress(answer.address));
+    if (refused) {
+      callback(new Error(`${hostname} resolves to a non-public address`), "", 0);
+      return;
+    }
+    if (options.all) {
+      callback(null, addresses);
+      return;
+    }
+    const first = addresses[0];
+    if (!first) {
+      callback(new Error(`${hostname} did not resolve to any address`), "", 0);
+      return;
+    }
+    callback(null, first.address, first.family);
+  });
+};
+
 class Connection {
   private ws: WebSocket;
   private streams = new Map<number, net.Socket>();
   private allowlist: string[] = [];
   private allowlistSuffixes: string[] = [];
+  private publicOnly: string[] = [];
   private lastSeenMs = Date.now();
   private heartbeat: NodeJS.Timeout | null = null;
   private closed = false;
@@ -118,8 +154,11 @@ class Connection {
       case "hello":
         this.allowlist = [];
         this.allowlistSuffixes = [];
+        this.publicOnly = [];
         for (const h of msg.allowlist) {
-          if (h.startsWith("*.")) this.allowlistSuffixes.push(h.slice(1).toLowerCase());
+          if (h.startsWith(PUBLIC_ONLY_PREFIX)) {
+            this.publicOnly.push(h.slice(PUBLIC_ONLY_PREFIX.length).toLowerCase());
+          } else if (h.startsWith("*.")) this.allowlistSuffixes.push(h.slice(1).toLowerCase());
           else this.allowlist.push(h.toLowerCase());
         }
         log(
@@ -149,12 +188,24 @@ class Connection {
   }
 
   private handleOpenStream(streamId: number, host: string, port: number): void {
-    if (!this.isAllowed(host)) {
+    const listed = this.isAllowed(host);
+    const publicOnly = !listed && this.publicOnly.includes(host.toLowerCase());
+    if (!listed && !publicOnly) {
       this.send({ op: "open-failed", streamId, reason: `destination not allowlisted: ${host}` });
       return;
     }
+    // `lookup` does not run for an address, so an address is judged here.
+    if (publicOnly && net.isIP(host) && !isPublicAddress(host)) {
+      this.send({ op: "open-failed", streamId, reason: `${host} is not a public address` });
+      return;
+    }
     vlog(`open stream ${streamId} → ${host}:${port}`);
-    const socket = net.connect({ host, port, allowHalfOpen: true });
+    const socket = net.connect({
+      host,
+      port,
+      allowHalfOpen: true,
+      ...(publicOnly ? { lookup: publicOnlyLookup } : {}),
+    });
     this.streams.set(streamId, socket);
     socket.on("connect", () => {
       this.send({ op: "opened", streamId });

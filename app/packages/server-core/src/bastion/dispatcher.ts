@@ -21,7 +21,8 @@ import type { Socket } from "node:net";
 import { Agent, type Dispatcher } from "undici";
 import type { WebSocket as WsWebSocket } from "ws";
 import { BastionStreamOpenError } from "./errors.js";
-import type { BastionMessage } from "./protocol.js";
+import { PUBLIC_ONLY_PREFIX, type BastionMessage } from "./protocol.js";
+import { isPublicAddress, looksLikeIpAddress } from "./public-address.js";
 
 const WS_BUFFER_HIGH_WATERMARK = 1 * 1024 * 1024; // 1 MiB
 const WS_BUFFER_LOW_WATERMARK = 256 * 1024; // 256 KiB
@@ -54,6 +55,13 @@ export class BastionAgentConnection {
   private allowlist: Set<string> = new Set();
   /** Wildcard suffixes like `.amazonaws.com` (without the leading `*`). */
   private allowlistSuffixes: string[] = [];
+  /** Hosts accounts' users typed, which the agent only opens to public addresses. */
+  private publicOnly: Set<string> = new Set();
+  /**
+   * Read the allowlist again, for a connection that does not hear about changes: another
+   * process may have bound an account or changed its host since this one last looked.
+   */
+  reloadAllowlist: (() => Promise<void>) | null = null;
 
   constructor(bastionId: string, ws: WsWebSocket) {
     this.bastionId = bastionId;
@@ -84,8 +92,11 @@ export class BastionAgentConnection {
   setAllowlist(hosts: string[]): void {
     this.allowlist = new Set();
     this.allowlistSuffixes = [];
+    this.publicOnly = new Set();
     for (const h of hosts) {
-      if (h.startsWith("*.")) {
+      if (h.startsWith(PUBLIC_ONLY_PREFIX)) {
+        this.publicOnly.add(h.slice(PUBLIC_ONLY_PREFIX.length).toLowerCase());
+      } else if (h.startsWith("*.")) {
         this.allowlistSuffixes.push(h.slice(1)); // ".amazonaws.com"
       } else {
         this.allowlist.add(h.toLowerCase());
@@ -95,7 +106,11 @@ export class BastionAgentConnection {
 
   /** Allowlist getter: used to keep the agent in sync via the hello message. */
   currentAllowlist(): string[] {
-    return [...this.allowlist, ...this.allowlistSuffixes.map((s) => `*${s}`)];
+    return [
+      ...this.allowlist,
+      ...this.allowlistSuffixes.map((s) => `*${s}`),
+      ...[...this.publicOnly].map((h) => `${PUBLIC_ONLY_PREFIX}${h}`),
+    ];
   }
 
   /** Dispatch a message arriving on the WS. */
@@ -140,10 +155,13 @@ export class BastionAgentConnection {
   }
 
   /** Open a new TCP stream through the agent. */
-  private async openStream(host: string, port: number): Promise<Duplex> {
+  private async openStream(rawHost: string, port: number): Promise<Duplex> {
     if (this.destroyed) {
       throw new BastionStreamOpenError(this.bastionId, "agent disconnected");
     }
+    // A URL's hostname keeps an IPv6 literal's brackets; a socket does not take them.
+    const host = rawHost.replace(/^\[(.*)\]$/, "$1");
+    if (!this.isAllowed(host)) await this.reloadAllowlist?.().catch(() => undefined);
     if (!this.isAllowed(host)) {
       throw new BastionStreamOpenError(
         this.bastionId,
@@ -157,7 +175,9 @@ export class BastionAgentConnection {
       this.pendingOpens.set(streamId, { resolve, reject });
     });
     this.send({ op: "open", streamId, host, port });
-    await opened;
+    await opened.catch((err: unknown) => {
+      throw this.explainRefusal(host, err);
+    });
     return duplex;
   }
 
@@ -211,7 +231,21 @@ export class BastionAgentConnection {
     for (const suffix of this.allowlistSuffixes) {
       if (lower.endsWith(suffix)) return true;
     }
-    return false;
+    if (!this.publicOnly.has(lower)) return false;
+    return !looksLikeIpAddress(lower) || isPublicAddress(lower);
+  }
+
+  /** An agent from before `public:` entries refuses them, and only an update fixes that. */
+  private explainRefusal(host: string, err: unknown): unknown {
+    const outdated =
+      this.publicOnly.has(host.toLowerCase()) &&
+      err instanceof Error &&
+      err.message.includes("destination not allowlisted");
+    if (!outdated) return err;
+    return new BastionStreamOpenError(
+      this.bastionId,
+      `the agent refused ${host}, a host this account configured. Update the bastion agent to the latest image, which can reach it`,
+    );
   }
 
   private send(msg: BastionMessage): void {

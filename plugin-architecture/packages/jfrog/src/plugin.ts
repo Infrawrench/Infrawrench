@@ -11,7 +11,7 @@ import { jfrogTerraformExport } from "./terraform.js";
 
 export const manifest = {
   id: "jfrog",
-  // platform URL is user-supplied (JFrog Cloud or self-hosted); v1 doesn't bastion-route JFrog
+  // platform URL is user-supplied (JFrog Cloud or self-hosted); a bastion gets it from `providerHost` on `baseUrl`
   egressHosts: [],
   displayName: "JFrog",
   description:
@@ -20,6 +20,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "baseUrl",
+      providerHost: true,
       label: "Platform URL",
       description:
         "The address you open the JFrog Platform at: https://<name>.jfrog.io on JFrog Cloud, or your own host for a self-hosted platform. Paste it from the browser; a trailing /ui or /artifactory is removed.",

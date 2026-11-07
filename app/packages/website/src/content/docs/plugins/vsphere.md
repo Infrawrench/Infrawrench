@@ -54,4 +54,4 @@ By default vCenter signs its certificate with the VMware Certificate Authority. 
 - Snapshots, alarms and performance charts aren't available. vCenter doesn't offer snapshots or alarms this way, and VMware advises against using its performance statistics preview in production.
 - You can't rename VMs, put hosts into maintenance mode or create folders here. Use the vSphere Client for those.
 - vCenter lists at most 4,000 VMs.
-- To reach a private vCenter, the desktop app connects directly. The cloud app needs a bastion or an SSH tunnel on the account. Through an SSH tunnel the connection goes to `127.0.0.1`, so certificate checks fail unless vCenter's certificate also covers that address.
+- To reach a private vCenter, the desktop app connects directly. The cloud app needs an SSH tunnel on the account. A bastion only reaches public addresses. Through an SSH tunnel the connection goes to `127.0.0.1`, so certificate checks fail unless vCenter's certificate also covers that address.

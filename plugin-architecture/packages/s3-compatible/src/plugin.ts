@@ -17,6 +17,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "endpoint",
+      providerHost: true,
       label: "Endpoint URL",
       description:
         "The S3 API address of your server, with the port if it is not 443: for MinIO usually https://minio.example.com:9000 (the API port, not the console port), for Ceph the RADOS Gateway URL.",

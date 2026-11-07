@@ -129,6 +129,7 @@ export const pluginManifestSchema = Schema.Struct({
       optional: Schema.optional(Schema.Boolean),
       advanced: Schema.optional(Schema.Boolean),
       helpLink: Schema.optional(Schema.Struct({ label: Schema.String, url: Schema.String })),
+      providerHost: Schema.optional(Schema.Boolean),
     }),
   ),
   oauth: Schema.optional(

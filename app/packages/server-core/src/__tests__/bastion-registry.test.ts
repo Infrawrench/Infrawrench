@@ -17,7 +17,14 @@ const dbSelect = vi.fn(() => ({
 }));
 vi.mock("../db/client.js", () => ({ db: { select: dbSelect } }));
 vi.mock("../db/schema.js", () => ({
-  accounts: { pluginId: "pluginId", bastionId: "bastionId" },
+  accounts: {
+    id: "id",
+    pluginId: "pluginId",
+    bastionId: "bastionId",
+    deletedAt: "deletedAt",
+    encryptedCredentials: "encryptedCredentials",
+    credentialsIv: "credentialsIv",
+  },
   bastionVms: {
     id: "id",
     organizationId: "organizationId",
@@ -27,6 +34,32 @@ vi.mock("../db/schema.js", () => ({
 }));
 // Avoid importing the real dispatcher (pulls in undici/ws).
 vi.mock("../bastion/dispatcher.js", () => ({ BastionAgentConnection: class {} }));
+
+// One plugin with a host the user types, one with hosts of its own. Everything else in
+// this file reaches the real plugin loader.
+const decrypt = vi.fn(async (ciphertext: string) => ciphertext);
+vi.mock("../encryption", () => ({
+  decrypt,
+  buildAad: (...parts: string[]) => parts.join(":"),
+}));
+const selfHosted = {
+  plugin: {
+    manifest: {
+      egressHosts: [],
+      credentialFields: [
+        { key: "url", label: "URL", sensitive: false, providerHost: true },
+        { key: "token", label: "Token", sensitive: true },
+      ],
+    },
+  },
+};
+vi.mock("../plugin-loader.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../plugin-loader")>();
+  return {
+    ...real,
+    getPlugin: async (id: string) => (id === "self-hosted" ? selfHosted : real.getPlugin(id)),
+  };
+});
 
 let registry: typeof import("../bastion/registry");
 
@@ -118,6 +151,59 @@ describe("refreshAllowlistFromDb / refreshAllowlistById", () => {
     const arg = conn.setAllowlist.mock.calls.at(-1)![0] as string[];
     expect(arg).toContain("*.amazonaws.com");
     expect(arg).toContain("*.googleapis.com");
+  });
+
+  describe("an account with a host of its own", () => {
+    const account = (id: string, url: string) => ({
+      id,
+      pluginId: "self-hosted",
+      encryptedCredentials: JSON.stringify({ url, token: "not-a-host.example" }),
+      credentialsIv: "iv",
+    });
+
+    it("allows that host, but only to public addresses", async () => {
+      whereResult.rows = [account("a1", "https://vault.acme.example:8200")];
+      expect(await registry.computeAllowlist("b6")).toEqual(["public:vault.acme.example"]);
+    });
+
+    it("decrypts with the account's own additional data", async () => {
+      whereResult.rows = [account("a1", "https://vault.acme.example")];
+      await registry.computeAllowlist("b6");
+      expect(decrypt).toHaveBeenCalledWith(expect.any(String), "iv", "account:a1:credentials");
+    });
+
+    it("leaves a private or link-local address off, as it always was", async () => {
+      whereResult.rows = [
+        account("a1", "http://169.254.169.254/latest"),
+        account("a2", "http://10.0.0.5:8200"),
+        account("a3", "http://localhost:8200"),
+      ];
+      expect(await registry.computeAllowlist("b6")).toEqual([]);
+    });
+
+    it("does not lose the other accounts when one cannot be decrypted", async () => {
+      const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+      decrypt.mockRejectedValueOnce(new Error("bad key"));
+      whereResult.rows = [
+        account("a1", "https://broken.acme.example"),
+        account("a2", "https://vault.acme.example"),
+        { id: "a3", pluginId: "aws", encryptedCredentials: "{}", credentialsIv: "iv" },
+      ];
+      const out = await registry.computeAllowlist("b6");
+      expect(out).toContain("public:vault.acme.example");
+      expect(out).toContain("*.amazonaws.com");
+      expect(out.join()).not.toContain("broken");
+      expect(quiet).toHaveBeenCalled();
+      quiet.mockRestore();
+    });
+
+    it("does not decrypt anything for a plugin that marks no field", async () => {
+      whereResult.rows = [
+        { id: "a1", pluginId: "aws", encryptedCredentials: "{}", credentialsIv: "iv" },
+      ];
+      await registry.computeAllowlist("b6");
+      expect(decrypt).not.toHaveBeenCalled();
+    });
   });
 
   it("refreshAllowlistById refreshes a connected bastion", async () => {

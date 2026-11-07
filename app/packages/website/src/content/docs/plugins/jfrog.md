@@ -56,5 +56,5 @@ Infrawrench shows the CVEs JFrog Xray has found in your artifacts in the vulnera
 - For watches and policies you can change the description and state here. Edit build rules and resource filters in JFrog.
 - JFrog has no public billing API, so there is no cost data.
 - Provider status comes from JFrog Cloud's status page and only concerns JFrog Cloud. A self-hosted platform is never affected by those incidents.
-- A platform reachable only through a bastion is not supported yet, because the platform URL is your own.
+- A [bastion](../features/bastion-vms.md) can carry this account's calls to a public platform URL. A platform on a private address isn't reachable through one.
 - [Export to Terraform](../features/terraform-export.md) writes repositories (as the per-package-type `artifactory_local_*`, `artifactory_remote_*` and `artifactory_virtual_*` resources) and internal users for the `jfrog/artifactory` provider, with import ids.

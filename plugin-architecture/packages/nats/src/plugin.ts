@@ -26,6 +26,7 @@ export const manifest = {
     },
     {
       key: "url",
+      providerHost: true,
       label: "Monitoring URL",
       description:
         "The server's HTTP monitoring endpoint: http://nats.internal:8222 (enable it with http_port: 8222 in the server config, or -m 8222). Include the http_base_path if one is set. Serves health, limits, routes, gateways, leaf nodes, accounts and connections. Set this, the server URL, or both.",

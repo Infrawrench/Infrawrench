@@ -49,7 +49,7 @@ Proxmox VE signs its certificate with the cluster's own CA. Paste `/etc/pve/pve-
 
 ## Tips and limits
 
-- To reach a private cluster, the desktop app connects directly. The cloud app needs a bastion or an SSH tunnel on the account. Through an SSH tunnel the connection goes to `127.0.0.1`, so certificate checks fail unless the node's certificate also covers that address.
+- To reach a private cluster, the desktop app connects directly. The cloud app needs an SSH tunnel on the account. A bastion only reaches public addresses. Through an SSH tunnel the connection goes to `127.0.0.1`, so certificate checks fail unless the node's certificate also covers that address.
 - VM IP addresses need the QEMU guest agent installed and enabled. Without it, SSH has no address to use.
 - HA rules need Proxmox VE 9. On 8.x the HA rules list is empty and HA groups aren't managed here.
 - Clones and creates wait up to about three minutes. A longer full clone keeps running and appears on the next refresh. Then edit it to set CPU, memory and cloud-init.

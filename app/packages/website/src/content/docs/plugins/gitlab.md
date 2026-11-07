@@ -87,4 +87,4 @@ GitLab.com accounts report their subscription seats to Seats, which flags member
 - Instance runners are not listed for a group account. On GitLab.com they are GitLab's own fleet.
 - [Provider status](../features/provider-status.md) follows [status.gitlab.com](https://status.gitlab.com), which only covers GitLab.com.
 - [Export to Terraform](../features/terraform-export.md) writes `gitlabhq/gitlab` resources for groups, projects, variables, schedules, protected branches, deploy keys and tokens, environments, webhooks, releases and memberships, with variable values and public keys as Terraform variables.
-- Bastion egress allows `gitlab.com` only. Accounts for a self-managed instance cannot be routed through a bastion yet.
+- Bastion egress allows `gitlab.com` and the host of a self-managed instance, as long as it resolves to public addresses.

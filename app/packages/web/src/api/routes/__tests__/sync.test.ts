@@ -195,7 +195,8 @@ describe("Sync routes (bearer auth)", () => {
     });
 
     it("upserts accounts and logs an audit entry", async () => {
-      const onConflictDoUpdate = vi.fn().mockResolvedValue(undefined);
+      const returning = vi.fn().mockResolvedValue([{ bastionId: null }]);
+      const onConflictDoUpdate = vi.fn().mockReturnValue({ returning });
       const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
       mockInsert.mockReturnValue({ values });
 

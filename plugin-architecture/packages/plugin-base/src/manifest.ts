@@ -64,6 +64,17 @@ export interface CredentialField {
    * app and the desktop shell.
    */
   helpLink?: { label: string; url: string };
+  /**
+   * This field holds the address of the provider's own API, as the user typed it: a URL,
+   * a bare host or `host:port`, or several of those separated by commas. A bastion allows
+   * that host for this account's calls, in addition to `egressHosts`, as long as it
+   * resolves only to public addresses.
+   *
+   * Only for an address the plugin calls through `services.http`. Not for a value that
+   * also holds a secret, which would put the secret on the allowlist, so the host ignores
+   * this on a `sensitive` field.
+   */
+  providerHost?: boolean;
 }
 
 /**
@@ -143,7 +154,8 @@ export interface PluginManifest {
   /**
    * Hosts this plugin's own code talks to, for a bastion-routed account's egress
    * allowlist: exact names or `*.suffix` wildcards. Empty means there is no fixed
-   * host, because the URL is user-supplied or the plugin never makes HTTP calls.
+   * host, because the plugin never makes HTTP calls or the URL is user-supplied, and
+   * a field holding a user-supplied URL says so with `providerHost`.
    */
   egressHosts: readonly string[];
   /**

@@ -77,6 +77,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "url",
+      providerHost: true,
       label: "GitLab URL",
       description:
         "https://gitlab.com, or the address of your self-managed or Dedicated instance, such as https://gitlab.example.com.",

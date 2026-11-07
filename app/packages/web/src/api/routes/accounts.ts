@@ -4,6 +4,7 @@ import { eq, and, isNull, or, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, bastionVms, resources } from "../../db/schema";
 import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry";
+import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { getClientForAccount } from "../../services/plugin-clients";
@@ -400,11 +401,24 @@ app.delete("/:id", async (c) => {
   requirePermission(c, "accounts:delete");
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
-  await db
+  const deleted = await db
     .delete(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
+    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
+    .returning({ bastionId: accounts.bastionId });
+  // Its plugin's hosts and the host it configured stop being reachable with it.
+  refreshBastionAfterAccountChange(deleted[0]?.bastionId);
   return c.json({ ok: true });
 });
+
+/** Tell a bastion's agent that what one of its accounts may reach has changed. */
+function refreshBastionAfterAccountChange(bastionId: string | null | undefined): void {
+  if (!bastionId) return;
+  void keepAlive(
+    refreshAllowlistById(bastionId).catch((err) => {
+      console.error(`[accounts] refreshAllowlistById(${bastionId}) failed:`, err);
+    }),
+  );
+}
 
 /** PATCH /api/accounts/:id: rename account or change bastion binding. */
 app.patch("/:id", async (c) => {
@@ -556,6 +570,7 @@ app.put("/:id/credentials", async (c) => {
       id: accounts.id,
       pluginId: accounts.pluginId,
       oauthStatus: accounts.oauthStatus,
+      bastionId: accounts.bastionId,
     })
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
@@ -613,6 +628,8 @@ app.put("/:id/credentials", async (c) => {
       costPollErrorHelpUrl: null,
     })
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
+  // The edit may have moved the host this account configured.
+  refreshBastionAfterAccountChange(existing.bastionId);
   return c.json({ ok: true });
 });
 

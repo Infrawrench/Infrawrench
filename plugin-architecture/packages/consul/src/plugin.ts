@@ -17,6 +17,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "address",
+      providerHost: true,
       label: "Consul Address",
       description:
         "Any agent's HTTP(S) address with its port, the same value as CONSUL_HTTP_ADDR: http://consul.internal:8500 or https://consul.example.com:8501. For a cluster on a private network, add an SSH tunnel to this account.",

@@ -33,7 +33,7 @@ If the endpoint is MinIO and the key can read server info (the root user can, or
 - **Access key** and **secret key**: on MinIO, create an access key in the console under **Access Keys** (or with `mc admin user svcacct add`). On Ceph, use `radosgw-admin user create`.
 - Under **Advanced options**: **Addressing** (path-style, the default, or virtual-hosted), a **Session token** for temporary STS credentials, and a **CA certificate** for servers with a private or self-signed certificate.
 
-The endpoint must be reachable from wherever Infrawrench runs. For a server on a private network, use the desktop app on a machine that can reach it. Bastion routing doesn't cover these endpoints yet.
+The endpoint must be reachable from wherever Infrawrench runs. For a server on a private network, use the desktop app on a machine that can reach it. A [bastion](../features/bastion-vms.md) can carry this account's calls to an endpoint on a public address with path-style addressing, but not to a private address, or to the bucket hostnames of virtual-hosted addressing.
 
 <insert [S3-compatible Add-account form with Endpoint URL, Region, Access Key and Secret Key filled in and Advanced options expanded showing Addressing and CA Certificate] here>
 

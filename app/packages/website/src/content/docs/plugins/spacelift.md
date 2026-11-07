@@ -47,4 +47,4 @@ For OpenTofu and Terraform stacks whose state Spacelift manages, download the st
 - Spacelift has no billing API, so Spacelift accounts don't feed cost graphs. The account page shows your plan's seats, run minutes and prices.
 - For very long phases, the run log shows the last part.
 - New worker pools need a certificate signing request generated on your own machine, so create them in Spacelift and manage them here.
-- Bastion egress for Spacelift accounts allows `*.spacelift.io` and Amazon S3, where state downloads come from. A self-hosted Spacelift hostname isn't on that list.
+- Bastion egress for Spacelift accounts allows `*.spacelift.io` and Amazon S3, where state downloads come from. It also allows a self-hosted Spacelift hostname, as long as it resolves to public addresses.

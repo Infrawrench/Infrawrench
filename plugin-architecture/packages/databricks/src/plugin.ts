@@ -62,6 +62,7 @@ export const manifest = {
   credentialFields: defineCredentials([
     {
       key: "host",
+      providerHost: true,
       label: "Workspace URL",
       description:
         "Your Databricks workspace URL (e.g. https://adb-1234567890.7.azuredatabricks.net or https://dbc-abc123.cloud.databricks.com).",

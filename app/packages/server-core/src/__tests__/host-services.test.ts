@@ -78,6 +78,11 @@ vi.mock("../encryption", () => ({
 
 // --- bastion ---------------------------------------------------------------
 const resolveDispatcher = vi.fn(async () => null as unknown);
+/** A dispatcher whose account scoping changes nothing, for what happens after it. */
+function fakeDispatcher() {
+  const dispatcher = { id: "disp", compose: () => dispatcher };
+  return dispatcher;
+}
 vi.mock("../bastion/registry", () => ({ resolveDispatcher }));
 vi.mock("../bastion/errors", () => ({
   BastionDisconnectedError: class extends Error {
@@ -322,6 +327,23 @@ describe("buildPluginHostServices — driver selection", () => {
     expect(accountSelects()[0]!.params).toEqual(["acc1", 1]);
   });
 
+  it("hands a bound account's calls a dispatcher scoped to its own hosts", async () => {
+    const inner = { compose: vi.fn((interceptor: unknown) => ({ composed: interceptor })) };
+    resolveDispatcher.mockResolvedValueOnce(inner as never);
+    const out = await hs.buildPluginHostServices(
+      {
+        egressHosts: ["api.example.test"],
+        credentialFields: [{ key: "url", label: "URL", sensitive: false, providerHost: true }],
+      } as never,
+      { url: "https://own.acme.example" },
+      { bastionId: "bx" },
+    );
+    await out!.http!.request({ url: "https://own.acme.example/x", method: "GET", headers: {} });
+    expect(inner.compose).toHaveBeenCalledTimes(1);
+    const init = undiciFetch.mock.calls.at(-1)![1] as { dispatcher: { composed: unknown } };
+    expect(init.dispatcher.composed).toBe(inner.compose.mock.calls[0]![0]);
+  });
+
   it("skips the DB round-trip when bastionId is given explicitly", async () => {
     await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
     // accounts select for bastion lookup should not run
@@ -435,7 +457,11 @@ describe("secrets scoped to an account", () => {
 describe("http.request — bastion routing", () => {
   it("throws BastionDisconnectedError when bound but no dispatcher", async () => {
     resolveDispatcher.mockResolvedValue(null);
-    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    const out = await hs.buildPluginHostServices(
+      { egressHosts: [], credentialFields: [] } as never,
+      {},
+      { bastionId: "bx" },
+    );
     await expect(
       out!.http!.request({ url: "https://x", method: "GET", headers: {} }),
     ).rejects.toThrow(/disconnected bx/);
@@ -443,8 +469,12 @@ describe("http.request — bastion routing", () => {
 
   it("hands bastion traffic on, recorded, inside a session-handoff scope", async () => {
     const { runInRequestScope, gatewayOnlyHitInScope } = await import("../runtime/request-scope");
-    resolveDispatcher.mockResolvedValue({ id: "disp" });
-    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    resolveDispatcher.mockResolvedValue(fakeDispatcher());
+    const out = await hs.buildPluginHostServices(
+      { egressHosts: [], credentialFields: [] } as never,
+      {},
+      { bastionId: "bx" },
+    );
     const hit = await runInRequestScope({ sessionHandoff: true, gatewayOnly: {} }, async () => {
       await expect(
         out!.http!.request({ url: "https://x", method: "GET", headers: {} }),
@@ -456,13 +486,17 @@ describe("http.request — bastion routing", () => {
   });
 
   it("routes through undici when a dispatcher is connected", async () => {
-    resolveDispatcher.mockResolvedValue({ id: "disp" });
+    resolveDispatcher.mockResolvedValue(fakeDispatcher());
     undiciFetch.mockResolvedValueOnce({
       status: 201,
       headers: { entries: () => [["x-via", "bastion"]][Symbol.iterator]() },
       text: async () => "via-bastion",
     } as never);
-    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    const out = await hs.buildPluginHostServices(
+      { egressHosts: [], credentialFields: [] } as never,
+      {},
+      { bastionId: "bx" },
+    );
     const resp = await out!.http!.request({
       url: "https://api/x",
       method: "POST",
@@ -474,13 +508,17 @@ describe("http.request — bastion routing", () => {
   });
 
   it("omits the body when none is given (bastion)", async () => {
-    resolveDispatcher.mockResolvedValue({ id: "disp" });
+    resolveDispatcher.mockResolvedValue(fakeDispatcher());
     undiciFetch.mockResolvedValueOnce({
       status: 200,
       headers: { entries: () => [][Symbol.iterator]() },
       text: async () => "",
     } as never);
-    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    const out = await hs.buildPluginHostServices(
+      { egressHosts: [], credentialFields: [] } as never,
+      {},
+      { bastionId: "bx" },
+    );
     await out!.http!.request({ url: "https://api/x", method: "GET", headers: {} });
     const init = undiciFetch.mock.calls[0]![1] as { body?: unknown };
     expect(init.body).toBeUndefined();
@@ -493,7 +531,11 @@ describe("http.requestStream", () => {
   it("throws rather than go direct when the bastion is down", async () => {
     resolveDispatcher.mockResolvedValue(null);
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("direct"));
-    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    const out = await hs.buildPluginHostServices(
+      { egressHosts: [], credentialFields: [] } as never,
+      {},
+      { bastionId: "bx" },
+    );
     await expect(
       out!.http!.requestStream!({ url: "https://x", method: "POST", headers: {} }),
     ).rejects.toThrow(/disconnected bx/);
@@ -502,7 +544,7 @@ describe("http.requestStream", () => {
   });
 
   it("goes through the bastion's dispatcher, handing back the body unread", async () => {
-    const dispatcher = { id: "disp" };
+    const dispatcher = fakeDispatcher();
     resolveDispatcher.mockResolvedValue(dispatcher);
     const body = stream();
     undiciFetch.mockResolvedValueOnce({
@@ -510,7 +552,11 @@ describe("http.requestStream", () => {
       headers: { entries: () => [["x-via", "bastion"]][Symbol.iterator]() },
       body,
     } as never);
-    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    const out = await hs.buildPluginHostServices(
+      { egressHosts: [], credentialFields: [] } as never,
+      {},
+      { bastionId: "bx" },
+    );
     const resp = await out!.http!.requestStream!({
       url: "https://api/x",
       method: "POST",
@@ -527,7 +573,11 @@ describe("http.requestStream", () => {
 
   it("hands bastion traffic on, recorded, inside a session-handoff scope", async () => {
     const { runInRequestScope } = await import("../runtime/request-scope");
-    const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
+    const out = await hs.buildPluginHostServices(
+      { egressHosts: [], credentialFields: [] } as never,
+      {},
+      { bastionId: "bx" },
+    );
     await runInRequestScope({ sessionHandoff: true, gatewayOnly: {} }, async () => {
       await expect(
         out!.http!.requestStream!({ url: "https://x", method: "POST", headers: {} }),

@@ -72,5 +72,5 @@ Sentry accounts on sentry.io feed [cost graphs & budgets](../features/cloud-cost
 - Issues come from the 100 busiest unresolved ones in the organization, so a quiet project may show none. Its detail page still shows its own unresolved count and top issues.
 - Editing an alert only changes the name or interval. Build or change conditions and actions in Sentry.
 - Cron and uptime monitors are listed as their own types, not with the other monitors. Sentry still marks uptime monitors as experimental.
-- Bastion egress for Sentry accounts only allows the sentry.io hosts (`sentry.io`, `us.sentry.io`, `de.sentry.io`), so a self-hosted Sentry has to be reachable without one.
+- Bastion egress for Sentry accounts allows the sentry.io hosts (`sentry.io`, `us.sentry.io`, `de.sentry.io`) and the host of a self-hosted Sentry, as long as it resolves to public addresses.
 - [Export to Terraform](../features/terraform-export.md) writes teams, projects and client keys as `sentry_team`, `sentry_project` and `sentry_key` resources for the `jianyuan/sentry` provider.

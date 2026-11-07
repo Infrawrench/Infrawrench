@@ -24,6 +24,8 @@ import { decrypt, buildAad } from "./encryption";
 import { setLiteralSecretState, storeAccountSecret } from "./secret-states";
 import { freshAccountCredentials } from "./provider-oauth/refresh";
 import { resourceIdBelongsToAccount } from "./resource-ids";
+import { accountEgressHosts } from "./bastion/account-hosts";
+import { scopeDispatcherToAccount } from "./bastion/account-scope";
 import { resolveDispatcher } from "./bastion/registry";
 import { realtimeEnabled } from "./realtime/client";
 import { BastionDisconnectedError } from "./bastion/errors";
@@ -198,6 +200,7 @@ function accountSecretHostServices(accountId: string): SecretHostServices {
 function buildHttpHostServices(
   bastionId: string | null | undefined,
   scope: DialScope,
+  ownHosts: () => string[],
 ): HttpHostServices {
   // A Worker cannot drive the agent's streams (undici, node:stream) nor
   // trust a per-request CA, so both hand the call to the gateway. Plain
@@ -213,6 +216,13 @@ function buildHttpHostServices(
       throw new GatewayOnlyError("A request trusting a custom CA certificate");
     }
   };
+  // A bastion's allowlist is the union of every account on it. This one's calls only
+  // get its plugin's hosts and its own, redirects included.
+  const accountDispatcher = async (id: string) => {
+    const dispatcher = await resolveDispatcher(id);
+    if (!dispatcher) throw new BastionDisconnectedError(id);
+    return scopeDispatcherToAccount(dispatcher, id, ownHosts());
+  };
   // undici's and the runtime's `ReadableStream` are the same thing under two types.
   const streamOf = (resp: { body: unknown }) => resp.body as ReadableStream<Uint8Array> | null;
   return {
@@ -224,8 +234,7 @@ function buildHttpHostServices(
         ...(req.body != null ? { body: req.body as string | Uint8Array<ArrayBuffer> } : {}),
       };
       if (bastionId) {
-        const dispatcher = await resolveDispatcher(bastionId);
-        if (!dispatcher) throw new BastionDisconnectedError(bastionId);
+        const dispatcher = await accountDispatcher(bastionId);
         const resp = await undiciFetch(req.url, { ...init, dispatcher });
         return {
           status: resp.status,
@@ -252,8 +261,7 @@ function buildHttpHostServices(
       const binary = req.responseEncoding === "binary";
       refuseWhatThisRuntimeCannotDo(req.caCert);
       if (bastionId) {
-        const dispatcher = await resolveDispatcher(bastionId);
-        if (!dispatcher) throw new BastionDisconnectedError(bastionId);
+        const dispatcher = await accountDispatcher(bastionId);
         // caCert is rarely combined with a bastion (the agent terminates the
         // TCP, but TLS is still client-side). undici uses the OS trust store
         // by default; if a custom CA was supplied, layer it on per-request.
@@ -468,7 +476,9 @@ export async function buildPluginHostServices(
   const scope: DialScope = { accountId: options.accountId, organizationId: options.organizationId };
   const oauth = oauthHostServices(manifest, credentials, options);
   const base: HostServices = {
-    http: buildHttpHostServices(bastionId ?? null, scope),
+    http: buildHttpHostServices(bastionId ?? null, scope, () =>
+      accountEgressHosts(manifest, credentials),
+    ),
     ...warehouseHostServices(),
     secrets: options.accountId ? accountSecretHostServices(options.accountId) : secretHostServices,
     ...(oauth ? { oauth } : {}),
