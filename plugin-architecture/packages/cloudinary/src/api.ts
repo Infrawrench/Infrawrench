@@ -38,7 +38,11 @@ export type CloudinaryUploadMapping = Pick<
   "folder"
 > & { template?: string; external_id?: string };
 
-/** The document has no rate limit fields on this response. */
+/**
+ * The document has no rate limit fields on this response, and the reference puts the
+ * limit in `X-FeatureRateLimit-*` headers. Cloudinary's Node SDK builds these names from
+ * those headers, so a body having them is only a fallback.
+ */
 export type CloudinaryUsage = CloudinaryResponse<"getUsage"> & {
   rate_limit_allowed?: number;
   rate_limit_remaining?: number;

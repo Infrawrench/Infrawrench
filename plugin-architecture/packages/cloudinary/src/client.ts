@@ -119,6 +119,11 @@ function wholeFolderList<T>(rows: T[], total: number | undefined, path: string):
   return rows;
 }
 
+function headerNumber(headers: Record<string, string>, name: string): number | undefined {
+  const value = Number(headers[name] || NaN);
+  return Number.isFinite(value) ? value : undefined;
+}
+
 function titleCase(value: string): string {
   return value
     .split(/[\s_-]+/)
@@ -1942,11 +1947,12 @@ export class CloudinaryClient implements PluginClient {
    * transformation, storage and bandwidth limits instead. Add-on allowances
    * (AI tagging, background removal, ...) are whatever extra `{usage, limit}`
    * objects the environment has, so they are discovered rather than listed.
-   * The Admin API's hourly request budget comes back on the same response.
+   * The Admin API's hourly request budget comes back in the same response's headers.
    */
   fetchQuotas(_accountId: string): PluginEffect<QuotaUsage[]> {
     return attempt(async () => {
-      const usage: CloudinaryUsage = await this.api.get("/usage");
+      const answer = await this.api.getResponse("/usage");
+      const usage: CloudinaryUsage = answer.body;
       const readings: QuotaUsage[] = [];
       const pair = (entry: object | undefined): { used: number; limit: number } | null =>
         entry &&
@@ -2006,16 +2012,17 @@ export class CloudinaryClient implements PluginClient {
           });
         }
       }
-      if (
-        typeof usage.rate_limit_allowed === "number" &&
-        typeof usage.rate_limit_remaining === "number"
-      ) {
+      const allowed =
+        headerNumber(answer.headers, "x-featureratelimit-limit") ?? usage.rate_limit_allowed;
+      const remaining =
+        headerNumber(answer.headers, "x-featureratelimit-remaining") ?? usage.rate_limit_remaining;
+      if (typeof allowed === "number" && typeof remaining === "number") {
         readings.push({
           id: "admin-api-rate-limit",
           service: "admin-api",
           name: "Admin API requests this hour",
-          used: usage.rate_limit_allowed - usage.rate_limit_remaining,
-          limit: usage.rate_limit_allowed,
+          used: allowed - remaining,
+          limit: allowed,
           unit: "requests",
         });
       }

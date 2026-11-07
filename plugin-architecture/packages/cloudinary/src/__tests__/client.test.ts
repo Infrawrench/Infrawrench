@@ -11,10 +11,11 @@ interface FetchCall {
 
 let calls: FetchCall[] = [];
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: unknown, status = 200, headers?: Record<string, string>): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: new Headers(headers),
     json: async () => body,
     text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
   } as unknown as Response;
@@ -737,6 +738,49 @@ describe("usage", () => {
       ["addon/cloudinary_ai", 20, 15],
       ["admin-api-rate-limit", 1, 500],
     ]);
+  });
+
+  describe("the Admin API rate limit", () => {
+    const { rate_limit_allowed: _allowed, rate_limit_remaining: _remaining, ...body } = usage;
+    const rateLimit = async () => {
+      const quotas = await client().fetchQuotas(ACCOUNT);
+      return quotas.find((q) => q.id === "admin-api-rate-limit");
+    };
+
+    it("is read from the response headers", async () => {
+      installFetch(() =>
+        jsonResponse(body, 200, {
+          "X-FeatureRateLimit-Limit": "2000",
+          "X-FeatureRateLimit-Remaining": "1990",
+          "X-FeatureRateLimit-Reset": "Wed, 03 Oct 2012 08:00:00 GMT",
+        }),
+      );
+      expect(await rateLimit()).toMatchObject({ used: 10, limit: 2000, unit: "requests" });
+    });
+
+    it("prefers the headers over fields in the body", async () => {
+      installFetch(() =>
+        jsonResponse(usage, 200, {
+          "X-FeatureRateLimit-Limit": "2000",
+          "X-FeatureRateLimit-Remaining": "1990",
+        }),
+      );
+      expect(await rateLimit()).toMatchObject({ used: 10, limit: 2000 });
+    });
+
+    it("is left out when neither says, or a header is not a number", async () => {
+      installFetch(() => jsonResponse(body));
+      expect(await rateLimit()).toBeUndefined();
+
+      vi.restoreAllMocks();
+      installFetch(() =>
+        jsonResponse(body, 200, {
+          "X-FeatureRateLimit-Limit": "lots",
+          "X-FeatureRateLimit-Remaining": "1990",
+        }),
+      );
+      expect(await rateLimit()).toBeUndefined();
+    });
   });
 
   it("summarises the product environment with its folder mode", async () => {
