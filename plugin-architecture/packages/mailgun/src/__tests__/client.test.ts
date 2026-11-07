@@ -1,7 +1,7 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { MailgunApiError, encodeParams } from "../api.js";
-import { MailgunClient, domainForm, resolveRegions } from "../client.js";
+import { MailgunClient, domainForm, parseAddresses, resolveRegions } from "../client.js";
 import { groupWebhooks, mapDnsRecords } from "../mappers.js";
 import { rfc2822, seriesFromItems } from "../metrics.js";
 import { parseStatusFeed } from "../status-feed.js";
@@ -160,6 +160,22 @@ describe("Mailgun client", () => {
     expect(await c2.fetchQuotas("a")).toEqual([]);
     const { c: c3 } = client(() => ({ body: { limit: 1000, current: 900, period: "1m" } }), "us");
     expect(await c3.fetchQuotas("a")).toMatchObject([{ limit: 1000, used: 900 }]);
+  });
+
+  it("refuses more addresses than one command can act on, rather than drop the rest", async () => {
+    const { c, calls } = client(() => ({ body: {} }), "us");
+    const emails = Array.from({ length: 1001 }, (_, i) => `u${i}@x.test`).join("\n");
+    await expect(
+      c.executeNoSqlCommand(
+        "mailgun-domain",
+        "a:mailgun-domain:us/mg.example.com",
+        "a",
+        "add-suppressions",
+        [JSON.stringify({ list: "bounces", emails })],
+      ),
+    ).rejects.toThrow("at most 1,000");
+    expect(calls).toHaveLength(0);
+    expect(parseAddresses("a@x b@x, a@x")).toEqual(["a@x", "b@x"]);
   });
 
   it("helpers", () => {

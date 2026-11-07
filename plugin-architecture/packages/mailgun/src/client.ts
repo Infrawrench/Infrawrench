@@ -164,14 +164,21 @@ export function parsePromptValues(args: (string | number)[]): Record<string, str
 }
 
 export function parseAddresses(raw: string): string[] {
-  return [
+  const addresses = [
     ...new Set(
       raw
         .split(/[\s,;]+/)
         .map((s) => s.trim())
         .filter((s) => s.includes("@")),
     ),
-  ].slice(0, MAX_ADDRESSES);
+  ];
+  // Mailgun's JSON suppression and member uploads take 1,000 entries a request.
+  if (addresses.length > MAX_ADDRESSES) {
+    throw new Error(
+      `Enter at most 1,000 addresses at a time; this has ${addresses.length.toLocaleString("en-US")}.`,
+    );
+  }
+  return addresses;
 }
 
 function isUnavailable(err: unknown): boolean {
