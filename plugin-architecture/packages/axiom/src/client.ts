@@ -17,7 +17,12 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
-import { QuotaAccessError, externalIdOf, pathEncode } from "@infrawrench/plugin-base";
+import {
+  QuotaAccessError,
+  externalIdOf,
+  pathEncode,
+  requireListPage,
+} from "@infrawrench/plugin-base";
 import type { AxiomApi, AxiomContext } from "./api.js";
 import {
   AxiomApiError,
@@ -94,6 +99,15 @@ function csv(value: string | undefined): string[] {
     .split(",")
     .map((v) => v.trim())
     .filter(Boolean);
+}
+
+/**
+ * A list answered whole. No body is not "none", because the sync would prune all of it.
+ * An explicit JSON `null` is, as this plugin has always read it: a Go service can answer
+ * an empty list that way, and only a live call could say whether Axiom does.
+ */
+function listOf<T>(rows: T[] | null | undefined, path: string): T[] {
+  return rows === null ? [] : requireListPage(rows, { vendor: "Axiom", path, key: null });
 }
 
 /**
@@ -308,7 +322,7 @@ export class AxiomClient implements PluginClient {
     this.orgCache ??= (async () => {
       if (this.ctx.orgId) return this.api.get(`/orgs/${pathEncode(this.ctx.orgId)}`);
       const orgs = await this.api.get("/orgs");
-      const first = (orgs ?? [])[0];
+      const first = listOf(orgs, "/orgs")[0];
       if (!first) throw new AxiomApiError(404, "Axiom plugin: the token sees no organization");
       return first;
     })();
@@ -321,7 +335,7 @@ export class AxiomClient implements PluginClient {
   private datasets(): Promise<AxDataset[]> {
     if (this.datasetCache && Date.now() - this.datasetCache.at < 60_000)
       return this.datasetCache.value;
-    const value = this.api.get("/datasets").then((d) => d ?? []);
+    const value = this.api.get("/datasets").then((d) => listOf(d, "/datasets"));
     this.datasetCache = { at: Date.now(), value };
     value.catch(() => {
       this.datasetCache = undefined;
@@ -407,7 +421,9 @@ export class AxiomClient implements PluginClient {
               const fields = await this.api
                 .get(`/datasets/${pathEncode(id)}/fields`)
                 .catch(noFieldsWhen(d));
-              return (fields ?? []).map((f) => mapField(accountId, id, f));
+              return listOf(fields, `/datasets/${id}/fields`).map((f) =>
+                mapField(accountId, id, f),
+              );
             });
             return out.flat();
           });
@@ -418,7 +434,7 @@ export class AxiomClient implements PluginClient {
               const list = await this.api
                 .get("/vfields", { query: { dataset: d.name ?? d.id ?? "" } })
                 .catch(noFieldsWhen(d));
-              return (list ?? []).map((v) =>
+              return listOf(list, "/vfields").map((v) =>
                 mapVirtualField(accountId, { ...v, dataset: v.dataset ?? d.id ?? d.name ?? "" }),
               );
             });
@@ -430,11 +446,13 @@ export class AxiomClient implements PluginClient {
               this.api.get("/monitors"),
               this.notifierNames(),
             ]);
-            return (monitors ?? []).map((m) => mapMonitor(accountId, m, names));
+            return listOf(monitors, "/monitors").map((m) => mapMonitor(accountId, m, names));
           });
         case "notifier":
           return this.scoped(async () =>
-            ((await this.api.get("/notifiers")) ?? []).map((n) => mapNotifier(accountId, n)),
+            listOf(await this.api.get("/notifiers"), "/notifiers").map((n) =>
+              mapNotifier(accountId, n),
+            ),
           );
         case "dashboard":
           return this.scoped(async () =>
@@ -442,7 +460,7 @@ export class AxiomClient implements PluginClient {
           );
         case "view":
           return this.scoped(async () =>
-            ((await this.api.get("/views")) ?? []).map((v) => mapView(accountId, v)),
+            listOf(await this.api.get("/views"), "/views").map((v) => mapView(accountId, v)),
           );
         case "starred-query":
           return this.scoped(async () =>
@@ -454,15 +472,17 @@ export class AxiomClient implements PluginClient {
           // No time filter: the document answers all of them without one, and a window
           // would prune an annotation from the inventory as it aged out of it.
           return this.scoped(async () =>
-            ((await this.api.get("/annotations")) ?? []).map((a) => mapAnnotation(accountId, a)),
+            listOf(await this.api.get("/annotations"), "/annotations").map((a) =>
+              mapAnnotation(accountId, a),
+            ),
           );
         case "api-token":
           return this.scoped(async () =>
-            ((await this.api.get("/tokens")) ?? []).map((t) => mapToken(accountId, t)),
+            listOf(await this.api.get("/tokens"), "/tokens").map((t) => mapToken(accountId, t)),
           );
         case "user":
           return this.scoped(async () =>
-            ((await this.api.get("/users")) ?? []).map((u) => mapUser(accountId, u)),
+            listOf(await this.api.get("/users"), "/users").map((u) => mapUser(accountId, u)),
           );
         default:
           throw new Error(`Axiom plugin: unknown resource type "${typeId}"`);

@@ -761,3 +761,44 @@ describe("an API token that GET /v2/orgs refuses", () => {
     await expect(pick("xapt-1")).rejects.toThrow(/403/);
   });
 });
+
+describe("lists answered whole", () => {
+  const LISTS = [
+    ["dataset", "/v2/datasets"],
+    ["monitor", "/v2/monitors"],
+    ["notifier", "/v2/notifiers"],
+    ["view", "/v2/views"],
+    ["annotation", "/v2/annotations"],
+    ["api-token", "/v2/tokens"],
+    ["user", "/v2/users"],
+    ["field", "/v2/datasets/a/fields"],
+    ["virtual-field", "/v2/vfields"],
+    ["organization", "/v2/orgs"],
+  ] as const;
+
+  /** `path` answers `reply`, and the rest as much as the list needs to reach it. */
+  const listing = (path: string, reply: { body?: unknown }) =>
+    client((url) => {
+      if (url.pathname === path) return reply;
+      if (url.pathname === "/v2/datasets") return { body: [{ id: "a", name: "a" }] };
+      if (url.pathname === "/v2/notifiers") return { body: [] };
+      if (url.pathname === "/v2/orgs") return { body: [ORG] };
+      return { status: 404 };
+    }).c;
+
+  for (const [type, path] of LISTS) {
+    it(`refuses a ${type} list answered with no body`, async () => {
+      await expect(listing(path, {}).listResources(type, ACCOUNT)).rejects.toThrow("is not a list");
+    });
+
+    it(`refuses a ${type} list answered with an object`, async () => {
+      await expect(
+        listing(path, { body: { message: "no" } }).listResources(type, ACCOUNT),
+      ).rejects.toThrow("is not a list");
+    });
+  }
+
+  it("reads an explicit JSON null as none, as it always has", async () => {
+    expect(await listing("/v2/views", { body: null }).listResources("view", ACCOUNT)).toEqual([]);
+  });
+});
