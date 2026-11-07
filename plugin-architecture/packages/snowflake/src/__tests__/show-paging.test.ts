@@ -161,6 +161,35 @@ describe("SHOW lists past 10,000 records", () => {
     expect(noted).toEqual([{ idPrefixes: ["acc:snowflake-dynamic-table:B."] }]);
   });
 
+  it("shows a database the role may no longer read where the host keeps no track", async () => {
+    mockSnowflake((s) => {
+      if (s === "SHOW DYNAMIC TABLES IN ACCOUNT") return tooMany();
+      if (s === "SHOW DATABASES") return rows(["A", "B"]);
+      if (s === 'SHOW DYNAMIC TABLES IN DATABASE "A"') {
+        return rows(named("DT_", 0, 9_999), "A", "S");
+      }
+      if (s === 'SHOW DYNAMIC TABLES IN DATABASE "B"') {
+        return sqlError("002003", "Database 'B' does not exist or not authorized.");
+      }
+      return undefined;
+    });
+    await expect(
+      hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.dynamicTable, "acc"),
+    ).rejects.toThrow("not authorized");
+  });
+
+  it("reads every database where the host keeps no track of the rest", async () => {
+    const dbs = named("DB_", 0, 500);
+    mockSnowflake((s) => {
+      if (s === "SHOW SCHEMAS IN ACCOUNT") return tooMany();
+      if (s === "SHOW DATABASES") return rows(dbs);
+      const m = /^SHOW SCHEMAS IN DATABASE "(DB_\d+)"$/.exec(s);
+      return m ? rows(named("S_", 0, 30), m[1]) : undefined;
+    });
+    const list = await hostClient(new SnowflakeClient(CREDS)).listResources(TYPE.schema, "acc");
+    expect(list).toHaveLength(500 * 30);
+  });
+
   it("still throws at 10,000 pipes, which SHOW PIPES cannot page", async () => {
     mockSnowflake((s) =>
       s === "SHOW PIPES IN ACCOUNT" ? rows(named("P_", 0, 10_000)) : undefined,

@@ -203,10 +203,13 @@ export async function showAcrossAccount(exec: ShowExec, show: ScopedShow): Promi
     if (scope.length === show.depth) return pageShow(counted, statement, answer);
     const names = await children(scope);
     const { now, later } = rotate(names, MAX_SCOPE_READS - reads);
-    let complete = later.length === 0;
-    for (const name of later) show.unread([...scope, name]);
+    // A host that keeps no track answers false, and has no poll to outlast: it reads them all.
+    const kept = later.every((name) => show.unread([...scope, name]));
+    let complete = later.length === 0 || !kept;
     const out: Row[] = [];
-    const queue = now.map((name): Scope => (scope.length === 0 ? [name] : [scope[0]!, name]));
+    const queue = (kept ? now : names).map((name): Scope =>
+      scope.length === 0 ? [name] : [scope[0]!, name],
+    );
     const worker = async () => {
       for (let next = queue.shift(); next; next = queue.shift()) {
         try {
@@ -215,7 +218,8 @@ export async function showAcrossAccount(exec: ShowExec, show: ScopedShow): Promi
           // Gone since it was listed, or closed to this role: what the sync stored
           // under it stays rather than reading as deleted.
           if (!isPrivilegeDenied(err)) throw err;
-          show.unread(next);
+          // Where nothing keeps them, the refusal shows rather than a list short of them.
+          if (!show.unread(next)) throw err;
           complete = false;
         }
       }
