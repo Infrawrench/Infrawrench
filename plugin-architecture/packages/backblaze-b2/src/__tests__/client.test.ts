@@ -486,6 +486,65 @@ describe("lists that cannot say they have every row", () => {
   });
 });
 
+describe("deleting from the file browser", () => {
+  it("deletes nothing and throws when a folder has more versions than it reads", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [BUCKET] } };
+      if (url.pathname.endsWith("b2_list_file_versions")) {
+        return {
+          body: {
+            files: [{ fileName: "a/x", fileId: "f1" }],
+            nextFileName: "a/y",
+            nextFileId: "f2",
+          },
+        };
+      }
+      return { body: {} };
+    });
+    await expect(c.deleteStorageObject("photos-bucket", "a/")).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+    expect(calls.filter((x) => x.url.pathname.endsWith("b2_list_file_versions"))).toHaveLength(200);
+    expect(calls.some((x) => x.url.pathname.endsWith("b2_delete_file_version"))).toBe(false);
+  });
+
+  it("deletes nothing when a page of versions is not a list", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [BUCKET] } };
+      return { body: { versions: [] } };
+    });
+    await expect(c.deleteStorageObject("photos-bucket", "a/")).rejects.toThrow("is not a list");
+    expect(calls.some((x) => x.url.pathname.endsWith("b2_delete_file_version"))).toBe(false);
+  });
+
+  it("deletes every version of one file and stops at the next name", async () => {
+    const { c, calls } = client((url) => {
+      if (url.pathname.endsWith("b2_list_buckets")) return { body: { buckets: [BUCKET] } };
+      if (url.pathname.endsWith("b2_list_file_versions")) {
+        return {
+          body: {
+            files: [
+              { fileName: "a/x", fileId: "f1" },
+              { fileName: "a/x", fileId: "f2" },
+            ],
+            nextFileName: "a/x2",
+            nextFileId: "f3",
+          },
+        };
+      }
+      return { body: {} };
+    });
+    await c.deleteStorageObject("photos-bucket", "a/x");
+    expect(calls.filter((x) => x.url.pathname.endsWith("b2_list_file_versions"))).toHaveLength(1);
+    expect(
+      calls.filter((x) => x.url.pathname.endsWith("b2_delete_file_version")).map((x) => x.body),
+    ).toEqual([
+      { fileName: "a/x", fileId: "f1" },
+      { fileName: "a/x", fileId: "f2" },
+    ]);
+  });
+});
+
 describe("a refused or failed read", () => {
   const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
   const refused = { status: 401, body: { status: 401, code: "unauthorized", message: "no" } };

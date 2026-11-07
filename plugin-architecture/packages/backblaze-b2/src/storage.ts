@@ -1,5 +1,5 @@
 import type { StorageObject } from "@infrawrench/plugin-base";
-import { requireListPage } from "@infrawrench/plugin-base";
+import { ListTruncatedError, requireListPage } from "@infrawrench/plugin-base";
 import type { B2Api } from "./api.js";
 import { B2ApiError, VENDOR } from "./api.js";
 import type { B2File } from "./types.js";
@@ -16,6 +16,7 @@ import type { B2File } from "./types.js";
  */
 
 const FOLDER_PLACEHOLDER = ".bzEmpty";
+const MAX_VERSION_PAGES = 200;
 
 export class B2Storage {
   private bucketIds = new Map<string, string>();
@@ -135,7 +136,7 @@ export class B2Storage {
     const out: Array<{ fileName: string; fileId: string }> = [];
     let startName: string | undefined;
     let startId: string | undefined;
-    for (let page = 0; page < 200; page++) {
+    for (let page = 0; page < MAX_VERSION_PAGES; page++) {
       const res = await this.api.call<{
         files?: B2File[];
         nextFileName?: string | null;
@@ -149,17 +150,26 @@ export class B2Storage {
           ...(startId ? { startFileId: startId } : {}),
         },
       });
-      for (const f of res?.files ?? []) {
+      const files = requireListPage(res?.files, {
+        vendor: VENDOR,
+        path: "b2_list_file_versions",
+        key: "files",
+      });
+      for (const f of files) {
         if (!f.fileId) continue;
         if (exact && f.fileName !== prefix) continue;
         out.push({ fileName: f.fileName, fileId: f.fileId });
       }
       startName = res?.nextFileName ?? undefined;
       startId = res?.nextFileId ?? undefined;
-      if (!startName) break;
-      if (exact && startName !== prefix) break;
+      if (!startName || (exact && startName !== prefix)) return out;
     }
-    return out;
+    throw new ListTruncatedError({
+      vendor: VENDOR,
+      path: "b2_list_file_versions",
+      items: out.length,
+      maxPages: MAX_VERSION_PAGES,
+    });
   }
 
   /**
