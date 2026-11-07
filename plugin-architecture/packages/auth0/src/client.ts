@@ -46,6 +46,8 @@ export const METRICS_DEFAULT_RANGE_MS = 30 * 24 * 60 * 60 * 1000;
 /** What a picker or a detail view reads: part of a list is fine, and nothing is stored from it. */
 const PICKER = { maxPages: 10, partial: true };
 
+const MAX_ENABLED_CLIENT_READS = 1000;
+
 /** 10,000 custom domains at the 100 a page the document allows. */
 const MAX_CUSTOM_DOMAIN_PAGES = 100;
 
@@ -149,10 +151,15 @@ export class Auth0Client implements PluginClient {
             )
           ).map((r) => this.mapApi(accountId, r));
         case "connection": {
-          const connections = await checkpoints("/connections", "connections", (query) =>
-            this.rest.get("/connections", { query }),
+          const connections = await checkpoints<"connections", A0Connection>(
+            "/connections",
+            "connections",
+            (query) => this.rest.get("/connections", { query }),
           );
-          return connections.map((c) => this.mapConnection(accountId, c));
+          const enabled = await this.enabledClientsOfRows(connections);
+          return connections.map((c) =>
+            this.mapConnection(accountId, c, enabled.get(str(c.id)) ?? c.enabled_clients),
+          );
         }
         case "user":
           return (
@@ -216,7 +223,7 @@ export class Auth0Client implements PluginClient {
         case "api":
           return this.mapApi(accountId, await this.rest.get(`/resource-servers/${id}`));
         case "connection":
-          return this.mapConnection(accountId, await this.rest.get(`/connections/${id}`));
+          return this.mapReadConnection(accountId, await this.rest.get(`/connections/${id}`));
         case "user":
           return this.mapUser(accountId, await this.rest.get(`/users/${id}`));
         case "role": {
@@ -282,6 +289,34 @@ export class Auth0Client implements PluginClient {
       }
       throw new Error(`Auth0 plugin: cannot reissue "${outputKey}"`);
     });
+  }
+
+  /**
+   * For the list rows that carry no `enabled_clients`, as the document says they do not.
+   * One request per connection per sync, for a plain field: past
+   * {@link MAX_ENABLED_CLIENT_READS} rows it stays blank, which is not worth failing the
+   * inventory over, and a row whose read fails stays blank too.
+   */
+  private async enabledClientsOfRows(rows: A0Connection[]): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    const ids = rows.filter((c) => !c.enabled_clients && c.id).map((c) => str(c.id));
+    if (ids.length > MAX_ENABLED_CLIENT_READS) return out;
+    for (const id of ids) {
+      const enabled = await this.enabledClientIds(id).catch((err) => {
+        rethrowIncompleteList(err);
+        return undefined;
+      });
+      if (enabled) out.set(id, enabled);
+    }
+    return out;
+  }
+
+  /** A connection from a single read or write, whose `enabled_clients` is deprecated. */
+  private async mapReadConnection(accountId: string, c: A0Connection): Promise<ResourceInstance> {
+    const enabled = c.id
+      ? await this.enabledClientIds(c.id).catch(() => c.enabled_clients)
+      : c.enabled_clients;
+    return this.mapConnection(accountId, c, enabled);
   }
 
   /** The applications a connection is enabled for, at the route's largest page. */
@@ -474,7 +509,11 @@ export class Auth0Client implements PluginClient {
     );
   }
 
-  mapConnection(accountId: string, c: A0Connection): ResourceInstance {
+  mapConnection(
+    accountId: string,
+    c: A0Connection,
+    enabledClients = c.enabled_clients,
+  ): ResourceInstance {
     return this.instance(
       accountId,
       "connection",
@@ -484,7 +523,7 @@ export class Auth0Client implements PluginClient {
         name: str(c.name),
         displayName: str(c.display_name),
         strategy: str(c.strategy),
-        enabledClients: (c.enabled_clients ?? []).join(", "),
+        enabledClients: (enabledClients ?? []).join(", "),
         isDomainConnection: c.is_domain_connection === true,
         showAsButton: c.show_as_button === true,
         realms: (c.realms ?? []).join(", "),
@@ -1395,7 +1434,7 @@ export class Auth0Client implements PluginClient {
               body: clients.map((client_id) => ({ client_id, status: true })),
             });
           }
-          return this.mapConnection(accountId, connection);
+          return this.mapReadConnection(accountId, connection);
         }
         case "user": {
           const verified = fields["emailVerified"] === "true";
@@ -1579,7 +1618,7 @@ export class Auth0Client implements PluginClient {
           if (domain !== undefined) body.is_domain_connection = domain;
           const button = bool(fields["showAsButton"]);
           if (button !== undefined) body.show_as_button = button;
-          return this.mapConnection(
+          return this.mapReadConnection(
             accountId,
             await this.rest.patch(`/connections/${id}`, { body }),
           );

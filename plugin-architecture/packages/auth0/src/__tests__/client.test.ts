@@ -384,6 +384,116 @@ describe("paged reads of custom domains and enabled applications", () => {
   });
 });
 
+describe("a connection's enabled applications", () => {
+  const route = (call: Call) => {
+    const url = new URL(call.url);
+    const match = url.pathname.match(/\/connections\/([^/]+)\/clients$/);
+    if (match) return { body: { clients: [{ client_id: `app-of-${match[1]}` }] } };
+    return null;
+  };
+
+  it("fills a list row that carries none from the route the document names", async () => {
+    const c = client(
+      (call) => route(call) ?? { body: { connections: [{ id: "con_1" }, { id: "con_2" }] } },
+    );
+    const rows = await c.listResources("connection", ACCOUNT);
+    expect(rows.map((r) => r.fields["enabledClients"])).toEqual(["app-of-con_1", "app-of-con_2"]);
+  });
+
+  it("reads every page for a list row", async () => {
+    const c = client((call) => {
+      const url = new URL(call.url);
+      if (url.pathname.endsWith("/clients")) {
+        return url.searchParams.get("from")
+          ? { body: { clients: [{ client_id: "b" }] } }
+          : { body: { clients: [{ client_id: "a" }], next: "n" } };
+      }
+      return { body: { connections: [{ id: "con_1" }] } };
+    });
+    const [row] = await c.listResources("connection", ACCOUNT);
+    expect(row!.fields["enabledClients"]).toBe("a, b");
+  });
+
+  it("spends no request on a row that still carries them", async () => {
+    const c = client(() => ({
+      body: { connections: [{ id: "con_1", enabled_clients: ["a", "b"] }] },
+    }));
+    const [row] = await c.listResources("connection", ACCOUNT);
+    expect(row!.fields["enabledClients"]).toBe("a, b");
+    expect(apiCalls()).toHaveLength(1);
+  });
+
+  it("keeps the connection when its applications cannot be read", async () => {
+    const c = client((call) =>
+      route(call)
+        ? { status: 500, body: { message: "busy" } }
+        : { body: { connections: [{ id: "con_1" }] } },
+    );
+    const rows = await c.listResources("connection", ACCOUNT);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.fields["enabledClients"]).toBe("");
+  });
+
+  it("carries a cut-off list of applications out through the sync", async () => {
+    const c = client((call) =>
+      route(call)
+        ? { body: { clients: [{ client_id: "a" }], next: "again" } }
+        : { body: { connections: [{ id: "con_1" }] } },
+    );
+    await expect(c.listResources("connection", ACCOUNT)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("leaves the field blank rather than spend a sync on a tenant past the cap", async () => {
+    const connections = Array.from({ length: 1001 }, (_, i) => ({ id: `con_${i}` }));
+    const c = client((call) => route(call) ?? { body: { connections } });
+    const rows = await c.listResources("connection", ACCOUNT);
+    expect(rows).toHaveLength(1001);
+    expect(rows[0]!.fields["enabledClients"]).toBe("");
+    expect(apiCalls()).toHaveLength(1);
+  });
+
+  it.each([
+    ["GET", () => undefined],
+    ["PATCH", () => ({ displayName: "New" })],
+  ])("prefers the route over the deprecated property on a %s", async (method, fields) => {
+    const c = client(
+      (call) => route(call) ?? { body: { id: "con_1", name: "db", enabled_clients: ["stale"] } },
+    );
+    const id = `${ACCOUNT}:connection:con_1`;
+    const changes = fields();
+    const row = changes
+      ? await c.updateResource("connection", id, ACCOUNT, changes)
+      : await c.getResource("connection", id, ACCOUNT);
+    expect(row.fields["enabledClients"]).toBe("app-of-con_1");
+    expect(apiCalls().some((x) => x.method === method)).toBe(true);
+  });
+
+  it("falls back on the deprecated property when the route fails", async () => {
+    const c = client((call) =>
+      route(call)
+        ? { status: 500, body: { message: "busy" } }
+        : { body: { id: "con_1", enabled_clients: ["kept"] } },
+    );
+    const row = await c.getResource("connection", `${ACCOUNT}:connection:con_1`, ACCOUNT);
+    expect(row.fields["enabledClients"]).toBe("kept");
+  });
+
+  it("shows what a create just enabled", async () => {
+    const c = client((call) => {
+      const url = new URL(call.url);
+      if (url.pathname.endsWith("/clients") && call.method === "PATCH") return { status: 204 };
+      return route(call) ?? { body: { id: "con_1", name: "db" } };
+    });
+    const row = await c.createResource("connection", ACCOUNT, {
+      name: "db",
+      enabledClients: JSON.stringify(["app-of-con_1"]),
+    });
+    expect(row.fields["enabledClients"]).toBe("app-of-con_1");
+  });
+});
+
 describe("mutations", () => {
   it("appends an action to its trigger's flow, keeping existing bindings", async () => {
     const c = client((call) => {
