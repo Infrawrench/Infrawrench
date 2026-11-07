@@ -10,7 +10,8 @@ import type {
   PreflightPermission,
   PreflightResult,
 } from "@infrawrench/plugin-base";
-import { crdb, statusOf } from "./api.js";
+import { unencodedSegment } from "@infrawrench/plugin-base";
+import { statusOf } from "./api.js";
 import type { CockroachClient } from "./client.js";
 
 const HELP = "https://cockroachlabs.cloud/access";
@@ -80,7 +81,8 @@ export async function verifyCockroachCredentials(
   const checks = await Promise.all([
     firstCluster
       ? probe("manage", [P.cluster], () =>
-          crdb(client.ctx, "GET", `/api/v1/clusters/${firstCluster}/sql-users`),
+          // Sent as written, unlike every other cluster path in this plugin.
+          client.api.get(`/api/v1/clusters/${unencodedSegment(firstCluster)}/sql-users`),
         )
       : Promise.resolve<PreflightCapabilityCheck>({
           capabilityId: "manage",
@@ -88,10 +90,10 @@ export async function verifyCockroachCredentials(
           message: "No cluster to test against.",
         }),
     probe("costs", [P.billing], () =>
-      crdb(client.ctx, "GET", "/api/v1/invoices", undefined, { "pagination.limit": 1 }),
+      client.api.get("/api/v1/invoices", { query: { "pagination.limit": 1 } }),
     ),
     probe("access", [P.org], () =>
-      crdb(client.ctx, "GET", "/api/v1/service-accounts", undefined, { "pagination.limit": 1 }),
+      client.api.get("/api/v1/service-accounts", { query: { "pagination.limit": 1 } }),
     ),
   ]);
   return { checks: [inventory, ...checks] };

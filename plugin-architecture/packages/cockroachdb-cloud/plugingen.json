@@ -1,0 +1,225 @@
+{
+  "$schema": "../../../plugingen/plugingen.schema.json",
+  "specUrl": "https://cockroachlabs.cloud/assets/docs/api/latest/openapi.json",
+  "patches": [
+    {
+      "pointer": "/paths/~1api~1v1~1invoices/get/parameters/3",
+      "value": {
+        "name": "pagination.page",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "why": "The document gives this list no paging parameters, though the plugin has always sent them and walked `pagination.next_page`."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1invoices/get/parameters/4",
+      "value": {
+        "name": "pagination.limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "format": "int32"
+        }
+      },
+      "why": "As for `pagination.page`."
+    },
+    {
+      "pointer": "/components/schemas/ListInvoicesResponse/properties/pagination",
+      "value": {
+        "$ref": "#/components/schemas/KeysetPaginationResponse"
+      },
+      "why": "As for the parameters: the plugin reads `pagination.next_page` here as it does on every other list."
+    },
+    {
+      "pointer": "/paths/~1api~1v1~1clusters~1{cluster_id}~1metricexport~1{kind}",
+      "value": {
+        "post": {
+          "operationId": "EnableMetricExportByKind",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "cluster_id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "kind",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "api_key": {
+                      "type": "string"
+                    },
+                    "site": {
+                      "type": "string"
+                    },
+                    "role_arn": {
+                      "type": "string"
+                    },
+                    "target_region": {
+                      "type": "string"
+                    },
+                    "log_group_name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "operationId": "DeleteMetricExportByKind",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "cluster_id",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "in": "path",
+              "name": "kind",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DeleteMetricExportResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "why": "The document has one path per destination. The plugin picks the destination from a form field or a resource id, so it addresses them by name, and sends `{}` to the ones with no settings."
+    },
+    {
+      "pointer": "/components/schemas/CreateClusterRequest/properties/provider",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and CockroachDB Cloud validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/CreateClusterSpecification/properties/plan",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and CockroachDB Cloud validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ServerlessClusterUpdateSpecification/properties/upgrade_type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and CockroachDB Cloud validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/ClusterVersionDeferralUpdate/properties/deferral_policy",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and CockroachDB Cloud validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/EnableLogExportBody/properties/type",
+      "value": {
+        "type": "string"
+      },
+      "why": "Passed through from a form field; our select offers the valid values and CockroachDB Cloud validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    },
+    {
+      "pointer": "/components/schemas/CreateServiceAccountRequest/properties/roles/items",
+      "value": {
+        "type": "object",
+        "required": ["name", "resource"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/Resource"
+          }
+        }
+      },
+      "why": "Passed through from a form field; our select offers the valid values and CockroachDB Cloud validates whatever else arrives, so the plugin does not hold its own copy of the enum."
+    }
+  ],
+  "paths": {
+    "/api/v1/organization": ["get"],
+    "/api/v1/clusters": ["get", "post"],
+    "/api/v1/clusters/available-regions": ["get"],
+    "/api/v1/clusters/{cluster_id}": ["get", "patch", "delete"],
+    "/api/v1/clusters/{cluster_id}/backups": ["get"],
+    "/api/v1/clusters/{cluster_id}/backups-config": ["get", "patch"],
+    "/api/v1/clusters/{cluster_id}/blackout-windows": ["get", "post"],
+    "/api/v1/clusters/{cluster_id}/blackout-windows/{blackout_window_id}": ["patch", "delete"],
+    "/api/v1/clusters/{cluster_id}/cmek": ["get"],
+    "/api/v1/clusters/{cluster_id}/connection-string": ["get"],
+    "/api/v1/clusters/{cluster_id}/databases": ["get", "post"],
+    "/api/v1/clusters/{cluster_id}/databases/{name}": ["patch", "delete"],
+    "/api/v1/clusters/{cluster_id}/logexport": ["get", "post", "delete"],
+    "/api/v1/clusters/{cluster_id}/maintenance-window": ["get", "put"],
+    "/api/v1/clusters/{cluster_id}/metricexport/cloudwatch": ["get"],
+    "/api/v1/clusters/{cluster_id}/metricexport/datadog": ["get"],
+    "/api/v1/clusters/{cluster_id}/metricexport/prometheus": ["get", "post"],
+    "/api/v1/clusters/{cluster_id}/networking/allowlist": ["get", "post"],
+    "/api/v1/clusters/{cluster_id}/networking/allowlist/{cidr_ip}/{cidr_mask}": ["patch", "delete"],
+    "/api/v1/clusters/{cluster_id}/networking/egress-rules": ["get", "post"],
+    "/api/v1/clusters/{cluster_id}/networking/egress-rules/{rule_id}": ["patch", "delete"],
+    "/api/v1/clusters/{cluster_id}/nodes": ["get"],
+    "/api/v1/clusters/{cluster_id}/restores": ["get"],
+    "/api/v1/clusters/{destination_cluster_id}/restores": ["post"],
+    "/api/v1/clusters/{cluster_id}/sql-users": ["get", "post"],
+    "/api/v1/clusters/{cluster_id}/sql-users/{name}": ["delete"],
+    "/api/v1/clusters/{cluster_id}/sql-users/{name}/password": ["put"],
+    "/api/v1/clusters/{cluster_id}/version-deferral": ["get", "put"],
+    "/api/v1/cluster-versions": ["get"],
+    "/api/v1/folders": ["get", "post"],
+    "/api/v1/folders/{folder_id}": ["patch", "delete"],
+    "/api/v1/invoices": ["get"],
+    "/api/v1/service-accounts": ["get", "post"],
+    "/api/v1/service-accounts/{id}": ["patch", "delete"],
+    "/api/v1/api-keys": ["get", "post"],
+    "/api/v1/api-keys/{id}": ["patch", "delete"],
+    "/api/v1/clusters/{cluster_id}/metricexport/{kind}": ["post", "delete"]
+  }
+}
