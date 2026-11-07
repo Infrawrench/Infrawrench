@@ -7,7 +7,23 @@
  * the result set.
  */
 import type { Client as GraphClient } from "@microsoft/microsoft-graph-client";
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import {
+  followableLink,
+  ListTruncatedError,
+  requireListPage,
+  type ResourceInstance,
+} from "@infrawrench/plugin-base";
+
+const APPLICATIONS_URL = "https://graph.microsoft.com/v1.0/applications";
+/** "The default and maximum page sizes are 100 and 999" (application-list). */
+const APPLICATIONS_PAGE_SIZE = 999;
+/** 100,000 rows at the largest page: the most one poll can write. */
+const MAX_APPLICATION_PAGES = Math.ceil(100_000 / APPLICATIONS_PAGE_SIZE);
+
+interface ApplicationsPage {
+  value?: Array<Record<string, unknown>> | null;
+  "@odata.nextLink"?: string;
+}
 
 interface AppRegistrationContext {
   graphClient: GraphClient;
@@ -23,26 +39,25 @@ export async function listAppRegistrations(
   const apps: Array<Record<string, unknown>> = [];
   const servicePrincipals = new Map<string, string>(); // appId -> sp.id
 
-  // First page: apps. The SDK's `.api(absoluteUrl)` accepts the `@odata.nextLink`
-  // value verbatim, so paging is just "while there's a nextLink, fetch it".
-  let data = (await ctx.graphClient
+  // The SDK's `.api(absoluteUrl)` accepts the `@odata.nextLink` value verbatim, so
+  // paging is just "while there's a nextLink, fetch it". A page that fails, fails the
+  // list: what it held would otherwise read as deleted.
+  const place = { vendor: "Microsoft Graph", path: "/applications" };
+  let pageUrl = APPLICATIONS_URL;
+  let page = (await ctx.graphClient
     .api("/applications")
-    .top(100)
+    .top(APPLICATIONS_PAGE_SIZE)
     .select("id,appId,displayName,signInAudience,createdDateTime")
-    .get()) as {
-    value: Array<Record<string, unknown>>;
-    "@odata.nextLink"?: string;
-  };
-  apps.push(...data.value);
-  let nextLink = data["@odata.nextLink"];
-  while (nextLink) {
-    try {
-      data = (await ctx.graphClient.api(nextLink).get()) as typeof data;
-    } catch {
-      break;
+    .get()) as ApplicationsPage;
+  for (let read = 1; ; read++) {
+    apps.push(...requireListPage(page.value, { ...place, key: "value", page }));
+    const nextLink = page["@odata.nextLink"];
+    if (!nextLink) break;
+    if (read >= MAX_APPLICATION_PAGES) {
+      throw new ListTruncatedError({ ...place, items: apps.length, maxPages: read });
     }
-    apps.push(...data.value);
-    nextLink = data["@odata.nextLink"];
+    pageUrl = followableLink(nextLink, pageUrl, place);
+    page = (await ctx.graphClient.api(pageUrl).get()) as ApplicationsPage;
   }
 
   // Look up service principals one at a time: Graph doesn't support IN filters on appId,

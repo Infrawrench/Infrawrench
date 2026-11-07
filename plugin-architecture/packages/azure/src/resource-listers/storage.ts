@@ -1,5 +1,11 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, extractResourceGroup, extractVaultName, type ListerContext, listAllPages } from "./shared.js";
+import {
+  ARM,
+  extractResourceGroup,
+  extractVaultName,
+  type ListerContext,
+  listAllPages,
+} from "./shared.js";
 
 export async function listStorageAccounts(
   ctx: ListerContext,

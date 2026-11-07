@@ -192,7 +192,7 @@ describe("listAppRegistrations", () => {
   it("lists apps, follows nextLink, and resolves SPs", async () => {
     const { api } = graphMock({
       apps: [{ id: "obj-1", appId: "app-1", displayName: "App One" }],
-      nextLink: "https://graph/next",
+      nextLink: "https://graph.microsoft.com/v1.0/applications?$skiptoken=2",
       secondPage: [{ id: "obj-2", appId: "app-2", displayName: "App Two" }],
       spByAppId: { "app-1": "sp-1" },
     });
@@ -205,29 +205,84 @@ describe("listAppRegistrations", () => {
     expect(out[1]!.fields["servicePrincipalId"]).toBe("");
   });
 
-  it("breaks pagination on a nextLink fetch error", async () => {
-    const api = vi.fn((path: string) => {
-      if (path === "/applications") {
-        return {
-          top: () => ({
-            select: () => ({
-              get: async () => ({
-                value: [{ id: "o", appId: "a", displayName: "A" }],
-                "@odata.nextLink": "https://graph/next",
-              }),
-            }),
-          }),
-        };
-      }
-      if (path === "https://graph/next") {
-        return { get: async () => Promise.reject(new Error("page boom")) };
-      }
-      return {
-        filter: () => ({ select: () => ({ get: async () => ({ value: [] }) }) }),
-      };
+  describe("reading every page", () => {
+    const NEXT = "https://graph.microsoft.com/v1.0/applications?$skiptoken=2";
+    const APP = { id: "o", appId: "a", displayName: "A" };
+
+    function pagedGraph(first: () => unknown, later: (url: string) => unknown) {
+      const top = vi.fn();
+      const api = vi.fn((path: string) => {
+        if (path === "/applications") {
+          top.mockReturnValue({ select: () => ({ get: async () => first() }) });
+          return { top };
+        }
+        if (path === "/servicePrincipals") {
+          return { filter: () => ({ select: () => ({ get: async () => ({ value: [] }) }) }) };
+        }
+        return { get: async () => later(path) };
+      });
+      const list = () =>
+        listAppRegistrations({ ...ctxBase, graphClient: { api } as never }, "acct");
+      return { api, top, list };
+    }
+
+    it("fails the list on a later page that fails, rather than returning the rest", async () => {
+      const { list } = pagedGraph(
+        () => ({ value: [APP], "@odata.nextLink": NEXT }),
+        () => Promise.reject(new Error("page boom")),
+      );
+      await expect(list()).rejects.toThrow("page boom");
     });
-    const out = await listAppRegistrations({ ...ctxBase, graphClient: { api } as never }, "acct");
-    expect(out).toHaveLength(1);
+
+    it("asks for the largest page Graph documents", async () => {
+      const { top, list } = pagedGraph(
+        () => ({ value: [] }),
+        () => ({ value: [] }),
+      );
+      await list();
+      expect(top).toHaveBeenCalledWith(999);
+    });
+
+    it("refuses a first page that is not a list", async () => {
+      const { list } = pagedGraph(
+        () => ({ apps: [APP] }),
+        () => ({ value: [] }),
+      );
+      await expect(list()).rejects.toThrow("is not a list");
+    });
+
+    it("refuses a later page that is not a list", async () => {
+      const { list } = pagedGraph(
+        () => ({ value: [APP], "@odata.nextLink": NEXT }),
+        () => ({ apps: [] }),
+      );
+      await expect(list()).rejects.toThrow("is not a list");
+    });
+
+    it("does not send the token to another host", async () => {
+      const evil = "https://evil.example/v1.0/applications?$skiptoken=2";
+      const { api, list } = pagedGraph(
+        () => ({ value: [APP], "@odata.nextLink": evil }),
+        () => {
+          throw new Error("reached the foreign host");
+        },
+      );
+      await expect(list()).rejects.toThrow("Refusing to send the account's credentials there");
+      expect(api).not.toHaveBeenCalledWith(evil);
+    });
+
+    it("refuses past the page cap, at the 100,000 row ceiling", async () => {
+      let n = 0;
+      const next = () => ({
+        value: [APP],
+        "@odata.nextLink": `${NEXT}${n++}`,
+      });
+      const { api, list } = pagedGraph(next, next);
+      await expect(list()).rejects.toThrow("has more than Infrawrench reads");
+      // The first page goes through the query builder, the rest by their links.
+      const linked = api.mock.calls.filter(([path]) => path.startsWith("https://"));
+      expect(linked).toHaveLength(100);
+    });
   });
 
   it("ignores SP lookup failures", async () => {

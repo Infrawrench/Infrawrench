@@ -395,18 +395,18 @@ export async function listFirewalls(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const items = await listAllPages<{
-      id: string;
-      name: string;
-      location: string;
-      properties?: {
-        sku?: { name?: string; tier?: string };
-        provisioningState?: string;
-        threatIntelMode?: string;
-        ipConfigurations?: Array<{
-          properties?: { privateIPAddress?: string };
-        }>;
-      };
-    }>(
+    id: string;
+    name: string;
+    location: string;
+    properties?: {
+      sku?: { name?: string; tier?: string };
+      provisioningState?: string;
+      threatIntelMode?: string;
+      ipConfigurations?: Array<{
+        properties?: { privateIPAddress?: string };
+      }>;
+    };
+  }>(
     ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/azureFirewalls?api-version=2023-09-01`,
   );

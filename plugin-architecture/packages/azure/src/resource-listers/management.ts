@@ -39,17 +39,17 @@ export async function listLogAnalyticsWorkspaces(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const items = await listAllPages<{
-      id: string;
-      name: string;
-      location: string;
-      properties?: {
-        sku?: { name?: string };
-        provisioningState?: string;
-        retentionInDays?: number;
-        workspaceCapping?: { dailyQuotaGb?: number };
-        customerId?: string;
-      };
-    }>(
+    id: string;
+    name: string;
+    location: string;
+    properties?: {
+      sku?: { name?: string };
+      provisioningState?: string;
+      retentionInDays?: number;
+      workspaceCapping?: { dailyQuotaGb?: number };
+      customerId?: string;
+    };
+  }>(
     ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.OperationalInsights/workspaces?api-version=2022-10-01`,
   );
@@ -89,15 +89,15 @@ export async function listManagedIdentities(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const items = await listAllPages<{
-      id: string;
-      name: string;
-      location: string;
-      properties?: {
-        clientId?: string;
-        principalId?: string;
-        tenantId?: string;
-      };
-    }>(
+    id: string;
+    name: string;
+    location: string;
+    properties?: {
+      clientId?: string;
+      principalId?: string;
+      tenantId?: string;
+    };
+  }>(
     ctx,
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ManagedIdentity/userAssignedIdentities?api-version=2023-01-31`,
   );
