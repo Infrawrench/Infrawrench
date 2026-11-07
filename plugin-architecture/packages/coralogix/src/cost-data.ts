@@ -127,9 +127,11 @@ export async function fetchCoralogixCostData(
           PERMISSION_HELP,
         );
       }
-      // An old window beyond what the server keeps answers 400; the newest
-      // window must work, so only earlier ones may be skipped.
-      if (statusOf(err) === 400 && i < chunks.length - 1) continue;
+      // An old window beyond what the server keeps answers 400. The collector asks
+      // for one month at a time, so its position in this call says nothing: the
+      // date is what tells a window too old to answer from one that must work.
+      const old = chunk.toDate < utcDate(Date.now() - CHUNK_DAYS * DAY_MS);
+      if (statusOf(err) === 400 && (old || i < chunks.length - 1)) continue;
       throw err;
     }
   }

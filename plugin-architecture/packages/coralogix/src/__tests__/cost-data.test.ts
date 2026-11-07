@@ -250,6 +250,32 @@ describe("fetchCoralogixCostData", () => {
     ).rejects.toBeInstanceOf(CostSetupError);
   });
 
+  const dayAgo = (days: number) =>
+    new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+  const refusing = () =>
+    makeHttp((url) => {
+      if (url.pathname.endsWith("/daily/units")) return { status: 400, body: { message: "no" } };
+      if (url.pathname.endsWith("/daily/processed-gbs")) return { body: { gbs: [] } };
+      throw new Error(`Unexpected ${url.pathname}`);
+    }).http;
+
+  it("skips an old month asked for on its own, as the collector asks for every month", async () => {
+    const old = dayAgo(300);
+    const rows = await fetchCoralogixCostData(
+      ctxWith(refusing()),
+      { fromDate: old, toDate: old },
+      1.5,
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it("fails on a recent month the server refuses, however it was asked for", async () => {
+    const recent = dayAgo(2);
+    await expect(
+      fetchCoralogixCostData(ctxWith(refusing()), { fromDate: recent, toDate: recent }, 1.5),
+    ).rejects.toThrow(/400/);
+  });
+
   it("skips an old window the server will not answer, but not the newest", async () => {
     const { http } = makeHttp((url, _m, body) => {
       const from = (body as { dateRange?: { fromDate?: string } })?.dateRange?.fromDate ?? "";
