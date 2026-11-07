@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CostSetupError, type CostRow } from "@infrawrench/plugin-base";
+import { CostSetupError, ListTruncatedError, type CostRow } from "@infrawrench/plugin-base";
 import {
   SERVICE,
   billableFraction,
@@ -50,6 +50,69 @@ const ctx = (plan: string, overrides = "") => ({
   rates: resolveRates(plan, overrides).rates,
   projectIdsByName: async () => new Map([["web", "proj-web"]]),
   now: () => NOW,
+});
+
+describe("what a failed read leaves behind", () => {
+  const RANGE = { fromDate: "2026-10-03", toDate: "2026-10-03" };
+  const usage = () => ({ containerBuild: [{ projectName: "web", minutesBilled: 10 }] });
+  const failing = (err: Error) => ({
+    ...ctx("business"),
+    projectIdsByName: async (): Promise<Map<string, string>> => {
+      throw err;
+    },
+  });
+
+  it("does not store rows with no project id over attributed ones when projects fail", async () => {
+    installUsage(usage);
+    await expect(
+      fetchDepotCostData(
+        failing(new Error("Depot API error 503 for ListProjects: unavailable")),
+        RANGE,
+      ),
+    ).rejects.toThrow("503");
+  });
+
+  it("does not read a project list cut short as no projects", async () => {
+    installUsage(usage);
+    const truncated = new ListTruncatedError({ vendor: "Depot", path: "x", items: 1, maxPages: 1 });
+    await expect(fetchDepotCostData(failing(truncated), RANGE)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("still prices usage for a token refused the project list", async () => {
+    installUsage(usage);
+    const rows = await fetchDepotCostData(
+      failing(new Error("Depot API error 403 for ListProjects: permission_denied")),
+      RANGE,
+    );
+    const build = rows.find((r) => r.service === SERVICE.builds);
+    expect(build).toMatchObject({ tags: { project: "web" } });
+    expect(build).not.toHaveProperty("resourceId");
+  });
+
+  it("fails on a usage answer that is not a usage message", async () => {
+    for (const answer of [[], { githubActionsJobs: "oops" }]) {
+      vi.restoreAllMocks();
+      installUsage(() => answer as unknown as WireUsage);
+      await expect(fetchDepotCostData(ctx("business"), RANGE)).rejects.toThrow("is not a list");
+    }
+  });
+
+  it("fails on a usage answer with no body from the host", async () => {
+    const request = vi.fn(async () => ({ status: 200, headers: {}, body: "" }));
+    await expect(
+      fetchDepotCostData(
+        { ...ctx("business"), transport: { token: "t", http: { request } } },
+        RANGE,
+      ),
+    ).rejects.toThrow("is not a list");
+  });
+
+  it("reads an idle day, which proto3 JSON answers as an empty object", async () => {
+    installUsage(() => ({}));
+    await expect(fetchDepotCostData(ctx("business"), RANGE)).resolves.toEqual([]);
+  });
 });
 
 describe("billableFraction", () => {

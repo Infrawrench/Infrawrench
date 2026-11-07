@@ -30,7 +30,13 @@
  */
 
 import { CostSetupError, type CostFetchRange, type CostRow } from "@infrawrench/plugin-base";
-import { getUsage, mapLimit, type DepotTransport, type WireUsage } from "./api.js";
+import {
+  getUsage,
+  isPermissionDenied,
+  mapLimit,
+  type DepotTransport,
+  type WireUsage,
+} from "./api.js";
 import { cycleBounds, cycleLengthDays, type DepotRates } from "./rates.js";
 
 const DAY_MS = 86_400_000;
@@ -49,7 +55,7 @@ export const SERVICE = {
 export interface DepotCostContext {
   transport: DepotTransport;
   rates: DepotRates;
-  /** Project name → project id, for `resourceId` on build rows. Best-effort. */
+  /** Project name → project id, for `resourceId` on build rows. */
   projectIdsByName: () => Promise<Map<string, string>>;
   now?: () => Date;
 }
@@ -312,7 +318,12 @@ export async function fetchDepotCostData(
   } catch (err) {
     throw asCostSetupError(err);
   }
-  const projectIds = await ctx.projectIdsByName().catch(() => new Map<string, string>());
+  // Rows with no project id have a different key, so the reconcile would zero the attributed
+  // rows they replace. Only a token that can never read projects goes without.
+  const projectIds = await ctx.projectIdsByName().catch((err) => {
+    if (isPermissionDenied(err)) return new Map<string, string>();
+    throw err;
+  });
 
   // Which cycles show any usage, so the plan fee only lands on those.
   const activeCycles = new Set<number>();

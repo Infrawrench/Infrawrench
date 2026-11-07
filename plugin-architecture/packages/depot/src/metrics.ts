@@ -58,8 +58,10 @@ export async function listBuildsSince(
     { projectId },
     (r) => r.builds,
     {
+      key: "builds",
       pageSize: 100,
       maxPages,
+      partial: true,
       // Newest first: once a page reaches past the window there is nothing older to want.
       stop: (page) => page.some((b) => Date.parse(b.createdAt ?? "") < sinceMs),
     },

@@ -18,7 +18,14 @@
  * Enums are their full value names (`STATUS_SUCCESS`, `HARDWARE_4X4`).
  */
 
-import { jsonRestFetch, type HttpHostServices } from "@infrawrench/plugin-base";
+import {
+  ListPageError,
+  ListTruncatedError,
+  hostTransport,
+  jsonRestFetch,
+  requireListPage,
+  type HttpHostServices,
+} from "@infrawrench/plugin-base";
 
 export const DEPOT_API_BASE = "https://api.depot.dev";
 const VENDOR = "Depot";
@@ -151,12 +158,12 @@ export interface DepotTransport {
  * body `{code, message}`; `jsonRestFetch` folds both into the thrown message,
  * which is what the host shows.
  */
-export async function connectCall<T>(
+function connectRequest<T>(
   transport: DepotTransport,
   method: string,
-  body: Record<string, unknown> = {},
+  body: Record<string, unknown>,
 ): Promise<T> {
-  const result = await jsonRestFetch<T>({
+  return jsonRestFetch<T>({
     vendor: VENDOR,
     url: `${DEPOT_API_BASE}/${method}`,
     errorPath: method,
@@ -166,10 +173,39 @@ export async function connectCall<T>(
       "Connect-Protocol-Version": "1",
     },
     init: { method: "POST", body: JSON.stringify(body) },
-    ...(transport.http ? { http: transport.http } : {}),
-    ...(transport.http && transport.caCert ? { caCert: transport.caCert } : {}),
+    ...hostTransport(transport.http, transport.caCert),
   });
-  return (result ?? {}) as T;
+}
+
+/** A call whose answer is not read as the whole of anything: a write, or one record. */
+export async function connectCall<T>(
+  transport: DepotTransport,
+  method: string,
+  body: Record<string, unknown> = {},
+): Promise<T> {
+  const result = await connectRequest<T | null | undefined>(transport, method, body);
+  return result ?? ({} as T);
+}
+
+/**
+ * A call whose answer says what exists. Connect writes an empty message as `{}`, so
+ * no body, `null` or an array is not an empty answer, and must not read as one.
+ */
+async function connectMessage<T extends object>(
+  transport: DepotTransport,
+  method: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const answer = await connectRequest<T | null | undefined>(transport, method, body);
+  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) {
+    throw new ListPageError({ vendor: VENDOR, path: method, key: null, found: answer });
+  }
+  return answer;
+}
+
+/** Whether a call failed because the token may not do this, rather than for any passing reason. */
+export function isPermissionDenied(err: unknown): boolean {
+  return err instanceof Error && err.message.startsWith(`${VENDOR} API error 403 `);
 }
 
 /** Fully-qualified method names, so a typo is a compile error rather than a 404. */
@@ -195,36 +231,46 @@ export const RPC = {
   getUsage: "depot.core.v1.UsageService/GetUsage",
 } as const;
 
-/** Most pages any one listing walks, so a huge org cannot stall a sync pass. */
-const MAX_PAGES = 20;
+export interface ListPagesOptions<TItem> {
+  /** The field holding the list, for the error when it is not one. */
+  key: string;
+  pageSize: number;
+  /** Past this it throws, because a sync reads whatever is missing as deleted. */
+  maxPages: number;
+  /** For a read where part of a list is fine: return at the cap, rather than throw. */
+  partial?: boolean;
+  stop?: (items: TItem[]) => boolean;
+}
 
 /**
- * Walk a `page_token` / `next_page_token` listing. Depot returns an empty
- * (or absent) token on the last page.
+ * Walk a `page_token` / `next_page_token` listing. Depot's document defines an
+ * empty token as the last page, so an empty page with a token is not the end.
  */
-export async function listAllPages<TItem, TResponse extends { nextPageToken?: string }>(
+export async function listAllPages<TItem, TResponse extends { nextPageToken?: string | undefined }>(
   transport: DepotTransport,
   method: string,
   body: Record<string, unknown>,
-  pick: (response: TResponse) => TItem[] | undefined,
-  options: { pageSize?: number; maxPages?: number; stop?: (items: TItem[]) => boolean } = {},
+  pick: (response: TResponse) => TItem[] | null | undefined,
+  options: ListPagesOptions<TItem>,
 ): Promise<TItem[]> {
+  const { key, pageSize, maxPages, partial, stop } = options;
   const out: TItem[] = [];
   let pageToken: string | undefined;
-  const maxPages = options.maxPages ?? MAX_PAGES;
   for (let page = 0; page < maxPages; page++) {
-    const response = await connectCall<TResponse>(transport, method, {
+    const response = await connectMessage<TResponse>(transport, method, {
       ...body,
-      ...(options.pageSize ? { pageSize: options.pageSize } : {}),
+      pageSize,
       ...(pageToken ? { pageToken } : {}),
     });
-    const items = pick(response) ?? [];
+    // proto3 JSON leaves an empty list out of the answer (see the top of this file).
+    const items = requireListPage(pick(response) ?? null, { vendor: VENDOR, path: method, key });
     out.push(...items);
-    if (options.stop?.(items)) break;
+    if (stop?.(items)) return out;
     pageToken = response.nextPageToken || undefined;
-    if (!pageToken || items.length === 0) break;
+    if (!pageToken) return out;
   }
-  return out;
+  if (partial) return out;
+  throw new ListTruncatedError({ vendor: VENDOR, path: method, items: out.length, maxPages });
 }
 
 /** `Promise.all` over `items` with at most `limit` calls in flight. */
@@ -251,13 +297,19 @@ export async function mapLimit<T, R>(
  * end is treated as inclusive: it is sent one millisecond before `endMs`,
  * which keeps adjacent windows from both counting a boundary instant.
  */
-export function getUsage(
+export async function getUsage(
   transport: DepotTransport,
   startMs: number,
   endMs: number,
 ): Promise<WireUsage> {
-  return connectCall<WireUsage>(transport, RPC.getUsage, {
+  const usage = await connectMessage<WireUsage>(transport, RPC.getUsage, {
     startAt: new Date(startMs).toISOString(),
     endAt: new Date(endMs - 1).toISOString(),
   });
+  const place = { vendor: VENDOR, path: RPC.getUsage };
+  requireListPage(usage.containerBuild ?? null, { ...place, key: "containerBuild" });
+  requireListPage(usage.githubActionsJobs ?? null, { ...place, key: "githubActionsJobs" });
+  requireListPage(usage.storage ?? null, { ...place, key: "storage" });
+  requireListPage(usage.agentSandbox ?? null, { ...place, key: "agentSandbox" });
+  return usage;
 }

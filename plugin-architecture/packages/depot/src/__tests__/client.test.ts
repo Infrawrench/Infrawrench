@@ -22,6 +22,14 @@ function response(body: unknown, status = 200): Response {
   } as unknown as Response;
 }
 
+/** What a route answers to fail the call instead of returning a body. */
+class Failure {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+  ) {}
+}
+
 /** Route Connect calls by method name. */
 function installApi(routes: Record<string, (body: Record<string, unknown>) => unknown>) {
   const calls: Call[] = [];
@@ -31,7 +39,10 @@ function installApi(routes: Record<string, (body: Record<string, unknown>) => un
     calls.push({ method, body });
     const route = routes[method];
     if (!route) return response({ code: "not_found", message: method }, 404);
-    return response(route(body));
+    const answer = route(body);
+    return answer instanceof Failure
+      ? response({ code: answer.code, message: answer.code }, answer.status)
+      : response(answer);
   }) as unknown as typeof fetch);
   return calls;
 }
@@ -275,6 +286,253 @@ describe("DepotClient", () => {
       rows: Array<{ cells: Record<string, string> }>;
     };
     expect(table.rows[0]!.cells["workflow"]).toBe("ci");
+  });
+});
+
+const LIST = {
+  projects: "depot.core.v1.ProjectService/ListProjects",
+  usage: "depot.core.v1.UsageService/ListProjectUsage",
+  builds: "depot.core.v1.BuildService/ListBuilds",
+  tokens: "depot.core.v1.ProjectService/ListTokens",
+  trust: "depot.core.v1.ProjectService/ListTrustPolicies",
+  images: "depot.build.v1.RegistryService/ListImages",
+};
+const TRUNCATED = "has more than Infrawrench reads";
+const NOT_A_LIST = "is not a list";
+const countOf = (calls: Call[], method: string) => calls.filter((c) => c.method === method).length;
+
+describe("list reads a sync prunes by", () => {
+  const UNREAD_HOOK = Symbol.for("infrawrench.unreadListPart");
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, UNREAD_HOOK);
+  });
+
+  /** Two pages, the second only reachable through the first's token. */
+  const twoPages =
+    <K extends string>(key: K, first: object, second: object) =>
+    (body: Record<string, unknown>) =>
+      body["pageToken"] === "next"
+        ? { [key]: [second] }
+        : { [key]: [first], nextPageToken: "next" };
+
+  it("asks for projects at the documented maximum and throws past the row ceiling", async () => {
+    const calls = installApi({
+      ...PROJECTS,
+      [LIST.projects]: () => ({ projects: [{ projectId: "p" }], nextPageToken: "more" }),
+    });
+    await expect(client().listResources("depot-project", ACCOUNT)).rejects.toThrow(TRUNCATED);
+    expect(countOf(calls, LIST.projects)).toBe(400);
+    expect(calls.find((c) => c.method === LIST.projects)!.body["pageSize"]).toBe(250);
+  });
+
+  it("reads an account with no projects, which proto3 JSON answers with no list at all", async () => {
+    installApi({ [LIST.projects]: () => ({}), [LIST.usage]: () => ({}) });
+    await expect(client().listResources("depot-project", ACCOUNT)).resolves.toEqual([]);
+  });
+
+  it("keeps reading past an empty page that still carries a token", async () => {
+    const calls = installApi({
+      [LIST.usage]: () => ({}),
+      [LIST.projects]: (body) =>
+        body["pageToken"] === "next"
+          ? { projects: [{ projectId: "p2" }] }
+          : { nextPageToken: "next" },
+    });
+    const projects = await client().listResources("depot-project", ACCOUNT);
+    expect(projects.map((p) => p.externalId)).toEqual(["p2"]);
+    expect(countOf(calls, LIST.projects)).toBe(2);
+  });
+
+  it.each([
+    ["a list that is not an array", { projects: "oops" }],
+    ["a whole answer that is an array", []],
+    ["a whole answer of null", null],
+  ])("throws on %s on the first page", async (_name, page) => {
+    installApi({ ...PROJECTS, [LIST.projects]: () => page });
+    await expect(client().listResources("depot-project", ACCOUNT)).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("throws on a bad page after a good one", async () => {
+    installApi({
+      ...PROJECTS,
+      [LIST.projects]: (body) =>
+        body["pageToken"] === "next"
+          ? { projects: { renamed: true } }
+          : { projects: [{ projectId: "p1" }], nextPageToken: "next" },
+    });
+    await expect(client().listResources("depot-project", ACCOUNT)).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("throws when the host answers a list with an empty body", async () => {
+    const request = vi.fn(async () => ({ status: 200, headers: {}, body: "" }));
+    const fetchStub = vi.spyOn(globalThis, "fetch");
+    const hosted = hostClient(new DepotClient({ token: "t" }, { http: { request } }));
+    await expect(hosted.listResources("depot-project", ACCOUNT)).rejects.toThrow(NOT_A_LIST);
+    expect(request).toHaveBeenCalled();
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it("goes through the host's HTTP service with no CA set", async () => {
+    const request = vi.fn(
+      async (_req: { url: string; caCert?: string }) =>
+        ({ status: 200, headers: {}, body: "{}" }) as const,
+    );
+    const fetchStub = vi.spyOn(globalThis, "fetch");
+    const hosted = hostClient(new DepotClient({ token: "t" }, { http: { request } }));
+    await hosted.listResources("depot-project", ACCOUNT);
+    expect(request.mock.calls[0]![0]).not.toHaveProperty("caCert");
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  it("still lists projects when the usage read fails, but not when it is cut short", async () => {
+    installApi({ ...PROJECTS, [LIST.usage]: () => new Failure(503, "unavailable") });
+    const [project] = await client().listResources("depot-project", ACCOUNT);
+    expect(project!.externalId).toBe("p1");
+
+    const calls = installApi({
+      ...PROJECTS,
+      [LIST.usage]: () => ({ usage: [{ projectId: "x" }], nextPageToken: "more" }),
+    });
+    await expect(client().listResources("depot-project", ACCOUNT)).rejects.toThrow(TRUNCATED);
+    expect(countOf(calls, LIST.usage)).toBe(1000);
+  });
+
+  it("follows the pages of a project's tokens", async () => {
+    const calls = installApi({
+      ...PROJECTS,
+      [LIST.tokens]: twoPages("tokens", { tokenId: "t1" }, { tokenId: "t2" }),
+    });
+    const tokens = await client().listResources("depot-token", ACCOUNT);
+    expect(tokens.map((t) => t.externalId)).toEqual(["p1/t1", "p1/t2"]);
+    expect(calls.find((c) => c.method === LIST.tokens)!.body).toEqual({
+      projectId: "p1",
+      pageSize: 250,
+    });
+  });
+
+  it("follows the pages of a project's trust policies", async () => {
+    const calls = installApi({
+      ...PROJECTS,
+      [LIST.trust]: twoPages(
+        "trustPolicies",
+        { trustPolicyId: "t1", github: { repositoryOwner: "a", repository: "b" } },
+        { trustPolicyId: "t2", github: { repositoryOwner: "a", repository: "c" } },
+      ),
+    });
+    const policies = await client().listResources("depot-trust-policy", ACCOUNT);
+    expect(policies.map((t) => t.externalId)).toEqual(["p1/t1", "p1/t2"]);
+    expect(calls.find((c) => c.method === LIST.trust)!.body["pageSize"]).toBe(250);
+  });
+
+  it.each([
+    ["depot-token", LIST.tokens, "tokens", 40],
+    ["depot-trust-policy", LIST.trust, "trustPolicies", 40],
+    ["depot-registry-image", LIST.images, "images", 100],
+  ])("throws when %s runs past its cap", async (type, method, key, requests) => {
+    const calls = installApi({
+      ...PROJECTS,
+      [method]: () => ({ [key]: [], nextPageToken: "more" }),
+    });
+    await expect(client().listResources(type, ACCOUNT)).rejects.toThrow(TRUNCATED);
+    expect(countOf(calls, method)).toBe(requests);
+  });
+
+  it("reads images past the old 200 cap", async () => {
+    const tag = (page: number, i: number) => ({ tag: `v${page}-${i}` });
+    installApi({
+      ...PROJECTS,
+      [LIST.images]: (body) => {
+        const page = Number(body["pageToken"] ?? 0);
+        return {
+          images: Array.from({ length: 100 }, (_, i) => tag(page, i)),
+          ...(page < 2 ? { nextPageToken: String(page + 1) } : {}),
+        };
+      },
+    });
+    const images = await client().listResources("depot-registry-image", ACCOUNT);
+    expect(images).toHaveLength(300);
+  });
+
+  it.each([
+    ["a 5xx", 503, "unavailable"],
+    ["a throttle", 429, "resource_exhausted"],
+    ["an expired credential", 401, "unauthenticated"],
+    ["a missing route", 404, "not_found"],
+  ])("fails the image list on %s rather than reading none", async (_name, status, code) => {
+    installApi({ ...PROJECTS, [LIST.images]: () => new Failure(status, code) });
+    await expect(client().listResources("depot-registry-image", ACCOUNT)).rejects.toThrow(
+      String(status),
+    );
+  });
+
+  it("fails the image list on a page that is not a list", async () => {
+    installApi({ ...PROJECTS, [LIST.images]: () => ({ images: "oops" }) });
+    await expect(client().listResources("depot-registry-image", ACCOUNT)).rejects.toThrow(
+      NOT_A_LIST,
+    );
+  });
+
+  const TWO_PROJECTS = {
+    [LIST.projects]: () => ({ projects: [{ projectId: "p1" }, { projectId: "p2" }] }),
+    [LIST.images]: (body: Record<string, unknown>) =>
+      body["projectId"] === "p1"
+        ? new Failure(403, "permission_denied")
+        : { images: [{ tag: "latest" }] },
+  };
+
+  it("keeps a refused project's stored images without failing the type", async () => {
+    const unread = vi.fn();
+    Reflect.set(globalThis, UNREAD_HOOK, unread);
+    installApi(TWO_PROJECTS);
+    const images = await client().listResources("depot-registry-image", ACCOUNT);
+    expect(images.map((i) => i.externalId)).toEqual(["p2/latest"]);
+    expect(unread).toHaveBeenCalledWith({ parentResourceIds: ["acct:depot-project:p1"] });
+  });
+
+  it("shows the refusal on a host that keeps no track of stored rows", async () => {
+    installApi(TWO_PROJECTS);
+    await expect(client().listResources("depot-registry-image", ACCOUNT)).rejects.toThrow("403");
+  });
+
+  it("reads builds as a rolling window of the first page", async () => {
+    const calls = installApi({
+      ...PROJECTS,
+      [LIST.builds]: () => ({ builds: [{ buildId: "b1" }], nextPageToken: "older" }),
+    });
+    const builds = await client().listResources("depot-build", ACCOUNT);
+    expect(builds.map((b) => b.externalId)).toEqual(["p1/b1"]);
+    expect(countOf(calls, LIST.builds)).toBe(1);
+  });
+
+  it.each([
+    ["depot-build", LIST.builds, { builds: "oops" }],
+    ["depot-token", LIST.tokens, { tokens: "oops" }],
+    ["depot-trust-policy", LIST.trust, { trustPolicies: "oops" }],
+  ])("fails %s on a page that is not a list", async (type, method, page) => {
+    installApi({ ...PROJECTS, [method]: () => page });
+    await expect(client().listResources(type, ACCOUNT)).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("fails the actions repositories on a usage answer with no body", async () => {
+    const request = vi.fn(async () => ({ status: 200, headers: {}, body: "" }));
+    const hosted = hostClient(new DepotClient({ token: "t" }, { http: { request } }));
+    await expect(hosted.listResources("depot-actions-repo", ACCOUNT)).rejects.toThrow(NOT_A_LIST);
+  });
+
+  it("charts a project from part of its history when it runs past the chart's cap", async () => {
+    const calls = installApi({
+      [LIST.builds]: () => ({
+        builds: [{ buildId: "b", createdAt: new Date().toISOString(), buildDurationSeconds: 60 }],
+        nextPageToken: "more",
+      }),
+    });
+    const series = await client().fetchMetricSeries(
+      "depot-project",
+      "acct:depot-project:p1",
+      ACCOUNT,
+    );
+    expect(series.find((s) => s.label === "Builds")!.points.at(-1)!.value).toBe(10);
+    expect(countOf(calls, LIST.builds)).toBe(10);
   });
 });
 

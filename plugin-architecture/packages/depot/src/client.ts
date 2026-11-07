@@ -18,11 +18,17 @@ import type {
   SectionNode,
   SidebarItemSchema,
 } from "@infrawrench/plugin-base";
-import { externalIdOf, joinSubtitle } from "@infrawrench/plugin-base";
+import {
+  externalIdOf,
+  joinSubtitle,
+  reportUnreadListPart,
+  rethrowIncompleteList,
+} from "@infrawrench/plugin-base";
 import {
   RPC,
   connectCall,
   getUsage,
+  isPermissionDenied,
   listAllPages,
   mapLimit,
   type DepotTransport,
@@ -57,8 +63,20 @@ const PLUGIN_ID = "depot";
 const DAY_MS = 86_400_000;
 /** Builds listed per project: the recent history, not the archive. */
 const RECENT_BUILDS = 25;
-/** Image tags listed per project. */
-const MAX_IMAGES = 200;
+/** The documented maximum, and default, for projects, tokens and trust policies. */
+const MAX_PAGE_SIZE = 250;
+/** 100,000 projects, the most one sync can hold. */
+const MAX_PROJECT_PAGES = 400;
+/** 10,000 of a project's tokens or trust policies. */
+const MAX_CHILD_PAGES = 40;
+/** The size Depot's image listing docs use; they state no maximum. */
+const IMAGE_PAGE_SIZE = 100;
+/** 10,000 image tags in a project. */
+const MAX_IMAGE_PAGES = 100;
+/** No maximum is documented for project usage. */
+const USAGE_PAGE_SIZE = 100;
+/** One row per project, so as many as there can be projects. */
+const MAX_USAGE_PAGES = 1000;
 const CONCURRENCY = 4;
 const RESET_CACHE_ACTION = "reset-cache";
 /** Depot redirects `_` to the signed-in user's current organization. */
@@ -186,7 +204,11 @@ export class DepotClient implements PluginClient {
     this.projectCache ??= listAllPages<
       WireProject,
       { projects?: WireProject[]; nextPageToken?: string }
-    >(this.transport, RPC.listProjects, {}, (r) => r.projects, { pageSize: 100 }).catch((err) => {
+    >(this.transport, RPC.listProjects, {}, (r) => r.projects, {
+      key: "projects",
+      pageSize: MAX_PAGE_SIZE,
+      maxPages: MAX_PROJECT_PAGES,
+    }).catch((err) => {
       this.projectCache = undefined;
       throw err;
     });
@@ -206,8 +228,12 @@ export class DepotClient implements PluginClient {
         endAt: new Date(endMs).toISOString(),
       },
       (r) => r.usage,
-      { pageSize: 100 },
-    ).catch(() => [] as WireProjectUsage[]);
+      { key: "usage", pageSize: USAGE_PAGE_SIZE, maxPages: MAX_USAGE_PAGES },
+    ).catch((err) => {
+      // Usage only adds to a project, so a failed read leaves the project without it.
+      rethrowIncompleteList(err);
+      return [] as WireProjectUsage[];
+    });
     return new Map(usage.map((u) => [u.projectId ?? "", u]));
   }
 
@@ -227,47 +253,47 @@ export class DepotClient implements PluginClient {
         }
         case BUILD_TYPE:
           return this.perProject(async (p) => {
-            const res = await connectCall<{ builds?: WireBuild[] }>(
-              this.transport,
-              RPC.listBuilds,
-              {
-                projectId: p.projectId,
-                pageSize: RECENT_BUILDS,
-              },
-            );
-            return (res.builds ?? []).map((b) => this.mapBuild(b, p.projectId ?? "", accountId));
+            const builds = await listAllPages<
+              WireBuild,
+              { builds?: WireBuild[]; nextPageToken?: string }
+            >(this.transport, RPC.listBuilds, { projectId: p.projectId }, (r) => r.builds, {
+              key: "builds",
+              pageSize: RECENT_BUILDS,
+              // Rolling window: the newest 25. Older rows falling off is what this type means.
+              maxPages: 1,
+              partial: true,
+            });
+            return builds.map((b) => this.mapBuild(b, p.projectId ?? "", accountId));
           });
         case TOKEN_TYPE:
           return this.perProject(async (p) => {
-            const res = await connectCall<{ tokens?: WireToken[] }>(
-              this.transport,
-              RPC.listTokens,
-              {
-                projectId: p.projectId,
-              },
-            );
-            return (res.tokens ?? []).map((t) => this.mapToken(t, p.projectId ?? "", accountId));
+            const tokens = await listAllPages<
+              WireToken,
+              { tokens?: WireToken[]; nextPageToken?: string }
+            >(this.transport, RPC.listTokens, { projectId: p.projectId }, (r) => r.tokens, {
+              key: "tokens",
+              pageSize: MAX_PAGE_SIZE,
+              maxPages: MAX_CHILD_PAGES,
+            });
+            return tokens.map((t) => this.mapToken(t, p.projectId ?? "", accountId));
           });
         case TRUST_POLICY_TYPE:
           return this.perProject(async (p) => {
-            const res = await connectCall<{ trustPolicies?: WireTrustPolicy[] }>(
+            const policies = await listAllPages<
+              WireTrustPolicy,
+              { trustPolicies?: WireTrustPolicy[]; nextPageToken?: string }
+            >(
               this.transport,
               RPC.listTrustPolicies,
               { projectId: p.projectId },
+              (r) => r.trustPolicies,
+              { key: "trustPolicies", pageSize: MAX_PAGE_SIZE, maxPages: MAX_CHILD_PAGES },
             );
-            return (res.trustPolicies ?? []).map((t) =>
-              this.mapTrustPolicy(t, p.projectId ?? "", accountId),
-            );
+            return policies.map((t) => this.mapTrustPolicy(t, p.projectId ?? "", accountId));
           });
         case IMAGE_TYPE:
           return this.perProject(async (p) => {
-            const images = await listAllPages<
-              WireImage,
-              { images?: WireImage[]; nextPageToken?: string }
-            >(this.transport, RPC.listImages, { projectId: p.projectId }, (r) => r.images, {
-              pageSize: 100,
-              maxPages: Math.ceil(MAX_IMAGES / 100),
-            }).catch(() => [] as WireImage[]);
+            const images = await this.projectImages(p.projectId ?? "", accountId);
             return images.map((i) => this.mapImage(i, p.projectId ?? "", accountId));
           });
         case ACTIONS_REPO_TYPE:
@@ -276,6 +302,29 @@ export class DepotClient implements PluginClient {
           throw new Error(`Depot plugin: unknown resource type "${typeId}"`);
       }
     });
+  }
+
+  /**
+   * A project's image tags. Depot documents no answer meaning "this project has no
+   * registry", so only a refusal stops short of failing the type.
+   */
+  private async projectImages(projectId: string, accountId: string): Promise<WireImage[]> {
+    try {
+      return await listAllPages<WireImage, { images?: WireImage[]; nextPageToken?: string }>(
+        this.transport,
+        RPC.listImages,
+        { projectId },
+        (r) => r.images,
+        { key: "images", pageSize: IMAGE_PAGE_SIZE, maxPages: MAX_IMAGE_PAGES },
+      );
+    } catch (err) {
+      if (!isPermissionDenied(err)) throw err;
+      // This project's stored rows stay. A host that keeps no track (the desktop) answers
+      // false, and there the refusal should still show.
+      const parent = `${accountId}:${PROJECT_TYPE}:${projectId}`;
+      if (!reportUnreadListPart({ parentResourceIds: [parent] })) throw err;
+      return [];
+    }
   }
 
   /** The current billing cycle's usage, from its first day to now. */
