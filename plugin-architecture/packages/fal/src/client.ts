@@ -210,6 +210,19 @@ function keyAccess(key: Pick<ApiKey, "mode" | "preset" | "scope">): string {
   return key.mode === "legacy" ? "Legacy scope" : "";
 }
 
+/**
+ * What a new key needs to match `key`, since sending neither gets the API preset. fal's
+ * key docs name FULL as the closest preset to a legacy ADMIN key, and API to a legacy API.
+ */
+function sameAccess(key: ApiKey): {
+  preset?: NonNullable<ApiKey["preset"]>;
+  permissions?: string[];
+} {
+  if (key.preset) return { preset: key.preset };
+  if (key.permissions?.length) return { permissions: key.permissions };
+  return key.scope === "ADMIN" ? { preset: "FULL" } : {};
+}
+
 /** Analytics pages → one series per metric. Durations are seconds. */
 export function analyticsSeries(pages: Pick<AnalyticsPage, "time_series">[]): MetricSeries[] {
   const byMetric = new Map<string, Array<{ timestamp: number; value: number }>>();
@@ -461,11 +474,12 @@ export class FalClient implements PluginClient {
   }
 
   /** `GET /keys?expand=creator_info`: only that expansion names who made a key. */
+  private readKeys(): Promise<ApiKey[]> {
+    return call(() => this.api.getAll("/keys", "keys", { query: { expand: "creator_info" } }));
+  }
+
   private async listKeys(accountId: string): Promise<ResourceInstance[]> {
-    const keys = await call(() =>
-      this.api.getAll("/keys", "keys", { query: { expand: "creator_info" } }),
-    );
-    return keys
+    return (await this.readKeys())
       .filter((k) => k.key_id)
       .map((k) =>
         this.instance(
@@ -623,7 +637,7 @@ export class FalClient implements PluginClient {
     });
   }
 
-  /** `POST /keys {alias}`: the secret is returned once. */
+  /** `POST /keys`: the same alias and access. The secret is returned once. */
   exportCredential(
     typeId: string,
     resourceId: string,
@@ -634,10 +648,21 @@ export class FalClient implements PluginClient {
       if (typeId !== "fal-api-key" || formatId !== "replacement-key") {
         throw new Error(`fal plugin: no credential format "${formatId}" for ${typeId}`);
       }
-      const current = await runPluginEffect(this.getResource(typeId, resourceId, accountId));
-      const alias =
-        s(current.fields["alias"]) || `infrawrench-${new Date().toISOString().slice(0, 10)}`;
-      const created = await call(() => this.api.post("/keys", { body: { alias } }));
+      const id = externalIdOf(resourceId, accountId, typeId);
+      const current = (await this.readKeys()).find((k) => k.key_id === id);
+      if (!current) {
+        throw Object.assign(new Error(`fal plugin: ${typeId}/${id} not found`), { status: 404 });
+      }
+      const alias = current.alias || `infrawrench-${new Date().toISOString().slice(0, 10)}`;
+      const created = await call(() =>
+        this.api.post("/keys", {
+          body: {
+            alias,
+            ...(current.description ? { description: current.description } : {}),
+            ...sameAccess(current),
+          },
+        }),
+      );
       const key =
         s(created.key) ||
         (created.key_id && created.key_secret ? `${created.key_id}:${created.key_secret}` : "");

@@ -99,7 +99,7 @@ export const FalApiKeyType = rt({
       id: "replacement-key",
       label: "Create a replacement key",
       description:
-        "Creates a new key on the API preset with the same alias. Switch your apps over, then delete this one.",
+        "Creates a new key with the same alias, description and permissions. Switch your apps over, then delete this one.",
       mediaType: "text",
       filenameTemplate: "fal-{resource}-replacement.txt",
     },

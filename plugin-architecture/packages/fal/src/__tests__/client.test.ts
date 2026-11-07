@@ -144,6 +144,64 @@ describe("fal client", () => {
     expect(key?.fields["creator"]).toBe("ada");
   });
 
+  it.each([
+    [{ mode: "preset", preset: "BILLING" }, { preset: "BILLING" }],
+    [
+      { mode: "custom", permissions: ["models:requests:read"] },
+      { permissions: ["models:requests:read"] },
+    ],
+    [{ mode: "legacy", scope: "ADMIN" }, { preset: "FULL" }],
+    [{ mode: "legacy", scope: "API" }, {}],
+  ])("gives a replacement key the access of %j", async (access, sent) => {
+    const { http, calls } = host((_url, method) =>
+      method === "POST"
+        ? { body: { key_id: "new", key_secret: "s", key: "new:s" } }
+        : {
+            body: {
+              keys: [{ key_id: "old", alias: "ci", description: "CI", ...access }],
+              next_cursor: null,
+            },
+          },
+    );
+    await hostClient(new FalClient({ apiKey: "k" }, { http })).exportCredential(
+      "fal-api-key",
+      `${ACCOUNT}:fal-api-key:old`,
+      ACCOUNT,
+      "replacement-key",
+    );
+    expect(JSON.parse(calls.find((c) => c.method === "POST")?.body ?? "{}")).toEqual({
+      alias: "ci",
+      description: "CI",
+      ...sent,
+    });
+  });
+
+  it("refuses to replace a key it cannot find, and creates nothing", async () => {
+    const { http, calls } = host(() => ({ body: { keys: [], next_cursor: null } }));
+    await expect(
+      hostClient(new FalClient({ apiKey: "k" }, { http })).exportCredential(
+        "fal-api-key",
+        `${ACCOUNT}:fal-api-key:gone`,
+        ACCOUNT,
+        "replacement-key",
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("reports a key without the permission rather than a missing key", async () => {
+    const { http, calls } = host(() => ({ status: 403, body: {} }));
+    await expect(
+      hostClient(new FalClient({ apiKey: "k" }, { http })).exportCredential(
+        "fal-api-key",
+        `${ACCOUNT}:fal-api-key:old`,
+        ACCOUNT,
+        "replacement-key",
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
   it("names presets, not the ADMIN scope, when a key is refused", async () => {
     const { http } = host(() => ({ status: 403, body: {} }));
     const refused = hostClient(new FalClient({ apiKey: "k" }, { http })).fetchCreditBalance(
