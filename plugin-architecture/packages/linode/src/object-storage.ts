@@ -21,7 +21,9 @@ type ObjectRow = ApiListItem<operations["get-object-storage-bucket-content"], "d
 
 export function splitBucket(bucket: string): { region: string; name: string } {
   const i = bucket.indexOf("/");
-  if (i <= 0) throw new Error(`Linode plugin: bucket reference "${bucket}" is not region/name`);
+  if (i <= 0 || i === bucket.length - 1) {
+    throw new Error(`Linode plugin: bucket reference "${bucket}" is not region/name`);
+  }
   return { region: bucket.slice(0, i), name: bucket.slice(i + 1) };
 }
 
@@ -136,6 +138,7 @@ export async function makeFolder(api: LinodeApi, bucket: string, key: string): P
 }
 
 export async function deleteObject(api: LinodeApi, bucket: string, key: string): Promise<void> {
+  if (!key) throw new Error("Linode plugin: no object was named to delete");
   const names = key.endsWith("/")
     ? (await listRaw(api, bucket, key, false)).map((o) => o.name)
     : [key];
