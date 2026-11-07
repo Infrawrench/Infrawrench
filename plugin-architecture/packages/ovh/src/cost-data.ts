@@ -17,10 +17,13 @@
  * The API credential needs the access rules `GET /me/bill*` and
  * `GET /me/consumption*`: account-level routes that a Public-Cloud-only
  * consumer key will not have unless granted. Missing consumption access
- * degrades gracefully (invoiced history still collects).
+ * degrades gracefully (invoiced history still collects). Any other failure
+ * throws, which keeps the stored rows: the collector reconciles against what
+ * this returns, so a throttle read as none would take that spend away.
  */
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
+import { isAccessRefusal, isDeclinedRequest, isMissingRoute, readList } from "./lists.js";
 
 /** Signature of the client's private signed OVH fetch helper. */
 export type OvhJsonFetcher = <T>(path: string) => Promise<T>;
@@ -57,6 +60,11 @@ interface OvhConsumptionTransaction {
   elements?: OvhConsumptionElement[];
 }
 
+/** The account was told no, or has no such route: there is nothing to read, now or on a retry. */
+function isNotAvailable(err: unknown): boolean {
+  return isAccessRefusal(err) || isMissingRoute(err) || isDeclinedRequest(err);
+}
+
 /**
  * Above this many line items, fall back to the single bill-total row:
  * fetching details is one signed request per line, and a partial drain
@@ -87,16 +95,18 @@ export async function fetchOvhCostData(
     "date.from": `${range.fromDate}T00:00:00Z`,
     "date.to": `${range.toDate}T23:59:59Z`,
   });
-  const billIds = await ovhFetch<string[]>(`/me/bill?${params.toString()}`);
-  for (const billId of billIds ?? []) {
+  const billIds = await readList<string>(ovhFetch, `/me/bill?${params.toString()}`);
+  for (const billId of billIds) {
     const encodedBill = encodeURIComponent(billId);
     const bill = await ovhFetch<OvhBill>(`/me/bill/${encodedBill}`);
     const date = (bill.date ?? "").slice(0, 10);
     if (!date || date < range.fromDate || date > range.toDate) continue;
     const billCurrency = bill.priceWithoutTax?.currencyCode ?? "EUR";
 
-    // Stage detail rows and only commit a fully-drained breakdown; anything
-    // partial (error, truncation) falls back to the bill total instead.
+    // Stage detail rows and only commit a fully-drained breakdown. Lines this key
+    // cannot read fall back to the bill total. A failure that would pass throws:
+    // bills past the restatement window are not read again, so a total written
+    // over a throttle would replace the breakdown for good.
     let detailRows: Array<{ service: string; currency: string; amount: number }> | null = null;
     try {
       const detailIds = await ovhFetch<string[]>(`/me/bill/${encodedBill}/details`);
@@ -114,7 +124,8 @@ export async function fetchOvhCostData(
         }
         detailRows = staged;
       }
-    } catch {
+    } catch (err) {
+      if (!isNotAvailable(err)) throw err;
       detailRows = null;
     }
 
@@ -131,10 +142,11 @@ export async function fetchOvhCostData(
   const today = new Date().toISOString().slice(0, 10);
   if (today >= range.fromDate && today <= range.toDate) {
     try {
-      const transactions = await ovhFetch<OvhConsumptionTransaction[]>(
+      const transactions = await readList<OvhConsumptionTransaction>(
+        ovhFetch,
         "/me/consumption/usage/current",
       );
-      for (const tx of transactions ?? []) {
+      for (const tx of transactions) {
         const begin = (tx.beginDate ?? "").slice(0, 10);
         // Clamp so rows stay inside the fetched chunk even if the period
         // opened before it.
@@ -154,9 +166,10 @@ export async function fetchOvhCostData(
           );
         }
       }
-    } catch {
+    } catch (err) {
       // Consumer key lacks GET /me/consumption*: invoiced history is still
       // collected, the current period just lags until its bill lands.
+      if (!isNotAvailable(err)) throw err;
     }
   }
 
