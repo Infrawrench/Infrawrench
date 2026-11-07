@@ -657,6 +657,118 @@ describe("identity lockouts", () => {
   });
 });
 
+describe("an environment's position", () => {
+  const ENV_ROUTE = /\/environments\/(env-[a-z]+)$/;
+  const POSITIONS: Record<string, number> = { "env-dev": 1, "env-prod": 2 };
+
+  /** Each test has its own instance URL, which is what the position cache is scoped by. */
+  function positionClient(
+    siteUrl: string,
+    read: (call: Call, envId: string) => { status?: number; body: unknown },
+    project: object = PROJECT,
+  ) {
+    return hostClient(
+      new InfisicalClient(
+        { siteUrl, clientId: "cid", clientSecret: "csecret" },
+        services((call) => {
+          if (call.url.endsWith("/universal-auth/login")) return { body: LOGIN };
+          if (call.url.endsWith("/api/v1/projects")) return { body: { projects: [project] } };
+          const match = ENV_ROUTE.exec(call.url);
+          if (match) return read(call, match[1]!);
+          throw new Error(`unexpected ${call.url}`);
+        }),
+      ),
+    );
+  }
+  const answer = (_: Call, envId: string) => ({
+    body: { environment: { id: envId, position: POSITIONS[envId] } },
+  });
+  const envReads = () => calls.filter((x) => ENV_ROUTE.test(x.url));
+
+  it("is in a listing, read from the environment's own route", async () => {
+    const c = positionClient("a.infisical.test", answer);
+    const envs = await c.listResources("environment", ACCOUNT);
+    expect(envs.map((e) => e.fields["position"])).toEqual([1, 2]);
+    expect(envReads()[0]!.url).toBe(
+      "https://a.infisical.test/api/v1/projects/proj-1/environments/env-dev",
+    );
+  });
+
+  it("is not read again by the next sync's fresh client within the hour", async () => {
+    await positionClient("b.infisical.test", answer).listResources("environment", ACCOUNT);
+    calls = [];
+    const again = positionClient("b.infisical.test", answer);
+    const envs = await again.listResources("environment", ACCOUNT);
+    expect(envReads()).toHaveLength(0);
+    expect(envs.map((e) => e.fields["position"])).toEqual([1, 2]);
+  });
+
+  it("is read again after an hour, and keeps the last value if that fails", async () => {
+    const now = Date.now();
+    await positionClient("c.infisical.test", answer).listResources("environment", ACCOUNT);
+    calls = [];
+    vi.spyOn(Date, "now").mockReturnValue(now + 61 * 60_000);
+    const failing = positionClient("c.infisical.test", () => ({ status: 500, body: {} }));
+    const envs = await failing.listResources("environment", ACCOUNT);
+    expect(envReads()).toHaveLength(2);
+    expect(envs.map((e) => e.fields["position"])).toEqual([1, 2]);
+  });
+
+  it("does not fail a listing, and stops reading on a 429", async () => {
+    const many = {
+      ...PROJECT,
+      environments: Array.from({ length: 20 }, (_, i) => ({
+        id: `env-${String.fromCharCode(97 + i)}`,
+        name: "e",
+        slug: "e",
+      })),
+    };
+    const c = positionClient(
+      "d.infisical.test",
+      () => ({ status: 429, body: { message: "slow down" } }),
+      many,
+    );
+    const envs = await c.listResources("environment", ACCOUNT);
+    expect(envs).toHaveLength(20);
+    expect(envs[0]!.fields["position"]).toBeUndefined();
+    expect(envReads().length).toBeLessThanOrEqual(4);
+  });
+
+  it("takes a position a row already has, with no read", async () => {
+    const project = {
+      ...PROJECT,
+      environments: [{ id: "env-dev", name: "Development", slug: "dev", position: 9 }],
+    };
+    const c = positionClient("e.infisical.test", answer, project);
+    const [env] = await c.listResources("environment", ACCOUNT);
+    expect(env!.fields["position"]).toBe(9);
+    expect(envReads()).toHaveLength(0);
+  });
+
+  it("is fresh on a single read, cached or not, which still works if the route fails", async () => {
+    const c = positionClient("f.infisical.test", answer);
+    await c.listResources("environment", ACCOUNT);
+    const moved = positionClient("f.infisical.test", (_, envId) => ({
+      body: { environment: { id: envId, position: 7 } },
+    }));
+    const read = await moved.getResource(
+      "environment",
+      `${ACCOUNT}:environment:proj-1/env-dev`,
+      ACCOUNT,
+    );
+    expect(read.fields["position"]).toBe(7);
+
+    const failing = positionClient("g.infisical.test", () => ({ status: 500, body: {} }));
+    const stillRead = await failing.getResource(
+      "environment",
+      `${ACCOUNT}:environment:proj-1/env-dev`,
+      ACCOUNT,
+    );
+    expect(stillRead.fields["slug"]).toBe("dev");
+    expect(stillRead.fields["position"]).toBeUndefined();
+  });
+});
+
 describe("mutations", () => {
   it("renames and re-values a secret through the v4 PATCH", async () => {
     const c = client((call) => {

@@ -79,6 +79,15 @@ const MAX_IDENTITY_SEARCH_PAGES = 100;
 const CERTIFICATE_PAGE_SIZE = 100;
 /** 50,000 rows: certificates are short-lived, so a project can hold many. */
 const MAX_CERTIFICATE_PAGES = 500;
+/**
+ * Only the single-environment route has a position, and Infisical writes an audit event for
+ * every read of it, so one per environment on each 15-second sync would fill the customer's
+ * audit log. An hour of staleness in a listing costs little: a single read is always fresh.
+ * Module-level because hosts build a fresh client per call.
+ */
+const POSITION_TTL_MS = 60 * 60_000;
+const POSITION_READERS = 4;
+const positions = new Map<string, { at: number; position: number }>();
 /** The Metrics tab's default window. */
 export const METRICS_DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
 const METRIC_BUCKETS = 48;
@@ -273,6 +282,52 @@ export class InfisicalClient implements PluginClient {
     );
   }
 
+  private positionKey(envId: string | undefined): string {
+    return `${this.api.siteUrl}/${str(envId)}`;
+  }
+
+  private async readPosition(projectId: string, envId: string): Promise<void> {
+    const body = await this.api.rest.get(
+      `/api/v1/projects/${pathEncode(projectId)}/environments/${pathEncode(envId)}`,
+    );
+    const position = body.environment?.position;
+    if (typeof position === "number") {
+      positions.set(this.positionKey(envId), { at: Date.now(), position });
+    }
+  }
+
+  /** The row, with the position it has or the last one read. */
+  private positioned(env: InfEnvironment): InfEnvironment {
+    if (typeof env.position === "number") return env;
+    const known = positions.get(this.positionKey(env.id));
+    return known ? { ...env, position: known.position } : env;
+  }
+
+  /**
+   * Never fails a listing. A failed read keeps the last position, so a blip does not read as
+   * a change to the environment, and a 429 leaves the rest for the next sync.
+   */
+  private async refreshPositions(
+    pairs: Array<{ project: InfProject; env: InfEnvironment }>,
+  ): Promise<void> {
+    const due = pairs.filter(({ env }) => {
+      if (typeof env.position === "number") return false;
+      const known = positions.get(this.positionKey(env.id));
+      return !known || Date.now() - known.at > POSITION_TTL_MS;
+    });
+    let next = 0;
+    let limited = false;
+    const reader = async () => {
+      while (!limited && next < due.length) {
+        const { project, env } = due[next++]!;
+        await this.readPosition(str(project.id), str(env.id)).catch((error: unknown) => {
+          if (statusOf(error) === 429) limited = true;
+        });
+      }
+    };
+    await Promise.all(Array.from({ length: POSITION_READERS }, reader));
+  }
+
   private async foldersIn(projectId: string, env: string): Promise<InfFolder[]> {
     const path = "/api/v2/folders";
     const body = await this.api.rest.get(path, {
@@ -390,10 +445,13 @@ export class InfisicalClient implements PluginClient {
       switch (typeId) {
         case "project":
           return (await this.projects()).map((p) => this.mapProject(accountId, p));
-        case "environment":
-          return this.envPairs(await this.projects()).map(({ project, env }) =>
-            this.mapEnvironment(accountId, project, env),
+        case "environment": {
+          const pairs = this.envPairs(await this.projects());
+          await this.refreshPositions(pairs);
+          return pairs.map(({ project, env }) =>
+            this.mapEnvironment(accountId, project, this.positioned(env)),
           );
+        }
         case "folder":
           return this.each(
             this.envPairs(await this.secretProjects()),
@@ -521,7 +579,9 @@ export class InfisicalClient implements PluginClient {
           const project = await this.project(projectId);
           const env = (project.environments ?? []).find((e) => e.id === envId);
           if (!env) throw notFound("environment", id);
-          return this.mapEnvironment(accountId, project, env);
+          // The position is a detail of a read that works without it.
+          await this.readPosition(projectId, envId).catch(() => undefined);
+          return this.mapEnvironment(accountId, project, this.positioned(env));
         }
         case "folder": {
           const [projectId = "", envSlug = "", folderId = ""] = split(id, 3, "folder");
