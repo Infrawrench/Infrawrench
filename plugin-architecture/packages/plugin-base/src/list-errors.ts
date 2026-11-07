@@ -298,11 +298,16 @@ const UNREAD_LIST_PART_HOOK = Symbol.for("infrawrench.unreadListPart");
  *
  * A global because the plugin's copy of this package is not the host's, as for
  * {@link IncompleteListError}. Where a host keeps no track, as on the desktop, whose lists
- * prune nothing, it does nothing.
+ * prune nothing, it does nothing and answers false, so a refusal can still be shown there:
+ *
+ *   if (!reportUnreadListPart({ idPrefixes: [""] })) throw err;
+ *   return [];
  */
-export function reportUnreadListPart(part: UnreadListPart): void {
+export function reportUnreadListPart(part: UnreadListPart): boolean {
   const note: unknown = Reflect.get(globalThis, UNREAD_LIST_PART_HOOK);
-  if (typeof note === "function") note(part);
+  if (typeof note !== "function") return false;
+  note(part);
+  return true;
 }
 
 /** True for any {@link IncompleteListError}, or anything wrapping one as its `cause`. */

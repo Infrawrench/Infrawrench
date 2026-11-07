@@ -10,10 +10,10 @@ describe("reportUnreadListPart", () => {
   it("tells the host's hook, and does nothing where there is none", () => {
     const seen: unknown[] = [];
     const hook = Symbol.for("infrawrench.unreadListPart");
-    expect(() => reportUnreadListPart({ idPrefixes: ["a:"] })).not.toThrow();
+    expect(reportUnreadListPart({ idPrefixes: ["a:"] })).toBe(false);
     Reflect.set(globalThis, hook, (part: unknown) => seen.push(part));
     try {
-      reportUnreadListPart({ parentResourceIds: ["a:project:1"] });
+      expect(reportUnreadListPart({ parentResourceIds: ["a:project:1"] })).toBe(true);
       expect(seen).toEqual([{ parentResourceIds: ["a:project:1"] }]);
     } finally {
       Reflect.deleteProperty(globalThis, hook);
