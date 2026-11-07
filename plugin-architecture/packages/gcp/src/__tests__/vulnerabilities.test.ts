@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { VulnerabilityAccessError } from "@infrawrench/plugin-base";
+import { ListTruncatedError, VulnerabilityAccessError } from "@infrawrench/plugin-base";
 import {
   MAX_OCCURRENCE_PAGES,
   artifactFromResourceUri,
@@ -209,7 +209,7 @@ describe("fetchGcpVulnerabilityFindings", () => {
     );
   });
 
-  it("stops at the page bound", async () => {
+  it("refuses a project past its page cap instead of reading the rest as fixed", async () => {
     const { ctx, listOccurrences } = ctxWith(
       Array.from({ length: MAX_OCCURRENCE_PAGES + 5 }, (_, n) => ({
         occurrences: [],
@@ -217,7 +217,7 @@ describe("fetchGcpVulnerabilityFindings", () => {
       })),
       "ENABLED",
     );
-    await fetchGcpVulnerabilityFindings(ctx);
+    await expect(fetchGcpVulnerabilityFindings(ctx)).rejects.toBeInstanceOf(ListTruncatedError);
     expect(listOccurrences).toHaveBeenCalledTimes(MAX_OCCURRENCE_PAGES);
   });
 

@@ -35,9 +35,10 @@
  */
 
 import {
-  VulnerabilityAccessError,
+  ListTruncatedError,
   normalizeVulnerabilityFindings,
   normalizeVulnerabilitySeverity,
+  VulnerabilityAccessError,
   type VulnerabilityArtifact,
   type VulnerabilityFinding,
 } from "@infrawrench/plugin-base";
@@ -107,11 +108,10 @@ export interface GcpVulnerabilityContext {
 }
 
 /**
- * Pages of 1000 occurrences. 20 pages is 20,000 (image, CVE) pairs, which is
- * past what a project carries unless it keeps years of unpulled images; when
- * the bound bites the declaration's `partial: true` already says so.
+ * Pages of 1000 occurrences before refusing. 50 pages is 50,000 (image, CVE)
+ * pairs, the most the host stores for an account.
  */
-export const MAX_OCCURRENCE_PAGES = 20;
+export const MAX_OCCURRENCE_PAGES = 50;
 export const OCCURRENCE_PAGE_SIZE = 1000;
 
 const SCANNING_SERVICE = "containerscanning.googleapis.com";
@@ -277,6 +277,14 @@ export async function fetchGcpVulnerabilityFindings(
     }
     pageToken = response.nextPageToken || undefined;
     if (!pageToken) break;
+    if (page === MAX_OCCURRENCE_PAGES - 1) {
+      throw new ListTruncatedError({
+        vendor: "Artifact Analysis",
+        path: `/projects/${ctx.project}/occurrences`,
+        items: findings.length,
+        maxPages: MAX_OCCURRENCE_PAGES,
+      });
+    }
   }
 
   if (findings.length === 0) {
