@@ -880,3 +880,52 @@ describe("a null answer to a list", () => {
     expect(await c.listResources("recipient", ACCOUNT)).toEqual([]);
   });
 });
+
+describe("creating an environment", () => {
+  const MGMT = { managementKeyId: "hcxmk_1", managementKeySecret: "s" };
+  const routes =
+    (mint: Reply) =>
+    (url: URL, method: string): Reply => {
+      if (url.pathname === "/2/auth") return { body: AUTH_V2 };
+      if (url.pathname === "/2/teams/acme/environments" && method === "POST") {
+        return {
+          status: 201,
+          body: { data: { id: "hcaen_9", attributes: { name: "New", slug: "new" } } },
+        };
+      }
+      if (url.pathname === "/2/teams/acme/api-keys" && method === "POST") return mint;
+      return { status: 404 };
+    };
+  const connected = (created: unknown) =>
+    (created as { fields: Record<string, unknown> }).fields["connected"];
+
+  it("reads as connected when its key was minted and stored", async () => {
+    const { c, secrets } = client(
+      routes({ status: 201, body: { data: { id: "k", attributes: { secret: "minted" } } } }),
+      MGMT,
+    );
+    const created = await c.createResource!("environment", ACCOUNT, { name: "New" });
+    expect(connected(created)).toBe(true);
+    expect(secrets.store.get("acc:environment:new#configurationKey")).toBe("minted");
+  });
+
+  it("does not read as connected when minting its key failed", async () => {
+    const { c } = client(routes({ status: 403, body: { error: "no scope" } }), MGMT);
+    const created = await c.createResource!("environment", ACCOUNT, { name: "New" });
+    expect(connected(created)).toBe(false);
+  });
+
+  it("does not read as connected when storing its key failed", async () => {
+    const secrets = memorySecrets();
+    secrets.setPlaintext = async () => {
+      throw new Error("violates foreign key constraint");
+    };
+    const { c } = client(
+      routes({ status: 201, body: { data: { id: "k", attributes: { secret: "minted" } } } }),
+      MGMT,
+      secrets,
+    );
+    const created = await c.createResource!("environment", ACCOUNT, { name: "New" });
+    expect(connected(created)).toBe(false);
+  });
+});

@@ -1896,8 +1896,11 @@ export class HoneycombClient implements PluginClient {
     const slug = created.attributes?.slug ?? created.id;
     let connected = false;
     if (fields["connect"] !== "false") {
-      await this.connectEnvironment(accountId, slug, created.id).catch(() => undefined);
-      connected = true;
+      // The environment exists by now, and Connect environment can try again.
+      connected = await this.connectEnvironment(accountId, slug, created.id).then(
+        () => true,
+        () => false,
+      );
     }
     return mapEnvironment(accountId, {
       slug,
