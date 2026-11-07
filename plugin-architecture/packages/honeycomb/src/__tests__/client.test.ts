@@ -457,3 +457,79 @@ describe("terraform", () => {
     expect(dc?.resource.attributes).not.toHaveProperty("dataset");
   });
 });
+
+const API_HOST = "api.honeycomb.io";
+
+function pathsCalled(calls: Array<{ url: URL }>, path: string) {
+  return calls.filter((x) => x.url.pathname === path);
+}
+
+/** One SLO on one dataset, with `alerts` as its burn alert list. */
+function burnAlertRoutes(alerts: unknown, detail: (id: string) => Reply) {
+  return (url: URL): Reply => {
+    if (url.pathname === "/1/auth") return { body: AUTH_V1 };
+    if (url.pathname === "/1/datasets") return { body: [{ name: "API", slug: "api" }] };
+    if (url.pathname === "/1/slos/api") {
+      return { body: [{ id: "s1", name: "Avail", sli: { alias: "sli" } }] };
+    }
+    if (url.pathname === "/1/slos/__all__") return { body: [] };
+    if (url.pathname === "/1/burn_alerts/api") return { body: alerts };
+    const single = /^\/1\/burn_alerts\/api\/(.+)$/.exec(url.pathname);
+    if (single?.[1]) return detail(single[1]);
+    return { status: 404 };
+  };
+}
+
+const LISTED_ALERT = {
+  id: "b1",
+  alert_type: "exhaustion_time",
+  exhaustion_minutes: 60,
+  slo: { id: "s1" },
+};
+
+describe("burn alert recipients", () => {
+  it("reads an alert alone for the recipients its list row leaves out", async () => {
+    const { c } = client(
+      burnAlertRoutes([LISTED_ALERT], () => ({
+        body: { ...LISTED_ALERT, recipients: [{ id: "r1", type: "email", target: "a@b.c" }] },
+      })),
+    );
+    const [alert] = await c.listResources("burn-alert", ACCOUNT);
+    expect(alert?.fields["recipientIds"]).toBe("r1");
+    expect(alert?.fields["recipients"]).toBe("email: a@b.c");
+  });
+
+  it("does not take an empty list on a row for an answer, since an alert must have one", async () => {
+    const { c } = client(
+      burnAlertRoutes([{ ...LISTED_ALERT, recipients: [] }], () => ({
+        body: { ...LISTED_ALERT, recipients: [{ id: "r3" }] },
+      })),
+    );
+    const [alert] = await c.listResources("burn-alert", ACCOUNT);
+    expect(alert?.fields["recipientIds"]).toBe("r3");
+  });
+
+  it("makes no extra read when the list row already has them", async () => {
+    const { c, calls } = client(
+      burnAlertRoutes([{ ...LISTED_ALERT, recipients: [{ id: "r2" }] }], () => {
+        throw new Error("no single read expected");
+      }),
+    );
+    const [alert] = await c.listResources("burn-alert", ACCOUNT);
+    expect(alert?.fields["recipientIds"]).toBe("r2");
+    expect(pathsCalled(calls, "/1/burn_alerts/api/b1")).toHaveLength(0);
+  });
+
+  it("fails the list when the single read fails for a reason that says nothing", async () => {
+    const { c } = client(
+      burnAlertRoutes([LISTED_ALERT], () => ({ status: 500, body: { error: "boom" } })),
+    );
+    await expect(c.listResources("burn-alert", ACCOUNT)).rejects.toThrow(/boom/);
+  });
+
+  it("keeps the listed alert when its single read is refused or gone", async () => {
+    const { c } = client(burnAlertRoutes([LISTED_ALERT], () => ({ status: 404 })));
+    const alerts = await c.listResources("burn-alert", ACCOUNT);
+    expect(alerts.map((a) => a.externalId)).toEqual(["production/api/b1"]);
+  });
+});

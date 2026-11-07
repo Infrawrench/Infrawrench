@@ -60,6 +60,7 @@ import type {
   HnyApiKey,
   HnyAuth,
   HnyBoardView,
+  HnyBurnAlert,
   HnyDataset,
   HnyDatasetDefinitions,
   HnyEnvironmentAttrs,
@@ -581,7 +582,10 @@ export class HoneycombClient implements PluginClient {
         const alerts = await v1(this.ctx, key).get(`/1/burn_alerts/${pathEncode(dataset)}`, {
           query: { slo_id: sloId },
         });
-        return (alerts ?? []).map((b) => mapBurnAlert(accountId, env, dataset, sloId, b));
+        const full = await mapPooled(alerts ?? [], POOL, (b) =>
+          this.burnAlertWithRecipients(key, dataset, b),
+        );
+        return full.map((b) => mapBurnAlert(accountId, env, dataset, sloId, b));
       } catch (err) {
         const status = statusOf(err);
         if (status === 401 || status === 403 || status === 404) return [];
@@ -589,6 +593,29 @@ export class HoneycombClient implements PluginClient {
       }
     });
     return out.flat();
+  }
+
+  /**
+   * The document gives `recipients` to the single read alone, so a list row is read
+   * again for them unless it turns out to carry some (an alert must have at least one).
+   * An alert that went away or is refused in between stays as listed: that is no reason
+   * to drop the SLO's others.
+   */
+  private async burnAlertWithRecipients(
+    key: string,
+    dataset: string,
+    listed: HnyBurnAlert,
+  ): Promise<HnyBurnAlert> {
+    if (listed.recipients?.length || !listed.id) return listed;
+    try {
+      return await v1(this.ctx, key).get(
+        `/1/burn_alerts/${pathEncode(dataset)}/${pathEncode(listed.id)}`,
+      );
+    } catch (err) {
+      const status = statusOf(err);
+      if (status === 401 || status === 403 || status === 404) return listed;
+      throw err;
+    }
   }
 
   /** Recipients are team-wide: read them through the first connected environment. */
