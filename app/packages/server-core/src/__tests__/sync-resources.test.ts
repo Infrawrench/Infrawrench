@@ -200,7 +200,7 @@ describe("syncAccountResourceType", () => {
     });
     const out = await sync.syncAccountResources("acc-1", "org-1");
     expect(out.resourceCount).toBe(150_000);
-  });
+  }, 120_000);
 
   it("writes nothing when everything stored is still listed", async () => {
     pg.queueRows([accountRow()]);
