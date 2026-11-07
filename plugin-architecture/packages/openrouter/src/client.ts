@@ -950,10 +950,7 @@ export class OpenRouterClient implements PluginClient {
         ? this.fetchAllModels().catch((): OrModel[] => [])
         : Promise.resolve<OrModel[]>([]),
       need.keys
-        ? this.api
-            .get("/keys")
-            .then((d) => d.data ?? [])
-            .catch((): OrKey[] => [])
+        ? this.api.keys.getAll("/keys", "data", { partial: true }).catch((): OrKey[] => [])
         : Promise.resolve<OrKey[]>([]),
       need.workspaces
         ? this.api.getAll("/workspaces", "data", { partial: true }).catch((): OrWorkspace[] => [])

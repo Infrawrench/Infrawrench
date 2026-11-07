@@ -870,6 +870,36 @@ describe("guardrails", () => {
     });
   });
 
+  it("offers every page of API keys in the create form's key picker", async () => {
+    installFetch((url) => {
+      if (url.includes("/keys")) {
+        const offset = new URL(url).searchParams.get("offset");
+        if (offset === "0") return jsonResponse({ data: [{ hash: "h1", name: "one" }] });
+        if (offset === "1") return jsonResponse({ data: [{ hash: "h2", name: "two" }] });
+        return jsonResponse({ data: [] });
+      }
+      return jsonResponse({ data: [], total_count: 0 });
+    });
+    const config = await client().getCreateConfig("guardrail");
+    const picker = config.fields.find((field) => field.key === "assignedKeys");
+    expect(picker?.policies?.map((policy) => policy.id)).toEqual(["h1", "h2"]);
+    const read = calls.filter((call) => call.url.includes("/keys"));
+    // Disabled keys cannot be picked, so the picker still leaves them out.
+    expect(read.every((call) => !call.url.includes("include_disabled"))).toBe(true);
+  });
+
+  it("offers what it read of a key list too long to finish", async () => {
+    let next = 0;
+    installFetch((url) =>
+      url.includes("/keys")
+        ? jsonResponse({ data: [{ hash: `h${next++}` }] })
+        : jsonResponse({ data: [], total_count: 0 }),
+    );
+    const config = await client().getCreateConfig("guardrail");
+    const picker = config.fields.find((field) => field.key === "assignedKeys");
+    expect(picker?.policies).toHaveLength(500);
+  });
+
   it("creates the guardrail, then assigns the picked keys", async () => {
     installFetch((url) =>
       url.endsWith("/assignments/keys")
