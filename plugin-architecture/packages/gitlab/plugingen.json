@@ -461,6 +461,63 @@
       "why": "A level the user typed as a number goes through, and GitLab validates it; the plugin's own table is only for labels."
     },
     {
+      "pointer": "/components/schemas/patchApiV4ProjectsIdProtectedBranchesNameRequest/properties/allowed_to_push",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "access_level": {
+              "type": "integer"
+            },
+            "_destroy": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "why": "Documented as an array of empty objects; docs.gitlab.com/api/protected_branches lists these rows, which is how a role level changes without touching the rule's user and group rows."
+    },
+    {
+      "pointer": "/components/schemas/patchApiV4ProjectsIdProtectedBranchesNameRequest/properties/allowed_to_merge",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer"
+            },
+            "access_level": {
+              "type": "integer"
+            },
+            "_destroy": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "why": "Documented as an array of empty objects; docs.gitlab.com/api/protected_branches lists these rows, which is how a role level changes without touching the rule's user and group rows."
+    },
+    {
+      "pointer": "/components/schemas/postApiV4ProjectsIdProtectedBranchesRequest/properties/allowed_to_push",
+      "value": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "deploy_key_id": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "why": "Documented as an array of empty objects; docs.gitlab.com/api/protected_branches lists deploy_key_id here, which is how a re-created rule keeps its deploy keys."
+    },
+    {
       "pointer": "/components/schemas/APIEntitiesProtectedRefAccess/properties/access_level",
       "value": {
         "type": "integer",

@@ -117,6 +117,68 @@ export function branchLevelValue(name: string | undefined): number | undefined {
   return Number(hit[0]);
 }
 
+type BranchAccessRows = GlProtectedBranch["push_access_levels"];
+type BranchAccessRow = NonNullable<BranchAccessRows>[number];
+type BranchRoleEdit = { id?: number; access_level?: number; _destroy?: boolean };
+
+const isRoleRow = (e: BranchAccessRow) =>
+  typeof e.access_level === "number" &&
+  !e.user_id &&
+  !e.group_id &&
+  !e.deploy_key_id &&
+  !e.member_role_id;
+
+/** The rule's first role level, ignoring rows that name a user, group, key or custom role. */
+export function branchRoleLevel(entries: BranchAccessRows): number | undefined {
+  return entries?.find(isRoleRow)?.access_level ?? undefined;
+}
+
+/**
+ * Whether a rule holds what a `DELETE` and `POST` of its role levels would lose: a user,
+ * group or custom role, a second role row, or anyone other than Maintainers (the POST's
+ * default) allowed to unprotect. A deploy key is not on this list: it can be re-created,
+ * and it is on every tier, where a PATCH of role levels is not.
+ */
+export function branchRuleNeedsPatch(b: GlProtectedBranch): boolean {
+  const push = (b.push_access_levels ?? []).filter((e) => !e.deploy_key_id);
+  const merge = b.merge_access_levels ?? [];
+  const unprotect = b.unprotect_access_levels ?? [];
+  return (
+    push.length > 1 ||
+    merge.length > 1 ||
+    [...push, ...merge, ...unprotect].some((e) => !isRoleRow(e)) ||
+    unprotect.some((e) => e.access_level !== 40)
+  );
+}
+
+/**
+ * The `allowed_to_*` rows that make `level` the rule's only role, leaving every row that
+ * names someone alone. Undefined when there is nothing to change.
+ */
+export function branchRoleEdits(
+  entries: BranchAccessRows,
+  level: number | undefined,
+): BranchRoleEdit[] | undefined {
+  if (level === undefined) return undefined;
+  const roles = (entries ?? []).filter(isRoleRow);
+  const keep = roles.find((e) => e.access_level === level) ?? roles[0];
+  const edits: BranchRoleEdit[] = keep ? [] : [{ access_level: level }];
+  for (const { id, access_level } of roles) {
+    // A row GitLab gave no id cannot be addressed; the read after the PATCH catches it.
+    if (id === undefined) continue;
+    if (id !== keep?.id) edits.push({ id, _destroy: true });
+    else if (access_level !== level) edits.push({ id, access_level: level });
+  }
+  return edits.length > 0 ? edits : undefined;
+}
+
+/** Whether `level` is the only role left on the rule. Undefined asks nothing of it. */
+export function branchHasOnlyRole(entries: BranchAccessRows, level: number | undefined): boolean {
+  if (level === undefined) return true;
+  const roles = (entries ?? []).filter(isRoleRow);
+  return roles.length === 1 && roles[0]?.access_level === level;
+}
+
 /**
  * The role-based level of a protected branch rule, as one label. A rule can
  * also list users, groups and deploy keys (Premium); those are counted, not
@@ -127,14 +189,7 @@ export function describeLevels(
 ): string | undefined {
   if (!entries || entries.length === 0) return undefined;
   const roles = entries
-    .filter(
-      (e) =>
-        e.access_level !== null &&
-        e.access_level !== undefined &&
-        !e.user_id &&
-        !e.group_id &&
-        !e.deploy_key_id,
-    )
+    .filter(isRoleRow)
     .map(
       (e) => BRANCH_LEVELS[e.access_level!] ?? e.access_level_description ?? String(e.access_level),
     );

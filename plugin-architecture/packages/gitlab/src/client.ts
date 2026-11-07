@@ -63,7 +63,11 @@ import {
   BRANCH_LEVELS,
   MEMBER_LEVELS,
   accessOf,
+  branchHasOnlyRole,
   branchLevelValue,
+  branchRoleEdits,
+  branchRoleLevel,
+  branchRuleNeedsPatch,
   mapContainerRepository,
   mapDeployKey,
   mapDeployToken,
@@ -1953,15 +1957,24 @@ export class GitLabClient implements PluginClient {
   private async protectBranch(
     projectId: number | string,
     name: string,
-    o: { push: number; merge: number; force: boolean; codeOwners: boolean },
+    o: {
+      push: number | undefined;
+      merge: number;
+      force: boolean;
+      codeOwners: boolean;
+      deployKeys?: number[];
+    },
   ): Promise<GlProtectedBranch> {
     return this.api.post(`/projects/${pathEncode(projectId)}/protected_branches`, {
       body: {
         name,
-        push_access_level: o.push,
+        ...(o.push === undefined ? {} : { push_access_level: o.push }),
         merge_access_level: o.merge,
         allow_force_push: o.force,
         ...(o.codeOwners ? { code_owner_approval_required: true } : {}),
+        ...(o.deployKeys?.length
+          ? { allowed_to_push: o.deployKeys.map((deploy_key_id) => ({ deploy_key_id })) }
+          : {}),
       },
     });
   }
@@ -2023,26 +2036,64 @@ export class GitLabClient implements PluginClient {
           const current = await this.api.get(
             `/projects/${pathEncode(ownerId)}/protected_branches/${pathEncode(rest)}`,
           );
-          if (has("pushAccess") || has("mergeAccess")) {
+          const wantPush = branchLevelValue(fields["pushAccess"]);
+          const wantMerge = branchLevelValue(fields["mergeAccess"]);
+          if ((has("pushAccess") || has("mergeAccess")) && branchRuleNeedsPatch(current)) {
+            // A re-created rule would lose these, or fail and leave the branch open if a named
+            // user has since left the project. Their presence means a tier where PATCH can
+            // change role levels, and a PATCH only touches the rows it names.
+            const body = compact({
+              allow_force_push: bool("allowForcePush"),
+              code_owner_approval_required: bool("codeOwnerApprovalRequired"),
+              allowed_to_push: branchRoleEdits(current.push_access_levels, wantPush),
+              allowed_to_merge: branchRoleEdits(current.merge_access_levels, wantMerge),
+            });
+            if (Object.keys(body).length > 0) {
+              await this.api.patch(
+                `/projects/${pathEncode(ownerId)}/protected_branches/${pathEncode(rest)}`,
+                { body },
+              );
+            }
+            // A tier without the feature may answer 200 and ignore the rows.
+            const after = await this.api.get(
+              `/projects/${pathEncode(ownerId)}/protected_branches/${pathEncode(rest)}`,
+            );
+            if (
+              !branchHasOnlyRole(after.push_access_levels, wantPush) ||
+              !branchHasOnlyRole(after.merge_access_levels, wantMerge)
+            ) {
+              fail(
+                `GitLab did not take the new level for ${rest}. This rule also names users, groups or custom unprotect access, which GitLab only lets a Premium or Ultimate project edit, so it was left in place. Change it in GitLab instead.`,
+                409,
+              );
+            }
+          } else if (has("pushAccess") || has("mergeAccess")) {
             // Changing role levels through PATCH is Premium-only, so the rule is
             // re-created with the new levels and every other setting kept.
-            const level = (entries: GlProtectedBranch["push_access_levels"]) =>
-              entries?.find((e) => typeof e.access_level === "number")?.access_level ?? 40;
             await this.api.delete(
               `/projects/${pathEncode(ownerId)}/protected_branches/${pathEncode(rest)}`,
             );
+            const deployKeys = (current.push_access_levels ?? []).flatMap((e) =>
+              e.deploy_key_id ? [e.deploy_key_id] : [],
+            );
             const before = {
-              push: level(current.push_access_levels),
-              merge: level(current.merge_access_levels),
+              // Named deploy keys stop GitLab defaulting the push role to Maintainers, which
+              // a rule with only a key must not gain.
+              push:
+                branchRoleLevel(current.push_access_levels) ??
+                (deployKeys.length > 0 ? undefined : 40),
+              merge: branchRoleLevel(current.merge_access_levels) ?? 40,
               force: current.allow_force_push ?? false,
               codeOwners: current.code_owner_approval_required ?? false,
+              deployKeys,
             };
             try {
               await this.protectBranch(ownerId, rest, {
-                push: branchLevelValue(fields["pushAccess"]) ?? before.push,
-                merge: branchLevelValue(fields["mergeAccess"]) ?? before.merge,
+                push: wantPush ?? before.push,
+                merge: wantMerge ?? before.merge,
                 force: bool("allowForcePush") ?? before.force,
                 codeOwners: bool("codeOwnerApprovalRequired") ?? before.codeOwners,
+                deployKeys,
               });
             } catch (err) {
               // The old rule is already gone, so a failure here would leave the branch open.

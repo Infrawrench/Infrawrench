@@ -3398,8 +3398,16 @@ export interface components {
         };
         patchApiV4ProjectsIdProtectedBranchesNameRequest: {
             allow_force_push?: boolean | null;
-            allowed_to_merge?: Record<string, never>[] | null;
-            allowed_to_push?: Record<string, never>[] | null;
+            allowed_to_merge?: {
+                _destroy?: boolean;
+                access_level?: number;
+                id?: number;
+            }[];
+            allowed_to_push?: {
+                _destroy?: boolean;
+                access_level?: number;
+                id?: number;
+            }[];
             allowed_to_unprotect?: Record<string, never>[] | null;
             code_owner_approval_required?: boolean | null;
             /** @enum {integer|null} */
@@ -3587,7 +3595,9 @@ export interface components {
             /** @default false */
             allow_force_push?: boolean;
             allowed_to_merge?: Record<string, never>[] | null;
-            allowed_to_push?: Record<string, never>[] | null;
+            allowed_to_push?: {
+                deploy_key_id?: number;
+            }[];
             allowed_to_unprotect?: Record<string, never>[] | null;
             code_owner_approval_required?: boolean | null;
             merge_access_level?: number | null;

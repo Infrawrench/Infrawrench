@@ -521,6 +521,212 @@ describe("edits", () => {
     });
   });
 
+  describe("a role-level edit on a rule with more than roles", () => {
+    interface Row {
+      id: number;
+      access_level: number | null;
+      user_id?: number;
+    }
+    const paid: { name: string; push_access_levels: Row[] } & Record<string, unknown> = {
+      name: "main",
+      push_access_levels: [
+        { id: 1, access_level: 40 },
+        { id: 2, access_level: null, user_id: 9 },
+      ],
+      merge_access_levels: [
+        { id: 3, access_level: 30 },
+        { id: 4, access_level: null, group_id: 8 },
+      ],
+      unprotect_access_levels: [{ id: 5, access_level: 40 }],
+      allow_force_push: true,
+    };
+    // Applies what a PATCH says to the rule, the way GitLab documents it.
+    const applying = (start: typeof paid) => {
+      let rule = start;
+      return (call: Call) => {
+        if (call.method === "PATCH") {
+          const { allowed_to_push: edits = [] } = call.body as {
+            allowed_to_push?: Array<{ id?: number; access_level?: number; _destroy?: boolean }>;
+          };
+          const kept = rule.push_access_levels
+            .filter((e) => !edits.some((x) => x.id === e.id && x._destroy))
+            .map((e) => ({
+              ...e,
+              access_level: edits.find((x) => x.id === e.id)?.access_level ?? e.access_level,
+            }));
+          rule = { ...rule, push_access_levels: kept };
+        }
+        return rule;
+      };
+    };
+
+    it("changes the role row through PATCH and never removes the rule", async () => {
+      const { c, calls } = client(applying(paid));
+      await c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+        pushAccess: "No one",
+      });
+      const writes = calls.filter((x) => x.method !== "GET");
+      expect(writes.map((x) => x.method)).toEqual(["PATCH"]);
+      expect(writes[0]!.url.pathname).toBe("/api/v4/projects/7/protected_branches/main");
+      expect(writes[0]!.body).toEqual({ allowed_to_push: [{ id: 1, access_level: 0 }] });
+    });
+
+    it("sends force push in the same PATCH, and leaves the other list alone", async () => {
+      const { c, calls } = client(applying(paid));
+      await c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+        mergeAccess: "Developers + Maintainers",
+        allowForcePush: "false",
+      });
+      const writes = calls.filter((x) => x.method !== "GET");
+      // Merge is already that level, so only the force push flag goes.
+      expect(writes.map((x) => x.body)).toEqual([{ allow_force_push: false }]);
+    });
+
+    it("folds several role rows into the one asked for", async () => {
+      const several = {
+        ...paid,
+        push_access_levels: [
+          { id: 1, access_level: 30 },
+          { id: 6, access_level: 40 },
+          { id: 2, access_level: null, user_id: 9 },
+        ],
+      };
+      const { c, calls } = client(applying(several));
+      await c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+        pushAccess: "Maintainers",
+      });
+      expect(calls.find((x) => x.method === "PATCH")!.body).toEqual({
+        allowed_to_push: [{ id: 1, _destroy: true }],
+      });
+    });
+
+    it("adds a role row when the rule only names users", async () => {
+      const usersOnly = {
+        ...paid,
+        push_access_levels: [{ id: 2, access_level: null, user_id: 9 }],
+      };
+      const { c, calls } = client((call) =>
+        call.method === "GET" && calls.some((x) => x.method === "PATCH")
+          ? {
+              ...usersOnly,
+              push_access_levels: [...usersOnly.push_access_levels, { id: 7, access_level: 0 }],
+            }
+          : usersOnly,
+      );
+      await c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+        pushAccess: "No one",
+      });
+      expect(calls.find((x) => x.method === "PATCH")!.body).toEqual({
+        allowed_to_push: [{ access_level: 0 }],
+      });
+    });
+
+    it("says so, with nothing removed, when GitLab accepts the PATCH and ignores it", async () => {
+      const { c, calls } = client(() => paid);
+      await expect(
+        c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+          pushAccess: "No one",
+        }),
+      ).rejects.toThrow(/did not take the new level/);
+      expect(calls.some((x) => x.method === "DELETE")).toBe(false);
+    });
+
+    it("surfaces a refused PATCH without removing the rule", async () => {
+      const { c, calls } = client((call) =>
+        call.method === "PATCH" ? { status: 403, body: { message: "403 Forbidden" } } : paid,
+      );
+      await expect(
+        c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+          pushAccess: "No one",
+        }),
+      ).rejects.toThrow(/403/);
+      expect(calls.some((x) => x.method === "DELETE")).toBe(false);
+    });
+
+    it.each([
+      ["a group that may unprotect", { unprotect_access_levels: [{ id: 5, group_id: 8 }] }],
+      ["a raised unprotect level", { unprotect_access_levels: [{ id: 5, access_level: 60 }] }],
+      [
+        "a custom role that may merge",
+        { merge_access_levels: [{ id: 3, access_level: null, member_role_id: 4 }] },
+      ],
+    ])("keeps %s by using PATCH", async (_name, extra) => {
+      const rule = {
+        name: "main",
+        push_access_levels: [{ id: 1, access_level: 0 }],
+        merge_access_levels: [{ id: 3, access_level: 30 }],
+        ...extra,
+      };
+      const { c, calls } = client(() => rule);
+      await c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+        pushAccess: "No one",
+      });
+      expect(calls.some((x) => x.method === "DELETE")).toBe(false);
+    });
+  });
+
+  describe("a role-level edit on a rule with a deploy key", () => {
+    const withKey = {
+      name: "main",
+      push_access_levels: [
+        { id: 1, access_level: 40 },
+        { id: 2, access_level: null, deploy_key_id: 5 },
+      ],
+      merge_access_levels: [{ id: 3, access_level: 40 }],
+      unprotect_access_levels: [{ id: 4, access_level: 40 }],
+    };
+    const route =
+      (rule: object, posts: Array<{ status: number; body?: object }> = []) =>
+      (call: Call) => {
+        if (call.method === "DELETE") return { status: 204 };
+        if (call.method === "POST") return posts.shift() ?? { name: "main" };
+        return rule;
+      };
+
+    it("re-creates it with the key, since deploy keys are on every tier", async () => {
+      const { c, calls } = client(route(withKey));
+      await c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+        mergeAccess: "No one",
+      });
+      expect(calls.find((x) => x.method === "POST")!.body).toEqual({
+        name: "main",
+        push_access_level: 40,
+        merge_access_level: 0,
+        allow_force_push: false,
+        allowed_to_push: [{ deploy_key_id: 5 }],
+      });
+    });
+
+    it("adds no role to a rule that only names the key", async () => {
+      const onlyKey = {
+        ...withKey,
+        push_access_levels: [{ id: 2, access_level: 40, deploy_key_id: 5 }],
+      };
+      const { c, calls } = client(route(onlyKey));
+      await c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+        mergeAccess: "No one",
+      });
+      const post = calls.find((x) => x.method === "POST")!.body;
+      expect(post).not.toHaveProperty("push_access_level");
+      expect(post).toMatchObject({ allowed_to_push: [{ deploy_key_id: 5 }] });
+    });
+
+    it("puts the key back when the new rule fails", async () => {
+      const { c, calls } = client(
+        route(withKey, [{ status: 500, body: { message: "boom" } }, { status: 201 }]),
+      );
+      await expect(
+        c.updateResource("protected-branch", "acc:protected-branch:7/main", ACC, {
+          pushAccess: "No one",
+        }),
+      ).rejects.toThrow("boom");
+      expect(calls.filter((x) => x.method === "POST")[1]!.body).toMatchObject({
+        push_access_level: 40,
+        allowed_to_push: [{ deploy_key_id: 5 }],
+      });
+    });
+  });
+
   it("re-protects a branch on the same project path it unprotected", async () => {
     const { c, calls } = client((call) => {
       if (call.method === "DELETE") return { status: 204 };
