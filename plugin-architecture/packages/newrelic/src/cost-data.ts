@@ -33,13 +33,15 @@
  */
 
 import type { CostFetchRange, CostRow } from "@infrawrench/plugin-base";
-import { CostSetupError } from "@infrawrench/plugin-base";
+import { CostSetupError, ListTruncatedError } from "@infrawrench/plugin-base";
 import type { NewRelicContext, NrqlRow } from "./api.js";
 import { isPermissionError, runNrql } from "./api.js";
 import type { NewRelicRates } from "./rates.js";
 import { PRODUCTS } from "./rates.js";
 
 const DAY_MS = 86_400_000;
+/** What `LIMIT MAX` resolves to. Past it New Relic documents selecting a subset of the facets. */
+const MAX_NRQL_FACETS = 5000;
 
 interface Month {
   /** `YYYY-MM-01`. */
@@ -101,6 +103,23 @@ export function facetValue(row: NrqlRow, name: string, index: number): string {
   }
   if (index === 0 && (typeof facet === "string" || typeof facet === "number")) return String(facet);
   return "";
+}
+
+/**
+ * An answer that reached the limit may be a subset and does not say so, and the days it
+ * left out would be stored as no spend. The limit counts facets; each one has a row a day.
+ */
+function requireAllFacets(results: NrqlRow[], facets: string[]): void {
+  const seen = new Set(
+    results.map((row) => facets.map((name, i) => facetValue(row, name, i)).join("\0")),
+  );
+  if (seen.size < MAX_NRQL_FACETS) return;
+  throw new ListTruncatedError({
+    vendor: "New Relic",
+    path: "NrConsumption",
+    items: seen.size,
+    maxItems: MAX_NRQL_FACETS,
+  });
 }
 
 const round = (n: number): number => Math.round(n * 1e6) / 1e6;
@@ -167,6 +186,7 @@ async function ingestRows(
     `SELECT sum(GigabytesIngested) AS 'gb' FROM NrConsumption WHERE productLine = 'DataPlatform' FACET consumingAccountId, consumingAccountName, usageMetric ${monthClause(month, nowMs)} TIMESERIES 1 day LIMIT MAX`,
     120,
   );
+  requireAllFacets(results, ["consumingAccountId", "consumingAccountName", "usageMetric"]);
   const cells: IngestCell[] = [];
   const totals = new Map<string, number>();
   for (const row of results) {
@@ -237,6 +257,12 @@ async function computeRows(
     `SELECT sum(consumption) AS 'ccu' FROM NrConsumption WHERE metric IN (${metrics.join(", ")}) FACET metric, dimension_productCapability, consumingAccountId, consumingAccountName ${monthClause(month, nowMs)} TIMESERIES 1 day LIMIT MAX`,
     120,
   );
+  requireAllFacets(results, [
+    "metric",
+    "dimension_productCapability",
+    "consumingAccountId",
+    "consumingAccountName",
+  ]);
   const rows: CostRow[] = [];
   for (const row of results) {
     const date = dateOfRow(row);

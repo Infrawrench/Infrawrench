@@ -217,6 +217,53 @@ describe("rates", () => {
   });
 });
 
+describe("the 5,000 facets NRQL returns at most", () => {
+  const RANGE = { fromDate: "2026-09-01", toDate: "2026-09-30" };
+  const facets = (n: number, row: (i: number) => Record<string, unknown>) =>
+    nrqlData(
+      Array.from({ length: n }, (_, i) => ({ beginTimeSeconds: day("2026-09-02"), ...row(i) })),
+    );
+
+  function httpWith(ingest: unknown, compute: unknown = nrqlData([])) {
+    return makeHttp((c) => {
+      const nrql = String(c.variables["nrql"]);
+      if (nrql.includes("FROM NrMTDConsumption")) return nrqlData([]);
+      return nrql.includes("usageMetric") ? ingest : compute;
+    }).http;
+  }
+
+  it("throws on an ingest read that reached the limit, which may be a subset", async () => {
+    const http = httpWith(facets(5000, (i) => ({ facet: [String(i), "A", "Logs"], gb: 1 })));
+    await expect(
+      fetchNewRelicCostData(ctxWith(http), 42, parseRates({}), RANGE, NOW),
+    ).rejects.toThrow("has more than Infrawrench reads");
+  });
+
+  it("throws on a compute read that reached the limit", async () => {
+    const http = httpWith(
+      nrqlData([]),
+      facets(5000, (i) => ({ facet: ["CoreCCU", "cap", String(i), "A"], ccu: 1 })),
+    );
+    const rates = parseRates({ coreCcuPrice: "1" });
+    expect(rates.coreCcu).toBe(1);
+    await expect(fetchNewRelicCostData(ctxWith(http), 42, rates, RANGE, NOW)).rejects.toThrow(
+      "has more than Infrawrench reads",
+    );
+  });
+
+  it("counts facets, not rows, so many days of few facets still read", async () => {
+    const rows = Array.from({ length: 6000 }, (_, i) => ({
+      beginTimeSeconds: day("2026-09-01") + (i % 30) * 86_400,
+      facet: [String(i % 200), "A", "Logs"],
+      gb: 1,
+    }));
+    const http = httpWith(nrqlData(rows));
+    await expect(
+      fetchNewRelicCostData(ctxWith(http), 42, parseRates({}), RANGE, NOW),
+    ).resolves.not.toHaveLength(0);
+  });
+});
+
 describe("fetchUsageSummary", () => {
   it("estimates month-to-date cost per product", async () => {
     const { http } = makeHttp((c) => {
