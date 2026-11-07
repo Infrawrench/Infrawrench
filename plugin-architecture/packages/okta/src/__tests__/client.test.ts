@@ -1,6 +1,6 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { HostServices } from "@infrawrench/plugin-base";
+import type { HostServices, ResourceInstance } from "@infrawrench/plugin-base";
 import { OktaClient } from "../client.js";
 import { normalizeOrgUrl, rateLimitBucket } from "../api.js";
 import { parseStatusFeed } from "../status-feed.js";
@@ -385,6 +385,79 @@ describe("list reads", () => {
       expect(request.mock.calls[0]).not.toHaveProperty("0.caCert");
       expect(fetchStub).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("detail lists", () => {
+  const resource = (typeId: string, externalId: string): ResourceInstance => ({
+    id: `${ACCOUNT}:${typeId}:${externalId}`,
+    pluginId: "okta",
+    resourceTypeId: typeId,
+    accountId: ACCOUNT,
+    displayName: externalId,
+    externalId,
+    fields: {},
+    resolvedOutputs: {},
+    secretStates: [],
+    createdAt: "",
+    updatedAt: "",
+  });
+  const twoPages = (path: string, first: object, second: object) => (call: Call) => {
+    const { pathname, searchParams } = new URL(call.url);
+    if (pathname !== path) return { body: [] };
+    return searchParams.get("after")
+      ? { body: [second] }
+      : {
+          body: [first],
+          headers: { link: `<${ORG}${path}?after=p2>; rel="next"` },
+        };
+  };
+
+  it("reads every page of an authorization server's scopes, at the largest page size", async () => {
+    const path = "/api/v1/authorizationServers/as1/scopes";
+    const client = ssws(twoPages(path, { id: "s1", name: "a" }, { id: "s2", name: "b" }));
+    const detail = await client.enrichDetail(resource("authorization-server", "as1"));
+    expect(JSON.parse(detail.resolvedOutputs["__scopes__"]!)).toEqual([
+      { id: "s1", name: "a" },
+      { id: "s2", name: "b" },
+    ]);
+    expect(calls.find((c) => c.url.includes("/scopes"))!.url).toBe(`${ORG}${path}?limit=200`);
+    const rendered = JSON.stringify(client.renderDetail(detail));
+    expect(rendered).toContain('"id":"s2"');
+  });
+
+  it("reads every page of a policy's rules, so a later one can be chosen", async () => {
+    const path = "/api/v1/policies/p1/rules";
+    const client = ssws(
+      twoPages(path, { id: "r1", name: "a", status: "ACTIVE" }, { id: "r2", name: "b" }),
+    );
+    const detail = await client.enrichDetail(resource("policy", "p1"));
+    expect(
+      JSON.parse(detail.resolvedOutputs["__rules__"]!).map((r: { id: string }) => r.id),
+    ).toEqual(["r1", "r2"]);
+    expect(JSON.stringify(client.renderDetail(detail))).toContain('"id":"r2"');
+  });
+
+  it("follows a link on an authorization server's policies and a user's groups", async () => {
+    const policies = ssws(
+      twoPages("/api/v1/authorizationServers/as1/policies", { name: "a" }, { name: "b" }),
+    );
+    const server = await policies.enrichDetail(resource("authorization-server", "as1"));
+    expect(JSON.parse(server.resolvedOutputs["__policies__"]!)).toHaveLength(2);
+    const groups = ssws(twoPages("/api/v1/users/u1/groups", { id: "g1" }, { id: "g2" }));
+    const user = await groups.enrichDetail(resource("user", "u1"));
+    expect(JSON.parse(user.resolvedOutputs["__groups__"]!)).toHaveLength(2);
+  });
+
+  it("keeps what it read when a detail list runs past its cap", async () => {
+    const client = ssws((call) => ({
+      body: [{ id: `r${calls.length}` }],
+      headers: {
+        link: `<${new URL(call.url).origin}/api/v1/policies/p1/rules?after=${calls.length}>; rel="next"`,
+      },
+    }));
+    const detail = await client.enrichDetail(resource("policy", "p1"));
+    expect(JSON.parse(detail.resolvedOutputs["__rules__"]!)).toHaveLength(50);
   });
 });
 

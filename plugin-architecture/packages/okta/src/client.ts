@@ -32,6 +32,8 @@ export const METRICS_DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000;
 const METRIC_BUCKETS = 48;
 /** System Log pages (1000 events each) read for one metrics window. */
 const MAX_LOG_PAGES = 5;
+/** Pages of a list a detail view shows and its pickers choose from, far past any real one. */
+const DETAIL_LIST_PAGES = 50;
 /** The host cannot prune past about this many live rows of one account (#572). */
 const MAX_LIST_ROWS = 50_000;
 
@@ -1791,11 +1793,15 @@ export class OktaClient implements PluginClient {
     return attempt(async () => {
       const id = pathEncode(externalIdOf(resource.id));
       const extra: Record<string, string> = {};
-      const { rest } = this.api;
       switch (resource.resourceTypeId) {
         case "user": {
           const [groups, allGroups] = await Promise.all([
-            this.api.list.getAll(`/api/v1/users/${id}/groups`, null).catch(noRows),
+            this.api.list
+              .getAll(`/api/v1/users/${id}/groups`, null, {
+                maxPages: DETAIL_LIST_PAGES,
+                partial: true,
+              })
+              .catch(noRows),
             this.groupOptions(),
           ]);
           extra["__groups__"] = JSON.stringify(
@@ -1845,11 +1851,18 @@ export class OktaClient implements PluginClient {
           break;
         }
         case "authorization-server": {
-          const scopes = await rest
-            .get(`/api/v1/authorizationServers/${id}/scopes`)
-            .catch((): Schemas["OAuth2Scope"][] => []);
+          const scopes = await this.api.list
+            .getAll(`/api/v1/authorizationServers/${id}/scopes`, null, {
+              query: { limit: 200 },
+              maxPages: DETAIL_LIST_PAGES,
+              partial: true,
+            })
+            .catch(noRows);
           const policies = await this.api.list
-            .getAll(`/api/v1/authorizationServers/${id}/policies`, null, { partial: true })
+            .getAll(`/api/v1/authorizationServers/${id}/policies`, null, {
+              maxPages: DETAIL_LIST_PAGES,
+              partial: true,
+            })
             .catch(noRows);
           extra["__scopes__"] = JSON.stringify(scopes);
           extra["__policies__"] = JSON.stringify(
@@ -1862,9 +1875,12 @@ export class OktaClient implements PluginClient {
           break;
         }
         case "policy": {
-          const rules = await rest
-            .get(`/api/v1/policies/${id}/rules`)
-            .catch((): Schemas["PolicyRule"][] => []);
+          const rules = await this.api.list
+            .getAll(`/api/v1/policies/${id}/rules`, null, {
+              maxPages: DETAIL_LIST_PAGES,
+              partial: true,
+            })
+            .catch(noRows);
           extra["__rules__"] = JSON.stringify(rules);
           break;
         }
